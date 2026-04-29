@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local Claude settings (do NOT commit user-specific permissions)
+.claude/settings.local.json
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Project artifacts (generated per project, not part of scaffolding)
+docs/01-discovery.md
+docs/01-discovery-review.md
+docs/02-prd.md
+docs/02-prd-review.md
+docs/03-architecture.md
+docs/03-architecture-review.md
+docs/04-ux.md
+docs/04-ux-review.md
+docs/05-impl-log.md
+docs/05-review-*.md
+docs/06-qa.md
+docs/06-qa-review.md
+docs/07-deploy.md
+docs/07-deploy-review.md
+
+# Project meta state (filled per-project; keep STATE.md in scaffolding as template)
+# STATE.md is committed as a template — agents fill it in per project clone.
+
+# Compliance artifacts (generated per project)
+docs/compliance/model-cards/
