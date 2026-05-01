@@ -22,6 +22,17 @@ _≤200 words. Reader should understand the phase outcome without scrolling._
 **Next phase**: [N+1 — name]
 **Next agent**: [agent name]
 **Context to load**: [list of file paths + section anchors that next agent must read]
+
+**Phase 5 routing hint** _(fill only on handoff TO Phase 5)_:
+- Database layer needed: [yes/no — why]
+- Auth layer needed: [yes/no — why]
+- Backend layer needed: [yes/no — why]
+- Frontend layer needed: [yes/no — why]
+- Integration layer needed: [yes/no — which services]
+
+**Learning references** _(fill if known anti-patterns apply)_:
+- Check `docs/learning/anti-patterns.md` § [relevant section]
+
 **Open questions for next phase**:
 1.
 2.

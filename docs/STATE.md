@@ -6,13 +6,21 @@
 - **Name**: _(fill on init)_
 - **Initialized**: _(date)_
 - **Jurisdictions**: EU + US
-- **Sector**: _(general SaaS | fintech | healthtech | edtech | adtech | other)_
+- **Sector**: _(general SaaS | fintech | healthtech | edtech | adtech | HR-tech | other)_
+- **Tech stack snapshot**: _(filled by system-architect at Phase 3 — e.g. Next.js 14 / FastAPI / PostgreSQL)_
 
 ## Current state
 - **Current phase**: _(0 not started | 1 Discovery | 2 PRD | 3 Architecture | 4 UX | 5 Impl | 6 QA | 7 Deploy)_
 - **Current step**: _(worker pending | worker done | supervisor done | gate pending | gate done)_
 - **Last verdict**: _(APPROVED | APPROVED_WITH_CONDITIONS | BLOCKED)_
 - **Next action**: _(which agent to dispatch next)_
+
+## Phase 5 capability tracker
+_Updated by PM after each capability completes. One row per PRD capability._
+
+| Capability | Status | Layers used | Review cycles | Postmortem? |
+|---|---|---|---|---|
+| _(empty on init)_ | | | | |
 
 ## Pending gate conditions
 _List of unresolved `APPROVED_WITH_CONDITIONS` items the next worker must address._

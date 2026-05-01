@@ -38,3 +38,11 @@ docs/07-deploy-review.md
 
 # Compliance artifacts (generated per project)
 docs/compliance/model-cards/
+
+# Marketing / sales / support artifacts (generated per project)
+docs/marketing/
+docs/sales/
+docs/support/
+
+# Learning docs (institutional knowledge — MUST be committed, never ignored)
+# docs/learning/ is intentionally NOT listed here so it is always tracked by git
