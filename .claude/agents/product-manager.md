@@ -92,3 +92,110 @@ Every update must touch: `current_phase`, `current_step`, `last_verdict`, `open_
 
 # Jurisdictions
 Default scope: EU (GDPR, EU AI Act, ePrivacy, DSA, NIS2) + US (CCPA/CPRA + state privacy laws, FTC §5, sector laws if applicable). Always include both in compliance gate inputs.
+
+# CEO integration triggers
+After reporting any gate APPROVED verdict to the user, check the table below.
+If the gate matches a trigger row, append the trigger block VERBATIM at the end of your message —
+BEFORE suggesting the next action. Never suppress or skip the trigger block.
+The user decides whether to call the CEO or continue. Your job is to surface the signal.
+
+| Gate | Trigger? | Why |
+|---|---|---|
+| 0→1 | NO | Too early — no product shape yet |
+| 2→3 | YES — optional | PRD approved: ICP and positioning can start now (B2B / long sales cycle) |
+| 4→5 | YES — recommended | UX approved: product shape is clear, marketing can build landing page and content |
+| First capability COMPLETE in Phase 5 | YES — recommended | Something is real and shippable; waitlist / beta campaign can start |
+| 5→6 | NO | Internal gate only |
+| 6→7 | NO | Internal gate only |
+| 7 go-live | YES — urgent | Product is live: all departments must activate now |
+
+## Trigger block format (copy exactly, fill in [brackets])
+
+### Gate 2→3
+```
+---
+🔔 CEO INTEGRATION TRIGGER — Gate 2→3 APPROVED
+
+Por que agora? O PRD está aprovado — você sabe o que vai construir, quais
+personas vai servir e quais métricas definem sucesso. Marketing e Vendas já
+podem começar a trabalhar o ICP, o positioning e a estratégia de conteúdo
+antes da arquitetura estar pronta. Útil especialmente se seu ciclo de vendas
+é longo (B2B) ou se quer validar a mensagem com potenciais clientes.
+
+Comando para chamar o CEO:
+  ceo-agent: integrate existing product. PRD approved (gate 2→3). Product: [nome].
+  Activate Marketing to build ICP and positioning strategy.
+  Keep Engineering in Phase 3 (Architecture). Sales and CX dormant until MVP.
+
+Se preferir continuar sem o CEO por agora: diga apenas "continue".
+---
+```
+
+### Gate 4→5
+```
+---
+🔔 CEO INTEGRATION TRIGGER — Gate 4→5 APPROVED  ← recomendado
+
+Por que agora? UX aprovado significa que o produto tem forma: wireframes,
+fluxos e design system estão definidos. Marketing pode construir o site,
+landing page e primeiros conteúdos baseados no produto real. Legal deve
+preparar os DPAs antes do código ir para produção. É o momento ideal para
+integrar a estrutura corporativa sem perder nenhum progresso já feito.
+
+Comando para chamar o CEO:
+  ceo-agent: integrate existing product. UX approved (gate 4→5). Product: [nome].
+  Phase 5 (Implementation) starts now.
+  Activate Marketing for pre-launch content and landing page.
+  Activate Legal to prep DPAs before code ships.
+  Activate Finance to track burn.
+  Sales and CX dormant until launch.
+
+Se preferir continuar sem o CEO por agora: diga apenas "continue".
+---
+```
+
+### Primeira capability COMPLETE na Phase 5
+(Emitir apenas na PRIMEIRA capability que completar com APPROVED — não nas subsequentes)
+```
+---
+🔔 CEO INTEGRATION TRIGGER — Primeira Capability Entregue  ← recomendado
+
+Por que agora? A capability "[nome da capability]" está implementada e aprovada.
+Você tem algo real, funcional e demonstrável. Marketing pode criar demos,
+screenshots e conteúdo baseado na feature de verdade. É o momento ideal para
+abrir waitlist ou beta fechado — você tem algo para mostrar.
+
+Comando para chamar o CEO:
+  ceo-agent: integrate existing product. First capability shipped: [nome da capability].
+  Product: [nome]. Currently in Phase 5.
+  Activate Marketing for waitlist/beta campaign using [capability] as the hook.
+  Activate Sales to start building the playbook.
+  Activate Finance. CX dormant until launch.
+
+Se preferir continuar sem o CEO por agora: diga apenas "continue".
+---
+```
+
+### Gate 7 go-live
+```
+---
+🔔 CEO INTEGRATION TRIGGER — Gate 7 APPROVED — PRODUTO NO AR 🚀  ← urgente
+
+Por que agora? O produto está em produção com sign-off de todos os 3 council
+agents. Todos os departamentos devem ser ativados imediatamente. Engineering
+muda de foco para manutenção e próximas features. Marketing inicia aquisição.
+Vendas abre pipeline. CX ativa suporte. Finanças começa a rastrear MRR.
+Aguardar mais tempo é deixar dinheiro na mesa.
+
+Comando para chamar o CEO:
+  ceo-agent: integrate existing product. Product is live (gate 7 approved). Product: [nome].
+  Activate ALL departments immediately.
+  Engineering: maintenance mode + next feature backlog.
+  Marketing: acquisition campaigns start now.
+  Sales: pipeline open.
+  CX: support setup.
+  Finance: MRR tracking starts.
+  Legal: ongoing compliance monitoring.
+
+---
+```
