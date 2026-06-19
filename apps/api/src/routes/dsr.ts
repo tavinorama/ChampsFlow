@@ -237,6 +237,34 @@ async function sendCompletedEmail(params: {
   }
 }
 
+/**
+ * Confirm to an access/portability requester that the controller holds NO
+ * personal data for their email (the honest GDPR Art. 15 / CCPA §1798.110
+ * answer). Sent in place of sendCompletedEmail when the request closes as
+ * 'closed_no_data' — so the requester is never linked to an empty export.
+ */
+async function sendNoDataEmail(params: {
+  email: string;
+  requestId: string;
+  requestType: "access" | "portability";
+}): Promise<void> {
+  try {
+    const { sendDsrNoDataEmail } = await import(
+      "../../../../packages/shared/src/emails/dsr-no-data.js"
+    );
+    await sendDsrNoDataEmail({
+      to: params.email,
+      requestId: params.requestId,
+      requestType: params.requestType,
+    });
+  } catch (err) {
+    logger.error("dsr_no_data_email_send_failed", {
+      requestId: params.requestId,
+      message: (err as Error).message,
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // GDPR Art. 17 erasure cascade
 // ---------------------------------------------------------------------------
@@ -990,17 +1018,52 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
 
     if (dsr.request_type === "access" || dsr.request_type === "portability") {
       // -----------------------------------------------------------------
-      // Export: query all user data by user_id or requester_email
+      // Export: query all user data for the resolved data subject.
+      // Same null-user_id gap as erasure/restriction: dsr.user_id is set ONLY
+      // when the requester was authenticated at intake. A public/logged-out
+      // access or portability request therefore had user_id = NULL — the old
+      // code skipped every per-user read and still produced an artifact (just
+      // wrapper metadata) + emailed a "completed" download link to an
+      // essentially empty file: a misleading Art. 15 / CCPA §1798.110 response.
+      // Resolve the subject by requester_email, refuse on ambiguity, and close
+      // honestly when no data is held.
       // -----------------------------------------------------------------
-      const userId = dsr.user_id;
+      const subjects = await resolveDsrSubjects(db, dsr);
 
-      let exportData: Record<string, unknown> = {
-        export_generated_at: new Date().toISOString(),
-        request_type: dsr.request_type,
-        request_id: dsr.id,
-      };
+      if (subjects.length > 1) {
+        // Ambiguous: requester_email maps to accounts in more than one tenant.
+        // Exporting the wrong subject's data is itself a disclosure breach —
+        // refuse and route to a human. Do NOT mark fulfilled. (Mirrors erasure.)
+        logger.warn("dsr_access_ambiguous_subject", {
+          requestId: dsr.id,
+          matchCount: subjects.length,
+        });
+        await writeAuditLog(db, {
+          event_type: "dsr_access_ambiguous",
+          actor_user_id: auth.userId,
+          tenant_id: dsr.tenant_id,
+          target_id: dsr.id,
+          metadata: { request_type: dsr.request_type, match_count: subjects.length },
+        });
+        return ctx.json(
+          {
+            error:
+              "Requester email matches multiple accounts; resolve the data subject manually before export.",
+            code: "AMBIGUOUS_SUBJECT",
+          },
+          409
+        );
+      }
 
-      if (userId) {
+      if (subjects.length === 1) {
+        const { userId } = subjects[0];
+
+        const exportData: Record<string, unknown> = {
+          export_generated_at: new Date().toISOString(),
+          request_type: dsr.request_type,
+          request_id: dsr.id,
+        };
+
         // Read the whole export in ONE read-only, repeatable-read transaction so
         // the artifact is a consistent point-in-time snapshot across all tables
         // (no torn reads if the subject's data mutates mid-export). This route is
@@ -1057,20 +1120,37 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
           },
           { mode: "read only isolation level repeatable read" }
         );
+
+        // Serialize export as JSON — store as artifact URL
+        // In production this would be uploaded to S3 / object storage.
+        // For v1: store serialized JSON reference URL; actual delivery is via email link.
+        const exportJson = JSON.stringify(exportData, null, 2);
+        // Artifact URL convention: internal reference (actual upload to S3 deferred to v1.1)
+        resultArtifactUrl = `dsr-export/${dsr.id}/data-export.json`;
+
+        logger.info("dsr_export_generated", {
+          requestId: dsr.id,
+          request_type: dsr.request_type,
+          bytesApprox: exportJson.length,
+        });
+      } else {
+        // Zero matches: the controller holds no personal data for this email.
+        // For an access/portability request "we hold no data" IS the substantive
+        // Art. 15 / CCPA §1798.110 answer — so close as closed_no_data and
+        // confirm that honestly. Do NOT fabricate an artifact or email a
+        // "completed" download link to an empty export.
+        logger.warn("dsr_access_skipped_null_user_id", { requestId: dsr.id });
+        await writeAuditLog(db, {
+          event_type: "dsr_access_no_data",
+          actor_user_id: auth.userId,
+          tenant_id: dsr.tenant_id,
+          target_id: dsr.id,
+          metadata: { request_type: dsr.request_type },
+        });
+        finalStatus = "closed_no_data";
+        closureReason = "no_personal_data_held";
+        // resultArtifactUrl stays null — nothing to deliver.
       }
-
-      // Serialize export as JSON — store as artifact URL
-      // In production this would be uploaded to S3 / object storage.
-      // For v1: store serialized JSON reference URL; actual delivery is via email link.
-      const exportJson = JSON.stringify(exportData, null, 2);
-      // Artifact URL convention: internal reference (actual upload to S3 deferred to v1.1)
-      resultArtifactUrl = `dsr-export/${dsr.id}/data-export.json`;
-
-      logger.info("dsr_export_generated", {
-        requestId: dsr.id,
-        request_type: dsr.request_type,
-        bytesApprox: exportJson.length,
-      });
     } else if (dsr.request_type === "erasure") {
       // -----------------------------------------------------------------
       // Erasure cascade (architecture §13)
@@ -1245,13 +1325,23 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
       },
     });
 
-    // Send completion email for access/portability (best-effort)
+    // Notify the access/portability requester (best-effort). When the request
+    // closed because no personal data is held, confirm that honestly instead of
+    // emailing a "completed" link to an empty export.
     if (dsr.request_type === "access" || dsr.request_type === "portability") {
-      await sendCompletedEmail({
-        email: dsr.requester_email,
-        requestId: dsr.id,
-        resultArtifactUrl: resultArtifactUrl ?? undefined,
-      });
+      if (finalStatus === "closed_no_data") {
+        await sendNoDataEmail({
+          email: dsr.requester_email,
+          requestId: dsr.id,
+          requestType: dsr.request_type,
+        });
+      } else {
+        await sendCompletedEmail({
+          email: dsr.requester_email,
+          requestId: dsr.id,
+          resultArtifactUrl: resultArtifactUrl ?? undefined,
+        });
+      }
     }
 
     return ctx.json({

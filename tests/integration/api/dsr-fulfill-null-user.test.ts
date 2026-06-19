@@ -381,3 +381,178 @@ describe("POST /api/dsr/:id/fulfill — correction with null user_id", () => {
     expect(s.updateParams?.[1]).toBeNull();
   });
 });
+
+describe("POST /api/dsr/:id/fulfill — access/portability with null user_id", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("REGRESSION: logged-out real user (user_id NULL) — resolves by email and exports against the resolved subject", async () => {
+    const mock = makeMockDb({
+      dsr: {
+        id: "req-access-1",
+        tenant_id: null,
+        user_id: null,
+        requester_email: "Lost@Example.com",
+        request_type: "access",
+        status: "processing",
+        verified_at: VERIFIED_AT,
+        processed_at: null,
+      },
+      userMatches: [{ id: "user-1", tenant_id: "tenant-1" }],
+    });
+    const res = await fulfill(buildApp(mock), "req-access-1");
+    const body = await res.json();
+    const s = mock.inspect();
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("fulfilled");
+    // The export ran (a read-only transaction was opened) against the resolved
+    // subject — proving it is no longer the wrapper-metadata-only empty export.
+    expect(s.cascadeRan).toBe(true);
+    expect(s.didEmailLookup).toBe(true);
+    expect(s.txCalls.length).toBeGreaterThan(0);
+    expect(s.txCalls[0]?.sql).toContain("FROM users");
+    expect(s.txCalls[0]?.params).toEqual(["user-1"]);
+    // Fulfilled with a real artifact URL, no closure_reason.
+    expect(s.updateParams?.[0]).toBe("fulfilled");
+    expect(s.updateParams?.[1]).toBeNull();
+    expect(s.updateParams?.[2]).toContain("data-export.json");
+  });
+
+  it("no account for email — closes as 'closed_no_data', NO export and NO artifact URL", async () => {
+    const mock = makeMockDb({
+      dsr: {
+        id: "req-access-2",
+        tenant_id: null,
+        user_id: null,
+        requester_email: "nobody@example.com",
+        request_type: "access",
+        status: "processing",
+        verified_at: VERIFIED_AT,
+        processed_at: null,
+      },
+      userMatches: [],
+    });
+    const res = await fulfill(buildApp(mock), "req-access-2");
+    const body = await res.json();
+    const s = mock.inspect();
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("closed_no_data");
+    expect(body.closure_reason).toBe("no_personal_data_held");
+    // No export transaction opened — nothing was read or fabricated.
+    expect(s.cascadeRan).toBe(false);
+    expect(s.txCalls).toHaveLength(0);
+    // Status written distinctly, and crucially NO artifact URL → no empty
+    // "completed" export linked back to the requester.
+    expect(s.updateParams?.[0]).toBe("closed_no_data");
+    expect(s.updateParams?.[1]).toBe("no_personal_data_held");
+    expect(s.updateParams?.[2]).toBeNull();
+    expect(s.audits.some((a) => a[0] === "dsr_access_no_data")).toBe(true);
+  });
+
+  it("email matches multiple tenants — 409, NOT fulfilled, NO export", async () => {
+    const mock = makeMockDb({
+      dsr: {
+        id: "req-access-3",
+        tenant_id: null,
+        user_id: null,
+        requester_email: "shared@example.com",
+        request_type: "access",
+        status: "processing",
+        verified_at: VERIFIED_AT,
+        processed_at: null,
+      },
+      userMatches: [
+        { id: "user-a", tenant_id: "tenant-a" },
+        { id: "user-b", tenant_id: "tenant-b" },
+      ],
+    });
+    const res = await fulfill(buildApp(mock), "req-access-3");
+    const body = await res.json();
+    const s = mock.inspect();
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe("AMBIGUOUS_SUBJECT");
+    expect(s.cascadeRan).toBe(false);
+    // The DSR row was never closed.
+    expect(s.updateParams).toBeNull();
+    expect(s.audits.some((a) => a[0] === "dsr_access_ambiguous")).toBe(true);
+  });
+
+  it("authenticated request (explicit user_id + tenant_id) exports without an email lookup", async () => {
+    const mock = makeMockDb({
+      dsr: {
+        id: "req-access-4",
+        tenant_id: "tenant-9",
+        user_id: "user-9",
+        requester_email: "auth@example.com",
+        request_type: "access",
+        status: "processing",
+        verified_at: VERIFIED_AT,
+        processed_at: null,
+      },
+    });
+    const res = await fulfill(buildApp(mock), "req-access-4");
+    const body = await res.json();
+    const s = mock.inspect();
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("fulfilled");
+    expect(s.cascadeRan).toBe(true);
+    expect(s.txCalls[0]?.params).toEqual(["user-9"]);
+    expect(s.updateParams?.[2]).toContain("data-export.json");
+    // Short-circuits — resolver issued no email lookup (only txCall reads touch users).
+    expect(s.didEmailLookup).toBe(false);
+  });
+
+  it("portability with null user_id — one match runs the export and marks fulfilled", async () => {
+    const mock = makeMockDb({
+      dsr: {
+        id: "req-port-1",
+        tenant_id: null,
+        user_id: null,
+        requester_email: "port@example.com",
+        request_type: "portability",
+        status: "processing",
+        verified_at: VERIFIED_AT,
+        processed_at: null,
+      },
+      userMatches: [{ id: "user-p", tenant_id: "tenant-p" }],
+    });
+    const res = await fulfill(buildApp(mock), "req-port-1");
+    const body = await res.json();
+    const s = mock.inspect();
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("fulfilled");
+    expect(s.cascadeRan).toBe(true);
+    expect(s.txCalls[0]?.params).toEqual(["user-p"]);
+    expect(s.updateParams?.[2]).toContain("data-export.json");
+  });
+
+  it("portability with null user_id — no match closes as 'closed_no_data' with no artifact", async () => {
+    const mock = makeMockDb({
+      dsr: {
+        id: "req-port-2",
+        tenant_id: null,
+        user_id: null,
+        requester_email: "nobody@example.com",
+        request_type: "portability",
+        status: "processing",
+        verified_at: VERIFIED_AT,
+        processed_at: null,
+      },
+      userMatches: [],
+    });
+    const res = await fulfill(buildApp(mock), "req-port-2");
+    const body = await res.json();
+    const s = mock.inspect();
+
+    expect(res.status).toBe(200);
+    expect(body.status).toBe("closed_no_data");
+    expect(s.cascadeRan).toBe(false);
+    expect(s.updateParams?.[0]).toBe("closed_no_data");
+    expect(s.updateParams?.[2]).toBeNull();
+    expect(s.audits.some((a) => a[0] === "dsr_access_no_data")).toBe(true);
+  });
+});
