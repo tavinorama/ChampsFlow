@@ -31,7 +31,11 @@ COPY packages ./packages
 
 # Install with --omit=dev disabled here — we need build-time deps (typescript,
 # tailwind, etc.). The runner stage installs only prod deps.
-RUN npm ci --workspaces --include-workspace-root --legacy-peer-deps
+# npm hoists workspace deps to the ROOT node_modules, so per-workspace
+# node_modules dirs may not exist. Create them so the builder's
+# `COPY --from=deps /app/apps/web/node_modules` never fails on a missing path.
+RUN npm ci --workspaces --include-workspace-root --legacy-peer-deps \
+ && mkdir -p apps/web/node_modules packages/shared/node_modules
 
 # ───────────────────────────────────────────── 2. builder
 FROM node:20-alpine AS builder
