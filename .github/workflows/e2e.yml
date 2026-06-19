@@ -98,8 +98,12 @@ jobs:
         run: |
           npm run start --workspace=apps/web &
           echo "WEB_PID=$!" >> $GITHUB_ENV
-          # Wait for Next.js
-          timeout 30 bash -c 'until curl -sf http://localhost:3000; do sleep 1; done'
+          # Wait until Next.js ACCEPTS connections. We do NOT require the full
+          # response body: a streaming SSR response can keep a single request
+          # open longer than the probe, so we treat any curl exit OTHER than 7
+          # (connection refused) as "server is up". --max-time bounds each probe
+          # so a slow/streaming body never blocks the whole wait.
+          timeout 90 bash -c 'until curl -s -o /dev/null --connect-timeout 3 --max-time 8 http://localhost:3000; ec=$?; [ "$ec" -ne 7 ]; do echo "waiting for web (curl exit $ec)"; sleep 2; done'
         env:
           NODE_ENV: "test"
           # `next start` reads PORT; the job-level PORT=3001 is the API's port, so
