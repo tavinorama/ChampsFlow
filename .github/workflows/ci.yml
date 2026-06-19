@@ -152,7 +152,16 @@ jobs:
 
       - name: RLS assertion — check-rls.sql (S-2 / Gate 5→6 fix)
         run: |
-          npx psql "${{ env.POSTGRES_TEST_URL }}" -f packages/db/scripts/check-rls.sql
+          # Use the real psql client (ubuntu runners ship it) — NOT `npx psql`,
+          # which resolves to an unrelated npm package. check-rls.sql lists any
+          # tenant table missing RLS; -t -A makes the output a bare list so we
+          # can fail the gate when it's non-empty (psql -f alone exits 0).
+          missing=$(psql "${{ env.POSTGRES_TEST_URL }}" -t -A -f packages/db/scripts/check-rls.sql)
+          if [ -n "$missing" ]; then
+            echo "::error::Tables missing ROW LEVEL SECURITY: $missing"
+            exit 1
+          fi
+          echo "RLS enabled on all tenant-scoped tables ✓"
         env:
           PGPASSWORD: test
 

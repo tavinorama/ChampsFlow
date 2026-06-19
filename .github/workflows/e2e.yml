@@ -22,8 +22,14 @@ env:
   NEXT_PUBLIC_API_URL: "http://localhost:3001"
   WEB_ORIGIN: "http://localhost:3000"
   PORT: "3001"
-  # Auth bypass for E2E test sessions
-  TEST_AUTH_BYPASS: "true"
+  # Auth bypass for E2E test sessions. The API middleware reads DEV_AUTH_BYPASS
+  # (not TEST_AUTH_BYPASS) and only honours it because NODE_ENV=test (never in
+  # production). Without this, authenticated routes 401 in E2E.
+  DEV_AUTH_BYPASS: "1"
+  # SUPABASE_URL is required by the API config validation (apps/api/src/config.ts)
+  # — the server refuses to boot without it. A placeholder URL is fine for E2E
+  # because auth is bypassed; no real Supabase calls are made.
+  SUPABASE_URL: "https://demo.supabase.co"
   DPA_CURRENT_VERSION: "1.0"
   OAUTH_TOKEN_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   DEFAULT_TENANT_REGION: "us"
