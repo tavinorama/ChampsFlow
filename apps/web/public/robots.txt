@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Marketing + content pages are indexable. Authenticated app routes are
+# behind auth and not linked publicly.
+Disallow: /account/
+Disallow: /create
+Disallow: /drafts/
+Disallow: /schedule
+
+Sitemap: https://organicposts.ai/sitemap.xml

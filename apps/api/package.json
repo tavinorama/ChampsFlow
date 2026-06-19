@@ -1,0 +1,33 @@
+{
+  "name": "@organic-posts/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hono API server for Organic Posts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/apps/api/src/index.js",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@organic-posts/shared": "*",
+    "@supabase/supabase-js": "^2.43.5",
+    "@upstash/redis": "^1.31.0",
+    "hono": "^4.4.0",
+    "@hono/node-server": "^1.11.1",
+    "postgres": "^3.4.4",
+    "ioredis": "^5.3.2",
+    "bullmq": "^5.8.1",
+    "jose": "^5.4.0",
+    "resend": "^3.4.0",
+    "stripe": "^16.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

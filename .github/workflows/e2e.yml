@@ -1,0 +1,126 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+# Only run E2E on PRs targeting main (not on every push to feature branches)
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  # Test database for E2E (apps connect to this)
+  DATABASE_URL: "postgres://postgres:test@localhost:5432/organic_posts_e2e"
+  REDIS_URL: "redis://localhost:6379"
+  # Stripe test mode — no real payments
+  STRIPE_TEST_MODE: "true"
+  STRIPE_SECRET_KEY: "sk_test_placeholder_for_e2e"
+  STRIPE_WEBHOOK_SECRET: "whsec_placeholder_for_e2e"
+  # App URLs for Playwright
+  NEXT_PUBLIC_API_URL: "http://localhost:3001"
+  WEB_ORIGIN: "http://localhost:3000"
+  PORT: "3001"
+  # Auth bypass for E2E test sessions
+  TEST_AUTH_BYPASS: "true"
+  DPA_CURRENT_VERSION: "1.0"
+  OAUTH_TOKEN_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  DEFAULT_TENANT_REGION: "us"
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: organic_posts_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npm run db:migrate
+
+      - name: Build apps for E2E
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Start API server
+        run: |
+          npm run start --workspace=apps/api &
+          echo "API_PID=$!" >> $GITHUB_ENV
+          # Wait for API healthcheck
+          timeout 30 bash -c 'until curl -sf http://localhost:3001/healthz; do sleep 1; done'
+        env:
+          NODE_ENV: "test"
+
+      - name: Start Next.js app
+        run: |
+          npm run start --workspace=apps/web &
+          echo "WEB_PID=$!" >> $GITHUB_ENV
+          # Wait for Next.js
+          timeout 30 bash -c 'until curl -sf http://localhost:3000; do sleep 1; done'
+        env:
+          NODE_ENV: "test"
+
+      - name: Run Playwright E2E tests
+        run: npx playwright test
+        env:
+          CI: "true"
+          BASE_URL: "http://localhost:3000"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload Playwright traces (on failure)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
+      - name: Stop servers
+        if: always()
+        run: |
+          kill $API_PID 2>/dev/null || true
+          kill $WEB_PID 2>/dev/null || true

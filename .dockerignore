@@ -1,0 +1,67 @@
+# Dependencies — always installed fresh inside the image
+node_modules
+**/node_modules
+.npm
+.pnpm-store
+.yarn
+.turbo
+
+# Build outputs
+**/.next
+**/dist
+**/build
+**/out
+**/coverage
+**/.nyc_output
+
+# Environment & secrets — NEVER bake into the image
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Logs
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Git
+.git
+.gitignore
+.github
+
+# Docs & docs-only assets
+docs
+README*.md
+LICENSE
+*.md
+!apps/**/README.md
+
+# Tests & dev-only files
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/playwright-report
+**/test-results
+**/.playwright
+
+# Claude / FleetView session files
+.claude
+.claude-flow
+
+# Local dev artifacts
+.next/cache
+*.tsbuildinfo

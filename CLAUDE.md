@@ -11,12 +11,16 @@ This file is loaded into context for every Claude Code session in this project. 
 ## Project meta
 > Filled by `product-manager` (product mode) or `ceo-agent` (company mode) on init. Update only when the project itself changes.
 
-- **Name**: _(fill on init)_
-- **One-line description**: _(fill on init)_
-- **Sector**: _(general SaaS | fintech | healthtech | edtech | adtech | HR-tech | other)_
-- **Jurisdictions**: EU + US _(default — change here if scope differs)_
+- **Name**: TrustIndex AI (platform) + OrganicPosts by TrustIndex AI (consultancy sub-brand)
+- **One-line description**: AI Search Trust Intelligence platform for SMBs — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the TrustIndex Score, and builds a GEO content plan; OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
+- **Sector**: general SaaS
+- **Home jurisdiction**: Brazil (entity to be registered there — LGPD applies)
+- **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All compliance artifacts must address Brazil (LGPD) + EU + US.
+- **Domains**: trustindexai.com (platform) · organicposts.ai (consultancy)
 - **Repository**: _(URL when set)_
-- **Initialized**: _(date)_
+- **Initialized**: 2026-05-01
+- **Pivot date**: 2026-05-29 (GEO platform pivot — Discovery re-opened)
+- **Rebrand + jurisdiction change**: 2026-05-30 (→ TrustIndex AI; home jurisdiction Brazil/LGPD)
 
 ---
 

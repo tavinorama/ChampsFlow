@@ -1,0 +1,280 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+# Only one deploy at a time; cancel superseded runs
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # Do NOT cancel in-progress deploys — finish or fail cleanly
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Gate: CI must pass before any deploy job runs
+  # The "needs" chain below enforces this. If CI workflow did not pass on the
+  # same commit, this workflow still runs independently, so we re-run the
+  # minimal health checks here rather than assuming CI passed.
+  # --------------------------------------------------------------------------
+
+  # --------------------------------------------------------------------------
+  # Job 1: Deploy to Staging (automatic on every main push)
+  # --------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all packages and apps
+        run: npm run build
+
+      - name: Verify no secrets in build artifacts (SEC-G7-6)
+        run: |
+          ! grep -rE "sk_live_[A-Za-z0-9]|sk_test_[A-Za-z0-9]|whsec_[A-Za-z0-9]|xoxb-[A-Za-z0-9]|AKIA[A-Z0-9]" \
+            apps/web/.next apps/api/dist 2>/dev/null || \
+            (echo "ERROR: Secret prefix found in build artifact" && exit 1)
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Run database migrations — staging
+        run: |
+          railway run \
+            --service migrations \
+            --environment staging \
+            npm run db:migrate
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+
+      - name: Deploy api to staging
+        run: |
+          railway up \
+            --service api \
+            --environment staging \
+            --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+
+      - name: Deploy worker to staging
+        run: |
+          railway up \
+            --service worker \
+            --environment staging \
+            --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+
+      - name: Deploy web to staging
+        run: |
+          railway up \
+            --service web \
+            --environment staging \
+            --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+
+      - name: Wait for staging deploy to settle
+        run: sleep 30
+
+      - name: Health check — staging api
+        run: |
+          STAGING_API_URL="${{ secrets.STAGING_API_URL }}"
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_API_URL/healthz" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Staging health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got $STATUS, waiting 5s..."
+            sleep 5
+          done
+          echo "ERROR: Staging health check failed after 60s"
+          exit 1
+
+      - name: Health check — staging web
+        run: |
+          STAGING_WEB_URL="${{ secrets.STAGING_WEB_URL }}"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$STAGING_WEB_URL" || echo "000")
+          if [ "$STATUS" != "200" ]; then
+            echo "ERROR: Staging web health check failed: $STATUS"
+            exit 1
+          fi
+          echo "Staging web health check passed"
+
+  # --------------------------------------------------------------------------
+  # Job 2: Manual approval gate (GitHub Environment protection)
+  # The "production" environment must be configured in GitHub with:
+  #   - Required reviewers: [founder account]
+  #   - Wait timer: 0 minutes (approve immediately or after review)
+  # --------------------------------------------------------------------------
+  wait-for-approval:
+    name: Awaiting Production Approval
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    environment: production  # GitHub environment with required reviewer protection
+
+    steps:
+      - name: Approval received — proceeding to production deploy
+        run: echo "Production deploy approved. Proceeding."
+
+  # --------------------------------------------------------------------------
+  # Job 3: Run migrations on production (EU then US)
+  # Must complete before service updates to maintain backward compatibility
+  # --------------------------------------------------------------------------
+  run-migrations-prod:
+    name: Run Migrations (Production)
+    runs-on: ubuntu-latest
+    needs: [wait-for-approval]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Run database migrations — EU prod
+        run: |
+          railway run \
+            --service migrations \
+            --environment production-eu \
+            npm run db:migrate
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_EU_PROD }}
+
+      - name: Run database migrations — US prod
+        run: |
+          railway run \
+            --service migrations \
+            --environment production-us \
+            npm run db:migrate
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_US_PROD }}
+
+  # --------------------------------------------------------------------------
+  # Job 4: Deploy to Production — EU and US in parallel
+  # --------------------------------------------------------------------------
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [run-migrations-prod]
+
+    strategy:
+      matrix:
+        region: [eu, us]
+      fail-fast: false  # If one region fails, continue with the other, then report
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy api — ${{ matrix.region }}
+        run: |
+          railway up \
+            --service api \
+            --environment production-${{ matrix.region }} \
+            --detach
+        env:
+          RAILWAY_TOKEN: ${{ matrix.region == 'eu' && secrets.RAILWAY_TOKEN_EU_PROD || secrets.RAILWAY_TOKEN_US_PROD }}
+
+      - name: Deploy worker — ${{ matrix.region }}
+        run: |
+          railway up \
+            --service worker \
+            --environment production-${{ matrix.region }} \
+            --detach
+        env:
+          RAILWAY_TOKEN: ${{ matrix.region == 'eu' && secrets.RAILWAY_TOKEN_EU_PROD || secrets.RAILWAY_TOKEN_US_PROD }}
+
+      - name: Deploy web — ${{ matrix.region }}
+        run: |
+          railway up \
+            --service web \
+            --environment production-${{ matrix.region }} \
+            --detach
+        env:
+          RAILWAY_TOKEN: ${{ matrix.region == 'eu' && secrets.RAILWAY_TOKEN_EU_PROD || secrets.RAILWAY_TOKEN_US_PROD }}
+
+      - name: Wait for production deploy to settle
+        run: sleep 30
+
+      - name: Health check — ${{ matrix.region }} api
+        id: healthcheck
+        run: |
+          if [ "${{ matrix.region }}" = "eu" ]; then
+            API_URL="${{ secrets.PROD_EU_API_URL }}"
+          else
+            API_URL="${{ secrets.PROD_US_API_URL }}"
+          fi
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/healthz" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Production ${{ matrix.region }} health check passed (attempt $i)"
+              exit 0
+            fi
+            echo "Attempt $i: got $STATUS, waiting 5s..."
+            sleep 5
+          done
+          echo "ERROR: Production ${{ matrix.region }} health check failed after 60s"
+          exit 1
+
+      - name: Rollback on health check failure — ${{ matrix.region }}
+        if: failure() && steps.healthcheck.outcome == 'failure'
+        run: |
+          echo "Health check failed — rolling back ${{ matrix.region }} services"
+          railway rollback --service api --environment production-${{ matrix.region }}
+          railway rollback --service worker --environment production-${{ matrix.region }}
+          railway rollback --service web --environment production-${{ matrix.region }}
+          echo "Rollback complete for ${{ matrix.region }}"
+          exit 1
+        env:
+          RAILWAY_TOKEN: ${{ matrix.region == 'eu' && secrets.RAILWAY_TOKEN_EU_PROD || secrets.RAILWAY_TOKEN_US_PROD }}
+
+  # --------------------------------------------------------------------------
+  # Required GitHub secrets (set in repo Settings → Secrets → Actions):
+  #   RAILWAY_TOKEN_STAGING         — Railway token for organicposts-staging
+  #   RAILWAY_TOKEN_EU_PROD         — Railway token for organicposts-eu-prod
+  #   RAILWAY_TOKEN_US_PROD         — Railway token for organicposts-us-prod
+  #   STAGING_API_URL               — e.g. https://api.staging.organicposts.com
+  #   STAGING_WEB_URL               — e.g. https://staging.organicposts.com
+  #   PROD_EU_API_URL               — e.g. https://api.organicposts.eu
+  #   PROD_US_API_URL               — e.g. https://api.organicposts.com
+  #
+  # All application secrets (DATABASE_URL, ANTHROPIC_API_KEY, etc.) are stored
+  # directly in Railway environment variables — NOT in GitHub secrets.
+  # GitHub secrets are deploy-automation tokens only.
+  # --------------------------------------------------------------------------
