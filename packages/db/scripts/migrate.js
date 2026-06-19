@@ -20,8 +20,14 @@ const MIGRATION_TABLE = 'schema_migrations';
 
 async function main() {
   // SSL is required by managed Postgres (Supabase/Railway) but breaks against a
-  // plain local Postgres. Default ON; set PGSSL=disable for local/CI Postgres.
-  const sslDisabled = process.env.PGSSL === 'disable';
+  // plain local Postgres (CI service container, docker-compose) which doesn't
+  // speak TLS. Auto-disable SSL for localhost so CI/local work without anyone
+  // setting PGSSL=disable; managed/remote hosts keep SSL on. PGSSL=disable is
+  // still honoured as an explicit override.
+  let dbHost = '';
+  try { dbHost = new URL(DATABASE_URL).hostname; } catch { /* non-URL DSN — leave SSL on */ }
+  const isLocalHost = dbHost === 'localhost' || dbHost === '127.0.0.1' || dbHost === '::1';
+  const sslDisabled = process.env.PGSSL === 'disable' || isLocalHost;
   const sql = postgres(DATABASE_URL, sslDisabled ? { ssl: false } : { ssl: { rejectUnauthorized: false } });
 
   try {
