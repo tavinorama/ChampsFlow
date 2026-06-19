@@ -17,6 +17,16 @@ export default defineConfig({
   test: {
     environment: "node",
 
+    // Run test FILES serially (not in parallel). The live-DB integration suites
+    // (tests/integration/db, tests/integration/worker) share real Postgres
+    // tables (tenants, brands, dsr_requests, …); running them in parallel races
+    // their beforeAll/afterAll seed+cleanup (duplicate-key on tenants_pkey,
+    // rows deleted mid-test) → flaky failures that only surface when
+    // POSTGRES_TEST_URL is set (CI). Each suite passes in isolation; serializing
+    // files removes the cross-file DB races. The suite is small/fast, so the
+    // cost is negligible. Tests WITHIN a file already run sequentially.
+    fileParallelism: false,
+
     include: [
       "tests/unit/**/*.test.ts",
       "tests/security/**/*.test.ts",
