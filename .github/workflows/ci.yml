@@ -189,7 +189,9 @@ jobs:
         run: |
           # Scan source for hardcoded secret prefixes
           # Patterns: Stripe live/test keys, Stripe webhook secrets, AWS access keys,
-          #           generic "password =" / "api_key =" assignments
+          #           generic password / api-key literal assignments
+          # (Phrased without the literal "key = value" form so this comment does
+          #  not match its own regex when the scan includes workflow .yml files.)
           FOUND=$(grep -rE \
             "sk_live_[A-Za-z0-9]{20,}|sk_test_[A-Za-z0-9]{20,}|whsec_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|password\s*=\s*[\"'][^\"']{8,}|api_key\s*=\s*[\"'][^\"']{8,}" \
             --include="*.ts" --include="*.js" --include="*.json" --include="*.yml" --include="*.yaml" \
