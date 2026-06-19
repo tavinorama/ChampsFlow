@@ -102,6 +102,10 @@ jobs:
           timeout 30 bash -c 'until curl -sf http://localhost:3000; do sleep 1; done'
         env:
           NODE_ENV: "test"
+          # `next start` reads PORT; the job-level PORT=3001 is the API's port, so
+          # without this the web server collides with the API ("Failed to start
+          # server") and never comes up on :3000. Pin it to 3000.
+          PORT: "3000"
 
       - name: Run Playwright E2E tests
         run: npx playwright test
