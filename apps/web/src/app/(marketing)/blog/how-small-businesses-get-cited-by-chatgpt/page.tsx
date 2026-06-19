@@ -862,9 +862,9 @@ export default function PillarGeoPage() {
 
         <p style={PROSE.p}>
           Join the TrustIndex AI waitlist. The first 100 waitlist members who
-          convert at launch receive founding member pricing locked for life
-          &mdash; &euro;29 per month for the Solo plan, &euro;79 per month for
-          the Agency plan &mdash; plus a 30-day money-back guarantee.
+          convert at launch receive a 30% founder discount &mdash; applied only
+          when you pay annually (&euro;831 per year for Growth, &euro;1,251 per
+          year for Agency) &mdash; plus a 30-day money-back guarantee.
         </p>
 
         {/* Sources */}
@@ -932,8 +932,8 @@ export default function PillarGeoPage() {
               marginBottom: "var(--space-6)",
             }}
           >
-            First 100 waitlist members who convert at launch receive founding
-            member pricing locked for life. 30-day money-back guarantee.
+            First 100 waitlist members who convert at launch receive a 30%
+            founder discount on annual plans. 30-day money-back guarantee.
           </p>
           <WaitlistForm compact />
         </div>

@@ -44,9 +44,18 @@ import { logger } from "../../../../packages/shared/src/logger";
 function getStripeConfig() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  // Monthly price IDs (the default billing interval).
   const priceIdStarter = process.env.STRIPE_PRICE_ID_STARTER;
   const priceIdGrowth = process.env.STRIPE_PRICE_ID_GROWTH;
   const priceIdAgency = process.env.STRIPE_PRICE_ID_AGENCY;
+  // Annual price IDs (one yearly charge). Required to offer the founder discount,
+  // which is annual-only.
+  const priceIdStarterAnnual = process.env.STRIPE_PRICE_ID_STARTER_ANNUAL;
+  const priceIdGrowthAnnual = process.env.STRIPE_PRICE_ID_GROWTH_ANNUAL;
+  const priceIdAgencyAnnual = process.env.STRIPE_PRICE_ID_AGENCY_ANNUAL;
+  // Founder discount coupon (a 30%-off Stripe coupon the founder creates). Applied
+  // ONLY to annual checkouts — see FOUNDER_DISCOUNT_PERCENT + createCheckoutSession.
+  const founderCouponId = process.env.STRIPE_FOUNDER_COUPON_ID;
 
   if (!secretKey) {
     throw new Error("STRIPE_SECRET_KEY environment variable is not set");
@@ -55,8 +64,30 @@ function getStripeConfig() {
     throw new Error("STRIPE_WEBHOOK_SECRET environment variable is not set");
   }
 
-  return { secretKey, webhookSecret, priceIdStarter, priceIdGrowth, priceIdAgency };
+  return {
+    secretKey,
+    webhookSecret,
+    priceIdStarter,
+    priceIdGrowth,
+    priceIdAgency,
+    priceIdStarterAnnual,
+    priceIdGrowthAnnual,
+    priceIdAgencyAnnual,
+    founderCouponId,
+  };
 }
+
+// ---------------------------------------------------------------------------
+// Founder discount (business rule)
+// ---------------------------------------------------------------------------
+// Founding members get a 30% discount — but it is applied ONLY when they pay
+// annually. On monthly billing the founder discount is never applied. The actual
+// percentage lives in the Stripe coupon (STRIPE_FOUNDER_COUPON_ID); this constant
+// is the single source of truth the UI/copy and tests reference.
+export const FOUNDER_DISCOUNT_PERCENT = 30 as const;
+
+/** Billing interval for a subscription checkout. */
+export type BillingInterval = "month" | "year";
 
 // ---------------------------------------------------------------------------
 // Stripe SDK client — lazy singleton
@@ -133,16 +164,41 @@ export async function createCheckoutSession(
   cancelUrl: string,
   // Region drives payment methods: Brazilian customers get Pix + boleto + card;
   // EU/US get card. Stripe handles currency per the configured Price.
-  region: "BR" | "EU" | "US" = "EU"
+  region: "BR" | "EU" | "US" = "EU",
+  // Billing interval. "year" uses the annual price IDs and is the ONLY interval
+  // eligible for the founder discount.
+  interval: BillingInterval = "month",
+  // Whether the buyer is a founding member. The 30% founder discount is applied
+  // ONLY when this is true AND interval === "year" (annual-only business rule).
+  founder = false
 ): Promise<{ url: string }> {
-  const { priceIdStarter, priceIdGrowth, priceIdAgency } = getStripeConfig();
+  const {
+    priceIdStarter,
+    priceIdGrowth,
+    priceIdAgency,
+    priceIdStarterAnnual,
+    priceIdGrowthAnnual,
+    priceIdAgencyAnnual,
+    founderCouponId,
+  } = getStripeConfig();
 
   const priceId =
-    targetPlanTier === "starter"
-      ? priceIdStarter
-      : targetPlanTier === "growth"
-        ? priceIdGrowth
-        : priceIdAgency;
+    interval === "year"
+      ? targetPlanTier === "starter"
+        ? priceIdStarterAnnual
+        : targetPlanTier === "growth"
+          ? priceIdGrowthAnnual
+          : priceIdAgencyAnnual
+      : targetPlanTier === "starter"
+        ? priceIdStarter
+        : targetPlanTier === "growth"
+          ? priceIdGrowth
+          : priceIdAgency;
+
+  // The founder discount is ANNUAL-ONLY. It is applied only when the buyer is a
+  // founder, the interval is yearly, AND a coupon is configured. On monthly
+  // checkouts the founder flag is ignored — there is no monthly founder price.
+  const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId);
 
   // Brazilian checkout offers Pix + boleto alongside card; elsewhere card only.
   // (Pix/boleto require the Stripe account to have them enabled + BRL pricing.)
@@ -183,14 +239,21 @@ export async function createCheckoutSession(
       metadata: {
         tenant_id: tenantId,
         plan_tier: targetPlanTier,
+        billing_interval: interval,
+        founder_discount: String(applyFounderDiscount),
       },
-      // Allow promotion codes for future discount campaigns
-      allow_promotion_codes: true,
+      // Founder discount (annual-only) is applied as a Stripe coupon. Stripe does
+      // NOT allow `discounts` and `allow_promotion_codes` together, so we apply
+      // the founder coupon when eligible, otherwise leave promotion codes open.
+      ...(applyFounderDiscount
+        ? { discounts: [{ coupon: founderCouponId as string }] }
+        : { allow_promotion_codes: true }),
       // Subscription data: attach metadata for reconciliation
       subscription_data: {
         metadata: {
           tenant_id: tenantId,
           plan_tier: targetPlanTier,
+          billing_interval: interval,
         },
       },
     });

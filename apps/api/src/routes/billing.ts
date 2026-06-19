@@ -423,7 +423,7 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         );
       }
 
-      let body: { plan?: string; region?: string };
+      let body: { plan?: string; region?: string; interval?: string; founder?: boolean };
       try {
         body = await ctx.req.json();
       } catch {
@@ -444,6 +444,13 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           400
         );
       }
+
+      // Billing interval — annual unlocks the founder discount (annual-only rule).
+      const interval: "month" | "year" = body.interval === "year" ? "year" : "month";
+      // Founder discount is applied by the Stripe layer ONLY when interval==='year'
+      // (createCheckoutSession enforces it); a monthly request silently gets no
+      // founder discount.
+      const founder = body.founder === true;
 
       // Fetch user email for Stripe checkout pre-fill (best-effort)
       let userEmail = "";
@@ -480,7 +487,9 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           plan,
           successUrl,
           cancelUrl,
-          billingRegion
+          billingRegion,
+          interval,
+          founder
         );
 
         // Write audit log (no customer ID — just plan tier + tenant)
