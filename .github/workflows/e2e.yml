@@ -38,7 +38,10 @@ jobs:
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Capped low on purpose: E2E is a non-required check with a known
+    # CI-runner-specific SSR stall. A bounded timeout fails fast instead of
+    # burning the full 30 min on every push. Raise once the stall is fixed.
+    timeout-minutes: 8
 
     services:
       postgres:
