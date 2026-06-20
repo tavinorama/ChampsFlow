@@ -187,13 +187,13 @@ export default function HowItWorksPage() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", marginBottom: "var(--space-5)" }}>
           {[
-            ["Does the advice cite official Google documentation?", "Yes. Our scoring and guidance reference Google&rsquo;s official generative-AI guide. We score crawlability and genuine, useful content &mdash; the levers Google endorses."],
-            ["Is it aligned with Google&rsquo;s guidance?", "Yes. We do NOT score llms.txt, &lsquo;special AI schema&rsquo;, or artificial mentions &mdash; Google says these aren&rsquo;t required, so they don&rsquo;t affect your score. Schema is treated as standard SEO hygiene."],
-            ["Does the tool admit it lacks Google&rsquo;s internal ranking data?", "Yes &mdash; explicitly. Every number is labelled measured vs. baseline. Our scores are directional, evidence-based estimates, never a claim of Google &lsquo;approval&rsquo; or access to internal ranking signals."],
+            ["Does the advice cite official Google documentation?", "Yes. Our scoring and guidance reference Google’s official generative-AI guide. We score crawlability and genuine, useful content — the levers Google endorses."],
+            ["Is it aligned with Google’s guidance?", "Yes. We do NOT score llms.txt, ‘special AI schema’, or artificial mentions — Google says these aren’t required, so they don’t affect your score. Schema is treated as standard SEO hygiene."],
+            ["Does the tool admit it lacks Google’s internal ranking data?", "Yes — explicitly. Every number is labelled measured vs. baseline. Our scores are directional, evidence-based estimates, never a claim of Google ‘approval’ or access to internal ranking signals."],
           ].map(([q, a], i) => (
             <div key={i} style={{ borderLeft: "3px solid var(--color-success)", paddingLeft: "var(--space-3)" }}>
-              <div style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 700, color: "var(--color-text)" }} dangerouslySetInnerHTML={{ __html: `✓ ${q}` }} />
-              <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: a }} />
+              <div style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 700, color: "var(--color-text)" }}>{`✓ ${q}`}</div>
+              <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>{a}</div>
             </div>
           ))}
         </div>

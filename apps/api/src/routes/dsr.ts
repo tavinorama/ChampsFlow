@@ -1043,7 +1043,9 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
           actor_user_id: auth.userId,
           tenant_id: dsr.tenant_id,
           target_id: dsr.id,
-          metadata: { request_type: dsr.request_type, match_count: subjects.length },
+          // Log only that it was ambiguous — not how many tenants matched
+          // (defence-in-depth: keep cross-tenant cardinality out of the log).
+          metadata: { request_type: dsr.request_type, ambiguous: true },
         });
         return ctx.json(
           {
@@ -1176,7 +1178,9 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
           actor_user_id: auth.userId,
           tenant_id: dsr.tenant_id,
           target_id: dsr.id,
-          metadata: { request_type: dsr.request_type, match_count: subjects.length },
+          // Log only that it was ambiguous — not how many tenants matched
+          // (defence-in-depth: keep cross-tenant cardinality out of the log).
+          metadata: { request_type: dsr.request_type, ambiguous: true },
         });
         return ctx.json(
           {
@@ -1236,7 +1240,9 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
           actor_user_id: auth.userId,
           tenant_id: dsr.tenant_id,
           target_id: dsr.id,
-          metadata: { request_type: dsr.request_type, match_count: subjects.length },
+          // Log only that it was ambiguous — not how many tenants matched
+          // (defence-in-depth: keep cross-tenant cardinality out of the log).
+          metadata: { request_type: dsr.request_type, ambiguous: true },
         });
         return ctx.json(
           {
