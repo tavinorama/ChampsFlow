@@ -1,0 +1,189 @@
+/**
+ * kit-deliverable.ts — TrustIndex AI · "The Get-Cited Kit" ($29 tripwire)
+ *
+ * Assembles the one-time, no-subscription deliverable a buyer gets for $29:
+ *   1. Full AI Visibility audit + TrustIndex Score (3 vectors)
+ *   2. Top 3 highest-impact "get cited" fixes (from the strategy engine)
+ *   3. Three ready-to-publish drafts (blog + LinkedIn + FAQ, with schema.org)
+ *   4. A "where to publish" checklist
+ *
+ * This orchestrates the SAME pure primitives the worker's audit job uses, but
+ * inline and tenant-free — appropriate for a pre-account buyer. No DB, no RLS.
+ * Never throws (every sub-call degrades to baseline/mock). Deterministic in
+ * mock mode; live when provider keys are present.
+ */
+
+import { createHash } from "node:crypto";
+import { runProbes } from "./providers/gateway";
+import { parseCitation } from "./citation-parser";
+import { computeGeoScore } from "./scoring";
+import { crawlSite } from "./site-crawl";
+import { measureOffsiteSignal } from "./offsite-signal";
+import { analyzeContentGeo } from "./content-geo";
+import { analyzeSentiment } from "./sentiment";
+import { analyzeRedditPresence } from "./reddit-signal";
+import { analyzeEntityGraph } from "./entity-graph";
+import { generateStrategy, type Recommendation } from "./strategy-generator";
+import { generateContent, type ContentDraft, type ContentType } from "./content-studio";
+import type { LLMProvider, UserRegion } from "./providers/types";
+
+export interface KitDeliverable {
+  brand: string;
+  generatedAt: string;
+  live: boolean;
+  score: { brand: number; performance: number; ai: number; overall: number };
+  topFixes: Recommendation[];
+  drafts: Array<{ contentType: ContentType } & ContentDraft>;
+  publishChecklist: string[];
+  meta: { probesTotal: number; probesCited: number; enginesUsed: string[] };
+}
+
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+const LIVE_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "gemini", "perplexity", "serp"];
+
+function buildPrompts(brand: string, category: string): string[] {
+  const cat = category.trim() || "solution";
+  return [
+    `What is the best ${cat} for small businesses?`,
+    `Top ${cat} providers in 2026`,
+    `${cat} alternatives worth considering`,
+    `Which ${cat} do experts recommend?`,
+    `Most trusted ${cat} companies`,
+    `Is ${brand} a good choice?`,
+  ];
+}
+
+export interface KitInput {
+  brand: string;
+  domain: string | null;
+  category: string;
+  region?: UserRegion;
+}
+
+/**
+ * Build the full Get-Cited Kit deliverable. Self-contained — safe to call from
+ * the API request path (no queue, no DB).
+ */
+export async function buildKitDeliverable(input: KitInput): Promise<KitDeliverable> {
+  const { brand, domain, category } = input;
+  const region: UserRegion = input.region === "EU" ? "EU" : "US";
+
+  const live =
+    !!process.env["ANTHROPIC_API_KEY"] ||
+    !!process.env["OPENAI_API_KEY"] ||
+    !!process.env["PERPLEXITY_API_KEY"] ||
+    !!process.env["GEMINI_API_KEY"];
+  const repeat = live ? 3 : 1;
+
+  // --- Probes (AI vector) ---
+  const prompts = buildPrompts(brand, category);
+  const queries = prompts.map((t) => ({ queryHash: sha256(t), queryText: t, brandName: brand }));
+  const probe = await runProbes(queries, { region, requestedProviders: LIVE_PROVIDERS, repeat });
+
+  let citedSum = 0;
+  let citedAny = 0;
+  let positionScoreSum = 0;
+  let positionScoreN = 0;
+  const sentimentProbes: Array<{ text: string; mentioned: boolean }> = [];
+  for (const r of probe.responses) {
+    const rate = typeof r.mentionRate === "number" ? r.mentionRate : r.mentioned ? 1 : 0;
+    citedSum += rate;
+    if (rate > 0) citedAny += 1;
+    if (r.mentioned && r.position && r.position > 0) {
+      positionScoreSum += 1 / r.position;
+      positionScoreN += 1;
+    }
+    sentimentProbes.push({ text: r.rawText ?? "", mentioned: r.mentioned });
+  }
+  const totalProbes = probe.responses.length || 1;
+  const citationRate = citedSum / totalProbes;
+  const avgPositionScore = positionScoreN > 0 ? positionScoreSum / positionScoreN : 0;
+  const aioPresence = probe.responses.some((r) => r.provider === "serp" && r.mentioned);
+  const sentiment = analyzeSentiment(sentimentProbes, brand);
+
+  // --- Site, off-site, content, reddit, entity (Brand + Performance vectors) ---
+  const crawl = await crawlSite(domain);
+  const offsite = await measureOffsiteSignal(brand);
+  const content = await analyzeContentGeo(domain);
+  const reddit = await analyzeRedditPresence(brand);
+  const entity = await analyzeEntityGraph(brand, domain, { mockMode: !live });
+
+  const eeaBlended = crawl.reachable
+    ? crawl.brand.eeaSignal * 0.4 + offsite.offsiteScore * 0.4 + reddit.redditScore * 0.2
+    : offsite.offsiteScore * 0.7 + reddit.redditScore * 0.3;
+  const entityCompleteness = entity.found ? entity.entityCompleteness : crawl.brand.entityCompleteness;
+
+  const scoreInputs = {
+    brand: {
+      entityCompleteness,
+      citationVolume: Math.min(1, citationRate * 1.5),
+      eeaSignal: eeaBlended,
+    },
+    performance: {
+      schemaCoverage: content.analyzed
+        ? crawl.performance.schemaCoverage * 0.5 + content.contentScore * 0.5
+        : crawl.performance.schemaCoverage,
+      llmsTxtPresent: crawl.performance.llmsTxtPresent,
+      aiCrawlerAccess: crawl.performance.aiCrawlerAccess,
+      citationShareVsCompetitors: citationRate,
+      aioPresence,
+    },
+    ai: { citationRate, avgPositionScore, sentimentScore: sentiment.sentimentScore },
+  };
+  const score = computeGeoScore(scoreInputs);
+
+  // --- Top 3 fixes ---
+  const plan = generateStrategy({
+    scores: score,
+    components: scoreInputs,
+    offsiteSources: offsite.sources.map((s) => ({ label: s.label, present: s.present })),
+    contentTraits: content.traits,
+    displacedByCompetitors: 0,
+  });
+  const topFixes = plan.recommendations.slice(0, 3);
+
+  // --- 3 ready-to-publish drafts (blog + LinkedIn + FAQ) ---
+  const types: ContentType[] = ["blog", "linkedin", "faq"];
+  const drafts: Array<{ contentType: ContentType } & ContentDraft> = [];
+  for (let i = 0; i < types.length; i++) {
+    const rec = topFixes[i] ?? topFixes[0];
+    const topic = rec?.action ?? `How ${brand} helps with ${category}`;
+    const draft = await generateContent({ contentType: types[i]!, brandName: brand, category, topic });
+    drafts.push({ contentType: types[i]!, ...draft });
+  }
+
+  // --- Publish checklist ---
+  const checklist: string[] = [
+    "Blog post → publish on your website (/blog) and link it from your homepage.",
+    "LinkedIn post → publish from your company LinkedIn page (the #2 source AI cites).",
+    "FAQ entry → add to your site's FAQ page WITH the schema.org markup included.",
+  ];
+  if (crawl.reachable && crawl.performance.aiCrawlerAccess < 1) {
+    checklist.push("Allow GPTBot, ClaudeBot, PerplexityBot and Google-Extended in your robots.txt — some are currently blocked.");
+  }
+  if (!entity.found) {
+    checklist.push("Create a Wikidata entity for your brand (official website, industry, founding date) so AI recognizes you as a distinct entity.");
+  }
+  if (reddit.threadCount === 0) {
+    checklist.push("Get a genuine mention on Reddit (the #1 source AI cites) — answer a relevant question in your category's subreddit.");
+  }
+  checklist.push("Re-run your free AI Visibility Test in ~30 days to see movement.");
+
+  return {
+    brand,
+    generatedAt: new Date().toISOString(),
+    live,
+    score,
+    topFixes,
+    drafts,
+    publishChecklist: checklist,
+    meta: {
+      probesTotal: totalProbes,
+      probesCited: citedAny,
+      enginesUsed: Array.from(new Set(probe.responses.map((r) => r.provider))),
+    },
+  };
+}

@@ -1,6 +1,28 @@
 # macOS
 .DS_Store
 
+# Dependencies
+node_modules/
+
+# Build output / generated artifacts
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Next.js
+.next/
+**/.next/
+out/
+next-env.d.ts
+
+# Test / coverage output
+coverage/
+test-results/
+playwright-report/
+
+# Turborepo cache
+.turbo/
+
 # Editor
 .vscode/
 .idea/
@@ -46,3 +68,10 @@ docs/support/
 
 # Learning docs (institutional knowledge — MUST be committed, never ignored)
 # docs/learning/ is intentionally NOT listed here so it is always tracked by git
+
+# Compiled artifacts must never live in src/ (they shadow .ts in vitest)
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map

@@ -1,0 +1,453 @@
+/**
+ * BullMQ audit-run job processor — C1 GEO Audit Engine (TrustIndex AI)
+ *
+ * Job payload: { audit_id, tenant_id, brand_id, region }  — no PII.
+ *
+ * Flow:
+ *   1. Set RLS tenant context; load the brand + a buyer-prompt portfolio.
+ *   2. runProbes() across permitted providers (routing gate: EU excludes Perplexity).
+ *      Mock-mode adapters return deterministic results when API keys are absent.
+ *   3. Parse each probe → citation_check rows (aggregate only; raw text discarded).
+ *   4. Derive AI sub-score inputs from probe aggregates; brand/performance use
+ *      neutral baselines until the site-crawl slice lands.
+ *   5. computeGeoScore() → write geo_score (time series) + geo_audit scores.
+ *   6. ai_generation_log append per probe (GEO-A6).
+ *   7. Mark geo_audit 'complete' (+ 30-day report expiry).
+ *
+ * Hard rules: parameterized SQL only; ai_generation_log / citation_check INSERT-only;
+ * no raw probe text or PII persisted; no secrets in logs.
+ */
+
+import type { Job } from "bullmq";
+import postgres from "postgres";
+import { createHash } from "crypto";
+import {
+  runProbes,
+  computeGeoScore,
+  parseCitation,
+  crawlSite,
+  detectCompetitors,
+  measureOffsiteSignal,
+  analyzeContentGeo,
+  analyzeSentiment,
+  analyzeRedditPresence,
+  analyzeEntityGraph,
+  type SentimentProbeInput,
+  type ProbeQuery,
+  type GeoLLMProvider,
+} from "../../../../packages/llm/src/index";
+import { logger } from "../../../../packages/shared/src/logger";
+import { runWithTenant } from "../../../api/src/db/tenant-context";
+
+export interface AuditJobData {
+  /** Present for on-demand audits (row pre-created by the API).
+   *  Absent for scheduled-audit (weekly flywheel) jobs — the worker creates
+   *  the geo_audit row itself in that case. */
+  audit_id?: string;
+  tenant_id: string;
+  brand_id: string;
+  region: string; // 'EU' | 'US'
+}
+
+function randomUuid(): string {
+  // Node 20 has global crypto.randomUUID.
+  return (globalThis.crypto as Crypto).randomUUID();
+}
+
+// Default buyer-prompt portfolio. A later slice generates these per brand/category;
+// for now a representative set so the audit produces a real signal.
+function buildPromptPortfolio(brandName: string, category: string | null): string[] {
+  const cat = category && category.trim() ? category.trim() : "solution";
+  return [
+    `What is the best ${cat} for small businesses?`,
+    `Top ${cat} providers in 2026`,
+    `${cat} alternatives worth considering`,
+    `Which ${cat} do experts recommend?`,
+    `Most trusted ${cat} companies`,
+    `Best ${cat} for SMBs on a budget`,
+    `${brandName} vs competitors`,
+    `Is ${brandName} a good choice?`,
+    `Pros and cons of leading ${cat} options`,
+    `How to choose a ${cat} vendor`,
+  ];
+}
+
+const REQUESTED_PROVIDERS: GeoLLMProvider[] = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "perplexity",
+  "serp",
+];
+
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+/**
+ * GEO-D2 (DPIA condition): citation evidence is persisted as bare URLs only.
+ * Query strings + fragments are stripped (they can carry emails/tokens/PII),
+ * length is capped, and at most 10 sources are kept per probe. Response text
+ * itself is never stored (architecture §4.3).
+ */
+function sanitizeSources(sources: string[] | undefined): string[] {
+  return (sources ?? []).slice(0, 10).map((u) => {
+    try {
+      const url = new URL(u);
+      return `${url.origin}${url.pathname}`.slice(0, 200);
+    } catch {
+      return u.replace(/[?#].*$/, "").slice(0, 200);
+    }
+  });
+}
+
+/**
+ * Map the LLM layer's provider id to the DB's canonical provider name.
+ * The packages/llm layer uses 'gemini'/'serp'; the DB constraint uses
+ * 'google'/'dataforseo'. This boundary mapping keeps both consistent.
+ */
+function dbProvider(p: string): string {
+  if (p === "gemini") return "google";
+  if (p === "serp") return "dataforseo";
+  return p;
+}
+
+/**
+ * Process one audit job. `sql` is a postgres-js client created by the worker.
+ */
+export async function processAuditJob(
+  job: Job<AuditJobData>,
+  sql: postgres.Sql
+): Promise<{ audit_id: string; overall: number }> {
+  const { tenant_id, brand_id, region } = job.data;
+  // UserRegion is uppercase ("EU" | "US") — must match the routing gate's
+  // `region === "US"` comparison exactly. Default unknown values to EU (safest:
+  // EU excludes Perplexity).
+  const userRegion: "EU" | "US" = region === "US" ? "US" : "EU";
+
+  // Run the entire job inside this tenant's RLS scope. Every query through `sql`
+  // (the RLS-aware worker client — see apps/worker/src/db/rls-client.ts) now runs
+  // as app_user with app.current_tenant_id set, so isolation is enforced by
+  // Row-Level Security rather than relying on the WHERE clauses below. This
+  // replaces the previous bare `set_config(..., is_local=true)`, which was INERT:
+  // outside a transaction it reset on autocommit and never reached the next query
+  // (so the worker had been running fully privileged with RLS bypassed).
+  return runWithTenant(tenant_id, async () => {
+    // For scheduled (weekly flywheel) jobs there is no pre-created audit row —
+    // create one now. For on-demand jobs the API already created it.
+    let audit_id = job.data.audit_id;
+    if (!audit_id) {
+      audit_id = randomUuid();
+      await sql`
+        INSERT INTO geo_audit (id, tenant_id, brand_id, triggered_by, status, created_at)
+        VALUES (${audit_id}, ${tenant_id}, ${brand_id}, 'cron', 'pending', NOW())
+      `;
+    }
+
+    // Mark running.
+    await sql`UPDATE geo_audit SET status = 'running' WHERE id = ${audit_id}`;
+
+    // Load the brand.
+    const brandRows = await sql<
+      { name: string; category: string | null; domain: string | null }[]
+    >`SELECT name, category, domain FROM brands WHERE id = ${brand_id}`;
+    const brand = brandRows[0];
+    if (!brand) {
+      await sql`UPDATE geo_audit SET status = 'failed' WHERE id = ${audit_id}`;
+      throw new Error("brand_not_found");
+    }
+
+    // Build probe portfolio.
+    const prompts = buildPromptPortfolio(brand.name, brand.category);
+    const queries: ProbeQuery[] = prompts.map((t) => ({
+      queryHash: sha256(t),
+      queryText: t,
+      brandName: brand.name,
+    }));
+
+    // In LIVE mode, repeat each probe to capture AI non-determinism as a mention
+    // RATE with confidence. Mock adapters are deterministic, so repeat=1 there.
+    const liveMode =
+      !!process.env["ANTHROPIC_API_KEY"] ||
+      !!process.env["OPENAI_API_KEY"] ||
+      !!process.env["PERPLEXITY_API_KEY"] ||
+      !!process.env["GEMINI_API_KEY"];
+    const repeat = liveMode ? Number(process.env["GEO_PROBE_REPEAT"] ?? 3) : 1;
+
+    // Fan out across permitted providers (routing gate applied inside).
+    const result = await runProbes(queries, {
+      region: userRegion,
+      requestedProviders: REQUESTED_PROVIDERS,
+      repeat,
+    });
+
+    const providersUsed = Array.from(new Set(result.responses.map((r) => dbProvider(r.provider))));
+
+    // Site crawl — measures Brand + Performance from the real website (if a domain
+    // is set). Reachable=false falls back to neutral baselines. Runs in parallel
+    // conceptually with the probe loop below but awaited here for the score.
+    const crawl = await crawlSite(brand.domain);
+
+    // Off-site signal — presence on Reddit/Wikipedia/G2/etc. (where AI cites most).
+    const offsite = await measureOffsiteSignal(brand.name);
+
+    // Reddit deep-dive (C5) — threads/subreddits/sentiment on the #1 cited source.
+    // GEO-A2: own brand only. Live via SERP; mock fallback when keyless.
+    const reddit = await analyzeRedditPresence(brand.name);
+
+    // Entity graph (C7) — Wikidata/Wikipedia consistency. Key-free public APIs in
+    // live mode; deterministic mock when running the keyless demo stack.
+    const entity = await analyzeEntityGraph(brand.name, brand.domain, { mockMode: !liveMode });
+
+    // Content GEO — multi-page citation-worthiness (Princeton traits).
+    const content = await analyzeContentGeo(brand.domain);
+
+    // Load competitors for the benchmark ("who AI recommends instead of you").
+    const competitorRows = await sql<
+      { name: string }[]
+    >`SELECT name FROM competitor WHERE brand_id = ${brand_id}`;
+    const competitorNames = competitorRows.map((r) => r.name);
+    // Tally per competitor: total mentions + displacement (client absent that probe).
+    const compTally = new Map<string, { mentions: number; displacement: number }>();
+
+    // Persist citation_check rows + ai_generation_log (append-only). Aggregate only.
+    // citedCount uses the mention RATE (fractional in live repeat mode) so the AI
+    // score reflects confidence, not a single coin flip.
+    let citedCount = 0;     // sum of mention rates (fractional) — the "expected" cite count
+    let citedAnyCount = 0;  // count of probes cited in >=1 run (for probes_cited display)
+    let positionScoreSum = 0;
+    let positionScoreN = 0;
+    // Sentiment inputs — answer text + mention flag per probe (analysed after loop).
+    const sentimentProbes: SentimentProbeInput[] = [];
+
+    for (const resp of result.responses) {
+      const rate = typeof resp.mentionRate === "number" ? resp.mentionRate : (resp.mentioned ? 1 : 0);
+      const mentioned = resp.mentioned; // majority-of-runs (rate >= 0.5)
+      const position = resp.position;
+      citedCount += rate;
+      if (rate > 0) citedAnyCount += 1;
+      if (mentioned && position && position > 0) {
+        positionScoreSum += 1 / position;
+        positionScoreN += 1;
+      }
+
+      // Collect for sentiment classification (how the brand is portrayed).
+      sentimentProbes.push({ text: resp.rawText ?? "", mentioned });
+
+      // Competitor benchmark: which competitors appeared in THIS probe answer,
+      // and was the client absent here (displacement)?
+      if (competitorNames.length > 0) {
+        const seen = detectCompetitors(resp.rawText ?? "", competitorNames);
+        const clientAbsent = !mentioned;
+        for (const cName of seen) {
+          const t = compTally.get(cName) ?? { mentions: 0, displacement: 0 };
+          t.mentions += 1;
+          if (clientAbsent) t.displacement += 1;
+          compTally.set(cName, t);
+        }
+      }
+
+      // citation_check stores the buyer prompt + cited sources as audit evidence
+      // (the prompt is a synthetic category question, not PII; purged after 90d).
+      await sql`
+        INSERT INTO citation_check
+          (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources, processed_at)
+        VALUES
+          (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
+           ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
+           ${resp.queryText ?? null},
+           ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))}, NOW())
+      `;
+
+      await sql`
+        INSERT INTO ai_generation_log
+          (tenant_id, feature_id, input_hash, provider, model_version, output_hash, zdr_confirmed, latency_ms, timestamp)
+        VALUES
+          (${tenant_id}, 'GEO-1', ${sha256(resp.provider + "|" + brand.name)},
+           ${dbProvider(resp.provider)}, ${"mock-or-live"}, ${sha256(resp.rawText ?? "")},
+           ${userRegion === "EU"}, ${0}, NOW())
+      `;
+    }
+
+    // Persist the competitor benchmark + build a ranked list for the breakdown.
+    const competitorBenchmark: Array<{ name: string; mentions: number; displacement: number }> = [];
+    for (const [name, t] of compTally) {
+      await sql`
+        INSERT INTO competitor_citation
+          (tenant_id, audit_id, competitor_name, mention_count, displacement_count, recorded_at)
+        VALUES (${tenant_id}, ${audit_id}, ${name}, ${t.mentions}, ${t.displacement}, NOW())
+      `;
+      competitorBenchmark.push({ name, mentions: t.mentions, displacement: t.displacement });
+    }
+    // Rank by displacement (most "stealing your absence"), then mentions.
+    competitorBenchmark.sort((a, b) => b.displacement - a.displacement || b.mentions - a.mentions);
+
+    // Derive AI sub-score inputs from probe aggregates.
+    const totalProbes = result.responses.length || 1;
+    const citationRate = citedCount / totalProbes;
+    const avgPositionScore = positionScoreN > 0 ? positionScoreSum / positionScoreN : 0;
+
+    const aioPresence = result.responses.some((r) => r.provider === "serp" && r.mentioned);
+
+    // Sentiment — how the brand is PORTRAYED in answers where it is mentioned.
+    // analyzed=false (no mentions) → neutral 0.5 (honest baseline).
+    const sentiment = analyzeSentiment(sentimentProbes, brand.name);
+
+    // Brand + Performance now come from the live site crawl when the site was
+    // reachable; otherwise they fall back to neutral baselines (crawl returns 0.5).
+    // eeaSignal blends on-site E-E-A-T (crawl) with off-site authority (presence
+    // on Reddit/Wikipedia/G2/etc.) — 50/50. Off-site is a major real GEO lever.
+    // eeaSignal blends on-site E-E-A-T, off-site authority, and the Reddit
+    // deep-dive (the single highest-value AI-citation source — C5).
+    const eeaBlended = crawl.reachable
+      ? crawl.brand.eeaSignal * 0.4 + offsite.offsiteScore * 0.4 + reddit.redditScore * 0.2
+      : offsite.offsiteScore * 0.7 + reddit.redditScore * 0.3; // no on-site signal
+
+    // entityCompleteness now comes from the cross-source entity graph (C7) when an
+    // entity was resolved — this is the measured signal that closes the last Brand
+    // baseline. Falls back to the on-site crawl estimate otherwise.
+    const entityCompleteness = entity.found ? entity.entityCompleteness : crawl.brand.entityCompleteness;
+
+    const scoreInputs = {
+      brand: {
+        entityCompleteness,
+        citationVolume: Math.min(1, citationRate * 1.5),
+        eeaSignal: eeaBlended,
+      },
+      performance: {
+        // schemaCoverage now blends raw schema.org coverage with multi-page
+        // content citation-worthiness (Princeton GEO traits) — both measure
+        // "is your content AI-ready". 50/50 when content was analyzed.
+        schemaCoverage: content.analyzed
+          ? crawl.performance.schemaCoverage * 0.5 + content.contentScore * 0.5
+          : crawl.performance.schemaCoverage,
+        llmsTxtPresent: crawl.performance.llmsTxtPresent,
+        aiCrawlerAccess: crawl.performance.aiCrawlerAccess,
+        citationShareVsCompetitors: citationRate,
+        aioPresence,
+      },
+      ai: { citationRate, avgPositionScore, sentimentScore: sentiment.sentimentScore },
+    };
+    const score = computeGeoScore(scoreInputs);
+
+    // Crawl-derived inputs are "measured" only when the site was actually reached.
+    const crawlMeasured = crawl.reachable;
+    const measured = {
+      ai: sentiment.analyzed
+        ? ["citationRate", "avgPositionScore", "sentimentScore"]
+        : ["citationRate", "avgPositionScore"],
+      // llms.txt is no longer a scored input (Google 2026 alignment) — surfaced as
+      // an informational crawl finding only, not listed among measured score inputs.
+      performance: crawlMeasured
+        ? ["citationShareVsCompetitors", "aioPresence", "schemaCoverage", "aiCrawlerAccess"]
+        : ["citationShareVsCompetitors", "aioPresence"],
+      // eeaSignal is always measured (off-site + Reddit always run). entity
+      // completeness is measured when the entity graph resolved an entity (C7) OR
+      // the on-site crawl reached the site.
+      brand: (entity.found || crawlMeasured)
+        ? ["citationVolume", "entityCompleteness", "eeaSignal"]
+        : ["citationVolume", "eeaSignal"],
+    };
+    const baseline = {
+      ai: sentiment.analyzed ? [] : ["sentimentScore"],
+      performance: crawlMeasured ? [] : ["schemaCoverage", "aiCrawlerAccess"],
+      // entityCompleteness is a baseline only when NEITHER the entity graph nor
+      // the crawl produced a measure.
+      brand: (entity.found || crawlMeasured) ? [] : ["entityCompleteness"],
+    };
+
+    const breakdown = {
+      overall: score.overall,
+      providers: providersUsed,
+      inputs: scoreInputs,
+      measured,
+      baseline,
+      probesTotal: result.responses.length,
+      probesCited: citedAnyCount,
+      probeRepeat: repeat,
+      // Site-crawl evidence shown under Brand/Performance in the breakdown UI.
+      siteCrawl: {
+        reachable: crawl.reachable,
+        domain: brand.domain ?? null,
+        findings: crawl.findings,
+      },
+      // Competitor benchmark — "who AI recommends instead of you" (ranked).
+      competitors: competitorBenchmark,
+      // Off-site signal — presence on the high-authority sources AI cites most.
+      offsite: {
+        live: offsite.live,
+        score: offsite.offsiteScore,
+        sources: offsite.sources,
+        findings: offsite.findings,
+      },
+      // Content GEO — multi-page citation-worthiness (Princeton traits).
+      content: {
+        analyzed: content.analyzed,
+        pagesAnalyzed: content.pagesAnalyzed,
+        score: content.contentScore,
+        traits: content.traits,
+        findings: content.findings,
+      },
+      // Sentiment — how the brand is portrayed in AI answers (AI vector).
+      sentiment: {
+        analyzed: sentiment.analyzed,
+        score: sentiment.sentimentScore,
+        positive: sentiment.positive,
+        neutral: sentiment.neutral,
+        negative: sentiment.negative,
+        mentionsClassified: sentiment.mentionsClassified,
+        findings: sentiment.findings,
+      },
+      // Reddit deep-dive (C5) — the #1 AI-cited source, under the Brand vector.
+      reddit: {
+        live: reddit.live,
+        score: reddit.redditScore,
+        threadCount: reddit.threadCount,
+        subreddits: reddit.subreddits,
+        sentiment: reddit.sentiment,
+        findings: reddit.findings,
+      },
+      // Entity graph (C7) — cross-source consistency, under the Brand vector.
+      entity: {
+        live: entity.live,
+        found: entity.found,
+        wikidataId: entity.wikidataId,
+        hasWikipedia: entity.hasWikipedia,
+        properties: entity.properties,
+        domainConsistent: entity.domainConsistent,
+        completeness: entity.entityCompleteness,
+        findings: entity.findings,
+      },
+    };
+
+    // Write the time-series score row.
+    await sql`
+      INSERT INTO geo_score
+        (tenant_id, brand_id, audit_id, score_brand, score_performance, score_ai, provider_breakdown, recorded_at)
+      VALUES
+        (${tenant_id}, ${brand_id}, ${audit_id}, ${score.brand}, ${score.performance},
+         ${score.ai}, ${sql.json(JSON.parse(JSON.stringify(breakdown)))}, NOW())
+    `;
+
+    // Finalize the audit: scores, providers used, completion time.
+    await sql`
+      UPDATE geo_audit
+         SET status = 'complete',
+             score_brand = ${score.brand},
+             score_performance = ${score.performance},
+             score_ai = ${score.ai},
+             providers_used = ${sql.json(providersUsed)},
+             completed_at = NOW()
+       WHERE id = ${audit_id}
+    `;
+
+    logger.info("audit_completed", {
+      audit_id,
+      overall: score.overall,
+      providers_used: providersUsed.length,
+      blocked: result.blockedProviders.length,
+    });
+
+    return { audit_id, overall: score.overall };
+  });
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@organic-posts/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Supabase Postgres client, migrations, and RLS CI scripts for Organic Posts",
+  "scripts": {
+    "migrate": "node scripts/migrate.js",
+    "migrate:down": "node scripts/migrate.js --down",
+    "check-rls": "bash scripts/check-rls.sh",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.5",
+    "postgres": "^3.4.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}

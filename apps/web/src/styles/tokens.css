@@ -1,0 +1,175 @@
+/**
+ * Design tokens — Organic Posts
+ *
+ * v4 dark-mode strategy:
+ *  - OS preference:   @media (prefers-color-scheme: dark) targeting html:not([data-theme])
+ *  - Manual override: html[data-theme="dark"]  /  html[data-theme="light"]
+ *  Both selectors apply the same variable set so the ThemeToggle component
+ *  only needs to set/remove the data-theme attribute on <html>.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* ── Colors — light mode (TrustIndex AI brand) ─────────────────────
+   * Core navy #071426 · Signal Cyan #25D5FF · Index Blue #4F7CFF
+   * Proof Green #28E0A6 · Cloud #F7FAFC · Ink #0B1220 · Slate #64748B
+   * Primary = Index Blue (accessible on white); Cyan reserved for accents
+   * on dark surfaces (cyan-on-white fails contrast). */
+  /* Warm / approachable SMB palette — friendly green + warm cream, AA-safe.
+   * (Replaces the cool Index-Blue system; data-viz keeps its categorical ramp.) */
+  --color-bg:              #FCFAF5;  /* warm off-white page background */
+  --color-primary:         #0A7E5A;  /* Friendly Green (AA on white for text + buttons) */
+  --color-primary-hover:   #086A4C;
+  --color-accent-cyan:     #25D5FF;  /* legacy dark-surface accent (kept) */
+  --color-accent-amber:    #E0982F;  /* warm secondary accent */
+  --color-surface:         #ffffff;
+  --color-surface-muted:   #FBF7F0;  /* warm cream */
+  --color-border:          #ECE5D9;  /* warm border */
+  --color-error:           #dc2626;
+  --color-success:         #0C8A63;  /* Proof Green (slightly deeper for warm bg contrast) */
+  --color-muted:           #6E665A;  /* warm slate */
+  --color-text:            #1A1712;  /* warm near-black */
+  --color-badge-ai-bg:     #E9F6EF;  /* soft green tint */
+  --color-badge-ai-text:   #0A7E5A;
+
+  /* Marketing surface tokens — warm green system */
+  --color-teal-surface:    #EAF7F0;
+  --color-teal-border:     #CFE9DB;
+  --color-stat-bar:        #16231C;  /* deep warm green-charcoal */
+  --color-pricing-dark:    #16231C;
+  --color-highlight-border:#CFE9DB;
+
+  /* Focus */
+  --color-focus-outline:   #0A7E5A;
+  --focus-outline-width:   3px;
+  --focus-outline-offset:  2px;
+
+  /* ── Typography ────────────────────────────────────────────────── */
+  --font-family: "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --font-size-h1:       1.5rem;
+  --font-size-h2:       1.25rem;
+  --font-size-h3:       1rem;
+  --font-size-h4:       0.875rem;
+  --font-size-body:     1rem;
+  --font-size-body-sm:  0.875rem;
+  --font-size-caption:  0.75rem;
+
+  --font-weight-bold:      700;
+  --font-weight-semibold:  600;
+  --font-weight-medium:    500;
+  --font-weight-normal:    400;
+
+  --line-height-h1:      1.2;
+  --line-height-h2:      1.3;
+  --line-height-h3:      1.4;
+  --line-height-h4:      1.4;
+  --line-height-body:    1.5;
+  --line-height-caption: 1.4;
+
+  /* ── Spacing (4 px base) ───────────────────────────────────────── */
+  --space-1:  0.25rem;
+  --space-2:  0.5rem;
+  --space-3:  0.75rem;
+  --space-4:  1rem;
+  --space-5:  1.25rem;
+  --space-6:  1.5rem;
+  --space-8:  2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  --padding-component:      var(--space-3) var(--space-4);
+  --gap-section:            var(--space-6);
+  --gap-section-large:      var(--space-8);
+  --margin-page-mobile:     var(--space-4);
+  --margin-page-tablet:     var(--space-6);
+  --margin-page-desktop:    var(--space-8);
+
+  /* ── Radius ────────────────────────────────────────────────────── */
+  --radius-sm:    6px;
+  --radius-md:    12px;
+  --radius-lg:    18px;
+  --radius-xl:    24px;
+  --radius-pill:  999px;
+  --radius-modal: 18px;
+
+  /* ── Tap targets ───────────────────────────────────────────────── */
+  --min-tap-target:    44px;
+  --min-button-height: 48px;
+  --bottom-nav-height: 56px;
+
+  /* ── Shadows ───────────────────────────────────────────────────── */
+  --shadow-card:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow-card-hover: 0 8px 24px rgba(0,0,0,.10), 0 2px 8px rgba(0,0,0,.06);
+  --shadow-modal:      0 20px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04);
+  --shadow-blue:       0 8px 32px rgba(37,99,235,.18);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Dark mode — OS-level preference (no explicit user choice stored)
+ * ───────────────────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme]) {
+    --color-primary:         #34D399;
+    --color-primary-hover:   #5ee9b4;
+    --color-surface:         #0a1a30;
+    --color-surface-muted:   #0f2742;
+    --color-border:          #334155;
+    --color-error:           #f87171;
+    --color-success:         #34d399;
+    --color-muted:           #94a3b8;
+    --color-text:            #f1f5f9;
+    --color-badge-ai-bg:     #1e3a5f;
+    --color-badge-ai-text:   #93c5fd;
+    --color-focus-outline:   #60a5fa;
+    --color-teal-surface:    #0e1a2f;
+    --color-teal-border:     #1e3a5f;
+    --color-stat-bar:        #020617;
+    --color-pricing-dark:    #020617;
+    --color-highlight-border:rgba(96,165,250,.25);
+    --shadow-card:           0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
+    --shadow-card-hover:     0 8px 24px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
+    --shadow-modal:          0 20px 25px -5px rgba(0,0,0,.6), 0 10px 10px -5px rgba(0,0,0,.4);
+    --shadow-blue:           0 8px 32px rgba(96,165,250,.12);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Dark mode — manual override via ThemeToggle (data-theme="dark")
+ * ───────────────────────────────────────────────────────────────────────── */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-primary:         #34D399;
+  --color-primary-hover:   #5ee9b4;
+  --color-surface:         #0a1a30;
+  --color-surface-muted:   #0f2742;
+  --color-border:          #334155;
+  --color-error:           #f87171;
+  --color-success:         #34d399;
+  --color-muted:           #94a3b8;
+  --color-text:            #f1f5f9;
+  --color-badge-ai-bg:     #1e3a5f;
+  --color-badge-ai-text:   #93c5fd;
+  --color-focus-outline:   #60a5fa;
+  --color-teal-surface:    #0e1a2f;
+  --color-teal-border:     #1e3a5f;
+  --color-stat-bar:        #020617;
+  --color-pricing-dark:    #020617;
+  --color-highlight-border:rgba(96,165,250,.25);
+  --shadow-card:           0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
+  --shadow-card-hover:     0 8px 24px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
+  --shadow-modal:          0 20px 25px -5px rgba(0,0,0,.6), 0 10px 10px -5px rgba(0,0,0,.4);
+  --shadow-blue:           0 8px 32px rgba(96,165,250,.12);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Light mode — manual override (data-theme="light") always stays light
+ * even if OS switches to dark.
+ * ───────────────────────────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  color-scheme: light;
+}

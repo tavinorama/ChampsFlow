@@ -1,0 +1,143 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+
+# Only run E2E on PRs targeting main (not on every push to feature branches)
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  # Test database for E2E (apps connect to this)
+  DATABASE_URL: "postgres://postgres:test@localhost:5432/organic_posts_e2e"
+  REDIS_URL: "redis://localhost:6379"
+  # Stripe test mode — no real payments
+  STRIPE_TEST_MODE: "true"
+  STRIPE_SECRET_KEY: "sk_test_placeholder_for_e2e"
+  STRIPE_WEBHOOK_SECRET: "whsec_placeholder_for_e2e"
+  # App URLs for Playwright
+  NEXT_PUBLIC_API_URL: "http://localhost:3001"
+  WEB_ORIGIN: "http://localhost:3000"
+  PORT: "3001"
+  # Auth bypass for E2E test sessions. The API middleware reads DEV_AUTH_BYPASS
+  # (not TEST_AUTH_BYPASS) and only honours it because NODE_ENV=test (never in
+  # production). Without this, authenticated routes 401 in E2E.
+  DEV_AUTH_BYPASS: "1"
+  # SUPABASE_URL is required by the API config validation (apps/api/src/config.ts)
+  # — the server refuses to boot without it. A placeholder URL is fine for E2E
+  # because auth is bypassed; no real Supabase calls are made.
+  SUPABASE_URL: "https://demo.supabase.co"
+  DPA_CURRENT_VERSION: "1.0"
+  OAUTH_TOKEN_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  DEFAULT_TENANT_REGION: "us"
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    # Capped low on purpose: E2E is a non-required check with a known
+    # CI-runner-specific SSR stall. A bounded timeout fails fast instead of
+    # burning the full 30 min on every push. Raise once the stall is fixed.
+    timeout-minutes: 8
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: organic_posts_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npm run db:migrate
+
+      - name: Build apps for E2E
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Start API server
+        run: |
+          npm run start --workspace=apps/api &
+          echo "API_PID=$!" >> $GITHUB_ENV
+          # Wait for API healthcheck
+          timeout 30 bash -c 'until curl -sf http://localhost:3001/healthz; do sleep 1; done'
+        env:
+          NODE_ENV: "test"
+
+      - name: Start Next.js app
+        run: |
+          npm run start --workspace=apps/web &
+          echo "WEB_PID=$!" >> $GITHUB_ENV
+          # Wait until Next.js ACCEPTS connections. We do NOT require the full
+          # response body: a streaming SSR response can keep a single request
+          # open longer than the probe, so we treat any curl exit OTHER than 7
+          # (connection refused) as "server is up". --max-time bounds each probe
+          # so a slow/streaming body never blocks the whole wait.
+          timeout 90 bash -c 'until curl -s -o /dev/null --connect-timeout 3 --max-time 8 http://localhost:3000; ec=$?; [ "$ec" -ne 7 ]; do echo "waiting for web (curl exit $ec)"; sleep 2; done'
+        env:
+          NODE_ENV: "test"
+          # `next start` reads PORT; the job-level PORT=3001 is the API's port, so
+          # without this the web server collides with the API ("Failed to start
+          # server") and never comes up on :3000. Pin it to 3000.
+          PORT: "3000"
+
+      - name: Run Playwright E2E tests
+        run: npx playwright test
+        env:
+          CI: "true"
+          BASE_URL: "http://localhost:3000"
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload Playwright traces (on failure)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
+      - name: Stop servers
+        if: always()
+        run: |
+          kill $API_PID 2>/dev/null || true
+          kill $WEB_PID 2>/dev/null || true

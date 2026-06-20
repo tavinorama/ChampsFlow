@@ -1,0 +1,131 @@
+# Organic Posts — local & demo stack
+# ===================================
+#
+# Two modes via profiles:
+#
+#   1. Landing only (default — for sharing the marketing site):
+#        docker compose up web
+#        → http://localhost:3000
+#
+#   2. Full stack (testers using the actual app):
+#        docker compose --profile full up
+#        → web on 3000, api on 3001, postgres on 5432, redis on 6379
+#
+# Copy .env.docker.example → .env before running.
+# All secrets live in .env (gitignored). Never bake them into images.
+
+services:
+  # ─── Web (Next.js) ──────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: organicposts/web:latest
+    container_name: op-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      WAITLIST_FROM_EMAIL: ${WAITLIST_FROM_EMAIL:-hello@organicposts.ai}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ─── API (Hono) — full profile only ─────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: organicposts/api:latest
+    container_name: op-api
+    restart: unless-stopped
+    profiles: ["full"]
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgres://op:${POSTGRES_PASSWORD:-op_dev_password}@postgres:5432/organicposts
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AWS_REGION: ${AWS_REGION:-eu-central-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+
+  # ─── Worker (BullMQ) — full profile only ────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: organicposts/worker:latest
+    container_name: op-worker
+    restart: unless-stopped
+    profiles: ["full"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://op:${POSTGRES_PASSWORD:-op_dev_password}@postgres:5432/organicposts
+      REDIS_URL: redis://redis:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+  # ─── Postgres 16 ────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: op-postgres
+    restart: unless-stopped
+    profiles: ["full"]
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: organicposts
+      POSTGRES_USER: op
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-op_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U op -d organicposts"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis 7 (queues + cache) ───────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: op-redis
+    restart: unless-stopped
+    profiles: ["full"]
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
