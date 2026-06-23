@@ -8,12 +8,17 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { Logo } from "../../../../components/brand/Logo";
 
 interface Fix { vector: string; gap: string; action: string; effort: string; impact: string; priority: number }
 interface Draft { contentType: string; title: string; body: string; schemaMarkup: string | null; generatedBy: string }
+interface FromTest { status: string; brandEngineCount: number; competitorEngineCount: number; totalEngines: number; verdict: string }
 interface Deliverable {
   brand: string;
+  generatedAt?: string;
   live: boolean;
+  fromTest?: FromTest | null;
   score: { brand: number; performance: number; ai: number; overall: number };
   topFixes: Fix[];
   drafts: Draft[];
@@ -82,18 +87,37 @@ export default function KitDeliveryPage() {
 }
 
 function KitView({ d }: { d: Deliverable }) {
+  const generatedLabel = d.generatedAt
+    ? new Date(d.generatedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+    : null;
+
   return (
     <>
-      <span style={{ display: "inline-block", fontSize: "var(--font-size-caption)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-success)", marginBottom: "var(--space-2)" }}>
-        ✓ Your Get-Cited Kit for {d.brand}
-      </span>
-      <h1 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 var(--space-5) 0" }}>
-        Here&rsquo;s your first step to getting cited
+      {/* Branded report header */}
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-6)", paddingBottom: "var(--space-5)", borderBottom: "1px solid var(--color-border)" }}>
+        <Logo markSize={30} wordSize="1.0625rem" />
+        <span style={{ fontSize: "var(--font-size-caption)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-success)" }}>
+          ✓ Get-Cited Kit{generatedLabel ? ` · ${generatedLabel}` : ""}
+        </span>
+      </header>
+
+      <h1 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 var(--space-3) 0" }}>
+        Your Get-Cited Kit for {d.brand}
       </h1>
+
+      {/* Part 1 — the audit (continuity with the free test) */}
+      <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
+        Part 1 — Your complete AI Visibility Audit
+      </h2>
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-5) 0" }}>
+        {d.fromTest
+          ? `Your free test showed how ${d.brand} appeared for one buyer question across ${d.fromTest.totalEngines} AI engines. This is the complete audit it was a preview of — every buyer prompt, every engine, your full TrustIndex Score, and exactly where you’re losing citations.`
+          : "Your free test asked one buyer question across the AI engines. This is the full version: every high-intent buyer prompt in your category, across every engine, scored on all three TrustIndex vectors — Brand, Performance, and AI."}
+      </p>
 
       {/* Score */}
       <div style={card}>
-        <h2 style={h2}>1 · Your TrustIndex Score</h2>
+        <h3 style={h2}>Your TrustIndex Score</h3>
         <div style={{ display: "flex", gap: "var(--space-5)", flexWrap: "wrap", alignItems: "baseline" }}>
           <div style={{ fontSize: "3rem", fontWeight: 800, color: "var(--color-primary)" }}>{d.score.overall}<span style={{ fontSize: "1rem", color: "var(--color-muted)" }}>/100</span></div>
           <div style={{ display: "flex", gap: "var(--space-4)", fontSize: "var(--font-size-body-sm)" }}>
@@ -109,7 +133,7 @@ function KitView({ d }: { d: Deliverable }) {
 
       {/* Top fixes */}
       <div style={card}>
-        <h2 style={h2}>2 · Your top 3 fixes</h2>
+        <h3 style={h2}>Your top 3 fixes</h3>
         <ol style={{ margin: 0, paddingLeft: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           {d.topFixes.map((f, i) => (
             <li key={i}>
@@ -122,7 +146,7 @@ function KitView({ d }: { d: Deliverable }) {
 
       {/* Drafts */}
       <div style={card}>
-        <h2 style={h2}>3 · Your ready-to-publish drafts</h2>
+        <h3 style={h2}>Your ready-to-publish drafts</h3>
         {d.drafts.map((draft, i) => (
           <div key={i} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)", marginBottom: "var(--space-3)" }}>
             <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-2)" }}>
@@ -141,21 +165,57 @@ function KitView({ d }: { d: Deliverable }) {
 
       {/* Checklist */}
       <div style={card}>
-        <h2 style={h2}>4 · Where to publish</h2>
+        <h3 style={h2}>Where to publish</h3>
         <ul style={{ margin: 0, paddingLeft: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           {d.publishChecklist.map((c, i) => <li key={i} style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.6 }}>{c}</li>)}
         </ul>
       </div>
 
-      {/* Upsell to subscription */}
-      <div style={{ ...card, backgroundColor: "var(--color-surface-muted)" }}>
-        <p style={{ fontWeight: 700, margin: "0 0 var(--space-1) 0" }}>Want to know if it&rsquo;s working?</p>
-        <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-3) 0" }}>
-          Publish these, then track your score every week as AI re-indexes. <strong>Growth</strong> re-runs your audit
-          automatically and alerts you when your score moves.
+      {/* Part 2 — the GEO guide */}
+      <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "var(--space-8) 0 var(--space-2) 0" }}>
+        Part 2 — Understanding GEO Search
+      </h2>
+      <div style={{ ...card, borderLeft: "4px solid var(--color-primary)" }}>
+        <p style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.7, margin: "0 0 var(--space-3) 0" }}>
+          Your plain-English guide to <strong>how AI search actually works</strong> and how engines decide who to cite —
+          the <em>why</em> behind every fix above. Read it once, then act on Part 1.
         </p>
-        <a href="/#pricing" style={{ color: "var(--color-primary)", fontWeight: 700, textDecoration: "none" }}>See Growth plan →</a>
+        <Link href="/resources/what-is-geo-search" target="_blank" style={{ display: "inline-flex", alignItems: "center", height: "44px", padding: "0 var(--space-5)", backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>
+          Open your GEO guide →
+        </Link>
+        <span style={{ display: "block", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginTop: "var(--space-2)" }}>
+          Opens in a new tab · downloadable as PDF.
+        </span>
       </div>
+
+      {/* Upsell to subscription Plans */}
+      <div style={{ ...card, marginTop: "var(--space-8)", border: "2px solid var(--color-primary)" }}>
+        <p style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
+          You found the gaps. Keep them closed.
+        </p>
+        <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-4) 0" }}>
+          Your Kit is a one-time snapshot: your TrustIndex Score, your 3 fixes, 3 drafts to publish. But AI answers move
+          every week — new competitors get cited, and a page you publish today can lift your score in 30 days or quietly
+          slip back. <strong>Growth</strong> re-runs your full audit weekly, alerts you the moment your score or citation
+          share moves, and hands you fresh content briefs. <strong>Agency</strong> does the same across up to 25 brands.
+          This Kit was the first brick — the subscription is the wall.
+        </p>
+        <a href="/#pricing" style={{ display: "inline-flex", alignItems: "center", height: "48px", padding: "0 var(--space-6)", backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", fontWeight: 800, fontSize: "var(--font-size-body)", textDecoration: "none" }}>
+          Start weekly monitoring — Growth $99/mo →
+        </a>
+        <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "var(--space-3) 0 0 0" }}>
+          Founder annual: Growth $831/yr (~$69/mo), Agency $1,251/yr (~$104/mo) — 30% off, first 100 founders, annual
+          only. Cancel anytime. No guaranteed citations — we track the movement and tell you what changed.
+        </p>
+      </div>
+
+      {/* Branded footer */}
+      <footer style={{ marginTop: "var(--space-8)", paddingTop: "var(--space-5)", borderTop: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+        <Logo markSize={22} wordSize="0.9rem" />
+        <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+          AI Search Trust Intelligence · Your free test, completed → weekly monitoring on Growth & Agency.
+        </span>
+      </footer>
     </>
   );
 }

@@ -19,13 +19,18 @@
 
 import { Hono } from "hono";
 import { randomUUID, randomBytes } from "node:crypto";
-import { runInvisibilityTest, buildKitDeliverable } from "../../../../packages/llm/src/index";
+import {
+  runInvisibilityTest,
+  buildKitDeliverable,
+  type InvisibilityTestResult,
+} from "../../../../packages/llm/src/index";
 import { createKitCheckoutSession, isCheckoutSessionPaid } from "../integrations/stripe";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function webOrigin(): string {
   return process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "http://localhost:3000";
@@ -71,25 +76,30 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
 
     // Best-effort lead capture (email NOT logged). Never blocks the response.
+    // testId lets the visitor carry this test into the Kit checkout so the Kit's
+    // Part 1 can be framed as "your free test, completed" (Test → Kit → Plans).
+    const leadId = randomUUID();
+    let testId: string | null = null;
     try {
       const ip = clientIp(c);
       await db.query(
         `INSERT INTO lead_capture (id, email, brand, competitor, category, region, result, source, ip_truncated, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'invisibility_test',$8, NOW())`,
-        [randomUUID(), email, brand, competitor, category, region, JSON.stringify(result), ip ? truncateIp(ip) : null]
+        [leadId, email, brand, competitor, category, region, JSON.stringify(result), ip ? truncateIp(ip) : null]
       );
+      testId = leadId;
     } catch (err) {
       logger.warn("lead_capture_insert_failed", { message: (err as Error).message });
     }
 
-    return c.json({ result, captured: !!email });
+    return c.json({ result, captured: !!email, testId });
   });
 
   // -------------------------------------------------------------------------
   // POST /api/kit/checkout — create order + checkout (or dev unlock)
   // -------------------------------------------------------------------------
   app.post("/api/kit/checkout", async (c) => {
-    let body: { brand?: string; domain?: string; category?: string; region?: string; email?: string };
+    let body: { brand?: string; domain?: string; category?: string; region?: string; email?: string; testId?: string };
     try {
       body = await c.req.json();
     } catch {
@@ -105,12 +115,26 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     if (!category) return c.json({ message: "Category is required." }, 400);
     if (!email || !EMAIL_RE.test(email)) return c.json({ message: "A valid email is required." }, 400);
 
+    // Optional link to the free test that led here. Only honour it if it's a
+    // valid UUID that points to a real lead_capture row — otherwise null, so a
+    // stale/forged testId can never break checkout (FK) and never links blindly.
+    const testId = (body.testId ?? "").trim();
+    let leadCaptureId: string | null = null;
+    if (UUID_RE.test(testId)) {
+      try {
+        const lc = await db.query<{ id: string }>(`SELECT id FROM lead_capture WHERE id = $1`, [testId]);
+        if (lc.rows[0]) leadCaptureId = lc.rows[0].id;
+      } catch (err) {
+        logger.warn("kit_checkout_testid_lookup_failed", { message: (err as Error).message });
+      }
+    }
+
     const id = randomUUID();
     const token = randomBytes(24).toString("base64url");
     await db.query(
-      `INSERT INTO kit_order (id, order_token, email, brand, domain, category, region, status, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending', NOW())`,
-      [id, token, email, brand, domain, category, region]
+      `INSERT INTO kit_order (id, order_token, email, brand, domain, category, region, status, lead_capture_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8, NOW())`,
+      [id, token, email, brand, domain, category, region, leadCaptureId]
     );
 
     const stripeConfigured = !!process.env["STRIPE_SECRET_KEY"] && !!process.env["STRIPE_PRICE_ID_KIT"];
@@ -168,9 +192,9 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     const res = await db.query<{
       id: string; brand: string; domain: string | null; category: string; region: string;
-      status: string; deliverable: unknown;
+      status: string; deliverable: unknown; lead_capture_id: string | null;
     }>(
-      `SELECT id, brand, domain, category, region, status, deliverable FROM kit_order WHERE order_token = $1`,
+      `SELECT id, brand, domain, category, region, status, deliverable, lead_capture_id FROM kit_order WHERE order_token = $1`,
       [token]
     );
     const order = res.rows[0];
@@ -196,6 +220,22 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
     if (!paid) return c.json({ message: "Payment not verified." }, 402);
 
+    // If this Kit came from a free test, load that result so Part 1 can be
+    // framed as "your free test, completed". Best-effort — never blocks delivery.
+    let testSeed: InvisibilityTestResult | null = null;
+    if (order.lead_capture_id) {
+      try {
+        const lc = await db.query<{ result: unknown }>(
+          `SELECT result FROM lead_capture WHERE id = $1`,
+          [order.lead_capture_id]
+        );
+        const raw = lc.rows[0]?.result;
+        if (raw && typeof raw === "object") testSeed = raw as InvisibilityTestResult;
+      } catch (err) {
+        logger.warn("kit_test_seed_load_failed", { message: (err as Error).message, kit_order_id: order.id });
+      }
+    }
+
     // Build the deliverable (audit + top-3 + 3 drafts + checklist).
     let deliverable;
     try {
@@ -204,6 +244,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
         domain: order.domain,
         category: order.category,
         region: order.region === "EU" ? "EU" : "US",
+        testSeed,
       });
     } catch (err) {
       logger.error("kit_deliverable_failed", { message: (err as Error).message, kit_order_id: order.id });

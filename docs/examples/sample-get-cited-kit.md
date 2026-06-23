@@ -8,6 +8,21 @@
 >
 > Regenerate any time: `npx tsx scripts/gen-kit-example.ts`
 
+## Funnel position: Test → **Kit** → Plans
+
+The Kit is the paid continuation of the free **AI Invisibility Test**, delivered
+in two parts and ending in an upsell to the subscription Plans:
+
+- **Part 1 — your complete AI Visibility Audit** (everything below): the full
+  version of the free test. When the buyer arrived from a free test, the
+  deliverable carries a `fromTest` block (the teaser status + verdict) so Part 1
+  reads as *"your free test, completed"* rather than an unrelated fresh run.
+- **Part 2 — Understanding GEO Search**: a branded, downloadable explainer of
+  what GEO is and how AI engines decide who to cite, shipped to every buyer
+  (`/resources/what-is-geo-search`). Evergreen — the same guide for everyone.
+- **Upsell:** the delivery page closes with a CTA to **Growth / Agency** (weekly
+  re-audits + alerts) — the Kit is a one-time snapshot; the Plans keep it moving.
+
 ---
 
 ## 1. Your TrustIndex Score

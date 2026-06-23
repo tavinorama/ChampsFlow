@@ -25,12 +25,29 @@ import { analyzeRedditPresence } from "./reddit-signal";
 import { analyzeEntityGraph } from "./entity-graph";
 import { generateStrategy, type Recommendation } from "./strategy-generator";
 import { generateContent, type ContentDraft, type ContentType } from "./content-studio";
+import type { InvisibilityTestResult } from "./invisibility-test";
 import type { LLMProvider, UserRegion } from "./providers/types";
+
+/**
+ * Continuity summary of the buyer's FREE AI Invisibility Test, when the Kit was
+ * purchased off the back of one. Lets the delivered Kit frame Part 1 as "your
+ * free test, completed" rather than an unrelated fresh run. Null for buyers who
+ * went straight to the Kit.
+ */
+export interface KitFromTest {
+  status: InvisibilityTestResult["status"];
+  brandEngineCount: number;
+  competitorEngineCount: number;
+  totalEngines: number;
+  verdict: string;
+}
 
 export interface KitDeliverable {
   brand: string;
   generatedAt: string;
   live: boolean;
+  /** Continuity with the free test that seeded this Kit (null if bought directly). */
+  fromTest: KitFromTest | null;
   score: { brand: number; performance: number; ai: number; overall: number };
   topFixes: Recommendation[];
   drafts: Array<{ contentType: ContentType } & ContentDraft>;
@@ -61,6 +78,12 @@ export interface KitInput {
   domain: string | null;
   category: string;
   region?: UserRegion;
+  /**
+   * The buyer's free AI Invisibility Test result, when the Kit was purchased off
+   * the back of one. Used only for narrative continuity (Part 1 = "your free
+   * test, completed"); the full audit is always recomputed fresh below.
+   */
+  testSeed?: InvisibilityTestResult | null;
 }
 
 /**
@@ -70,6 +93,17 @@ export interface KitInput {
 export async function buildKitDeliverable(input: KitInput): Promise<KitDeliverable> {
   const { brand, domain, category } = input;
   const region: UserRegion = input.region === "EU" ? "EU" : "US";
+
+  // Narrative continuity with the free test that seeded this Kit (if any).
+  const fromTest: KitFromTest | null = input.testSeed
+    ? {
+        status: input.testSeed.status,
+        brandEngineCount: input.testSeed.brandEngineCount,
+        competitorEngineCount: input.testSeed.competitorEngineCount,
+        totalEngines: input.testSeed.totalEngines,
+        verdict: input.testSeed.verdict,
+      }
+    : null;
 
   const live =
     !!process.env["ANTHROPIC_API_KEY"] ||
@@ -176,6 +210,7 @@ export async function buildKitDeliverable(input: KitInput): Promise<KitDeliverab
     brand,
     generatedAt: new Date().toISOString(),
     live,
+    fromTest,
     score,
     topFixes,
     drafts,

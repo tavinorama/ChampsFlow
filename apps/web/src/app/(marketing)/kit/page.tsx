@@ -6,17 +6,19 @@
  * then redirects to Stripe (or the dev-unlock delivery URL when Stripe is off).
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const STACK = [
-  ["Full AI Visibility Audit", "All engines, all your buyer prompts, your TrustIndex Score + deep breakdown."],
+  ["Part 1 — Full AI Visibility Audit", "Your free test, completed: all engines, all your buyer prompts, your TrustIndex Score + deep breakdown."],
   ["Your top 3 “get cited” fixes", "The 3 highest-impact actions, in plain language."],
   ["3 ready-to-publish drafts", "A blog post, a LinkedIn post, and an FAQ — written with schema.org, ready to post today."],
   ["The “where to publish” checklist", "Exactly where each piece goes so AI can find it."],
+  ["Part 2 — Understanding GEO Search guide", "A plain-English guide to how AI search works and who AI cites — yours to keep, downloadable as PDF."],
   ["Bonus: 30-day re-test voucher", "Run the test again and see your movement."],
 ];
 
 export default function KitPage() {
+  const [testId, setTestId] = useState("");
   const [brand, setBrand] = useState("");
   const [domain, setDomain] = useState("");
   const [category, setCategory] = useState("");
@@ -24,6 +26,20 @@ export default function KitPage() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Prefill from the free test (Test → Kit continuity). Read client-side from
+  // the URL — avoids useSearchParams' static-render/Suspense pitfalls on this
+  // statically-optimizable marketing page.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("testId");
+    if (t) setTestId(t);
+    const b = p.get("brand");
+    if (b) setBrand(b);
+    const c = p.get("category");
+    if (c) setCategory(c);
+    if (p.get("region") === "EU") setRegion("EU");
+  }, []);
 
   async function checkout(e: React.FormEvent) {
     e.preventDefault();
@@ -34,7 +50,7 @@ export default function KitPage() {
       const res = await fetch("/api/kit/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brand: brand.trim(), domain: domain.trim(), category: category.trim(), region, email: email.trim() }),
+        body: JSON.stringify({ brand: brand.trim(), domain: domain.trim(), category: category.trim(), region, email: email.trim(), testId: testId || undefined }),
       });
       const data = await res.json();
       if (res.ok && data.url) {
@@ -57,9 +73,13 @@ export default function KitPage() {
       <h1 style={{ fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "0 0 var(--space-3) 0" }}>
         The Get-Cited Kit
       </h1>
-      <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-6) 0" }}>
+      <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-4) 0" }}>
         You know you&rsquo;re invisible. This is the first step out: the full picture of <em>why</em>, plus
         3 pieces of content <strong>written for you</strong> and ready to publish today. No subscription, no GEO degree required.
+      </p>
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-6) 0", padding: "var(--space-3) var(--space-4)", borderLeft: "4px solid var(--color-primary)", backgroundColor: "var(--color-surface-muted)", borderRadius: "var(--radius-sm)" }}>
+        The free test tells you <strong>if</strong> you&rsquo;re invisible. The Kit tells you <strong>why</strong>, on which
+        questions, and <strong>what to publish</strong> to change it — then weekly Plans keep it from slipping back.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "var(--space-6)", alignItems: "start" }}>

@@ -979,8 +979,9 @@ function StartHereSection() {
           See the gap free. Fix it for $29.
         </h2>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, fontFamily: "var(--font-family)", margin: "0 0 var(--space-8) 0", maxWidth: "62ch" }}>
-          You don&rsquo;t have to commit to a subscription to start. Two steps get you from
-          &ldquo;am I invisible?&rdquo; to publishing your first AI-citable content today.
+          You don&rsquo;t have to commit to a subscription to start. The free test shows the gap; the
+          $29 Kit <strong>completes it</strong> with your full audit, drafts, and a plain-English GEO guide;
+          the weekly Plans keep your score moving. One process, three steps.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-5)" }}>
@@ -1009,9 +1010,10 @@ function StartHereSection() {
               No subscription, no GEO degree required.
             </p>
             <ul style={ladderList}>
-              <li>Full audit + your TrustIndex Score</li>
+              <li>Part 1: full audit + your TrustIndex Score</li>
               <li>Your top 3 highest-impact fixes</li>
               <li><strong>3 ready-to-publish drafts</strong> (blog + LinkedIn + FAQ, with schema)</li>
+              <li>Part 2: plain-English GEO guide (downloadable PDF)</li>
               <li>Publish checklist + 30-day re-test</li>
             </ul>
             <a href="/kit" style={ladderBtn(true)}>Get the Kit — $29</a>
