@@ -1592,14 +1592,14 @@ function FoundingMemberSection() {
             30% founder discount. Personal onboarding.
           </h2>
           <p style={{ fontSize: "clamp(1rem, 1.5vw, 1.125rem)", color: "var(--color-muted)", fontFamily: "var(--font-family)", lineHeight: 1.7, maxWidth: "56ch", margin: "0 auto var(--space-8)" }}>
-            Pricing is <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>€99/month Growth</strong> and <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>€149/month Agency</strong>. Founding members get a <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> — applied <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>only when you pay annually</strong>.
+            Pricing is <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>$99/month Growth</strong> and <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>$149/month Agency</strong>. Founding members get a <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> — applied <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>only when you pay annually</strong>.
           </p>
 
           {/* Price pills with strike-through public price */}
           <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "var(--space-4)", marginBottom: "var(--space-6)" }}>
             {[
-              { plan: "Growth plan", original: "€99/mo", price: "€69/mo", suffix: "billed annually · 30% off" },
-              { plan: "Agency plan", original: "€149/mo", price: "€104/mo", suffix: "billed annually · 30% off" },
+              { plan: "Growth plan", original: "$99/mo", price: "$69/mo", suffix: "billed annually · 30% off" },
+              { plan: "Agency plan", original: "$149/mo", price: "$104/mo", suffix: "billed annually · 30% off" },
             ].map((p) => (
               <div key={p.plan} className="mk-price-pill" style={{ padding: "var(--space-4) var(--space-6)", textAlign: "center", minWidth: "220px" }}>
                 <p style={{ margin: "0 0 var(--space-1) 0", fontSize: "var(--font-size-caption)", fontWeight: "700", color: "var(--color-success)", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{p.plan}</p>
@@ -1678,7 +1678,7 @@ function PricingSection() {
               marginBottom: "var(--space-3)",
             }}
           >
-            Replace a €30k/year specialist for less than €100/month.
+            Replace a $30k/year specialist for less than $100/month.
           </h2>
           <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", fontFamily: "var(--font-family)", maxWidth: "60ch", margin: "0 auto", lineHeight: 1.7 }}>
             30-day money-back guarantee · Cancel any time · No lock-in contracts
@@ -1728,7 +1728,7 @@ function PricingSection() {
           <PricingCard
             name="Free"
             subtitle="Run your first AI visibility audit."
-            price="€0"
+            price="$0"
             period="forever"
             annual="No credit card required"
             features={[
@@ -1744,9 +1744,9 @@ function PricingSection() {
           <PricingCard
             name="Growth"
             subtitle="For SMBs actively investing in AI visibility."
-            price="€99"
+            price="$99"
             period="/mo"
-            annual="Annual: €831/year — 30% founder discount (€69/mo)"
+            annual="Annual: $831/year — 30% founder discount ($69/mo)"
             features={[
               "1 brand",
               "10 competitors benchmarked",
@@ -1763,9 +1763,9 @@ function PricingSection() {
           <PricingCard
             name="Agency"
             subtitle="For agencies managing multiple SMB clients."
-            price="€149"
+            price="$149"
             period="/mo"
-            annual="Annual: €1,251/year — 30% founder discount (€104/mo)"
+            annual="Annual: $1,251/year — 30% founder discount ($104/mo)"
             features={[
               "Multi-client dashboard (up to 25 brands)",
               "10 competitors per brand",
@@ -1781,7 +1781,7 @@ function PricingSection() {
         </div>
 
         <p style={{ textAlign: "center", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", marginTop: "var(--space-8)", maxWidth: "60ch", margin: "var(--space-8) auto 0", lineHeight: 1.7 }}>
-          First 100 waitlist members get the <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> on annual plans (€831 Growth / €1,251 Agency per year) — applied only when you pay annually.
+          First 100 waitlist members get the <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> on annual plans ($831 Growth / $1,251 Agency per year) — applied only when you pay annually.
         </p>
       </div>
     </section>
@@ -1886,7 +1886,7 @@ const FAQ_ITEMS = [
   { q: "Isn't this just Google's free Search Console AI report?", a: "No — they answer different questions. Google's Search Console AI performance report (launched June 2026) tells you that your own pages appeared in Google's AI features. It covers Google only, your own site only, and at launch shows no click data and no competitors. TrustIndex AI measures your brand across every major AI engine — ChatGPT, Claude, Perplexity, and Gemini as well as Google AI Overview — shows which competitors get recommended instead of you, how AI describes you (sentiment), and gives you a prioritized plan to fix the gaps. Use Search Console as your Google thermometer; use TrustIndex AI for the full diagnosis and treatment, across the whole AI-answer surface. We're built to Google's official guidance and pass the three vendor-vetting questions Google published." },
   { q: "How long until I appear in LLM answers?", a: "There is no fixed timeline. Based on the GEO research and observed patterns in how AI systems refresh their data, consistent posting over 4–8 weeks is a reasonable starting point. Individual citation frequency varies by niche, competition, and the specificity of your content." },
   { q: "Can you guarantee my business will be cited?", a: "No, and anyone who says they can guarantee AI citations is overstating what the research supports. GEO research shows that specific, structured, data-backed, consistently published content is cited more frequently than vague or irregular content. We give you the tools to produce that kind of content at scale. The AI systems make their own decisions about what to cite." },
-  { q: "How much does it cost?", a: "Four tiers. Free: 1 brand, 3 competitors, 50 prompts, monthly audit + TrustIndex Score, no credit card. Growth: €99/month — 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, GEO content briefs. Agency: €149/month — multi-client dashboard (up to 25 brands), white-label reports, client approval workflow. Founding members (the first 100 waitlist signups) get a 30% founder discount — applied only when you pay annually (€831/year Growth and €1,251/year Agency, vs €99/€149 per month). Annual plans also include a free 5-page website (Growth) or website + 3 client landing pages (Agency). 30-day money-back guarantee on all paid plans." },
+  { q: "How much does it cost?", a: "Four tiers. Free: 1 brand, 3 competitors, 50 prompts, monthly audit + TrustIndex Score, no credit card. Growth: $99/month — 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, GEO content briefs. Agency: $149/month — multi-client dashboard (up to 25 brands), white-label reports, client approval workflow. Founding members (the first 100 waitlist signups) get a 30% founder discount — applied only when you pay annually ($831/year Growth and $1,251/year Agency, vs $99/$149 per month). Annual plans also include a free 5-page website (Growth) or website + 3 client landing pages (Agency). 30-day money-back guarantee on all paid plans." },
   { q: "How do I get access?", a: "Join the waitlist below. We are inviting early users manually, in order of signup. When your spot opens, we will email you with a personal onboarding from the founder." },
   { q: "Which platforms does it support?", a: "Launching with LinkedIn, Instagram, and Facebook. X and TikTok are on the roadmap. Join the waitlist to hear when they go live." },
   { q: "What data do you store?", a: "We store your account information (name and email), encrypted OAuth tokens for the social accounts you connect, and the post drafts you create and approve. OAuth tokens are encrypted at rest using AES-256-GCM. You can request deletion of all your data at any time." },
