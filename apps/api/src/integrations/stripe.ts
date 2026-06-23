@@ -6,7 +6,7 @@
  *   createBillingPortalSession — Stripe Customer Portal (Stripe-hosted management)
  *   verifyWebhookSignature  — HMAC-SHA256 signature verification for incoming webhooks
  *   mapStripeStatusToInternal — Stripe subscription status → our internal status
- *   mapPriceIdToPlanTier    — Stripe price ID → plan tier ('starter' | 'pro')
+ *   mapPriceIdToPlanTier    — Stripe price ID → plan tier ('growth' | 'agency')
  *
  * Architecture refs:
  *   docs/03-architecture.md §11 (Stripe sub-processor, PCI DSS L1, DPA required before EU launch)
@@ -23,10 +23,11 @@
  *   - Webhook signature MUST be verified before any payload processing (rule #2).
  *   - All Stripe SDK calls wrapped in try/catch with retryable/permanent error classification (rule #10).
  *
- * Plan tiers (v1 defaults — founder confirms price IDs via env vars):
- *   free:    0/mo — 1 connected account, 5 AI generations/month
- *   starter: $19/mo (STRIPE_PRICE_ID_STARTER) — 3 connected accounts, 100 generations/month
- *   pro:     $49/mo (STRIPE_PRICE_ID_PRO)     — 10 connected accounts, unlimited generations
+ * Plan tiers (USD; founder confirms price IDs via env vars):
+ *   free:   $0/mo            — 1 brand, 3 competitors, 50 prompts, monthly audit
+ *   growth: $99/mo or $831/yr — 1 brand, 10 competitors, 250 prompts, weekly monitoring
+ *   agency: $149/mo or $1,251/yr — 25 brands, 10 competitors, 250 prompts, weekly monitoring
+ *   Founder 30% discount is annual-only (STRIPE_FOUNDER_COUPON_ID).
  *
  * Sub-processor status:
  *   Stripe is an approved sub-processor in §11. DPA + SCCs required before EU launch (Gate 7 BLOCKER).
@@ -45,12 +46,10 @@ function getStripeConfig() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   // Monthly price IDs (the default billing interval).
-  const priceIdStarter = process.env.STRIPE_PRICE_ID_STARTER;
   const priceIdGrowth = process.env.STRIPE_PRICE_ID_GROWTH;
   const priceIdAgency = process.env.STRIPE_PRICE_ID_AGENCY;
   // Annual price IDs (one yearly charge). Required to offer the founder discount,
   // which is annual-only.
-  const priceIdStarterAnnual = process.env.STRIPE_PRICE_ID_STARTER_ANNUAL;
   const priceIdGrowthAnnual = process.env.STRIPE_PRICE_ID_GROWTH_ANNUAL;
   const priceIdAgencyAnnual = process.env.STRIPE_PRICE_ID_AGENCY_ANNUAL;
   // Founder discount coupon (a 30%-off Stripe coupon the founder creates). Applied
@@ -67,10 +66,8 @@ function getStripeConfig() {
   return {
     secretKey,
     webhookSecret,
-    priceIdStarter,
     priceIdGrowth,
     priceIdAgency,
-    priceIdStarterAnnual,
     priceIdGrowthAnnual,
     priceIdAgencyAnnual,
     founderCouponId,
@@ -113,13 +110,12 @@ function getStripe(): Stripe {
 
 // TrustIndex AI plan tiers (brand-package pricing architecture):
 //   free     — 1 brand, 3 competitors, 50 prompts, monthly audit
-//   starter  — 1 brand, 3 competitors, 50 prompts, monthly monitoring
 //   growth   — 1 brand, 10 competitors, 250 prompts, weekly monitoring
-//   agency   — multi-brand, multi-client, white-label
-export type PlanTier = "free" | "starter" | "growth" | "agency";
+//   agency   — 25 brands, 10 competitors, 250 prompts, weekly monitoring (multi-client)
+export type PlanTier = "free" | "growth" | "agency";
 
 /** Paid tiers that can be purchased via checkout. */
-export type PaidPlanTier = "starter" | "growth" | "agency";
+export type PaidPlanTier = "growth" | "agency";
 
 export const PLAN_LIMITS: Record<
   PlanTier,
@@ -131,7 +127,6 @@ export const PLAN_LIMITS: Record<
   }
 > = {
   free: { max_brands: 1, max_competitors: 3, prompts_per_audit: 50, weekly_monitoring: false },
-  starter: { max_brands: 1, max_competitors: 3, prompts_per_audit: 50, weekly_monitoring: false },
   growth: { max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true },
   agency: { max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true },
 };
@@ -145,7 +140,7 @@ export const PLAN_LIMITS: Record<
 // Parameters:
 //   tenantId       — our internal tenant UUID (passed as metadata; opaque to Stripe)
 //   userEmail      — pre-fills the checkout form (Stripe uses for receipt email)
-//   targetPlanTier — 'starter' | 'pro' (must have corresponding price ID in env)
+//   targetPlanTier — 'growth' | 'agency' (must have corresponding price ID in env)
 //   successUrl     — URL to redirect to on successful payment (includes {CHECKOUT_SESSION_ID})
 //   cancelUrl      — URL to redirect to if user abandons checkout
 //
@@ -173,10 +168,8 @@ export async function createCheckoutSession(
   founder = false
 ): Promise<{ url: string }> {
   const {
-    priceIdStarter,
     priceIdGrowth,
     priceIdAgency,
-    priceIdStarterAnnual,
     priceIdGrowthAnnual,
     priceIdAgencyAnnual,
     founderCouponId,
@@ -184,16 +177,12 @@ export async function createCheckoutSession(
 
   const priceId =
     interval === "year"
-      ? targetPlanTier === "starter"
-        ? priceIdStarterAnnual
-        : targetPlanTier === "growth"
-          ? priceIdGrowthAnnual
-          : priceIdAgencyAnnual
-      : targetPlanTier === "starter"
-        ? priceIdStarter
-        : targetPlanTier === "growth"
-          ? priceIdGrowth
-          : priceIdAgency;
+      ? targetPlanTier === "growth"
+        ? priceIdGrowthAnnual
+        : priceIdAgencyAnnual
+      : targetPlanTier === "growth"
+        ? priceIdGrowth
+        : priceIdAgency;
 
   // The founder discount is ANNUAL-ONLY. It is applied only when the buyer is a
   // founder, the interval is yearly, AND a coupon is configured. On monthly
@@ -495,7 +484,8 @@ export function mapStripeStatusToInternal(
 // mapPriceIdToPlanTier
 // ---------------------------------------------------------------------------
 // Maps a Stripe price ID to our internal plan tier.
-// Price IDs come from env vars STRIPE_PRICE_ID_STARTER and STRIPE_PRICE_ID_PRO.
+// Price IDs come from env vars STRIPE_PRICE_ID_GROWTH(_ANNUAL) and
+// STRIPE_PRICE_ID_AGENCY(_ANNUAL); both monthly and annual IDs map to their tier.
 //
 // Returns null if the price ID is not recognized (e.g., legacy price, test mode mismatch).
 // Callers should treat null as 'free' or log a warning.
@@ -503,15 +493,14 @@ export function mapStripeStatusToInternal(
 export function mapPriceIdToPlanTier(
   priceId: string
 ): PaidPlanTier | null {
-  const { priceIdStarter, priceIdGrowth, priceIdAgency } = getStripeConfig();
+  const { priceIdGrowth, priceIdAgency, priceIdGrowthAnnual, priceIdAgencyAnnual } =
+    getStripeConfig();
 
-  if (priceIdStarter && priceId === priceIdStarter) {
-    return "starter";
-  }
-  if (priceIdGrowth && priceId === priceIdGrowth) {
+  // Match both monthly and annual price IDs for each tier.
+  if (priceId === priceIdGrowth || priceId === priceIdGrowthAnnual) {
     return "growth";
   }
-  if (priceIdAgency && priceId === priceIdAgency) {
+  if (priceId === priceIdAgency || priceId === priceIdAgencyAnnual) {
     return "agency";
   }
   // Unknown price ID — log warning (no customer ID, no full price ID to avoid

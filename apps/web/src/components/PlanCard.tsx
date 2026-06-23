@@ -1,9 +1,10 @@
 /**
- * PlanCard — C6 Billing
+ * PlanCard — Billing (GEO plans)
  *
- * Displays a subscription plan (Free / Starter / Pro) with:
- *   - Plan name + price
- *   - Feature list
+ * Displays a subscription plan (Free / Growth / Agency) with:
+ *   - Plan name + price (monthly or annual, switched by the `interval` prop)
+ *   - Founder note on annual paid plans (30% off, annual-only)
+ *   - GEO feature list
  *   - "Choose plan" CTA (or "Current plan" badge for active plan)
  *
  * WCAG AA requirements (docs/04-ux.md §8):
@@ -22,10 +23,13 @@
 
 import React from "react";
 
-export type PlanTier = "free" | "starter" | "pro";
+export type PlanTier = "free" | "growth" | "agency";
+export type BillingInterval = "month" | "year";
 
 export interface PlanCardProps {
   tier: PlanTier;
+  /** Monthly or annual pricing view (driven by the page-level toggle) */
+  interval: BillingInterval;
   /** Whether this is the user's currently active plan */
   isCurrent: boolean;
   /** Whether a checkout/portal action is loading */
@@ -34,60 +38,65 @@ export interface PlanCardProps {
   onChoosePlan: (tier: PlanTier) => void;
 }
 
-// Plan metadata — static content per tier
+// Plan metadata — static content per tier.
+// Annual prices are the founder price (30% off the 12× list price), which is
+// the only annual price we ever offer pre-launch. Growth: 12×$99=$1,188 → $831.
+// Agency: 12×$149=$1,788 → $1,251. Founder discount is annual-only (see
+// createCheckoutSession in apps/api/src/integrations/stripe.ts).
 const PLAN_META: Record<
   PlanTier,
   {
     name: string;
-    price: string;
-    billingNote: string;
+    priceMonthly: string;
+    priceAnnual: string;
     features: string[];
     ctaLabel: string;
   }
 > = {
   free: {
     name: "Free",
-    price: "$0",
-    billingNote: "forever",
+    priceMonthly: "$0",
+    priceAnnual: "$0",
     features: [
-      "1 connected social account",
-      "5 AI-generated posts per month",
-      "Draft-and-confirm publishing",
-      "Basic scheduling",
+      "1 brand monitored",
+      "3 competitors benchmarked",
+      "50 buyer-intent prompts per audit",
+      "Monthly AI-visibility audit",
+      "TrustIndex Score across 5 AI engines",
     ],
     ctaLabel: "Current plan",
   },
-  starter: {
-    name: "Starter",
-    price: "$19",
-    billingNote: "per month",
+  growth: {
+    name: "Growth",
+    priceMonthly: "$99",
+    priceAnnual: "$831",
     features: [
-      "3 connected social accounts",
-      "100 AI-generated posts per month",
-      "Draft-and-confirm publishing",
-      "Advanced scheduling",
-      "Priority support",
+      "1 brand monitored",
+      "10 competitors benchmarked",
+      "250 buyer-intent prompts per audit",
+      "Weekly monitoring + alerts",
+      "GEO content plan + ready-to-publish drafts",
     ],
-    ctaLabel: "Choose Starter",
+    ctaLabel: "Choose Growth",
   },
-  pro: {
-    name: "Pro",
-    price: "$49",
-    billingNote: "per month",
+  agency: {
+    name: "Agency",
+    priceMonthly: "$149",
+    priceAnnual: "$1,251",
     features: [
-      "10 connected social accounts",
-      "Unlimited AI-generated posts",
-      "Draft-and-confirm publishing",
-      "Advanced scheduling",
-      "Priority support",
-      "Early access to new features",
+      "25 brands monitored",
+      "10 competitors per brand",
+      "250 buyer-intent prompts per audit",
+      "Weekly monitoring + alerts",
+      "Client workspaces + priority support",
     ],
-    ctaLabel: "Choose Pro",
+    ctaLabel: "Choose Agency",
   },
 };
 
 export function PlanCard({
   tier,
+  interval,
   isCurrent,
   isLoading = false,
   onChoosePlan,
@@ -98,6 +107,15 @@ export function PlanCard({
 
   // Free plan CTA is never clickable — user cannot "choose" free via checkout
   const isFreePlan = tier === "free";
+
+  // Annual view only changes price/copy for paid plans
+  const showAnnual = interval === "year" && !isFreePlan;
+  const price = showAnnual ? meta.priceAnnual : meta.priceMonthly;
+  const billingNote = isFreePlan
+    ? "forever"
+    : showAnnual
+    ? "per year"
+    : "per month";
 
   const handleClick = (): void => {
     if (!isFreePlan && !isCurrent && !isLoading) {
@@ -182,7 +200,7 @@ export function PlanCard({
               color: "var(--color-text)",
             }}
           >
-            {meta.price}
+            {price}
           </span>
           <span
             style={{
@@ -190,9 +208,22 @@ export function PlanCard({
               color: "var(--color-muted)",
             }}
           >
-            {meta.billingNote}
+            {billingNote}
           </span>
         </div>
+        {/* Founder note — annual paid plans only */}
+        {showAnnual && (
+          <p
+            style={{
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-success)",
+              fontWeight: "var(--font-weight-semibold)",
+              margin: "var(--space-1) 0 0 0",
+            }}
+          >
+            Founder price — 30% off, billed annually
+          </p>
+        )}
       </div>
 
       {/* Feature list */}
@@ -253,7 +284,7 @@ export function PlanCard({
         aria-label={
           isCurrent
             ? `${meta.name} — your current plan`
-            : `Choose ${meta.name} plan for ${meta.price} ${meta.billingNote}`
+            : `Choose ${meta.name} plan for ${price} ${billingNote}`
         }
         aria-disabled={isFreePlan || isCurrent || isLoading}
         style={{

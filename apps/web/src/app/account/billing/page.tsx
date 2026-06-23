@@ -30,7 +30,11 @@
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { PlanCard, type PlanTier } from "../../../components/PlanCard";
+import {
+  PlanCard,
+  type PlanTier,
+  type BillingInterval,
+} from "../../../components/PlanCard";
 import { BottomNav } from "../../../components/BottomNav";
 
 // ---------------------------------------------------------------------------
@@ -201,6 +205,10 @@ function BillingPageInner(): React.ReactElement {
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // Monthly vs annual pricing view. Annual unlocks the founder 30% discount
+  // (which the API applies only to annual checkouts).
+  const [billingInterval, setBillingInterval] =
+    useState<BillingInterval>("month");
 
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -281,7 +289,12 @@ function BillingPageInner(): React.ReactElement {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ plan: tier }),
+          body: JSON.stringify({
+            plan: tier,
+            interval: billingInterval,
+            // Founder discount is annual-only; the API ignores founder on monthly.
+            founder: billingInterval === "year",
+          }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -300,7 +313,7 @@ function BillingPageInner(): React.ReactElement {
         );
       }
     },
-    [isCheckingOut, isOpeningPortal, showToast]
+    [isCheckingOut, isOpeningPortal, billingInterval, showToast]
   );
 
   // -------------------------------------------------------------------------
@@ -758,10 +771,60 @@ function BillingPageInner(): React.ReactElement {
                     color: "#1d4ed8",
                   }}
                 >
-                  You are on the Free plan. Choose a paid plan to unlock more
-                  AI generations, connected accounts, and priority support.
+                  You are on the Free plan. Choose a paid plan to monitor more
+                  competitors, run weekly AI-visibility audits, and get a GEO
+                  content plan with ready-to-publish drafts.
                 </div>
               )}
+
+              {/* Monthly / Annual toggle — annual unlocks the founder 30% off */}
+              <div
+                role="group"
+                aria-label="Billing interval"
+                style={{
+                  display: "inline-flex",
+                  alignSelf: "flex-start",
+                  gap: "var(--space-1)",
+                  padding: "var(--space-1)",
+                  marginBottom: "var(--space-4)",
+                  backgroundColor: "var(--color-surface-muted)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "999px",
+                }}
+              >
+                {(
+                  [
+                    { value: "month", label: "Monthly" },
+                    { value: "year", label: "Annual · save 30%" },
+                  ] as { value: BillingInterval; label: string }[]
+                ).map((opt) => {
+                  const active = billingInterval === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setBillingInterval(opt.value)}
+                      aria-pressed={active}
+                      style={{
+                        minHeight: "36px",
+                        padding: "var(--space-2) var(--space-4)",
+                        border: "none",
+                        borderRadius: "999px",
+                        cursor: "pointer",
+                        fontSize: "var(--font-size-body-sm)",
+                        fontWeight: "var(--font-weight-semibold)",
+                        backgroundColor: active
+                          ? "var(--color-primary)"
+                          : "transparent",
+                        color: active ? "#ffffff" : "var(--color-muted)",
+                        transition: "background-color 0.15s ease",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
 
               <div
                 style={{
@@ -770,10 +833,11 @@ function BillingPageInner(): React.ReactElement {
                   gap: "var(--space-4)",
                 }}
               >
-                {(["free", "starter", "pro"] as PlanTier[]).map((tier) => (
+                {(["free", "growth", "agency"] as PlanTier[]).map((tier) => (
                   <PlanCard
                     key={tier}
                     tier={tier}
+                    interval={billingInterval}
                     isCurrent={currentPlan === tier}
                     isLoading={isCheckingOut}
                     onChoosePlan={(t) => void handleChoosePlan(t)}
