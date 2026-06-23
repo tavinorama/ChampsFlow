@@ -275,6 +275,9 @@ export default function BrandDetailPage() {
       {/* Competitor benchmark — who AI recommends instead of you */}
       <CompetitorBenchmark brandId={brandId} benchmark={breakdown?.competitors ?? []} />
 
+      {/* Done-for-you — hand the plan to OrganicPosts (the paid service) */}
+      <DoneForYou brandId={brandId} />
+
       {breakdown && (
         <p style={{ marginTop: "var(--space-6)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>
           <strong>How to read this:</strong> &ldquo;Measured&rdquo; values come from this audit&rsquo;s live AI probes
@@ -284,6 +287,125 @@ export default function BrandDetailPage() {
         </p>
       )}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Done-for-you — OrganicPosts engagement handoff (the paid consultancy arm)
+// Placeholder prices — the founder sets the real numbers (kept in sync with
+// the /organicposts page). The card sells the off-platform execution the app
+// only diagnoses (publishing, schema, Reddit/LinkedIn/entity), not the drafts.
+// ---------------------------------------------------------------------------
+
+const DFY_SKUS: { sku: "geo_sprint" | "managed_geo"; name: string; price: string; priceNote: string; desc: string }[] = [
+  {
+    sku: "geo_sprint",
+    name: "GEO Sprint",
+    price: "$2,400",
+    priceNote: "one-time · 30 days",
+    desc: "We execute your accepted plan: publish your drafts, implement schema on your site, seed your Reddit / LinkedIn / G2 presence, create your Wikidata entity, then re-audit.",
+  },
+  {
+    sku: "managed_geo",
+    name: "Managed GEO",
+    price: "$1,900",
+    priceNote: "per month",
+    desc: "We run the whole flywheel for you every week — content, publishing, off-site authority, monitoring, and a monthly visibility report.",
+  },
+];
+
+interface EngagementRow { brand_id: string; sku: string; status: string }
+
+function DoneForYou({ brandId }: { brandId: string }) {
+  const [requested, setRequested] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/engagements");
+        if (!res.ok) return;
+        const data = (await res.json()) as { engagements?: EngagementRow[] };
+        if (cancelled) return;
+        setRequested(new Set((data.engagements ?? []).filter((e) => e.brand_id === brandId).map((e) => e.sku)));
+      } catch {
+        /* non-blocking — the card still lets them request */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [brandId]);
+
+  async function request(sku: string) {
+    if (busy) return;
+    setBusy(sku);
+    setError("");
+    try {
+      const res = await apiFetch("/api/engagements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandId, sku }),
+      });
+      if (!res.ok) throw new Error();
+      setRequested((s) => { const n = new Set(s); n.add(sku); return n; });
+    } catch {
+      setError("Could not send your request. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section style={{
+      marginTop: "var(--space-8)", backgroundColor: "var(--color-surface)",
+      border: "1px solid var(--color-border)", borderLeft: "4px solid var(--color-accent-amber)",
+      borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)",
+    }}>
+      <h2 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
+        Don&rsquo;t want to do it yourself?
+      </h2>
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-5) 0" }}>
+        Your plan and drafts are ready — but publishing weekly, implementing schema, and building off-site
+        authority takes time. <strong>OrganicPosts</strong> (our team) executes it for you.
+      </p>
+
+      {error && <p style={{ color: "var(--color-error)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-3) 0" }}>{error}</p>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "var(--space-4)" }}>
+        {DFY_SKUS.map((o) => {
+          const done = requested.has(o.sku);
+          return (
+            <div key={o.sku} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+              <div style={{ fontWeight: 800 }}>{o.name}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-1)" }}>
+                <span style={{ fontSize: "var(--font-size-h3)", fontWeight: 800 }}>{o.price}</span>
+                <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{o.priceNote}</span>
+              </div>
+              <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.55, margin: 0, flex: 1 }}>{o.desc}</p>
+              <button
+                type="button"
+                disabled={done || busy === o.sku}
+                onClick={() => void request(o.sku)}
+                style={{
+                  marginTop: "var(--space-2)", minHeight: "40px", padding: "0 var(--space-4)",
+                  backgroundColor: done ? "var(--color-surface-muted)" : "var(--color-primary)",
+                  color: done ? "var(--color-muted)" : "#fff",
+                  border: done ? "1px solid var(--color-border)" : "none",
+                  borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
+                  cursor: done || busy === o.sku ? "default" : "pointer",
+                }}
+              >
+                {done ? "Requested ✓ — we'll reach out" : busy === o.sku ? "Sending…" : "Request this"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "var(--space-4) 0 0 0", lineHeight: 1.6 }}>
+        Pricing is indicative — we confirm scope on a short intro call. <a href="/organicposts" style={{ color: "var(--color-primary)", fontWeight: 600 }}>See full details</a>.
+      </p>
+    </section>
   );
 }
 

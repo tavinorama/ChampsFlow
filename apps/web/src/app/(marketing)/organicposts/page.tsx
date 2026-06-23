@@ -59,6 +59,8 @@ const OFFERS = [
   {
     name: "OrganicPosts GEO Sprint",
     tag: "30-day execution",
+    price: "from $2,400",
+    priceNote: "one-time",
     body: "A focused sprint for companies that need to act on their TrustIndex AI audit.",
     includes: [
       "GEO content roadmap",
@@ -73,6 +75,8 @@ const OFFERS = [
   {
     name: "OrganicPosts Managed GEO",
     tag: "Ongoing monthly",
+    price: "from $1,900",
+    priceNote: "per month",
     body: "For SMBs that want AI search visibility to become a repeatable organic growth motion.",
     includes: [
       "Monthly answer monitoring",
@@ -176,6 +180,10 @@ export default function OrganicPostsPage() {
             <div key={o.name} className={o.featured ? "mk-featured-card" : "mk-regular-card"} style={{ padding: "var(--space-8)", display: "flex", flexDirection: "column" }}>
               <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--font-size-caption)", fontWeight: 700, color: o.featured ? "#60a5fa" : "var(--color-primary)", textTransform: "uppercase", letterSpacing: "0.07em", fontFamily: "var(--font-family)" }}>{o.tag}</p>
               <h3 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, color: o.featured ? "#f1f5f9" : "var(--color-text)", fontFamily: "var(--font-family)", margin: "0 0 var(--space-2) 0", letterSpacing: "-0.02em" }}>{o.name}</h3>
+              <p style={{ margin: "0 0 var(--space-3) 0", display: "flex", alignItems: "baseline", gap: "var(--space-2)", fontFamily: "var(--font-family)" }}>
+                <span style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, color: o.featured ? "#f1f5f9" : "var(--color-text)", letterSpacing: "-0.02em" }}>{o.price}</span>
+                <span style={{ fontSize: "var(--font-size-caption)", color: o.featured ? "#94a3b8" : "var(--color-muted)" }}>{o.priceNote}</span>
+              </p>
               <p style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, color: o.featured ? "#94a3b8" : "var(--color-muted)", fontFamily: "var(--font-family)", margin: "0 0 var(--space-5) 0" }}>{o.body}</p>
               <ul style={{ listStyle: "none", padding: 0, margin: "0 0 var(--space-6) 0", display: "flex", flexDirection: "column", gap: "var(--space-2)", flexGrow: 1 }}>
                 {o.includes.map((i) => (
@@ -184,8 +192,8 @@ export default function OrganicPostsPage() {
                   </li>
                 ))}
               </ul>
-              <a href="/#waitlist-cta" style={o.featured ? { ...ctaPrimary, width: "100%", boxSizing: "border-box", textAlign: "center" } : { ...ctaSecondary, width: "100%", boxSizing: "border-box", textAlign: "center" }}>
-                Build my GEO content plan
+              <a href="/test" style={o.featured ? { ...ctaPrimary, width: "100%", boxSizing: "border-box", textAlign: "center" } : { ...ctaSecondary, width: "100%", boxSizing: "border-box", textAlign: "center" }}>
+                Start with your free AI test
               </a>
             </div>
           ))}

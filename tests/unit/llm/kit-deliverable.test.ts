@@ -44,4 +44,30 @@ describe("buildKitDeliverable (mock mode, no domain)", () => {
     const k = await buildKitDeliverable({ brand: "Demo CRM", domain: null, category: "CRM", region: "US" });
     expect(k.live).toBe(false);
   });
+
+  it("fromTest is null when the Kit is bought directly (no free test)", async () => {
+    const k = await buildKitDeliverable({ brand: "Demo CRM", domain: null, category: "CRM", region: "US" });
+    expect(k.fromTest).toBeNull();
+  });
+
+  it("fromTest mirrors the free test that seeded the Kit (Test → Kit continuity)", async () => {
+    const seed = {
+      prompt: "What is the best CRM for small businesses?",
+      live: false,
+      engines: [],
+      brandEngineCount: 1,
+      competitorEngineCount: 3,
+      totalEngines: 4,
+      verdict: "When buyers ask AI, it mostly recommends your competitor.",
+      status: "trailing" as const,
+    };
+    const k = await buildKitDeliverable({ brand: "Demo CRM", domain: null, category: "CRM", region: "US", testSeed: seed });
+    expect(k.fromTest).toEqual({
+      status: "trailing",
+      brandEngineCount: 1,
+      competitorEngineCount: 3,
+      totalEngines: 4,
+      verdict: seed.verdict,
+    });
+  });
 });

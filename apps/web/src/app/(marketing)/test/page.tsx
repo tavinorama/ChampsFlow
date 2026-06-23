@@ -49,6 +49,7 @@ export default function InvisibilityTestPage() {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
+  const [testId, setTestId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   async function run(e: React.FormEvent) {
@@ -65,7 +66,9 @@ export default function InvisibilityTestPage() {
       if (!res.ok) {
         setError("Could not run the test right now. Please try again.");
       } else {
-        setResult((await res.json()).result);
+        const data = await res.json();
+        setResult(data.result);
+        setTestId(data.testId ?? null);
       }
     } catch {
       setError("Network error. Please try again.");
@@ -73,6 +76,14 @@ export default function InvisibilityTestPage() {
       setBusy(false);
     }
   }
+
+  // Carry this test into the Kit so its Part 1 is framed as "your test, completed".
+  const kitParams = new URLSearchParams();
+  if (testId) kitParams.set("testId", testId);
+  if (brand.trim()) kitParams.set("brand", brand.trim());
+  if (category.trim()) kitParams.set("category", category.trim());
+  kitParams.set("region", region);
+  const kitHref = `/kit?${kitParams.toString()}`;
 
   return (
     <main style={{ maxWidth: "760px", margin: "0 auto", padding: "var(--space-12) var(--space-4) var(--space-20)", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
@@ -114,7 +125,7 @@ export default function InvisibilityTestPage() {
         </form>
       )}
 
-      {result && <Scorecard result={result} onReset={() => { setResult(null); }} />}
+      {result && <Scorecard result={result} kitHref={kitHref} onReset={() => { setResult(null); setTestId(null); }} />}
 
       <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginTop: "var(--space-6)", lineHeight: 1.6 }}>
         Results are evidence-based estimates. AI answers are non-deterministic and vary between runs — this is a
@@ -124,7 +135,7 @@ export default function InvisibilityTestPage() {
   );
 }
 
-function Scorecard({ result, onReset }: { result: TestResult; onReset: () => void }) {
+function Scorecard({ result, kitHref, onReset }: { result: TestResult; kitHref: string; onReset: () => void }) {
   const color = STATUS_COLOR[result.status];
   return (
     <div style={{ ...cardStyle, borderColor: color }}>
@@ -161,10 +172,12 @@ function Scorecard({ result, onReset }: { result: TestResult; onReset: () => voi
       <div style={{ backgroundColor: "var(--color-surface-muted)", borderRadius: "var(--radius-md)", padding: "var(--space-5)", marginTop: "var(--space-2)" }}>
         <p style={{ fontWeight: 700, margin: "0 0 var(--space-1) 0" }}>Now fix it — without becoming a GEO expert.</p>
         <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-3) 0" }}>
-          The <strong>Get-Cited Kit</strong> ($29, one-time) gives you the full audit, your 3 highest-impact fixes,
-          and <strong>3 ready-to-publish drafts</strong> (blog + LinkedIn + FAQ with schema) you can post today.
+          This is <strong>one question</strong> across the AI engines. The <strong>Get-Cited Kit</strong> ($29, one-time)
+          runs <strong>every</strong> buyer prompt in your category, scores all three vectors, and hands you
+          3 ready-to-publish drafts (blog + LinkedIn + FAQ with schema) — the full audit this test previews,
+          plus a plain-English GEO guide.
         </p>
-        <a href="/kit" style={{ ...primaryBtn(false), display: "inline-block", textDecoration: "none", textAlign: "center" }}>Get the Kit — $29 →</a>
+        <a href={kitHref} style={{ ...primaryBtn(false), display: "inline-block", textDecoration: "none", textAlign: "center" }}>Complete it with the Kit — $29 →</a>
       </div>
 
       <button onClick={onReset} style={{ marginTop: "var(--space-4)", background: "none", border: "none", color: "var(--color-primary)", fontWeight: 600, cursor: "pointer", fontSize: "var(--font-size-body-sm)" }}>

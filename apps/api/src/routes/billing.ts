@@ -389,7 +389,7 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/billing/checkout
   // Creates a Stripe Checkout session for the given plan.
   // Auth: requireAuth + requireRole(['owner'])
-  // Body: { plan: 'starter' | 'pro' }
+  // Body: { plan: 'growth' | 'agency', interval?, founder? }
   // Returns: { url: string }
   // Rate limit: 20/hour per tenant
   // -------------------------------------------------------------------------
@@ -434,12 +434,12 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       }
 
       const { plan } = body;
-      if (plan !== "starter" && plan !== "growth" && plan !== "agency") {
+      if (plan !== "growth" && plan !== "agency") {
         return ctx.json(
           {
             error: "invalid_plan",
             code: "INVALID_PLAN",
-            message: "plan must be 'starter', 'growth', or 'agency'",
+            message: "plan must be 'growth' or 'agency'",
           },
           400
         );
@@ -826,7 +826,7 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
-  const resolvedPlanTier: PlanTier = planTierFromMeta ?? "starter";
+  const resolvedPlanTier: PlanTier = planTierFromMeta ?? "free";
   const internalStatus = "active";
 
   // Upsert billing_subscriptions row.
@@ -907,8 +907,8 @@ async function handleSubscriptionUpdated(
   // Resolve plan tier from the first subscription item's price ID
   const priceId = subscription.items.data[0]?.price?.id ?? null;
   const planTier: PlanTier = priceId
-    ? (mapPriceIdToPlanTier(priceId) ?? "starter")
-    : "starter";
+    ? (mapPriceIdToPlanTier(priceId) ?? "free")
+    : "free";
 
   // Stripe timestamps are Unix seconds
   const periodStart = subscription.current_period_start
@@ -1053,7 +1053,7 @@ async function handleInvoicePaymentFailed(
   }
 
   const { tenant_id: tenantId, plan_tier } = subRows[0];
-  const planTier = (plan_tier as PlanTier) ?? "starter";
+  const planTier = (plan_tier as PlanTier) ?? "free";
 
   await db.query(
     `UPDATE billing_subscriptions

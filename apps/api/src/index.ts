@@ -47,6 +47,7 @@ import { registerWaitlistRoutes } from "./routes/waitlist";
 import { registerProductRoutes } from "./routes/products";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerAuditRoutes } from "./routes/audits";
+import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,8 @@ registerDraftRoutes(app, db);
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
 registerAuditRoutes(app, db);
+// OrganicPosts done-for-you handoff: POST/GET /api/engagements (auth, tenant-scoped)
+registerEngagementRoutes(app, db);
 // System transparency: GET /api/system/capabilities (public) +
 // BYOK provider-key endpoints (auth). Needs db for the key store.
 registerSystemRoutes(app, db);
