@@ -1,7 +1,7 @@
 /**
  * BottomNav — persistent bottom navigation bar
  *
- * Tabs: Dashboard / Create / Schedule / Account
+ * Tabs: Dashboard / Brands / Account
  * 375px mobile-first; 56px height; bottom-safe-area aware.
  * Keyboard navigable: Tab moves between items; Enter/Space activates.
  * Active tab indicated by color AND text label (never color alone).
@@ -16,15 +16,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 // ---------------------------------------------------------------------------
-// Nav items — stub hrefs for Create and Schedule (implemented in C1/C2)
+// Nav icons — GEO-product appropriate
 // ---------------------------------------------------------------------------
-
-type NavItem = {
-  label: string;
-  href: string;
-  ariaLabel: string;
-  icon: React.ReactNode;
-};
 
 function DashboardIcon({ active }: { active: boolean }) {
   return (
@@ -47,7 +40,8 @@ function DashboardIcon({ active }: { active: boolean }) {
   );
 }
 
-function CreateIcon({ active }: { active: boolean }) {
+/** Target/crosshair icon — represents brand visibility tracking */
+function BrandsIcon({ active }: { active: boolean }) {
   return (
     <svg
       width="24"
@@ -61,29 +55,8 @@ function CreateIcon({ active }: { active: boolean }) {
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="8" x2="12" y2="16" />
-      <line x1="8" y1="12" x2="16" y2="12" />
-    </svg>
-  );
-}
-
-function ScheduleIcon({ active }: { active: boolean }) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={active ? "var(--color-primary)" : "var(--color-muted)"}
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
     </svg>
   );
 }
@@ -123,25 +96,19 @@ export function BottomNav() {
     {
       label: "Dashboard",
       href: "/dashboard",
-      ariaLabel: "Dashboard — view your post queue",
+      ariaLabel: "Dashboard — your brands and TrustIndex scores",
       icon: (active) => <DashboardIcon active={active} />,
     },
     {
-      label: "Create",
-      href: "/create",
-      ariaLabel: "Create — generate a new AI post",
-      icon: (active) => <CreateIcon active={active} />,
-    },
-    {
-      label: "Schedule",
-      href: "/schedule",
-      ariaLabel: "Schedule — view and manage scheduled posts",
-      icon: (active) => <ScheduleIcon active={active} />,
+      label: "Brands",
+      href: "/brands",
+      ariaLabel: "Brands — manage your tracked brands and competitors",
+      icon: (active) => <BrandsIcon active={active} />,
     },
     {
       label: "Account",
       href: "/account",
-      ariaLabel: "Account — manage your profile and connections",
+      ariaLabel: "Account — manage your profile and subscription",
       icon: (active) => <AccountIcon active={active} />,
     },
   ];

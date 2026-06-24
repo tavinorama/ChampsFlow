@@ -47,11 +47,16 @@ interface BillingPlanResponse {
   renewal_date: string | null;
   cancel_at_period_end: boolean;
   usage: {
-    drafts_generated_this_month: number;
-    posts_published_this_month: number;
+    /** Number of active social accounts (legacy field still returned by API) */
     connected_accounts: number;
-    drafts_limit_per_month: number | null;
-    connected_accounts_limit: number;
+    /** Maximum brands allowed on this plan */
+    max_brands: number;
+    /** Maximum competitors tracked per brand */
+    max_competitors: number;
+    /** Number of prompts run per audit */
+    prompts_per_audit: number;
+    /** Whether the plan includes weekly monitoring (vs monthly) */
+    weekly_monitoring: boolean;
   };
 }
 
@@ -695,7 +700,7 @@ function BillingPageInner(): React.ReactElement {
             )}
 
             {/* ----------------------------------------------------------------
-                Section 2: Usage card
+                Section 2: Plan limits card (GEO metrics)
                 -------------------------------------------------------------- */}
             <section aria-labelledby="usage-heading">
               <h2
@@ -709,7 +714,7 @@ function BillingPageInner(): React.ReactElement {
                   margin: "0 0 var(--space-3) 0",
                 }}
               >
-                Usage This Month
+                Plan Limits
               </h2>
               <div
                 style={{
@@ -723,20 +728,49 @@ function BillingPageInner(): React.ReactElement {
                 }}
               >
                 <UsageBar
-                  label="AI drafts generated"
-                  used={billingData.usage.drafts_generated_this_month}
-                  limit={billingData.usage.drafts_limit_per_month}
+                  label="Brands tracked"
+                  used={1}
+                  limit={billingData.usage.max_brands}
                 />
                 <UsageBar
-                  label="Posts published"
-                  used={billingData.usage.posts_published_this_month}
-                  limit={null} // posts published are not separately limited (drafts quota covers it)
+                  label="Competitors per brand"
+                  used={billingData.usage.max_competitors}
+                  limit={billingData.usage.max_competitors}
                 />
                 <UsageBar
-                  label="Connected accounts"
-                  used={billingData.usage.connected_accounts}
-                  limit={billingData.usage.connected_accounts_limit}
+                  label="Prompts per audit"
+                  used={billingData.usage.prompts_per_audit}
+                  limit={billingData.usage.prompts_per_audit}
                 />
+                {/* Monitoring cadence — plain text row, no progress bar */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "var(--font-size-body-sm)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      Monitoring cadence
+                    </span>
+                    <span
+                      aria-label={`Monitoring cadence: ${billingData.usage.weekly_monitoring ? "weekly" : "monthly"}`}
+                      style={{
+                        fontSize: "var(--font-size-caption)",
+                        color: "var(--color-muted)",
+                        fontWeight: "var(--font-weight-normal)",
+                      }}
+                    >
+                      {billingData.usage.weekly_monitoring ? "Weekly" : "Monthly"}
+                    </span>
+                  </div>
+                </div>
               </div>
             </section>
 

@@ -27,9 +27,35 @@ import { Footer } from "../components/Footer";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 
 export const metadata = {
-  title: "TrustIndex AI — Know if AI trusts your brand",
+  metadataBase: new URL("https://trustindexai.com"),
+  title: {
+    default: "TrustIndex AI — Know if AI trusts your brand",
+    template: "%s — TrustIndex AI",
+  },
   description:
     "AI Search Trust Intelligence for SMBs. TrustIndex AI audits how your brand appears across AI search, benchmarks competitors, finds trust gaps, and builds the GEO content plan you need to get cited organically.",
+  openGraph: {
+    siteName: "TrustIndex AI",
+    type: "website",
+    locale: "en_US",
+    images: [
+      {
+        url: "/og-default.png",
+        width: 1200,
+        height: 630,
+        alt: "TrustIndex AI — Know if AI trusts your brand",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@trustindexai",
+    images: ["/og-default.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 /**

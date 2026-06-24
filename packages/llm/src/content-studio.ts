@@ -26,6 +26,12 @@ export interface ContentRequest {
   topic: string;
   /** Optional credible external reference URL (from the audit's top sources). */
   sourceUrl?: string | null;
+  /** Free-form refine directive. Sanitized before use. Examples: "make it shorter", "add more data", "make it FAQ-shaped" */
+  instructions?: string;
+  /** Tone for the content. Examples: professional, friendly, technical, playful */
+  tone?: string;
+  /** Approximate length target */
+  length?: "short" | "medium" | "long";
 }
 
 export interface ContentDraft {
@@ -50,6 +56,22 @@ const SYSTEM_PROMPT = [
   "3. Use ONLY facts the client provides. If a fact is needed but unknown, insert",
   "   a clearly-marked [PLACEHOLDER: ...] rather than fabricating it.",
   "Respond with the content only — no preamble.",
+  "",
+  "GEO CITATION QUALITY GUIDELINES (Princeton GEO research-backed):",
+  "- Include at least 2 specific statistics or data points, ideally with a year and source",
+  "  (e.g. 'a 2024 BrightEdge study found that 68% of zero-click searches now resolve",
+  "  through AI-generated answers'). If the client has not provided statistics, insert",
+  "  [PLACEHOLDER: statistic with year and source].",
+  "- Include at least 2-3 sourced or attributed claims using phrases like",
+  "  'according to [source]', 'a [year] study found', or 'research from [org] shows'.",
+  "  If sources are unknown, use [PLACEHOLDER: source attribution].",
+  "- Include at least one answer-shaped passage: state a question explicitly, then answer",
+  "  it in the same paragraph (this structure is directly extractable by AI engines).",
+  "- Where relevant, include a direct quotation wrapped in quotation marks from a credible",
+  "  source (e.g. an analyst, published report, or industry body). Use",
+  "  [PLACEHOLDER: direct quote from credible source] if none is available.",
+  "- Go deep on ONE focused idea per piece rather than covering everything superficially.",
+  "  Specificity and depth are what make content citation-worthy in AI search.",
 ].join(" ");
 
 function faqSchema(brand: string, q: string, a: string): string {
@@ -109,12 +131,26 @@ function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"> {
 }
 
 async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<ContentDraft, "keyUsed"> | null> {
-  const userPrompt = [
+  // Map length to word-count hint and max_tokens cap.
+  const lengthHint =
+    req.length === "short" ? "~300 words" :
+    req.length === "medium" ? "~600 words" :
+    req.length === "long" ? "~1000+ words" : null;
+  const maxTokens =
+    req.length === "short" ? 600 :
+    req.length === "medium" ? 1200 : 2048;
+
+  const userPromptParts = [
     `Write a ${req.contentType === "blog" ? "long-form blog post" : req.contentType === "faq" ? "FAQ entry" : "LinkedIn post"}`,
     `for ${req.brandName} (${req.category ?? "general"}) on this topic: "${req.topic}".`,
     req.sourceUrl ? `You may cite this source: ${req.sourceUrl}.` : "",
     req.contentType === "blog" ? "Use an H1 and H2 structure and include an internal-link placeholder." : "",
-  ].join(" ");
+    req.tone ? `Write in a ${req.tone} tone.` : "",
+    lengthHint ? `Target length: ${lengthHint}.` : "",
+    req.instructions ? `Additional instruction: ${req.instructions}` : "",
+  ];
+  const userPrompt = userPromptParts.filter(Boolean).join(" ");
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
@@ -124,7 +160,7 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
       headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-5",
-        max_tokens: 2048,
+        max_tokens: maxTokens,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
       }),
@@ -164,7 +200,17 @@ export async function generateContent(
     // Rejected input never reaches the LLM; the safe template path is used.
     const s = sanitizeUserPrompt(req.topic);
     if (!s.rejected) {
-      const draft = await llmDraft({ ...req, topic: s.sanitized }, apiKey);
+      // Sanitize instructions if provided. If rejected, drop them rather than
+      // failing the whole request — the rest of the generation proceeds normally.
+      let sanitizedInstructions: string | undefined;
+      if (req.instructions) {
+        const si = sanitizeUserPrompt(req.instructions);
+        sanitizedInstructions = si.rejected ? undefined : si.sanitized;
+      }
+      const draft = await llmDraft(
+        { ...req, topic: s.sanitized, instructions: sanitizedInstructions },
+        apiKey
+      );
       if (draft) return { ...draft, keyUsed: clientKey ? "client" : "platform" };
     }
   }
