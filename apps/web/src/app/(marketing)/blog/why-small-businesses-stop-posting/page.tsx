@@ -165,6 +165,21 @@ const PROSE_STYLES = {
 // Page component
 // ---------------------------------------------------------------------------
 
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
+    { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+    {
+      "@type": "ListItem",
+      position: 3,
+      name: "Why Small Businesses Stop Posting on Social Media",
+      item: "https://trustindexai.com/blog/why-small-businesses-stop-posting",
+    },
+  ],
+};
+
 export default function BlogPost1Page() {
   return (
     <>
@@ -172,6 +187,10 @@ export default function BlogPost1Page() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
 
       <article

@@ -11,6 +11,17 @@ export const metadata = {
   title: "Privacy Policy — TrustIndex AI",
   description: "How TrustIndex AI collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
   alternates: { canonical: "https://trustindexai.com/privacy-policy" },
+  openGraph: {
+    title: "Privacy Policy — TrustIndex AI",
+    description: "How TrustIndex AI collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
+    url: "https://trustindexai.com/privacy-policy",
+    siteName: "TrustIndex AI",
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: false,
+  },
 };
 
 const cell: React.CSSProperties = { padding: "8px 10px", borderBottom: "1px solid var(--color-border)", verticalAlign: "top" };

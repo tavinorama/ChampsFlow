@@ -16,6 +16,54 @@ export const metadata: Metadata = {
   title: "What Results Look Like — TrustIndex AI",
   description: "How TrustIndex AI measures GEO progress — your TrustIndex Score over time, citation rate, competitor displacement — and what an improvement trajectory looks like.",
   alternates: { canonical: "https://trustindexai.com/results" },
+  openGraph: {
+    title: "What Results Look Like — TrustIndex AI",
+    description:
+      "How TrustIndex AI measures GEO progress — your TrustIndex Score over time, citation rate, competitor displacement — and what an improvement trajectory looks like.",
+    url: "https://trustindexai.com/results",
+    siteName: "TrustIndex AI",
+    type: "website",
+    images: [
+      {
+        url: "https://trustindexai.com/og-default.png",
+        width: 1200,
+        height: 630,
+        alt: "What Results Look Like — TrustIndex AI",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "What Results Look Like — TrustIndex AI",
+    description:
+      "How TrustIndex AI measures GEO progress — your TrustIndex Score over time, citation rate, and competitor displacement.",
+    images: ["https://trustindexai.com/og-default.png"],
+  },
+};
+
+// ---------------------------------------------------------------------------
+// JSON-LD
+// ---------------------------------------------------------------------------
+
+const resultsJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: "What Results Look Like — TrustIndex AI",
+  description:
+    "How TrustIndex AI measures GEO progress — your TrustIndex Score over time, citation rate, competitor displacement — and what an improvement trajectory looks like.",
+  url: "https://trustindexai.com/results",
+  breadcrumb: {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
+      { "@type": "ListItem", position: 2, name: "Results", item: "https://trustindexai.com/results" },
+    ],
+  },
+  isPartOf: {
+    "@type": "WebSite",
+    name: "TrustIndex AI",
+    url: "https://trustindexai.com",
+  },
 };
 
 const METRICS = [
@@ -40,6 +88,10 @@ const card: React.CSSProperties = {
 export default function ResultsPage() {
   return (
     <main style={{ fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(resultsJsonLd) }}
+      />
       {/* Hero */}
       <section style={{ position: "relative", overflow: "hidden", padding: "var(--space-20) var(--space-4) var(--space-12)" }} className="mk-hero-bg">
         <GeoGraphBackdrop opacity={0.4} />

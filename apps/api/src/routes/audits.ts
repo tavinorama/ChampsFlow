@@ -643,7 +643,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     async (c) => {
       const auth = c.get("auth");
       const brandId = c.req.param("id");
-      let body: { content_type?: string; topic?: string; plan_task_id?: string; source_url?: string };
+      let body: { content_type?: string; topic?: string; plan_task_id?: string; source_url?: string; instructions?: string; tone?: string; length?: string; };
       try {
         body = await c.req.json();
       } catch {
@@ -675,6 +675,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           category: brand.category,
           topic,
           sourceUrl: body.source_url ?? null,
+          instructions: body.instructions ? body.instructions.slice(0, 500) : undefined,
+          tone: body.tone ? body.tone.slice(0, 50) : undefined,
+          length: (["short", "medium", "long"] as const).includes(body.length as "short" | "medium" | "long")
+            ? (body.length as "short" | "medium" | "long")
+            : undefined,
         },
         { apiKey: clientKey ?? undefined }
       );

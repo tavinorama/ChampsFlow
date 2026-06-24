@@ -190,6 +190,21 @@ const READING_TIME = computeReadingTime(2510);
 // Page component
 // ---------------------------------------------------------------------------
 
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
+    { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+    {
+      "@type": "ListItem",
+      position: 3,
+      name: "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity",
+      item: "https://trustindexai.com/blog/how-small-businesses-get-cited-by-chatgpt",
+    },
+  ],
+};
+
 export default function PillarGeoPage() {
   return (
     <>
@@ -197,6 +212,10 @@ export default function PillarGeoPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
 
       <article
@@ -863,7 +882,7 @@ export default function PillarGeoPage() {
         <p style={PROSE.p}>
           Join the TrustIndex AI waitlist. The first 100 waitlist members who
           convert at launch receive a 30% founder discount &mdash; applied only
-          when you pay annually (&euro;831 per year for Growth, &euro;1,251 per
+          when you pay annually ($831 per year for Growth, $1,251 per
           year for Agency) &mdash; plus a 30-day money-back guarantee.
         </p>
 

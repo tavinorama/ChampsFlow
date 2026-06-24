@@ -23,6 +23,88 @@ export const metadata: Metadata = {
     url: "https://organicposts.ai/",
     siteName: "OrganicPosts by TrustIndex AI",
     type: "website",
+    images: [
+      {
+        url: "https://trustindexai.com/og-default.png",
+        width: 1200,
+        height: 630,
+        alt: "OrganicPosts by TrustIndex AI — GEO content execution",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OrganicPosts by TrustIndex AI — GEO content execution",
+    description:
+      "Turn your AI search gaps into organic content that gets found. The consultancy execution arm of TrustIndex AI.",
+    images: ["https://trustindexai.com/og-default.png"],
+  },
+};
+
+// ---------------------------------------------------------------------------
+// JSON-LD — Service schema for the OrganicPosts GEO content execution service
+// ---------------------------------------------------------------------------
+
+const organicPostsServiceJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  name: "OrganicPosts by TrustIndex AI",
+  description:
+    "GEO content consulting and execution service. We create and publish the proof, pages, posts, and authority signals AI search systems need to understand, cite, and recommend your brand.",
+  url: "https://organicposts.ai/",
+  provider: {
+    "@type": "Organization",
+    name: "TrustIndex AI",
+    url: "https://trustindexai.com",
+  },
+  serviceType: "GEO Content Execution",
+  areaServed: ["US", "EU", "BR"],
+  hasOfferCatalog: {
+    "@type": "OfferCatalog",
+    name: "OrganicPosts Service Offers",
+    itemListElement: [
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "OrganicPosts GEO Sprint",
+          description:
+            "A focused 30-day execution sprint for companies that need to act on their TrustIndex AI audit.",
+        },
+        price: "2400",
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "PriceSpecification",
+          price: "2400",
+          priceCurrency: "USD",
+          description: "one-time",
+        },
+      },
+      {
+        "@type": "Offer",
+        itemOffered: {
+          "@type": "Service",
+          name: "OrganicPosts Managed GEO",
+          description:
+            "Ongoing monthly GEO content execution for SMBs that want AI search visibility as a repeatable organic growth motion.",
+        },
+        price: "1900",
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "PriceSpecification",
+          price: "1900",
+          priceCurrency: "USD",
+          description: "per month",
+        },
+      },
+    ],
+  },
+  breadcrumb: {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
+      { "@type": "ListItem", position: 2, name: "OrganicPosts", item: "https://organicposts.ai/" },
+    ],
   },
 };
 
@@ -99,6 +181,10 @@ const H2 = {
 export default function OrganicPostsPage() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organicPostsServiceJsonLd) }}
+      />
       {/* Hero */}
       <section className="mk-hero-bg" style={{ padding: "var(--space-24) var(--space-4) var(--space-20)" }}>
         <div style={{ maxWidth: "760px", margin: "0 auto", textAlign: "center" }}>

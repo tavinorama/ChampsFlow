@@ -110,6 +110,20 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Global focus-visible for the persistent BottomNav.
+ * BottomNav links set outline:none and delegate the focus ring to CSS, but the
+ * rule previously only existed inside the /account/connections page <style>,
+ * so keyboard focus was invisible on every other app page (WCAG 2.4.11). This
+ * makes the focus ring apply app-wide, since tokens.css is the single global
+ * stylesheet imported in app/layout.tsx.
+ * ───────────────────────────────────────────────────────────────────────── */
+.bottom-nav-item:focus-visible {
+  outline: var(--focus-outline-width) solid var(--color-focus-outline);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Dark mode — OS-level preference (no explicit user choice stored)
  * ───────────────────────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {

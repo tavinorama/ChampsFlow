@@ -10,6 +10,17 @@ export const metadata = {
   title: "Terms of Service — TrustIndex AI",
   description: "The terms governing your use of TrustIndex AI and OrganicPosts.",
   alternates: { canonical: "https://trustindexai.com/terms-of-service" },
+  openGraph: {
+    title: "Terms of Service — TrustIndex AI",
+    description: "The terms governing your use of TrustIndex AI and OrganicPosts.",
+    url: "https://trustindexai.com/terms-of-service",
+    siteName: "TrustIndex AI",
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: false,
+  },
 };
 
 export default function TermsOfServicePage() {

@@ -73,6 +73,37 @@ const POSTS: BlogPost[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// JSON-LD — CollectionPage listing published articles
+// ---------------------------------------------------------------------------
+
+const blogIndexJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: "Blog — TrustIndex AI",
+  description:
+    "Practical advice for small businesses on social media, AI tools, GEO (Generative Engine Optimization), and content strategy.",
+  url: "https://trustindexai.com/blog",
+  isPartOf: {
+    "@type": "WebSite",
+    name: "TrustIndex AI",
+    url: "https://trustindexai.com",
+  },
+  breadcrumb: {
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
+      { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+    ],
+  },
+  hasPart: POSTS.map((post) => ({
+    "@type": "BlogPosting",
+    headline: post.title,
+    url: `https://trustindexai.com/blog/${post.slug}`,
+    datePublished: post.publishedAt,
+  })),
+};
+
+// ---------------------------------------------------------------------------
 // Page component
 // ---------------------------------------------------------------------------
 
@@ -85,6 +116,10 @@ export default function BlogIndexPage() {
         padding: "var(--space-12) var(--space-4)",
       }}
     >
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogIndexJsonLd) }}
+      />
       <h1
         style={{
           fontSize: "var(--font-size-h1)",

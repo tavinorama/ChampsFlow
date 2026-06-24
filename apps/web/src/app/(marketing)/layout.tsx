@@ -28,6 +28,7 @@ import "../../styles/tokens.css";
 import { SkipToMainContent } from "../../components/marketing/SkipToMainContent";
 import { ThemeToggle } from "../../components/marketing/ThemeToggle";
 import { Logo } from "../../components/brand/Logo";
+import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
 
 // ---------------------------------------------------------------------------
 // Font — Plus Jakarta Sans (self-hosted at build time, GDPR friendly)
@@ -338,6 +339,17 @@ export default function MarketingLayout({
 }) {
   return (
     <div className={`${jakarta.variable} mk-root`}>
+      {/* Sitewide structured data — Organization + WebSite (injected once in this
+          layout so every public marketing page inherits them automatically) */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+      />
+
       <style dangerouslySetInnerHTML={{ __html: MARKETING_STYLES }} />
 
       {/* WCAG 2.4.1 — Skip to main content */}

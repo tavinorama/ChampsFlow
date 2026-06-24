@@ -15,6 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../../lib/supabase-browser";
+import { TrustIndexScorecard, VECTOR_COLORS } from "../../../components/TrustIndexScorecard";
 
 interface AuditState {
   id?: string;
@@ -113,6 +114,7 @@ export default function BrandDetailPage() {
   const [statusMsg, setStatusMsg] = useState("Loading…");
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [resolvedAuditId, setResolvedAuditId] = useState<string>("");
+  const [brandName, setBrandName] = useState<string | undefined>(undefined);
   const pollCount = useRef(0);
 
   const computeOverall = useCallback((a: AuditState): number | null => {
@@ -128,6 +130,24 @@ export default function BrandDetailPage() {
       /* non-fatal */
     }
   }, []);
+
+  // Fetch brand name (non-blocking — scorecard degrades gracefully without it).
+  useEffect(() => {
+    if (!brandId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/brands");
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { brands?: Array<{ id: string; name: string }> };
+        const match = (data.brands ?? []).find((b) => b.id === brandId);
+        if (match && !cancelled) setBrandName(match.name);
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [brandId]);
 
   // Poll a running audit.
   useEffect(() => {
@@ -215,17 +235,27 @@ export default function BrandDetailPage() {
         {isWorking ? <Spinner label={statusMsg} /> : statusMsg}
       </div>
 
-      {/* Overall ring */}
-      <div style={{
-        backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-xl)", padding: "var(--space-8)", textAlign: "center",
-        boxShadow: "var(--shadow-card)", marginBottom: "var(--space-6)",
-      }}>
-        <ScoreRing value={overall} />
-        <p style={{ margin: "var(--space-4) 0 0 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
-          Overall TrustIndex Score
-          {breakdown?.probes_total ? ` · based on ${breakdown.probes_total} AI probes${breakdown.probes_cited != null ? `, cited in ${breakdown.probes_cited}` : ""}` : ""}
-        </p>
+      {/* Scorecard hero — matches the landing page hero mockup */}
+      <div style={{ marginBottom: "var(--space-6)" }}>
+        <TrustIndexScorecard
+          overall={breakdown?.scores?.overall ?? overall}
+          vectors={{
+            ai: breakdown?.scores?.ai ?? audit?.score_ai ?? null,
+            performance: breakdown?.scores?.performance ?? audit?.score_performance ?? null,
+            brand: breakdown?.scores?.brand ?? audit?.score_brand ?? null,
+          }}
+          competitors={
+            (breakdown?.competitors ?? [])
+              .filter((c) => c.displacement > 0)
+              .map((c) => ({ name: c.name, displacement: c.displacement }))
+          }
+          probeSummary={
+            breakdown?.probes_total
+              ? `${breakdown.probes_total} AI probes${audit?.providers_used?.length ? ` · ${audit.providers_used.length} engines` : ""}`
+              : undefined
+          }
+          brandName={brandName}
+        />
       </div>
 
       {/* Three vectors — expandable with component breakdown */}
@@ -418,11 +448,71 @@ interface ContentItem {
   schema_markup: string | null; ai_generated: boolean; status: string;
 }
 
+// --- GEO trait heuristics (client-side, no imports needed) ---
+
+function analyzeGeoTraits(body: string) {
+  const words = body.trim().split(/\s+/).filter(Boolean).length;
+  // Statistics: numbers with %, $, €, or magnitude words; 4-digit years; count-nouns
+  const stats = (body.match(/\b\d[\d,]*\.?\d*\s*%|\b\d[\d,]*\.?\d*\s*(billion|million|thousand|k\b)|\$[\d,.]+|€[\d,.]+|\b\d{4}\b|\b\d+\s*(percent|users|customers|companies|brands|studies|reports)/gi) ?? []).length;
+  // Sourced claims: attribution phrases and citation patterns
+  const sourced = (body.match(/according to|research from|a \d{4} study|study found|survey found|found that|as reported|cited by/gi) ?? []).length;
+  // Answer-shaped: question mark present
+  const answerShaped = /\?/.test(body);
+  // Quotations: curly or straight quotes containing ≥10 chars
+  const quotations =
+    (body.match(/[“”][^“”]{10,}[“”]/g) ?? []).length > 0 ||
+    (body.match(/"[^"]{10,}"/g) ?? []).length > 0;
+  // Depth tier by word count
+  const depthTier: "strong" | "ok" | "weak" = words >= 600 ? "strong" : words >= 300 ? "ok" : "weak";
+  return { stats, sourced, answerShaped, quotations, words, depthTier };
+}
+
+function readingGrade(body: string): number {
+  // Flesch-Kincaid Grade Level approximation (client-side, no library)
+  const sentences = body.split(/[.!?]+/).filter((s) => s.trim().length > 0).length || 1;
+  const wordList = body.trim().split(/\s+/).filter(Boolean);
+  const words = wordList.length || 1;
+  const syllables = wordList.reduce((acc, word) => {
+    const w = word.toLowerCase().replace(/[^a-z]/g, "");
+    const count = w.replace(/[^aeiouy]/g, "").length || 1;
+    return acc + Math.max(1, count);
+  }, 0);
+  return Math.round(0.39 * (words / sentences) + 11.8 * (syllables / words) - 15.59);
+}
+
+function downloadJsonLd(markup: string, title: string) {
+  const blob = new Blob([markup], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.slice(0, 40).replace(/\s+/g, "-")}-schema.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const REGEN_BUTTONS: { label: string; instructions: string }[] = [
+  { label: "Shorter", instructions: "Make it significantly shorter, under 300 words." },
+  { label: "Add data", instructions: "Add at least 2 specific statistics or data points with sources." },
+  { label: "FAQ-shaped", instructions: "Rewrite this as a question-and-answer FAQ format." },
+  { label: "Remove jargon", instructions: "Rewrite using plain, accessible language. Avoid technical jargon." },
+  { label: "Add statistics", instructions: "Strengthen with at least 3 specific statistics. Use [PLACEHOLDER: source] if unknown." },
+];
+
 function ContentStudio({ brandId }: { brandId: string }) {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [type, setType] = useState<"blog" | "linkedin" | "faq">("blog");
   const [topic, setTopic] = useState("");
+  const [tone, setTone] = useState("professional");
+  const [length, setLength] = useState<"short" | "medium" | "long">("medium");
   const [busy, setBusy] = useState(false);
+  // Inline edit state
+  const [editBody, setEditBody] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  // Regen quick-button state: "itemId-buttonIndex"
+  const [regenBusy, setRegenBusy] = useState<string | null>(null);
+  // Copy feedback: "copy-{id}" | "copymd-{id}" | "copyjsonld-{id}"
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -439,7 +529,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
     try {
       const res = await apiFetch(`/api/brands/${brandId}/content`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content_type: type, topic: topic.trim() }),
+        body: JSON.stringify({ content_type: type, topic: topic.trim(), tone, length }),
       });
       if (res.ok) { setTopic(""); await load(); }
     } finally { setBusy(false); }
@@ -455,6 +545,62 @@ function ContentStudio({ brandId }: { brandId: string }) {
     } catch { void load(); }
   }
 
+  async function saveBody(item: ContentItem) {
+    const newBody = editBody[item.id];
+    if (newBody == null || newBody === item.body) return;
+    setSavingId(item.id);
+    try {
+      const res = await apiFetch(`/api/content/${item.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: newBody }),
+      });
+      if (res.ok) {
+        setItems((xs) => xs.map((x) => (x.id === item.id ? { ...x, body: newBody } : x)));
+        setEditBody((prev) => { const n = { ...prev }; delete n[item.id]; return n; });
+        setSavedId(item.id);
+        setTimeout(() => setSavedId((cur) => (cur === item.id ? null : cur)), 2000);
+      }
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function regen(item: ContentItem, btnIndex: number) {
+    const key = `${item.id}-${btnIndex}`;
+    if (regenBusy) return;
+    setRegenBusy(key);
+    try {
+      await apiFetch(`/api/brands/${brandId}/content`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content_type: item.content_type,
+          topic: item.title ?? item.content_type,
+          instructions: REGEN_BUTTONS[btnIndex].instructions,
+          tone,
+          length,
+        }),
+      });
+      await load();
+    } finally {
+      setRegenBusy(null);
+    }
+  }
+
+  async function copyText(key: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((cur) => (cur === key ? null : cur)), 2000);
+    } catch { /* clipboard unavailable */ }
+  }
+
+  const selectStyle: React.CSSProperties = {
+    height: "40px", padding: "0 var(--space-3)",
+    border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+    backgroundColor: "var(--color-surface-muted)", color: "var(--color-text)",
+    fontSize: "var(--font-size-body-sm)",
+  };
+
   return (
     <section style={{
       marginTop: "var(--space-8)", backgroundColor: "var(--color-surface)",
@@ -467,15 +613,56 @@ function ContentStudio({ brandId }: { brandId: string }) {
         edit, and approve. Nothing publishes automatically.
       </p>
 
+      {/* Generate form — type, tone, length, topic */}
       <form onSubmit={generate} style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
-        <select value={type} onChange={(e) => setType(e.target.value as typeof type)} style={{ height: "40px", padding: "0 var(--space-3)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-text)", fontSize: "var(--font-size-body-sm)" }}>
+        <select
+          aria-label="Content type"
+          value={type}
+          onChange={(e) => setType(e.target.value as typeof type)}
+          style={selectStyle}
+        >
           <option value="blog">Blog post</option>
           <option value="linkedin">LinkedIn post</option>
           <option value="faq">FAQ entry</option>
         </select>
-        <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Topic (e.g. from an accepted plan action)"
-          style={{ flex: "1 1 240px", minWidth: 0, height: "40px", padding: "0 var(--space-3)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-text)", fontSize: "var(--font-size-body-sm)" }} />
-        <button type="submit" disabled={busy || !topic.trim()} style={{ height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff", border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", cursor: busy || !topic.trim() ? "not-allowed" : "pointer", opacity: busy || !topic.trim() ? 0.6 : 1 }}>
+
+        {/* Tone selector */}
+        <select
+          aria-label="Tone"
+          value={tone}
+          onChange={(e) => setTone(e.target.value)}
+          style={selectStyle}
+        >
+          <option value="professional">Professional</option>
+          <option value="friendly">Friendly</option>
+          <option value="technical">Technical</option>
+          <option value="playful">Playful</option>
+        </select>
+
+        {/* Length selector */}
+        <select
+          aria-label="Length"
+          value={length}
+          onChange={(e) => setLength(e.target.value as typeof length)}
+          style={selectStyle}
+        >
+          <option value="short">Short (~300w)</option>
+          <option value="medium">Medium (~600w)</option>
+          <option value="long">Long (~1000w)</option>
+        </select>
+
+        <input
+          aria-label="Topic"
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          placeholder="Topic (e.g. from an accepted plan action)"
+          style={{ flex: "1 1 240px", minWidth: 0, height: "40px", padding: "0 var(--space-3)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-text)", fontSize: "var(--font-size-body-sm)" }}
+        />
+        <button
+          type="submit"
+          disabled={busy || !topic.trim()}
+          style={{ height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff", border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", cursor: busy || !topic.trim() ? "not-allowed" : "pointer", opacity: busy || !topic.trim() ? 0.6 : 1 }}
+        >
           {busy ? "Drafting…" : "Generate draft"}
         </button>
       </form>
@@ -484,27 +671,180 @@ function ContentStudio({ brandId }: { brandId: string }) {
         <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>No drafts yet.</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-          {items.map((it) => (
-            <li key={it.id} style={{
-              padding: "var(--space-4)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-              backgroundColor: it.status === "approved" ? "rgba(15,180,136,0.06)" : "var(--color-surface)",
-              opacity: it.status === "discarded" ? 0.5 : 1,
-            }}>
-              <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-2)", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-badge-ai-bg)", color: "var(--color-badge-ai-text)" }}>{it.content_type}</span>
-                {/* AC-C4-3: non-removable AI label */}
-                <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>✦ AI-generated</span>
-                {it.schema_markup && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>schema.org ✓</span>}
-                {it.status === "approved" && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>✓ APPROVED</span>}
-              </div>
-              {it.title && <div style={{ fontWeight: 700, marginBottom: "var(--space-1)" }}>{it.title}</div>}
-              <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--font-family)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "0 0 var(--space-2) 0", lineHeight: 1.5, maxHeight: "160px", overflow: "auto" }}>{it.body}</pre>
-              <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                <button onClick={() => setStatus(it.id, "approved")} style={miniBtn(true)}>Approve</button>
-                <button onClick={() => setStatus(it.id, "discarded")} style={miniBtn(false)}>Discard</button>
-              </div>
-            </li>
-          ))}
+          {items.map((it) => {
+            const geo = analyzeGeoTraits(it.body);
+            const grade = readingGrade(it.body);
+            const currentBody = editBody[it.id] ?? it.body;
+            const isDirty = editBody[it.id] != null && editBody[it.id] !== it.body;
+
+            function badgeStyle(level: "green" | "muted" | "weak"): React.CSSProperties {
+              const base: React.CSSProperties = { fontSize: "0.6rem", fontWeight: 700, padding: "1px 5px", borderRadius: "var(--radius-sm)", whiteSpace: "nowrap" };
+              if (level === "green") return { ...base, backgroundColor: "rgba(15,180,136,0.15)", color: "var(--color-success)" };
+              if (level === "muted") return { ...base, backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" };
+              return { ...base, backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)", opacity: 0.6 };
+            }
+
+            return (
+              <li key={it.id} style={{
+                padding: "var(--space-4)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+                backgroundColor: it.status === "approved" ? "rgba(15,180,136,0.06)" : "var(--color-surface)",
+                opacity: it.status === "discarded" ? 0.5 : 1,
+              }}>
+                {/* Type + AI label row */}
+                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-2)", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-badge-ai-bg)", color: "var(--color-badge-ai-text)" }}>{it.content_type}</span>
+                  {/* AC-C4-3: non-removable AI label */}
+                  <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>✦ AI-generated</span>
+                  {it.schema_markup && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>schema.org ✓</span>}
+                  {it.status === "approved" && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>✓ APPROVED</span>}
+                </div>
+
+                {/* GEO trait coverage badges */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-1)", marginBottom: "var(--space-1)" }} role="group" aria-label="GEO trait coverage">
+                  <span style={badgeStyle(geo.stats >= 2 ? "green" : geo.stats === 1 ? "muted" : "weak")}>Stats: {geo.stats}</span>
+                  <span style={badgeStyle(geo.sourced >= 2 ? "green" : geo.sourced === 1 ? "muted" : "weak")}>Sourced: {geo.sourced}</span>
+                  <span style={badgeStyle(geo.answerShaped ? "green" : "weak")}>Q+A: {geo.answerShaped ? "yes" : "no"}</span>
+                  <span style={badgeStyle(geo.quotations ? "green" : "weak")}>Quote: {geo.quotations ? "yes" : "no"}</span>
+                  <span style={badgeStyle(geo.depthTier === "strong" ? "green" : geo.depthTier === "ok" ? "muted" : "weak")}>Depth: {geo.depthTier}</span>
+                </div>
+                <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "0 0 var(--space-2) 0", lineHeight: 1.4 }}>
+                  {geo.words} words · Grade {grade}
+                </p>
+
+                {it.title && <div style={{ fontWeight: 700, marginBottom: "var(--space-1)" }}>{it.title}</div>}
+
+                {/* Editable body textarea (replaces read-only pre) */}
+                <textarea
+                  aria-label="Draft body"
+                  value={currentBody}
+                  onChange={(e) => setEditBody((prev) => ({ ...prev, [it.id]: e.target.value }))}
+                  style={{
+                    width: "100%", boxSizing: "border-box", minHeight: "120px", resize: "vertical",
+                    fontFamily: "var(--font-family)", fontSize: "var(--font-size-caption)",
+                    color: "var(--color-muted)", lineHeight: 1.5,
+                    background: "var(--color-surface-muted)",
+                    border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+                    padding: "var(--space-2) var(--space-3)",
+                    marginBottom: "var(--space-2)",
+                  }}
+                />
+
+                {/* Save button + confirmation (only visible when dirty) */}
+                {isDirty && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-2)" }}>
+                    <button
+                      type="button"
+                      disabled={savingId === it.id}
+                      onClick={() => void saveBody(it)}
+                      style={{ ...miniBtn(true), minHeight: "28px", fontSize: "0.7rem" }}
+                    >
+                      {savingId === it.id ? "Saving…" : "Save"}
+                    </button>
+                    {savedId === it.id && (
+                      <span aria-live="polite" style={{ fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: 700 }}>Saved</span>
+                    )}
+                  </div>
+                )}
+                {savedId === it.id && !isDirty && (
+                  <span aria-live="polite" style={{ display: "block", fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: 700, marginBottom: "var(--space-2)" }}>Saved</span>
+                )}
+
+                {/* Approve / Discard actions */}
+                <div style={{ display: "flex", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+                  <button type="button" onClick={() => void setStatus(it.id, "approved")} style={miniBtn(true)}>Approve</button>
+                  <button type="button" onClick={() => void setStatus(it.id, "discarded")} style={miniBtn(false)}>Discard</button>
+                </div>
+
+                {/* Copy + export buttons */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+                  <button
+                    type="button"
+                    aria-label="Copy draft body to clipboard"
+                    onClick={() => void copyText(`copy-${it.id}`, it.body)}
+                    style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                  >
+                    {copiedKey === `copy-${it.id}` ? "Copied!" : "Copy body"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Copy draft as Markdown to clipboard"
+                    onClick={() => void copyText(`copymd-${it.id}`, `# ${it.title ?? ""}\n\n${it.body}`)}
+                    style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                  >
+                    {copiedKey === `copymd-${it.id}` ? "Copied!" : "Copy as Markdown"}
+                  </button>
+                </div>
+
+                {/* Schema.org JSON-LD — only when schema_markup is present */}
+                {it.schema_markup && (
+                  <details style={{ marginBottom: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                    <summary style={{ cursor: "pointer", fontWeight: 700, marginBottom: "var(--space-2)" }}>schema.org JSON-LD</summary>
+                    <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--font-family)", fontSize: "var(--font-size-caption)", margin: "0 0 var(--space-2) 0", background: "var(--color-surface-muted)", padding: "var(--space-2) var(--space-3)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", overflow: "auto", maxHeight: "200px" }}>
+                      <code>{(() => { try { return JSON.stringify(JSON.parse(it.schema_markup!), null, 2); } catch { return it.schema_markup!; } })()}</code>
+                    </pre>
+                    <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        aria-label="Copy JSON-LD to clipboard"
+                        onClick={() => void copyText(`copyjsonld-${it.id}`, it.schema_markup!)}
+                        style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                      >
+                        {copiedKey === `copyjsonld-${it.id}` ? "Copied!" : "Copy JSON-LD"}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Download schema as JSON file"
+                        onClick={() => downloadJsonLd(it.schema_markup!, it.title ?? it.content_type)}
+                        style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                      >
+                        Download .json
+                      </button>
+                    </div>
+                  </details>
+                )}
+
+                {/* Regenerate quick buttons */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-1)", marginBottom: "var(--space-3)" }} role="group" aria-label="Quick regenerate options">
+                  {REGEN_BUTTONS.map((btn, idx) => {
+                    const key = `${it.id}-${idx}`;
+                    const isActive = regenBusy === key;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        disabled={!!regenBusy}
+                        aria-label={`Regenerate: ${btn.label}`}
+                        onClick={() => void regen(it, idx)}
+                        style={{
+                          fontSize: "0.65rem", fontWeight: 700, padding: "2px 8px",
+                          borderRadius: "var(--radius-sm)", cursor: regenBusy ? "not-allowed" : "pointer",
+                          border: "1px solid var(--color-border)", background: "var(--color-surface-muted)",
+                          color: isActive ? "var(--color-primary)" : "var(--color-muted)",
+                          opacity: regenBusy && !isActive ? 0.5 : 1,
+                          minHeight: "24px",
+                        }}
+                      >
+                        {isActive ? "Regenerating…" : btn.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* "Why this gets cited" helper */}
+                <details style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700 }}>Why does this get cited by AI?</summary>
+                  <div style={{ lineHeight: 1.6, marginTop: "var(--space-2)", paddingLeft: "var(--space-2)" }}>
+                    AI search engines (ChatGPT, Perplexity, Claude, Gemini) cite content that is:<br />
+                    &bull; <strong>Specific</strong> &mdash; includes real statistics and named sources<br />
+                    &bull; <strong>Structured</strong> &mdash; answers questions directly (&ldquo;What is X? Answer: &hellip;&rdquo;)<br />
+                    &bull; <strong>Quotable</strong> &mdash; contains short, memorable phrases<br />
+                    &bull; <strong>Authoritative</strong> &mdash; attributed to a credible voice<br /><br />
+                    Strengthen the weak badges above to improve citation odds.
+                  </div>
+                </details>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -560,7 +900,8 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
     } catch { void load(); }
   }
 
-  const vColor = (v: string) => v === "ai" ? "var(--color-primary)" : v === "performance" ? "#7c3aed" : "#0FB488";
+  const vColor = (v: string) =>
+    VECTOR_COLORS[v as keyof typeof VECTOR_COLORS] ?? VECTOR_COLORS.brand;
   const badge = (label: string, kind: "effort" | "impact") => (
     <span style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>
       {kind}: {label}
@@ -1120,21 +1461,6 @@ function camel(s: string): string {
   return s.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 }
 
-function ScoreRing({ value }: { value: number | null }) {
-  const display = value == null ? "—" : String(value);
-  const color = value == null ? "var(--color-muted)" : value >= 67 ? "var(--color-success)" : value >= 34 ? "#d97706" : "var(--color-error)";
-  const pct = value == null ? 0 : value;
-  const r = 54, c = 2 * Math.PI * r;
-  return (
-    <svg width="160" height="160" viewBox="0 0 160 160" role="img" aria-label={`TrustIndex Score ${display} out of 100`}>
-      <circle cx="80" cy="80" r={r} fill="none" stroke="var(--color-border)" strokeWidth="12" />
-      <circle cx="80" cy="80" r={r} fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c - (pct / 100) * c} transform="rotate(-90 80 80)"
-        style={{ transition: "stroke-dashoffset 0.6s ease" }} />
-      <text x="80" y="80" textAnchor="middle" dominantBaseline="central" fontSize="40" fontWeight="800" fill={color} fontFamily="var(--font-family)">{display}</text>
-    </svg>
-  );
-}
 
 function Spinner({ label }: { label: string }) {
   return (
