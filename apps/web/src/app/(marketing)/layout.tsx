@@ -29,6 +29,8 @@ import { SkipToMainContent } from "../../components/marketing/SkipToMainContent"
 import { ThemeToggle } from "../../components/marketing/ThemeToggle";
 import { Logo } from "../../components/brand/Logo";
 import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
+import { CookieConsentTrigger } from "../../components/CookieConsent";
+import { ChatWidget } from "../../components/ChatWidget";
 
 // ---------------------------------------------------------------------------
 // Font — Plus Jakarta Sans (self-hosted at build time, GDPR friendly)
@@ -365,6 +367,9 @@ export default function MarketingLayout({
 
       {/* Marketing footer */}
       <MarketingFooter />
+
+      {/* Floating chat widget — overlay, does not affect layout flow */}
+      <ChatWidget />
     </div>
   );
 }
@@ -513,6 +518,10 @@ function MarketingFooter() {
           <FooterLink href="/legal/do-not-sell">
             Do Not Sell or Share My Personal Information
           </FooterLink>
+          {/* Cookie preferences re-opens the consent panel (client-side event) */}
+          <CookieConsentTrigger className="mk-footer-link">
+            Cookie preferences
+          </CookieConsentTrigger>
           <FooterLink href="mailto:hello@trustindexai.com">
             hello@trustindexai.com
           </FooterLink>

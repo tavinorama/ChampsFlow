@@ -3,6 +3,10 @@
 /**
  * Footer — site-wide footer for TrustIndex AI
  *
+ * v2: Added CookieConsentTrigger link ("Cookie preferences") alongside the
+ * existing legal links so authenticated-app users can re-open the consent
+ * panel at any time.
+ *
  * CI-2 requirement: "Do Not Sell or Share My Personal Information" link
  * must appear in the footer of ALL pages (authenticated + public).
  *
@@ -29,6 +33,7 @@
  */
 
 import Link from "next/link";
+import { CookieConsentTrigger } from "./CookieConsent";
 
 // ---------------------------------------------------------------------------
 // Footer link styles — all links must share identical visual weight
@@ -96,6 +101,19 @@ export function Footer() {
           <FooterLink href="/legal/california-privacy">
             Your California Privacy Rights
           </FooterLink>
+
+          {/* Re-opens the CookieConsent panel — dispatches ti:open-cookie-prefs */}
+          <CookieConsentTrigger
+            style={{
+              ...FOOTER_LINK_STYLE,
+              // Override <button> resets to match FooterLink appearance
+              display: "inline",
+              outline: "none",
+              borderRadius: "var(--radius-sm)",
+            }}
+          >
+            Cookie preferences
+          </CookieConsentTrigger>
         </nav>
 
         {/* Secondary legal links */}

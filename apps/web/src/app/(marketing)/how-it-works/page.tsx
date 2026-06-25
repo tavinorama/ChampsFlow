@@ -15,6 +15,7 @@
  */
 
 import type { Metadata } from "next";
+import { BookCallButton } from "../../../components/BookCallButton";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -853,18 +854,30 @@ function FinalCtaSection() {
           Run your free AI Visibility Test &#8594;
         </a>
 
-        <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--space-3)",
+            justifyContent: "center",
+            marginBottom: "var(--space-4)",
+          }}
+        >
           <a
             href="/#pricing"
             style={{
               color: "var(--color-primary)",
               fontWeight: 600,
+              fontSize: "var(--font-size-body-sm)",
               textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
             }}
           >
-            Or compare Growth &amp; Agency plans &#8594;
+            Compare Growth &amp; Agency plans &#8594;
           </a>
-        </p>
+          <BookCallButton label="Book a strategy call" variant="secondary" />
+        </div>
       </div>
     </section>
   );

@@ -33,10 +33,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ["/resources/5-high-citation-post-templates", "monthly", 0.8],
     ["/resources/llm-citation-tracker", "monthly", 0.8],
 
-    // Blog
+    // Booking
+    ["/book", "monthly", 0.7],
+
+    // Blog — articles
     ["/blog", "weekly", 0.7],
     ["/blog/how-small-businesses-get-cited-by-chatgpt", "monthly", 0.7],
     ["/blog/why-small-businesses-stop-posting", "monthly", 0.6],
+
+    // Blog — videos (placeholder slugs; update when real videos are published)
+    ["/blog/watch/what-is-geo-and-why-it-matters", "monthly", 0.6],
+    ["/blog/watch/trustindex-ai-audit-walkthrough", "monthly", 0.6],
 
     // Legal / trust pages
     ["/privacy-policy", "yearly", 0.3],
