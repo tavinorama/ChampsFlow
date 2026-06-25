@@ -178,7 +178,7 @@ async function checkDpaRateLimit(tenantId: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 export function requireDpaAcknowledged(db: PostgresClient) {
-  return async function dpaAcknowledgedGuard(ctx: Context, next: Next): Promise<void> {
+  return async function dpaAcknowledgedGuard(ctx: Context, next: Next): Promise<Response | void> {
     const currentVersion = process.env.DPA_CURRENT_VERSION;
     if (!currentVersion) {
       // Env var missing — log warning and allow through (fail-open to avoid
@@ -192,9 +192,7 @@ export function requireDpaAcknowledged(db: PostgresClient) {
 
     const auth = ctx.get("auth");
     if (!auth) {
-      ctx.status(401);
-      ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" });
-      return;
+      return ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" }, 401);
     }
 
     // Fast lookup: read current_dpa_version from users table
@@ -205,9 +203,7 @@ export function requireDpaAcknowledged(db: PostgresClient) {
     );
 
     if (result.rows.length === 0) {
-      ctx.status(401);
-      ctx.json({ error: "Unauthorized", code: "USER_NOT_FOUND" });
-      return;
+      return ctx.json({ error: "Unauthorized", code: "USER_NOT_FOUND" }, 401);
     }
 
     const userVersion = result.rows[0].current_dpa_version;
@@ -227,13 +223,12 @@ export function requireDpaAcknowledged(db: PostgresClient) {
       variant,
     });
 
-    ctx.status(403);
-    ctx.json({
+    return ctx.json({
       error: "dpa_acknowledgment_required",
       code: "DPA_ACKNOWLEDGMENT_REQUIRED",
       variant_required: variant,
       current_dpa_version: currentVersion,
-    });
+    }, 403);
   };
 }
 

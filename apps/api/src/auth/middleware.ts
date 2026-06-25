@@ -121,7 +121,7 @@ export async function verifySupabaseToken(
 // Security: tenant_id is read from JWT app_metadata.tenant_id ONLY.
 // It is NEVER accepted from the request body, query string, or headers.
 // ---------------------------------------------------------------------------
-export async function requireAuth(ctx: Context, next: Next): Promise<void> {
+export async function requireAuth(ctx: Context, next: Next): Promise<Response | void> {
   // ---------------------------------------------------------------------------
   // DEV-ONLY auth bypass — local end-to-end testing without Supabase.
   // HARD-GATED: active ONLY when DEV_AUTH_BYPASS=1 AND NODE_ENV !== production.
@@ -152,9 +152,7 @@ export async function requireAuth(ctx: Context, next: Next): Promise<void> {
   const authHeader = ctx.req.header("Authorization");
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    ctx.status(401);
-    ctx.json({ error: "Unauthorized", code: "MISSING_TOKEN" });
-    return;
+    return ctx.json({ error: "Unauthorized", code: "MISSING_TOKEN" }, 401);
   }
 
   const token = authHeader.slice(7); // strip "Bearer "
@@ -179,18 +177,14 @@ export async function requireAuth(ctx: Context, next: Next): Promise<void> {
         ? "TOKEN_EXPIRED"
         : "TOKEN_INVALID",
     });
-    ctx.status(401);
-    ctx.json({ error: "Unauthorized", code: "INVALID_TOKEN" });
-    return;
+    return ctx.json({ error: "Unauthorized", code: "INVALID_TOKEN" }, 401);
   }
 
   // Resolve tenant_id from JWT custom claim ONLY
   const tenantId = payload.app_metadata?.tenant_id;
   if (!tenantId) {
     logger.warn("jwt_missing_tenant_id", { supabaseUid: payload.sub });
-    ctx.status(401);
-    ctx.json({ error: "Unauthorized", code: "MISSING_TENANT_CLAIM" });
-    return;
+    return ctx.json({ error: "Unauthorized", code: "MISSING_TENANT_CLAIM" }, 401);
   }
 
   // The tenant_id flows into an RLS `::uuid` cast (app.current_tenant_id). Reject
@@ -198,9 +192,7 @@ export async function requireAuth(ctx: Context, next: Next): Promise<void> {
   // error deep in a query — and to keep only well-formed values in the GUC.
   if (!UUID_RE.test(tenantId)) {
     logger.warn("jwt_invalid_tenant_id", { supabaseUid: payload.sub });
-    ctx.status(401);
-    ctx.json({ error: "Unauthorized", code: "INVALID_TENANT_CLAIM" });
-    return;
+    return ctx.json({ error: "Unauthorized", code: "INVALID_TENANT_CLAIM" }, 401);
   }
 
   // Resolve app role from JWT custom claim
@@ -244,13 +236,11 @@ export async function requireAuth(ctx: Context, next: Next): Promise<void> {
 // contracts scope — not implied by route ordering."
 // ---------------------------------------------------------------------------
 export function requireRole(allowedRoles: AppRole[]) {
-  return async function roleGuard(ctx: Context, next: Next): Promise<void> {
+  return async function roleGuard(ctx: Context, next: Next): Promise<Response | void> {
     const auth = ctx.get("auth");
     if (!auth) {
       // requireAuth must run first
-      ctx.status(401);
-      ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" });
-      return;
+      return ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" }, 401);
     }
 
     if (!allowedRoles.includes(auth.role)) {
@@ -260,13 +250,11 @@ export function requireRole(allowedRoles: AppRole[]) {
         requiredRoles: allowedRoles,
         actualRole: auth.role,
       });
-      ctx.status(403);
-      ctx.json({
+      return ctx.json({
         error: "Forbidden",
         code: "INSUFFICIENT_ROLE",
         required: allowedRoles,
-      });
-      return;
+      }, 403);
     }
 
     // Viewer guard: block all state-changing methods at middleware level (arch §6)
@@ -279,13 +267,11 @@ export function requireRole(allowedRoles: AppRole[]) {
           method,
           path: ctx.req.path,
         });
-        ctx.status(403);
-        ctx.json({
+        return ctx.json({
           error: "Forbidden",
           code: "VIEWER_READONLY",
           message: "Viewer accounts cannot perform write operations.",
-        });
-        return;
+        }, 403);
       }
     }
 
@@ -332,12 +318,10 @@ export function requireNotProcessingRestricted(db: DbClient) {
   return async function notProcessingRestrictedGuard(
     ctx: Context,
     next: Next
-  ): Promise<void> {
+  ): Promise<Response | void> {
     const auth = ctx.get("auth");
     if (!auth) {
-      ctx.status(401);
-      ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" });
-      return;
+      return ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" }, 401);
     }
 
     try {
@@ -376,13 +360,11 @@ export function requireNotProcessingRestricted(db: DbClient) {
           // user_id deliberately NOT logged — PII minimisation
         });
 
-        ctx.status(403);
-        ctx.json({
+        return ctx.json({
           error: "processing_restricted",
           message:
             "Processing restricted under GDPR Art. 18. Contact privacy@trustindexai.com to lift the restriction.",
-        });
-        return;
+        }, 403);
       }
     } catch (err) {
       // On DB error, fail open to avoid blocking all users on infra issues.
@@ -407,12 +389,10 @@ export function requireNotProcessingRestricted(db: DbClient) {
 export async function requireSuperAdmin(
   ctx: Context,
   next: Next
-): Promise<void> {
+): Promise<Response | void> {
   const auth = ctx.get("auth");
   if (!auth || !auth.isSuperAdmin) {
-    ctx.status(403);
-    ctx.json({ error: "Forbidden", code: "SUPER_ADMIN_REQUIRED" });
-    return;
+    return ctx.json({ error: "Forbidden", code: "SUPER_ADMIN_REQUIRED" }, 403);
   }
   await next();
 }

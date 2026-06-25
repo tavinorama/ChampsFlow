@@ -177,12 +177,10 @@ export function requireNotRestricted(db: PostgresClient) {
   return async function notRestrictedGuard(
     ctx: Context,
     next: Next
-  ): Promise<void> {
+  ): Promise<Response | void> {
     const auth = ctx.get("auth");
     if (!auth) {
-      ctx.status(401);
-      ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" });
-      return;
+      return ctx.json({ error: "Unauthorized", code: "MISSING_AUTH_CONTEXT" }, 401);
     }
 
     try {
@@ -241,16 +239,14 @@ export function requireNotRestricted(db: PostgresClient) {
           status,
           path: ctx.req.path,
         });
-        ctx.status(402);
-        ctx.json({
+        return ctx.json({
           error: "subscription_inactive",
           code: "SUBSCRIPTION_INACTIVE",
           status,
           portal_url: "/account/billing",
           message:
             "Your subscription is no longer active. Please update your billing information to continue.",
-        });
-        return;
+        }, 402);
       }
 
       // Any other status (incomplete, etc.) → allow through (conservative)
