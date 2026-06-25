@@ -105,6 +105,24 @@ export const POSTS: Post[] = [
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * A video is a placeholder (not yet published) when its youtubeId is empty or
+ * still carries the PLACEHOLDER sentinel. Placeholder videos are hidden from the
+ * live site (no broken embeds/thumbnails) and light up automatically the moment
+ * a real 11-char YouTube ID is filled in above.
+ */
+export function isPlaceholderVideo(youtubeId: string): boolean {
+  return !youtubeId || youtubeId.startsWith("PLACEHOLDER");
+}
+
+/**
+ * The posts shown on the live site: all articles + only videos with a real
+ * YouTube ID. Use THIS in the blog index and the video route — never raw POSTS.
+ */
+export const PUBLISHED_POSTS: Post[] = POSTS.filter(
+  (p) => p.type !== "video" || !isPlaceholderVideo(p.youtubeId)
+);
+
 /** Return a YouTube thumbnail URL for a given video ID. */
 export function youtubeThumbnailUrl(youtubeId: string): string {
   return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
@@ -115,9 +133,14 @@ export function youtubeEmbedUrl(youtubeId: string): string {
   return `https://www.youtube-nocookie.com/embed/${youtubeId}`;
 }
 
-/** Find a video post by slug. Returns undefined if not found or not a video. */
+/**
+ * Find a PUBLISHED video post by slug. Returns undefined if not found, not a
+ * video, or still a placeholder (so /blog/watch/<slug> 404s instead of showing
+ * a broken embed until a real YouTube ID is added).
+ */
 export function findVideoPost(slug: string): VideoPost | undefined {
   const post = POSTS.find((p) => p.slug === slug);
   if (!post || post.type !== "video") return undefined;
+  if (isPlaceholderVideo(post.youtubeId)) return undefined;
   return post;
 }

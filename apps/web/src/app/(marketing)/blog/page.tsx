@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  POSTS,
+  PUBLISHED_POSTS,
   youtubeThumbnailUrl,
   type Post,
   type ArticlePost,
@@ -46,8 +46,8 @@ export const metadata: Metadata = {
 // JSON-LD — CollectionPage with articles and video objects
 // ---------------------------------------------------------------------------
 
-const articlePosts = POSTS.filter((p) => p.type === "article") as ArticlePost[];
-const videoPosts = POSTS.filter((p) => p.type === "video") as VideoPost[];
+const articlePosts = PUBLISHED_POSTS.filter((p) => p.type === "article") as ArticlePost[];
+const videoPosts = PUBLISHED_POSTS.filter((p) => p.type === "video") as VideoPost[];
 
 const blogIndexJsonLd = {
   "@context": "https://schema.org",
@@ -142,7 +142,7 @@ export default function BlogIndexPage() {
         }}
         aria-label="Blog posts"
       >
-        {POSTS.map((post) =>
+        {PUBLISHED_POSTS.map((post) =>
           post.type === "video" ? (
             <li key={post.slug}>
               <VideoCard post={post} />
