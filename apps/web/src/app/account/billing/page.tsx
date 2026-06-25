@@ -36,6 +36,7 @@ import {
   type BillingInterval,
 } from "../../../components/PlanCard";
 import { BottomNav } from "../../../components/BottomNav";
+import { apiFetch } from "../../../lib/supabase-browser";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -239,9 +240,8 @@ function BillingPageInner(): React.ReactElement {
     setIsLoadingPlan(true);
     setFetchError(null);
     try {
-      const res = await fetch("/api/billing/plan", {
+      const res = await apiFetch("/api/billing/plan", {
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -290,10 +290,9 @@ function BillingPageInner(): React.ReactElement {
       if (isCheckingOut || isOpeningPortal) return;
       setIsCheckingOut(true);
       try {
-        const res = await fetch("/api/billing/checkout", {
+        const res = await apiFetch("/api/billing/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
           body: JSON.stringify({
             plan: tier,
             interval: billingInterval,
@@ -328,10 +327,9 @@ function BillingPageInner(): React.ReactElement {
     if (isCheckingOut || isOpeningPortal) return;
     setIsOpeningPortal(true);
     try {
-      const res = await fetch("/api/billing/portal", {
+      const res = await apiFetch("/api/billing/portal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

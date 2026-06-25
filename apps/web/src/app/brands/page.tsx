@@ -40,7 +40,11 @@ export default function BrandsPage() {
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [category, setCategory] = useState("");
-  const [region, setRegion] = useState<Region>("EU");
+  // Default to US so all 5 engines run. EU region gates OpenAI/Gemini/Perplexity
+  // behind *_EU_ENABLED flags, which would silently collapse the audit to Claude
+  // only — the multi-engine result is the whole value prop, so US is the safer
+  // default. (EU residency stays selectable for users who require it.)
+  const [region, setRegion] = useState<Region>("US");
   const [creating, setCreating] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
 

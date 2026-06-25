@@ -18,6 +18,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, ensureProvisioned } from "../../lib/supabase-browser";
 import { TrustIndexScorecard } from "../../components/TrustIndexScorecard";
+import { ScoreTrend } from "../../components/ScoreTrend";
 
 interface Brand {
   id: string;
@@ -37,6 +38,7 @@ interface FeaturedData {
   brand: number | null;
   competitors: Array<{ name: string; displacement: number }>;
   probeSummary?: string;
+  trendData?: Array<{ recorded_at: string; score_overall: number | null }>;
 }
 
 async function loadFeaturedBreakdown(
@@ -54,6 +56,7 @@ async function loadFeaturedBreakdown(
         score_ai?: number | null;
         score_overall?: number | null;
       };
+      trend?: Array<{ recorded_at: string; score_overall: number | null }>;
     };
     const latest = scoreData.latest;
     if (!latest) return null;
@@ -66,6 +69,10 @@ async function loadFeaturedBreakdown(
       performance: latest.score_performance ?? null,
       brand: latest.score_brand ?? null,
       competitors: [],
+      trendData: (scoreData.trend ?? []) as Array<{
+        recorded_at: string;
+        score_overall: number | null;
+      }>,
     };
 
     // Step 2: get breakdown for vector-level data + competitors + probes
@@ -272,6 +279,11 @@ export default function DashboardPage() {
             probeSummary={featured.probeSummary}
             brandName={featured.brandName}
           />
+          {featured.trendData && featured.trendData.length >= 2 && (
+            <div style={{ marginTop: "var(--space-4)" }}>
+              <ScoreTrend trend={featured.trendData} compact brandName={featured.brandName} />
+            </div>
+          )}
           <p
             style={{
               fontSize: "var(--font-size-caption)",
@@ -550,7 +562,7 @@ function ScoreMiniRing({ score }: { score: number }) {
     score >= 67
       ? "var(--color-success)"
       : score >= 34
-      ? "#d97706"
+      ? "var(--color-note-warn)"
       : "var(--color-error)";
   const size = (r + strokeW) * 2;
   const cx = size / 2;
@@ -579,7 +591,7 @@ function ScoreMiniRing({ score }: { score: number }) {
           cy={cy}
           r={r}
           fill="none"
-          stroke="#eef2f7"
+          stroke="var(--color-border)"
           strokeWidth={strokeW}
         />
         <circle

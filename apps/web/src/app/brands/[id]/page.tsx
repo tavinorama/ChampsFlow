@@ -16,6 +16,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../../lib/supabase-browser";
 import { TrustIndexScorecard, VECTOR_COLORS } from "../../../components/TrustIndexScorecard";
+import { ScoreTrend } from "../../../components/ScoreTrend";
 
 interface AuditState {
   id?: string;
@@ -115,6 +116,7 @@ export default function BrandDetailPage() {
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [resolvedAuditId, setResolvedAuditId] = useState<string>("");
   const [brandName, setBrandName] = useState<string | undefined>(undefined);
+  const [trend, setTrend] = useState<Array<{ recorded_at: string; score_overall: number | null }>>([]);
   const pollCount = useRef(0);
 
   const computeOverall = useCallback((a: AuditState): number | null => {
@@ -194,6 +196,12 @@ export default function BrandDetailPage() {
         if (res.ok) {
           const data = await res.json();
           const latest = data.latest;
+          setTrend(
+            (data.trend ?? []) as Array<{
+              recorded_at: string;
+              score_overall: number | null;
+            }>
+          );
           if (latest) {
             setAudit({
               status: "complete",
@@ -257,6 +265,29 @@ export default function BrandDetailPage() {
           brandName={brandName}
         />
       </div>
+
+      {/* Score trend chart — shown prominently when history exists */}
+      {trend.length >= 2 && (
+        <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="score-trend-heading">
+          <h2 id="score-trend-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-4) 0" }}>
+            Your TrustIndex Score over time
+          </h2>
+          <div style={{
+            backgroundColor: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "var(--space-6)",
+            boxShadow: "var(--shadow-card)",
+          }}>
+            <ScoreTrend trend={trend} brandName={brandName} />
+          </div>
+        </section>
+      )}
+      {trend.length < 2 && audit?.status === "complete" && (
+        <section style={{ marginBottom: "var(--space-6)" }}>
+          <ScoreTrend trend={trend} brandName={brandName} />
+        </section>
+      )}
 
       {/* Three vectors — expandable with component breakdown */}
       <VectorPanel

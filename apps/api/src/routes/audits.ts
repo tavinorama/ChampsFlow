@@ -27,6 +27,7 @@ import { randomUUID } from "crypto";
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
 import { requireAuth, requireRole } from "../auth/middleware";
+import { requireNotRestricted } from "./billing";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
@@ -279,6 +280,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     "/api/brands/:id/audit",
     requireAuth,
     requireRole(["owner", "editor"]),
+    requireNotRestricted(db),
     async (c) => {
       const auth = c.get("auth");
       const { tenantId, userId } = auth;
@@ -331,6 +333,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     "/api/brands/:id/monitoring",
     requireAuth,
     requireRole(["owner", "editor"]),
+    requireNotRestricted(db),
     async (c) => {
       const auth = c.get("auth");
       const { tenantId, userId } = auth;
