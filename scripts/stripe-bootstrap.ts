@@ -26,9 +26,21 @@ const mode = key.startsWith("sk_live_") ? "LIVE" : "TEST";
 
 // USD amounts in cents. Annual = 12× monthly (LIST price — the 30% founder
 // discount is applied by the coupon at checkout, annual-only, NOT baked here).
+//
+// Agency pricing updated 2026-06-25: $149/mo → $249/mo; annual $2,988 list.
+// Founder price (30% off annual): $2,988 × 0.70 = $2,091.60 → $2,091/yr.
+//
+// IMPORTANT — display/charge sync:
+//   The Agency price shown in the UI is $249/mo and $2,091/yr (founder).
+//   The ACTUAL CHARGE comes from the Stripe price IDs in env:
+//     STRIPE_PRICE_ID_AGENCY        → must point to the $249/mo price created here
+//     STRIPE_PRICE_ID_AGENCY_ANNUAL → must point to the $2,988/yr price created here
+//   Run this script, paste the printed price IDs into Railway / .env.local, then
+//   set env vars — otherwise checkout will charge the old $149 amount.
+//   DO NOT hardcode price IDs anywhere; always read from env at runtime.
 const CATALOG = {
   growth: { name: "TrustIndex AI — Growth", desc: "Weekly AI-visibility monitoring + GEO content plan for 1 brand.", monthly: 9900, annual: 118800 },
-  agency: { name: "TrustIndex AI — Agency", desc: "Weekly monitoring + competitor tracking across up to 25 brands.", monthly: 14900, annual: 178800 },
+  agency: { name: "TrustIndex AI — Agency", desc: "Weekly monitoring + competitor tracking across up to 25 brands.", monthly: 24900, annual: 298800 },
   kit:    { name: "The Get-Cited Kit",      desc: "One-time AI Visibility audit + 3 ready-to-publish drafts + GEO guide.", once: 2900 },
 };
 
@@ -55,8 +67,11 @@ async function main(): Promise<void> {
 
   const growthMo = await findOrCreatePrice("growth_monthly_usd", { product: growth.id, currency: "usd", unit_amount: CATALOG.growth.monthly, recurring: { interval: "month" } });
   const growthYr = await findOrCreatePrice("growth_annual_usd", { product: growth.id, currency: "usd", unit_amount: CATALOG.growth.annual, recurring: { interval: "year" } });
-  const agencyMo = await findOrCreatePrice("agency_monthly_usd", { product: agency.id, currency: "usd", unit_amount: CATALOG.agency.monthly, recurring: { interval: "month" } });
-  const agencyYr = await findOrCreatePrice("agency_annual_usd", { product: agency.id, currency: "usd", unit_amount: CATALOG.agency.annual, recurring: { interval: "year" } });
+  // Lookup keys include the price point so re-running never reuses an old price.
+  // Old keys (agency_monthly_usd / agency_annual_usd) pointed to the $149/$1,788
+  // prices; new keys are versioned to force creation of the $249/$2,988 prices.
+  const agencyMo = await findOrCreatePrice("agency_monthly_249_usd", { product: agency.id, currency: "usd", unit_amount: CATALOG.agency.monthly, recurring: { interval: "month" } });
+  const agencyYr = await findOrCreatePrice("agency_annual_2988_usd", { product: agency.id, currency: "usd", unit_amount: CATALOG.agency.annual, recurring: { interval: "year" } });
   const kitOnce = await findOrCreatePrice("kit_onetime_usd", { product: kit.id, currency: "usd", unit_amount: CATALOG.kit.once });
 
   // Founder coupon: 30% off, forever (locked for life), restricted to the plans.

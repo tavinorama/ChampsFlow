@@ -11,7 +11,7 @@
  *       Falls back to /test (the free audit page) so the CTA is never broken.
  *
  * Props:
- *   label    — visible button text (default: "Book a 30-min call")
+ *   label    — visible button text (default: "Book a 20-min call")
  *   variant  — "primary" | "secondary" (default: "secondary")
  *
  * Accessibility:
@@ -54,7 +54,7 @@ interface BookCallButtonProps {
 // ---------------------------------------------------------------------------
 
 export function BookCallButton({
-  label = "Book a 30-min call",
+  label = "Book a 20-min call",
   variant = "secondary",
   style,
 }: BookCallButtonProps) {

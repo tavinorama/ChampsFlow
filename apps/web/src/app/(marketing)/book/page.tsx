@@ -42,14 +42,14 @@ const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "";
 export const metadata: Metadata = {
   title: "Book a GEO Strategy Call — TrustIndex AI",
   description:
-    "Book a 30-minute GEO strategy call with the TrustIndex AI team. We'll review your AI search visibility gaps and walk you through a personalised action plan.",
+    "Book a 20-minute GEO strategy call with the TrustIndex AI team. We'll review your AI search visibility gaps and walk you through a personalised action plan.",
   alternates: {
     canonical: "https://trustindexai.com/book",
   },
   openGraph: {
     title: "Book a GEO Strategy Call — TrustIndex AI",
     description:
-      "30 minutes to understand your AI search visibility and get a personalised GEO action plan.",
+      "20 minutes to understand your AI search visibility and get a personalised GEO action plan.",
     url: "https://trustindexai.com/book",
     siteName: "TrustIndex AI",
     type: "website",
@@ -65,7 +65,7 @@ const bookPageJsonLd = {
   "@type": "WebPage",
   name: "Book a GEO Strategy Call — TrustIndex AI",
   description:
-    "Book a 30-minute GEO strategy call with the TrustIndex AI team.",
+    "Book a 20-minute GEO strategy call with the TrustIndex AI team.",
   url: "https://trustindexai.com/book",
   isPartOf: {
     "@type": "WebSite",
@@ -120,7 +120,7 @@ export default function BookPage() {
             className="mk-badge"
             style={{ marginBottom: "var(--space-5)", display: "inline-flex" }}
           >
-            Free 30-minute call &middot; No pitch
+            Free 20-minute call &middot; No pitch
           </div>
 
           <h1
@@ -136,7 +136,7 @@ export default function BookPage() {
               textWrap: "balance",
             }}
           >
-            Book a 30-minute{" "}
+            Book a 20-minute{" "}
             <span style={{ color: "var(--color-primary)" }}>
               GEO strategy call
             </span>
@@ -152,7 +152,7 @@ export default function BookPage() {
               maxWidth: "58ch",
             }}
           >
-            In 30 minutes we&rsquo;ll walk through your brand&rsquo;s AI
+            In 20 minutes we&rsquo;ll walk through your brand&rsquo;s AI
             search visibility, identify the gaps costing you citations, and
             map out the three actions with the biggest impact on your
             TrustIndex Score.

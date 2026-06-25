@@ -18,12 +18,12 @@ import { GeoGraphBackdrop } from "../../../components/marketing/GeoGraphBackdrop
 export const metadata: Metadata = {
   title: "Pricing — TrustIndex AI",
   description:
-    "TrustIndex AI pricing: Free audit, $99/mo Growth, $149/mo Agency. 30-day money-back guarantee. Founding members get 30% off annual plans.",
+    "TrustIndex AI pricing: Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back guarantee. Founding members get 30% off annual plans.",
   alternates: { canonical: "https://trustindexai.com/pricing" },
   openGraph: {
     title: "Pricing — TrustIndex AI",
     description:
-      "Free audit, $99/mo Growth, $149/mo Agency. 30-day money-back. Founding member discount on annual plans.",
+      "Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back. Founding member discount on annual plans.",
     url: "https://trustindexai.com/pricing",
     siteName: "TrustIndex AI",
     type: "website",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
         url: "https://trustindexai.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "TrustIndex AI pricing — Free, Growth $99/mo, Agency $149/mo",
+        alt: "TrustIndex AI pricing — Free, Growth $99/mo, Agency $249/mo",
       },
     ],
   },
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Pricing — TrustIndex AI",
     description:
-      "Free audit, $99/mo Growth, $149/mo Agency. 30-day money-back guarantee.",
+      "Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back guarantee.",
     images: ["https://trustindexai.com/og-default.png"],
   },
 };
@@ -54,7 +54,7 @@ const pricingJsonLd = {
   "@type": "WebPage",
   name: "TrustIndex AI — Pricing",
   description:
-    "Pricing for TrustIndex AI: Free (0$), Growth ($99/mo), Agency ($149/mo). 30-day money-back guarantee.",
+    "Pricing for TrustIndex AI: Free (0$), Growth ($99/mo), Agency ($249/mo). 30-day money-back guarantee.",
   url: "https://trustindexai.com/pricing",
   breadcrumb: {
     "@type": "BreadcrumbList",
@@ -66,7 +66,7 @@ const pricingJsonLd = {
   offers: [
     { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD" },
     { "@type": "Offer", name: "Growth", price: "99", priceCurrency: "USD", billingIncrement: "P1M" },
-    { "@type": "Offer", name: "Agency", price: "149", priceCurrency: "USD", billingIncrement: "P1M" },
+    { "@type": "Offer", name: "Agency", price: "249", priceCurrency: "USD", billingIncrement: "P1M" },
   ],
 };
 
@@ -114,9 +114,9 @@ const PLANS = [
   {
     name: "Agency",
     subtitle: "For agencies managing multiple SMB clients.",
-    price: "$149",
+    price: "$249",
     period: "/mo",
-    annual: "Annual: $1,251/year — 30% founder discount ($104/mo)",
+    annual: "Annual: $2,091/year — 30% founder discount ($174/mo)",
     features: [
       "Multi-client dashboard (up to 25 brands)",
       "10 competitors per brand",
@@ -126,7 +126,7 @@ const PLANS = [
       "Priority support · 4h SLA",
       "Annual: website + 3 client landings",
     ],
-    ctaLabel: "Start Agency — $149/mo",
+    ctaLabel: "Start Agency — $249/mo",
     ctaHref: "/login?plan=agency&next=checkout",
     featured: false,
   },
@@ -339,7 +339,7 @@ export default function PricingPage() {
           <strong style={{ color: "var(--color-success)", fontWeight: 700 }}>
             30% founder discount
           </strong>{" "}
-          on annual plans ($831 Growth / $1,251 Agency per year) &mdash; applied
+          on annual plans ($831 Growth / $2,091 Agency per year) &mdash; applied
           only when you pay annually. Or,{" "}
           <a
             href="/#waitlist-cta"

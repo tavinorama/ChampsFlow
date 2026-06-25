@@ -59,6 +59,7 @@ import {
 } from "../integrations/stripe";
 import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
+import { enrollNurture, suppressOnConversion } from "./nurture";
 import Stripe from "stripe";
 
 // ---------------------------------------------------------------------------
@@ -861,6 +862,33 @@ async function handleCheckoutSessionCompleted(
         has_email: !!customerEmail,
         has_brand: !!brand,
       });
+    }
+
+    // Best-effort: suppress free_to_kit nurture (they've converted) + enroll in kit_to_dfy.
+    // Must not throw — kit delivery is already complete at this point.
+    try {
+      const kitEmail = session.customer_details?.email ?? session.customer_email ?? "";
+      if (kitEmail) {
+        await suppressOnConversion(db, kitEmail);
+        const kitBrand = brand; // already resolved from kit_order above
+        if (kitBrand) {
+          await enrollNurture(db, {
+            email: kitEmail,
+            sequence: "kit_to_dfy",
+            brand: kitBrand,
+            metadata: { orderId: kit_order_id },
+            sourceKitId: kit_order_id,
+            delayMs: 2 * 24 * 60 * 60 * 1000, // 2-day delay before first step
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn("nurture_kit_enroll_failed", {
+        kit_order_id,
+        event_id: eventId,
+        message: (err as Error).message,
+      });
+      // best-effort: do not block the webhook 200
     }
 
     logger.info("stripe_kit_checkout_completed_processed", {

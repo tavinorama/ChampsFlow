@@ -29,6 +29,7 @@ import { createKitCheckoutSession, isCheckoutSessionPaid } from "../integrations
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { enrollNurture } from "./nurture";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -110,7 +111,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/test — The AI Invisibility Test (free lead magnet)
   // -------------------------------------------------------------------------
   app.post("/api/test", async (c) => {
-    let body: { brand?: string; competitor?: string; category?: string; region?: string; email?: string };
+    let body: { brand?: string; competitor?: string; category?: string; region?: string; email?: string; marketing_consent?: boolean };
     try {
       body = await c.req.json();
     } catch {
@@ -121,6 +122,8 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     const competitor = (body.competitor ?? "").trim() || null;
     const region = normRegion(body.region);
     const email = (body.email ?? "").trim() || null;
+    // LGPD Art. 7(I) / GDPR Art. 6(1)(a): marketing consent must be explicitly true
+    const marketingConsent = body.marketing_consent === true;
 
     if (!brand) return c.json({ message: "Brand name is required." }, 400);
     if (!category) return c.json({ message: "Category is required." }, 400);
@@ -158,13 +161,36 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     try {
       const ip = clientIp(c);
       await db.query(
-        `INSERT INTO lead_capture (id, email, brand, competitor, category, region, result, source, ip_truncated, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'invisibility_test',$8, NOW())`,
-        [leadId, email, brand, competitor, category, region, JSON.stringify(result), ip ? truncateIp(ip) : null]
+        `INSERT INTO lead_capture (id, email, brand, competitor, category, region, result, source, ip_truncated, marketing_consent, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'invisibility_test',$8,$9, NOW())`,
+        [leadId, email, brand, competitor, category, region, JSON.stringify(result), ip ? truncateIp(ip) : null, marketingConsent]
       );
       testId = leadId;
     } catch (err) {
       logger.warn("lead_capture_insert_failed", { message: (err as Error).message });
+    }
+
+    // Best-effort nurture enrollment (LGPD Art. 7(I): only if consent given).
+    // Never blocks the response — best-effort; fail-open on any DB error.
+    if (email && marketingConsent) {
+      try {
+        await enrollNurture(db, {
+          email,
+          sequence: "free_to_kit",
+          brand,
+          metadata: {
+            verdict: (result as unknown as Record<string, unknown>).verdict ?? null,
+            score: (result as unknown as Record<string, unknown>).score ?? null,
+            category,
+            region,
+          },
+          sourceLeadId: testId ?? undefined,
+          delayMs: 0, // worker sends step 1 immediately
+        });
+      } catch (err) {
+        logger.warn("nurture_enroll_failed", { message: (err as Error).message });
+        // best-effort: do not block the response
+      }
     }
 
     return c.json({ result, captured: !!email, testId });

@@ -4,7 +4,7 @@
  * ENV VARS:
  *   NEXT_PUBLIC_CALENDLY_URL — (optional) Calendly booking URL shown in the chat panel.
  *     If unset, the "Book a call" button links to /test instead.
- *     Example: NEXT_PUBLIC_CALENDLY_URL=https://calendly.com/yourname/30min
+ *     Example: NEXT_PUBLIC_CALENDLY_URL=https://calendly.com/yourname/20min
  *
  * Accessibility: WCAG 2.2 AA
  *   - Panel: role="dialog", aria-modal="true", aria-label
