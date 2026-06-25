@@ -215,6 +215,9 @@ function BillingPageInner(): React.ReactElement {
   // (which the API applies only to annual checkouts).
   const [billingInterval, setBillingInterval] =
     useState<BillingInterval>("month");
+  // Guard: track whether we've already fired the auto-checkout so it only
+  // runs once per page load (prevents loops on checkout cancel/return).
+  const autoCheckoutFiredRef = useRef(false);
 
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -319,6 +322,26 @@ function BillingPageInner(): React.ReactElement {
     },
     [isCheckingOut, isOpeningPortal, billingInterval, showToast]
   );
+
+  // -------------------------------------------------------------------------
+  // Auto-checkout: if landing from /login?plan=growth&next=checkout the URL
+  // will be /account/billing?plan=growth&autocheckout=1. Once billing data
+  // has loaded fire handleChoosePlan once. The ref guards against double-fire
+  // in React StrictMode and against re-triggering on URL cleanup.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (autoCheckoutFiredRef.current) return;
+    if (isLoadingPlan || fetchError) return;
+    const planParam = searchParams.get("plan");
+    const autoCheckout = searchParams.get("autocheckout");
+    if (autoCheckout === "1" && (planParam === "growth" || planParam === "agency")) {
+      autoCheckoutFiredRef.current = true;
+      // Clean the URL first — removes the query params so a refresh or
+      // browser-back doesn't accidentally re-trigger the checkout flow.
+      router.replace("/account/billing", { scroll: false });
+      void handleChoosePlan(planParam as PlanTier);
+    }
+  }, [isLoadingPlan, fetchError, searchParams, router, handleChoosePlan]);
 
   // -------------------------------------------------------------------------
   // Handle "Manage billing" or portal link → Stripe Billing Portal

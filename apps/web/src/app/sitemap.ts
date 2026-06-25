@@ -22,6 +22,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const routes: Array<[string, MetadataRoute.Sitemap[number]["changeFrequency"], number]> = [
     ["/", "weekly", 1.0],
     ["/how-it-works", "monthly", 0.9],
+    ["/pricing", "monthly", 0.95],
     ["/test", "weekly", 0.9],
     ["/kit", "monthly", 0.8],
     ["/organicposts", "monthly", 0.8],

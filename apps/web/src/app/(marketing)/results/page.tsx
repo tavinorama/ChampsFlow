@@ -148,6 +148,47 @@ export default function ResultsPage() {
         </div>
       </section>
 
+      {/* GEO Sprint offer — done-for-you upsell on the results page */}
+      <section style={{ padding: "var(--space-16) var(--space-4)" }}>
+        <div
+          style={{
+            maxWidth: "820px",
+            margin: "0 auto",
+            background: "linear-gradient(135deg, var(--color-badge-ai-bg), var(--color-surface))",
+            border: "1.5px solid var(--color-primary)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-10)",
+          }}
+        >
+          <span style={{ fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: "0.08em", color: "var(--color-primary)" }}>
+            Done-for-you &middot; OrganicPosts GEO Sprint
+          </span>
+          <h2 style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-2) 0 var(--space-3) 0" }}>
+            Want this fixed for you? Get Cited in 30 Days.
+          </h2>
+          <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-5) 0" }}>
+            The 8-week trajectory above is the realistic self-serve path. The OrganicPosts GEO Sprint
+            compresses it &mdash; founder-led, done-for-you execution: full audit, citation-optimised
+            content written and published, knowledge-graph entity setup, and a 30-day re-measure.
+            You talk directly to the person doing the work.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)", alignItems: "center" }}>
+            <a
+              href="/book"
+              style={{ display: "inline-flex", alignItems: "center", height: 48, padding: "0 var(--space-6)", backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", fontWeight: 800, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}
+            >
+              Book a free 20-min call &rarr;
+            </a>
+            <a
+              href="/kit"
+              style={{ display: "inline-flex", alignItems: "center", height: 48, padding: "0 var(--space-6)", backgroundColor: "transparent", color: "var(--color-primary)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}
+            >
+              DIY with the $29 Kit
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* Founding CTA */}
       <section style={{ padding: "var(--space-16) var(--space-4)", backgroundColor: "var(--color-surface-muted)" }}>
         <div style={{ maxWidth: "640px", margin: "0 auto", textAlign: "center" }}>
