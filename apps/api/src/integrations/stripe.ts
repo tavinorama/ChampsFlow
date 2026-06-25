@@ -191,8 +191,10 @@ export async function createCheckoutSession(
 
   // Brazilian checkout offers Pix + boleto alongside card; elsewhere card only.
   // (Pix/boleto require the Stripe account to have them enabled + BRL pricing.)
-  const paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[] =
-    region === "BR" ? ["card", "boleto"] : ["card"];
+  // Low-friction checkout: let Stripe surface every eligible fast method
+  // (card + Apple Pay + Google Pay + Link 1-click, plus Pix/boleto when a BRL
+  // price is used) via automatic_payment_methods, instead of a card-only list.
+  void region;
 
   if (!priceId) {
     // Env var missing: this is a configuration error, not a Stripe error.
@@ -212,7 +214,10 @@ export async function createCheckoutSession(
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      payment_method_types: paymentMethodTypes,
+      // Low-friction: omit payment_method_types so Stripe Checkout shows every
+      // method enabled in the Dashboard — card + Apple Pay + Google Pay + Link
+      // (1-click). (Checkout has no automatic_payment_methods param; omission IS
+      // the dynamic-payment-methods behaviour.)
       // Pre-fill email to reduce checkout friction
       customer_email: userEmail,
       line_items: [
@@ -310,13 +315,16 @@ export async function createKitCheckoutSession(
     (err as NodeJS.ErrnoException).code = "missing_price_id";
     throw err;
   }
-  const paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[] =
-    region === "BR" ? ["card", "boleto"] : ["card"];
+  // Low-friction checkout: let Stripe surface every eligible fast method
+  // (card + Apple Pay + Google Pay + Link 1-click, plus Pix/boleto when a BRL
+  // price is used) via automatic_payment_methods, instead of a card-only list.
+  void region;
 
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    payment_method_types: paymentMethodTypes,
+    // Low-friction: omit payment_method_types → Stripe Checkout shows all
+    // Dashboard-enabled methods (card + Apple Pay + Google Pay + Link 1-click).
     customer_email: buyerEmail,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: successUrl,
