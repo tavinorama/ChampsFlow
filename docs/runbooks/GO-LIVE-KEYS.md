@@ -1,123 +1,146 @@
-# TrustIndex AI — Go-Live Keys & Config (exact addresses)
+# TrustIndex AI — GO-LIVE ULTIMATE (tudo que falta, atualizado)
 
-Everything you must set to make the funnel 100% ready, **where to get each value**, and **where to paste it**. Do it top to bottom. Tags: **[REQ]** = required for your case study (real multi-engine audit + weekly monitoring); **[NTH]** = nice-to-have.
+_Atualizado: 2026-06-26. Este é o documento único e completo: o que JÁ está feito, e exatamente o que VOCÊ precisa fazer para o produto ficar 100% funcional e vendendo._
 
-**Your accounts (IDs already provisioned):**
-- Supabase project: `wdeabrzpgshnouvnfvml` → dashboard `https://supabase.com/dashboard/project/wdeabrzpgshnouvnfvml`
-- Railway project `trustindex-ai` → `https://railway.com/project/c3fc5744-b987-4070-9b02-51593d1c4e01` (services: **api**, **worker**, **web**)
-- Stripe (live) → `https://dashboard.stripe.com`
-- API URL: `https://api-production-2052.up.railway.app` · Web URL: `https://web-production-842ee.up.railway.app`
+**Legenda:** ✅ = feito (eu) · 🔑 = você (chave secreta — eu não posso colar) · ⚙️ = você (config no painel) · ⭐ = obrigatório p/ o case study (auditoria real + monitoramento)
 
-**How to set a variable in Railway:** open the project → click the service (api / worker / web) → **Variables** tab → **New Variable** → paste → it redeploys automatically. For the **web** service, variables are picked up at **build** time (the Dockerfile already declares them as build args).
-
----
-
-## 1. Provider / AI engine keys — the heart of your case study
-
-Set these on **BOTH the `api` and the `worker`** services (the worker runs the weekly audits).
-
-| Var | Where to GET it (exact URL) | Tag |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | `https://console.anthropic.com/settings/keys` → Create Key (already on api — **add to worker too**) | [REQ] |
-| `OPENAI_API_KEY` | `https://platform.openai.com/api-keys` → Create new secret key | [REQ] |
-| `GEMINI_API_KEY` | `https://aistudio.google.com/app/apikey` → Create API key | [REQ] |
-| `PERPLEXITY_API_KEY` | `https://www.perplexity.ai/account/api/keys` (Settings → API) → Generate | [REQ] |
-| `SERP_API_KEY` | **DataForSEO**: `https://app.dataforseo.com/api-access` → copy your **login + password** → the value is **base64("login:password")** (run `echo -n 'login:password' \| base64`). Powers Google AI Overview + Reddit + off-site authority. | [REQ] |
-
-> Without OpenAI/Gemini/Perplexity/SERP the audit runs in **mock/demo** mode — fine to launch, but your "I appear across all engines" proof needs them live.
+**Seus recursos (já provisionados):**
+- Supabase: `wdeabrzpgshnouvnfvml` → `https://supabase.com/dashboard/project/wdeabrzpgshnouvnfvml`
+- Railway: projeto `trustindex-ai` → `https://railway.com/project/c3fc5744-b987-4070-9b02-51593d1c4e01` (serviços **api / worker / web** + **Redis**)
+- Stripe (LIVE): `https://dashboard.stripe.com`
+- URLs: API `https://api-production-2052.up.railway.app` · Web `https://web-production-842ee.up.railway.app`
 
 ---
 
-## 2. Supabase (auth + database)
+## OVERVIEW — onde está
 
-Page for keys: **`https://supabase.com/dashboard/project/wdeabrzpgshnouvnfvml/settings/api`** (API → Project API keys).
+**Produto: 100% construído e deployado.** Funil completo (free test → Kit $29 → Growth $99 / Agency $249 → DFY GEO Sprint/Managed), dashboard com trend, admin, blog, chat AI, nutrição (LGPD), cookie banner, legais, schema/SEO, emails branded. Banco 100% migrado.
 
-| Var | Where / value | Set on | Tag |
-|---|---|---|---|
-| `SUPABASE_URL` | `https://wdeabrzpgshnouvnfvml.supabase.co` | api, worker | [REQ] |
-| `SUPABASE_SERVICE_ROLE_KEY` | same page → **`service_role`** secret (⚠️ secret, server-only) | api, worker | [REQ] |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://wdeabrzpgshnouvnfvml.supabase.co` | **web** (build) | [REQ] |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | same page → **`anon` / publishable** key | **web** (build) | [REQ] |
-| `DATABASE_URL` | dashboard → **Connect** (top bar) → **Session pooler** (port **5432**) → append **`?sslmode=require`**. Do NOT use the Transaction pooler (6543) — the app uses prepared statements. | api, worker | [REQ] |
-| `OAUTH_TOKEN_KEY` | generate: `openssl rand -hex 32` (any 32+ char secret) | api | [REQ] |
-| `APP_DB_ROLE` | literal value `app_user` | api, worker | [REQ] |
+**O que falta NÃO é código — é ligar config que só você controla:** as chaves de API (secretas), o webhook do Stripe, o DNS, e apontar 2 env vars do Stripe. Sem as chaves de engine a auditoria roda em **mock** (4 de 5 motores) — esse é o item nº 1.
 
-**Auth redirect allowlist** (so magic-link/login returns work): **`https://supabase.com/dashboard/project/wdeabrzpgshnouvnfvml/auth/url-configuration`** → add `https://web-production-842ee.up.railway.app/dashboard` and `https://trustindexai.com/dashboard` (Site URL + Redirect URLs). [REQ]
+**Já resolvido por mim no Stripe:** catálogo correto (Kit $29, Growth $99/$1.188, **Agency $249/$2.988 criados**), cupom **FOUNDER30** ativo, **checkout de baixa fricção** (mostra card + Apple Pay + Google Pay + Link 1-clique).
 
 ---
 
-## 3. Stripe (payments)
+## 1. RAILWAY — variáveis de ambiente
 
-| Var / action | Where (exact URL) | Tag |
-|---|---|---|
-| `STRIPE_SECRET_KEY` | `https://dashboard.stripe.com/apikeys` → **Secret key** (`sk_live_…`) (already set) | [REQ] |
-| `STRIPE_WEBHOOK_SECRET` | `https://dashboard.stripe.com/webhooks` → **Add endpoint** → URL `https://api-production-2052.up.railway.app/api/billing/webhook` → events: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → after creating, **Reveal signing secret** (`whsec_…`). ⚠️ The API throws on boot without this. | [REQ] |
-| `STRIPE_PRICE_ID_GROWTH` / `_AGENCY` / `_GROWTH_ANNUAL` / `_AGENCY_ANNUAL` / `STRIPE_PRICE_ID_KIT` | `https://dashboard.stripe.com/products` → open each product → copy its **price ID** (`price_…`) (catalog already created — verify they're set on api) | [REQ] |
-| `STRIPE_FOUNDER_COUPON_ID` | `https://dashboard.stripe.com/coupons` → the 30% founder coupon → copy ID | [REQ] |
-| Customer Portal | `https://dashboard.stripe.com/settings/billing/portal` → **Activate** (enable cancel + invoice history) | [REQ] |
+Railway → serviço → aba **Variables** → **Raw Editor** → colar. Os valores **não-secretos já estão preenchidos** (price IDs, etc.); troque os `PASTE_…` pelas suas chaves (de onde pegar → §1.4).
 
-Set the vars on the **api** service.
+### 1.1 Serviço `api`
+```
+DATABASE_URL=PASTE_SUPABASE_SESSION_POOLER_5432_URL?sslmode=require
+REDIS_URL=${{Redis.REDIS_URL}}
+SUPABASE_URL=https://wdeabrzpgshnouvnfvml.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=PASTE_SERVICE_ROLE_KEY
+OAUTH_TOKEN_KEY=PASTE_OPENSSL_RAND_HEX_32
+APP_DB_ROLE=app_user
+WEB_ORIGIN=https://web-production-842ee.up.railway.app
+ANTHROPIC_API_KEY=PASTE_ANTHROPIC_KEY
+OPENAI_API_KEY=PASTE_OPENAI_KEY
+GEMINI_API_KEY=PASTE_GEMINI_KEY
+PERPLEXITY_API_KEY=PASTE_PERPLEXITY_KEY
+SERP_API_KEY=PASTE_DATAFORSEO_BASE64
+STRIPE_SECRET_KEY=PASTE_STRIPE_LIVE_SECRET
+STRIPE_WEBHOOK_SECRET=PASTE_WHSEC
+STRIPE_PRICE_ID_KIT=price_1TlZ7QJd5OWcDDzU7mUvTow8
+STRIPE_PRICE_ID_GROWTH=price_1TlZ7LJd5OWcDDzUjC4BhgIz
+STRIPE_PRICE_ID_GROWTH_ANNUAL=price_1TlZ7MJd5OWcDDzUGkXW2Nvh
+STRIPE_PRICE_ID_AGENCY=price_1TmM1lJd5OWcDDzUeTLwZny1
+STRIPE_PRICE_ID_AGENCY_ANNUAL=price_1TmM1vJd5OWcDDzUoZehN3P8
+STRIPE_FOUNDER_COUPON_ID=FOUNDER30
+RESEND_API_KEY=PASTE_RESEND_KEY
+EMAIL_FROM=TrustIndex AI <hello@trustindexai.com>
+```
 
----
+### 1.2 Serviço `worker` (⭐ é onde as auditorias + a nutrição rodam)
+```
+DATABASE_URL=PASTE_SUPABASE_SESSION_POOLER_5432_URL?sslmode=require
+REDIS_URL=${{Redis.REDIS_URL}}
+SUPABASE_URL=https://wdeabrzpgshnouvnfvml.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=PASTE_SERVICE_ROLE_KEY
+APP_DB_ROLE=app_user
+ANTHROPIC_API_KEY=PASTE_ANTHROPIC_KEY
+OPENAI_API_KEY=PASTE_OPENAI_KEY
+GEMINI_API_KEY=PASTE_GEMINI_KEY
+PERPLEXITY_API_KEY=PASTE_PERPLEXITY_KEY
+SERP_API_KEY=PASTE_DATAFORSEO_BASE64
+RESEND_API_KEY=PASTE_RESEND_KEY
+EMAIL_FROM=TrustIndex AI <hello@trustindexai.com>
+```
+⚙️ **Garanta o worker com ≥1 réplica e sempre ligado** (Railway → worker → Settings) — BullMQ só dispara o monitoramento semanal e a nutrição com o worker conectado.
 
-## 4. Core API/worker vars (mostly already set — verify)
+### 1.3 Serviço `web` (⚠️ são **build-time** — após colar, force um redeploy)
+```
+NEXT_PUBLIC_SUPABASE_URL=https://wdeabrzpgshnouvnfvml.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=PASTE_ANON_KEY
+INTERNAL_API_URL=https://api-production-2052.up.railway.app
+NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
+```
 
-| Var | Value | Set on |
-|---|---|---|
-| `REDIS_URL` | `${{Redis.REDIS_URL}}` (Railway reference to the Redis service — must be the SAME instance on api + worker) | api, worker [REQ] |
-| `WEB_ORIGIN` | `https://web-production-842ee.up.railway.app` now; switch to `https://trustindexai.com` after DNS | api [REQ] |
-| `INTERNAL_API_URL` | `https://api-production-2052.up.railway.app` | **web** (build) [REQ] |
-| `UPSTASH_REDIS_REST_URL` + `_TOKEN` | `https://upstash.com` → create a free Redis → REST URL+token (powers the rate limiters; without them rate-limit just no-ops) | api [NTH] |
-
-**Worker must be scaled ≥1 and run continuously** — BullMQ weekly jobs only fire while the worker is connected. Railway → worker service → ensure 1 replica, not sleeping.
-
----
-
-## 5. Email (optional — for bonus delivery + branded auth emails)
-
-| Var / action | Where | Tag |
-|---|---|---|
-| `RESEND_API_KEY` | `https://resend.com/api-keys` → Create | [NTH] |
-| `EMAIL_FROM` | e.g. `TrustIndex AI <no-reply@trustindexai.com>` | [NTH] |
-| Verify sending domain | `https://resend.com/domains` → add `trustindexai.com` → add the SPF/DKIM DNS records | [NTH] |
-| Branded auth emails | Supabase → Auth → SMTP + paste templates — full steps in `docs/runbooks/branded-auth-emails.md` | [NTH] |
-
-Set on **api** (and worker for completeness).
-
----
-
-## 6. Calendly + blog videos (optional)
-
-| Var / action | Where |
+### 1.4 Onde pegar cada chave
+| Chave | Endereço |
 |---|---|
-| `NEXT_PUBLIC_CALENDLY_URL` (web, build) | your `https://calendly.com/<you>/<event>` link → enables `/book` + "Book a call" buttons (falls back to /test if unset) |
-| Real video IDs | edit `apps/web/src/app/(marketing)/blog/posts.ts` → replace the `PLACEHOLDER_VIDEO_*` YouTube IDs |
+| `SUPABASE_SERVICE_ROLE_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | supabase.com/dashboard/project/wdeabrzpgshnouvnfvml/settings/api |
+| `DATABASE_URL` | mesmo dashboard → **Connect** → **Session pooler (5432)** → adicionar `?sslmode=require` |
+| `OAUTH_TOKEN_KEY` | gerar: `openssl rand -hex 32` |
+| `ANTHROPIC_API_KEY` | console.anthropic.com/settings/keys |
+| `OPENAI_API_KEY` | platform.openai.com/api-keys |
+| `GEMINI_API_KEY` | aistudio.google.com/app/apikey |
+| `PERPLEXITY_API_KEY` | perplexity.ai/account/api/keys |
+| `SERP_API_KEY` | app.dataforseo.com/api-access → `base64("login:password")` |
+| `STRIPE_SECRET_KEY` | dashboard.stripe.com/apikeys (sk_live_…) |
+| `STRIPE_WEBHOOK_SECRET` | criar webhook (→ §2) e copiar o `whsec_…` |
+| `RESEND_API_KEY` | resend.com/api-keys |
 
 ---
 
-## 7. DNS — put it on your real domain (Hostinger → Cloudflare recommended)
+## 2. STRIPE — o que falta (catálogo já resolvido por mim ✅)
 
-1. Point `trustindexai.com` at the Railway **web** domain (apex can't CNAME on Hostinger → use Cloudflare CNAME-flattening, or `www` CNAME + apex 301 redirect). In Railway → web → Settings → Networking → add custom domain → it shows the CNAME target + TXT to add.
-2. **Do not touch your MX records** (keeps email working).
-3. After it resolves + the cert issues: set `WEB_ORIGIN=https://trustindexai.com` (api) and add `https://trustindexai.com/dashboard` to the Supabase redirect allowlist (§2).
-
----
-
-## 8. Final in-product steps (after the above)
-
-1. Go to the web app → **sign up** (confirm you land on the dashboard — proves auth works).
-2. **Create your brand** with **region = US** (so all 5 engines run; EU gates 3 of them).
-3. Put your tenant on a paid plan (or apply the founder coupon).
-4. **Toggle weekly monitoring ON** for the brand → registers the Monday 06:00 UTC recurring audit.
-5. The **TrustIndex Score over time** chart on the brand page is your weekly screenshot. For a faster first video, also run a manual audit now to set your baseline.
+- ✅ **Preços corretos** (Kit $29, Growth $99/$1.188, Agency $249/$2.988) + cupom **FOUNDER30** (30%, anual). Os price IDs já estão no §1.1.
+- ⚙️ **Criar o webhook:** dashboard.stripe.com/webhooks → **Add endpoint** → URL `https://api-production-2052.up.railway.app/api/billing/webhook` → eventos: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Reveal signing secret** → colar em `STRIPE_WEBHOOK_SECRET` (§1.1). ⭐ A API exige isso.
+- ⚙️ **Ativar pagamento rápido:** Settings → Payments → **Payment methods** → garantir **Link**, **Apple Pay**, **Google Pay** ligados (na Hosted Checkout o Apple Pay funciona sem verificar domínio). Link já costuma vir ligado.
+- ⚙️ **Customer Portal:** dashboard.stripe.com/settings/billing/portal → **Activate**.
+- 🧹 Depois que o env do Agency apontar pros preços novos (§1.1), me avise que **eu arquivo os preços antigos de $149** (`price_1TlZ7O…` / `price_1TlZ7P…`) via MCP — não faço antes pra não quebrar checkout.
 
 ---
 
-### One-screen summary of what's still missing (from the live check)
-- **[REQ] OPENAI_API_KEY, GEMINI_API_KEY, PERPLEXITY_API_KEY, SERP_API_KEY** on **api + worker** (live check shows these 4 not connected).
-- **[REQ] Verify** STRIPE_WEBHOOK_SECRET + price IDs + founder coupon + Customer Portal active.
-- **[REQ] Verify** the **web** build vars: NEXT_PUBLIC_SUPABASE_URL/ANON_KEY + INTERNAL_API_URL.
-- **[REQ]** Supabase redirect allowlist + worker running continuously.
-- **[NTH]** Resend, Calendly, real video IDs, DNS.
+## 3. SUPABASE
+- ✅ Banco 100% migrado (22 + nurture).
+- ⚙️ **Auth → URL Configuration:** adicionar `https://web-production-842ee.up.railway.app/dashboard` (e `https://trustindexai.com/dashboard` após DNS) à allowlist de redirect → login/magic-link funciona.
 
-*TrustIndex AI · trustindexai.com · keep this with BRAND-GUIDE.md.*
+---
+
+## 4. DNS (Hostinger → Cloudflare recomendado)
+1. Apontar `trustindexai.com` pro domínio web do Railway (apex não faz CNAME na Hostinger → use Cloudflare CNAME-flattening, ou `www` CNAME + redirect 301 do apex). Railway → web → Settings → Networking → Add custom domain (ele mostra o alvo CNAME + TXT).
+2. **NÃO mexer nos registros MX** (mantém email funcionando).
+3. Depois que resolver + emitir o cert: `WEB_ORIGIN=https://trustindexai.com` (api) + adicionar à allowlist do Supabase (§3).
+
+---
+
+## 5. NO PRODUTO (depois de 1–3)
+1. **Signup** no web → confirmar que cai no dashboard (prova que auth funciona).
+2. **Criar sua marca com região = US** (todos os 5 motores; EU bloqueia 3).
+3. Assinar um plano (ou aplicar o cupom founder).
+4. **Ligar o monitoramento semanal** da marca → registra a auditoria recorrente (segunda 06:00 UTC).
+5. Rodar 1 auditoria manual = seu **baseline**. O gráfico de evolução do score é o seu print/vídeo semanal.
+
+---
+
+## 6. CONTEÚDO / OPCIONAL
+- **Vídeos do blog:** os slots de vídeo estão escondidos até você publicar. Grave (ex.: seus vídeos de case study), suba no YouTube, e troque os `youtubeId` em `apps/web/src/app/(marketing)/blog/posts.ts` (eu posso fazer essa troca quando você me passar os IDs). A plataforma NÃO gera vídeo — gera texto.
+- **Calendly:** `NEXT_PUBLIC_CALENDLY_URL` no web → ativa `/book` e os botões "Book a call".
+- **Emails branded (Supabase Auth):** opcional — Supabase SMTP via Resend + os 4 templates em `docs/runbooks/email-templates/` (guia: `docs/runbooks/branded-auth-emails.md`).
+
+---
+
+## ✅ CHECKLIST FINAL (ordem de impacto)
+1. ⭐🔑 Chaves de engine (OPENAI/GEMINI/PERPLEXITY/SERP/ANTHROPIC) no **api + worker** → auditoria real.
+2. ⭐🔑 Core do api+worker: DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OAUTH_TOKEN_KEY, REDIS_URL ref, APP_DB_ROLE, WEB_ORIGIN.
+3. ⭐🔑 Web build args: NEXT_PUBLIC_SUPABASE_URL/ANON_KEY + INTERNAL_API_URL → login funciona.
+4. ⭐⚙️ Stripe webhook + `STRIPE_WEBHOOK_SECRET` + ativar Customer Portal + wallets.
+5. ⭐⚙️ Supabase redirect allowlist + worker contínuo (≥1).
+6. 🔑 RESEND_API_KEY (api+worker) + domínio Resend → nutrição + bônus por email.
+7. ⚙️ DNS trustindexai.com → flip WEB_ORIGIN.
+8. ⚙️ No produto: marca US + monitoramento semanal + baseline.
+
+_Quando reconectar o Railway MCP eu seto todos os NÃO-secretos (price IDs, WEB_ORIGIN, APP_DB_ROLE, SUPABASE_URL, INTERNAL_API_URL, EMAIL_FROM, cupom, Redis ref) por você — aí só sobram as chaves secretas (🔑) pra você colar._

@@ -27,7 +27,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
-  POSTS,
+  PUBLISHED_POSTS,
   youtubeThumbnailUrl,
   youtubeEmbedUrl,
   findVideoPost,
@@ -40,7 +40,8 @@ import { BookCallButton } from "../../../../../components/BookCallButton";
 // ---------------------------------------------------------------------------
 
 export function generateStaticParams() {
-  return POSTS.filter((p) => p.type === "video").map((p) => ({
+  // Only pre-render videos with a real YouTube ID (placeholders are hidden).
+  return PUBLISHED_POSTS.filter((p) => p.type === "video").map((p) => ({
     slug: p.slug,
   }));
 }
