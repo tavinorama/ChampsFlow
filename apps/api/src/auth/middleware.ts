@@ -60,9 +60,13 @@ function getJWKS(): ReturnType<typeof createRemoteJWKSet> {
   if (!supabaseUrl) {
     throw new Error("SUPABASE_URL environment variable is not set");
   }
-  _jwks = createRemoteJWKSet(
-    new URL(`${supabaseUrl}/auth/v1/jwks`)
-  );
+  // Supabase serves the JWKS at the OIDC-standard well-known path. The bare
+  // `/auth/v1/jwks` path returns 401 ("No API key found") — using it makes jose
+  // unable to fetch keys, so EVERY token verification throws → 401 on all authed
+  // routes. Prefer an explicit SUPABASE_JWKS_URL override if set.
+  const jwksUrl =
+    process.env.SUPABASE_JWKS_URL || `${supabaseUrl}/auth/v1/.well-known/jwks.json`;
+  _jwks = createRemoteJWKSet(new URL(jwksUrl));
   return _jwks;
 }
 
@@ -93,7 +97,9 @@ export async function verifySupabaseToken(
 ): Promise<{ uid: string; email?: string; tenantId?: string; role: AppRole; isSuperAdmin: boolean }> {
   const jwks = getJWKS();
   const { payload: raw } = await jwtVerify(token, jwks, {
-    algorithms: ["RS256"],
+    // Supabase projects created mid-2026 sign JWTs with ES256 (asymmetric ECC).
+    // Allow both so verification works across old (RS256) and new (ES256) keys.
+    algorithms: ["ES256", "RS256"],
     issuer: process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL}/auth/v1` : undefined,
   });
   const payload = raw as unknown as SupabaseJWTPayload;
@@ -157,7 +163,9 @@ export async function requireAuth(ctx: Context, next: Next): Promise<void> {
   try {
     const jwks = getJWKS();
     const { payload: raw } = await jwtVerify(token, jwks, {
-      algorithms: ["RS256"],
+      // Supabase projects created mid-2026 sign JWTs with ES256 (asymmetric ECC).
+    // Allow both so verification works across old (RS256) and new (ES256) keys.
+    algorithms: ["ES256", "RS256"],
       // Supabase uses the project URL as issuer
       issuer: process.env.SUPABASE_URL
         ? `${process.env.SUPABASE_URL}/auth/v1`

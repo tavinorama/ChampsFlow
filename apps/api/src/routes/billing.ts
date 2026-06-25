@@ -58,6 +58,7 @@ import {
   type PlanTier,
 } from "../integrations/stripe";
 import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
+import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import Stripe from "stripe";
 
 // ---------------------------------------------------------------------------
@@ -793,12 +794,86 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
 // Webhook event handlers (private — not exported)
 // ---------------------------------------------------------------------------
 
-// checkout.session.completed — new subscription created via Checkout
+// checkout.session.completed — new subscription OR Kit one-time payment
 async function handleCheckoutSessionCompleted(
   db: PostgresClient,
   session: Stripe.Checkout.Session,
   eventId: string
 ): Promise<void> {
+  // -------------------------------------------------------------------------
+  // Kit payment branch (mode='payment', product='get_cited_kit')
+  // Must be checked BEFORE the subscription logic so Kit sessions never fall
+  // through to the subscription handler (which would log a warning and return).
+  // -------------------------------------------------------------------------
+  if (
+    session.mode === "payment" &&
+    session.metadata?.product === "get_cited_kit"
+  ) {
+    const kit_order_id = session.metadata?.kit_order_id;
+    const order_token = session.metadata?.order_token;
+
+    if (!kit_order_id || !order_token) {
+      logger.warn("stripe_kit_checkout_completed_missing_metadata", {
+        session_id: session.id,
+        event_id: eventId,
+      });
+      return;
+    }
+
+    // Fetch brand + email from kit_order BEFORE updating (needed for delivery email).
+    const { rows: kitRows } = await db.query<{ email: string; brand: string }>(
+      `SELECT email, brand FROM kit_order WHERE id = $1`,
+      [kit_order_id]
+    );
+    const kitRow = kitRows[0] ?? null;
+
+    // Mark paid idempotently (AND status='pending' prevents overwriting 'delivered').
+    await db.query(
+      `UPDATE kit_order SET status='paid', stripe_session_id=$2, paid_at=NOW()
+       WHERE id=$1 AND status='pending'`,
+      [kit_order_id, session.id]
+    );
+
+    // Best-effort delivery email.
+    const customerEmail =
+      session.customer_details?.email ?? session.customer_email ?? null;
+    const brand = kitRow?.brand ?? "";
+
+    if (customerEmail && brand) {
+      try {
+        await sendKitDeliveryEmail({
+          to: customerEmail,
+          brand,
+          orderToken: order_token,
+        });
+        logger.info("kit_delivery_email_sent", {
+          kit_order_id,
+          event_id: eventId,
+          // NOTE: recipient email intentionally NOT logged — hard rule (PII)
+        });
+      } catch (emailErr) {
+        logger.warn("kit_delivery_email_failed", {
+          kit_order_id,
+          event_id: eventId,
+          message: (emailErr as Error).message,
+        });
+      }
+    } else {
+      logger.warn("kit_delivery_email_skipped", {
+        kit_order_id,
+        event_id: eventId,
+        has_email: !!customerEmail,
+        has_brand: !!brand,
+      });
+    }
+
+    logger.info("stripe_kit_checkout_completed_processed", {
+      kit_order_id,
+      event_id: eventId,
+    });
+    return;
+  }
+
   // Extract metadata (tenant_id and plan_tier set when creating the Checkout Session)
   const tenantId = session.metadata?.tenant_id;
   const planTierFromMeta = session.metadata?.plan_tier as PlanTier | undefined;

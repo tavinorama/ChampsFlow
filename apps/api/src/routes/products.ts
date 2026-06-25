@@ -19,6 +19,7 @@
 
 import { Hono } from "hono";
 import { randomUUID, randomBytes } from "node:crypto";
+import { Redis } from "@upstash/redis";
 import {
   runInvisibilityTest,
   buildKitDeliverable,
@@ -46,6 +47,64 @@ function normRegion(r: unknown): "EU" | "US" {
   return r === "EU" ? "EU" : "US";
 }
 
+// ---------------------------------------------------------------------------
+// IP truncation for rate-limit key (GDPR data minimization — no dpa.ts dep)
+// IPv4: zero last octet. IPv6: keep first 3 groups (first 48 bits).
+// ---------------------------------------------------------------------------
+
+function truncateIpForRateLimit(ip: string): string {
+  if (!ip) return "unknown";
+  const v4 = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
+  if (v4) return `${v4[1]}.0`;
+  const colons = ip.split(":");
+  if (colons.length >= 4) return colons.slice(0, 3).join(":") + "::/48";
+  return "unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Lazy Redis singleton for /api/test rate limiting (distinct from billing _redis)
+// ---------------------------------------------------------------------------
+
+let _testRedis: Redis | null = null;
+
+function getTestRedis(): Redis {
+  if (_testRedis) return _testRedis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for test rate limiting"
+    );
+  }
+  _testRedis = new Redis({ url, token });
+  return _testRedis;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limit: 8 free tests / hour / IP — sliding-window ZSET (same pipeline
+// pattern as chat.ts). Key prefix: test_rl:{truncatedIp}
+// ---------------------------------------------------------------------------
+
+const TEST_RATE_LIMIT = 8;
+const TEST_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour in ms
+const TEST_RATE_WINDOW_S = 3600;             // 1 hour in seconds (Redis EXPIRE)
+
+async function checkTestRateLimit(ipTruncated: string): Promise<boolean> {
+  const redis = getTestRedis();
+  const key = `test_rl:${ipTruncated}`;
+  const now = Date.now();
+
+  const pipeline = redis.pipeline();
+  pipeline.zremrangebyscore(key, 0, now - TEST_RATE_WINDOW_MS);
+  pipeline.zadd(key, { score: now, member: String(now) });
+  pipeline.zcard(key);
+  pipeline.expire(key, TEST_RATE_WINDOW_S);
+
+  const results = await pipeline.exec();
+  const count = results[2] as number;
+  return count <= TEST_RATE_LIMIT;
+}
+
 export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
   // POST /api/test — The AI Invisibility Test (free lead magnet)
@@ -66,6 +125,22 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     if (!brand) return c.json({ message: "Brand name is required." }, 400);
     if (!category) return c.json({ message: "Category is required." }, 400);
     if (email && !EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
+
+    // Rate limit: 8 free tests / hour / IP (fail-open on Redis error)
+    const rawIp = clientIp(c);
+    const ipTruncated = rawIp ? truncateIpForRateLimit(rawIp) : "unknown";
+    let rateLimitAllowed = true;
+    try {
+      rateLimitAllowed = await checkTestRateLimit(ipTruncated);
+    } catch (err) {
+      logger.warn("test_rate_limit_redis_unavailable", { message: (err as Error).message });
+    }
+    if (!rateLimitAllowed) {
+      return c.json(
+        { message: "Too many tests. You can run up to 8 free tests per hour. Try again later.", code: "RATE_LIMITED" },
+        429
+      );
+    }
 
     let result;
     try {
