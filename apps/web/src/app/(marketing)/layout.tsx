@@ -444,6 +444,19 @@ function PublicNavbar() {
             How it works
           </Link>
           <Link
+            href="/pricing"
+            className="mk-navlink mk-navlink-hide-sm"
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              color: "var(--color-text)",
+              textDecoration: "none",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            Pricing
+          </Link>
+          <Link
             href="/results"
             className="mk-navlink mk-navlink-hide-sm"
             style={{

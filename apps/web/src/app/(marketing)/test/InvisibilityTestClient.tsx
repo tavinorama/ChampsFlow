@@ -155,14 +155,23 @@ export function InvisibilityTestClient() {
       )}
 
       {result && (
-        <Scorecard
-          result={result}
-          kitHref={kitHref}
-          onReset={() => {
-            setResult(null);
-            setTestId(null);
-          }}
-        />
+        <>
+          <Scorecard
+            result={result}
+            kitHref={kitHref}
+            onReset={() => {
+              setResult(null);
+              setTestId(null);
+            }}
+          />
+          {/* GEO Sprint offer — shown when brand has low / mediocre visibility */}
+          {(result.status === "invisible" || result.status === "trailing") && (
+            <GeoSprintOffer
+              brandEngineCount={result.brandEngineCount}
+              totalEngines={result.totalEngines}
+            />
+          )}
+        </>
       )}
 
       <p
@@ -324,6 +333,157 @@ function Scorecard({
         &larr; Test another brand
       </button>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GEO Sprint offer — done-for-you upsell shown when score is low/mediocre
+// ---------------------------------------------------------------------------
+
+function GeoSprintOffer({
+  brandEngineCount,
+  totalEngines,
+}: {
+  brandEngineCount: number;
+  totalEngines: number;
+}) {
+  const missingPct = Math.round(
+    ((totalEngines - brandEngineCount) / totalEngines) * 100,
+  );
+
+  return (
+    <section
+      aria-labelledby="geo-sprint-heading"
+      style={{
+        marginTop: "var(--space-6)",
+        background:
+          "linear-gradient(135deg, var(--color-badge-ai-bg), var(--color-surface))",
+        border: "1.5px solid var(--color-primary)",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-6)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-4)",
+      }}
+    >
+      {/* Eyebrow */}
+      <span
+        style={{
+          fontSize: "0.7rem",
+          fontWeight: 800,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--color-primary)",
+        }}
+      >
+        Done-for-you &middot; OrganicPosts GEO Sprint
+      </span>
+
+      <h2
+        id="geo-sprint-heading"
+        style={{
+          margin: 0,
+          fontSize: "1.25rem",
+          fontWeight: 800,
+          lineHeight: 1.2,
+          letterSpacing: "-0.02em",
+          color: "var(--color-text)",
+        }}
+      >
+        Want this fixed for you? Get Cited in 30 Days.
+      </h2>
+
+      <p
+        style={{
+          margin: 0,
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+          lineHeight: 1.7,
+        }}
+      >
+        You&rsquo;re missing from{" "}
+        <strong style={{ color: "var(--color-text)" }}>{missingPct}%</strong> of AI
+        answers. The OrganicPosts GEO Sprint is a founder-led, done-for-you
+        engagement: we audit your full brand footprint, write the citation-worthy
+        content, and publish it &mdash; targeting AI visibility in 30 days. No
+        templates. No AI slop. Real execution.
+      </p>
+
+      <ul
+        aria-label="What the GEO Sprint includes"
+        style={{
+          margin: 0,
+          padding: "0 0 0 var(--space-4)",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+          lineHeight: 1.7,
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-1)",
+        }}
+      >
+        <li>Full GEO audit across 5 AI engines (not just one prompt)</li>
+        <li>3 citation-optimised content pieces, published for you</li>
+        <li>Knowledge-graph entity setup + AI-crawler access fixes</li>
+        <li>Weekly score re-check at day 30</li>
+      </ul>
+
+      {/* CTAs */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-3)",
+        }}
+      >
+        <a
+          href="/book"
+          style={{
+            ...primaryBtn(false),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+            textAlign: "center",
+          }}
+        >
+          Book a free 20-min call &rarr;
+        </a>
+        <a
+          href="/kit"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "48px",
+            padding: "0 var(--space-5)",
+            backgroundColor: "transparent",
+            color: "var(--color-primary)",
+            border: "1.5px solid var(--color-primary)",
+            borderRadius: "var(--radius-md)",
+            fontWeight: 700,
+            fontSize: "var(--font-size-body-sm)",
+            textDecoration: "none",
+            textAlign: "center",
+          }}
+        >
+          Or DIY with the $29 Kit
+        </a>
+      </div>
+
+      <p
+        style={{
+          margin: 0,
+          fontSize: "var(--font-size-caption)",
+          color: "var(--color-muted)",
+          lineHeight: 1.5,
+        }}
+      >
+        The call is free. No hard sell &mdash; if the Sprint isn&rsquo;t a fit we&rsquo;ll
+        tell you. Founder-led close means you talk directly to the person doing
+        the work.
+      </p>
+    </section>
   );
 }
 

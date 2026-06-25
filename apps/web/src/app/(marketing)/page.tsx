@@ -132,6 +132,7 @@ export default function LandingPage() {
       <ComparisonSection />
       <FoundingMemberSection />
       <PricingSection />
+      <SocialProofSection />
       <FAQSection />
       <WaitlistSection />
     </>
@@ -1657,6 +1658,345 @@ function FoundingMemberSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Social Proof — "Building in public" + testimonial scaffold
+// ---------------------------------------------------------------------------
+
+function SocialProofSection() {
+  return (
+    <section
+      aria-labelledby="social-proof-heading"
+      style={{
+        backgroundColor: "var(--color-surface-muted)",
+        padding: "var(--space-20) var(--space-4)",
+        borderTop: "1px solid var(--color-border)",
+      }}
+    >
+      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
+
+        {/* ── "Building in public" founder case study ── */}
+        <div style={{ textAlign: "center", marginBottom: "var(--space-12)" }}>
+          <div
+            className="mk-badge"
+            style={{ marginBottom: "var(--space-4)", display: "inline-flex" }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                backgroundColor: "var(--color-primary)",
+                flexShrink: 0,
+              }}
+            />
+            Building in public
+          </div>
+          <h2
+            id="social-proof-heading"
+            style={{
+              fontSize: "clamp(1.875rem, 4vw, 2.75rem)",
+              fontWeight: "800",
+              letterSpacing: "-0.03em",
+              color: "var(--color-text)",
+              fontFamily: "var(--font-family)",
+              lineHeight: 1.1,
+              marginBottom: "var(--space-4)",
+            }}
+          >
+            We use TrustIndex AI on ourselves.
+          </h2>
+          <p
+            style={{
+              fontSize: "var(--font-size-body)",
+              color: "var(--color-muted)",
+              fontFamily: "var(--font-family)",
+              maxWidth: "60ch",
+              margin: "0 auto var(--space-8)",
+              lineHeight: 1.7,
+            }}
+          >
+            The best way to prove a GEO platform works is to dog-food it publicly. We
+            audit TrustIndex AI and OrganicPosts across ChatGPT, Claude, Perplexity,
+            Gemini, and Google AI Overview &mdash; every week &mdash; and share the
+            real numbers.
+          </p>
+        </div>
+
+        {/* Founder live-audit card */}
+        <div
+          style={{
+            maxWidth: "780px",
+            margin: "0 auto var(--space-12)",
+            backgroundColor: "var(--color-surface)",
+            border: "1.5px solid var(--color-primary)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-8)",
+            boxShadow: "var(--shadow-card-hover)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              marginBottom: "var(--space-4)",
+            }}
+          >
+            {/* Founder initials avatar */}
+            <div
+              aria-hidden="true"
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: "800",
+                fontSize: "var(--font-size-h3)",
+                fontFamily: "var(--font-family)",
+                flexShrink: 0,
+              }}
+            >
+              OF
+            </div>
+            <div>
+              <p
+                style={{
+                  margin: 0,
+                  fontWeight: "700",
+                  fontSize: "var(--font-size-body-sm)",
+                  color: "var(--color-text)",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                Otavio (founder)
+              </p>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "var(--font-size-caption)",
+                  color: "var(--color-muted)",
+                  fontFamily: "var(--font-family)",
+                }}
+              >
+                Live audit &mdash; updated weekly
+              </p>
+            </div>
+            <span
+              aria-label="Live — updated this week"
+              style={{
+                marginLeft: "auto",
+                fontSize: "var(--font-size-badge)",
+                fontWeight: "700",
+                backgroundColor: "var(--color-badge-status-active-bg)",
+                color: "var(--color-badge-status-active-text)",
+                borderRadius: "var(--radius-pill)",
+                padding: "3px 10px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Live
+            </span>
+          </div>
+
+          {/* Score display — placeholder until live numbers are wired */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "var(--space-4)",
+              marginBottom: "var(--space-5)",
+            }}
+          >
+            {[
+              { label: "TrustIndex Score", value: "—", note: "Running audit…" },
+              { label: "Citation rate", value: "—", note: "Across 5 engines" },
+              { label: "Top competitor", value: "—", note: "in AI answers" },
+            ].map((m) => (
+              <div
+                key={m.label}
+                style={{
+                  backgroundColor: "var(--color-surface-muted)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "var(--space-4)",
+                  textAlign: "center",
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 var(--space-1) 0",
+                    fontSize: "clamp(1.75rem, 3vw, 2.25rem)",
+                    fontWeight: "800",
+                    color: "var(--color-primary)",
+                    fontFamily: "var(--font-family)",
+                    letterSpacing: "-0.04em",
+                    lineHeight: 1,
+                  }}
+                >
+                  {m.value}
+                </p>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "var(--font-size-caption)",
+                    fontWeight: "600",
+                    color: "var(--color-text)",
+                    fontFamily: "var(--font-family)",
+                  }}
+                >
+                  {m.label}
+                </p>
+                <p
+                  style={{
+                    margin: "var(--space-1) 0 0 0",
+                    fontSize: "var(--font-size-badge)",
+                    color: "var(--color-muted)",
+                    fontFamily: "var(--font-family)",
+                  }}
+                >
+                  {m.note}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <p
+            style={{
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              fontFamily: "var(--font-family)",
+              lineHeight: 1.6,
+              margin: 0,
+              borderTop: "1px solid var(--color-border)",
+              paddingTop: "var(--space-4)",
+            }}
+          >
+            We publish our real audit scores weekly. As we ship GEO improvements,
+            you&rsquo;ll see the numbers move &mdash; or not. No spin, no cherry-picked
+            snapshots. If you want to follow along, the score updates every Monday.
+          </p>
+        </div>
+
+        {/* ── Testimonials scaffold (clearly marked as coming soon) ── */}
+        <div>
+          <h3
+            style={{
+              fontSize: "clamp(1.25rem, 2.5vw, 1.75rem)",
+              fontWeight: "800",
+              letterSpacing: "-0.02em",
+              color: "var(--color-text)",
+              fontFamily: "var(--font-family)",
+              textAlign: "center",
+              marginBottom: "var(--space-3)",
+            }}
+          >
+            Early access voices
+          </h3>
+          <p
+            style={{
+              textAlign: "center",
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              fontFamily: "var(--font-family)",
+              marginBottom: "var(--space-8)",
+            }}
+          >
+            We&rsquo;re in early access. Real quotes from early users will appear here as
+            they come in &mdash; no fabricated testimonials, ever.
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+              gap: "var(--space-5)",
+            }}
+          >
+            {[
+              {
+                placeholder: "Early user from healthcare services",
+                quote: "Spot reserved for an early-access user quote.",
+              },
+              {
+                placeholder: "Early user from professional services",
+                quote: "Spot reserved for an early-access user quote.",
+              },
+              {
+                placeholder: "Early user from e-commerce",
+                quote: "Spot reserved for an early-access user quote.",
+              },
+            ].map((t) => (
+              <article
+                key={t.placeholder}
+                aria-label={`Testimonial placeholder — ${t.placeholder}`}
+                style={{
+                  backgroundColor: "var(--color-surface)",
+                  border: "1px dashed var(--color-border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "var(--space-6)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-3)",
+                  opacity: 0.7,
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: "var(--font-size-body-sm)",
+                    color: "var(--color-muted)",
+                    fontFamily: "var(--font-family)",
+                    lineHeight: 1.6,
+                    margin: 0,
+                    fontStyle: "italic",
+                  }}
+                >
+                  &ldquo;{t.quote}&rdquo;
+                </p>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: "var(--font-size-caption)",
+                    fontWeight: "600",
+                    color: "var(--color-muted)",
+                    fontFamily: "var(--font-family)",
+                  }}
+                >
+                  {t.placeholder}
+                </p>
+              </article>
+            ))}
+          </div>
+          <p
+            style={{
+              textAlign: "center",
+              marginTop: "var(--space-6)",
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            Want to be our first published case study?{" "}
+            <a
+              href="/test"
+              style={{
+                color: "var(--color-primary)",
+                fontWeight: "600",
+                textDecoration: "underline",
+              }}
+            >
+              Run the free test
+            </a>{" "}
+            and share your results.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ⑧ Pricing
 // ---------------------------------------------------------------------------
 
@@ -1740,8 +2080,8 @@ function PricingSection() {
               "Monthly audit + TrustIndex Score",
               "Basic GEO content plan",
             ]}
-            ctaLabel="Start free"
-            ctaHref="#waitlist-cta"
+            ctaLabel="Run the free test"
+            ctaHref="/test"
           />
           <PricingCard
             name="Growth"
@@ -1756,11 +2096,11 @@ function PricingSection() {
               "Weekly monitoring + answer-drift alerts",
               "Citation share tracking",
               "GEO content briefs (LinkedIn + website)",
-              "🎁 Annual: free 5-page website (week 1)",
+              "Annual: free 5-page website (week 1)",
             ]}
             featured
-            ctaLabel="Join Growth waitlist"
-            ctaHref="#waitlist-cta"
+            ctaLabel="Start Growth — $99/mo"
+            ctaHref="/login?plan=growth&next=checkout"
           />
           <PricingCard
             name="Agency"
@@ -1775,15 +2115,16 @@ function PricingSection() {
               "White-label reports",
               "Client approval workflow",
               "Priority support · 4h SLA",
-              "🎁 Annual: website + 3 client landings",
+              "Annual: website + 3 client landings",
             ]}
-            ctaLabel="Join Agency waitlist"
-            ctaHref="#waitlist-cta"
+            ctaLabel="Start Agency — $149/mo"
+            ctaHref="/login?plan=agency&next=checkout"
           />
         </div>
 
         <p style={{ textAlign: "center", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", marginTop: "var(--space-8)", maxWidth: "60ch", margin: "var(--space-8) auto 0", lineHeight: 1.7 }}>
-          First 100 waitlist members get the <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> on annual plans ($831 Growth / $1,251 Agency per year) — applied only when you pay annually.
+          First 100 subscribers get the <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> on annual plans ($831 Growth / $1,251 Agency per year) — applied only when you pay annually.
+          Or, <a href="#waitlist-cta" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "underline" }}>join the waitlist</a> for a personal onboarding from the founder.
         </p>
       </div>
     </section>

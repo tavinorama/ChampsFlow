@@ -5,13 +5,17 @@
  *
  * Uses Supabase Auth OTP (email magic link). No passwords are handled by this
  * app at any point. On success Supabase emails a link; clicking it returns the
- * user to /dashboard with a session (detectSessionInUrl completes it).
+ * user to the destination in ?next= (default /dashboard).
+ *
+ * Supports a conversion funnel:
+ *   /login?plan=growth&next=checkout
+ *   → after magic-link click → /account/billing?plan=growth&autocheckout=1
  *
  * If Supabase is not configured (local/demo build), shows a clear notice
  * instead of throwing.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getSupabase, isSupabaseConfigured } from "../../lib/supabase-browser";
 import { Logo } from "../../components/brand/Logo";
 
@@ -20,6 +24,18 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [plan, setPlan] = useState<string | null>(null);
+  const [nextParam, setNextParam] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const p = params.get("plan");
+      const n = params.get("next");
+      if (p === "growth" || p === "agency") setPlan(p);
+      if (n) setNextParam(n);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,8 +43,19 @@ export default function LoginPage() {
     setStatus("sending");
     setMessage("");
     try {
+      // Build the post-login redirect URL.
+      // If next=checkout (and plan is set), send the user to billing with
+      // autocheckout=1 so the billing page auto-starts Stripe checkout.
+      let redirectPath = "/dashboard";
+      if (nextParam === "checkout" && plan) {
+        redirectPath = `/account/billing?plan=${plan}&autocheckout=1`;
+      } else if (nextParam && nextParam.startsWith("/")) {
+        redirectPath = nextParam;
+      }
       const redirectTo =
-        typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+        typeof window !== "undefined"
+          ? `${window.location.origin}${redirectPath}`
+          : undefined;
       const { error } = await getSupabase().auth.signInWithOtp({
         email: email.trim(),
         options: { emailRedirectTo: redirectTo },
@@ -62,9 +89,34 @@ export default function LoginPage() {
         <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-4) 0 var(--space-2) 0" }}>
           Sign in
         </h1>
-        <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-6) 0" }}>
-          We&rsquo;ll email you a secure sign-in link. No password needed.
-        </p>
+        {plan ? (
+          <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-4) 0" }}>
+            We&rsquo;ll email you a secure sign-in link. After clicking it, we&rsquo;ll take
+            you straight to checkout for the{" "}
+            <strong style={{ color: "var(--color-text)", textTransform: "capitalize" }}>{plan}</strong>{" "}
+            plan.
+          </p>
+        ) : (
+          <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-4) 0" }}>
+            We&rsquo;ll email you a secure sign-in link. No password needed.
+          </p>
+        )}
+        {plan && (
+          <div style={{
+            padding: "var(--space-3) var(--space-4)",
+            backgroundColor: "var(--color-badge-ai-bg)",
+            border: "1px solid var(--color-highlight-border)",
+            borderRadius: "var(--radius-md)",
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-badge-ai-text)",
+            fontWeight: 600,
+            marginBottom: "var(--space-4)",
+          }}>
+            Starting{" "}
+            <span style={{ textTransform: "capitalize" }}>{plan}</span>{" "}
+            plan &mdash; ${plan === "growth" ? "99" : "149"}/mo
+          </div>
+        )}
 
         {!configured ? (
           <div role="note" style={{
