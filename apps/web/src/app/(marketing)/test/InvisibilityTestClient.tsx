@@ -337,7 +337,8 @@ function Scorecard({
 }
 
 // ---------------------------------------------------------------------------
-// GEO Sprint offer — done-for-you upsell shown when score is low/mediocre
+// GEO Sprint offer — done-for-you upsell shown when score is low/mediocre.
+// Shows 3 tiers; all CTAs route to /book (founder-led close, not self-serve checkout).
 // ---------------------------------------------------------------------------
 
 function GeoSprintOffer({
@@ -350,6 +351,32 @@ function GeoSprintOffer({
   const missingPct = Math.round(
     ((totalEngines - brandEngineCount) / totalEngines) * 100,
   );
+
+  const sprintTiers: Array<{
+    name: string;
+    price: string;
+    summary: string;
+    popular: boolean;
+  }> = [
+    {
+      name: "Sprint Starter",
+      price: "from $1,500",
+      summary: "One brand · top-3 fixes executed",
+      popular: false,
+    },
+    {
+      name: "Sprint Standard",
+      price: "from $2,400",
+      summary: "Full GEO plan executed + content",
+      popular: true,
+    },
+    {
+      name: "Sprint Plus",
+      price: "from $4,500",
+      summary: "Multi-brand · aggressive · priority",
+      popular: false,
+    },
+  ];
 
   return (
     <section
@@ -404,29 +431,96 @@ function GeoSprintOffer({
         You&rsquo;re missing from{" "}
         <strong style={{ color: "var(--color-text)" }}>{missingPct}%</strong> of AI
         answers. The OrganicPosts GEO Sprint is a founder-led, done-for-you
-        engagement: we audit your full brand footprint, write the citation-worthy
-        content, and publish it &mdash; targeting AI visibility in 30 days. No
-        templates. No AI slop. Real execution.
+        engagement &mdash; we publish the fixes, you watch your TrustIndex Score
+        climb. No templates. No AI slop. Real execution.
       </p>
 
-      <ul
-        aria-label="What the GEO Sprint includes"
+      {/* Three tier cards — scannable */}
+      <div
+        role="list"
+        aria-label="GEO Sprint tiers"
         style={{
-          margin: 0,
-          padding: "0 0 0 var(--space-4)",
-          fontSize: "var(--font-size-body-sm)",
-          color: "var(--color-muted)",
-          lineHeight: 1.7,
           display: "flex",
           flexDirection: "column",
-          gap: "var(--space-1)",
+          gap: "var(--space-2)",
         }}
       >
-        <li>Full GEO audit across 5 AI engines (not just one prompt)</li>
-        <li>3 citation-optimised content pieces, published for you</li>
-        <li>Knowledge-graph entity setup + AI-crawler access fixes</li>
-        <li>Weekly score re-check at day 30</li>
-      </ul>
+        {sprintTiers.map((tier) => (
+          <div
+            key={tier.name}
+            role="listitem"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "var(--space-3)",
+              padding: "var(--space-3) var(--space-4)",
+              backgroundColor: tier.popular
+                ? "var(--color-badge-ai-bg)"
+                : "var(--color-surface)",
+              border: tier.popular
+                ? "1.5px solid var(--color-primary)"
+                : "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+              {tier.popular && (
+                <span
+                  aria-label="Most popular"
+                  style={{
+                    fontSize: "0.6rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    backgroundColor: "var(--color-primary)",
+                    color: "#fff",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-pill)",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  Most popular
+                </span>
+              )}
+              <div>
+                <span
+                  style={{
+                    display: "block",
+                    fontWeight: 800,
+                    fontSize: "var(--font-size-body-sm)",
+                    color: "var(--color-text)",
+                  }}
+                >
+                  {tier.name}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    fontSize: "var(--font-size-caption)",
+                    color: "var(--color-muted)",
+                  }}
+                >
+                  {tier.summary}
+                </span>
+              </div>
+            </div>
+            <span
+              style={{
+                fontWeight: 800,
+                fontSize: "var(--font-size-body-sm)",
+                color: "var(--color-text)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {tier.price}
+            </span>
+          </div>
+        ))}
+      </div>
 
       {/* CTAs */}
       <div
@@ -481,7 +575,11 @@ function GeoSprintOffer({
       >
         The call is free. No hard sell &mdash; if the Sprint isn&rsquo;t a fit we&rsquo;ll
         tell you. Founder-led close means you talk directly to the person doing
-        the work.
+        the work. All prices are &ldquo;from&rdquo; &mdash; final scope set on the call.
+        <br />
+        <a href="/organicposts" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
+          See full tier details &rarr;
+        </a>
       </p>
     </section>
   );

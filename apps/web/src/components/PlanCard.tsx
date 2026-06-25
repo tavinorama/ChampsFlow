@@ -41,8 +41,14 @@ export interface PlanCardProps {
 // Plan metadata — static content per tier.
 // Annual prices are the founder price (30% off the 12× list price), which is
 // the only annual price we ever offer pre-launch. Growth: 12×$99=$1,188 → $831.
-// Agency: 12×$149=$1,788 → $1,251. Founder discount is annual-only (see
-// createCheckoutSession in apps/api/src/integrations/stripe.ts).
+// Agency: 12×$249=$2,988 → $2,091 (founder, 30% off). Founder discount is
+// annual-only (see createCheckoutSession in apps/api/src/integrations/stripe.ts).
+//
+// DISPLAY/CHARGE SYNC — Agency:
+//   Charge = STRIPE_PRICE_ID_AGENCY (monthly) / STRIPE_PRICE_ID_AGENCY_ANNUAL
+//   env vars — must point to the $249/mo and $2,988/yr Stripe prices created by
+//   scripts/stripe-bootstrap.ts. Run that script and update the env vars or
+//   checkout will charge the old $149 amount regardless of what is displayed here.
 const PLAN_META: Record<
   PlanTier,
   {
@@ -81,8 +87,8 @@ const PLAN_META: Record<
   },
   agency: {
     name: "Agency",
-    priceMonthly: "$149",
-    priceAnnual: "$1,251",
+    priceMonthly: "$249",
+    priceAnnual: "$2,091",
     features: [
       "25 brands monitored",
       "10 competitors per brand",

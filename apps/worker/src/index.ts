@@ -32,6 +32,7 @@ import { Worker } from "bullmq";
 import { logger } from "../../../packages/shared/src/logger";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob } from "./jobs/audit-run";
+import { processNurtureJobs } from "./jobs/nurture-send";
 import {
   createWorkerDb,
   withRlsContext,
@@ -113,6 +114,34 @@ auditWorker.on("failed", (job, err) => {
 });
 
 // ---------------------------------------------------------------------------
+// Nurture email send loop — polls nurture_enrollment every 5 minutes
+// for due, non-suppressed, incomplete enrollments and dispatches step emails.
+// Uses a plain setInterval (not a BullMQ queue) since the job is a DB-poll
+// pattern, not a queued-payload pattern. Fail-safe: errors are caught and
+// logged; the loop continues. Stops on SIGTERM/SIGINT (interval cleared in shutdown).
+// ---------------------------------------------------------------------------
+
+let _nurtureSql: import("postgres").Sql | null = null;
+function getNurtureSql(): import("postgres").Sql {
+  if (_nurtureSql) return _nurtureSql;
+  _nurtureSql = createWorkerDb();
+  return _nurtureSql;
+}
+
+const NURTURE_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+const nurtureInterval = setInterval(() => {
+  void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
+    logger.error("nurture_poll_error", { message: err.message });
+  });
+}, NURTURE_POLL_INTERVAL_MS);
+
+// Run once immediately at boot (catches any due rows from before restart)
+void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
+  logger.error("nurture_poll_boot_error", { message: err.message });
+});
+
+// ---------------------------------------------------------------------------
 // Worker event listeners for structured logging
 // ---------------------------------------------------------------------------
 
@@ -166,6 +195,9 @@ logger.info("worker_started", {
 const shutdown = async (signal: string): Promise<void> => {
   logger.info("worker_shutdown", { signal });
 
+  // Stop the nurture poll loop immediately
+  clearInterval(nurtureInterval);
+
   try {
     // Close workers — waits for in-flight jobs to complete
     await worker.close();
@@ -178,6 +210,12 @@ const shutdown = async (signal: string): Promise<void> => {
 
   try {
     if (_auditSql) await _auditSql.end({ timeout: 5 });
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    if (_nurtureSql) await _nurtureSql.end({ timeout: 5 }).catch(() => {});
   } catch {
     // Best-effort
   }

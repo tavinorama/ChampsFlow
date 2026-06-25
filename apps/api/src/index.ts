@@ -45,6 +45,7 @@ import { registerDsrRoutes } from "./routes/dsr";
 import { registerBillingRoutes } from "./routes/billing";
 import { registerWaitlistRoutes } from "./routes/waitlist";
 import { registerProductRoutes } from "./routes/products";
+import { registerNurtureRoutes } from "./routes/nurture";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerAuditRoutes } from "./routes/audits";
 import { registerEngagementRoutes } from "./routes/engagements";
@@ -279,6 +280,10 @@ registerChatRoutes(app);
 // Acquisition ladder — lead magnet + $29 Get-Cited Kit (all PUBLIC)
 // POST /api/test, POST /api/kit/checkout, GET /api/kit/:token, POST /api/kit/:token/deliver
 registerProductRoutes(app, db);
+
+// Nurture sequence — unsubscribe endpoint (PUBLIC)
+// GET /api/nurture/unsubscribe?token=<uuid>
+registerNurtureRoutes(app, db);
 
 // First-login tenant provisioning — POST /api/account/bootstrap
 // (verifies the Supabase JWT itself; allows the no-tenant-yet case)
