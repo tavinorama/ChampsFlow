@@ -50,6 +50,7 @@ import { registerAuditRoutes } from "./routes/audits";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
 import { registerAdminRoutes } from "./routes/admin";
+import { registerChatRoutes } from "./routes/chat";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -270,6 +271,10 @@ registerBillingRoutes(app, db);
 // Marketing / Landing Page — waitlist signup
 // POST /api/waitlist (PUBLIC — no auth, rate limited 5/hour per IP)
 registerWaitlistRoutes(app, db);
+
+// Sales chat widget — AI FAQ agent for public marketing pages
+// POST /api/chat (PUBLIC — no auth, rate limited 15 msg/10 min per IP)
+registerChatRoutes(app);
 
 // Acquisition ladder — lead magnet + $29 Get-Cited Kit (all PUBLIC)
 // POST /api/test, POST /api/kit/checkout, GET /api/kit/:token, POST /api/kit/:token/deliver

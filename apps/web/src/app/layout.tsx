@@ -25,7 +25,7 @@ import "../styles/tokens.css";
 import { DpaGate } from "../components/DpaGate";
 import { Footer } from "../components/Footer";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
-
+import { CookieConsent } from "../components/CookieConsent";
 export const metadata = {
   metadataBase: new URL("https://trustindexai.com"),
   title: {
@@ -124,6 +124,10 @@ export default async function RootLayout({
             <Footer />
           </>
         )}
+        {/* Cookie consent banner — global, on every route (marketing + app).
+            Self-gates on first visit + listens for the footer "Cookie
+            preferences" re-open trigger. */}
+        <CookieConsent />
       </body>
     </html>
   );

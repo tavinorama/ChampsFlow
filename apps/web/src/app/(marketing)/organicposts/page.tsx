@@ -10,6 +10,7 @@
  */
 
 import type { Metadata } from "next";
+import { BookCallButton } from "../../../components/BookCallButton";
 
 export const metadata: Metadata = {
   title: "OrganicPosts by TrustIndex AI — Publish the proof AI needs to trust you",
@@ -211,8 +212,12 @@ export default function OrganicPostsPage() {
             <a href="#offers" style={ctaPrimary}>Build my GEO content plan</a>
             <a href="/" style={ctaSecondary}>Run my TrustIndex Audit</a>
           </div>
-          <p style={{ marginTop: "var(--space-6)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+          <p style={{ marginTop: "var(--space-5)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
             TrustIndex AI finds the gaps. OrganicPosts helps publish the fix.
+          </p>
+          <p style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+            Prefer to talk it through first?{" "}
+            <BookCallButton label="Book a 30-min call" variant="secondary" style={{ display: "inline-flex", minHeight: "36px", padding: "0 var(--space-4)", fontSize: "var(--font-size-caption)" }} />
           </p>
         </div>
       </section>
