@@ -40,7 +40,7 @@ export async function sendDsrCompletedEmail(
     throw new Error("RESEND_API_KEY is not configured — DSR completion email not sent");
   }
 
-  const fromAddress = process.env.EMAIL_FROM ?? "noreply@organicposts.ai";
+  const fromAddress = process.env.EMAIL_FROM ?? "noreply@trustindexai.com";
 
   const subject = "Your data request has been completed";
 
@@ -48,14 +48,14 @@ export async function sendDsrCompletedEmail(
 
   const artifactSection = hasArtifact
     ? [
-        "Your data export is ready. Please contact privacy@organicposts.ai with your",
+        "Your data export is ready. Please contact privacy@trustindexai.com with your",
         `request ID (${params.requestId}) to receive your secure download link.`,
         "",
         "Export data links are provided securely and are time-limited.",
       ].join("\n")
     : [
         "Your request has been processed. If you have any questions about the outcome,",
-        "please contact us at privacy@organicposts.ai with your request ID:",
+        "please contact us at privacy@trustindexai.com with your request ID:",
         `${params.requestId}`,
       ].join("\n");
 
@@ -66,16 +66,16 @@ export async function sendDsrCompletedEmail(
     "",
     artifactSection,
     "",
-    "If you have questions, contact us at privacy@organicposts.ai",
+    "If you have questions, contact us at privacy@trustindexai.com",
     "",
-    "— The Organic Posts Privacy Team",
+    "— The TrustIndex AI Privacy Team",
   ].join("\n");
 
   const artifactHtml = hasArtifact
     ? `<div style="background: #EFF6FF; border: 1px solid #2563EB; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
     <p style="font-weight: 600; color: #1D4ED8; margin: 0 0 8px 0;">Your data export is ready</p>
     <p style="font-size: 14px; color: #374151; margin: 0;">
-      Contact <a href="mailto:privacy@organicposts.ai" style="color: #2563EB;">privacy@organicposts.ai</a>
+      Contact <a href="mailto:privacy@trustindexai.com" style="color: #2563EB;">privacy@trustindexai.com</a>
       with your request ID to receive a secure, time-limited download link.
     </p>
   </div>`
@@ -97,7 +97,7 @@ export async function sendDsrCompletedEmail(
   </p>
   ${artifactHtml}
   <p style="font-size: 14px; color: #6B7280;">
-    Questions? Contact <a href="mailto:privacy@organicposts.ai" style="color: #2563EB;">privacy@organicposts.ai</a>
+    Questions? Contact <a href="mailto:privacy@trustindexai.com" style="color: #2563EB;">privacy@trustindexai.com</a>
   </p>
 </body>
 </html>`;

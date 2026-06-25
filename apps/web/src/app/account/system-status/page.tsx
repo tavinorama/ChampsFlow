@@ -146,11 +146,11 @@ export default function SystemStatusPage() {
               borderRadius: "var(--radius-pill)",
               backgroundColor:
                 cap.mode === "live"
-                  ? "rgba(15,180,136,0.12)"
+                  ? "var(--color-badge-connected-bg)"
                   : "var(--color-surface-muted)",
               color:
                 cap.mode === "live"
-                  ? "var(--color-success)"
+                  ? "var(--color-badge-connected-text)"
                   : "var(--color-muted)",
               fontSize: "var(--font-size-caption)",
               fontWeight: 700,
@@ -295,7 +295,7 @@ export default function SystemStatusPage() {
                         <div
                           style={{
                             fontSize: "var(--font-size-caption)",
-                            color: "#d97706",
+                            color: "var(--color-note-warn)",
                           }}
                         >
                           &#9888; {t.euNote}
@@ -465,7 +465,7 @@ function ConnBadge({
 }) {
   if (connected) {
     return (
-      <span style={badge("rgba(15,180,136,0.12)", "var(--color-success)")}>
+      <span style={badge("var(--color-badge-connected-bg)", "var(--color-badge-connected-text)")}>
         ● Connected
       </span>
     );
