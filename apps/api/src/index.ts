@@ -49,6 +49,7 @@ import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerAuditRoutes } from "./routes/audits";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
+import { registerAdminRoutes } from "./routes/admin";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -230,6 +231,8 @@ registerDraftRoutes(app, db);
 registerAuditRoutes(app, db);
 // OrganicPosts done-for-you handoff: POST/GET /api/engagements (auth, tenant-scoped)
 registerEngagementRoutes(app, db);
+// Founder Admin Dashboard — all routes requireSuperAdmin (cross-tenant, login role)
+registerAdminRoutes(app, db);
 // System transparency: GET /api/system/capabilities (public) +
 // BYOK provider-key endpoints (auth). Needs db for the key store.
 registerSystemRoutes(app, db);

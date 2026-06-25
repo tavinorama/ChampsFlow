@@ -89,12 +89,12 @@ function StatusPill({
     : "Incomplete";
 
   const colors: Record<string, { bg: string; text: string }> = {
-    Active: { bg: "#dcfce7", text: "#15803d" },
-    Trial: { bg: "#eff6ff", text: "#1d4ed8" },
-    "Payment due": { bg: "#fef9c3", text: "#a16207" },
-    Cancelled: { bg: "#fee2e2", text: "#b91c1c" },
-    "Cancels at period end": { bg: "#fef9c3", text: "#a16207" },
-    Incomplete: { bg: "#f3f4f6", text: "#6b7280" },
+    Active: { bg: "var(--color-badge-status-active-bg)", text: "var(--color-badge-status-active-text)" },
+    Trial: { bg: "var(--color-badge-status-info-bg)", text: "var(--color-badge-status-info-text)" },
+    "Payment due": { bg: "var(--color-badge-status-warn-bg)", text: "var(--color-badge-status-warn-text)" },
+    Cancelled: { bg: "var(--color-badge-status-error-bg)", text: "var(--color-badge-status-error-text)" },
+    "Cancels at period end": { bg: "var(--color-badge-status-warn-bg)", text: "var(--color-badge-status-warn-text)" },
+    Incomplete: { bg: "var(--color-badge-status-neutral-bg)", text: "var(--color-badge-status-neutral-text)" },
   };
   const style = colors[label] ?? colors["Incomplete"];
 
@@ -106,7 +106,7 @@ function StatusPill({
         display: "inline-block",
         padding: "2px 10px",
         borderRadius: "999px",
-        fontSize: "var(--font-size-caption)",
+        fontSize: "var(--font-size-badge)",
         fontWeight: "var(--font-weight-semibold)",
         backgroundColor: style.bg,
         color: style.text,
@@ -160,7 +160,7 @@ function UsageBar({
           }
           style={{
             fontSize: "var(--font-size-caption)",
-            color: isNearLimit ? "#a16207" : "var(--color-muted)",
+            color: isNearLimit ? "var(--color-badge-status-warn-text)" : "var(--color-muted)",
             fontWeight: isNearLimit ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
           }}
         >
@@ -185,7 +185,7 @@ function UsageBar({
             style={{
               width: `${pct}%`,
               height: "100%",
-              backgroundColor: isNearLimit ? "#f59e0b" : "var(--color-primary)",
+              backgroundColor: isNearLimit ? "var(--color-accent-amber)" : "var(--color-primary)",
               borderRadius: "3px",
               transition: "width 0.3s ease",
             }}
@@ -486,24 +486,24 @@ function BillingPageInner(): React.ReactElement {
               borderRadius: "var(--radius-md)",
               backgroundColor:
                 toast.type === "success"
-                  ? "#dcfce7"
+                  ? "var(--color-badge-status-active-bg)"
                   : toast.type === "error"
-                  ? "#fee2e2"
-                  : "#eff6ff",
+                  ? "var(--color-badge-status-error-bg)"
+                  : "var(--color-badge-status-info-bg)",
               color:
                 toast.type === "success"
-                  ? "#15803d"
+                  ? "var(--color-badge-status-active-text)"
                   : toast.type === "error"
-                  ? "#b91c1c"
-                  : "#1d4ed8",
+                  ? "var(--color-badge-status-error-text)"
+                  : "var(--color-badge-status-info-text)",
               fontSize: "var(--font-size-body-sm)",
               fontWeight: "var(--font-weight-medium)",
               border:
                 toast.type === "success"
-                  ? "1px solid #86efac"
+                  ? "1px solid var(--color-success)"
                   : toast.type === "error"
-                  ? "1px solid #fca5a5"
-                  : "1px solid #93c5fd",
+                  ? "1px solid var(--color-error)"
+                  : "1px solid var(--color-badge-status-info-text)",
               boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
               textAlign: "center",
             }}
@@ -556,10 +556,10 @@ function BillingPageInner(): React.ReactElement {
             role="alert"
             style={{
               padding: "var(--space-4)",
-              backgroundColor: "#fee2e2",
-              border: "1px solid #fca5a5",
+              backgroundColor: "var(--color-badge-status-error-bg)",
+              border: "1px solid var(--color-error)",
               borderRadius: "var(--radius-md)",
-              color: "#b91c1c",
+              color: "var(--color-badge-status-error-text)",
               fontSize: "var(--font-size-body-sm)",
             }}
           >
@@ -570,7 +570,7 @@ function BillingPageInner(): React.ReactElement {
               style={{
                 display: "block",
                 marginTop: "var(--space-2)",
-                color: "#b91c1c",
+                color: "var(--color-badge-status-error-text)",
                 background: "none",
                 border: "none",
                 cursor: "pointer",
@@ -796,13 +796,13 @@ function BillingPageInner(): React.ReactElement {
               {!isPaidPlan && (
                 <div
                   style={{
-                    backgroundColor: "#eff6ff",
-                    border: "1px solid #93c5fd",
+                    backgroundColor: "var(--color-badge-status-info-bg)",
+                    border: "1px solid var(--color-badge-status-info-text)",
                     borderRadius: "var(--radius-md)",
                     padding: "var(--space-4)",
                     marginBottom: "var(--space-4)",
                     fontSize: "var(--font-size-body-sm)",
-                    color: "#1d4ed8",
+                    color: "var(--color-badge-status-info-text)",
                   }}
                 >
                   You are on the Free plan. Choose a paid plan to monitor more

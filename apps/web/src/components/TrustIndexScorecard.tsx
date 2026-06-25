@@ -289,11 +289,11 @@ function ProbePill({ summary }: { summary: string }) {
         gap: "var(--space-1)",
         padding: "3px 10px",
         borderRadius: "var(--radius-pill)",
-        backgroundColor: "#ecfdf5",
-        border: "1px solid #a7f3d0",
+        backgroundColor: "var(--color-badge-connected-bg)",
+        border: "1px solid var(--color-success)",
         fontSize: "var(--font-size-caption)",
         fontWeight: "var(--font-weight-bold)" as React.CSSProperties["fontWeight"],
-        color: "#047857",
+        color: "var(--color-success)",
         flexShrink: 0,
       }}
     >
@@ -303,7 +303,7 @@ function ProbePill({ summary }: { summary: string }) {
           width: "7px",
           height: "7px",
           borderRadius: "50%",
-          backgroundColor: "#0fb488",
+          backgroundColor: "var(--color-success)",
           flexShrink: 0,
           display: "inline-block",
         }}

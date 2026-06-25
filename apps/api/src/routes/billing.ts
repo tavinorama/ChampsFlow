@@ -57,6 +57,7 @@ import {
   PLAN_LIMITS,
   type PlanTier,
 } from "../integrations/stripe";
+import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
 import Stripe from "stripe";
 
 // ---------------------------------------------------------------------------
@@ -876,6 +877,62 @@ async function handleCheckoutSessionCompleted(
     stripeEventId: eventId,
     status: internalStatus,
   });
+
+  // -----------------------------------------------------------------------
+  // Best-effort bonus delivery email.
+  // Only sent for paid plans (growth / agency). Free plan upgrades (if any)
+  // are skipped. Idempotency: the Redis NX guard at the top of the webhook
+  // handler (billing:event:<eventId>) ensures this block runs at most once
+  // per Stripe event — no double-send on retry.
+  // Customer email: prefer session.customer_details.email (populated after
+  // Stripe Checkout completes), fall back to session.customer_email.
+  // We keep a reference to the session in the outer scope via the `session`
+  // parameter passed to this function — accessed here through closure.
+  // -----------------------------------------------------------------------
+  if (resolvedPlanTier === "growth" || resolvedPlanTier === "agency") {
+    // Derive customer email from the Checkout Session (no PII in logs).
+    const customerEmail =
+      (session as Stripe.Checkout.Session).customer_details?.email ??
+      (session as Stripe.Checkout.Session).customer_email ??
+      null;
+
+    // Derive billing interval from session metadata (set during checkout creation).
+    const billingInterval =
+      (session as Stripe.Checkout.Session).metadata?.billing_interval;
+    const isAnnual = billingInterval === "year";
+
+    if (customerEmail) {
+      try {
+        await sendBonusDeliveryEmail({
+          to: customerEmail,
+          plan: resolvedPlanTier as "growth" | "agency",
+          annual: isAnnual,
+        });
+        logger.info("bonus_delivery_email_sent", {
+          tenant_id: tenantId,
+          plan_tier: resolvedPlanTier,
+          annual: isAnnual,
+          event_id: eventId,
+          // NOTE: recipient email intentionally NOT logged — hard rule (PII)
+        });
+      } catch (emailErr) {
+        // Non-fatal: bonus email failure must never block the webhook 200 response
+        // or the subscription activation. Log and continue.
+        logger.warn("bonus_delivery_email_failed", {
+          tenant_id: tenantId,
+          plan_tier: resolvedPlanTier,
+          event_id: eventId,
+          message: (emailErr as Error).message,
+        });
+      }
+    } else {
+      logger.warn("bonus_delivery_email_skipped_no_address", {
+        tenant_id: tenantId,
+        plan_tier: resolvedPlanTier,
+        event_id: eventId,
+      });
+    }
+  }
 
   logger.info("stripe_checkout_completed_processed", {
     tenant_id: tenantId,

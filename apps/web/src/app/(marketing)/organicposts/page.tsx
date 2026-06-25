@@ -249,6 +249,83 @@ export default function OrganicPostsPage() {
         </div>
       </section>
 
+      {/* In-app handoff — explains the DIY vs done-for-you path */}
+      <section style={{ ...SECTION, backgroundColor: "var(--color-surface-muted)" }}>
+        <div style={{ maxWidth: "760px", margin: "0 auto" }}>
+          <h2 style={H2}>How the in-app handoff works</h2>
+          <p style={{ fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-muted)", fontFamily: "var(--font-family)", marginBottom: "var(--space-6)" }}>
+            After you run a TrustIndex Audit, your results page gives you two clear paths. You choose — no pressure.
+          </p>
+
+          {/* Three-step flow */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-8)" }}>
+            {[
+              {
+                n: "1",
+                title: "Run your free audit",
+                body: "Go to /test, enter your brand name. TrustIndex AI probes ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — then scores you across AI, Performance, and Brand trust.",
+              },
+              {
+                n: "2",
+                title: "Choose your path",
+                body: "Your audit results page shows you the GEO plan and content drafts. Pick DIY (publish them yourself using the Growth plan tools) or done-for-you (hand it to OrganicPosts in one click).",
+              },
+              {
+                n: "3",
+                title: "We map, create, publish, monitor",
+                body: "If you choose done-for-you, OrganicPosts takes your audit context — score, gaps, plan — and executes the full cycle: content, schema, off-site authority, and monthly re-audits.",
+              },
+            ].map((s) => (
+              <div
+                key={s.n}
+                style={{
+                  padding: "var(--space-5)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "var(--color-surface)",
+                }}
+              >
+                <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--color-primary)", lineHeight: 1, marginBottom: "var(--space-3)", letterSpacing: "-0.04em", fontFamily: "var(--font-family)" }}>{s.n}</div>
+                <h3 style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-text)", fontFamily: "var(--font-family)", margin: "0 0 var(--space-2) 0" }}>{s.title}</h3>
+                <p style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, color: "var(--color-muted)", fontFamily: "var(--font-family)", margin: 0 }}>{s.body}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* DIY vs DFY comparison */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-8)" }}>
+            <div style={{ padding: "var(--space-5)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-surface)" }}>
+              <div style={{ fontWeight: 800, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", fontFamily: "var(--font-family)", marginBottom: "var(--space-2)" }}>
+                Do it yourself — Growth plan
+              </div>
+              <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, fontFamily: "var(--font-family)", margin: "0 0 var(--space-3) 0" }}>
+                Your audit generates a GEO plan and AI-drafted content. You review, approve, and publish
+                it yourself. Best for teams with in-house content bandwidth.
+              </p>
+              <p style={{ fontSize: "var(--font-size-caption)", fontWeight: 700, color: "var(--color-primary)", fontFamily: "var(--font-family)", margin: 0 }}>$99/mo</p>
+            </div>
+            <div style={{ padding: "var(--space-5)", border: "2px solid var(--color-accent-amber)", borderRadius: "var(--radius-md)", backgroundColor: "rgba(224,152,47,0.04)" }}>
+              <div style={{ fontWeight: 800, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", fontFamily: "var(--font-family)", marginBottom: "var(--space-2)" }}>
+                Done-for-you — OrganicPosts
+              </div>
+              <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, fontFamily: "var(--font-family)", margin: "0 0 var(--space-3) 0" }}>
+                OrganicPosts takes your audit data and executes everything — content creation, publishing,
+                off-site authority, schema, and monitoring. No content work on your end.
+              </p>
+              <p style={{ fontSize: "var(--font-size-caption)", fontWeight: 700, color: "var(--color-text)", fontFamily: "var(--font-family)", margin: 0 }}>GEO Sprint $2,400 one-time &nbsp;·&nbsp; Managed GEO from $1,900/mo</p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
+            <a href="/test" style={ctaPrimary}>Run your free TrustIndex Audit</a>
+            <a href="#offers" style={ctaSecondary}>See done-for-you plans</a>
+          </div>
+          <p style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", lineHeight: 1.6 }}>
+            Once you have your audit, the in-app handoff is one click — your score and plan are pre-filled automatically.
+          </p>
+        </div>
+      </section>
+
       {/* What we create */}
       <section style={{ ...SECTION, backgroundColor: "var(--color-surface-muted)" }}>
         <h2 style={{ ...H2, textAlign: "center" }}>What we create</h2>

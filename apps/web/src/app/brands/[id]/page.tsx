@@ -306,7 +306,7 @@ export default function BrandDetailPage() {
       <CompetitorBenchmark brandId={brandId} benchmark={breakdown?.competitors ?? []} />
 
       {/* Done-for-you — hand the plan to OrganicPosts (the paid service) */}
-      <DoneForYou brandId={brandId} />
+      <DoneForYou brandId={brandId} brandName={brandName} overallScore={breakdown?.scores?.overall ?? overall} />
 
       {breakdown && (
         <p style={{ marginTop: "var(--space-6)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>
@@ -346,10 +346,67 @@ const DFY_SKUS: { sku: "geo_sprint" | "managed_geo"; name: string; price: string
 
 interface EngagementRow { brand_id: string; sku: string; status: string }
 
-function DoneForYou({ brandId }: { brandId: string }) {
+type DfyFormState = {
+  companySize: string;
+  volume: string;
+  timeline: string;
+  workEmail: string;
+};
+
+const FORM_DEFAULTS: DfyFormState = {
+  companySize: "",
+  volume: "",
+  timeline: "",
+  workEmail: "",
+};
+
+const selectInputStyle: React.CSSProperties = {
+  width: "100%",
+  height: "44px",
+  padding: "0 var(--space-3)",
+  border: "1px solid var(--color-border)",
+  borderRadius: "var(--radius-md)",
+  backgroundColor: "var(--color-surface-muted)",
+  color: "var(--color-text)",
+  fontSize: "var(--font-size-body-sm)",
+  boxSizing: "border-box",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "var(--font-size-caption)",
+  fontWeight: 700,
+  color: "var(--color-text)",
+  marginBottom: "var(--space-1)",
+};
+
+function buildNote(form: DfyFormState, brandName: string | undefined, overallScore: number | null): string {
+  const parts: string[] = [];
+  if (brandName) parts.push(`Brand: ${brandName}`);
+  if (overallScore != null) parts.push(`TrustIndex: ${overallScore}/100`);
+  if (form.companySize) parts.push(`Company size: ${form.companySize}`);
+  if (form.volume) parts.push(`Volume: ${form.volume}/mo`);
+  if (form.timeline) parts.push(`Timeline: ${form.timeline}`);
+  return parts.join(" | ");
+}
+
+function DoneForYou({
+  brandId,
+  brandName,
+  overallScore,
+}: {
+  brandId: string;
+  brandName: string | undefined;
+  overallScore: number | null;
+}) {
   const [requested, setRequested] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<string | null>(null);
+  // Which SKU card is showing the intake form (null = none open)
+  const [activeSku, setActiveSku] = useState<string | null>(null);
+  const [form, setForm] = useState<DfyFormState>(FORM_DEFAULTS);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Track which SKU just confirmed so we can show the success message
+  const [confirmedSku, setConfirmedSku] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,73 +424,306 @@ function DoneForYou({ brandId }: { brandId: string }) {
     return () => { cancelled = true; };
   }, [brandId]);
 
-  async function request(sku: string) {
-    if (busy) return;
-    setBusy(sku);
+  function openIntake(sku: string) {
+    setActiveSku(sku);
+    setForm(FORM_DEFAULTS);
     setError("");
+  }
+
+  function cancelIntake() {
+    setActiveSku(null);
+    setError("");
+  }
+
+  async function submitIntake(e: React.FormEvent, sku: string) {
+    e.preventDefault();
+    if (busy) return;
+    if (!form.companySize || !form.volume || !form.timeline) {
+      setError("Please complete all required fields.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const note = buildNote(form, brandName, overallScore);
+    const email = form.workEmail.trim() || undefined;
     try {
       const res = await apiFetch("/api/engagements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brandId, sku }),
+        body: JSON.stringify({ brandId, sku, note, email }),
       });
       if (!res.ok) throw new Error();
       setRequested((s) => { const n = new Set(s); n.add(sku); return n; });
+      setConfirmedSku(sku);
+      setActiveSku(null);
     } catch {
       setError("Could not send your request. Please try again.");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
+  function updateForm(field: keyof DfyFormState, value: string) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   return (
-    <section style={{
-      marginTop: "var(--space-8)", backgroundColor: "var(--color-surface)",
-      border: "1px solid var(--color-border)", borderLeft: "4px solid var(--color-accent-amber)",
-      borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)",
-    }}>
-      <h2 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
-        Don&rsquo;t want to do it yourself?
+    <section
+      aria-labelledby="dfy-heading"
+      style={{
+        marginTop: "var(--space-8)", backgroundColor: "var(--color-surface)",
+        border: "1px solid var(--color-border)", borderLeft: "4px solid var(--color-accent-amber)",
+        borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)",
+      }}
+    >
+      <h2 id="dfy-heading" style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: "0 0 var(--space-4) 0" }}>
+        DIY or done-for-you?
       </h2>
-      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-5) 0" }}>
-        Your plan and drafts are ready — but publishing weekly, implementing schema, and building off-site
-        authority takes time. <strong>OrganicPosts</strong> (our team) executes it for you.
-      </p>
 
-      {error && <p style={{ color: "var(--color-error)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-3) 0" }}>{error}</p>}
+      {/* Two-path framing block */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: "var(--space-3)", marginBottom: "var(--space-6)",
+      }}>
+        {/* Path A — DIY */}
+        <div style={{
+          padding: "var(--space-4)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          backgroundColor: "var(--color-surface-muted)",
+        }}>
+          <div style={{ fontWeight: 800, fontSize: "var(--font-size-body-sm)", marginBottom: "var(--space-2)" }}>
+            Do it yourself — Growth plan
+          </div>
+          <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: 0 }}>
+            You have the plan and the drafts. Use the Content Studio above to generate and approve content,
+            then publish it yourself. Your Growth subscription includes unlimited re-audits so you can
+            track the lift week by week.
+          </p>
+        </div>
 
+        {/* Path B — DFY */}
+        <div style={{
+          padding: "var(--space-4)",
+          border: "1px solid var(--color-accent-amber)",
+          borderRadius: "var(--radius-md)",
+          backgroundColor: "rgba(224,152,47,0.06)",
+        }}>
+          <div style={{ fontWeight: 800, fontSize: "var(--font-size-body-sm)", marginBottom: "var(--space-2)" }}>
+            Done-for-you — OrganicPosts
+          </div>
+          <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: 0 }}>
+            Our team publishes the fixes for you — content, schema, Reddit / LinkedIn / G2 authority,
+            Wikidata entity — while you focus on your business. We re-audit monthly so you see the
+            citation lift without lifting a finger.
+          </p>
+        </div>
+      </div>
+
+      {/* SKU cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "var(--space-4)" }}>
         {DFY_SKUS.map((o) => {
           const done = requested.has(o.sku);
+          const isOpen = activeSku === o.sku;
+          const justConfirmed = confirmedSku === o.sku;
+
           return (
-            <div key={o.sku} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+            <div
+              key={o.sku}
+              style={{
+                border: `1px solid ${isOpen ? "var(--color-accent-amber)" : "var(--color-border)"}`,
+                borderRadius: "var(--radius-md)",
+                padding: "var(--space-4)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-2)",
+                backgroundColor: isOpen ? "rgba(224,152,47,0.04)" : "var(--color-surface)",
+                transition: "border-color 0.15s ease",
+              }}
+            >
               <div style={{ fontWeight: 800 }}>{o.name}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-1)" }}>
                 <span style={{ fontSize: "var(--font-size-h3)", fontWeight: 800 }}>{o.price}</span>
                 <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{o.priceNote}</span>
               </div>
-              <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.55, margin: 0, flex: 1 }}>{o.desc}</p>
-              <button
-                type="button"
-                disabled={done || busy === o.sku}
-                onClick={() => void request(o.sku)}
-                style={{
-                  marginTop: "var(--space-2)", minHeight: "40px", padding: "0 var(--space-4)",
-                  backgroundColor: done ? "var(--color-surface-muted)" : "var(--color-primary)",
-                  color: done ? "var(--color-muted)" : "#fff",
-                  border: done ? "1px solid var(--color-border)" : "none",
-                  borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
-                  cursor: done || busy === o.sku ? "default" : "pointer",
-                }}
-              >
-                {done ? "Requested ✓ — we'll reach out" : busy === o.sku ? "Sending…" : "Request this"}
-              </button>
+              <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.55, margin: 0, flex: 1 }}>
+                {o.desc}
+              </p>
+
+              {/* Confirmation message */}
+              {done && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    marginTop: "var(--space-2)",
+                    padding: "var(--space-3)",
+                    borderRadius: "var(--radius-md)",
+                    backgroundColor: "rgba(12,138,99,0.08)",
+                    border: "1px solid var(--color-success)",
+                  }}
+                >
+                  <p style={{ margin: "0 0 var(--space-1) 0", fontWeight: 700, fontSize: "var(--font-size-caption)", color: "var(--color-success)" }}>
+                    Request sent — the founder will reach out within 1 business day.
+                  </p>
+                  <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.5 }}>
+                    Next: you&rsquo;ll receive an email to confirm scope and schedule a short intro call.
+                  </p>
+                </div>
+              )}
+
+              {/* CTA — open intake or already done */}
+              {!done && !isOpen && (
+                <button
+                  type="button"
+                  onClick={() => openIntake(o.sku)}
+                  style={{
+                    marginTop: "var(--space-2)", minHeight: "44px", padding: "0 var(--space-4)",
+                    backgroundColor: "var(--color-primary)", color: "#fff",
+                    border: "none", borderRadius: "var(--radius-md)",
+                    fontWeight: 700, fontSize: "var(--font-size-body-sm)", cursor: "pointer",
+                  }}
+                >
+                  Let us publish the fix
+                </button>
+              )}
+
+              {/* Intake form (revealed when this SKU is selected) */}
+              {isOpen && (
+                <form
+                  onSubmit={(e) => void submitIntake(e, o.sku)}
+                  aria-label={`Discovery intake for ${o.name}`}
+                  style={{
+                    marginTop: "var(--space-2)",
+                    display: "flex", flexDirection: "column", gap: "var(--space-3)",
+                  }}
+                >
+                  <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.5 }}>
+                    Two quick questions so we can scope the right plan for you.
+                  </p>
+
+                  {/* Company size */}
+                  <div>
+                    <label htmlFor={`company-size-${o.sku}`} style={labelStyle}>
+                      Company size <span aria-hidden="true" style={{ color: "var(--color-error)" }}>*</span>
+                    </label>
+                    <select
+                      id={`company-size-${o.sku}`}
+                      required
+                      value={form.companySize}
+                      onChange={(e) => updateForm("companySize", e.target.value)}
+                      style={selectInputStyle}
+                    >
+                      <option value="" disabled>Select&hellip;</option>
+                      <option value="1-10">1–10 people</option>
+                      <option value="11-50">11–50 people</option>
+                      <option value="51-200">51–200 people</option>
+                      <option value="200+">200+ people</option>
+                    </select>
+                  </div>
+
+                  {/* Content volume */}
+                  <div>
+                    <label htmlFor={`volume-${o.sku}`} style={labelStyle}>
+                      Content volume per month <span aria-hidden="true" style={{ color: "var(--color-error)" }}>*</span>
+                    </label>
+                    <select
+                      id={`volume-${o.sku}`}
+                      required
+                      value={form.volume}
+                      onChange={(e) => updateForm("volume", e.target.value)}
+                      style={selectInputStyle}
+                    >
+                      <option value="" disabled>Select&hellip;</option>
+                      <option value="2-4">2–4 posts</option>
+                      <option value="5-8">5–8 posts</option>
+                      <option value="8+">8+ posts</option>
+                    </select>
+                  </div>
+
+                  {/* Timeline */}
+                  <div>
+                    <label htmlFor={`timeline-${o.sku}`} style={labelStyle}>
+                      Timeline <span aria-hidden="true" style={{ color: "var(--color-error)" }}>*</span>
+                    </label>
+                    <select
+                      id={`timeline-${o.sku}`}
+                      required
+                      value={form.timeline}
+                      onChange={(e) => updateForm("timeline", e.target.value)}
+                      style={selectInputStyle}
+                    >
+                      <option value="" disabled>Select&hellip;</option>
+                      <option value="ASAP">ASAP — ready to start now</option>
+                      <option value="this quarter">This quarter</option>
+                      <option value="exploring">Just exploring for now</option>
+                    </select>
+                  </div>
+
+                  {/* Work email (optional) */}
+                  <div>
+                    <label htmlFor={`email-${o.sku}`} style={labelStyle}>
+                      Work email <span style={{ fontWeight: 400, color: "var(--color-muted)" }}>(optional — pre-fills the intro call invite)</span>
+                    </label>
+                    <input
+                      id={`email-${o.sku}`}
+                      type="email"
+                      autoComplete="email"
+                      value={form.workEmail}
+                      onChange={(e) => updateForm("workEmail", e.target.value)}
+                      placeholder="you@company.com"
+                      style={{ ...selectInputStyle, height: "44px" }}
+                    />
+                  </div>
+
+                  {error && (
+                    <p role="alert" style={{ margin: 0, color: "var(--color-error)", fontSize: "var(--font-size-caption)", fontWeight: 600 }}>
+                      {error}
+                    </p>
+                  )}
+
+                  <div style={{ display: "flex", gap: "var(--space-2)" }}>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      style={{
+                        flex: 1, minHeight: "44px", padding: "0 var(--space-4)",
+                        backgroundColor: busy ? "var(--color-surface-muted)" : "var(--color-primary)",
+                        color: busy ? "var(--color-muted)" : "#fff",
+                        border: "none", borderRadius: "var(--radius-md)",
+                        fontWeight: 700, fontSize: "var(--font-size-body-sm)",
+                        cursor: busy ? "default" : "pointer",
+                      }}
+                    >
+                      {busy ? "Sending…" : "Send request"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelIntake}
+                      style={{
+                        minHeight: "44px", padding: "0 var(--space-3)",
+                        backgroundColor: "transparent", color: "var(--color-muted)",
+                        border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+                        fontWeight: 600, fontSize: "var(--font-size-body-sm)", cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {(justConfirmed || !done) && (
+                    <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.5 }}>
+                      No payment now. We confirm scope on a short intro call first.
+                    </p>
+                  )}
+                </form>
+              )}
             </div>
           );
         })}
       </div>
+
       <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "var(--space-4) 0 0 0", lineHeight: 1.6 }}>
-        Pricing is indicative — we confirm scope on a short intro call. <a href="/organicposts" style={{ color: "var(--color-primary)", fontWeight: 600 }}>See full details</a>.
+        Pricing is indicative — we confirm scope on a short intro call. <a href="/organicposts" style={{ color: "var(--color-primary)", fontWeight: 600 }}>See full service details</a>.
       </p>
     </section>
   );
@@ -678,8 +968,8 @@ function ContentStudio({ brandId }: { brandId: string }) {
             const isDirty = editBody[it.id] != null && editBody[it.id] !== it.body;
 
             function badgeStyle(level: "green" | "muted" | "weak"): React.CSSProperties {
-              const base: React.CSSProperties = { fontSize: "0.6rem", fontWeight: 700, padding: "1px 5px", borderRadius: "var(--radius-sm)", whiteSpace: "nowrap" };
-              if (level === "green") return { ...base, backgroundColor: "rgba(15,180,136,0.15)", color: "var(--color-success)" };
+              const base: React.CSSProperties = { fontSize: "var(--font-size-badge)", fontWeight: 700, padding: "1px 5px", borderRadius: "var(--radius-sm)", whiteSpace: "nowrap" };
+              if (level === "green") return { ...base, backgroundColor: "var(--color-success-subtle)", color: "var(--color-success)" };
               if (level === "muted") return { ...base, backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" };
               return { ...base, backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)", opacity: 0.6 };
             }
@@ -687,16 +977,16 @@ function ContentStudio({ brandId }: { brandId: string }) {
             return (
               <li key={it.id} style={{
                 padding: "var(--space-4)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-                backgroundColor: it.status === "approved" ? "rgba(15,180,136,0.06)" : "var(--color-surface)",
+                backgroundColor: it.status === "approved" ? "var(--color-success-surface)" : "var(--color-surface)",
                 opacity: it.status === "discarded" ? 0.5 : 1,
               }}>
                 {/* Type + AI label row */}
                 <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-2)", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-badge-ai-bg)", color: "var(--color-badge-ai-text)" }}>{it.content_type}</span>
+                  <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 800, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-badge-ai-bg)", color: "var(--color-badge-ai-text)" }}>{it.content_type}</span>
                   {/* AC-C4-3: non-removable AI label */}
-                  <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>✦ AI-generated</span>
-                  {it.schema_markup && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>schema.org ✓</span>}
-                  {it.status === "approved" && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>✓ APPROVED</span>}
+                  <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>✦ AI-generated</span>
+                  {it.schema_markup && <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-success)" }}>schema.org ✓</span>}
+                  {it.status === "approved" && <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-success)" }}>✓ APPROVED</span>}
                 </div>
 
                 {/* GEO trait coverage badges */}
@@ -736,18 +1026,17 @@ function ContentStudio({ brandId }: { brandId: string }) {
                       type="button"
                       disabled={savingId === it.id}
                       onClick={() => void saveBody(it)}
-                      style={{ ...miniBtn(true), minHeight: "28px", fontSize: "0.7rem" }}
+                      style={{ ...miniBtn(true), fontSize: "var(--font-size-badge)" }}
                     >
                       {savingId === it.id ? "Saving…" : "Save"}
                     </button>
-                    {savedId === it.id && (
-                      <span aria-live="polite" style={{ fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: 700 }}>Saved</span>
-                    )}
                   </div>
                 )}
-                {savedId === it.id && !isDirty && (
-                  <span aria-live="polite" style={{ display: "block", fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: 700, marginBottom: "var(--space-2)" }}>Saved</span>
-                )}
+                <div aria-live="polite" style={{ minHeight: "1.4em", marginBottom: "var(--space-2)" }}>
+                  {savedId === it.id && (
+                    <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: 700 }}>Saved</span>
+                  )}
+                </div>
 
                 {/* Approve / Discard actions */}
                 <div style={{ display: "flex", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
@@ -761,7 +1050,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
                     type="button"
                     aria-label="Copy draft body to clipboard"
                     onClick={() => void copyText(`copy-${it.id}`, it.body)}
-                    style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                    style={{ ...miniBtn(false), fontSize: "var(--font-size-badge)" }}
                   >
                     {copiedKey === `copy-${it.id}` ? "Copied!" : "Copy body"}
                   </button>
@@ -769,7 +1058,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
                     type="button"
                     aria-label="Copy draft as Markdown to clipboard"
                     onClick={() => void copyText(`copymd-${it.id}`, `# ${it.title ?? ""}\n\n${it.body}`)}
-                    style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                    style={{ ...miniBtn(false), fontSize: "var(--font-size-badge)" }}
                   >
                     {copiedKey === `copymd-${it.id}` ? "Copied!" : "Copy as Markdown"}
                   </button>
@@ -787,7 +1076,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
                         type="button"
                         aria-label="Copy JSON-LD to clipboard"
                         onClick={() => void copyText(`copyjsonld-${it.id}`, it.schema_markup!)}
-                        style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                        style={{ ...miniBtn(false), fontSize: "var(--font-size-badge)" }}
                       >
                         {copiedKey === `copyjsonld-${it.id}` ? "Copied!" : "Copy JSON-LD"}
                       </button>
@@ -795,7 +1084,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
                         type="button"
                         aria-label="Download schema as JSON file"
                         onClick={() => downloadJsonLd(it.schema_markup!, it.title ?? it.content_type)}
-                        style={{ ...miniBtn(false), fontSize: "0.7rem" }}
+                        style={{ ...miniBtn(false), fontSize: "var(--font-size-badge)" }}
                       >
                         Download .json
                       </button>
@@ -810,18 +1099,18 @@ function ContentStudio({ brandId }: { brandId: string }) {
                     const isActive = regenBusy === key;
                     return (
                       <button
-                        key={idx}
+                        key={btn.label}
                         type="button"
                         disabled={!!regenBusy}
                         aria-label={`Regenerate: ${btn.label}`}
                         onClick={() => void regen(it, idx)}
                         style={{
-                          fontSize: "0.65rem", fontWeight: 700, padding: "2px 8px",
+                          fontSize: "var(--font-size-badge)", fontWeight: 700, padding: "6px 8px",
                           borderRadius: "var(--radius-sm)", cursor: regenBusy ? "not-allowed" : "pointer",
                           border: "1px solid var(--color-border)", background: "var(--color-surface-muted)",
                           color: isActive ? "var(--color-primary)" : "var(--color-muted)",
                           opacity: regenBusy && !isActive ? 0.5 : 1,
-                          minHeight: "24px",
+                          minHeight: "32px",
                         }}
                       >
                         {isActive ? "Regenerating…" : btn.label}
@@ -903,7 +1192,7 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
   const vColor = (v: string) =>
     VECTOR_COLORS[v as keyof typeof VECTOR_COLORS] ?? VECTOR_COLORS.brand;
   const badge = (label: string, kind: "effort" | "impact") => (
-    <span style={{ fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>
+    <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>
       {kind}: {label}
     </span>
   );
@@ -944,10 +1233,10 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
                 backgroundColor: t.status === "accepted" ? "rgba(15,180,136,0.06)" : "var(--color-surface)",
               }}>
                 <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-1)", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", color: vColor(t.vector) }}>{t.vector}</span>
+                  <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 800, textTransform: "uppercase", color: vColor(t.vector) }}>{t.vector}</span>
                   {badge(t.impact, "impact")}{badge(t.effort, "effort")}
-                  {t.status === "accepted" && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-success)" }}>✓ ACCEPTED</span>}
-                  {t.status === "rejected" && <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-muted)" }}>REJECTED</span>}
+                  {t.status === "accepted" && <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-success)" }}>✓ ACCEPTED</span>}
+                  {t.status === "rejected" && <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-muted)" }}>REJECTED</span>}
                 </div>
                 <div style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", marginBottom: "var(--space-1)" }}>{t.gap}</div>
                 <div style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 600, color: "var(--color-text)", marginBottom: "var(--space-2)" }}>→ {t.action}</div>
@@ -965,7 +1254,7 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-3)" }}>
                 {calendar.map((c) => (
                   <div key={c.week} style={{ padding: "var(--space-4)", backgroundColor: "var(--color-surface-muted)", borderRadius: "var(--radius-md)", borderTop: `3px solid ${vColor(c.vector)}` }}>
-                    <div style={{ fontSize: "0.65rem", fontWeight: 800, textTransform: "uppercase", color: "var(--color-muted)", marginBottom: "var(--space-1)" }}>Week {c.week} · {c.channel}</div>
+                    <div style={{ fontSize: "var(--font-size-badge)", fontWeight: 800, textTransform: "uppercase", color: "var(--color-muted)", marginBottom: "var(--space-1)" }}>Week {c.week} · {c.channel}</div>
                     <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text)", lineHeight: 1.5 }}>{c.topic}</div>
                   </div>
                 ))}
@@ -1151,10 +1440,10 @@ function VectorPanel({
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
                     <span style={{ fontWeight: 700 }}>{display}</span>
                     <span style={{
-                      fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+                      fontSize: "var(--font-size-badge)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
                       padding: "2px 6px", borderRadius: "var(--radius-sm)",
-                      backgroundColor: isMeasured ? "rgba(15,180,136,0.12)" : "var(--color-surface-muted)",
-                      color: isMeasured ? "var(--color-success)" : "var(--color-muted)",
+                      backgroundColor: isMeasured ? "var(--color-badge-connected-bg)" : "var(--color-surface-muted)",
+                      color: isMeasured ? "var(--color-badge-connected-text)" : "var(--color-muted)",
                       border: isMeasured ? "none" : "1px solid var(--color-border)",
                     }}>
                       {isMeasured ? "measured" : "baseline"}

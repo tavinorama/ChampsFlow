@@ -40,7 +40,7 @@ export async function sendDsrNoDataEmail(
     throw new Error("RESEND_API_KEY is not configured — DSR no-data email not sent");
   }
 
-  const fromAddress = process.env.EMAIL_FROM ?? "noreply@organicposts.ai";
+  const fromAddress = process.env.EMAIL_FROM ?? "noreply@trustindexai.com";
 
   const subject = "Your data request — no personal data on file";
 
@@ -56,9 +56,9 @@ export async function sendDsrNoDataEmail(
     "If you believe we should hold data under a different email address, please",
     "submit a new request from that address, or contact us with your request ID.",
     "",
-    "If you have questions, contact us at privacy@organicposts.ai",
+    "If you have questions, contact us at privacy@trustindexai.com",
     "",
-    "— The Organic Posts Privacy Team",
+    "— The TrustIndex AI Privacy Team",
   ].join("\n");
 
   const htmlBody = `<!DOCTYPE html>
@@ -83,7 +83,7 @@ export async function sendDsrNoDataEmail(
   <p style="font-size: 14px; color: #6B7280;">
     If you believe we should hold data under a different email address, submit a new
     request from that address, or contact
-    <a href="mailto:privacy@organicposts.ai" style="color: #2563EB;">privacy@organicposts.ai</a>
+    <a href="mailto:privacy@trustindexai.com" style="color: #2563EB;">privacy@trustindexai.com</a>
     with your request ID.
   </p>
 </body>

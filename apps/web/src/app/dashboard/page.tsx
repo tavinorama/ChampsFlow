@@ -224,7 +224,7 @@ export default function DashboardPage() {
           role="alert"
           style={{
             padding: "var(--space-3) var(--space-4)",
-            backgroundColor: "#FEF2F2",
+            backgroundColor: "var(--color-badge-status-error-bg)",
             border: "1px solid var(--color-error)",
             borderRadius: "var(--radius-md)",
             color: "var(--color-error)",
