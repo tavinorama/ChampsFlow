@@ -853,11 +853,10 @@ export default function PillarGeoPage() {
         </p>
 
         <p style={PROSE.p}>
-          The Zero Data Retention (ZDR) arrangement between TrustIndex AI and
-          Anthropic means your content is not stored by Anthropic after the AI
-          call ends and is never used to train any model. For EU users, inference
-          runs on AWS Bedrock in Frankfurt &mdash; your content does not leave
-          the EU during processing.
+          Under Anthropic&rsquo;s API terms, your content is not used to train
+          any AI model and is not retained beyond what is needed to return your
+          result. We never sell or share your content. We disclose every AI
+          sub-processor we use, and EU-region inference is on our roadmap.
         </p>
 
         <p style={PROSE.p}>

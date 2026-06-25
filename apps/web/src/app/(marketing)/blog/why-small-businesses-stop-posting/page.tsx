@@ -453,9 +453,11 @@ export default function BlogPost1Page() {
         </p>
 
         <p style={PROSE_STYLES.p}>
-          For EU-based businesses specifically, look for a tool that offers EU
-          data residency &mdash; meaning your content is processed on European
-          infrastructure and does not leave the EU.
+          For EU-based businesses specifically, look for a tool that is
+          transparent about which AI providers process your content and whether
+          those providers are contractually restricted from training on it.
+          EU-region inference is something to ask about directly and verify
+          against documentation &mdash; not just marketing claims.
         </p>
 
         {/* Internal link placeholder: [link: future-draft-confirm-post] */}

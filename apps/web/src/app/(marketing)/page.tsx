@@ -23,14 +23,14 @@ import { GeoGraphBackdrop } from "../../components/marketing/GeoGraphBackdrop";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "TrustIndex AI — Know if AI trusts your brand",
+  title: "TrustIndex AI — Audit + Execute your GEO strategy",
   description:
-    "AI Search Trust Intelligence for SMBs. TrustIndex AI audits how your brand appears across AI search, benchmarks competitors, and builds the GEO content plan you need to get cited organically.",
+    "The only GEO platform that audits how your brand appears across AI search AND writes the fix. TrustIndex AI benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
   alternates: { canonical: "https://trustindexai.com/" },
   openGraph: {
-    title: "TrustIndex AI — Know if AI trusts your brand",
+    title: "TrustIndex AI — Audit + Execute your GEO strategy",
     description:
-      "AI Search Trust Intelligence for SMBs. TrustIndex AI audits how your brand appears across AI search, benchmarks competitors, and builds the GEO content plan you need to get cited organically.",
+      "The only GEO platform that audits how your brand appears across AI search AND writes the fix. TrustIndex AI benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
     url: "https://trustindexai.com/",
     siteName: "TrustIndex AI",
     images: [
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "TrustIndex AI — Know if AI trusts your brand",
+    title: "TrustIndex AI — Audit + Execute your GEO strategy",
     description:
       "When your customer asks ChatGPT for a recommendation, be the answer.",
     images: ["https://trustindexai.com/og-default.png"],
@@ -281,9 +281,9 @@ function HeroSection() {
             textWrap: "balance",
           }}
         >
-          Know if AI{" "}
+          Audit + Execute.{" "}
           <span style={{ color: "var(--color-primary)" }}>
-            trusts your brand.
+            In one platform.
           </span>
         </h1>
 
@@ -299,10 +299,10 @@ function HeroSection() {
             marginRight: "auto",
           }}
         >
-          Buyers now ask ChatGPT, Perplexity, Gemini, and Google AI before they
-          visit your site. TrustIndex AI audits how your brand appears in those
-          answers, benchmarks the competitors being recommended instead, and
-          builds the GEO content plan you need to get cited organically.
+          The only GEO tool that audits how your brand appears across ChatGPT,
+          Perplexity, Gemini, and Google AI &mdash; then writes the fix.
+          Know if AI trusts your brand, benchmark competitors, and publish
+          content that earns citations.
         </p>
 
         {/* Compact form — centred */}
@@ -330,7 +330,7 @@ function HeroSection() {
           {[
             "30-day money-back guarantee",
             "No auto-publish, ever",
-            "EU data residency",
+            "Privacy-first",
           ].map((t) => (
             <span
               key={t}
@@ -1251,8 +1251,8 @@ const PRIVACY_BLOCKS = [
   {
     Icon: IconLock,
     iconColor: "var(--color-primary)",
-    title: "Zero Data Retention",
-    body: "We use Anthropic Claude Sonnet under a Zero Data Retention agreement — Anthropic cannot store your content after the AI call ends. The moment your draft is returned, your input is gone from Anthropic's systems. Not archived. Not anonymised. Not used for training.",
+    title: "No training on your data",
+    body: "We use Anthropic Claude. Under Anthropic's API terms, your content is not used to train AI models and is not retained beyond what is needed to return your result. We never sell or share it.",
   },
   {
     Icon: IconHandStop,
@@ -1263,8 +1263,8 @@ const PRIVACY_BLOCKS = [
   {
     Icon: IconGlobe,
     iconColor: "var(--color-success)",
-    title: "EU data residency for AI inference",
-    body: "For EU users, AI inference runs on AWS Bedrock in Frankfurt (eu-central-1). Your content does not leave the EU during AI processing. We act as a data processor under GDPR Article 28 — you remain the data controller.",
+    title: "Privacy-first AI processing",
+    body: "We never use your data to train AI models, and our AI providers are contractually restricted from training on your content. We act as a data processor under GDPR Article 28 — you remain the controller. EU-region inference and additional data-residency controls are on our roadmap; until they ship we disclose exactly which providers process your data (see our Sub-processors page).",
   },
 ];
 
@@ -1380,14 +1380,14 @@ const COMPARISON_ROWS = [
     op: "Yes — structured, specific drafts shaped for AI citation",
   },
   {
-    feature: "Zero Data Retention / no AI training on your content",
+    feature: "No AI training on your content",
     buffer: "unknown", hootsuite: "unknown", later: "unknown", predis: "unknown",
-    op: "Yes — ZDR (US) / Bedrock no-training default (EU)",
+    op: "Yes — provider-contractual (Anthropic API terms)",
   },
   {
-    feature: "EU data residency for AI inference",
+    feature: "EU-region inference",
     buffer: "partial", hootsuite: "partial", later: "unknown", predis: "unknown",
-    op: "Yes — AWS Bedrock eu-central-1 at launch",
+    op: "On our roadmap",
   },
   {
     feature: "Draft-and-confirm (no autonomous posting)",
@@ -1404,13 +1404,20 @@ const COMPARISON_ROWS = [
 type CellValue = "no" | "partial" | "unknown" | string;
 
 function CompCell({ value, isOP = false }: { value: CellValue; isOP?: boolean }) {
-  if (isOP) {
+  if (isOP && value !== "On our roadmap") {
     return (
       <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "top", backgroundColor: "rgba(22,163,74,0.06)" }}>
         <span style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: "var(--space-1)" }}>
           <span style={{ color: "var(--color-success)", fontWeight: "700", flexShrink: 0, fontSize: "1rem" }} aria-hidden="true">✓</span>
           <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: "600", fontFamily: "var(--font-family)", lineHeight: 1.5, textAlign: "left" }}>{value}</span>
         </span>
+      </td>
+    );
+  }
+  if (isOP && value === "On our roadmap") {
+    return (
+      <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "top", backgroundColor: "rgba(22,163,74,0.06)" }}>
+        <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: "600", fontFamily: "var(--font-family)", lineHeight: 1.5 }}>{value}</span>
       </td>
     );
   }
@@ -2233,7 +2240,7 @@ const FAQ_ITEMS = [
   { q: "How do I get access?", a: "Join the waitlist below. We are inviting early users manually, in order of signup. When your spot opens, we will email you with a personal onboarding from the founder." },
   { q: "Which AI engines do you audit?", a: "We audit your brand across ChatGPT (OpenAI), Claude (Anthropic), Perplexity, Gemini (Google), and Google AI Overview. Each audit fires a configurable set of prompts — 50 prompts on the Free plan, 250 on Growth — and records whether your brand was mentioned, how it was described, and which competitors were cited instead." },
   { q: "What data do you store?", a: "We store your account information (name and email), the brand and competitor names you configure, and the audit results (prompt text, AI responses, TrustIndex scores). Audit data is encrypted at rest and scoped to your workspace only. You can request deletion of all your data at any time from account settings." },
-  { q: "Does the AI learn from my data?", a: "No. For US-based inference, we use Anthropic Claude Sonnet under Anthropic's Zero Data Retention agreement — your content is not stored by Anthropic after the AI call ends and is never used to train any AI model. For EU users, AI inference runs on AWS Bedrock eu-central-1, which does not store your prompts or use them for training by default." },
+  { q: "Does the AI learn from my data?", a: "No. We use Anthropic Claude. Under Anthropic's API terms, your content is not used to train AI models and is not retained beyond what is needed to return your result. We never sell or share your content with third parties for training purposes. We disclose every AI sub-processor on our Sub-processors page, and EU-region inference is on our roadmap." },
   { q: "Can I cancel at any time?", a: "Yes. No lock-in. Cancel your subscription or request deletion of all your data from account settings at any time. Your audit history and TrustIndex scores are retained for 30 days after cancellation, then permanently deleted. Cancellation takes effect at end of billing period." },
 ];
 

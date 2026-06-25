@@ -90,32 +90,34 @@ export default function LoginPage() {
           Sign in
         </h1>
         {plan ? (
-          <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-4) 0" }}>
-            We&rsquo;ll email you a secure sign-in link. After clicking it, we&rsquo;ll take
-            you straight to checkout for the{" "}
-            <strong style={{ color: "var(--color-text)", textTransform: "capitalize" }}>{plan}</strong>{" "}
-            plan.
-          </p>
+          <>
+            <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-3) 0", lineHeight: 1.6 }}>
+              Enter your email &mdash; we&rsquo;ll send a magic link, then take you straight to secure Stripe checkout. About 20 seconds.
+            </p>
+            <div style={{
+              padding: "var(--space-3) var(--space-4)",
+              backgroundColor: "var(--color-badge-ai-bg)",
+              border: "1px solid var(--color-highlight-border)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-badge-ai-text)",
+              fontWeight: 600,
+              marginBottom: "var(--space-4)",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+            }}>
+              <span aria-hidden="true" style={{ fontSize: "0.9rem" }}>✓</span>
+              <span>
+                <span style={{ textTransform: "capitalize" }}>{plan}</span>{" "}
+                plan &mdash; ${plan === "growth" ? "99" : "249"}/mo &middot; 30-day money-back guarantee
+              </span>
+            </div>
+          </>
         ) : (
           <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-4) 0" }}>
             We&rsquo;ll email you a secure sign-in link. No password needed.
           </p>
-        )}
-        {plan && (
-          <div style={{
-            padding: "var(--space-3) var(--space-4)",
-            backgroundColor: "var(--color-badge-ai-bg)",
-            border: "1px solid var(--color-highlight-border)",
-            borderRadius: "var(--radius-md)",
-            fontSize: "var(--font-size-caption)",
-            color: "var(--color-badge-ai-text)",
-            fontWeight: 600,
-            marginBottom: "var(--space-4)",
-          }}>
-            Starting{" "}
-            <span style={{ textTransform: "capitalize" }}>{plan}</span>{" "}
-            plan &mdash; ${plan === "growth" ? "99" : "149"}/mo
-          </div>
         )}
 
         {!configured ? (

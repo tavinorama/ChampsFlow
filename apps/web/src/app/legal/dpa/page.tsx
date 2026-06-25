@@ -49,7 +49,7 @@ export default function DpaPage() {
       </LegalSection>
 
       <LegalSection n="6" title="Security measures">
-        <p>We maintain: multi-tenant isolation via forced row-level security; encryption in transit (TLS) and at rest; AES-256-GCM encryption of stored API keys; append-only audit logging; least-privilege access; SSRF-hardened outbound fetching; prompt-injection sanitisation; and zero-data-retention AI inference where available. Measures are reviewed and may be updated provided protection is not materially reduced.</p>
+        <p>We maintain: multi-tenant isolation via forced row-level security; encryption in transit (TLS) and at rest; AES-256-GCM encryption of stored API keys; append-only audit logging; least-privilege access; SSRF-hardened outbound fetching; prompt-injection sanitisation; and no-training AI inference per provider API terms. Measures are reviewed and may be updated provided protection is not materially reduced.</p>
       </LegalSection>
 
       <LegalSection n="7" title="Audits and assistance">
