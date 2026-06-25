@@ -350,8 +350,7 @@ function EUCopy() {
         <li>Post content used only to generate and schedule posts.</li>
         <li>OAuth tokens encrypted; never shared with third parties.</li>
         <li>
-          AI inference via Anthropic (EU: Bedrock eu-central-1). ZDR enabled by
-          default.
+          AI inference via Anthropic — no training on your content per API terms.
         </li>
         <li>Request deletion any time: Account &gt; Data &amp; Privacy.</li>
       </ul>

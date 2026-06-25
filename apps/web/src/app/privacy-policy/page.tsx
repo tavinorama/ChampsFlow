@@ -58,7 +58,7 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection n="3" title="AI processing and transparency">
-        <p>Audits send synthetic prompts to AI providers under zero-data-retention terms where available; for EU users, inference runs on EU-hosted paths and Perplexity is excluded until transfer safeguards are confirmed. AI-generated content is always labelled as AI-generated (EU AI Act Art. 50) and requires your human review before any use. We do not use your data to train AI models, and our providers are contractually restricted from doing so on your content.</p>
+        <p>Audits send synthetic prompts to AI providers under no-training terms per provider API agreements; for EU users, we minimise transfers and disclose all sub-processors (see §4), Perplexity is excluded until transfer safeguards are confirmed, and EU-region inference is on our roadmap. AI-generated content is always labelled as AI-generated (EU AI Act Art. 50) and requires your human review before any use. We do not use your data to train AI models, and our providers are contractually restricted from doing so on your content.</p>
       </LegalSection>
 
       <LegalSection n="4" title="Who we share with (sub-processors)">

@@ -154,20 +154,21 @@ export default function SubProcessorsPage() {
                 </td>
                 <td style={cell}>
                   AI inference — processes synthetic audit prompts to generate
-                  citation and presence analysis. Zero Data Retention (ZDR):
-                  prompts and responses are not stored or used for training.
+                  citation and presence analysis. Per Anthropic API terms,
+                  prompts and responses are not used for training and are not
+                  retained beyond returning the result.
                 </td>
                 <td style={cell}>
                   Synthetic prompt text (brand name + category question; no
                   personal data by design). No competitor names transmitted.
                 </td>
                 <td style={cell}>
-                  EU users: AWS Bedrock eu-central-1 (EU). US users: Anthropic
-                  API us-east-1 (US).
+                  Anthropic API (US-hosted). EU-region inference is on our
+                  roadmap; current transfers rely on SCCs (Module 2).
                 </td>
                 <td style={cell}>
-                  EU path: inference stays in EU — no transfer. US path:
-                  domestic US. DPF certified; SCCs (Module 2) available.
+                  SCCs (Module 2); DPF certified. EU-region inference planned
+                  (roadmap); we disclose here when it ships.
                 </td>
                 <td style={cell}>
                   <a
@@ -186,8 +187,8 @@ export default function SubProcessorsPage() {
                 </td>
                 <td style={cell}>
                   AI inference — processes synthetic audit prompts for ChatGPT
-                  citation and presence analysis. Zero Data Retention API terms
-                  apply.
+                  citation and presence analysis. Per OpenAI API terms,
+                  prompts are not used for training by default.
                 </td>
                 <td style={cell}>
                   Synthetic prompt text (brand name + category question; no

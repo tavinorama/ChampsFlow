@@ -431,6 +431,19 @@ function PublicNavbar() {
             Free AI Test
           </Link>
           <Link
+            href="/blog"
+            className="mk-navlink mk-navlink-hide-sm"
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              color: "var(--color-text)",
+              textDecoration: "none",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            Blog
+          </Link>
+          <Link
             href="/how-it-works"
             className="mk-navlink mk-navlink-hide-sm"
             style={{
