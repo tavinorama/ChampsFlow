@@ -18,6 +18,9 @@
  *   GET   /api/admin/kit-orders       — kit_order rows (newest first)
  *   GET   /api/admin/engagements      — all engagement rows (cross-tenant)
  *   PATCH /api/admin/engagements/:id  — update engagement status
+ *   GET   /api/admin/system-health    — infra + env key presence + engine liveness
+ *   GET   /api/admin/analytics        — funnel metrics, MRR, ARR, trends
+ *   GET   /api/admin/opportunities    — upsell targets (kit buyers without sub, hot DFY leads)
  *
  * Hard rules:
  *   - Parameterized queries ONLY — no string interpolation in any SQL
@@ -32,11 +35,31 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if the named env var is set to a non-empty string.
+ * NEVER returns the actual value — presence boolean only.
+ */
+function present(name: string): boolean {
+  const v = process.env[name];
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VALID_STATUSES = new Set(["requested", "contacted", "won", "lost"]);
+
+// Pricing constants — list prices in USD
+const KIT_PRICE_USD = 29;
+const GROWTH_PRICE_USD = 99;
+const AGENCY_PRICE_USD = 249;
+const GEO_SPRINT_PRICE_USD = 1500;
+const MANAGED_GEO_PRICE_USD = 1900;
 
 // ---------------------------------------------------------------------------
 // Route registration
@@ -327,5 +350,351 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       logger.error("admin_engagement_update_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGAGEMENT_UPDATE_FAILED" }, 500);
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/system-health — infra health + env key presence + engine liveness
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/system-health", requireAuth, requireSuperAdmin, async (c) => {
+    // Check Postgres connectivity
+    let postgresStatus: "ok" | "error" = "ok";
+    try {
+      await db.query("SELECT 1");
+    } catch {
+      postgresStatus = "error";
+    }
+
+    // Engine liveness — live = at least one real key is set for that engine
+    const anthropicLive  = present("ANTHROPIC_API_KEY") || present("AWS_ACCESS_KEY_ID");
+    const openaiLive     = present("OPENAI_API_KEY");
+    const geminiLive     = present("GEMINI_API_KEY");
+    const perplexityLive = present("PERPLEXITY_API_KEY");
+    const serpLive       = present("SERP_API_KEY");
+
+    const engines = [
+      { id: "anthropic",  label: "Anthropic Claude",  live: anthropicLive },
+      { id: "openai",     label: "OpenAI GPT-4o",      live: openaiLive },
+      { id: "gemini",     label: "Google Gemini",      live: geminiLive },
+      { id: "perplexity", label: "Perplexity",         live: perplexityLive },
+      { id: "serp",       label: "Google AI Overview", live: serpLive },
+    ];
+
+    // Env key presence — boolean only, never the values
+    const envKeyNames = [
+      "OPENAI_API_KEY",
+      "GEMINI_API_KEY",
+      "PERPLEXITY_API_KEY",
+      "SERP_API_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "RESEND_API_KEY",
+      "ANTHROPIC_API_KEY",
+    ] as const;
+
+    const envKeys = envKeyNames.map((name) => ({ name, set: present(name) }));
+
+    // Build attention flags
+    const attentionFlags: string[] = [];
+
+    for (const engine of engines) {
+      if (!engine.live) {
+        attentionFlags.push(`Engine '${engine.id}' running in mock mode`);
+      }
+    }
+
+    // Warn if ALL AI engine keys are absent (already covered per-engine, but add summary)
+    const anyAiLive = anthropicLive || openaiLive || geminiLive || perplexityLive || serpLive;
+    if (!anyAiLive) {
+      attentionFlags.push("No AI engines have live keys");
+    }
+
+    if (!present("STRIPE_WEBHOOK_SECRET")) {
+      attentionFlags.push("STRIPE_WEBHOOK_SECRET not set");
+    }
+    if (!present("RESEND_API_KEY")) {
+      attentionFlags.push("RESEND_API_KEY not set");
+    }
+
+    const mode = anyAiLive ? "live" : "demo";
+
+    logger.info("admin_system_health_fetched", { postgres: postgresStatus, mode });
+
+    return c.json({
+      engines,
+      infrastructure: {
+        postgres: postgresStatus,
+        // Redis client is not available in this handler scope — cannot ping.
+        redis: "unknown" as const,
+      },
+      envKeys,
+      attentionFlags,
+      mode,
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/analytics — funnel metrics, MRR, ARR, conversion rates, trends
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/analytics", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      // 1. Total leads
+      const leadsRes = await db.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM lead_capture`
+      );
+      const totalLeads = parseInt(leadsRes.rows[0]?.count ?? "0", 10);
+
+      // 2. Kit orders total count
+      const kitRes = await db.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM kit_order`
+      );
+      const kitCount = parseInt(kitRes.rows[0]?.count ?? "0", 10);
+
+      // 3. Active subscriptions by plan_tier
+      const subRes = await db.query<{ plan_tier: string; count: string }>(
+        `SELECT plan_tier, COUNT(*) AS count
+         FROM billing_subscriptions
+         WHERE status = $1
+         GROUP BY plan_tier`,
+        ["active"]
+      );
+      const subMap: Record<string, number> = {};
+      for (const row of subRes.rows) {
+        subMap[row.plan_tier] = parseInt(row.count, 10);
+      }
+      const growthSubs      = subMap["growth"]  ?? 0;
+      const agencySubs      = subMap["agency"]  ?? 0;
+      const starterSubs     = subMap["starter"] ?? 0;
+      const totalActiveSubs = growthSubs + agencySubs + starterSubs;
+      const mrr             = growthSubs * GROWTH_PRICE_USD + agencySubs * AGENCY_PRICE_USD;
+      const arr             = mrr * 12;
+
+      // 4. Engagements by status + sku (for pipeline value)
+      const engRes = await db.query<{ status: string; sku: string; count: string }>(
+        `SELECT status, sku, COUNT(*) AS count FROM engagement GROUP BY status, sku`
+      );
+      const engStatusMap: Record<string, number> = { requested: 0, contacted: 0, won: 0, lost: 0 };
+      let pipelineValue = 0;
+      for (const row of engRes.rows) {
+        const cnt = parseInt(row.count, 10);
+        const s = row.status as keyof typeof engStatusMap;
+        if (s in engStatusMap) {
+          engStatusMap[s] = (engStatusMap[s] ?? 0) + cnt;
+        }
+        // Open engagements (requested + contacted) contribute to pipeline value
+        if (row.status === "requested" || row.status === "contacted") {
+          const price =
+            row.sku === "geo_sprint"  ? GEO_SPRINT_PRICE_USD :
+            row.sku === "managed_geo" ? MANAGED_GEO_PRICE_USD :
+            0;
+          pipelineValue += cnt * price;
+        }
+      }
+
+      // 5. Nurture active — degrade gracefully if table doesn't exist yet
+      let nurtureActive = 0;
+      try {
+        const nurtureRes = await db.query<{ count: string }>(
+          `SELECT COUNT(*) AS count
+           FROM nurture_enrollment
+           WHERE suppressed = FALSE AND current_step < total_steps`
+        );
+        nurtureActive = parseInt(nurtureRes.rows[0]?.count ?? "0", 10);
+      } catch {
+        // nurture_enrollment may not exist in older environments — return 0 silently
+        logger.info("admin_analytics_nurture_unavailable", {});
+      }
+
+      // 6. Churn metrics
+      const churnRes = await db.query<{ status: string; count: string }>(
+        `SELECT status, COUNT(*) AS count
+         FROM billing_subscriptions
+         WHERE status IN ($1, $2)
+         GROUP BY status`,
+        ["canceled", "past_due"]
+      );
+      const churnMap: Record<string, number> = {};
+      for (const row of churnRes.rows) {
+        churnMap[row.status] = parseInt(row.count, 10);
+      }
+
+      // 7. Leads per week — last 12 weeks
+      const leadsWeekRes = await db.query<{ week: string; count: string }>(
+        `SELECT date_trunc('week', created_at)::text AS week, COUNT(*) AS count
+         FROM lead_capture
+         WHERE created_at >= NOW() - INTERVAL '12 weeks'
+         GROUP BY date_trunc('week', created_at)
+         ORDER BY week ASC`
+      );
+
+      // 8. Kit orders per week — last 12 weeks
+      const kitWeekRes = await db.query<{ week: string; count: string }>(
+        `SELECT date_trunc('week', created_at)::text AS week, COUNT(*) AS count
+         FROM kit_order
+         WHERE created_at >= NOW() - INTERVAL '12 weeks'
+         GROUP BY date_trunc('week', created_at)
+         ORDER BY week ASC`
+      );
+
+      // Conversion rate formatter — avoids division by zero
+      const fmtPct = (num: number, denom: number): string => {
+        if (denom === 0) return "0.0%";
+        return `${((num / denom) * 100).toFixed(1)}%`;
+      };
+
+      logger.info("admin_analytics_fetched", {});
+
+      return c.json({
+        funnel: {
+          totalLeads,
+          kitOrders: {
+            count:      kitCount,
+            revenueUsd: kitCount * KIT_PRICE_USD,
+          },
+          activeSubscriptions: {
+            growth:  growthSubs,
+            agency:  agencySubs,
+            starter: starterSubs,
+            total:   totalActiveSubs,
+          },
+          mrr,
+          arr,
+          engagements: {
+            requested:       engStatusMap["requested"],
+            contacted:       engStatusMap["contacted"],
+            won:             engStatusMap["won"],
+            lost:            engStatusMap["lost"],
+            pipelineValueUsd: pipelineValue,
+          },
+          nurtureActive,
+        },
+        conversion: {
+          leadToKit: fmtPct(kitCount, totalLeads),
+          leadToSub: fmtPct(totalActiveSubs, totalLeads),
+          kitToSub:  fmtPct(totalActiveSubs, kitCount),
+        },
+        churn: {
+          canceled: churnMap["canceled"] ?? 0,
+          pastDue:  churnMap["past_due"] ?? 0,
+        },
+        trends: {
+          leadsPerWeek:     leadsWeekRes.rows.map((r) => ({ week: r.week, count: parseInt(r.count, 10) })),
+          kitOrdersPerWeek: kitWeekRes.rows.map((r)  => ({ week: r.week, count: parseInt(r.count, 10) })),
+        },
+      });
+    } catch (err) {
+      logger.error("admin_analytics_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "ANALYTICS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/opportunities — upsell targets
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/opportunities", requireAuth, requireSuperAdmin, async (c) => {
+    // 1. Kit buyers without an active subscription (best-effort join on email)
+    let kitBuyersWithoutSub: Array<{
+      email: string;
+      brand: string;
+      kitPaidAt: string | null;
+      suggestedAction: string;
+    }> = [];
+
+    try {
+      const kitBuyersRes = await db.query<{
+        email: string;
+        brand: string;
+        paid_at: string | null;
+      }>(
+        `SELECT k.email, k.brand, k.paid_at
+         FROM kit_order k
+         WHERE k.status IN ($1, $2)
+           AND k.email IS NOT NULL
+           AND k.email NOT IN (
+             SELECT u.email
+             FROM users u
+             JOIN billing_subscriptions bs ON bs.tenant_id = u.tenant_id
+             WHERE bs.status = $3
+           )
+         ORDER BY k.paid_at DESC NULLS LAST
+         LIMIT 50`,
+        ["paid", "delivered", "active"]
+      );
+
+      kitBuyersWithoutSub = kitBuyersRes.rows.map((row) => ({
+        email:           row.email,
+        brand:           row.brand,
+        kitPaidAt:       row.paid_at ?? null,
+        suggestedAction: "Upsell to Growth or DFY",
+      }));
+    } catch (err) {
+      logger.error("admin_opportunities_kit_buyers_error", { message: (err as Error).message });
+      // Degrade gracefully — return empty array
+    }
+
+    // 2. Hot DFY leads — leads with email (prefer marketing_consent = TRUE)
+    let hotDfyLeads: Array<{
+      email: string;
+      brand: string;
+      createdAt: string;
+      suggestedAction: string;
+    }> = [];
+
+    try {
+      // Primary query — uses marketing_consent column (added in migration 20260625000001)
+      const leadsRes = await db.query<{
+        email: string;
+        brand: string;
+        created_at: string;
+      }>(
+        `SELECT email, brand, created_at
+         FROM lead_capture
+         WHERE email IS NOT NULL
+           AND marketing_consent = TRUE
+         ORDER BY created_at DESC
+         LIMIT 50`
+      );
+
+      hotDfyLeads = leadsRes.rows.map((row) => ({
+        email:           row.email,
+        brand:           row.brand,
+        createdAt:       row.created_at,
+        suggestedAction: "Offer Get-Cited Kit or DFY Sprint",
+      }));
+    } catch {
+      // marketing_consent column may not exist in older environments — fall back to all leads
+      try {
+        const leadsRes = await db.query<{
+          email: string;
+          brand: string;
+          created_at: string;
+        }>(
+          `SELECT email, brand, created_at
+           FROM lead_capture
+           WHERE email IS NOT NULL
+           ORDER BY created_at DESC
+           LIMIT 50`
+        );
+
+        hotDfyLeads = leadsRes.rows.map((row) => ({
+          email:           row.email,
+          brand:           row.brand,
+          createdAt:       row.created_at,
+          suggestedAction: "Offer Get-Cited Kit or DFY Sprint",
+        }));
+      } catch (err2) {
+        logger.error("admin_opportunities_leads_error", { message: (err2 as Error).message });
+        // Degrade gracefully — return empty array
+      }
+    }
+
+    logger.info("admin_opportunities_fetched", {
+      kitBuyersCount: kitBuyersWithoutSub.length,
+      hotLeadsCount:  hotDfyLeads.length,
+    });
+
+    return c.json({
+      kitBuyersWithoutSub,
+      hotDfyLeads,
+      note: "Best-effort joins on email. Leads with no email are excluded.",
+    });
   });
 }
