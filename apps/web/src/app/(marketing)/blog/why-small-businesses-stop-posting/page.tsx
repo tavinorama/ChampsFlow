@@ -21,7 +21,7 @@
  */
 
 import type { Metadata } from "next";
-import { WaitlistForm } from "../../../../components/marketing/WaitlistForm";
+import Link from "next/link";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -483,14 +483,13 @@ export default function BlogPost1Page() {
         </p>
 
         <p style={PROSE_STYLES.p}>
-          If you want a tool built around this, we are building it. Join the
-          waitlist below.
+          If you want a tool built around this, we are building it. Run the free AI Visibility Test and see where you stand today.
         </p>
       </article>
 
-      {/* Waitlist CTA — reused component */}
+      {/* CTA section */}
       <section
-        aria-labelledby="article-waitlist-heading"
+        aria-labelledby="article-cta-heading"
         style={{
           backgroundColor: "var(--color-surface-muted)",
           padding: "var(--space-12) var(--space-4)",
@@ -499,7 +498,7 @@ export default function BlogPost1Page() {
       >
         <div style={{ maxWidth: "480px", margin: "0 auto", textAlign: "center" }}>
           <h2
-            id="article-waitlist-heading"
+            id="article-cta-heading"
             style={{
               fontSize: "var(--font-size-h2)",
               fontWeight: "var(--font-weight-bold)",
@@ -508,7 +507,7 @@ export default function BlogPost1Page() {
               marginBottom: "var(--space-3)",
             }}
           >
-            We are building it. Join the waitlist.
+            We are building it.
           </h2>
           <p
             style={{
@@ -519,10 +518,49 @@ export default function BlogPost1Page() {
               marginBottom: "var(--space-6)",
             }}
           >
-            TrustIndex AI is in development. Join the waitlist and we will email
-            you when early access opens.
+            Run the free AI Visibility Test &mdash; see if ChatGPT, Claude, and Perplexity recommend you or your competitor.
           </p>
-          <WaitlistForm />
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <Link
+              href="/test"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "52px",
+                padding: "0 var(--space-6)",
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                borderRadius: "var(--radius-md)",
+                fontSize: "1rem",
+                fontWeight: 700,
+                fontFamily: "var(--font-family)",
+                textDecoration: "none",
+              }}
+            >
+              Run free test &mdash; no credit card
+            </Link>
+            <Link
+              href="/login?plan=growth&next=checkout"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "52px",
+                padding: "0 var(--space-6)",
+                backgroundColor: "transparent",
+                color: "var(--color-primary)",
+                border: "1.5px solid var(--color-primary)",
+                borderRadius: "var(--radius-md)",
+                fontSize: "1rem",
+                fontWeight: 700,
+                fontFamily: "var(--font-family)",
+                textDecoration: "none",
+              }}
+            >
+              See Growth plan &mdash; $99/mo
+            </Link>
+          </div>
         </div>
       </section>
     </>

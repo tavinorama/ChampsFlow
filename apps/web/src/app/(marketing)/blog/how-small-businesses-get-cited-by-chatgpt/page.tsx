@@ -22,7 +22,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { WaitlistForm } from "../../../../components/marketing/WaitlistForm";
 import { GeoGraphBackdrop } from "../../../../components/marketing/GeoGraphBackdrop";
 
 // ---------------------------------------------------------------------------
@@ -879,10 +878,7 @@ export default function PillarGeoPage() {
         </p>
 
         <p style={PROSE.p}>
-          Join the TrustIndex AI waitlist. The first 100 waitlist members who
-          convert at launch receive a 30% founder discount &mdash; applied only
-          when you pay annually ($831 per year for Growth, $1,251 per
-          year for Agency) &mdash; plus a 30-day money-back guarantee.
+          TrustIndex AI is live. Run the free AI Visibility Test and see your TrustIndex Score in 60 seconds &mdash; no credit card required. Founding members (first 100 annual subscribers) get a 30% founder discount plus a 30-day money-back guarantee.
         </p>
 
         {/* Sources */}
@@ -919,9 +915,9 @@ export default function PillarGeoPage() {
         </section>
       </article>
 
-      {/* Inline waitlist CTA — compact variant per spec */}
+      {/* CTA section */}
       <section
-        aria-labelledby="pillar-waitlist-heading"
+        aria-labelledby="pillar-cta-heading"
         style={{
           backgroundColor: "var(--color-surface-muted)",
           padding: "var(--space-12) var(--space-4)",
@@ -930,7 +926,7 @@ export default function PillarGeoPage() {
       >
         <div style={{ maxWidth: "480px", margin: "0 auto", textAlign: "center" }}>
           <h2
-            id="pillar-waitlist-heading"
+            id="pillar-cta-heading"
             style={{
               fontSize: "var(--font-size-h2)",
               fontWeight: "var(--font-weight-bold)",
@@ -939,7 +935,7 @@ export default function PillarGeoPage() {
               marginBottom: "var(--space-3)",
             }}
           >
-            Join the waitlist &mdash; founding member pricing
+            Start building AI visibility today
           </h2>
           <p
             style={{
@@ -950,10 +946,49 @@ export default function PillarGeoPage() {
               marginBottom: "var(--space-6)",
             }}
           >
-            First 100 waitlist members who convert at launch receive a 30%
-            founder discount on annual plans. 30-day money-back guarantee.
+            Run the free test now and see your TrustIndex Score in 60 seconds.
           </p>
-          <WaitlistForm compact />
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <Link
+              href="/test"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "52px",
+                padding: "0 var(--space-6)",
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                borderRadius: "var(--radius-md)",
+                fontSize: "1rem",
+                fontWeight: 700,
+                fontFamily: "var(--font-family)",
+                textDecoration: "none",
+              }}
+            >
+              Run free AI test &mdash; free
+            </Link>
+            <Link
+              href="/login?plan=growth&next=checkout"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "52px",
+                padding: "0 var(--space-6)",
+                backgroundColor: "transparent",
+                color: "var(--color-primary)",
+                border: "1.5px solid var(--color-primary)",
+                borderRadius: "var(--radius-md)",
+                fontSize: "1rem",
+                fontWeight: 700,
+                fontFamily: "var(--font-family)",
+                textDecoration: "none",
+              }}
+            >
+              Start Growth &mdash; $99/mo
+            </Link>
+          </div>
         </div>
       </section>
     </>

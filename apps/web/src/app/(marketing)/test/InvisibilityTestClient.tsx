@@ -1,13 +1,21 @@
 "use client";
 
 /**
- * InvisibilityTestClient — interactive form + scorecard.
+ * InvisibilityTestClient — interactive form + results panel.
  *
  * Extracted from page.tsx so that page.tsx can be a server component
  * (enabling metadata + JSON-LD exports).
+ *
+ * State machine: form → loading → results (or error → form)
+ * Email is now REQUIRED and validated before submit.
  */
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useId } from "react";
+import { TrustIndexScorecard } from "../../../components/TrustIndexScorecard";
+
+// ---------------------------------------------------------------------------
+// Engine label map
+// ---------------------------------------------------------------------------
 
 const ENGINE_LABEL: Record<string, string> = {
   anthropic: "Claude",
@@ -17,575 +25,146 @@ const ENGINE_LABEL: Record<string, string> = {
   serp: "Google AI Overview",
 };
 
+// ---------------------------------------------------------------------------
+// Types — match the API shape exactly
+// ---------------------------------------------------------------------------
+
 interface EngineResult {
   engine: string;
+  live: boolean;
   brandCited: boolean;
   brandPosition: number | null;
   competitorCited: boolean;
 }
 
-interface TestResult {
+interface ScoreBreakdown {
+  ai: { citationRate: number; avgPosition: number | null; sentiment: string; note: string };
+  performance: { schemaCoverage: number; aiCrawlerAccess: number; note: string };
+  brand: { entityCompleteness: number; note: string };
+}
+
+interface Recommendation {
+  plan: "kit" | "growth" | "agency" | "call";
+  reason: string;
+  href: string;
+}
+
+interface FreeTestResult {
   prompt: string;
   live: boolean;
   engines: EngineResult[];
   brandEngineCount: number;
   competitorEngineCount: number;
   totalEngines: number;
+  enginesLive: number;
+  domain: string | null;
   verdict: string;
   status: "invisible" | "trailing" | "competitive" | "leading";
+  score: {
+    ai: number;
+    performance: number;
+    brand: number;
+    overall: number;
+  };
+  breakdown: ScoreBreakdown;
+  recommendations: Recommendation[];
 }
 
-const STATUS_COLOR: Record<TestResult["status"], string> = {
+// ---------------------------------------------------------------------------
+// Status color map
+// ---------------------------------------------------------------------------
+
+const STATUS_COLOR: Record<FreeTestResult["status"], string> = {
   invisible: "#dc2626",
   trailing: "#d97706",
   competitive: "#7c3aed",
   leading: "var(--color-success)",
 };
 
-export function InvisibilityTestClient() {
-  const [brand, setBrand] = useState("");
-  const [competitor, setCompetitor] = useState("");
-  const [category, setCategory] = useState("");
-  const [region, setRegion] = useState<"US" | "EU">("US");
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<TestResult | null>(null);
-  const [testId, setTestId] = useState<string | null>(null);
-  const [error, setError] = useState("");
+// ---------------------------------------------------------------------------
+// Email validation
+// ---------------------------------------------------------------------------
 
-  async function run(e: React.FormEvent) {
-    e.preventDefault();
-    if (!brand.trim() || !category.trim() || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch("/api/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brand: brand.trim(),
-          competitor: competitor.trim(),
-          category: category.trim(),
-          region,
-          email: email.trim(),
-        }),
-      });
-      if (!res.ok) {
-        setError("Could not run the test right now. Please try again.");
-      } else {
-        const data = await res.json();
-        setResult(data.result);
-        setTestId(data.testId ?? null);
-      }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setBusy(false);
-    }
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function isValidEmail(v: string): boolean {
+  return EMAIL_RE.test(v.trim());
+}
+
+// ---------------------------------------------------------------------------
+// Recommendation CTA labels
+// ---------------------------------------------------------------------------
+
+const PLAN_LABEL: Record<Recommendation["plan"], string> = {
+  kit: "Get the Kit — $29 →",
+  growth: "Start Growth Plan →",
+  agency: "Start Agency Plan →",
+  call: "Book a free 20-min call →",
+};
+
+// ---------------------------------------------------------------------------
+// Injected responsive styles (one-time, no library needed)
+// ---------------------------------------------------------------------------
+
+const CLIENT_STYLES = `
+  .ti-test-engine-table {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-body-sm);
   }
+  .ti-test-engine-cards {
+    display: none;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  @media (max-width: 640px) {
+    .ti-test-engine-table { display: none; }
+    .ti-test-engine-cards { display: flex; }
+  }
+  .ti-test-focus :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .ti-test-spinner {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border: 3px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: ti-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes ti-spin {
+    to { transform: rotate(360deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ti-test-spinner { animation: none; border-top-color: var(--color-primary); }
+  }
+`;
 
-  // Carry this test into the Kit so its Part 1 is framed as "your test, completed".
-  const kitParams = new URLSearchParams();
-  if (testId) kitParams.set("testId", testId);
-  if (brand.trim()) kitParams.set("brand", brand.trim());
-  if (category.trim()) kitParams.set("category", category.trim());
-  kitParams.set("region", region);
-  const kitHref = `/kit?${kitParams.toString()}`;
-
-  return (
-    <>
-      {!result && (
-        <form onSubmit={run} style={cardStyle}>
-          <Field label="Your brand" required>
-            <input
-              value={brand}
-              onChange={(e) => setBrand(e.target.value)}
-              placeholder="Acme CRM"
-              required
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="A competitor" hint="optional — we'll compare you head-to-head">
-            <input
-              value={competitor}
-              onChange={(e) => setCompetitor(e.target.value)}
-              placeholder="A rival brand"
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Your category" required hint="how buyers describe what you sell">
-            <input
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="CRM, accounting software, law firm…"
-              required
-              style={inputStyle}
-            />
-          </Field>
-          <Field label="Data region">
-            <select
-              value={region}
-              onChange={(e) => setRegion(e.target.value as "US" | "EU")}
-              style={inputStyle}
-            >
-              <option value="US">US</option>
-              <option value="EU">EU (GDPR routing)</option>
-            </select>
-          </Field>
-          <Field label="Email me the full scorecard" hint="optional">
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              placeholder="you@company.com"
-              style={inputStyle}
-            />
-          </Field>
-          {error && (
-            <p style={{ color: "#dc2626", fontSize: "var(--font-size-body-sm)" }}>{error}</p>
-          )}
-          <button
-            type="submit"
-            disabled={busy || !brand.trim() || !category.trim()}
-            style={primaryBtn(busy || !brand.trim() || !category.trim())}
-          >
-            {busy ? "Asking the AI engines…" : "Run my free test"}
-          </button>
-        </form>
-      )}
-
-      {result && (
-        <>
-          <Scorecard
-            result={result}
-            kitHref={kitHref}
-            onReset={() => {
-              setResult(null);
-              setTestId(null);
-            }}
-          />
-          {/* GEO Sprint offer — shown when brand has low / mediocre visibility */}
-          {(result.status === "invisible" || result.status === "trailing") && (
-            <GeoSprintOffer
-              brandEngineCount={result.brandEngineCount}
-              totalEngines={result.totalEngines}
-            />
-          )}
-        </>
-      )}
-
-      <p
-        style={{
-          fontSize: "var(--font-size-caption)",
-          color: "var(--color-muted)",
-          marginTop: "var(--space-6)",
-          lineHeight: 1.6,
-        }}
-      >
-        Results are evidence-based estimates. AI answers are non-deterministic and vary between
-        runs &mdash; this is a directional snapshot, not a guarantee of citation.
-        {result && !result.live
-          ? " (Demo data — live engines activate once provider keys are connected.)"
-          : ""}
-      </p>
-    </>
-  );
-}
-
-function Scorecard({
-  result,
-  kitHref,
-  onReset,
-}: {
-  result: TestResult;
-  kitHref: string;
-  onReset: () => void;
-}) {
-  const color = STATUS_COLOR[result.status];
-  return (
-    <div style={{ ...cardStyle, borderColor: color }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-3)",
-          marginBottom: "var(--space-3)",
-        }}
-      >
-        <span
-          style={{
-            fontSize: "0.7rem",
-            fontWeight: 800,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            color,
-            border: `1px solid ${color}`,
-            borderRadius: "var(--radius-pill)",
-            padding: "3px 10px",
-          }}
-        >
-          {result.status}
-        </span>
-        <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
-          Prompt: &ldquo;{result.prompt}&rdquo;
-        </span>
-      </div>
-      <p
-        style={{
-          fontSize: "var(--font-size-h3)",
-          fontWeight: 700,
-          lineHeight: 1.3,
-          margin: "0 0 var(--space-4) 0",
-        }}
-      >
-        {result.verdict}
-      </p>
-
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          fontSize: "var(--font-size-body-sm)",
-          marginBottom: "var(--space-4)",
-        }}
-      >
-        <thead>
-          <tr style={{ textAlign: "left", color: "var(--color-muted)" }}>
-            <th style={th}>AI engine</th>
-            <th style={th}>You</th>
-            <th style={th}>Position</th>
-            <th style={th}>Competitor</th>
-          </tr>
-        </thead>
-        <tbody>
-          {result.engines.map((e) => (
-            <tr key={e.engine}>
-              <td style={td}>{ENGINE_LABEL[e.engine] ?? e.engine}</td>
-              <td
-                style={{
-                  ...td,
-                  color: e.brandCited ? "var(--color-success)" : "#dc2626",
-                  fontWeight: 700,
-                }}
-              >
-                {e.brandCited ? "Cited ✓" : "Not cited ✗"}
-              </td>
-              <td style={td}>{e.brandPosition ? `#${e.brandPosition}` : "—"}</td>
-              <td style={{ ...td, color: e.competitorCited ? "#d97706" : "var(--color-muted)" }}>
-                {e.competitorCited ? "Cited" : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* CTA into the $29 Kit (the next step) */}
-      <div
-        style={{
-          backgroundColor: "var(--color-surface-muted)",
-          borderRadius: "var(--radius-md)",
-          padding: "var(--space-5)",
-          marginTop: "var(--space-2)",
-        }}
-      >
-        <p style={{ fontWeight: 700, margin: "0 0 var(--space-1) 0" }}>
-          Now fix it &mdash; without becoming a GEO expert.
-        </p>
-        <p
-          style={{
-            fontSize: "var(--font-size-body-sm)",
-            color: "var(--color-muted)",
-            lineHeight: 1.6,
-            margin: "0 0 var(--space-3) 0",
-          }}
-        >
-          This is <strong>one question</strong> across the AI engines. The{" "}
-          <strong>Get-Cited Kit</strong> ($29, one-time) runs <strong>every</strong> buyer
-          prompt in your category, scores all three vectors, and hands you 3 ready-to-publish
-          drafts (blog + LinkedIn + FAQ with schema) &mdash; the full audit this test previews,
-          plus a plain-English GEO guide.
-        </p>
-        <a
-          href={kitHref}
-          style={{
-            ...primaryBtn(false),
-            display: "inline-block",
-            textDecoration: "none",
-            textAlign: "center",
-          }}
-        >
-          Complete it with the Kit &mdash; $29 &rarr;
-        </a>
-      </div>
-
-      <button
-        onClick={onReset}
-        style={{
-          marginTop: "var(--space-4)",
-          background: "none",
-          border: "none",
-          color: "var(--color-primary)",
-          fontWeight: 600,
-          cursor: "pointer",
-          fontSize: "var(--font-size-body-sm)",
-        }}
-      >
-        &larr; Test another brand
-      </button>
-    </div>
-  );
+function useClientStyles() {
+  const injected = useRef(false);
+  useEffect(() => {
+    if (injected.current) return;
+    if (typeof document === "undefined") return;
+    if (document.getElementById("ti-test-client-styles")) {
+      injected.current = true;
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = "ti-test-client-styles";
+    el.textContent = CLIENT_STYLES;
+    document.head.appendChild(el);
+    injected.current = true;
+  }, []);
 }
 
 // ---------------------------------------------------------------------------
-// GEO Sprint offer — done-for-you upsell shown when score is low/mediocre.
-// Shows 3 tiers; all CTAs route to /book (founder-led close, not self-serve checkout).
+// Shared style helpers
 // ---------------------------------------------------------------------------
 
-function GeoSprintOffer({
-  brandEngineCount,
-  totalEngines,
-}: {
-  brandEngineCount: number;
-  totalEngines: number;
-}) {
-  const missingPct = Math.round(
-    ((totalEngines - brandEngineCount) / totalEngines) * 100,
-  );
-
-  const sprintTiers: Array<{
-    name: string;
-    price: string;
-    summary: string;
-    popular: boolean;
-  }> = [
-    {
-      name: "Sprint Starter",
-      price: "from $1,500",
-      summary: "One brand · top-3 fixes executed",
-      popular: false,
-    },
-    {
-      name: "Sprint Standard",
-      price: "from $2,400",
-      summary: "Full GEO plan executed + content",
-      popular: true,
-    },
-    {
-      name: "Sprint Plus",
-      price: "from $4,500",
-      summary: "Multi-brand · aggressive · priority",
-      popular: false,
-    },
-  ];
-
-  return (
-    <section
-      aria-labelledby="geo-sprint-heading"
-      style={{
-        marginTop: "var(--space-6)",
-        background:
-          "linear-gradient(135deg, var(--color-badge-ai-bg), var(--color-surface))",
-        border: "1.5px solid var(--color-primary)",
-        borderRadius: "var(--radius-lg)",
-        padding: "var(--space-6)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-4)",
-      }}
-    >
-      {/* Eyebrow */}
-      <span
-        style={{
-          fontSize: "0.7rem",
-          fontWeight: 800,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "var(--color-primary)",
-        }}
-      >
-        Done-for-you &middot; OrganicPosts GEO Sprint
-      </span>
-
-      <h2
-        id="geo-sprint-heading"
-        style={{
-          margin: 0,
-          fontSize: "1.25rem",
-          fontWeight: 800,
-          lineHeight: 1.2,
-          letterSpacing: "-0.02em",
-          color: "var(--color-text)",
-        }}
-      >
-        Want this fixed for you? Get Cited in 30 Days.
-      </h2>
-
-      <p
-        style={{
-          margin: 0,
-          fontSize: "var(--font-size-body-sm)",
-          color: "var(--color-muted)",
-          lineHeight: 1.7,
-        }}
-      >
-        You&rsquo;re missing from{" "}
-        <strong style={{ color: "var(--color-text)" }}>{missingPct}%</strong> of AI
-        answers. The OrganicPosts GEO Sprint is a founder-led, done-for-you
-        engagement &mdash; we publish the fixes, you watch your TrustIndex Score
-        climb. No templates. No AI slop. Real execution.
-      </p>
-
-      {/* Three tier cards — scannable */}
-      <div
-        role="list"
-        aria-label="GEO Sprint tiers"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-2)",
-        }}
-      >
-        {sprintTiers.map((tier) => (
-          <div
-            key={tier.name}
-            role="listitem"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "var(--space-3)",
-              padding: "var(--space-3) var(--space-4)",
-              backgroundColor: tier.popular
-                ? "var(--color-badge-ai-bg)"
-                : "var(--color-surface)",
-              border: tier.popular
-                ? "1.5px solid var(--color-primary)"
-                : "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
-              {tier.popular && (
-                <span
-                  aria-label="Most popular"
-                  style={{
-                    fontSize: "0.6rem",
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em",
-                    backgroundColor: "var(--color-primary)",
-                    color: "#fff",
-                    padding: "2px 8px",
-                    borderRadius: "var(--radius-pill)",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                >
-                  Most popular
-                </span>
-              )}
-              <div>
-                <span
-                  style={{
-                    display: "block",
-                    fontWeight: 800,
-                    fontSize: "var(--font-size-body-sm)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  {tier.name}
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "var(--font-size-caption)",
-                    color: "var(--color-muted)",
-                  }}
-                >
-                  {tier.summary}
-                </span>
-              </div>
-            </div>
-            <span
-              style={{
-                fontWeight: 800,
-                fontSize: "var(--font-size-body-sm)",
-                color: "var(--color-text)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              {tier.price}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* CTAs */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-3)",
-        }}
-      >
-        <a
-          href="/book"
-          style={{
-            ...primaryBtn(false),
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textDecoration: "none",
-            textAlign: "center",
-          }}
-        >
-          Book a free 20-min call &rarr;
-        </a>
-        <a
-          href="/kit"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "48px",
-            padding: "0 var(--space-5)",
-            backgroundColor: "transparent",
-            color: "var(--color-primary)",
-            border: "1.5px solid var(--color-primary)",
-            borderRadius: "var(--radius-md)",
-            fontWeight: 700,
-            fontSize: "var(--font-size-body-sm)",
-            textDecoration: "none",
-            textAlign: "center",
-          }}
-        >
-          Or DIY with the $29 Kit
-        </a>
-      </div>
-
-      <p
-        style={{
-          margin: 0,
-          fontSize: "var(--font-size-caption)",
-          color: "var(--color-muted)",
-          lineHeight: 1.5,
-        }}
-      >
-        The call is free. No hard sell &mdash; if the Sprint isn&rsquo;t a fit we&rsquo;ll
-        tell you. Founder-led close means you talk directly to the person doing
-        the work. All prices are &ldquo;from&rdquo; &mdash; final scope set on the call.
-        <br />
-        <a href="/organicposts" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
-          See full tier details &rarr;
-        </a>
-      </p>
-    </section>
-  );
-}
-
-// --- shared styles ---
 const cardStyle: React.CSSProperties = {
   backgroundColor: "var(--color-surface)",
   border: "1px solid var(--color-border)",
@@ -596,6 +175,7 @@ const cardStyle: React.CSSProperties = {
   flexDirection: "column",
   gap: "var(--space-4)",
 };
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   height: "44px",
@@ -606,16 +186,14 @@ const inputStyle: React.CSSProperties = {
   color: "var(--color-text)",
   fontSize: "var(--font-size-body-sm)",
   boxSizing: "border-box",
+  fontFamily: "var(--font-family)",
 };
-const th: React.CSSProperties = {
-  padding: "6px 8px",
-  borderBottom: "1px solid var(--color-border)",
-  fontWeight: 700,
+
+const inputErrorStyle: React.CSSProperties = {
+  ...inputStyle,
+  border: "1.5px solid var(--color-error)",
 };
-const td: React.CSSProperties = {
-  padding: "8px",
-  borderBottom: "1px solid var(--color-border)",
-};
+
 function primaryBtn(disabled: boolean): React.CSSProperties {
   return {
     height: "48px",
@@ -628,36 +206,1011 @@ function primaryBtn(disabled: boolean): React.CSSProperties {
     fontSize: "var(--font-size-body)",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.6 : 1,
+    fontFamily: "var(--font-family)",
+    width: "100%",
   };
 }
+
+function purpleBtn(): React.CSSProperties {
+  return {
+    height: "48px",
+    padding: "0 var(--space-5)",
+    backgroundColor: "#7c3aed",
+    color: "#fff",
+    border: "none",
+    borderRadius: "var(--radius-md)",
+    fontWeight: 800,
+    fontSize: "var(--font-size-body-sm)",
+    cursor: "pointer",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "var(--font-family)",
+    width: "100%",
+  };
+}
+
+function outlinedBtn(): React.CSSProperties {
+  return {
+    height: "48px",
+    padding: "0 var(--space-5)",
+    backgroundColor: "transparent",
+    color: "var(--color-primary)",
+    border: "1.5px solid var(--color-primary)",
+    borderRadius: "var(--radius-md)",
+    fontWeight: 700,
+    fontSize: "var(--font-size-body-sm)",
+    cursor: "pointer",
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "var(--font-family)",
+    width: "100%",
+  };
+}
+
+const th: React.CSSProperties = {
+  padding: "6px 8px",
+  borderBottom: "1px solid var(--color-border)",
+  fontWeight: 700,
+  textAlign: "left",
+  color: "var(--color-muted)",
+};
+const td: React.CSSProperties = {
+  padding: "8px",
+  borderBottom: "1px solid var(--color-border)",
+};
+
+// ---------------------------------------------------------------------------
+// Field wrapper — wires label to input via htmlFor
+// ---------------------------------------------------------------------------
+
 function Field({
   label,
   hint,
   required,
+  fieldId,
+  errorId,
+  errorMessage,
   children,
 }: {
   label: string;
   hint?: string;
   required?: boolean;
+  fieldId: string;
+  errorId?: string;
+  errorMessage?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label style={{ display: "block" }}>
-      <span
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+      <label
+        htmlFor={fieldId}
         style={{
-          display: "block",
           fontSize: "var(--font-size-body-sm)",
           fontWeight: 600,
-          marginBottom: "var(--space-1)",
+          color: "var(--color-text)",
         }}
       >
         {label}
-        {required && <span style={{ color: "#dc2626" }}> *</span>}
+        {required && <span style={{ color: "var(--color-error)" }} aria-hidden="true"> *</span>}
+        {required && <span className="sr-only"> (required)</span>}
         {hint && (
           <span style={{ fontWeight: 400, color: "var(--color-muted)" }}> &mdash; {hint}</span>
         )}
-      </span>
+      </label>
       {children}
-    </label>
+      {errorMessage && (
+        <p
+          id={errorId}
+          role="alert"
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-error)",
+            fontFamily: "var(--font-family)",
+          }}
+        >
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading panel
+// ---------------------------------------------------------------------------
+
+function LoadingPanel({ brand, domain }: { brand: string; domain: string | null }) {
+  const displayBrand = brand || "your brand";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="Running AI visibility test"
+      style={{
+        ...cardStyle,
+        alignItems: "center",
+        textAlign: "center",
+        padding: "var(--space-10) var(--space-6)",
+        gap: "var(--space-5)",
+      }}
+    >
+      <div className="ti-test-spinner" aria-hidden="true" />
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+        <p
+          style={{
+            margin: 0,
+            fontWeight: 700,
+            fontSize: "var(--font-size-body)",
+            color: "var(--color-text)",
+            lineHeight: 1.5,
+          }}
+        >
+          Asking ChatGPT, Claude, Perplexity &amp; Gemini about{" "}
+          <strong>{displayBrand}</strong>&hellip;
+        </p>
+        {domain && (
+          <p
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            Scanning <strong>{domain}</strong> for AI signals&hellip;
+          </p>
+        )}
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-body-sm)",
+            color: "var(--color-muted)",
+            lineHeight: 1.6,
+          }}
+        >
+          This takes ~20&ndash;40 seconds &mdash; we run real API calls across 4 engines.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Error panel
+// ---------------------------------------------------------------------------
+
+function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div
+      role="alert"
+      style={{
+        ...cardStyle,
+        borderColor: "#dc2626",
+        gap: "var(--space-3)",
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          fontWeight: 700,
+          color: "var(--color-text)",
+        }}
+      >
+        Something went wrong
+      </p>
+      <p
+        style={{
+          margin: 0,
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+          lineHeight: 1.6,
+        }}
+      >
+        {message}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        style={{
+          alignSelf: "flex-start",
+          height: "44px",
+          padding: "0 var(--space-5)",
+          backgroundColor: "var(--color-primary)",
+          color: "#fff",
+          border: "none",
+          borderRadius: "var(--radius-md)",
+          fontWeight: 700,
+          fontSize: "var(--font-size-body-sm)",
+          cursor: "pointer",
+          fontFamily: "var(--font-family)",
+        }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-engine breakdown — table on desktop, cards on mobile
+// ---------------------------------------------------------------------------
+
+function EngineBreakdown({
+  engines,
+  brandEngineCount,
+  totalEngines,
+}: {
+  engines: EngineResult[];
+  brandEngineCount: number;
+  totalEngines: number;
+}) {
+  return (
+    <div>
+      {/* Desktop table */}
+      <table
+        className="ti-test-engine-table"
+        aria-label="AI engine citation breakdown"
+      >
+        <caption
+          style={{
+            textAlign: "left",
+            fontSize: "var(--font-size-body-sm)",
+            fontWeight: 700,
+            color: "var(--color-text)",
+            marginBottom: "var(--space-3)",
+            captionSide: "top",
+          }}
+        >
+          Per-engine breakdown
+        </caption>
+        <thead>
+          <tr>
+            <th style={th} scope="col">AI engine</th>
+            <th style={th} scope="col">Status</th>
+            <th style={th} scope="col">You cited</th>
+            <th style={th} scope="col">Position</th>
+            <th style={th} scope="col">Competitor cited</th>
+          </tr>
+        </thead>
+        <tbody>
+          {engines.map((e) => (
+            <tr key={e.engine}>
+              <td style={{ ...td, fontWeight: 600 }}>
+                {ENGINE_LABEL[e.engine] ?? e.engine}
+              </td>
+              <td style={td}>
+                {e.live ? (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-pill)",
+                      backgroundColor: "rgba(22,163,74,0.1)",
+                      color: "var(--color-success)",
+                      fontSize: "var(--font-size-caption)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Live
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "2px 8px",
+                      borderRadius: "var(--radius-pill)",
+                      backgroundColor: "var(--color-surface-muted)",
+                      color: "var(--color-muted)",
+                      fontSize: "var(--font-size-caption)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Demo
+                  </span>
+                )}
+              </td>
+              <td
+                style={{
+                  ...td,
+                  color: e.brandCited ? "var(--color-success)" : "#dc2626",
+                  fontWeight: 700,
+                }}
+              >
+                {e.brandCited ? "Cited ✓" : "Not cited ✗"}
+              </td>
+              <td style={td}>
+                {e.brandPosition != null ? `#${e.brandPosition}` : "—"}
+              </td>
+              <td
+                style={{
+                  ...td,
+                  color: e.competitorCited ? "#d97706" : "var(--color-muted)",
+                }}
+              >
+                {e.competitorCited ? "Cited" : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Mobile stacked cards */}
+      <div className="ti-test-engine-cards" aria-label="AI engine citation breakdown">
+        {engines.map((e) => (
+          <div
+            key={e.engine}
+            role="region"
+            aria-label={`${ENGINE_LABEL[e.engine] ?? e.engine} result`}
+            style={{
+              backgroundColor: "var(--color-surface-muted)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-4)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-2)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "var(--space-2)",
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+                {ENGINE_LABEL[e.engine] ?? e.engine}
+              </span>
+              {e.live ? (
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-pill)",
+                    backgroundColor: "rgba(22,163,74,0.1)",
+                    color: "var(--color-success)",
+                    fontSize: "var(--font-size-caption)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Live
+                </span>
+              ) : (
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "2px 8px",
+                    borderRadius: "var(--radius-pill)",
+                    backgroundColor: "var(--color-surface-muted)",
+                    color: "var(--color-muted)",
+                    fontSize: "var(--font-size-caption)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Demo
+                </span>
+              )}
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "var(--space-2)",
+                fontSize: "var(--font-size-caption)",
+              }}
+            >
+              <div>
+                <div style={{ color: "var(--color-muted)", marginBottom: "2px" }}>You</div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: e.brandCited ? "var(--color-success)" : "#dc2626",
+                  }}
+                >
+                  {e.brandCited ? "Cited ✓" : "Not cited ✗"}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: "var(--color-muted)", marginBottom: "2px" }}>Position</div>
+                <div style={{ fontWeight: 700 }}>
+                  {e.brandPosition != null ? `#${e.brandPosition}` : "—"}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: "var(--color-muted)", marginBottom: "2px" }}>Competitor</div>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: e.competitorCited ? "#d97706" : "var(--color-muted)",
+                  }}
+                >
+                  {e.competitorCited ? "Cited" : "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Summary line */}
+      <p
+        style={{
+          marginTop: "var(--space-3)",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+        }}
+      >
+        Cited on <strong>{brandEngineCount} of {totalEngines}</strong> engines.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Vector notes
+// ---------------------------------------------------------------------------
+
+function VectorNotes({ breakdown }: { breakdown: ScoreBreakdown }) {
+  const notes: Array<{ label: string; note: string }> = [
+    { label: "AI Visibility", note: breakdown.ai.note },
+    { label: "Site Performance", note: breakdown.performance.note },
+    { label: "Brand Authority", note: breakdown.brand.note },
+  ];
+  return (
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}
+      aria-label="Score vector notes"
+    >
+      {notes.map(({ label, note }) => (
+        <div
+          key={label}
+          style={{
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-4)",
+            backgroundColor: "var(--color-surface-muted)",
+          }}
+        >
+          <p
+            style={{
+              margin: "0 0 var(--space-1) 0",
+              fontSize: "var(--font-size-caption)",
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: "var(--color-muted)",
+            }}
+          >
+            {label}
+          </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-body-sm)",
+              lineHeight: 1.6,
+              color: "var(--color-text)",
+            }}
+          >
+            {note}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recommendation CTAs
+// ---------------------------------------------------------------------------
+
+function RecommendationCards({
+  recommendations,
+}: {
+  recommendations: Recommendation[];
+}) {
+  if (recommendations.length === 0) return null;
+
+  return (
+    <section aria-labelledby="rec-heading">
+      <h2
+        id="rec-heading"
+        style={{
+          margin: "0 0 var(--space-4) 0",
+          fontSize: "var(--font-size-h3)",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          color: "var(--color-text)",
+        }}
+      >
+        Your personalized next steps
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+        {recommendations.map((rec) => {
+          const ctaLabel = PLAN_LABEL[rec.plan];
+          const isKit = rec.plan === "kit";
+          const isPrimary = isKit;
+          const isPurple = rec.plan === "growth" || rec.plan === "agency";
+          const isOutlined = rec.plan === "call";
+
+          return (
+            <div
+              key={rec.plan}
+              role="region"
+              aria-label={`${rec.plan} recommendation`}
+              style={{
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-lg)",
+                padding: "var(--space-5)",
+                backgroundColor: "var(--color-surface)",
+                boxShadow: "var(--shadow-card)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-3)",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "var(--font-size-body-sm)",
+                  color: "var(--color-muted)",
+                  lineHeight: 1.6,
+                }}
+              >
+                {rec.reason}
+              </p>
+              <a
+                href={rec.href}
+                style={
+                  isPrimary
+                    ? {
+                        ...primaryBtn(false),
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        textDecoration: "none",
+                      }
+                    : isPurple
+                    ? purpleBtn()
+                    : isOutlined
+                    ? outlinedBtn()
+                    : primaryBtn(false)
+                }
+              >
+                {ctaLabel}
+              </a>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Results panel
+// ---------------------------------------------------------------------------
+
+function ResultsPanel({
+  result,
+  brand,
+  kitHref,
+  onReset,
+}: {
+  result: FreeTestResult;
+  brand: string;
+  kitHref: string;
+  onReset: () => void;
+}) {
+  const statusColor = STATUS_COLOR[result.status];
+  const capitalizedStatus =
+    result.status.charAt(0).toUpperCase() + result.status.slice(1);
+
+  return (
+    <div
+      style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}
+    >
+      {/* A) Status badge + verdict headline */}
+      <div
+        style={{
+          ...cardStyle,
+          borderColor: statusColor,
+          gap: "var(--space-3)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+          <span
+            style={{
+              fontSize: "var(--font-size-caption)",
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: statusColor,
+              border: `1.5px solid ${statusColor}`,
+              borderRadius: "var(--radius-pill)",
+              padding: "3px 10px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {capitalizedStatus}
+          </span>
+        </div>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-h2)",
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.2,
+            color: "var(--color-text)",
+          }}
+        >
+          {result.verdict}
+        </h2>
+      </div>
+
+      {/* B) Prompt block */}
+      <div
+        style={cardStyle}
+        aria-label="The buyer prompt sent to AI engines"
+      >
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "var(--color-muted)",
+          }}
+        >
+          We asked the AI engines:
+        </p>
+        <blockquote
+          style={{
+            margin: 0,
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-4)",
+            backgroundColor: "var(--color-surface-muted)",
+            fontSize: "var(--font-size-body-sm)",
+            lineHeight: 1.7,
+            fontStyle: "italic",
+            color: "var(--color-text)",
+          }}
+        >
+          &ldquo;{result.prompt}&rdquo;
+        </blockquote>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+          }}
+        >
+          <strong>{result.enginesLive} of {result.totalEngines}</strong> engines responded live.
+          {!result.live && (
+            <span> (demo data &mdash; live engines activate once provider keys are connected)</span>
+          )}
+        </p>
+      </div>
+
+      {/* C) TrustIndex Scorecard */}
+      <div style={cardStyle}>
+        <TrustIndexScorecard
+          overall={result.score.overall}
+          vectors={{
+            ai: result.score.ai,
+            performance: result.score.performance,
+            brand: result.score.brand,
+          }}
+          probeSummary={`${result.enginesLive} of ${result.totalEngines} engines live`}
+          brandName={brand}
+          compact={false}
+        />
+      </div>
+
+      {/* D) Per-engine breakdown */}
+      <div style={cardStyle}>
+        <EngineBreakdown
+          engines={result.engines}
+          brandEngineCount={result.brandEngineCount}
+          totalEngines={result.totalEngines}
+        />
+      </div>
+
+      {/* E) Vector notes */}
+      <div style={cardStyle}>
+        <VectorNotes breakdown={result.breakdown} />
+      </div>
+
+      {/* F) Recommendation CTAs */}
+      <div style={cardStyle}>
+        <RecommendationCards recommendations={result.recommendations} />
+      </div>
+
+      {/* G) Reset link */}
+      <div>
+        <button
+          type="button"
+          onClick={onReset}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--color-primary)",
+            fontWeight: 600,
+            cursor: "pointer",
+            fontSize: "var(--font-size-body-sm)",
+            padding: "var(--space-2) 0",
+            minHeight: "44px",
+            fontFamily: "var(--font-family)",
+          }}
+        >
+          &larr; Test another brand
+        </button>
+      </div>
+
+      {/* H) Disclaimer */}
+      <p
+        style={{
+          margin: 0,
+          fontSize: "var(--font-size-caption)",
+          color: "var(--color-muted)",
+          lineHeight: 1.6,
+        }}
+      >
+        Results are evidence-based estimates. AI answers are non-deterministic &mdash; this is a
+        directional snapshot, not a guarantee of citation.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main export
+// ---------------------------------------------------------------------------
+
+export function InvisibilityTestClient() {
+  useClientStyles();
+
+  // Form state
+  const [brand, setBrand] = useState("");
+  const [competitor, setCompetitor] = useState("");
+  const [category, setCategory] = useState("");
+  const [region, setRegion] = useState<"US" | "EU">("US");
+  const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // Machine state
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<FreeTestResult | null>(null);
+  const [testId, setTestId] = useState<string | null>(null);
+  const [apiError, setApiError] = useState("");
+
+  // Stable IDs for accessible label wiring
+  const brandId = useId();
+  const competitorId = useId();
+  const categoryId = useId();
+  const regionId = useId();
+  const emailId = useId();
+  const emailErrorId = useId();
+
+  // Derive domain from brand (best-effort)
+  const derivedDomain: string | null = null; // backend derives it; we don't have explicit field
+
+  // Email validation
+  const showEmailError =
+    email.length > 0 && (emailTouched || submitAttempted) && !isValidEmail(email);
+  const emailMissing = submitAttempted && email.trim() === "";
+  const emailErrorMessage = emailMissing
+    ? "Email is required"
+    : showEmailError
+    ? "Please enter a valid email address"
+    : undefined;
+
+  const canSubmit =
+    brand.trim().length > 0 &&
+    category.trim().length > 0 &&
+    email.trim().length > 0 &&
+    isValidEmail(email);
+
+  async function run(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitAttempted(true);
+
+    if (!canSubmit || busy) return;
+
+    setBusy(true);
+    setApiError("");
+
+    try {
+      const res = await fetch("/api/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brand: brand.trim(),
+          competitor: competitor.trim(),
+          category: category.trim(),
+          region,
+          email: email.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          (data as { error?: string }).error ||
+          "Could not run the test right now. Please try again.";
+        setApiError(msg);
+      } else {
+        const data = await res.json();
+        setResult(data.result);
+        setTestId(data.testId ?? null);
+      }
+    } catch {
+      setApiError("Network error. Please check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function reset() {
+    setResult(null);
+    setTestId(null);
+    setApiError("");
+    setSubmitAttempted(false);
+    setEmailTouched(false);
+  }
+
+  // Kit href with testId + context params
+  const kitParams = new URLSearchParams();
+  if (testId) kitParams.set("testId", testId);
+  if (brand.trim()) kitParams.set("brand", brand.trim());
+  if (category.trim()) kitParams.set("category", category.trim());
+  kitParams.set("region", region);
+  const kitHref = `/kit?${kitParams.toString()}`;
+
+  // ---- Loading state — replace form entirely ----
+  if (busy) {
+    return (
+      <LoadingPanel
+        brand={brand}
+        domain={derivedDomain}
+      />
+    );
+  }
+
+  // ---- Error state — show error panel, re-enables form on retry ----
+  if (apiError && !result) {
+    return (
+      <ErrorPanel
+        message={apiError}
+        onRetry={() => {
+          setApiError("");
+          setSubmitAttempted(false);
+        }}
+      />
+    );
+  }
+
+  // ---- Results state ----
+  if (result) {
+    return (
+      <ResultsPanel
+        result={result}
+        brand={brand}
+        kitHref={kitHref}
+        onReset={reset}
+      />
+    );
+  }
+
+  // ---- Form state ----
+  return (
+    <form
+      onSubmit={run}
+      noValidate
+      className="ti-test-focus"
+      style={cardStyle}
+      aria-label="AI Invisibility Test form"
+    >
+      <Field
+        label="Your brand"
+        required
+        fieldId={brandId}
+      >
+        <input
+          id={brandId}
+          value={brand}
+          onChange={(e) => setBrand(e.target.value)}
+          placeholder="Acme CRM"
+          required
+          autoComplete="organization"
+          style={inputStyle}
+        />
+      </Field>
+
+      <Field
+        label="A competitor"
+        hint="optional — we'll compare you head-to-head"
+        fieldId={competitorId}
+      >
+        <input
+          id={competitorId}
+          value={competitor}
+          onChange={(e) => setCompetitor(e.target.value)}
+          placeholder="A rival brand"
+          autoComplete="off"
+          style={inputStyle}
+        />
+      </Field>
+
+      <Field
+        label="Your category"
+        required
+        hint="how buyers describe what you sell"
+        fieldId={categoryId}
+      >
+        <input
+          id={categoryId}
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="CRM, accounting software, law firm…"
+          required
+          autoComplete="off"
+          style={inputStyle}
+        />
+      </Field>
+
+      <Field label="Data region" fieldId={regionId}>
+        <select
+          id={regionId}
+          value={region}
+          onChange={(e) => setRegion(e.target.value as "US" | "EU")}
+          style={inputStyle}
+        >
+          <option value="US">US</option>
+          <option value="EU">EU (GDPR routing)</option>
+        </select>
+      </Field>
+
+      <Field
+        label="Your email"
+        required
+        hint="We'll email your full snapshot — a copy you can share."
+        fieldId={emailId}
+        errorId={emailErrorId}
+        errorMessage={emailErrorMessage}
+      >
+        <input
+          id={emailId}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onBlur={() => setEmailTouched(true)}
+          placeholder="you@company.com"
+          required
+          autoComplete="email"
+          aria-describedby={emailErrorMessage ? emailErrorId : undefined}
+          aria-invalid={emailErrorMessage ? "true" : undefined}
+          style={emailErrorMessage ? inputErrorStyle : inputStyle}
+        />
+      </Field>
+
+      <button
+        type="submit"
+        disabled={!canSubmit}
+        style={primaryBtn(!canSubmit)}
+        aria-disabled={!canSubmit}
+      >
+        Run my free test
+      </button>
+    </form>
   );
 }
