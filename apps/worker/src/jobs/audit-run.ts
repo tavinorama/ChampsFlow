@@ -342,6 +342,19 @@ export async function processAuditJob(
     const citationRate = citedCount / totalProbes;
     const avgPositionScore = positionScoreN > 0 ? positionScoreSum / positionScoreN : 0;
 
+    // Real share-of-voice vs competitors — the worker already tallied competitor
+    // mentions, so use them. Honest: if competitors out-mention you, your share
+    // drops; if neither is cited it's 0; with no competitors configured, fall back
+    // to your own citation rate (best signal available). This replaces the raw
+    // citationRate that was being mislabelled as "share vs competitors".
+    const totalCompetitorMentions = competitorBenchmark.reduce((s, c) => s + c.mentions, 0);
+    const shareOfVoice =
+      competitorNames.length === 0
+        ? citationRate
+        : citedCount + totalCompetitorMentions > 0
+          ? citedCount / (citedCount + totalCompetitorMentions)
+          : 0;
+
     const aioPresence = result.responses.some((r) => r.provider === "serp" && r.mentioned);
 
     // Sentiment — how the brand is PORTRAYED in answers where it is mentioned.
@@ -354,9 +367,18 @@ export async function processAuditJob(
     // on Reddit/Wikipedia/G2/etc.) — 50/50. Off-site is a major real GEO lever.
     // eeaSignal blends on-site E-E-A-T, off-site authority, and the Reddit
     // deep-dive (the single highest-value AI-citation source — C5).
-    const eeaBlended = crawl.reachable
-      ? crawl.brand.eeaSignal * 0.4 + offsite.offsiteScore * 0.4 + reddit.redditScore * 0.2
-      : offsite.offsiteScore * 0.7 + reddit.redditScore * 0.3; // no on-site signal
+    // HONESTY GUARD: only blend signals we actually MEASURED live. A mock/keyless
+    // fallback (reddit-signal/offsite-signal fabricate brand-specific data when
+    // their key is absent) must NEVER feed the score as if it were real. If a
+    // signal isn't live, it's excluded and the remaining weights re-normalise;
+    // if nothing is measurable, eeaSignal is a neutral 0.5 baseline — not invented.
+    const eeaParts: Array<{ v: number; w: number }> = [];
+    if (crawl.reachable) eeaParts.push({ v: crawl.brand.eeaSignal, w: 0.4 });
+    if (offsite.live) eeaParts.push({ v: offsite.offsiteScore, w: 0.4 });
+    if (reddit.live) eeaParts.push({ v: reddit.redditScore, w: 0.2 });
+    const eeaWeight = eeaParts.reduce((s, p) => s + p.w, 0);
+    const eeaBlended =
+      eeaWeight > 0 ? eeaParts.reduce((s, p) => s + p.v * p.w, 0) / eeaWeight : 0.5;
 
     // entityCompleteness now comes from the cross-source entity graph (C7) when an
     // entity was resolved — this is the measured signal that closes the last Brand
@@ -366,7 +388,9 @@ export async function processAuditJob(
     const scoreInputs = {
       brand: {
         entityCompleteness,
-        citationVolume: Math.min(1, citationRate * 1.5),
+        // Real competitive standing, NOT an amplified copy of citationRate.
+        // (Was Math.min(1, citationRate*1.5) — a 50% inflation. Removed.)
+        citationVolume: shareOfVoice,
         eeaSignal: eeaBlended,
       },
       performance: {
@@ -378,7 +402,7 @@ export async function processAuditJob(
           : crawl.performance.schemaCoverage,
         llmsTxtPresent: crawl.performance.llmsTxtPresent,
         aiCrawlerAccess: crawl.performance.aiCrawlerAccess,
-        citationShareVsCompetitors: citationRate,
+        citationShareVsCompetitors: shareOfVoice,
         aioPresence,
       },
       ai: { citationRate, avgPositionScore, sentimentScore: sentiment.sentimentScore },
