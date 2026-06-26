@@ -217,6 +217,30 @@ const MARKETING_STYLES = `
     background: rgba(243,241,232,0.80);
   }
 
+  /* ── Center nav ghost links ─────────────────────────────────────── */
+  .mk-navlink:hover { color: var(--color-text) !important; }
+
+  /* ── Primary CTA — emerald gradient, dark text, soft glow ───────── */
+  .mk-cta-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-family);
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #06140e;
+    text-decoration: none;
+    background: linear-gradient(135deg, #27c98a, #0c7d54);
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 1.1rem;
+    min-height: var(--min-tap-target);
+    white-space: nowrap;
+    box-shadow: 0 10px 32px rgba(39,201,138,0.32);
+    transition: filter 0.15s, transform 0.15s;
+  }
+  .mk-cta-primary:hover { filter: brightness(1.06); transform: translateY(-1px); }
+
   /* ── Toggle button hover ──────────────────────────────────────────── */
   .mk-theme-toggle:hover {
     color: var(--color-text) !important;
@@ -261,13 +285,25 @@ const MARKETING_STYLES = `
 
   /* ── Footer link hover ────────────────────────────────────────────── */
   .mk-footer-link {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     color: var(--color-muted);
     text-decoration: none;
     font-family: var(--font-family);
     transition: color 0.15s;
   }
   .mk-footer-link:hover { color: var(--color-text); }
+
+  /* ── Footer — the one grounded (solid) element ──────────────────── */
+  .mk-footer { background: #080d0b; }
+  html[data-theme="light"] .mk-footer { background: #e7e4d8; }
+  .mk-foot-head {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
 
   /* ── Responsive comparison table ─────────────────────────────────── */
   @media (max-width: 640px) {
@@ -431,7 +467,8 @@ function PublicNavbar() {
           gap: "var(--space-3)",
         }}
       >
-        {/* Logo */}
+        {/* Logo — monochrome (color:var(--color-text) so the O-ring mark inherits
+            ink/near-white, never the default link blue) */}
         <Link
           href="/"
           aria-label="Ozvor — home"
@@ -441,116 +478,60 @@ function PublicNavbar() {
             alignItems: "center",
             gap: "var(--space-2)",
             flexShrink: 0,
+            color: "var(--color-text)",
           }}
         >
           <LogoMark size={28} />
-          <span className="mk-logo-word" style={{ display: "inline-flex" }}>
-            <Wordmark size="1.0625rem" />
-          </span>
+          <Wordmark size="1.0625rem" />
         </Link>
 
-        {/* Right: sales value-ladder CTAs + secondary links + sign in
-              Order (left → right): secondary links (hidden sm) | Free | Kit | Pricing | ThemeToggle | Sign in
-              On mobile ≤480px: only Free + Kit + ThemeToggle + Sign in are visible. */}
+        {/* Center nav (mockup): How it works · Results · OrganicPosts · Kit $29 · Plans */}
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-3)",
-          }}
+          className="mk-navlinks"
+          style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}
         >
-          {/* ── Secondary nav links (hidden on ≤700px) ────────────────── */}
-          <Link
-            href="/blog"
-            className="mk-navlink mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "var(--color-text)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            Blog
-          </Link>
-          <Link
-            href="/how-it-works"
-            className="mk-navlink mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "var(--color-text)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            How it works
-          </Link>
-          <Link
-            href="/results"
-            className="mk-navlink mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "var(--color-text)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            Results
-          </Link>
-          <Link
-            href="/organicposts"
-            className="mk-navlink mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "var(--color-text)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            OrganicPosts
-          </Link>
+          {([
+            ["How it works", "/how-it-works"],
+            ["Results", "/results"],
+            ["OrganicPosts", "/organicposts"],
+            ["Kit $29", "/kit"],
+            ["Plans", "/pricing"],
+          ] as const).map(([label, href]) => (
+            <Link
+              key={href}
+              href={href}
+              className="mk-navlink mk-navlink-hide-sm"
+              style={{
+                fontSize: "0.875rem",
+                fontWeight: 600,
+                color: "var(--color-muted)",
+                textDecoration: "none",
+                fontFamily: "var(--font-family)",
+                padding: "0.4rem 0.55rem",
+                borderRadius: "var(--radius-sm)",
+              }}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
 
-          {/* ── Sales ladder: Free → Kit → Pricing ────────────────────── */}
-          {/* 1. Free AI Test — always visible (entry offer, no cost) */}
+        {/* Right: theme toggle + Sign in (ghost) + Free AI test (emerald gradient) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
+          <ThemeToggle />
+          <Link
+            href="/login"
+            className="mk-signin mk-navlink-hide-sm"
+            aria-label="Sign in to your account"
+          >
+            Sign in
+          </Link>
           <Link
             href="/test"
-            className="mk-nav-free"
-            aria-label="Try the free AI visibility test"
+            className="mk-cta-primary"
+            aria-label="Run the free AI visibility test"
           >
-            Free
-          </Link>
-
-          {/* 2. Kit $29 — always visible (first paid, low-friction) */}
-          <Link
-            href="/kit"
-            className="mk-nav-kit"
-            aria-label="Get the GEO Starter Kit for $29"
-          >
-            Kit $29
-          </Link>
-
-          {/* 3. Plans / Pricing — hidden on ≤700px (StickyBuyBar carries Growth on mobile) */}
-          <Link
-            href="/pricing"
-            className="mk-navlink mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "var(--color-text)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            Plans
-          </Link>
-
-          {/* ── Utility: theme toggle + sign in ───────────────────────── */}
-          <ThemeToggle />
-          <Link href="/login" className="mk-signin" aria-label="Sign in to your account">
-            Sign in
+            Free AI test
           </Link>
         </div>
       </nav>
@@ -568,77 +549,129 @@ function MarketingFooter() {
   return (
     <footer
       aria-label="Site footer"
+      role="contentinfo"
+      className="mk-footer"
       style={{
         borderTop: "1px solid var(--color-border)",
-        backgroundColor: "var(--color-surface)",
-        padding: "var(--space-10) var(--space-4)",
+        padding: "var(--space-16) var(--space-4) var(--space-10)",
         marginTop: "var(--space-16)",
       }}
     >
-      <div
-        style={{
-          maxWidth: "1120px",
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-6)",
-        }}
-      >
-        {/* Legal links */}
-        <nav
-          aria-label="Legal links"
-          style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-4)" }}
-        >
-          <FooterLink href="/how-we-measure">How we measure</FooterLink>
-          <FooterLink href="/terms-of-service">Terms of Service</FooterLink>
-          <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
-          <FooterLink href="/legal/cookies">Cookie Policy</FooterLink>
-          <FooterLink href="/legal/sub-processors">Sub-processors</FooterLink>
-          <FooterLink href="/legal/dsr-request">DSR Request</FooterLink>
-          <FooterLink href="/legal/do-not-sell">
-            Do Not Sell or Share My Personal Information
-          </FooterLink>
-          {/* Cookie preferences re-opens the consent panel (client-side event) */}
-          <CookieConsentTrigger className="mk-footer-link">
-            Cookie preferences
-          </CookieConsentTrigger>
-          <FooterLink href="mailto:hello@ozvor.com">
-            hello@ozvor.com
-          </FooterLink>
-        </nav>
-
-        {/* Entity + social */}
+      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
             justifyContent: "space-between",
-            gap: "var(--space-4)",
+            gap: "var(--space-10)",
+            flexWrap: "wrap",
           }}
         >
-          <p
-            style={{
-              margin: 0,
-              fontSize: "var(--font-size-caption)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              lineHeight: "var(--line-height-caption)",
-            }}
-          >
-            &copy; {currentYear} Ozvor &mdash; AI Search Trust
-            Intelligence. Serving SMBs in Brazil, the EU, and the United States.
+          {/* Brand column */}
+          <div style={{ maxWidth: "300px" }}>
+            <Link
+              href="/"
+              aria-label="Ozvor — home"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.6rem",
+                textDecoration: "none",
+                color: "var(--color-text)",
+              }}
+            >
+              <LogoMark size={24} />
+              <Wordmark size="1.0625rem" />
+            </Link>
+            <p
+              style={{
+                margin: "0.9rem 0 0",
+                fontSize: "var(--font-size-body-sm)",
+                lineHeight: 1.55,
+                color: "var(--color-muted)",
+              }}
+            >
+              Ozvor is the home of{" "}
+              <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>TrustIndex AI</strong>{" "}
+              &mdash; the method that combines AI, Brand &amp; Performance to earn your place in AI
+              answers &mdash; and{" "}
+              <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>OrganicPosts</strong>.
+            </p>
+            <p
+              style={{
+                margin: "1rem 0 0",
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.75rem",
+                color: "var(--color-muted)",
+              }}
+            >
+              hello@ozvor.com
+            </p>
+          </div>
+
+          {/* Link columns */}
+          <div style={{ display: "flex", gap: "var(--space-12)", flexWrap: "wrap" }}>
+            <FooterCol
+              title="Product"
+              links={[
+                ["How it works", "/how-it-works"],
+                ["Tutorials", "/learn"],
+                ["Case study", "/results"],
+                ["Plans", "/pricing"],
+              ]}
+            />
+            <FooterCol
+              title="Get started"
+              links={[
+                ["Free AI test", "/test"],
+                ["Get-Cited Kit", "/kit"],
+                ["OrganicPosts", "/organicposts"],
+                ["Blog", "/blog"],
+              ]}
+            />
+            <div>
+              <div className="mk-foot-head">Legal</div>
+              <div
+                style={{
+                  marginTop: "0.9rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.6rem",
+                  alignItems: "flex-start",
+                }}
+              >
+                <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
+                <FooterLink href="/terms-of-service">Terms of Service</FooterLink>
+                <FooterLink href="/legal/dpa">DPA</FooterLink>
+                <FooterLink href="/legal/sub-processors">Sub-processors</FooterLink>
+                <FooterLink href="/how-we-measure">How we measure</FooterLink>
+                <FooterLink href="/legal/do-not-sell">Do Not Sell or Share My Info</FooterLink>
+                <CookieConsentTrigger className="mk-footer-link">
+                  Cookie preferences
+                </CookieConsentTrigger>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div
+          style={{
+            marginTop: "var(--space-10)",
+            paddingTop: "var(--space-6)",
+            borderTop: "1px solid var(--color-border)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--space-4)",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+            &copy; {currentYear} Ozvor &mdash; AI Search Trust Intelligence
           </p>
-          <span
-            aria-label="LinkedIn — link coming soon"
-            style={{
-              fontSize: "var(--font-size-caption)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            LinkedIn
-          </span>
+          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+            Serving SMBs in Brazil, the EU &amp; the United States.
+          </p>
         </div>
       </div>
     </footer>
@@ -660,5 +693,34 @@ function FooterLink({
     <Link href={href} className="mk-footer-link">
       {children}
     </Link>
+  );
+}
+
+function FooterCol({
+  title,
+  links,
+}: {
+  title: string;
+  links: readonly (readonly [string, string])[];
+}) {
+  return (
+    <div>
+      <div className="mk-foot-head">{title}</div>
+      <div
+        style={{
+          marginTop: "0.9rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.6rem",
+          alignItems: "flex-start",
+        }}
+      >
+        {links.map(([label, href]) => (
+          <FooterLink key={href} href={href}>
+            {label}
+          </FooterLink>
+        ))}
+      </div>
+    </div>
   );
 }
