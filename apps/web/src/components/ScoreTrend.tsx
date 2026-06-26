@@ -19,6 +19,9 @@
 interface TrendRow {
   recorded_at: string;
   score_overall: number | null;
+  score_ai?: number | null;
+  score_performance?: number | null;
+  score_brand?: number | null;
 }
 
 export interface ScoreTrendProps {
@@ -28,7 +31,15 @@ export interface ScoreTrendProps {
   compact?: boolean;
   /** Brand name for aria-label */
   brandName?: string;
+  /** multiSeries=true: draw AI / Performance / Brand vector lines (full mode only) */
+  multiSeries?: boolean;
 }
+
+const VECTOR_SERIES = [
+  { key: "score_ai" as const, label: "AI", color: "#2563eb" },
+  { key: "score_performance" as const, label: "Performance", color: "#7c3aed" },
+  { key: "score_brand" as const, label: "Brand", color: "#0fb488" },
+];
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -37,7 +48,7 @@ function formatDate(iso: string): string {
   });
 }
 
-export function ScoreTrend({ trend, compact = false, brandName }: ScoreTrendProps) {
+export function ScoreTrend({ trend, compact = false, brandName, multiSeries = false }: ScoreTrendProps) {
   // 1. Filter rows with a valid score_overall
   const valid = trend.filter(
     (r): r is { recorded_at: string; score_overall: number } =>
@@ -84,6 +95,24 @@ export function ScoreTrend({ trend, compact = false, brandName }: ScoreTrendProp
   });
 
   const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+
+  // Multi-series: one polyline per vector (AI / Performance / Brand). Vectors
+  // are always present when a row exists (geo_score columns are NOT NULL), so
+  // they share the overall x-scale. Null-safe regardless.
+  const vectorSeries = VECTOR_SERIES.map((s) => {
+    const pts = chronological
+      .map((row, i) => {
+        const raw = (row as unknown as Record<string, number | null | undefined>)[s.key];
+        const val = typeof raw === "number" ? raw : null;
+        const x = n === 1 ? viewW / 2 : (i / (n - 1)) * (viewW - 8) + 4;
+        const y = val == null ? null : viewH - 4 - (val / 100) * (viewH - 8);
+        return y == null ? null : { x, y };
+      })
+      .filter((p): p is { x: number; y: number } => p !== null);
+    return { ...s, pts };
+  }).filter((s) => s.pts.length >= 2);
+
+  const useMulti = multiSeries && !compact && vectorSeries.length > 0;
 
   const firstScore = chronological[0].score_overall;
   const latestScore = chronological[chronological.length - 1].score_overall;
@@ -180,27 +209,49 @@ export function ScoreTrend({ trend, compact = false, brandName }: ScoreTrendProp
         style={{ display: "block", overflow: "visible" }}
         preserveAspectRatio="xMidYMid meet"
       >
-        {/* Line connecting all data points */}
-        <polyline
-          points={polylinePoints}
-          stroke="var(--color-primary)"
-          strokeWidth={strokeW}
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {/* Dots at each data point */}
-        {points.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r={dotR}
-            fill="var(--color-primary)"
-            aria-hidden="true"
-          />
-        ))}
+        {useMulti ? (
+          /* One line per vector — AI / Performance / Brand */
+          vectorSeries.map((s) => (
+            <polyline
+              key={s.key}
+              points={s.pts.map((p) => `${p.x},${p.y}`).join(" ")}
+              stroke={s.color}
+              strokeWidth={strokeW}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))
+        ) : (
+          <>
+            {/* Line connecting all data points (overall) */}
+            <polyline
+              points={polylinePoints}
+              stroke="var(--color-primary)"
+              strokeWidth={strokeW}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {/* Dots at each data point */}
+            {points.map((p, i) => (
+              <circle key={i} cx={p.x} cy={p.y} r={dotR} fill="var(--color-primary)" aria-hidden="true" />
+            ))}
+          </>
+        )}
       </svg>
+
+      {/* Legend — multi-series only */}
+      {useMulti && (
+        <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap", marginTop: "var(--space-2)" }} aria-hidden="true">
+          {vectorSeries.map((s) => (
+            <span key={s.key} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-1)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600 }}>
+              <span style={{ width: "12px", height: "3px", borderRadius: "2px", backgroundColor: s.color, display: "inline-block" }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Date labels below the SVG */}
       <div

@@ -118,7 +118,7 @@ export default function BrandDetailPage() {
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [resolvedAuditId, setResolvedAuditId] = useState<string>("");
   const [brandName, setBrandName] = useState<string | undefined>(undefined);
-  const [trend, setTrend] = useState<Array<{ recorded_at: string; score_overall: number | null }>>([]);
+  const [trend, setTrend] = useState<Array<{ recorded_at: string; score_overall: number | null; score_ai?: number | null; score_performance?: number | null; score_brand?: number | null }>>([]);
   const [brandSettings, setBrandSettings] = useState<{
     tracked_models: string[] | null;
     tracking_frequency: string | null;
@@ -247,6 +247,9 @@ export default function BrandDetailPage() {
             (data.trend ?? []) as Array<{
               recorded_at: string;
               score_overall: number | null;
+              score_ai?: number | null;
+              score_performance?: number | null;
+              score_brand?: number | null;
             }>
           );
           if (latest) {
@@ -366,7 +369,7 @@ export default function BrandDetailPage() {
             padding: "var(--space-6)",
             boxShadow: "var(--shadow-card)",
           }}>
-            <ScoreTrend trend={trend} brandName={brandName} />
+            <ScoreTrend trend={trend} brandName={brandName} multiSeries />
           </div>
         </section>
       )}
