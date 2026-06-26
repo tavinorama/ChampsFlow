@@ -78,7 +78,7 @@ const MARKETING_STYLES = `
     --font-family: var(--font-jakarta, 'Plus Jakarta Sans', system-ui, sans-serif);
   }
 
-  /* ── Smooth anchor scrolling for CTAs (#waitlist-cta) ─────────────── */
+  /* ── Smooth anchor scrolling for in-page CTAs (#pricing, #faq-heading) ── */
   html { scroll-behavior: smooth; }
 
   /* ── Smooth theme transition (light ⇄ dark not jarring) ───────────── */
@@ -328,6 +328,30 @@ const MARKETING_STYLES = `
     outline: var(--focus-outline-width) solid var(--color-focus-outline);
     outline-offset: var(--focus-outline-offset);
   }
+
+  /* ── Sticky buy bar — mobile only ──────────────────────────────────── */
+  .mk-sticky-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--color-surface);
+    border-top: 1.5px solid var(--color-primary);
+    padding: 0.75rem var(--space-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    box-shadow: 0 -4px 16px rgba(10,126,90,0.10);
+  }
+  @media (min-width: 769px) {
+    .mk-sticky-bar { display: none !important; }
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme]) .mk-sticky-bar { background: #0E1A14; }
+  }
+  html[data-theme="dark"] .mk-sticky-bar { background: #0E1A14; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -429,6 +453,26 @@ function PublicNavbar() {
             }}
           >
             Free AI Test
+          </Link>
+          <Link
+            href="/login?plan=growth&next=checkout"
+            className="mk-navlink-hide-sm"
+            style={{
+              fontSize: "0.8125rem",
+              fontWeight: 700,
+              color: "#fff",
+              textDecoration: "none",
+              fontFamily: "var(--font-family)",
+              backgroundColor: "var(--color-primary)",
+              borderRadius: "var(--radius-pill)",
+              padding: "0.375rem 0.875rem",
+              whiteSpace: "nowrap",
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: "var(--min-tap-target)",
+            }}
+          >
+            Start Growth $99
           </Link>
           <Link
             href="/blog"

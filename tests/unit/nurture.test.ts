@@ -188,7 +188,7 @@ describe("enrollNurture", () => {
     expect(insertParams).toContain(4);
   });
 
-  it("sets total_steps=2 for kit_to_dfy", async () => {
+  it("sets total_steps=3 for kit_to_dfy", async () => {
     const db = makeDb({
       queryResults: [{ rows: [] }, { rows: [{ id: "id-2" }] }],
     });
@@ -201,7 +201,8 @@ describe("enrollNurture", () => {
     });
 
     const insertParams = db._params[0] ?? [];
-    expect(insertParams).toContain(2);
+    // kit_to_dfy has 3 email steps (sendNurtureKit1/2/3Email, steps 0/1/2)
+    expect(insertParams).toContain(3);
   });
 });
 

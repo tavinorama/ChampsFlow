@@ -15,7 +15,8 @@
  */
 
 import type { Metadata } from "next";
-import { WaitlistForm } from "../../components/marketing/WaitlistForm";
+import Link from "next/link";
+import { StickyBuyBar } from "../../components/marketing/StickyBuyBar";
 import { GeoGraphBackdrop } from "../../components/marketing/GeoGraphBackdrop";
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,9 @@ export default function LandingPage() {
           }),
         }}
       />
+      <StickyBuyBar />
       <HeroSection />
+      <EarlyPricingTeaserSection />
       <EnginesCoverageSection />
       <StatBarSection />
       <TheShiftSection />
@@ -134,7 +137,7 @@ export default function LandingPage() {
       <PricingSection />
       <SocialProofSection />
       <FAQSection />
-      <WaitlistSection />
+      <FinalCtaSection />
     </>
   );
 }
@@ -305,18 +308,61 @@ function HeroSection() {
           content that earns citations.
         </p>
 
-        {/* Compact form — centred */}
-        <div style={{ maxWidth: "480px", margin: "0 auto var(--space-3)" }}>
-          <WaitlistForm compact />
+        {/* Two-CTA row */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            alignItems: "center",
+            margin: "0 auto var(--space-6)",
+            maxWidth: "480px",
+          }}
+        >
+          <Link
+            href="/test"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              minHeight: "52px",
+              padding: "0 var(--space-6)",
+              backgroundColor: "var(--color-primary)",
+              color: "#fff",
+              borderRadius: "var(--radius-md)",
+              fontSize: "1rem",
+              fontWeight: 700,
+              fontFamily: "var(--font-family)",
+              textDecoration: "none",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Run the free AI Visibility Test &mdash; free
+          </Link>
+          <Link
+            href="/login?plan=growth&next=checkout"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              minHeight: "52px",
+              padding: "0 var(--space-6)",
+              backgroundColor: "transparent",
+              color: "var(--color-primary)",
+              border: "1.5px solid var(--color-primary)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "1rem",
+              fontWeight: 700,
+              fontFamily: "var(--font-family)",
+              textDecoration: "none",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Start Growth &mdash; $99/mo
+          </Link>
         </div>
-
-        {/* Secondary CTA — the free lead magnet (instant, no waitlist) */}
-        <p style={{ margin: "0 auto var(--space-6)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-          Or see it now —{" "}
-          <a href="/test" style={{ color: "var(--color-primary)", fontWeight: 700, textDecoration: "none" }}>
-            run the free AI Invisibility Test &rarr;
-          </a>
-        </p>
 
         {/* Trust signals — centred */}
         <div
@@ -2131,7 +2177,7 @@ function PricingSection() {
 
         <p style={{ textAlign: "center", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", marginTop: "var(--space-8)", maxWidth: "60ch", margin: "var(--space-8) auto 0", lineHeight: 1.7 }}>
           First 100 subscribers get the <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> on annual plans ($831 Growth / $2,091 Agency per year) — applied only when you pay annually.
-          Or, <a href="#waitlist-cta" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "underline" }}>join the waitlist</a> for a personal onboarding from the founder.
+          All plans include a 30-day money-back guarantee. Personal onboarding from the founder available — <a href="/book" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "underline" }}>book a call</a>.
         </p>
       </div>
     </section>
@@ -2140,8 +2186,8 @@ function PricingSection() {
 
 function PricingCard({
   name, subtitle, price, period, annual, features, featured = false,
-  ctaLabel = "Join waitlist — founding member pricing",
-  ctaHref = "#waitlist-cta",
+  ctaLabel = "Get started",
+  ctaHref = "/test",
 }: {
   name: string; subtitle: string; price: string; period: string;
   annual: string; features: string[]; featured?: boolean;
@@ -2236,8 +2282,8 @@ const FAQ_ITEMS = [
   { q: "Isn't this just Google's free Search Console AI report?", a: "No — they answer different questions. Google's Search Console AI performance report (launched June 2026) tells you that your own pages appeared in Google's AI features. It covers Google only, your own site only, and at launch shows no click data and no competitors. TrustIndex AI measures your brand across every major AI engine — ChatGPT, Claude, Perplexity, and Gemini as well as Google AI Overview — shows which competitors get recommended instead of you, how AI describes you (sentiment), and gives you a prioritized plan to fix the gaps. Use Search Console as your Google thermometer; use TrustIndex AI for the full diagnosis and treatment, across the whole AI-answer surface. We're built to Google's official guidance and pass the three vendor-vetting questions Google published." },
   { q: "How long until I appear in LLM answers?", a: "There is no fixed timeline. Based on the GEO research and observed patterns in how AI systems refresh their data, consistent posting over 4–8 weeks is a reasonable starting point. Individual citation frequency varies by niche, competition, and the specificity of your content." },
   { q: "Can you guarantee my business will be cited?", a: "No, and anyone who says they can guarantee AI citations is overstating what the research supports. GEO research shows that specific, structured, data-backed, consistently published content is cited more frequently than vague or irregular content. We give you the tools to produce that kind of content at scale. The AI systems make their own decisions about what to cite." },
-  { q: "How much does it cost?", a: "Four tiers. Free: 1 brand, 3 competitors, 50 prompts, monthly audit + TrustIndex Score, no credit card. Growth: $99/month — 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, GEO content briefs. Agency: $249/month — multi-client dashboard (up to 25 brands), white-label reports, client approval workflow. Founding members (the first 100 waitlist signups) get a 30% founder discount — applied only when you pay annually ($831/year Growth and $2,091/year Agency, vs $99/$249 per month). Annual plans also include a free 5-page website (Growth) or website + 3 client landing pages (Agency). 30-day money-back guarantee on all paid plans." },
-  { q: "How do I get access?", a: "Join the waitlist below. We are inviting early users manually, in order of signup. When your spot opens, we will email you with a personal onboarding from the founder." },
+  { q: "How much does it cost?", a: "Four tiers. Free: 1 brand, 3 competitors, 50 prompts, monthly audit + TrustIndex Score, no credit card. Growth: $99/month — 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, GEO content briefs. Agency: $249/month — multi-client dashboard (up to 25 brands), white-label reports, client approval workflow. Founding members (the first 100 annual subscribers) get a 30% founder discount — applied only when you pay annually ($831/year Growth and $2,091/year Agency, vs $99/$249 per month). Annual plans also include a free 5-page website (Growth) or website + 3 client landing pages (Agency). 30-day money-back guarantee on all paid plans." },
+  { q: "How do I get access?", a: "Run the free AI Visibility Test now — no credit card required. For a personal setup call with the founder, book 20 minutes at trustindexai.com/book." },
   { q: "Which AI engines do you audit?", a: "We audit your brand across ChatGPT (OpenAI), Claude (Anthropic), Perplexity, Gemini (Google), and Google AI Overview. Each audit fires a configurable set of prompts — 50 prompts on the Free plan, 250 on Growth — and records whether your brand was mentioned, how it was described, and which competitors were cited instead." },
   { q: "What data do you store?", a: "We store your account information (name and email), the brand and competitor names you configure, and the audit results (prompt text, AI responses, TrustIndex scores). Audit data is encrypted at rest and scoped to your workspace only. You can request deletion of all your data at any time from account settings." },
   { q: "Does the AI learn from my data?", a: "No. We use Anthropic Claude. Under Anthropic's API terms, your content is not used to train AI models and is not retained beyond what is needed to return your result. We never sell or share your content with third parties for training purposes. We disclose every AI sub-processor on our Sub-processors page, and EU-region inference is on our roadmap." },
@@ -2317,21 +2363,21 @@ function FAQSection() {
 }
 
 // ---------------------------------------------------------------------------
-// ⑩ Waitlist CTA
+// ⑩ Final CTA
 // ---------------------------------------------------------------------------
 
-function WaitlistSection() {
+function FinalCtaSection() {
   return (
     <section
-      aria-labelledby="waitlist-cta-heading"
-      id="waitlist-cta"
+      aria-labelledby="final-cta-heading"
+      id="final-cta"
       className="mk-cta-bg"
       style={{ padding: "var(--space-24) var(--space-4)", position: "relative", overflow: "hidden" }}
     >
       <GeoGraphBackdrop opacity={0.35} />
       <div style={{ maxWidth: "520px", margin: "0 auto", textAlign: "center", position: "relative", zIndex: 1 }}>
         <h2
-          id="waitlist-cta-heading"
+          id="final-cta-heading"
           style={{
             fontSize: "clamp(2rem, 4vw, 3.25rem)",
             fontWeight: "800",
@@ -2353,14 +2399,209 @@ function WaitlistSection() {
             marginBottom: "var(--space-10)",
           }}
         >
-          TrustIndex AI is in pre-launch. Join the waitlist to secure founding
-          member pricing and start building your GEO presence before they notice
-          the shift.
+          TrustIndex AI is live. Run your free AI Visibility Test in 60 seconds &mdash; no credit card.
         </p>
 
-        <div style={{ textAlign: "left" }}>
-          <WaitlistForm />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            alignItems: "center",
+          }}
+        >
+          <Link
+            href="/test"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              minHeight: "52px",
+              padding: "0 var(--space-6)",
+              backgroundColor: "var(--color-primary)",
+              color: "#fff",
+              borderRadius: "var(--radius-md)",
+              fontSize: "1rem",
+              fontWeight: 700,
+              fontFamily: "var(--font-family)",
+              textDecoration: "none",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Run the free test &mdash; free
+          </Link>
+          <Link
+            href="/login?plan=growth&next=checkout"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              minHeight: "52px",
+              padding: "0 var(--space-6)",
+              backgroundColor: "transparent",
+              color: "var(--color-primary)",
+              border: "1.5px solid var(--color-primary)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "1rem",
+              fontWeight: 700,
+              fontFamily: "var(--font-family)",
+              textDecoration: "none",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Start Growth &mdash; $99/mo
+          </Link>
         </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Early pricing teaser — compact 3-column grid, just below the hero
+// ---------------------------------------------------------------------------
+
+function EarlyPricingTeaserSection() {
+  const plans = [
+    {
+      name: "Free",
+      price: "$0",
+      keyFeature: "AI Visibility Test + TrustIndex Score",
+      ctaLabel: "Run the free test",
+      ctaHref: "/test",
+      featured: false,
+    },
+    {
+      name: "Growth",
+      price: "$99/mo",
+      keyFeature: "Weekly monitoring + GEO content briefs",
+      ctaLabel: "Start Growth",
+      ctaHref: "/login?plan=growth&next=checkout",
+      featured: true,
+    },
+    {
+      name: "Agency",
+      price: "$249/mo",
+      keyFeature: "Multi-client dashboard, white-label reports",
+      ctaLabel: "Start Agency",
+      ctaHref: "/login?plan=agency&next=checkout",
+      featured: false,
+    },
+  ];
+
+  return (
+    <section
+      aria-labelledby="pricing-teaser-heading"
+      style={{
+        backgroundColor: "var(--color-surface)",
+        borderBottom: "1px solid var(--color-border)",
+        padding: "var(--space-8) var(--space-4)",
+      }}
+    >
+      <h2
+        id="pricing-teaser-heading"
+        style={{
+          position: "absolute",
+          width: "1px",
+          height: "1px",
+          padding: 0,
+          margin: "-1px",
+          overflow: "hidden",
+          clip: "rect(0,0,0,0)",
+          whiteSpace: "nowrap",
+          border: 0,
+        }}
+      >
+        Plans at a glance
+      </h2>
+      <div
+        style={{
+          maxWidth: "960px",
+          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "var(--space-4)",
+        }}
+      >
+        {plans.map((plan) => (
+          <div
+            key={plan.name}
+            style={{
+              padding: "var(--space-5) var(--space-5)",
+              borderRadius: "var(--radius-lg)",
+              border: plan.featured
+                ? "2px solid var(--color-primary)"
+                : "1px solid var(--color-border)",
+              backgroundColor: plan.featured
+                ? "var(--color-badge-ai-bg)"
+                : "var(--color-surface)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-2)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-2)" }}>
+              <span
+                style={{
+                  fontSize: "var(--font-size-caption)",
+                  fontWeight: 700,
+                  color: "var(--color-muted)",
+                  fontFamily: "var(--font-family)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {plan.name}
+              </span>
+              <span
+                style={{
+                  fontSize: "var(--font-size-body)",
+                  fontWeight: 800,
+                  color: "var(--color-text)",
+                  fontFamily: "var(--font-family)",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                {plan.price}
+              </span>
+            </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "var(--font-size-caption)",
+                color: "var(--color-muted)",
+                fontFamily: "var(--font-family)",
+                lineHeight: 1.5,
+                flex: 1,
+              }}
+            >
+              {plan.keyFeature}
+            </p>
+            <Link
+              href={plan.ctaHref}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "44px",
+                padding: "0 var(--space-4)",
+                backgroundColor: plan.featured ? "var(--color-primary)" : "transparent",
+                color: plan.featured ? "#fff" : "var(--color-primary)",
+                border: plan.featured ? "none" : "1.5px solid var(--color-primary)",
+                borderRadius: "var(--radius-md)",
+                fontSize: "0.875rem",
+                fontWeight: 700,
+                fontFamily: "var(--font-family)",
+                textDecoration: "none",
+                marginTop: "var(--space-1)",
+              }}
+            >
+              {plan.ctaLabel}
+            </Link>
+          </div>
+        ))}
       </div>
     </section>
   );

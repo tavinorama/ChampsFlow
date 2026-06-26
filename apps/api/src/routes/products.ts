@@ -30,6 +30,7 @@ import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { enrollNurture } from "./nurture";
+import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/free-test-result";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,7 +112,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/test — The AI Invisibility Test (free lead magnet)
   // -------------------------------------------------------------------------
   app.post("/api/test", async (c) => {
-    let body: { brand?: string; competitor?: string; category?: string; region?: string; email?: string; marketing_consent?: boolean };
+    let body: { brand?: string; competitor?: string; category?: string; region?: string; email?: string; marketing_consent?: boolean; domain?: string };
     try {
       body = await c.req.json();
     } catch {
@@ -122,6 +123,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     const competitor = (body.competitor ?? "").trim() || null;
     const region = normRegion(body.region);
     const email = (body.email ?? "").trim() || null;
+    const domain = (body.domain ?? "").trim() || null;
     // LGPD Art. 7(I) / GDPR Art. 6(1)(a): marketing consent must be explicitly true
     const marketingConsent = body.marketing_consent === true;
 
@@ -147,7 +149,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     let result;
     try {
-      result = await runInvisibilityTest(brand, competitor, category, region);
+      result = await runInvisibilityTest(brand, competitor, category, region, domain);
     } catch (err) {
       logger.error("invisibility_test_failed", { message: (err as Error).message });
       return c.json({ message: "Could not run the test right now. Try again." }, 502);
@@ -168,6 +170,34 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       testId = leadId;
     } catch (err) {
       logger.warn("lead_capture_insert_failed", { message: (err as Error).message });
+    }
+
+    // Best-effort immediate result email (transactional — no consent required;
+    // this delivers back the result the user just requested).
+    // NEVER blocks the response or returns 500 due to email failure.
+    if (email) {
+      try {
+        const typedResult = result as import("../../../../packages/llm/src/index").FreeTestResult;
+        await sendFreeTestResultEmail({
+          to: email,
+          brand,
+          score: typedResult.score,
+          verdict: typedResult.verdict,
+          prompt: typedResult.prompt,
+          engines: typedResult.engines.map((e) => ({
+            engine: e.engine,
+            brandCited: e.brandCited,
+            competitorCited: e.competitorCited,
+            live: e.live,
+          })),
+          enginesLive: typedResult.enginesLive,
+          recommendations: typedResult.recommendations,
+          webOrigin: webOrigin(),
+        });
+      } catch (err) {
+        logger.warn("free_test_result_email_failed", { message: (err as Error).message });
+        // best-effort: do not block the response
+      }
     }
 
     // Best-effort nurture enrollment (LGPD Art. 7(I): only if consent given).

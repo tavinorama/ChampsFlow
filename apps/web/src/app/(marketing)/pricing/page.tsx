@@ -340,18 +340,18 @@ export default function PricingPage() {
             30% founder discount
           </strong>{" "}
           on annual plans ($831 Growth / $2,091 Agency per year) &mdash; applied
-          only when you pay annually. Or,{" "}
+          only when you pay annually. All plans include a 30-day money-back guarantee.{" "}
           <a
-            href="/#waitlist-cta"
+            href="/book"
             style={{
               color: "var(--color-primary)",
               fontWeight: 600,
               textDecoration: "underline",
             }}
           >
-            join the waitlist
+            book a personal onboarding call
           </a>{" "}
-          for a personal onboarding from the founder.
+          with the founder.
         </p>
       </section>
 

@@ -206,7 +206,7 @@ export type { EntityGraphResult } from "./entity-graph";
 export { analyzeEntityGraph } from "./entity-graph";
 
 // "The AI Invisibility Test" — free lead magnet (1 prompt × brand vs competitor).
-export type { InvisibilityTestResult, EngineResult } from "./invisibility-test";
+export type { FreeTestResult, InvisibilityTestResult, EngineResult } from "./invisibility-test";
 export { runInvisibilityTest, buildTestPrompt } from "./invisibility-test";
 
 // "The Get-Cited Kit" — $29 one-time deliverable (audit + top-3 + 3 drafts).
