@@ -980,6 +980,8 @@ export function InvisibilityTestClient() {
 
   // Form state
   const [brand, setBrand] = useState("");
+  const [domain, setDomain] = useState("");
+  const [domainTouched, setDomainTouched] = useState(false);
   const [competitor, setCompetitor] = useState("");
   const [competitor2, setCompetitor2] = useState("");
   const [competitor3, setCompetitor3] = useState("");
@@ -999,6 +1001,8 @@ export function InvisibilityTestClient() {
 
   // Stable IDs for accessible label wiring
   const brandId = useId();
+  const domainId = useId();
+  const domainErrorId = useId();
   const competitorId = useId();
   const competitor2Id = useId();
   const competitor3Id = useId();
@@ -1008,8 +1012,26 @@ export function InvisibilityTestClient() {
   const emailId = useId();
   const emailErrorId = useId();
 
-  // Derive domain from brand (best-effort)
-  const derivedDomain: string | null = null; // backend derives it; we don't have explicit field
+  // Normalised domain (strip protocol, www, path) — sent to the audit so it can
+  // crawl the site for the Performance vector. Required: the audit can't score
+  // site signals (schema, crawlability) without the brand's website.
+  const cleanDomain = domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/.*$/, "")
+    .trim();
+  const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+  const isValidDomain = (v: string) => DOMAIN_RE.test(v);
+  const domainMissing = submitAttempted && cleanDomain === "";
+  const showDomainError =
+    domain.trim().length > 0 && (domainTouched || submitAttempted) && !isValidDomain(cleanDomain);
+  const domainErrorMessage = domainMissing
+    ? "Your website is required — we scan it for AI signals"
+    : showDomainError
+    ? "Enter a valid domain, e.g. acme.com"
+    : undefined;
 
   // Country select → engine routing region (EU countries route GDPR-safe).
   const EU_COUNTRIES = ["Portugal", "Germany", "United Kingdom", "Spain"];
@@ -1032,6 +1054,7 @@ export function InvisibilityTestClient() {
 
   const canSubmit =
     brand.trim().length > 0 &&
+    isValidDomain(cleanDomain) &&
     category.trim().length > 0 &&
     email.trim().length > 0 &&
     isValidEmail(email);
@@ -1051,6 +1074,7 @@ export function InvisibilityTestClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brand: brand.trim(),
+          domain: cleanDomain,
           competitor: competitors[0] ?? "",
           competitors,
           category: category.trim(),
@@ -1100,7 +1124,7 @@ export function InvisibilityTestClient() {
     return (
       <LoadingPanel
         brand={brand}
-        domain={derivedDomain}
+        domain={cleanDomain || null}
       />
     );
   }
@@ -1152,6 +1176,29 @@ export function InvisibilityTestClient() {
           required
           autoComplete="organization"
           style={inputStyle}
+        />
+      </Field>
+
+      <Field
+        label="Your website"
+        required
+        hint="we scan it for AI signals — schema, crawlability, structure"
+        fieldId={domainId}
+        errorId={domainErrorId}
+        errorMessage={domainErrorMessage}
+      >
+        <input
+          id={domainId}
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          onBlur={() => setDomainTouched(true)}
+          placeholder="acme.com"
+          required
+          inputMode="url"
+          autoComplete="url"
+          aria-describedby={domainErrorMessage ? domainErrorId : undefined}
+          aria-invalid={domainErrorMessage ? "true" : undefined}
+          style={domainErrorMessage ? inputErrorStyle : inputStyle}
         />
       </Field>
 
