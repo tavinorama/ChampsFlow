@@ -40,6 +40,7 @@ import {
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
+import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 
 export interface AuditJobData {
   /** Present for on-demand audits (row pre-created by the API).
@@ -194,6 +195,20 @@ export async function processAuditJob(
         message: (err as Error).message,
       });
     }
+
+    // Enforce the plan's prompt depth (single source of truth: PLAN_LIMITS).
+    // Free = a shallow snapshot (10 prompts); paid tiers get the full portfolio.
+    // This is what makes the Free plan a taste, not a usable tier.
+    let planTier: PlanTier = "free";
+    try {
+      const tRows = await sql<{ plan_tier: string | null }[]>`SELECT plan_tier FROM tenants WHERE id = ${tenant_id}`;
+      const pt = tRows[0]?.plan_tier;
+      if (pt === "growth" || pt === "agency") planTier = pt;
+    } catch {
+      // plan_tier unreadable → default to free (most conservative).
+    }
+    const promptCap = PLAN_LIMITS[planTier]?.prompts_per_audit ?? PLAN_LIMITS.free.prompts_per_audit;
+    if (prompts.length > promptCap) prompts.length = promptCap;
 
     const queries: ProbeQuery[] = prompts.map((t) => ({
       queryHash: sha256(t),

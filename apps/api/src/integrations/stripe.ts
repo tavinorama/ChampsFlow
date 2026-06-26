@@ -24,7 +24,7 @@
  *   - All Stripe SDK calls wrapped in try/catch with retryable/permanent error classification (rule #10).
  *
  * Plan tiers (USD; founder confirms price IDs via env vars):
- *   free:   $0/mo            — 1 brand, 3 competitors, 50 prompts, monthly audit
+ *   free:   $0/mo            — 1 brand, 1 competitor, 10-prompt snapshot audit, no monitoring
  *   growth: $99/mo or $831/yr — 1 brand, 10 competitors, 250 prompts, weekly monitoring
  *   agency: $149/mo or $1,251/yr — 25 brands, 10 competitors, 250 prompts, weekly monitoring
  *   Founder 30% discount is annual-only (STRIPE_FOUNDER_COUPON_ID).
@@ -126,7 +126,10 @@ export const PLAN_LIMITS: Record<
     weekly_monitoring: boolean;
   }
 > = {
-  free: { max_brands: 1, max_competitors: 3, prompts_per_audit: 50, weekly_monitoring: false },
+  // Free is a deliberate TASTE, not a usable tier: 1 brand, 1 competitor, a
+  // shallow 10-prompt audit, no monitoring. Enough to see your standing once —
+  // upgrade to Growth for real depth + weekly tracking.
+  free: { max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false },
   growth: { max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true },
   agency: { max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true },
 };

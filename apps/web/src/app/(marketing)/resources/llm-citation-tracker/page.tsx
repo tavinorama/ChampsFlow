@@ -860,7 +860,7 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Free</strong> — 1 brand, 3 competitors, 50 prompts, monthly
+              <strong>Free</strong> — 1 brand, 1 competitor, a 10-prompt snapshot
               audit and TrustIndex Score. No credit card.
             </li>
             <li
