@@ -122,6 +122,20 @@ function svgDoc(w, h, inner) {
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
 }
 
+// Standalone logo files on a TRANSPARENT background (for overlays, light/dark
+// surfaces, video, print). `color` applies to the whole monochrome mark/lockup.
+const INK_DARK = "#14201a"; // near-black ink for light backgrounds
+function logoMark(size, color) {
+  return svgDoc(size, size, ring(size / 2, size / 2, Math.round(size * 0.34), color));
+}
+function logoLockup(color) {
+  const H = 360, r = Math.round(H * 0.34), cx = 40 + r, cy = H / 2;
+  const wordSize = Math.round(H * 0.5);
+  let svg = ring(cx, cy, r, color);
+  svg += text(cx + r + 44, cy + Math.round(wordSize * 0.34), "Ozvor", { size: wordSize, weight: 800, anchor: "start", spacing: -3, fill: color });
+  return svgDoc(1600, H, svg); // generous width; trimmed to content on export
+}
+
 function squareAvatar(size, { wordmark = true, ringColor = EMERALD, fill = CANVAS, wordFill = INK } = {}) {
   const rx = Math.round(size * 0.18);
   let svg = defs();
@@ -148,6 +162,9 @@ const assets = [
   ["avatar-ozvor-1024.png", squareAvatar(1024, { wordmark: true }), 1024, 1024],
   ["avatar-icon-1024.png", squareAvatar(1024, { wordmark: false }), 1024, 1024],
   ["avatar-emerald-1024.png", squareAvatar(1024, { wordmark: true, fill: EMERALD_DEEP, ringColor: INK, wordFill: INK }), 1024, 1024],
+  // White (mono) variants — the mark as it appears in the site nav/footer.
+  ["avatar-white-1024.png", squareAvatar(1024, { wordmark: true, ringColor: INK, wordFill: INK }), 1024, 1024],
+  ["avatar-icon-white-1024.png", squareAvatar(1024, { wordmark: false, ringColor: INK }), 1024, 1024],
   // LinkedIn
   ["linkedin-company-cover-1128x191.png", horizontalBanner(1128, 191), 1128, 191],
   ["linkedin-personal-banner-1584x396.png", horizontalBanner(1584, 396), 1584, 396],
@@ -185,6 +202,24 @@ mkdirSync(logoDir, { recursive: true });
 for (const [name, svg, w, h] of assets) {
   await sharp(Buffer.from(svg)).png().toFile(join(logoDir, name));
   console.log(`✓ assets/${name}  (${w}×${h})`);
+}
+
+// Standalone monochrome logo files (transparent bg). White = on dark / as on the
+// site; ink = on light; emerald = accent on neutral. Lockups are trimmed tight.
+const logoFiles = [
+  ["logo-mark-white.png", logoMark(512, INK), false],
+  ["logo-mark-emerald.png", logoMark(512, EMERALD), false],
+  ["logo-mark-ink.png", logoMark(512, INK_DARK), false],
+  ["logo-lockup-white.png", logoLockup(INK), true],
+  ["logo-lockup-emerald.png", logoLockup(EMERALD), true],
+  ["logo-lockup-ink.png", logoLockup(INK_DARK), true],
+];
+const logoSubdir = join(OUT, "assets", "logo");
+mkdirSync(logoSubdir, { recursive: true });
+for (const [name, svg, trim] of logoFiles) {
+  const img = sharp(Buffer.from(svg)).png();
+  await (trim ? img.trim() : img).toFile(join(logoSubdir, name));
+  console.log(`✓ assets/logo/${name}${trim ? " (trimmed)" : ""}`);
 }
 
 // ---- brand guide + channels (written after the consts below) ----------------
@@ -255,7 +290,8 @@ Tagline: **"Know if AI trusts your brand."** (extended: "…Then fix it.")
 
 All files are in \`/assets\`. See \`CHANNELS.md\` for exact placement and dimensions.
 
-- **Avatars (square, 1024×1024):** \`avatar-ozvor\` (ring + wordmark), \`avatar-icon\` (ring only — best at small sizes), \`avatar-emerald\` (for light surfaces).
+- **Avatars (square, 1024×1024):** \`avatar-ozvor\` (emerald ring + wordmark), \`avatar-icon\` (emerald ring only — best at small sizes), \`avatar-white\` + \`avatar-icon-white\` (**white / mono — exactly as the logo appears in the site nav & footer**), \`avatar-emerald\` (for light surfaces).
+- **Standalone logo files (\`/assets/logo\`, transparent PNG):** \`logo-mark-*\` (ring only) and \`logo-lockup-*\` (ring + wordmark) in **white** (on dark — matches the site), **ink** (\`#14201a\`, on light), and **emerald** (accent). Drop these over photos, video, slides, or print.
 - **Banners/headers:** LinkedIn (company + personal), X/Twitter, Reddit, Facebook, YouTube.
 - **Post templates:** Instagram square + story, generic OG/share.
 
@@ -274,7 +310,9 @@ these are correct as of 2026. The square avatar scales down cleanly everywhere.)
 |---|---|---|
 | \`assets/avatar-icon-1024.png\` | 1024×1024 | **Best for small avatars** — Reddit, X, Instagram, favicons. The ring reads at tiny sizes. |
 | \`assets/avatar-ozvor-1024.png\` | 1024×1024 | LinkedIn company logo, YouTube channel icon, Facebook page — where the avatar renders larger. |
+| \`assets/avatar-white-1024.png\` · \`assets/avatar-icon-white-1024.png\` | 1024×1024 | **White / mono** — the logo as it appears on the site. Use anywhere you want the restrained, monochrome look. |
 | \`assets/avatar-emerald-1024.png\` | 1024×1024 | Any context with a light/white surrounding UI. |
+| \`assets/logo/logo-{mark,lockup}-{white,ink,emerald}.png\` | transparent | Standalone logo to overlay on photos/video/slides/print. White on dark, ink on light, emerald as accent. |
 
 ## Banners & headers
 | File | Size | Platform |
