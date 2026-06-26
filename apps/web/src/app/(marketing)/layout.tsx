@@ -27,7 +27,7 @@ import { Inter } from "next/font/google";
 import "../../styles/tokens.css";
 import { SkipToMainContent } from "../../components/marketing/SkipToMainContent";
 import { ThemeToggle } from "../../components/marketing/ThemeToggle";
-import { Logo } from "../../components/brand/Logo";
+import { LogoMark, Wordmark } from "../../components/brand/Logo";
 import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
 import { CookieConsentTrigger } from "../../components/CookieConsent";
 import { ChatWidget } from "../../components/ChatWidget";
@@ -322,14 +322,15 @@ const MARKETING_STYLES = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8125rem;
-    font-weight: 700;
+    font-size: 0.875rem;
+    font-weight: 600;
     font-family: var(--font-family);
     color: var(--color-primary);
     text-decoration: none;
     border: 1.5px solid var(--color-primary);
-    border-radius: var(--radius-pill);
-    padding: 0.375rem 0.875rem;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 1rem;
+    line-height: 1;
     white-space: nowrap;
     min-height: var(--min-tap-target);
     transition: background 0.15s, color 0.15s;
@@ -339,20 +340,21 @@ const MARKETING_STYLES = `
     color: #fff;
   }
 
-  /* Kit pill — filled/amber accent to signal "paid, entry" */
+  /* Kit button — filled/amber accent to signal "paid, entry offer" */
   .mk-nav-kit {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     font-weight: 700;
     font-family: var(--font-family);
     color: #fff;
     text-decoration: none;
     background: var(--color-accent-amber);
     border: 1.5px solid transparent;
-    border-radius: var(--radius-pill);
-    padding: 0.375rem 0.875rem;
+    border-radius: var(--radius-md);
+    padding: 0.5rem 1rem;
+    line-height: 1;
     white-space: nowrap;
     min-height: var(--min-tap-target);
     transition: background 0.15s, opacity 0.15s;
@@ -369,9 +371,13 @@ const MARKETING_STYLES = `
      Sign-in. All labels are already short ("Free" / "Kit $29"); tighten padding
      on Sign-in so nothing clips. StickyBuyBar carries Growth CTA on mobile. */
   @media (max-width: 480px) {
-    .mk-nav-free { padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-    .mk-nav-kit  { padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-    .mk-signin   { padding: 0.375rem 0.75rem;  font-size: 0.75rem; }
+    .mk-nav-free { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
+    .mk-nav-kit  { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
+    .mk-signin   { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
+    /* On phones the brand wordmark is the space hog. Show the logo MARK only so
+       Free + Kit $29 + theme toggle + Sign in all fit without clipping. The full
+       "TrustIndex AI" wordmark returns on wider screens. */
+    .mk-logo-word { display: none !important; }
   }
 
   /* ── Smooth focus outlines ────────────────────────────────────────── */
@@ -481,7 +487,10 @@ function PublicNavbar() {
             flexShrink: 0,
           }}
         >
-          <Logo markSize={28} wordSize="1.0625rem" />
+          <LogoMark size={28} />
+          <span className="mk-logo-word" style={{ display: "inline-flex" }}>
+            <Wordmark size="1.0625rem" />
+          </span>
         </Link>
 
         {/* Right: sales value-ladder CTAs + secondary links + sign in

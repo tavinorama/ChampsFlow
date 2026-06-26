@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
@@ -802,6 +803,16 @@ export default function LlmCitationTrackerPage() {
             guessing what to publish.
           </p>
         </section>
+
+        {/* Soft CTA nudge — free test */}
+        <div style={{ marginBottom: "var(--space-6)" }}>
+          <SoftCTA
+            headline="Put this guide to work on your own brand"
+            subline="The free AI Visibility Test shows your real citation rate across ChatGPT, Claude, and Perplexity in 60 seconds."
+            primary={{ label: "Run the free test", href: "/test" }}
+            secondary={{ label: "Or get the full $29 Kit with ready-to-publish content →", href: "/kit" }}
+          />
+        </div>
 
         {/* Plans CTA */}
         <section

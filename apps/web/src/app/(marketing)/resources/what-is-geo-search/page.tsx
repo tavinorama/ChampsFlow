@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { ResourceMarkdown } from "../../../../components/ResourceMarkdown";
 import { PrintButton } from "./PrintButton";
+import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
@@ -751,6 +752,16 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
           <ResourceMarkdown body={WHITEPAPER.sources} h2Tag="h3" />
         </div>
       </section>
+
+      {/* Soft CTA nudge — free test */}
+      <div className="noprint" style={{ marginBottom: "var(--space-6)" }}>
+        <SoftCTA
+          headline="Ready to see your own GEO score?"
+          subline="The AI Visibility Test runs one real probe per engine — you see exactly who AI recommends in your category."
+          primary={{ label: "Run the free test", href: "/test" }}
+          secondary={{ label: "Full playbook in the $29 Get-Cited Kit →", href: "/kit" }}
+        />
+      </div>
 
       {/* Plans CTA */}
       <section

@@ -11,6 +11,7 @@
 import Link from "next/link";
 import { Footer } from "../Footer";
 import { Logo } from "../brand/Logo";
+import { SoftCTA } from "../marketing/SoftCTA";
 
 export function LegalPage({
   title,
@@ -44,6 +45,14 @@ export function LegalPage({
           {children}
         </div>
       </main>
+
+      <div style={{ maxWidth: "820px", margin: "0 auto", padding: "0 var(--space-4) var(--space-8)" }}>
+        <SoftCTA
+          headline="While you're here — see how AI sees your brand."
+          primary={{ label: "Free 60-second AI Visibility Test →", href: "/test" }}
+          tone="quiet"
+        />
+      </div>
 
       <Footer />
     </div>

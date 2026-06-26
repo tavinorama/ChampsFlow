@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
@@ -876,6 +877,16 @@ export default function PostTemplatesPage() {
           >
             ↓ Download the full template pack (PDF, 14pp)
           </a>
+        </div>
+
+        {/* Soft CTA nudge — free test */}
+        <div style={{ marginBottom: "var(--space-6)" }}>
+          <SoftCTA
+            headline="See if these templates are already working for your brand"
+            subline="The free AI Visibility Test checks whether ChatGPT, Claude, and Perplexity mention you today."
+            primary={{ label: "Run the free test", href: "/test" }}
+            secondary={{ label: "$29 Get-Cited Kit — get 3 ready-to-publish drafts →", href: "/kit" }}
+          />
         </div>
 
         {/* Plans CTA */}
