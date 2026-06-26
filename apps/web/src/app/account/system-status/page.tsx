@@ -131,8 +131,9 @@ export default function SystemStatusPage() {
             margin: "0 0 var(--space-6) 0",
           }}
         >
-          Every stage, every engine, every connection — shown live. This page reads
-          directly from the running system so nothing runs silently.
+          A live view of the platform: what each stage of your audit does, whether
+          your audits are querying real AI engines, and the safety controls that
+          are always on.
         </p>
 
         {/* Live / demo badge */}
@@ -283,14 +284,6 @@ export default function SystemStatusPage() {
                       >
                         {t.powers}
                       </div>
-                      <div
-                        style={{
-                          fontSize: "var(--font-size-caption)",
-                          color: "var(--color-muted)",
-                        }}
-                      >
-                        Needs: <code>{t.key}</code>
-                      </div>
                       {t.euNote && (
                         <div
                           style={{
@@ -312,79 +305,12 @@ export default function SystemStatusPage() {
                         </div>
                       )}
                     </div>
-                    <ConnBadge
-                      connected={t.connected}
-                      mockFallback={t.mockFallback}
-                    />
                   </li>
                 ))}
               </ul>
             )}
           </section>
         ))}
-
-        {/* Platform connections */}
-        {cap && (
-          <section
-            aria-labelledby="platform-connections-heading"
-            style={{ marginBottom: "var(--space-5)" }}
-          >
-            <h2
-              id="platform-connections-heading"
-              style={{
-                fontSize: "var(--font-size-h3)",
-                fontWeight: 700,
-                marginBottom: "var(--space-3)",
-              }}
-            >
-              Platform connections
-            </h2>
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-2)",
-              }}
-            >
-              {Object.entries(cap.platform).map(([k, v]) => (
-                <li
-                  key={k}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "var(--space-3)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "var(--radius-md)",
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: "var(--font-size-body-sm)",
-                      }}
-                    >
-                      {v.label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "var(--font-size-caption)",
-                        color: "var(--color-muted)",
-                      }}
-                    >
-                      Needs: <code>{v.key}</code>
-                    </div>
-                  </div>
-                  <ConnBadge connected={v.connected} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
 
         {/* Always-on safety & compliance */}
         {cap && (
@@ -432,15 +358,6 @@ export default function SystemStatusPage() {
           </section>
         )}
 
-        {/* Link to connections */}
-        <p style={{ marginTop: "var(--space-8)", fontSize: "var(--font-size-body-sm)" }}>
-          <a
-            href="/account/connections"
-            style={{ color: "var(--color-primary)", fontWeight: 700 }}
-          >
-            &#8594; Manage platform connections
-          </a>
-        </p>
       </main>
 
       <BottomNav />
@@ -456,36 +373,3 @@ export default function SystemStatusPage() {
   );
 }
 
-function ConnBadge({
-  connected,
-  mockFallback,
-}: {
-  connected: boolean;
-  mockFallback?: boolean;
-}) {
-  if (connected) {
-    return (
-      <span style={badge("var(--color-badge-connected-bg)", "var(--color-badge-connected-text)")}>
-        ● Connected
-      </span>
-    );
-  }
-  return (
-    <span style={badge("var(--color-surface-muted)", "var(--color-muted)")}>
-      {mockFallback ? "Not connected · demo data" : "Not connected"}
-    </span>
-  );
-}
-
-function badge(bg: string, color: string): React.CSSProperties {
-  return {
-    flexShrink: 0,
-    fontSize: "var(--font-size-caption)",
-    fontWeight: 700,
-    padding: "4px 10px",
-    borderRadius: "var(--radius-pill)",
-    backgroundColor: bg,
-    color,
-    whiteSpace: "nowrap",
-  };
-}
