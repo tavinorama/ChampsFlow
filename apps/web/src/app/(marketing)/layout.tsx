@@ -501,10 +501,10 @@ function PublicNavbar() {
         >
           {([
             ["How it works", "/how-it-works"],
-            ["Results", "/results"],
-            ["OrganicPosts", "/organicposts"],
             ["Tutorials", "/learn"],
             ["Blog", "/blog"],
+            ["Case study", "/results"],
+            ["OrganicPosts", "/organicposts"],
             ["Kit $29", "/kit"],
             ["Plans", "/pricing"],
           ] as const).map(([label, href]) => (
