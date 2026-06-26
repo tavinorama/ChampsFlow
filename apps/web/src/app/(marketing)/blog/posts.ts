@@ -1,5 +1,5 @@
 /**
- * posts.ts — Blog post registry for TrustIndex AI content hub.
+ * posts.ts — Blog post registry for Ozvor content hub.
  *
  * Single source of truth for all published articles and videos.
  * Used by the blog index page and individual post/video pages.
@@ -65,9 +65,9 @@ export const POSTS: Post[] = [
   {
     type: "video",
     slug: "trustindex-ai-audit-walkthrough",
-    title: "TrustIndex AI Audit Walkthrough — See Your Brand Through AI's Eyes",
+    title: "Ozvor Audit Walkthrough — See Your Brand Through AI's Eyes",
     excerpt:
-      "A product demo walking through a live TrustIndex AI audit: running the brand scan across ChatGPT, Claude, Perplexity, and Gemini; reading the TrustIndex Score; and understanding the GEO action plan.",
+      "A product demo walking through a live Ozvor audit: running the brand scan across ChatGPT, Claude, Perplexity, and Gemini; reading the TrustIndex Score; and understanding the GEO action plan.",
     publishedAt: "2026-05-25",
     publishedAtDisplay: "25 May 2026",
     youtubeId: "PLACEHOLDER_VIDEO_2", // TODO: replace with real YouTube video ID

@@ -80,7 +80,7 @@ function SuccessState({ id }: { id: string }) {
           fontFamily: "var(--font-family)",
         }}
       >
-        We email you about TrustIndex AI only. Unsubscribe in one click.
+        We email you about Ozvor only. Unsubscribe in one click.
       </p>
     </div>
   );
@@ -316,7 +316,7 @@ export function WaitlistForm({ compact = false }: WaitlistFormProps) {
               lineHeight: 1.5,
             }}
           >
-            I agree to receive product updates from TrustIndex AI.{" "}
+            I agree to receive product updates from Ozvor.{" "}
             <a
               href="/privacy-policy"
               style={{
@@ -629,7 +629,7 @@ export function WaitlistForm({ compact = false }: WaitlistFormProps) {
           fontFamily: "var(--font-family)",
         }}
       >
-        We email you about TrustIndex AI only. Unsubscribe in one click.
+        We email you about Ozvor only. Unsubscribe in one click.
       </p>
     </form>
   );

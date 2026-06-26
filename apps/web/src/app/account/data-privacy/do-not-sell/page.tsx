@@ -155,8 +155,8 @@ export default function AuthDoNotSellPage() {
             <h1 style={H1_STYLE}>Too many requests</h1>
             <p style={BODY_STYLE}>
               Please wait an hour and try again, or email{" "}
-              <a href="mailto:privacy@trustindexai.com" style={{ color: "var(--color-primary)" }}>
-                privacy@trustindexai.com
+              <a href="mailto:privacy@ozvor.com" style={{ color: "var(--color-primary)" }}>
+                privacy@ozvor.com
               </a>.
             </p>
           </div>

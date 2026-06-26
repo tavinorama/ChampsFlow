@@ -207,7 +207,7 @@ export default function LoginPage() {
         border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)",
         padding: "var(--space-8)", boxShadow: "var(--shadow-card)",
       }}>
-        <a href="/" style={{ textDecoration: "none", display: "inline-block" }} aria-label="TrustIndex AI — home">
+        <a href="/" style={{ textDecoration: "none", display: "inline-block" }} aria-label="Ozvor — home">
           <Logo markSize={28} wordSize="1.0625rem" />
         </a>
         <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-4) 0 var(--space-2) 0" }}>

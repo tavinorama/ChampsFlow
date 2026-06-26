@@ -22,19 +22,19 @@ import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
-    "Understanding GEO Search — How AI Engines Decide Which Businesses to Name | TrustIndex AI",
+    "Understanding GEO Search — How AI Engines Decide Which Businesses to Name | Ozvor",
   description:
-    "The complete TrustIndex AI whitepaper on Generative Engine Optimization (GEO): what it is, why it matters for small businesses, the Princeton research that proved it, and a concrete starter checklist. Free to read and download.",
+    "The complete Ozvor whitepaper on Generative Engine Optimization (GEO): what it is, why it matters for small businesses, the Princeton research that proved it, and a concrete starter checklist. Free to read and download.",
   alternates: {
-    canonical: "https://trustindexai.com/resources/what-is-geo-search",
+    canonical: "https://ozvor.com/resources/what-is-geo-search",
   },
   openGraph: {
     title:
-      "Understanding GEO Search — How AI Engines Decide Which Businesses to Name | TrustIndex AI",
+      "Understanding GEO Search — How AI Engines Decide Which Businesses to Name | Ozvor",
     description:
       "ChatGPT reached 900M weekly users. AI now names 2–3 businesses per query. This whitepaper explains what GEO is, the peer-reviewed science behind it, and what to do this week.",
-    url: "https://trustindexai.com/resources/what-is-geo-search",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/resources/what-is-geo-search",
+    siteName: "Ozvor",
     type: "article",
   },
 };
@@ -295,8 +295,8 @@ We will tell you plainly what GEO **can** and **cannot** do, because the field i
     {
       id: "trustindex-ai",
       number: "09",
-      heading: "How TrustIndex AI fits",
-      body: `Everything in this whitepaper is something a determined owner could do by hand — run the prompts across five engines, track who gets named, audit crawlers and schema, benchmark competitors, and keep it all current as the ground shifts. The catch is that last part: *keep it all current.* Doing it once is a weekend project. Doing it every week, across five engines, for your business and your competitors, is a job. That is the job **TrustIndex AI** exists to do.
+      heading: "How Ozvor fits",
+      body: `Everything in this whitepaper is something a determined owner could do by hand — run the prompts across five engines, track who gets named, audit crawlers and schema, benchmark competitors, and keep it all current as the ground shifts. The catch is that last part: *keep it all current.* Doing it once is a weekend project. Doing it every week, across five engines, for your business and your competitors, is a job. That is the job **Ozvor** exists to do.
 
 Here is the path, and it starts free.
 
@@ -312,7 +312,7 @@ Here is the path, and it starts free.
 
 For done-for-you execution — where our team does the publishing and optimization for you — there is **[OrganicPosts by TrustIndex AI](https://organicposts.ai)**, our consultancy arm.
 
-The sequence is deliberate, and the first step costs nothing: **see where you stand free, act on the Kit, then keep the gains compounding instead of going stale.** Start at [trustindexai.com](https://trustindexai.com), or reach us at [hello@trustindexai.com](mailto:hello@trustindexai.com).`,
+The sequence is deliberate, and the first step costs nothing: **see where you stand free, act on the Kit, then keep the gains compounding instead of going stale.** Start at [ozvor.com](https://ozvor.com), or reach us at [hello@ozvor.com](mailto:hello@ozvor.com).`,
       keyTakeaway:
         "Start with the free AI Visibility Test to see exactly where you stand across five engines — no credit card. The $29 Get-Cited Kit turns that into action; Growth ($99/mo) and Agency ($149/mo) keep you monitored as the ground shifts. Founder pricing: 30% off, annual, first 100 only.",
     },
@@ -384,21 +384,21 @@ const ARTICLE_LD = JSON.stringify({
   "@graph": [
     {
       "@type": "TechArticle",
-      "@id": "https://trustindexai.com/resources/what-is-geo-search",
+      "@id": "https://ozvor.com/resources/what-is-geo-search",
       headline:
         "Understanding GEO Search — How AI Engines Decide Which Businesses to Name",
       description:
         "What Generative Engine Optimization (GEO) is, why it matters for small businesses, the peer-reviewed Princeton research that proved it, and a concrete starter checklist.",
-      author: { "@type": "Organization", name: "TrustIndex AI" },
+      author: { "@type": "Organization", name: "Ozvor" },
       publisher: {
         "@type": "Organization",
-        name: "TrustIndex AI",
-        url: "https://trustindexai.com",
+        name: "Ozvor",
+        url: "https://ozvor.com",
       },
       datePublished: "2026-06-01",
       dateModified: "2026-06-24",
       inLanguage: "en",
-      url: "https://trustindexai.com/resources/what-is-geo-search",
+      url: "https://ozvor.com/resources/what-is-geo-search",
       about: {
         "@type": "Thing",
         name: "Generative Engine Optimization",
@@ -465,19 +465,19 @@ const ARTICLE_LD = JSON.stringify({
           "@type": "ListItem",
           position: 1,
           name: "Home",
-          item: "https://trustindexai.com",
+          item: "https://ozvor.com",
         },
         {
           "@type": "ListItem",
           position: 2,
           name: "Resources",
-          item: "https://trustindexai.com/resources",
+          item: "https://ozvor.com/resources",
         },
         {
           "@type": "ListItem",
           position: 3,
           name: "Understanding GEO Search",
-          item: "https://trustindexai.com/resources/what-is-geo-search",
+          item: "https://ozvor.com/resources/what-is-geo-search",
         },
       ],
     },
@@ -821,7 +821,7 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
           margin: 0,
         }}
       >
-        © 2026 TrustIndex AI · trustindexai.com · hello@trustindexai.com
+        © 2026 Ozvor · ozvor.com · hello@ozvor.com
         <br />
         The Get-Cited Kit, Part 2 of 3. Part 1: your TrustIndex Score report. Part 3:
         your three ready-to-publish drafts.

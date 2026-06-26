@@ -48,7 +48,7 @@ export async function sendDsrConfirmedEmail(
     throw new Error("RESEND_API_KEY is not configured — DSR confirmation email not sent");
   }
 
-  const fromAddress = process.env.EMAIL_FROM ?? "noreply@trustindexai.com";
+  const fromAddress = process.env.EMAIL_FROM ?? "noreply@ozvor.com";
   const slaDays = params.slaDays ?? "30/45";
   const requestLabel = REQUEST_TYPE_LABELS[params.requestType] ?? params.requestType;
 
@@ -63,9 +63,9 @@ export async function sendDsrConfirmedEmail(
     "",
     "You will receive another email when your request has been processed.",
     "",
-    "If you have questions, contact us at privacy@trustindexai.com",
+    "If you have questions, contact us at privacy@ozvor.com",
     "",
-    "— The TrustIndex AI Privacy Team",
+    "— The Ozvor Privacy Team",
   ].join("\n");
 
   const htmlBody = `<!DOCTYPE html>
@@ -91,7 +91,7 @@ export async function sendDsrConfirmedEmail(
     You will receive another email when your request has been processed.
   </p>
   <p style="font-size: 14px; color: #6B7280;">
-    Questions? Contact <a href="mailto:privacy@trustindexai.com" style="color: #2563EB;">privacy@trustindexai.com</a>
+    Questions? Contact <a href="mailto:privacy@ozvor.com" style="color: #2563EB;">privacy@ozvor.com</a>
   </p>
 </body>
 </html>`;

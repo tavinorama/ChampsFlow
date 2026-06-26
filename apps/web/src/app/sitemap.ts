@@ -13,7 +13,7 @@ import type { MetadataRoute } from "next";
  * traditional crawlers discover and re-index our citation-worthy content.
  */
 
-const SITE = "https://trustindexai.com";
+const SITE = "https://ozvor.com";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

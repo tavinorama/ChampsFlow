@@ -60,21 +60,21 @@ export async function generateMetadata({
 
   if (!post) {
     return {
-      title: "Video not found — TrustIndex AI",
+      title: "Video not found — Ozvor",
     };
   }
 
   return {
-    title: `${post.title} | TrustIndex AI`,
+    title: `${post.title} | Ozvor`,
     description: post.excerpt,
     alternates: {
-      canonical: `https://trustindexai.com/blog/watch/${post.slug}`,
+      canonical: `https://ozvor.com/blog/watch/${post.slug}`,
     },
     openGraph: {
-      title: `${post.title} | TrustIndex AI`,
+      title: `${post.title} | Ozvor`,
       description: post.excerpt,
-      url: `https://trustindexai.com/blog/watch/${post.slug}`,
-      siteName: "TrustIndex AI",
+      url: `https://ozvor.com/blog/watch/${post.slug}`,
+      siteName: "Ozvor",
       type: "website",
       images: [
         {
@@ -87,7 +87,7 @@ export async function generateMetadata({
     },
     twitter: {
       card: "summary_large_image",
-      title: `${post.title} | TrustIndex AI`,
+      title: `${post.title} | Ozvor`,
       description: post.excerpt,
       images: [youtubeThumbnailUrl(post.youtubeId)],
     },
@@ -110,11 +110,11 @@ function buildVideoObjectJsonLd(post: VideoPost) {
     ...(post.durationIso ? { duration: post.durationIso } : {}),
     publisher: {
       "@type": "Organization",
-      name: "TrustIndex AI",
-      url: "https://trustindexai.com",
+      name: "Ozvor",
+      url: "https://ozvor.com",
       logo: {
         "@type": "ImageObject",
-        url: "https://trustindexai.com/logo.png",
+        url: "https://ozvor.com/logo.png",
       },
     },
     inLanguage: "en",
@@ -126,13 +126,13 @@ function buildBreadcrumbJsonLd(post: VideoPost) {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Blog", item: "https://ozvor.com/blog" },
       {
         "@type": "ListItem",
         position: 3,
         name: post.title,
-        item: `https://trustindexai.com/blog/watch/${post.slug}`,
+        item: `https://ozvor.com/blog/watch/${post.slug}`,
       },
     ],
   };
@@ -278,7 +278,7 @@ export default async function VideoPostPage({
             marginBottom: "var(--space-8)",
           }}
         >
-          <span>TrustIndex AI</span>
+          <span>Ozvor</span>
           <span aria-hidden="true">&middot;</span>
           <time dateTime={post.publishedAt}>{post.publishedAtDisplay}</time>
         </div>
@@ -354,7 +354,7 @@ export default async function VideoPostPage({
               marginBottom: "var(--space-8)",
             }}
           >
-            TrustIndex AI is an AI Search Trust Intelligence platform for small
+            Ozvor is an AI Search Trust Intelligence platform for small
             and medium businesses. We audit how your brand appears across
             ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — then
             give you the TrustIndex Score and a GEO content plan to improve

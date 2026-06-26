@@ -40,7 +40,7 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
     throw new Error("RESEND_API_KEY is not configured — DSR OTP email not sent");
   }
 
-  const fromAddress = process.env.EMAIL_FROM ?? "noreply@trustindexai.com";
+  const fromAddress = process.env.EMAIL_FROM ?? "noreply@ozvor.com";
   const expiryMinutes = params.expiryMinutes ?? 10;
 
   const { Resend } = await import("resend");
@@ -51,7 +51,7 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
   const textBody = [
     "Your data subject request verification code",
     "",
-    "You recently submitted a data subject request with TrustIndex AI.",
+    "You recently submitted a data subject request with Ozvor.",
     "",
     `Your verification code: ${params.otp}`,
     "",
@@ -60,9 +60,9 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
     "Enter this code on the verification page to confirm your identity.",
     "If you did not submit this request, you can safely ignore this email.",
     "",
-    "If you have questions, contact us at privacy@trustindexai.com",
+    "If you have questions, contact us at privacy@ozvor.com",
     "",
-    "— The TrustIndex AI Privacy Team",
+    "— The Ozvor Privacy Team",
   ].join("\n");
 
   // HTML body — minimal; no tracking pixels; no external asset references
@@ -76,7 +76,7 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
 <body style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; color: #111827;">
   <h1 style="font-size: 20px; font-weight: 600; margin-bottom: 16px;">Verify your data request</h1>
   <p style="margin-bottom: 16px; color: #374151;">
-    You recently submitted a data subject request with TrustIndex AI.
+    You recently submitted a data subject request with Ozvor.
     Enter the code below to verify your identity.
   </p>
   <div style="background: #F3F4F6; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
@@ -89,7 +89,7 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
     If you did not submit this request, you can safely ignore this email.
   </p>
   <p style="font-size: 14px; color: #6B7280;">
-    Questions? Contact <a href="mailto:privacy@trustindexai.com" style="color: #2563EB;">privacy@trustindexai.com</a>
+    Questions? Contact <a href="mailto:privacy@ozvor.com" style="color: #2563EB;">privacy@ozvor.com</a>
   </p>
 </body>
 </html>`;

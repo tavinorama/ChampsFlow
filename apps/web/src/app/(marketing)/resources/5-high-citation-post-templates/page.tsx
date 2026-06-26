@@ -14,20 +14,20 @@ import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
-    "5 High-Citation LinkedIn Post Templates — Backed by Princeton GEO Research | TrustIndex AI",
+    "5 High-Citation LinkedIn Post Templates — Backed by Princeton GEO Research | Ozvor",
   description:
     "Fill-in-the-blank LinkedIn post templates derived from the peer-reviewed Princeton GEO study (KDD 2024). Each maps to a proven citation tactic: +41% quotations, +33% statistics, +28% cited sources. Free PDF download.",
   alternates: {
     canonical:
-      "https://trustindexai.com/resources/5-high-citation-post-templates",
+      "https://ozvor.com/resources/5-high-citation-post-templates",
   },
   openGraph: {
     title:
-      "5 High-Citation Post Templates (Princeton GEO Research) | TrustIndex AI",
+      "5 High-Citation Post Templates (Princeton GEO Research) | Ozvor",
     description:
       "Each template maps to a proven Princeton GEO tactic. Before/after examples in real SMB verticals. Free PDF download — included with Growth plan.",
-    url: "https://trustindexai.com/resources/5-high-citation-post-templates",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/resources/5-high-citation-post-templates",
+    siteName: "Ozvor",
     type: "article",
   },
 };
@@ -167,21 +167,21 @@ const TEMPLATES_LD = JSON.stringify({
     {
       "@type": "TechArticle",
       "@id":
-        "https://trustindexai.com/resources/5-high-citation-post-templates",
+        "https://ozvor.com/resources/5-high-citation-post-templates",
       headline:
         "5 High-Citation LinkedIn Post Templates — Backed by Princeton GEO Research",
       description:
         "Fill-in-the-blank LinkedIn post templates engineered to get your business cited by ChatGPT, Claude, Perplexity, Gemini and Google AI Overview. Each template maps to a finding from the peer-reviewed Princeton GEO study (KDD 2024).",
-      author: { "@type": "Organization", name: "TrustIndex AI" },
+      author: { "@type": "Organization", name: "Ozvor" },
       publisher: {
         "@type": "Organization",
-        name: "TrustIndex AI",
-        url: "https://trustindexai.com",
+        name: "Ozvor",
+        url: "https://ozvor.com",
       },
       datePublished: "2026-06-01",
       dateModified: "2026-06-24",
       inLanguage: "en",
-      url: "https://trustindexai.com/resources/5-high-citation-post-templates",
+      url: "https://ozvor.com/resources/5-high-citation-post-templates",
       about: { "@type": "Thing", name: "Generative Engine Optimization" },
       citation: [
         {
@@ -200,19 +200,19 @@ const TEMPLATES_LD = JSON.stringify({
           "@type": "ListItem",
           position: 1,
           name: "Home",
-          item: "https://trustindexai.com",
+          item: "https://ozvor.com",
         },
         {
           "@type": "ListItem",
           position: 2,
           name: "Resources",
-          item: "https://trustindexai.com/resources",
+          item: "https://ozvor.com/resources",
         },
         {
           "@type": "ListItem",
           position: 3,
           name: "5 High-Citation Post Templates",
-          item: "https://trustindexai.com/resources/5-high-citation-post-templates",
+          item: "https://ozvor.com/resources/5-high-citation-post-templates",
         },
       ],
     },
@@ -289,7 +289,7 @@ export default function PostTemplatesPage() {
               marginBottom: "var(--space-6)",
             }}
           >
-            by TrustIndex AI &middot; 2026 &middot; 14 pages &middot; Included
+            by Ozvor &middot; 2026 &middot; 14 pages &middot; Included
             with Growth plan
           </p>
 
@@ -906,7 +906,7 @@ export default function PostTemplatesPage() {
               margin: "0 0 var(--space-3) 0",
             }}
           >
-            These templates are the <em>doing</em> half. TrustIndex AI is the{" "}
+            These templates are the <em>doing</em> half. Ozvor is the{" "}
             <em>measuring</em> half.
           </h2>
           <p
@@ -919,7 +919,7 @@ export default function PostTemplatesPage() {
           >
             Publishing the right content is step one. Knowing whether it&rsquo;s
             working — which queries you&rsquo;re cited for, what position, by which
-            engine, versus which competitors — is step two. TrustIndex AI audits
+            engine, versus which competitors — is step two. Ozvor audits
             how your brand appears across all five AI surfaces, computes your{" "}
             <strong>TrustIndex Score</strong> (Brand 30% / Performance 35% / AI
             35%), benchmarks you against up to 10 competitors, and builds a
@@ -987,8 +987,8 @@ export default function PostTemplatesPage() {
             lineHeight: 1.6,
           }}
         >
-          A premium resource from TrustIndex AI — trustindexai.com ·
-          hello@trustindexai.com
+          A premium resource from Ozvor — ozvor.com ·
+          hello@ozvor.com
           <br />
           Research anchor: Aggarwal et al., &ldquo;GEO: Generative Engine
           Optimization,&rdquo; ACM SIGKDD (KDD) 2024, arXiv:2311.09735. All

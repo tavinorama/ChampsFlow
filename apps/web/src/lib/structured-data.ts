@@ -1,5 +1,5 @@
 /**
- * structured-data.ts — JSON-LD builder helpers for TrustIndex AI
+ * structured-data.ts — JSON-LD builder helpers for Ozvor
  *
  * All schema.org types used across marketing pages are built here so the
  * canonical Organization shape is defined once and reused everywhere.
@@ -15,11 +15,11 @@
 
 export const ORG = {
   "@type": "Organization",
-  name: "TrustIndex AI",
-  url: "https://trustindexai.com",
+  name: "Ozvor",
+  url: "https://ozvor.com",
   logo: {
     "@type": "ImageObject",
-    url: "https://trustindexai.com/logo.png",
+    url: "https://ozvor.com/logo.png",
     width: 200,
     height: 50,
   },
@@ -28,7 +28,7 @@ export const ORG = {
   contactPoint: {
     "@type": "ContactPoint",
     contactType: "customer support",
-    email: "hello@trustindexai.com",
+    email: "hello@ozvor.com",
     availableLanguage: ["English", "Portuguese"],
   },
   sameAs: [] as string[],
@@ -50,8 +50,8 @@ export const orgJsonLd = {
 export const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "TrustIndex AI",
-  url: "https://trustindexai.com",
+  name: "Ozvor",
+  url: "https://ozvor.com",
 };
 
 // ---------------------------------------------------------------------------
@@ -104,16 +104,16 @@ export function articleJsonLd(opts: ArticleSchemaOptions) {
     ...(opts.dateModified ? { dateModified: opts.dateModified } : {}),
     author: {
       "@type": "Organization",
-      name: "TrustIndex AI",
-      url: "https://trustindexai.com",
+      name: "Ozvor",
+      url: "https://ozvor.com",
     },
     publisher: {
       "@type": "Organization",
-      name: "TrustIndex AI",
-      url: "https://trustindexai.com",
+      name: "Ozvor",
+      url: "https://ozvor.com",
       logo: {
         "@type": "ImageObject",
-        url: "https://trustindexai.com/logo.png",
+        url: "https://ozvor.com/logo.png",
       },
     },
     ...(opts.image

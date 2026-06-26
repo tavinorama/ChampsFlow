@@ -17,16 +17,16 @@
 import { LegalPage, LegalSection } from "../../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Cookie Policy — TrustIndex AI",
+  title: "Cookie Policy | Ozvor",
   description:
-    "How TrustIndex AI uses cookies and local storage, what each is for, how long they last, and how you can control them.",
-  alternates: { canonical: "https://trustindexai.com/legal/cookies" },
+    "How Ozvor uses cookies and local storage, what each is for, how long they last, and how you can control them.",
+  alternates: { canonical: "https://ozvor.com/legal/cookies" },
   openGraph: {
-    title: "Cookie Policy — TrustIndex AI",
+    title: "Cookie Policy | Ozvor",
     description:
-      "How TrustIndex AI uses cookies and local storage, what each is for, how long they last, and how you can control them.",
-    url: "https://trustindexai.com/legal/cookies",
-    siteName: "TrustIndex AI",
+      "How Ozvor uses cookies and local storage, what each is for, how long they last, and how you can control them.",
+    url: "https://ozvor.com/legal/cookies",
+    siteName: "Ozvor",
     type: "website",
   },
   robots: {
@@ -69,7 +69,7 @@ export default function CookiePolicyPage() {
     <LegalPage
       title="Cookie Policy"
       updated="24 June 2026"
-      intro="This Cookie Policy explains what cookies and similar technologies TrustIndex AI places on your device, why we use them, and how you can control them. It should be read alongside our Privacy Policy. TrustIndex AI is operated by TrustIndex AI (a company being incorporated in Brazil). Home jurisdiction: Brazil (LGPD); we also comply with the GDPR / ePrivacy Directive (EU/EEA) and CCPA/CPRA (California, US)."
+      intro="This Cookie Policy explains what cookies and similar technologies Ozvor places on your device, why we use them, and how you can control them. It should be read alongside our Privacy Policy. Ozvor is operated by Ozvor (a company being incorporated in Brazil). Home jurisdiction: Brazil (LGPD); we also comply with the GDPR / ePrivacy Directive (EU/EEA) and CCPA/CPRA (California, US)."
     >
       <LegalSection n="1" title="What are cookies?">
         <p>
@@ -84,7 +84,7 @@ export default function CookiePolicyPage() {
 
       <LegalSection n="2" title="Cookies we use at launch">
         <p>
-          TrustIndex AI currently deploys <strong>only strictly necessary
+          Ozvor currently deploys <strong>only strictly necessary
           cookies</strong>. No analytics cookies, no marketing cookies, and no
           third-party tracking pixels are active. The table below lists every
           cookie set by the Service today.
@@ -113,7 +113,7 @@ export default function CookiePolicyPage() {
                   log in. Allows the app to verify your identity across page
                   loads without re-entering your email each time.
                 </td>
-                <td style={cell}>First-party (trustindexai.com)</td>
+                <td style={cell}>First-party (ozvor.com)</td>
                 <td style={cell}>Session; refreshed on activity (7-day rotation)</td>
               </tr>
               <tr>
@@ -125,7 +125,7 @@ export default function CookiePolicyPage() {
                   silently renewed so you are not unexpectedly logged out while
                   actively using the Service.
                 </td>
-                <td style={cell}>First-party (trustindexai.com)</td>
+                <td style={cell}>First-party (ozvor.com)</td>
                 <td style={cell}>7 days; rotated on use</td>
               </tr>
               <tr>
@@ -137,7 +137,7 @@ export default function CookiePolicyPage() {
                   persists across browser sessions. Not a cookie; stored in
                   browser localStorage; never transmitted to our servers.
                 </td>
-                <td style={cell}>First-party (trustindexai.com)</td>
+                <td style={cell}>First-party (ozvor.com)</td>
                 <td style={cell}>Persistent until you clear browser storage or change preference</td>
               </tr>
             </tbody>
@@ -146,7 +146,7 @@ export default function CookiePolicyPage() {
 
         <p style={{ marginTop: "var(--space-3)" }}>
           The Supabase auth cookies do not track you across websites. They are
-          scoped strictly to trustindexai.com and contain only an encrypted
+          scoped strictly to ozvor.com and contain only an encrypted
           session identifier — no personal data in the cookie payload itself.
         </p>
       </LegalSection>
@@ -273,8 +273,8 @@ export default function CookiePolicyPage() {
       <LegalSection n="5" title="Third-party cookies">
         <p>
           At launch, <strong>no third-party cookies</strong> are set on
-          trustindexai.com. The Supabase auth cookies are first-party (set
-          and read only by trustindexai.com). We do not embed third-party
+          ozvor.com. The Supabase auth cookies are first-party (set
+          and read only by ozvor.com). We do not embed third-party
           advertising, social, or analytics widgets that set their own cookies.
         </p>
         <p>
@@ -378,10 +378,10 @@ export default function CookiePolicyPage() {
           For questions about this Cookie Policy or to exercise your data
           rights, contact our Privacy Team at{" "}
           <a
-            href="mailto:dpo@trustindexai.com"
+            href="mailto:dpo@ozvor.com"
             style={{ color: "var(--color-primary)" }}
           >
-            dpo@trustindexai.com
+            dpo@ozvor.com
           </a>
           . You may also submit a{" "}
           <a href="/legal/dsr-request" style={{ color: "var(--color-primary)" }}>

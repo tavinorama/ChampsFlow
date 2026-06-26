@@ -44,7 +44,7 @@ interface Message {
 const GREETING: Message = {
   role: "assistant",
   content:
-    "Hi! I'm the TrustIndex AI assistant. How can I help you today?",
+    "Hi! I'm the Ozvor assistant. How can I help you today?",
 };
 
 const SUGGESTED_QUESTIONS = [
@@ -351,7 +351,7 @@ export function ChatWidget() {
         type="button"
         className="chat-widget-launcher"
         aria-label={
-          isOpen ? "Close TrustIndex AI chat" : "Open TrustIndex AI chat"
+          isOpen ? "Close Ozvor chat" : "Open Ozvor chat"
         }
         aria-expanded={isOpen}
         aria-controls="chat-widget-panel"
@@ -416,7 +416,7 @@ export function ChatWidget() {
           id="chat-widget-panel"
           className="chat-widget-panel"
           role="dialog"
-          aria-label="TrustIndex AI chat"
+          aria-label="Ozvor chat"
           aria-modal="true"
         >
           {/* Panel header */}
@@ -439,7 +439,7 @@ export function ChatWidget() {
                 fontFamily: "var(--font-family)",
               }}
             >
-              TrustIndex AI — Ask me anything
+              Ozvor — Ask me anything
             </span>
             <button
               type="button"

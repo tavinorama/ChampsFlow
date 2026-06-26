@@ -8,14 +8,14 @@
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Privacy Policy — TrustIndex AI",
-  description: "How TrustIndex AI collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
-  alternates: { canonical: "https://trustindexai.com/privacy-policy" },
+  title: "Privacy Policy | Ozvor",
+  description: "How Ozvor collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
+  alternates: { canonical: "https://ozvor.com/privacy-policy" },
   openGraph: {
-    title: "Privacy Policy — TrustIndex AI",
-    description: "How TrustIndex AI collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
-    url: "https://trustindexai.com/privacy-policy",
-    siteName: "TrustIndex AI",
+    title: "Privacy Policy | Ozvor",
+    description: "How Ozvor collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
+    url: "https://ozvor.com/privacy-policy",
+    siteName: "Ozvor",
     type: "website",
   },
   robots: {
@@ -32,10 +32,10 @@ export default function PrivacyPolicyPage() {
     <LegalPage
       title="Privacy Policy"
       updated="13 June 2026"
-      intro="This Policy explains how TrustIndex AI (home jurisdiction Brazil) collects, uses, shares, and protects personal data, and your rights under the LGPD (Brazil), GDPR (EU/EEA & UK), and CCPA/CPRA (California) and other US state laws. TrustIndex AI is the data controller for account data; for data you process about your own customers via the Service, see our Data Processing Agreement."
+      intro="This Policy explains how Ozvor (home jurisdiction Brazil) collects, uses, shares, and protects personal data, and your rights under the LGPD (Brazil), GDPR (EU/EEA & UK), and CCPA/CPRA (California) and other US state laws. Ozvor is the data controller for account data; for data you process about your own customers via the Service, see our Data Processing Agreement."
     >
       <LegalSection n="1" title="Who is responsible (controller)">
-        <p>TrustIndex AI is the controller of personal data described here. Privacy contact: <a href="mailto:dpo@trustindexai.com" style={{ color: "var(--color-primary)" }}>dpo@trustindexai.com</a>. An EU representative (GDPR Art. 27) and a Brazilian Encarregado (LGPD DPO) are appointed before serving EU and Brazilian markets respectively.</p>
+        <p>Ozvor is the controller of personal data described here. Privacy contact: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>. An EU representative (GDPR Art. 27) and a Brazilian Encarregado (LGPD DPO) are appointed before serving EU and Brazilian markets respectively.</p>
       </LegalSection>
 
       <LegalSection n="2" title="What we collect and why">
@@ -84,7 +84,7 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection n="7" title="Your rights">
-        <p>Subject to your jurisdiction, you can request access, correction, deletion, portability, restriction, and objection, and (CCPA/CPRA) to know, delete, correct, and opt out of “sale”/“sharing” and limit sensitive-data use. We do not sell or share personal information for cross-context behavioural advertising. Exercise rights at <a href="/legal/dsr-request" style={{ color: "var(--color-primary)" }}>/legal/dsr-request</a>, opt out at <a href="/legal/do-not-sell" style={{ color: "var(--color-primary)" }}>Do Not Sell or Share</a>, or email <a href="mailto:dpo@trustindexai.com" style={{ color: "var(--color-primary)" }}>dpo@trustindexai.com</a>. You may also lodge a complaint with the ANPD (Brazil), your EU supervisory authority, or the California Privacy Protection Agency.</p>
+        <p>Subject to your jurisdiction, you can request access, correction, deletion, portability, restriction, and objection, and (CCPA/CPRA) to know, delete, correct, and opt out of “sale”/“sharing” and limit sensitive-data use. We do not sell or share personal information for cross-context behavioural advertising. Exercise rights at <a href="/legal/dsr-request" style={{ color: "var(--color-primary)" }}>/legal/dsr-request</a>, opt out at <a href="/legal/do-not-sell" style={{ color: "var(--color-primary)" }}>Do Not Sell or Share</a>, or email <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>. You may also lodge a complaint with the ANPD (Brazil), your EU supervisory authority, or the California Privacy Protection Agency.</p>
       </LegalSection>
 
       <LegalSection n="8" title="Security">
@@ -96,7 +96,7 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection n="10" title="Changes and contact">
-        <p>We will post updates here and, for material changes, notify you. Privacy contact: <a href="mailto:dpo@trustindexai.com" style={{ color: "var(--color-primary)" }}>dpo@trustindexai.com</a>.</p>
+        <p>We will post updates here and, for material changes, notify you. Privacy contact: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>.</p>
       </LegalSection>
     </LegalPage>
   );

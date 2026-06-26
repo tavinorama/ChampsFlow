@@ -15,32 +15,32 @@ import type { Metadata } from "next";
 import { GeoGraphBackdrop } from "../../../components/marketing/GeoGraphBackdrop";
 
 export const metadata: Metadata = {
-  title: "Your Real TrustIndex Score — TrustIndex AI",
+  title: "Your Real TrustIndex Score — Ozvor",
   description:
     "Run the free AI Invisibility Test and see your real TrustIndex Score — how AI engines see your brand right now.",
-  alternates: { canonical: "https://trustindexai.com/results" },
+  alternates: { canonical: "https://ozvor.com/results" },
   openGraph: {
-    title: "Your Real TrustIndex Score — TrustIndex AI",
+    title: "Your Real TrustIndex Score — Ozvor",
     description:
       "Run the free AI Invisibility Test and see your real TrustIndex Score — how AI engines see your brand right now.",
-    url: "https://trustindexai.com/results",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/results",
+    siteName: "Ozvor",
     type: "website",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "Your Real TrustIndex Score — TrustIndex AI",
+        alt: "Your Real TrustIndex Score — Ozvor",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Your Real TrustIndex Score — TrustIndex AI",
+    title: "Your Real TrustIndex Score — Ozvor",
     description:
       "Run the free AI Invisibility Test and see your real TrustIndex Score — how AI engines see your brand right now.",
-    images: ["https://trustindexai.com/og-default.png"],
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -54,18 +54,18 @@ const resultsJsonLd = {
   name: "Run the free AI Invisibility Test and see your real TrustIndex Score — how AI engines see your brand right now.",
   description:
     "Run the free AI Invisibility Test and see your real TrustIndex Score — how AI engines see your brand right now.",
-  url: "https://trustindexai.com/results",
+  url: "https://ozvor.com/results",
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Results", item: "https://trustindexai.com/results" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Results", item: "https://ozvor.com/results" },
     ],
   },
   isPartOf: {
     "@type": "WebSite",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
 };
 

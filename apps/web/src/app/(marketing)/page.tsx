@@ -24,32 +24,32 @@ import { GeoGraphBackdrop } from "../../components/marketing/GeoGraphBackdrop";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "TrustIndex AI — Audit + Execute your GEO strategy",
+  title: "Ozvor — Audit + Execute your GEO strategy",
   description:
-    "The only GEO platform that audits how your brand appears across AI search AND writes the fix. TrustIndex AI benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
-  alternates: { canonical: "https://trustindexai.com/" },
+    "The only GEO platform that audits how your brand appears across AI search AND writes the fix. Ozvor benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
+  alternates: { canonical: "https://ozvor.com/" },
   openGraph: {
-    title: "TrustIndex AI — Audit + Execute your GEO strategy",
+    title: "Ozvor — Audit + Execute your GEO strategy",
     description:
-      "The only GEO platform that audits how your brand appears across AI search AND writes the fix. TrustIndex AI benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
-    url: "https://trustindexai.com/",
-    siteName: "TrustIndex AI",
+      "The only GEO platform that audits how your brand appears across AI search AND writes the fix. Ozvor benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
+    url: "https://ozvor.com/",
+    siteName: "Ozvor",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "TrustIndex AI — Know if AI trusts your brand",
+        alt: "Ozvor — Know if AI trusts your brand",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "TrustIndex AI — Audit + Execute your GEO strategy",
+    title: "Ozvor — Audit + Execute your GEO strategy",
     description:
       "When your customer asks ChatGPT for a recommendation, be the answer.",
-    images: ["https://trustindexai.com/og-default.png"],
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -60,10 +60,10 @@ export const metadata: Metadata = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "TrustIndex AI",
+  name: "Ozvor",
   description:
     "AI Search Trust Intelligence platform for SMBs. Audits brand visibility across ChatGPT, Perplexity, Gemini, and Google AI; benchmarks competitor citations; computes a TrustIndex Score; and builds a GEO content plan for organic AI-search visibility.",
-  url: "https://trustindexai.com",
+  url: "https://ozvor.com",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   offers: [
@@ -91,8 +91,8 @@ const jsonLd = {
   ],
   creator: {
     "@type": "Organization",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
 };
 
@@ -460,7 +460,7 @@ function AppMockupSVG() {
       <circle cx="58" cy="24" r="6" fill="#86efac" />
       <rect x="90" y="14" width="420" height="20" rx="5" fill="#e2e8f0" />
       <text x="100" y="27.5" fontSize="9.5" fill="#94a3b8" fontFamily="monospace">
-        app.trustindexai.com/brands/acme-crm
+        app.ozvor.com/brands/acme-crm
       </text>
 
       {/* Sidebar */}
@@ -855,13 +855,13 @@ function TheShiftSection() {
           <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>
             The businesses getting cited are posting consistently on LinkedIn. A 2025 Semrush study of 89,000 LinkedIn URLs found LinkedIn is the second most-cited source in AI search — and the top source for professional queries.{" "}
             <Cite>Semrush, &ldquo;We Analyzed 89K LinkedIn URLs Cited in AI Search,&rdquo; semrush.com.</Cite>{" "}
-            TrustIndex AI handles the consistency.
+            Ozvor handles the consistency.
           </p>
 
           <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>
             In June 2026, Google&rsquo;s official Search documentation formally recognized Generative Engine Optimization — confirming the durable levers are unique, useful, crawlable content and genuine authority, not gimmicks like special &ldquo;AI files&rdquo;.{" "}
             <Cite>Google Search Central, developers.google.com, June 2026.</Cite>{" "}
-            TrustIndex AI is built to that guidance — and unlike Google&rsquo;s own Search Console AI report (Google-only, your site only), it measures you across <strong>every</strong> major AI engine, against your competitors, with the reasons and the fix.
+            Ozvor is built to that guidance — and unlike Google&rsquo;s own Search Console AI report (Google-only, your site only), it measures you across <strong>every</strong> major AI engine, against your competitors, with the reasons and the fix.
           </p>
         </div>
 
@@ -1127,7 +1127,7 @@ const STEPS = [
     n: "01",
     Icon: IconSearch,
     title: "Audit",
-    body: "TrustIndex AI runs a portfolio of real buyer prompts across ChatGPT, Perplexity, Gemini, and Google AI Overview, then measures whether your brand is mentioned, cited, and recommended — your baseline TrustIndex Score.",
+    body: "Ozvor runs a portfolio of real buyer prompts across ChatGPT, Perplexity, Gemini, and Google AI Overview, then measures whether your brand is mentioned, cited, and recommended — your baseline TrustIndex Score.",
     accent: false,
     iconColor: "var(--color-muted)",
   },
@@ -1143,7 +1143,7 @@ const STEPS = [
     n: "03",
     Icon: IconShieldCheck,
     title: "Plan & publish",
-    body: "TrustIndex AI turns the gaps into a prioritized GEO content plan. OrganicPosts by TrustIndex AI helps you publish the proof, pages, and posts AI needs — then monitors your score over time.",
+    body: "Ozvor turns the gaps into a prioritized GEO content plan. OrganicPosts by TrustIndex AI helps you publish the proof, pages, and posts AI needs — then monitors your score over time.",
     accent: false,
     iconColor: "var(--color-success)",
   },
@@ -1511,7 +1511,7 @@ function ComparisonSection() {
               marginBottom: "var(--space-4)",
             }}
           >
-            How TrustIndex AI compares.
+            How Ozvor compares.
           </h2>
           <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", fontFamily: "var(--font-family)", maxWidth: "50ch", margin: "0 auto", lineHeight: 1.7 }}>
             GEO visibility and privacy-first AI are new categories. No competitor has made either a core part of their product.
@@ -1551,7 +1551,7 @@ function ComparisonSection() {
                 {["Buffer", "Hootsuite", "Later", "Predis.ai"].map((col) => (
                   <th key={col} scope="col" style={{ padding: "var(--space-4)", textAlign: "center", fontWeight: "600", color: "#64748b", whiteSpace: "nowrap", fontSize: "var(--font-size-body-sm)" }}>{col}</th>
                 ))}
-                <th scope="col" style={{ padding: "var(--space-4)", textAlign: "center", fontWeight: "700", color: "#34D399", whiteSpace: "nowrap", fontSize: "var(--font-size-body-sm)" }}>TrustIndex AI</th>
+                <th scope="col" style={{ padding: "var(--space-4)", textAlign: "center", fontWeight: "700", color: "#34D399", whiteSpace: "nowrap", fontSize: "var(--font-size-body-sm)" }}>Ozvor</th>
               </tr>
             </thead>
             <tbody>
@@ -1574,10 +1574,10 @@ function ComparisonSection() {
           {COMPARISON_ROWS.map((row) => (
             <div key={row.feature} style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)" }}>
               <p style={{ fontWeight: "700", marginBottom: "var(--space-3)", marginTop: 0, color: "var(--color-text)", fontFamily: "var(--font-family)", fontSize: "var(--font-size-body-sm)" }}>{row.feature}</p>
-              {[["Buffer", row.buffer], ["Hootsuite", row.hootsuite], ["Later", row.later], ["Predis.ai", row.predis], ["TrustIndex AI", row.op]].map(([tool, val]) => (
+              {[["Buffer", row.buffer], ["Hootsuite", row.hootsuite], ["Later", row.later], ["Predis.ai", row.predis], ["Ozvor", row.op]].map(([tool, val]) => (
                 <div key={tool} style={{ display: "flex", justifyContent: "space-between", padding: "var(--space-1) 0", fontSize: "var(--font-size-caption)", fontFamily: "var(--font-family)", borderBottom: "1px solid var(--color-border)", gap: "var(--space-3)" }}>
                   <span style={{ color: "var(--color-muted)" }}>{tool}</span>
-                  <span style={{ color: tool === "TrustIndex AI" ? "var(--color-success)" : "var(--color-muted)", fontWeight: tool === "TrustIndex AI" ? "600" : undefined, textAlign: "right", maxWidth: "60%" }}>{val}</span>
+                  <span style={{ color: tool === "Ozvor" ? "var(--color-success)" : "var(--color-muted)", fontWeight: tool === "Ozvor" ? "600" : undefined, textAlign: "right", maxWidth: "60%" }}>{val}</span>
                 </div>
               ))}
             </div>
@@ -1756,7 +1756,7 @@ function SocialProofSection() {
               marginBottom: "var(--space-4)",
             }}
           >
-            We use TrustIndex AI on ourselves.
+            We use Ozvor on ourselves.
           </h2>
           <p
             style={{
@@ -1769,7 +1769,7 @@ function SocialProofSection() {
             }}
           >
             The best way to prove a GEO platform works is to dog-food it publicly. We
-            audit TrustIndex AI and OrganicPosts across ChatGPT, Claude, Perplexity,
+            audit Ozvor and OrganicPosts across ChatGPT, Claude, Perplexity,
             Gemini, and Google AI Overview &mdash; every week &mdash; and share the
             real numbers.
           </p>
@@ -2279,11 +2279,11 @@ function PricingCard({
 const FAQ_ITEMS = [
   { q: "How does showing up in ChatGPT actually work?", a: "ChatGPT, Claude, Perplexity, and Gemini generate answers by drawing on content they have indexed or can retrieve in real time. Platforms like LinkedIn are heavily indexed by AI systems — Semrush's analysis of 89,000 LinkedIn URLs found it is the second most-cited source in AI search overall. When you post consistently on LinkedIn with specific, structured, useful content, you increase the probability that those systems have something to find and cite when a relevant query comes in. There is no guaranteed path to citation — but consistent, quality posting is the best-documented input." },
   { q: "Is GEO real or marketing hype?", a: "Generative Engine Optimization is a legitimate emerging field. The term was formally defined in a paper by researchers at Princeton, Georgia Tech, and the Allen Institute for AI, published at KDD 2024. The paper demonstrated up to 40% improvements in AI citation visibility through structured content techniques. In June 2026, Google's official Search documentation formally recognized GEO/AEO as well. It is an early field, and not every claim made under the 'GEO' banner is well-founded — Google itself notes that llms.txt files and special 'AI schema' are not required. We follow Google's official guidance, do not score those gimmicks, and tell you what is substantiated and what is not." },
-  { q: "Isn't this just Google's free Search Console AI report?", a: "No — they answer different questions. Google's Search Console AI performance report (launched June 2026) tells you that your own pages appeared in Google's AI features. It covers Google only, your own site only, and at launch shows no click data and no competitors. TrustIndex AI measures your brand across every major AI engine — ChatGPT, Claude, Perplexity, and Gemini as well as Google AI Overview — shows which competitors get recommended instead of you, how AI describes you (sentiment), and gives you a prioritized plan to fix the gaps. Use Search Console as your Google thermometer; use TrustIndex AI for the full diagnosis and treatment, across the whole AI-answer surface. We're built to Google's official guidance and pass the three vendor-vetting questions Google published." },
+  { q: "Isn't this just Google's free Search Console AI report?", a: "No — they answer different questions. Google's Search Console AI performance report (launched June 2026) tells you that your own pages appeared in Google's AI features. It covers Google only, your own site only, and at launch shows no click data and no competitors. Ozvor measures your brand across every major AI engine — ChatGPT, Claude, Perplexity, and Gemini as well as Google AI Overview — shows which competitors get recommended instead of you, how AI describes you (sentiment), and gives you a prioritized plan to fix the gaps. Use Search Console as your Google thermometer; use Ozvor for the full diagnosis and treatment, across the whole AI-answer surface. We're built to Google's official guidance and pass the three vendor-vetting questions Google published." },
   { q: "How long until I appear in LLM answers?", a: "There is no fixed timeline. Based on the GEO research and observed patterns in how AI systems refresh their data, consistent posting over 4–8 weeks is a reasonable starting point. Individual citation frequency varies by niche, competition, and the specificity of your content." },
   { q: "Can you guarantee my business will be cited?", a: "No, and anyone who says they can guarantee AI citations is overstating what the research supports. GEO research shows that specific, structured, data-backed, consistently published content is cited more frequently than vague or irregular content. We give you the tools to produce that kind of content at scale. The AI systems make their own decisions about what to cite." },
   { q: "How much does it cost?", a: "Four tiers. Free: 1 brand, 3 competitors, 50 prompts, monthly audit + TrustIndex Score, no credit card. Growth: $99/month — 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, GEO content briefs. Agency: $249/month — multi-client dashboard (up to 25 brands), white-label reports, client approval workflow. Founding members (the first 100 annual subscribers) get a 30% founder discount — applied only when you pay annually ($831/year Growth and $2,091/year Agency, vs $99/$249 per month). Annual plans also include a free 5-page website (Growth) or website + 3 client landing pages (Agency). 30-day money-back guarantee on all paid plans." },
-  { q: "How do I get access?", a: "Run the free AI Visibility Test now — no credit card required. For a personal setup call with the founder, book 20 minutes at trustindexai.com/book." },
+  { q: "How do I get access?", a: "Run the free AI Visibility Test now — no credit card required. For a personal setup call with the founder, book 20 minutes at ozvor.com/book." },
   { q: "Which AI engines do you audit?", a: "We audit your brand across ChatGPT (OpenAI), Claude (Anthropic), Perplexity, Gemini (Google), and Google AI Overview. Each audit fires a configurable set of prompts — 50 prompts on the Free plan, 250 on Growth — and records whether your brand was mentioned, how it was described, and which competitors were cited instead." },
   { q: "What data do you store?", a: "We store your account information (name and email), the brand and competitor names you configure, and the audit results (prompt text, AI responses, TrustIndex scores). Audit data is encrypted at rest and scoped to your workspace only. You can request deletion of all your data at any time from account settings." },
   { q: "Does the AI learn from my data?", a: "No. We use Anthropic Claude. Under Anthropic's API terms, your content is not used to train AI models and is not retained beyond what is needed to return your result. We never sell or share your content with third parties for training purposes. We disclose every AI sub-processor on our Sub-processors page, and EU-region inference is on our roadmap." },
@@ -2399,7 +2399,7 @@ function FinalCtaSection() {
             marginBottom: "var(--space-10)",
           }}
         >
-          TrustIndex AI is live. Run your free AI Visibility Test in 60 seconds &mdash; no credit card.
+          Ozvor is live. Run your free AI Visibility Test in 60 seconds &mdash; no credit card.
         </p>
 
         <div

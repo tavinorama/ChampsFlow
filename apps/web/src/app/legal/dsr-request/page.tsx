@@ -400,10 +400,10 @@ export default function PublicDsrRequestPage() {
             >
               If you no longer have access to your account email, contact{" "}
               <a
-                href="mailto:privacy@trustindexai.com"
+                href="mailto:privacy@ozvor.com"
                 style={{ color: "#2563EB", fontWeight: "500" }}
               >
-                privacy@trustindexai.com
+                privacy@ozvor.com
               </a>{" "}
               with your account ID. We verify identity manually within 5 business days.
             </p>

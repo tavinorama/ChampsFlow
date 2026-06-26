@@ -143,10 +143,10 @@ export default function DoNotSellPage() {
               We will process your request within 45 days as required by
               California law. For questions, contact{" "}
               <a
-                href="mailto:privacy@trustindexai.com"
+                href="mailto:privacy@ozvor.com"
                 style={{ color: "var(--color-primary)" }}
               >
-                privacy@trustindexai.com
+                privacy@ozvor.com
               </a>
               .
             </p>
@@ -171,10 +171,10 @@ export default function DoNotSellPage() {
               You have submitted too many requests from this device. Please
               wait an hour and try again, or contact us directly at{" "}
               <a
-                href="mailto:privacy@trustindexai.com"
+                href="mailto:privacy@ozvor.com"
                 style={{ color: "var(--color-primary)" }}
               >
-                privacy@trustindexai.com
+                privacy@ozvor.com
               </a>
               .
             </p>
@@ -421,10 +421,10 @@ export default function DoNotSellPage() {
           </Link>
           . Questions? Email{" "}
           <a
-            href="mailto:privacy@trustindexai.com"
+            href="mailto:privacy@ozvor.com"
             style={{ color: "var(--color-primary)" }}
           >
-            privacy@trustindexai.com
+            privacy@ozvor.com
           </a>
           .
         </p>

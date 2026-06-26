@@ -6,7 +6,7 @@
  * Hard rules: RESEND_API_KEY from env, unsubscribe footer required.
  */
 
-const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://trustindexai.com";
+const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
 export interface NurtureEmailParams {
   to: string;
@@ -29,7 +29,7 @@ export async function sendNurtureFree4Email(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const kitUrl = `${WEB_ORIGIN}/kit`;
   const subject = "Last email about the Kit — one thing to consider";
@@ -46,13 +46,13 @@ export async function sendNurtureFree4Email(
     "",
     "Get the Kit: " + kitUrl,
     "",
-    "— The TrustIndex AI Team",
-    "https://trustindexai.com",
+    "— The Ozvor Team",
+    "https://ozvor.com",
     "",
     "---",
-    "No more emails about this from us — if you ever want the Kit, it's at trustindexai.com/kit.",
+    "No more emails about this from us — if you ever want the Kit, it's at ozvor.com/kit.",
     "Unsubscribe: " + params.unsubscribeUrl,
-    "TrustIndex AI · trustindexai.com",
+    "Ozvor · ozvor.com",
   ].join("\n");
 
   // ----- HTML body -----
@@ -71,7 +71,7 @@ export async function sendNurtureFree4Email(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI
+      Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       Last email about the Kit
@@ -115,9 +115,9 @@ export async function sendNurtureFree4Email(
   <!-- Softer unsubscribe footer -->
   <hr style="border:none;border-top:1px solid #E5E7EB;margin:28px 0 16px 0;" />
   <p style="font-size:11px;color:#9CA3AF;margin:0;text-align:center;">
-    No more emails about this from us — if you ever want the Kit, it's at trustindexai.com/kit.<br/>
+    No more emails about this from us — if you ever want the Kit, it's at ozvor.com/kit.<br/>
     <a href="${params.unsubscribeUrl}" style="color:#6B7280;">Unsubscribe</a> &nbsp;&middot;&nbsp;
-    TrustIndex AI · trustindexai.com
+    Ozvor · ozvor.com
   </p>
 </body>
 </html>`;

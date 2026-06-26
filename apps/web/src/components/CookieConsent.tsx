@@ -355,7 +355,7 @@ function CustomizePanel({
       <CategoryRow
         id="analytics"
         name="Analytics"
-        description="Collects aggregate data on how you use TrustIndex AI (page views, session duration). No analytics cookies are active yet. Future tools will need your consent before loading."
+        description="Collects aggregate data on how you use Ozvor (page views, session duration). No analytics cookies are active yet. Future tools will need your consent before loading."
         checked={analyticsOn}
         onChange={onAnalyticsChange}
       />
@@ -467,7 +467,7 @@ function BannerView({
       >
         {isOptOut ? (
           <>
-            TrustIndex AI currently uses <strong style={{ color: "var(--color-text)" }}>only essential cookies</strong> (your
+            Ozvor currently uses <strong style={{ color: "var(--color-text)" }}>only essential cookies</strong> (your
             login session). We do not currently use analytics or marketing
             cookies. You can record your preferences now for when we introduce
             optional tools in the future.{" "}
@@ -484,7 +484,7 @@ function BannerView({
           </>
         ) : (
           <>
-            TrustIndex AI currently uses <strong style={{ color: "var(--color-text)" }}>only essential cookies</strong> (your
+            Ozvor currently uses <strong style={{ color: "var(--color-text)" }}>only essential cookies</strong> (your
             login session). We do not currently use analytics or marketing
             cookies. We ask for your consent so your preferences are recorded
             before any optional tools are introduced.{" "}

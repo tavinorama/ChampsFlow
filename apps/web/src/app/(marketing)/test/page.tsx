@@ -19,20 +19,20 @@ export const metadata: Metadata = {
   title: "Free AI Invisibility Test — Are You Visible in AI Search?",
   description:
     "In 60 seconds, see whether ChatGPT, Claude, Perplexity, and Gemini recommend your brand or a competitor — across the real AI engines your buyers use. Free. No credit card.",
-  alternates: { canonical: "https://trustindexai.com/test" },
+  alternates: { canonical: "https://ozvor.com/test" },
   openGraph: {
     title: "Free AI Invisibility Test — Are You Visible in AI Search?",
     description:
       "In 60 seconds, see whether ChatGPT, Claude, Perplexity, and Gemini recommend your brand or a competitor. Free. No credit card.",
-    url: "https://trustindexai.com/test",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/test",
+    siteName: "Ozvor",
     type: "website",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "Free AI Invisibility Test — TrustIndex AI",
+        alt: "Free AI Invisibility Test — Ozvor",
       },
     ],
   },
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     title: "Free AI Invisibility Test — Are You Visible in AI Search?",
     description:
       "In 60 seconds, see whether ChatGPT, Claude, Perplexity, and Gemini recommend your brand or a competitor. Free.",
-    images: ["https://trustindexai.com/og-default.png"],
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -55,7 +55,7 @@ const testJsonLd = {
   name: "AI Invisibility Test",
   description:
     "Free tool: see whether ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview recommend your brand or a competitor when buyers ask about your category.",
-  url: "https://trustindexai.com/test",
+  url: "https://ozvor.com/test",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   offers: {
@@ -66,14 +66,14 @@ const testJsonLd = {
   },
   provider: {
     "@type": "Organization",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Free AI Invisibility Test", item: "https://trustindexai.com/test" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Free AI Invisibility Test", item: "https://ozvor.com/test" },
     ],
   },
 };
