@@ -836,10 +836,9 @@ export function CookieConsentTrigger({
         border: "none",
         padding: 0,
         cursor: "pointer",
-        textDecoration: "underline",
         fontFamily: "inherit",
-        fontSize: "inherit",
-        color: "inherit",
+        // No forced text-decoration / size / color — let the className (or a
+        // passed style) govern so the trigger matches sibling footer links.
         ...style,
       }}
     >

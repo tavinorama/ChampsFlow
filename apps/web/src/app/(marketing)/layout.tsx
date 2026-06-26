@@ -290,6 +290,15 @@ const MARKETING_STYLES = `
     text-decoration: none;
     font-family: var(--font-family);
     transition: color 0.15s;
+    /* reset so a <button> (Cookie preferences) matches the <a> links exactly */
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-align: left;
+    line-height: 1.3;
+    font-weight: 400;
   }
   .mk-footer-link:hover { color: var(--color-text); }
 
@@ -494,6 +503,8 @@ function PublicNavbar() {
             ["How it works", "/how-it-works"],
             ["Results", "/results"],
             ["OrganicPosts", "/organicposts"],
+            ["Tutorials", "/learn"],
+            ["Blog", "/blog"],
             ["Kit $29", "/kit"],
             ["Plans", "/pricing"],
           ] as const).map(([label, href]) => (
