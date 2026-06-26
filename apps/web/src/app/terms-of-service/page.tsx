@@ -31,7 +31,7 @@ export default function TermsOfServicePage() {
       intro={'These Terms govern your access to and use of the Ozvor platform and the OrganicPosts service (together, the “Service”), operated by Ozvor (a company being incorporated in Brazil). By creating an account or using the Service, you agree to these Terms.'}
     >
       <LegalSection n="1" title="Who we are">
-        <p>The Service is operated by <strong>Ozvor</strong> (“we”, “us”), home jurisdiction Brazil. Ozvor is an AI-search visibility (Generative Engine Optimization, “GEO”) platform; <strong>OrganicPosts by TrustIndex AI</strong> is our optional done-for-you content service. We are not affiliated with, and are a different company from, “Trustindex.io” (an online-review widget provider).</p>
+        <p>The Service is operated by <strong>Ozvor</strong> (“we”, “us”), home jurisdiction Brazil. Ozvor is an AI-search visibility (Generative Engine Optimization, “GEO”) platform; <strong>OrganicPosts by Ozvor</strong> is our optional done-for-you content service. We are not affiliated with, and are a different company from, “Trustindex.io” (an online-review widget provider).</p>
       </LegalSection>
 
       <LegalSection n="2" title="What the Service does">
