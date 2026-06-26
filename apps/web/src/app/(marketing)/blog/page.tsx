@@ -96,9 +96,9 @@ export default function BlogIndexPage() {
   return (
     <div
       style={{
-        maxWidth: "720px",
+        maxWidth: "1080px",
         margin: "0 auto",
-        padding: "var(--space-12) var(--space-4)",
+        padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))",
       }}
     >
       <script
@@ -107,39 +107,55 @@ export default function BlogIndexPage() {
       />
 
       {/* Page header */}
-      <h1
+      <span
         style={{
-          fontSize: "var(--font-size-h1)",
-          fontWeight: "var(--font-weight-bold)",
-          color: "var(--color-text)",
-          fontFamily: "var(--font-family)",
-          marginBottom: "var(--space-3)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "0.75rem",
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          color: "var(--color-accent-ink)",
+          fontWeight: 600,
         }}
       >
-        Blog
+        Blog · how AI search works
+      </span>
+      <h1
+        style={{
+          fontSize: "clamp(2.25rem, 6vw, 3.75rem)",
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          lineHeight: 1.05,
+          color: "var(--color-text)",
+          fontFamily: "var(--font-family)",
+          margin: "var(--space-3) 0 var(--space-4)",
+        }}
+      >
+        The Blog.
       </h1>
       <p
         style={{
-          fontSize: "var(--font-size-body-sm)",
+          fontSize: "var(--font-size-body)",
           color: "var(--color-muted)",
           fontFamily: "var(--font-family)",
-          marginBottom: "var(--space-8)",
-          lineHeight: "var(--line-height-body)",
+          marginBottom: "var(--space-10)",
+          lineHeight: 1.7,
+          maxWidth: "620px",
         }}
       >
-        Articles and videos about AI search visibility, GEO, and building a
-        brand that AI systems understand and recommend.
+        Dated, sourced, no-hype articles on AI search visibility and GEO —
+        the strategy behind getting your brand cited by ChatGPT, Claude,
+        Perplexity and Gemini.
       </p>
 
-      {/* Post list */}
+      {/* Post grid (featured spans full width) */}
       <ul
         style={{
           listStyle: "none",
           margin: 0,
           padding: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-6)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gap: "var(--space-5)",
         }}
         aria-label="Blog posts"
       >
@@ -149,7 +165,7 @@ export default function BlogIndexPage() {
               <VideoCard post={post} />
             </li>
           ) : (
-            <li key={post.slug}>
+            <li key={post.slug} style={{ gridColumn: post.isPillar ? "1 / -1" : undefined }}>
               <ArticleCard post={post} />
             </li>
           )
