@@ -62,7 +62,10 @@ const DOMAIN_LABELS: Record<string, string> = {
 interface TopSource {
   domain: string;
   label: string;
-  count: number;
+  type: "UGC" | "Review" | "Social" | "Reference" | "News" | "Web" | "You";
+  usedPct: number;      // 0-100 rounded integer: % of total probes citing this domain
+  avgCitations: number; // 1-decimal: avg occurrences per citing probe
+  isYou: boolean;
 }
 
 interface OffsiteSource {
@@ -73,23 +76,92 @@ interface OffsiteSource {
   count: number;
 }
 
+/**
+ * Deterministic source type classifier. Identifies the brand's own domain as
+ * "You"; classifies third-party domains by category. Pure function — no I/O.
+ */
+function classifySourceType(domain: string, brandDomain: string | null): TopSource["type"] {
+  if (brandDomain) {
+    const clean = domain.replace(/^www\./, "");
+    const cleanBrand = brandDomain.replace(/^www\./, "");
+    if (
+      clean === cleanBrand ||
+      clean.endsWith(`.${cleanBrand}`) ||
+      cleanBrand.endsWith(`.${clean}`)
+    ) {
+      return "You";
+    }
+  }
+  // UGC
+  if (
+    ["reddit.com", "quora.com", "stackexchange.com", "stackoverflow.com", "superuser.com", "askubuntu.com"].some(
+      (d) => domain.includes(d)
+    )
+  )
+    return "UGC";
+  // Review
+  if (
+    ["g2.com", "capterra.com", "trustpilot.com", "getapp.com", "softwareadvice.com", "gartner.com", "trustradius.com"].some(
+      (d) => domain.includes(d)
+    )
+  )
+    return "Review";
+  // Social
+  if (
+    ["linkedin.com", "twitter.com", "x.com", "youtube.com", "facebook.com", "instagram.com", "tiktok.com"].some(
+      (d) => domain.includes(d)
+    )
+  )
+    return "Social";
+  // Reference
+  if (
+    ["wikipedia.org", "wikidata.org", "crunchbase.com", "dnb.com", "bloomberg.com", "pitchbook.com"].some(
+      (d) => domain.includes(d)
+    )
+  )
+    return "Reference";
+  // News
+  if (
+    [
+      "nytimes.com", "forbes.com", "techcrunch.com", "theverge.com", "wired.com",
+      "businessinsider.com", "reuters.com", "apnews.com", "washingtonpost.com",
+      "ft.com", "wsj.com", "cnbc.com", "bbc.com", "guardian.com", "cnn.com", "thenextweb.com",
+    ].some((d) => domain.includes(d))
+  )
+    return "News";
+  return "Web";
+}
+
 function computeTopSources(
   evidenceRows: Array<{ sources: unknown }>,
-  providerBreakdown: Record<string, unknown>
+  providerBreakdown: Record<string, unknown>,
+  brandDomain: string | null   // to identify "You" rows
 ): TopSource[] {
-  const domainCounts = new Map<string, number>();
+  const totalProbes = evidenceRows.length || 1;
+
+  // Two maps: total citation count and count of distinct probes that cite this domain
+  const domainCitations = new Map<string, number>();
+  const domainProbeCiting = new Map<string, number>();
 
   // 1. Count domains from raw citation URLs in evidence[].sources
   for (const row of evidenceRows) {
     const sources = Array.isArray(row.sources) ? (row.sources as unknown[]) : [];
+    // Track unique domains in THIS probe for domainProbeCiting
+    const probeUniqueDomains = new Set<string>();
     for (const src of sources) {
       if (typeof src !== "string") continue;
       try {
         const hostname = new URL(src).hostname.replace(/^www\./, "");
-        domainCounts.set(hostname, (domainCounts.get(hostname) ?? 0) + 1);
+        // Total citation count (raw occurrences)
+        domainCitations.set(hostname, (domainCitations.get(hostname) ?? 0) + 1);
+        probeUniqueDomains.add(hostname);
       } catch {
         // skip malformed URLs
       }
+    }
+    // Increment probe-citing count for each unique domain seen in this probe
+    for (const hostname of probeUniqueDomains) {
+      domainProbeCiting.set(hostname, (domainProbeCiting.get(hostname) ?? 0) + 1);
     }
   }
 
@@ -102,18 +174,30 @@ function computeTopSources(
     if (!os.count || os.count === 0) continue;
     const domain = (os.domain ?? "").replace(/^www\./, "");
     if (!domain) continue;
-    domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + os.count);
+    domainCitations.set(domain, (domainCitations.get(domain) ?? 0) + os.count);
+    // If present=true treat as 1 probe citing it (best we can do without per-probe data)
+    if (os.present) {
+      domainProbeCiting.set(domain, (domainProbeCiting.get(domain) ?? 0) + 1);
+    }
   }
 
-  // 3. Build output array with friendly labels, sort descending, cap at 12
+  // 3. Early-exit if no domains were found — prevents 100% usedPct entries on empty evidence.
+  if (domainCitations.size === 0) return [];
+
+  // 4. Build output array with enriched fields, sort descending, cap at 25
   const result: TopSource[] = [];
-  for (const [domain, count] of domainCounts.entries()) {
+  for (const [domain, totalCitations] of domainCitations.entries()) {
+    const probeCiting = domainProbeCiting.get(domain) ?? 0;
+    const usedPct = Math.round((probeCiting / totalProbes) * 100);
+    const avgCitations = +(totalCitations / (probeCiting || 1)).toFixed(1);
+    const type = classifySourceType(domain, brandDomain);
+    const isYou = type === "You";
     const label = DOMAIN_LABELS[domain] ?? domain;
-    result.push({ domain, label, count });
+    result.push({ domain, label, type, usedPct, avgCitations, isYou });
   }
 
-  result.sort((a, b) => b.count - a.count);
-  return result.slice(0, 12);
+  result.sort((a, b) => b.usedPct - a.usedPct || b.avgCitations - a.avgCitations);
+  return result.slice(0, 25);
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +453,206 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   });
 
   // -------------------------------------------------------------------------
+  // GET /api/brands/:id — fetch a single brand profile (settings included)
+  // Returns tracked_models and tracking_frequency with graceful fallback if
+  // the migration columns don't exist yet (42703 error → return without them).
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+
+    // Attempt full query with new columns first.
+    try {
+      const res = await db.query<{
+        id: string;
+        name: string;
+        domain: string | null;
+        category: string | null;
+        region: string;
+        monitoring_enabled: boolean;
+        tracked_models: unknown;
+        tracking_frequency: string | null;
+      }>(
+        `SELECT id, name, domain, category, region, monitoring_enabled, tracked_models, tracking_frequency
+           FROM brands WHERE id = $1`,
+        [brandId]
+      );
+      const brand = res.rows[0];
+      if (!brand) return c.json({ message: "Brand not found." }, 404);
+      // tracked_models is already parsed by pg driver (JSONB → JS array). Return directly.
+      return c.json(brand);
+    } catch (err: unknown) {
+      // If migration hasn't run yet (column doesn't exist), degrade gracefully.
+      const pgCode = (err as { code?: string }).code;
+      if (pgCode === "42703") {
+        // Column missing — return brand without tracked_models / tracking_frequency
+        const fallbackRes = await db.query<{
+          id: string;
+          name: string;
+          domain: string | null;
+          category: string | null;
+          region: string;
+          monitoring_enabled: boolean;
+        }>(
+          `SELECT id, name, domain, category, region, monitoring_enabled FROM brands WHERE id = $1`,
+          [brandId]
+        );
+        const brand = fallbackRes.rows[0];
+        if (!brand) return c.json({ message: "Brand not found." }, 404);
+        return c.json(brand);
+      }
+      throw err;
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/brands/:id — update brand model tracking settings
+  // Body: { tracked_models?: string[], tracking_frequency?: "weekly"|"daily" }
+  // "daily" requires Agency plan.
+  // -------------------------------------------------------------------------
+  app.patch(
+    "/api/brands/:id",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const { tenantId } = auth;
+      const brandId = c.req.param("id");
+
+      let body: { tracked_models?: unknown; tracking_frequency?: unknown };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      const SUPPORTED_MODELS = new Set(["openai", "anthropic", "perplexity", "gemini", "serp"]);
+
+      // Validate tracked_models (if provided)
+      let trackedModels: string[] | undefined;
+      if (body.tracked_models !== undefined) {
+        if (!Array.isArray(body.tracked_models)) {
+          return c.json({ message: "tracked_models must be an array." }, 400);
+        }
+        if ((body.tracked_models as unknown[]).length === 0) {
+          return c.json({ message: "tracked_models must have at least one element." }, 400);
+        }
+        const unknownKeys = (body.tracked_models as unknown[]).filter(
+          (m) => typeof m !== "string" || !SUPPORTED_MODELS.has(m)
+        );
+        if (unknownKeys.length > 0) {
+          return c.json(
+            {
+              message: `Unknown model(s): ${unknownKeys.map(String).slice(0, 5).join(", ").slice(0, 200)}. Allowed values: openai, anthropic, perplexity, gemini, serp.`,
+            },
+            400
+          );
+        }
+        trackedModels = body.tracked_models as string[];
+      }
+
+      await db.setTenantId(tenantId);
+
+      // Validate tracking_frequency (if provided)
+      let trackingFrequency: string | undefined;
+      if (body.tracking_frequency !== undefined) {
+        if (body.tracking_frequency !== "weekly" && body.tracking_frequency !== "daily") {
+          return c.json({ message: "tracking_frequency must be 'weekly' or 'daily'." }, 400);
+        }
+        if (body.tracking_frequency === "daily") {
+          // Agency plan only — check tenant's plan tier
+          const tierRes = await db.query<{ plan_tier: string | null }>(
+            `SELECT plan_tier FROM tenants WHERE id = $1`,
+            [tenantId]
+          );
+          const planTier = tierRes.rows[0]?.plan_tier ?? "free";
+          if (planTier !== "agency") {
+            return c.json(
+              {
+                message:
+                  "Daily tracking is an Agency-plan feature. Upgrade to Agency to enable daily monitoring.",
+                code: "PLAN_LIMIT_DAILY",
+              },
+              403
+            );
+          }
+        }
+        trackingFrequency = body.tracking_frequency as string;
+      }
+
+      // At least one field must be provided
+      if (trackedModels === undefined && trackingFrequency === undefined) {
+        return c.json(
+          { message: "At least one of tracked_models or tracking_frequency must be provided." },
+          400
+        );
+      }
+
+      // Confirm brand exists and belongs to this tenant (RLS also enforces)
+      const brandCheck = await db.query<{ id: string }>(
+        `SELECT id FROM brands WHERE id = $1`,
+        [brandId]
+      );
+      if (!brandCheck.rows[0]) return c.json({ message: "Brand not found." }, 404);
+
+      // Build a dynamic UPDATE with only provided fields
+      try {
+        let updatedTrackedModels: unknown = null;
+        let updatedFrequency: string | null = null;
+
+        if (trackedModels !== undefined && trackingFrequency !== undefined) {
+          const res = await db.query<{ id: string; tracked_models: unknown; tracking_frequency: string }>(
+            `UPDATE brands
+                SET tracked_models = $2, tracking_frequency = $3, updated_at = NOW()
+              WHERE id = $1
+           RETURNING id, tracked_models, tracking_frequency`,
+            [brandId, JSON.stringify(trackedModels), trackingFrequency]
+          );
+          const row = res.rows[0];
+          updatedTrackedModels = row.tracked_models;
+          updatedFrequency = row.tracking_frequency;
+        } else if (trackedModels !== undefined) {
+          const res = await db.query<{ id: string; tracked_models: unknown; tracking_frequency: string }>(
+            `UPDATE brands
+                SET tracked_models = $2, updated_at = NOW()
+              WHERE id = $1
+           RETURNING id, tracked_models, tracking_frequency`,
+            [brandId, JSON.stringify(trackedModels)]
+          );
+          const row = res.rows[0];
+          updatedTrackedModels = row.tracked_models;
+          updatedFrequency = row.tracking_frequency;
+        } else {
+          // trackingFrequency only
+          const res = await db.query<{ id: string; tracked_models: unknown; tracking_frequency: string }>(
+            `UPDATE brands
+                SET tracking_frequency = $2, updated_at = NOW()
+              WHERE id = $1
+           RETURNING id, tracked_models, tracking_frequency`,
+            [brandId, trackingFrequency!]
+          );
+          const row = res.rows[0];
+          updatedTrackedModels = row.tracked_models;
+          updatedFrequency = row.tracking_frequency;
+        }
+
+        return c.json({ id: brandId, tracked_models: updatedTrackedModels, tracking_frequency: updatedFrequency });
+      } catch (err: unknown) {
+        const pgCode = (err as { code?: string }).code;
+        if (pgCode === "42703") {
+          // Column not yet present — migration pending
+          return c.json(
+            { message: "Settings schema is being migrated. Please try again in a moment." },
+            503
+          );
+        }
+        throw err;
+      }
+    }
+  );
+
+  // -------------------------------------------------------------------------
   // POST /api/brands/:id/audit — trigger an AI Visibility Audit
   // -------------------------------------------------------------------------
   app.post(
@@ -560,8 +844,23 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     // provider_breakdown may be a jsonb object (already parsed by pg driver).
     const bd = (scoreRow?.provider_breakdown ?? {}) as Record<string, unknown>;
 
+    // Load brand domain for "You" classification in key sources
+    const auditBrandRes = await db.query<{ brand_id: string }>(
+      `SELECT brand_id FROM geo_audit WHERE id = $1`,
+      [auditId]
+    );
+    const auditBrandId = auditBrandRes.rows[0]?.brand_id ?? null;
+    let brandDomainForSources: string | null = null;
+    if (auditBrandId) {
+      const bdRes = await db.query<{ domain: string | null }>(
+        `SELECT domain FROM brands WHERE id = $1`,
+        [auditBrandId]
+      );
+      brandDomainForSources = bdRes.rows[0]?.domain ?? null;
+    }
+
     // Compute top cited sources — pure aggregation, no extra DB query.
-    const topSources = computeTopSources(evidenceRes.rows, bd);
+    const topSources = computeTopSources(evidenceRes.rows, bd, brandDomainForSources);
 
     return c.json({
       scores: scoreRow
@@ -599,7 +898,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         position: r.citation_rank,
         sources: Array.isArray(r.sources) ? r.sources : [],
       })),
-      // Aggregated top citation domains (max 12, sorted by frequency).
+      // Aggregated top citation domains (max 25, sorted by frequency).
       topSources,
     });
   });
@@ -631,12 +930,13 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const audit = auditRes.rows[0];
     if (!audit) return c.json({ message: "Audit not found." }, 404);
 
-    // Fetch the brand name for the filename.
-    const brandRes = await db.query<{ name: string }>(
-      `SELECT name FROM brands WHERE id = $1`,
+    // Fetch the brand name and domain for the filename and "You" classification.
+    const brandRes = await db.query<{ name: string; domain: string | null }>(
+      `SELECT name, domain FROM brands WHERE id = $1`,
       [audit.brand_id]
     );
     const brandName = brandRes.rows[0]?.name ?? "brand";
+    const brandDomainForExport = brandRes.rows[0]?.domain ?? null;
 
     // Load scores + provider_breakdown.
     const scoreRes = await db.query<{
@@ -725,11 +1025,20 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       lines.push("");
 
       // Section 4 — Top cited sources (reuse helper — no extra DB query)
-      const topSources = computeTopSources(evidenceRes.rows, bd);
+      const topSources = computeTopSources(evidenceRes.rows, bd, brandDomainForExport);
       lines.push("Top Cited Sources");
-      lines.push("Domain,Label,Count");
+      lines.push("Domain,Label,Type,Used %,Avg Citations,Is You");
       for (const src of topSources) {
-        lines.push([csvEsc(src.domain), csvEsc(src.label), csvEsc(src.count)].join(","));
+        lines.push(
+          [
+            csvEsc(src.domain),
+            csvEsc(src.label),
+            csvEsc(src.type),
+            csvEsc(src.usedPct),
+            csvEsc(src.avgCitations),
+            csvEsc(src.isYou),
+          ].join(",")
+        );
       }
 
       c.header("Content-Type", "text/csv; charset=utf-8");

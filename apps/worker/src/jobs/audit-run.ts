@@ -19,6 +19,8 @@
  */
 
 import type { Job } from "bullmq";
+import { Queue } from "bullmq";
+import IORedis from "ioredis";
 import postgres from "postgres";
 import { createHash } from "crypto";
 import {
@@ -147,10 +149,10 @@ export async function processAuditJob(
     // Mark running.
     await sql`UPDATE geo_audit SET status = 'running' WHERE id = ${audit_id}`;
 
-    // Load the brand.
+    // Load the brand (with model tracking settings if available).
     const brandRows = await sql<
-      { name: string; category: string | null; domain: string | null }[]
-    >`SELECT name, category, domain FROM brands WHERE id = ${brand_id}`;
+      { name: string; category: string | null; domain: string | null; tracked_models: unknown; tracking_frequency: string | null }[]
+    >`SELECT name, category, domain, tracked_models, tracking_frequency FROM brands WHERE id = ${brand_id}`;
     const brand = brandRows[0];
     if (!brand) {
       await sql`UPDATE geo_audit SET status = 'failed' WHERE id = ${audit_id}`;
@@ -199,6 +201,24 @@ export async function processAuditJob(
       brandName: brand.name,
     }));
 
+    // Filter probes to brand's tracked models (graceful fallback if column missing or empty).
+    // Any error here MUST NOT propagate — fall back to all supported providers.
+    const ALL_SUPPORTED: GeoLLMProvider[] = ["openai", "anthropic", "perplexity", "gemini", "serp"];
+    let requestedProviders: GeoLLMProvider[] = REQUESTED_PROVIDERS; // default = all 5
+    try {
+      const rawModels = brand.tracked_models;
+      const trackedArr = Array.isArray(rawModels) ? (rawModels as string[]) : [];
+      const filtered = trackedArr.filter((m): m is GeoLLMProvider =>
+        ALL_SUPPORTED.includes(m as GeoLLMProvider)
+      );
+      if (filtered.length > 0) {
+        requestedProviders = filtered;
+      }
+      // else: empty/null → fall back to all supported (already set above)
+    } catch {
+      // Column missing or parse error → fall back to all (current behavior)
+    }
+
     // In LIVE mode, repeat each probe to capture AI non-determinism as a mention
     // RATE with confidence. Mock adapters are deterministic, so repeat=1 there.
     const liveMode =
@@ -209,9 +229,10 @@ export async function processAuditJob(
     const repeat = liveMode ? Number(process.env["GEO_PROBE_REPEAT"] ?? 3) : 1;
 
     // Fan out across permitted providers (routing gate applied inside).
+    // requestedProviders respects brand's tracked_models setting (filtered above).
     const result = await runProbes(queries, {
       region: userRegion,
-      requestedProviders: REQUESTED_PROVIDERS,
+      requestedProviders,
       repeat,
     });
 
@@ -484,4 +505,83 @@ export async function processAuditJob(
 
     return { audit_id, overall: score.overall };
   });
+}
+
+// ---------------------------------------------------------------------------
+// processDailyMonitoredBrands — enqueues scheduled-audit BullMQ jobs for all
+// brands that have monitoring_enabled=TRUE and tracking_frequency='daily'.
+//
+// Graceful fallback: if the tracking_frequency column doesn't exist yet (42703),
+// the function logs a warning and returns early — the worker MUST NOT crash.
+// Called by the daily interval loop in apps/worker/src/index.ts.
+// ---------------------------------------------------------------------------
+
+let _dailyAuditQueue: Queue | null = null;
+
+function getDailyAuditQueue(): Queue {
+  if (_dailyAuditQueue) return _dailyAuditQueue;
+  const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+  const redis = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+  redis.on("error", (err: Error) => {
+    logger.error("daily_monitor_redis_error", { message: err.message });
+  });
+  _dailyAuditQueue = new Queue("geo-audit", { connection: redis });
+  return _dailyAuditQueue;
+}
+
+export async function processDailyMonitoredBrands(sql: postgres.Sql): Promise<void> {
+  let rows: Array<{ id: string; tenant_id: string; region: string }>;
+
+  try {
+    rows = await sql<Array<{ id: string; tenant_id: string; region: string }>>`
+      SELECT id, tenant_id, region
+        FROM brands
+       WHERE monitoring_enabled = TRUE
+         AND tracking_frequency = 'daily'
+    `;
+  } catch (err: unknown) {
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode === "42703") {
+      // Column tracking_frequency not yet in schema — migration pending. Non-fatal.
+      logger.warn("daily_monitor_column_missing", {
+        message: "tracking_frequency column not found; skipping daily monitor loop",
+      });
+      return;
+    }
+    // Any other error: log and return — loop MUST NOT crash the worker.
+    logger.error("daily_monitor_query_failed", {
+      message: (err as Error).message?.slice(0, 200),
+    });
+    return;
+  }
+
+  if (rows.length === 0) {
+    logger.info("daily_monitor_no_brands", { count: 0 });
+    return;
+  }
+
+  const queue = getDailyAuditQueue();
+  let enqueued = 0;
+
+  for (const brand of rows) {
+    try {
+      // Unique jobId per dispatch (includes timestamp) to avoid dedup conflicts
+      // with the weekly monitor:${brandId} repeatable jobs.
+      const jobId = `daily-monitor:${brand.id}:${Date.now()}`;
+      await queue.add(
+        "scheduled-audit",
+        { tenant_id: brand.tenant_id, brand_id: brand.id, region: brand.region },
+        { jobId }
+      );
+      enqueued += 1;
+    } catch (err: unknown) {
+      logger.error("daily_monitor_enqueue_failed", {
+        brand_id: brand.id,
+        message: (err as Error).message?.slice(0, 200),
+      });
+      // Continue — one failure must not block others
+    }
+  }
+
+  logger.info("daily_monitor_dispatched", { enqueued, total: rows.length });
 }
