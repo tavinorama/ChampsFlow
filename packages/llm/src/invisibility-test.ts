@@ -140,6 +140,22 @@ export function buildTestPrompt(category: string): string {
   return `What is the best ${cat} for small businesses?`;
 }
 
+/**
+ * A small, REPRESENTATIVE buyer-prompt set for the free snapshot — a subset of
+ * the full in-platform audit portfolio. Using 3 prompts (not 1) makes the free
+ * score directionally consistent with the full audit and stops a single lucky
+ * prompt from reading as 100% citation.
+ */
+export function buildTestPrompts(category: string, brand: string): string[] {
+  const cat = category.trim() || "solution";
+  const b = brand.trim() || "your brand";
+  return [
+    `What is the best ${cat} for small businesses?`,
+    `Top ${cat} providers in 2026`,
+    `Is ${b} a good choice?`,
+  ];
+}
+
 const LIVE_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "gemini", "perplexity"];
 
 /**
@@ -216,12 +232,13 @@ export async function runInvisibilityTest(
   region: UserRegion = "US",
   domain?: string | null
 ): Promise<FreeTestResult> {
-  const prompt = buildTestPrompt(category);
-  const query = { queryHash: sha256(prompt), queryText: prompt, brandName: brand };
+  const prompts = buildTestPrompts(category, brand);
+  const prompt = prompts[0] ?? buildTestPrompt(category); // primary prompt shown in the UI
+  const queries = prompts.map((p) => ({ queryHash: sha256(p), queryText: p, brandName: brand }));
 
-  // Run probe and light crawl in parallel for minimum latency.
+  // Run all probes + light crawl in parallel for minimum latency.
   const [probeResult, crawl] = await Promise.all([
-    runProbes([query], {
+    runProbes(queries, {
       region,
       requestedProviders: LIVE_PROVIDERS,
       repeat: 1,
@@ -229,18 +246,46 @@ export async function runInvisibilityTest(
     crawlSite(domain ?? null),
   ]);
 
-  const engines: EngineResult[] = probeResult.responses.map((r) => {
+  // Aggregate the (prompt × provider) responses into one row per engine, while
+  // tracking cell-level citation for an honest, sample-representative AI rate.
+  interface EngineAgg {
+    live: boolean;
+    citedCells: number;
+    totalCells: number;
+    bestPosition: number | null;
+    competitorCited: boolean;
+  }
+  const byProvider = new Map<EngineResult["engine"], EngineAgg>();
+  for (const r of probeResult.responses) {
     const parsed = parseCitation(r.rawText ?? "", brand);
-    const competitorCited =
+    const compCited =
       !!competitor && detectCompetitors(r.rawText ?? "", [competitor]).length > 0;
-    return {
-      engine: r.provider,
-      live: isProviderLive(r.provider),
-      brandCited: parsed.mentioned,
-      brandPosition: parsed.position,
-      competitorCited,
-    };
-  });
+    const a: EngineAgg =
+      byProvider.get(r.provider) ?? {
+        live: isProviderLive(r.provider),
+        citedCells: 0,
+        totalCells: 0,
+        bestPosition: null,
+        competitorCited: false,
+      };
+    a.totalCells += 1;
+    if (parsed.mentioned) {
+      a.citedCells += 1;
+      if (parsed.position != null && (a.bestPosition == null || parsed.position < a.bestPosition)) {
+        a.bestPosition = parsed.position;
+      }
+    }
+    if (compCited) a.competitorCited = true;
+    byProvider.set(r.provider, a);
+  }
+
+  const engines: EngineResult[] = Array.from(byProvider.entries()).map(([provider, a]) => ({
+    engine: provider,
+    live: a.live,
+    brandCited: a.citedCells > 0,
+    brandPosition: a.bestPosition,
+    competitorCited: a.competitorCited,
+  }));
 
   const totalEngines = engines.length;
   const brandEngineCount = engines.filter((e) => e.brandCited).length;
@@ -248,7 +293,11 @@ export async function runInvisibilityTest(
   const enginesLive = engines.filter((e) => e.live).length;
 
   // --- AI vector ---
-  const citationRate = totalEngines > 0 ? brandEngineCount / totalEngines : 0;
+  // Honest rate over EVERY (prompt × engine) cell — not just per-engine — so one
+  // lucky prompt can't read as 100%.
+  const totalCells = Array.from(byProvider.values()).reduce((s, a) => s + a.totalCells, 0);
+  const citedCells = Array.from(byProvider.values()).reduce((s, a) => s + a.citedCells, 0);
+  const citationRate = totalCells > 0 ? citedCells / totalCells : 0;
 
   // Average position across engines where brand was cited
   const citedPositions = engines
@@ -348,7 +397,7 @@ export async function runInvisibilityTest(
         citationRate,
         avgPosition,
         sentiment,
-        note: `Tested across ${totalEngines} AI engine${totalEngines !== 1 ? "s" : ""} (${enginesLive} live). Brand cited on ${brandEngineCount}/${totalEngines} engines.`,
+        note: `Tested ${prompts.length} buyer prompts across ${totalEngines} AI engine${totalEngines !== 1 ? "s" : ""} (${enginesLive} live). Cited on ${brandEngineCount}/${totalEngines} engines (${Math.round(citationRate * 100)}% of prompt·engine checks).`,
       },
       performance: {
         schemaCoverage,
