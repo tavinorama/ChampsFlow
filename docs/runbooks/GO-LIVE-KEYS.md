@@ -1,4 +1,6 @@
-# TrustIndex AI — GO-LIVE ULTIMATE (tudo que falta, atualizado)
+# Ozvor — GO-LIVE ULTIMATE (tudo que falta, atualizado)
+
+> Marca: plataforma **Ozvor** (ozvor.com). O score mantém o nome **"TrustIndex AI Score"**; a consultoria é **"OrganicPosts by Ozvor"**.
 
 _Atualizado: 2026-06-26. Este é o documento único e completo: o que JÁ está feito, e exatamente o que VOCÊ precisa fazer para o produto ficar 100% funcional e vendendo._
 
@@ -49,7 +51,7 @@ STRIPE_PRICE_ID_AGENCY=price_1TmM1lJd5OWcDDzUeTLwZny1
 STRIPE_PRICE_ID_AGENCY_ANNUAL=price_1TmM1vJd5OWcDDzUoZehN3P8
 STRIPE_FOUNDER_COUPON_ID=FOUNDER30
 RESEND_API_KEY=PASTE_RESEND_KEY
-EMAIL_FROM=TrustIndex AI <hello@trustindexai.com>
+EMAIL_FROM=Ozvor <hello@ozvor.com>
 ```
 
 ### 1.2 Serviço `worker` (⭐ é onde as auditorias + a nutrição rodam)
@@ -65,7 +67,7 @@ GEMINI_API_KEY=PASTE_GEMINI_KEY
 PERPLEXITY_API_KEY=PASTE_PERPLEXITY_KEY
 SERP_API_KEY=PASTE_DATAFORSEO_BASE64
 RESEND_API_KEY=PASTE_RESEND_KEY
-EMAIL_FROM=TrustIndex AI <hello@trustindexai.com>
+EMAIL_FROM=Ozvor <hello@ozvor.com>
 ```
 ⚙️ **Garanta o worker com ≥1 réplica e sempre ligado** (Railway → worker → Settings) — BullMQ só dispara o monitoramento semanal e a nutrição com o worker conectado.
 
@@ -74,6 +76,7 @@ EMAIL_FROM=TrustIndex AI <hello@trustindexai.com>
 NEXT_PUBLIC_SUPABASE_URL=https://wdeabrzpgshnouvnfvml.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=PASTE_ANON_KEY
 INTERNAL_API_URL=https://api-production-2052.up.railway.app
+NEXT_PUBLIC_SITE_URL=https://ozvor.com   (canônico/OG/metadata + base da API pública /api/v1)
 NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 ```
 
@@ -105,15 +108,15 @@ NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 ---
 
 ## 3. SUPABASE
-- ✅ Banco 100% migrado (22 + nurture).
-- ⚙️ **Auth → URL Configuration:** adicionar `https://web-production-842ee.up.railway.app/dashboard` (e `https://trustindexai.com/dashboard` após DNS) à allowlist de redirect → login/magic-link funciona.
+- ✅ Banco 100% migrado (inclui nurture, brand_model_settings, lead sector/country, e **api_key** da API pública D2 — todas aplicadas via MCP).
+- ⚙️ **Auth → URL Configuration:** adicionar `https://web-production-842ee.up.railway.app/dashboard` (e `https://ozvor.com/dashboard` após DNS) à allowlist de redirect → login/magic-link funciona.
 
 ---
 
 ## 4. DNS (Hostinger → Cloudflare recomendado)
-1. Apontar `trustindexai.com` pro domínio web do Railway (apex não faz CNAME na Hostinger → use Cloudflare CNAME-flattening, ou `www` CNAME + redirect 301 do apex). Railway → web → Settings → Networking → Add custom domain (ele mostra o alvo CNAME + TXT).
+1. Apontar `ozvor.com` pro domínio web do Railway (apex não faz CNAME na Hostinger → use Cloudflare CNAME-flattening, ou `www` CNAME + redirect 301 do apex). Railway → web → Settings → Networking → Add custom domain (ele mostra o alvo CNAME + TXT).
 2. **NÃO mexer nos registros MX** (mantém email funcionando).
-3. Depois que resolver + emitir o cert: `WEB_ORIGIN=https://trustindexai.com` (api) + adicionar à allowlist do Supabase (§3).
+3. Depois que resolver + emitir o cert: `WEB_ORIGIN=https://ozvor.com` (api) + adicionar à allowlist do Supabase (§3).
 
 ---
 
@@ -123,6 +126,7 @@ NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 3. Assinar um plano (ou aplicar o cupom founder).
 4. **Ligar o monitoramento semanal** da marca → registra a auditoria recorrente (segunda 06:00 UTC).
 5. Rodar 1 auditoria manual = seu **baseline**. O gráfico de evolução do score é o seu print/vídeo semanal.
+6. (Opcional, D2) **API pública:** crie uma chave em **/account/api-keys** e puxe seus TrustIndex AI Scores via `GET https://ozvor.com/api/v1/brands` (header `Authorization: Bearer ozk_live_…`). Read-only, 120 req/min. Rate-limit por chave usa Upstash — se `UPSTASH_*` não estiver setado, ele libera (fail-open).
 
 ---
 
@@ -140,7 +144,7 @@ NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 4. ⭐⚙️ Stripe webhook + `STRIPE_WEBHOOK_SECRET` + ativar Customer Portal + wallets.
 5. ⭐⚙️ Supabase redirect allowlist + worker contínuo (≥1).
 6. 🔑 RESEND_API_KEY (api+worker) + domínio Resend → nutrição + bônus por email.
-7. ⚙️ DNS trustindexai.com → flip WEB_ORIGIN.
+7. ⚙️ DNS ozvor.com → flip WEB_ORIGIN.
 8. ⚙️ No produto: marca US + monitoramento semanal + baseline.
 
-_Quando reconectar o Railway MCP eu seto todos os NÃO-secretos (price IDs, WEB_ORIGIN, APP_DB_ROLE, SUPABASE_URL, INTERNAL_API_URL, EMAIL_FROM, cupom, Redis ref) por você — aí só sobram as chaves secretas (🔑) pra você colar._
+_O Railway MCP está **desconectado agora** (precisa de `railway login` de novo no seu lado). Quando reconectar, eu seto todos os NÃO-secretos (price IDs, WEB_ORIGIN, APP_DB_ROLE, SUPABASE_URL, INTERNAL_API_URL, NEXT_PUBLIC_SITE_URL, EMAIL_FROM, cupom, Redis ref) por você — aí só sobram as chaves secretas (🔑) pra você colar._

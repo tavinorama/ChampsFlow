@@ -1,9 +1,12 @@
-# TrustIndex AI — Go-Live Runbook
+# Ozvor — Go-Live Runbook
 
 > Step-by-step to take the product from "runs locally" to "live on the internet".
 > Ordered by the critical path. Items marked 🧑 are founder-only (accounts/keys);
-> 🤖 are already built/automated. Verified: all 16 migrations apply cleanly via
+> 🤖 are already built/automated. Verified: all migrations apply cleanly via
 > `packages/db/scripts/migrate.js`; web/api/worker Docker images build & run.
+>
+> Brand note: the platform is **Ozvor** (ozvor.com). The 3-vector score keeps its
+> name **"TrustIndex AI Score"**, and the consultancy arm is **"OrganicPosts by Ozvor"**.
 
 ---
 
@@ -20,7 +23,7 @@
 | **Stripe** | Billing | secret key, webhook secret, 3 subscription Price IDs (Starter/Growth/Agency) + **1 one-time Price for the $29 Get-Cited Kit** (`STRIPE_PRICE_ID_KIT`) |
 | **Resend** | Waitlist + login emails | `RESEND_API_KEY` + verified sender domain |
 | **Railway** | Hosting (web/api/worker/redis) | project + service tokens |
-| **Cloudflare** | DNS for trustindexai.com + organicposts.ai | nameservers |
+| **Cloudflare** | DNS for ozvor.com + organicposts.ai | nameservers |
 
 > Minimum to run REAL audits for early users: **Supabase + Anthropic + Resend + Railway + Cloudflare**. The rest can follow.
 
@@ -28,11 +31,15 @@
 
 ## Phase 1 — Supabase setup (🧑)
 
-1. Create a project (region `eu-central-1` for EU data residency).
-2. Auth → enable Email (magic link). Set Site URL = `https://trustindexai.com`.
+1. Create a project (region `eu-central-1` for EU data residency). *(Already done:
+   project `wdeabrzpgshnouvnfvml`.)*
+2. Auth → enable Email (magic link). Set **Site URL** = `https://ozvor.com` and add
+   **Redirect URLs** allowlist: `https://ozvor.com/**` (and `http://localhost:3000/**`
+   for dev). Social login (Google + Microsoft) also redirects through these.
 3. **Custom JWT claims** — add a hook / set `app_metadata` on users:
    `{ "tenant_id": "<uuid>", "app_role": "owner" }`. The API reads these
    (`apps/api/src/auth/middleware.ts`). Without `tenant_id`, auth returns 401.
+   (First-login provisioning at `POST /api/account/bootstrap` mints the tenant.)
 4. Copy: `SUPABASE_URL`, anon key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`),
    service-role key, and the **pooled** DB connection string.
 
@@ -47,7 +54,10 @@ DATABASE_URL="postgresql://...supabase.pooler...:6543/postgres" \
 ```
 - SSL is ON by default (required by Supabase). For a local/non-SSL DB add `PGSSL=disable`.
 - Idempotent: re-running skips applied migrations (tracked in `schema_migrations`).
-- Applies all 16 migrations including geo_audit, competitors, provider_keys.
+- Applies every migration in `packages/db/migrations/` including geo_audit,
+  competitors, provider_keys, brand_model_settings, lead sector/country, and
+  `api_key` (D2 public API). *(Prod is already current — these were applied via
+  the Supabase MCP as they were written.)*
 
 ---
 
@@ -67,14 +77,17 @@ Add a **Redis** plugin (Railway or Upstash). Postgres is Supabase (Phase 1).
 `NEXT_PUBLIC_*` and `INTERNAL_API_URL` must be **build args**, not just runtime env:
 ```
 INTERNAL_API_URL = https://<api-service>.railway.internal:3001
+NEXT_PUBLIC_SITE_URL = https://ozvor.com        # canonical URL, OG/metadata, public-API base
 NEXT_PUBLIC_SUPABASE_URL = https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY = <anon key>
 ```
 
 ### Environment variables per service
-**web (runtime):** `INTERNAL_API_URL`, `RESEND_API_KEY`, `WAITLIST_FROM_EMAIL`
-**api:** `DATABASE_URL`, `REDIS_URL`, `SUPABASE_URL`, `OAUTH_TOKEN_KEY` (64-hex — `openssl rand -hex 32`), `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `PERPLEXITY_API_KEY`, `GEMINI_API_KEY`, `SERP_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_STARTER/GROWTH/AGENCY`, `STRIPE_PRICE_ID_KIT` (one-time $29), `WEB_ORIGIN=https://trustindexai.com`, `NODE_ENV=production`
-**worker:** `DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY` (+ other provider keys), `GEO_PROBE_REPEAT=3`
+Legend: 🔑 = **secret** (founder pastes — never commit/echo) · ⚙️ = **non-secret config** (safe to set via Railway MCP).
+
+**web (runtime):** ⚙️`INTERNAL_API_URL`, ⚙️`NEXT_PUBLIC_SITE_URL=https://ozvor.com`, 🔑`RESEND_API_KEY`, ⚙️`WAITLIST_FROM_EMAIL`
+**api:** 🔑`DATABASE_URL`, 🔑`REDIS_URL`, ⚙️`SUPABASE_URL`, 🔑`OAUTH_TOKEN_KEY` (64-hex — `openssl rand -hex 32`), 🔑`ANTHROPIC_API_KEY`, 🔑`OPENAI_API_KEY`, 🔑`PERPLEXITY_API_KEY`, 🔑`GEMINI_API_KEY`, 🔑`SERP_API_KEY`, 🔑`STRIPE_SECRET_KEY`, 🔑`STRIPE_WEBHOOK_SECRET`, ⚙️`STRIPE_PRICE_ID_GROWTH/AGENCY` + ⚙️`STRIPE_PRICE_ID_KIT` (match the USD catalog Price IDs already created in Stripe), 🔑`UPSTASH_REDIS_REST_URL` + 🔑`UPSTASH_REDIS_REST_TOKEN` (rate limiting — incl. the D2 public-API per-key limit; fail-open if unset), ⚙️`WEB_ORIGIN=https://ozvor.com`, ⚙️`APP_DB_ROLE=app_user` (default), ⚙️`NODE_ENV=production`
+**worker:** 🔑`DATABASE_URL`, 🔑`REDIS_URL`, 🔑`ANTHROPIC_API_KEY` (+ other provider keys), ⚙️`GEO_PROBE_REPEAT=3`. **Scale to ≥1 replica** (the audit queue is processed here).
 
 > ⚠️ **NEVER set `DEV_AUTH_BYPASS` in production.** It is hard-gated to
 > `NODE_ENV !== production`, but do not set it regardless.
@@ -83,9 +96,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY = <anon key>
 
 ## Phase 4 — DNS (🧑, Cloudflare)
 
-- `trustindexai.com` → web service (CNAME to Railway domain), proxied.
+- `ozvor.com` → web service (CNAME to Railway domain), proxied. Add the custom
+  domain on the Railway **web** service first, then point the CNAME at it.
 - `organicposts.ai` → web service too (the /organicposts page) or a separate deploy later.
 - SSL: Cloudflare "Full (strict)". Email routing for `hello@`, `support@`, `dpo@`.
+- After DNS resolves, set `NEXT_PUBLIC_SITE_URL=https://ozvor.com` (web) and
+  `WEB_ORIGIN=https://ozvor.com` (api) — without these, OG/canonical URLs and CORS
+  still point at the old/placeholder origin.
 
 ---
 
@@ -98,26 +115,22 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY = <anon key>
 
 ---
 
-## Phase 5.5 — Runtime tenant isolation (🔴 HIGH — before paid multi-tenant launch)
+## Phase 5.5 — Runtime tenant isolation (✅ DONE — shipped)
 
-Audit 2026-06-13 found RLS + append-only are correctly DEFINED but not enforced
-at runtime because the app connects as the Postgres **superuser** (superusers
-bypass RLS + REVOKE), and the tenant variable isn't transaction-scoped on pooled
-connections. Required before onboarding multiple paying tenants:
+The 2026-06-13 audit found RLS defined but inert at runtime. **This is now fixed
+and shipped** (see `apps/api/src/db/{client,tenant-context}.ts`):
 
-1. **Connect as a non-superuser role.** Create `app_user` WITH LOGIN, NOSUPERUSER,
-   NOBYPASSRLS + the table grants the migrations define; point `DATABASE_URL` at
-   it (api + worker). On Supabase, use the RLS-respecting pooled role (not the
-   service-role key) for tenant traffic.
-2. **Transaction-scope the tenant context.** Tenant-scoped reads/writes must run
-   inside one transaction that begins with `set_config('app.current_tenant_id',
-   $tid, true)` (refactor the PostgresClient to a `withTenant(tid, fn)` and adopt
-   it across the ~39 route call sites). `set_config(local)` outside a transaction
-   does not survive the connection pool.
-3. **Prove it:** add a two-tenant insert/select isolation test run as `app_user`.
-   The CI guard `packages/db/scripts/check-rls.sql` now covers all 23 RLS tables.
+1. ✅ Every tenant-scoped query runs inside a transaction that sets
+   `app.current_tenant_id` and drops into the non-superuser `app_user` role, so
+   RLS actually applies. The tenant flows through an `AsyncLocalStorage` scope
+   established by `requireAuth` (and by `requireApiKey` for the public API).
+2. ✅ Boot guard `assertAppDbRoleSafe()` refuses to serve traffic if `APP_DB_ROLE`
+   is missing / a superuser / unassumable — RLS can never be silently off.
+3. ✅ CI guard `packages/db/scripts/check-rls.sql` covers all RLS tables.
 
-Until done, run as single-tenant (founder's own brands) only.
+**Founder action:** point `DATABASE_URL` (api + worker) at a **non-superuser**
+role that is a member of `app_user`. On Supabase, do NOT use the service-role
+connection for tenant traffic. If your login role differs, set `APP_DB_ROLE`.
 
 ## Phase 6 — Compliance gates (⚖️ before EU/BR launch)
 
@@ -134,10 +147,21 @@ These are **hard launch blockers** tracked in `docs/compliance/`:
 ## Phase 7 — Smoke test in production
 
 ```bash
-curl https://<api>/healthz                      # {"status":"ok",...}
-curl https://<api>/api/system/capabilities      # mode should be "live"
+curl https://ozvor.com/healthz                  # {"status":"ok",...}  (or https://<api>/healthz)
+curl https://ozvor.com/api/system/capabilities  # mode should be "live"
 # Sign in via magic link → create a brand → run an audit → see real citations
+
+# D2 public API: create a key at /account/api-keys, then:
+curl https://ozvor.com/api/v1/me \
+  -H "Authorization: Bearer ozk_live_…"          # {tenant_id, plan, scopes}
+curl https://ozvor.com/api/v1/brands \
+  -H "Authorization: Bearer ozk_live_…"          # {data:[…brands + latest score]}
 ```
+
+### Stripe (Phase 5) — also verify
+- Webhook endpoint = `https://ozvor.com/api/billing/webhook`; resend a test event,
+  confirm 200 + `STRIPE_WEBHOOK_SECRET` matches.
+- Enable the **Customer Portal** (Billing → portal config) so `POST /api/billing/portal` works.
 
 ---
 
@@ -156,5 +180,5 @@ No code change required — customers can also bring their own keys via
 1. Supabase + Anthropic + Resend keys → audits become real
 2. `npm run db:migrate` against Supabase
 3. Deploy 3 services to Railway + add Redis
-4. Point trustindexai.com DNS
+4. Point ozvor.com DNS + set `NEXT_PUBLIC_SITE_URL` / `WEB_ORIGIN`
 → **Run free GEO audits for waitlist users.** Stripe + entity follow for paid conversion.
