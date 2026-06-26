@@ -109,7 +109,7 @@ describe("sendFreeTestResultEmail", () => {
 
     expect(sendMock).toHaveBeenCalledOnce();
     const call = sendMock.mock.calls[0]?.[0] as { from: string };
-    expect(call.from).toContain("trustindexai.com");
+    expect(call.from).toContain("ozvor.com");
   });
 
   it("includes the prompt text in the HTML body for transparency", async () => {

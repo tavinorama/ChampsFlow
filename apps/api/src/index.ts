@@ -53,6 +53,7 @@ import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerChatRoutes } from "./routes/chat";
+import { registerApiKeyRoutes } from "./routes/api-keys";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -228,6 +229,11 @@ app.get("/healthz", async (c) => {
 
 registerSocialAccountRoutes(app, db);
 registerDraftRoutes(app, db);
+// D2: Public API + API keys
+//   Management (JWT, tenant-scoped): GET/POST/DELETE /api/account/api-keys
+//   Public read-only (API-key-authed): GET /api/v1/{me,brands,brands/:id,
+//     brands/:id/audits,audits/:id}
+registerApiKeyRoutes(app, db);
 // C1: GEO Audit Engine (TrustIndex AI)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
