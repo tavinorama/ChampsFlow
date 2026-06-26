@@ -322,6 +322,13 @@ const MARKETING_STYLES = `
   @media (max-width: 700px) {
     .mk-navlink-hide-sm { display: none !important; }
   }
+  /* On very small phones, drop the extra "Free AI Test" nav link and tighten the
+     Sign-in button so it never clips at the right edge. The hero CTA + the sticky
+     buy bar already surface the free test, so nothing is lost. */
+  @media (max-width: 480px) {
+    .mk-navlink-hide-xs { display: none !important; }
+    .mk-signin { padding: 0.5rem 0.875rem; }
+  }
 
   /* ── Smooth focus outlines ────────────────────────────────────────── */
   .mk-root :focus-visible {
@@ -443,7 +450,7 @@ function PublicNavbar() {
         >
           <Link
             href="/test"
-            className="mk-navlink"
+            className="mk-navlink mk-navlink-hide-xs"
             style={{
               fontSize: "0.875rem",
               fontWeight: 700,
