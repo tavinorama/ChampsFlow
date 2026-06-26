@@ -1,0 +1,2 @@
+ALTER TABLE lead_capture DROP COLUMN IF EXISTS country;
+ALTER TABLE lead_capture DROP COLUMN IF EXISTS sector;
