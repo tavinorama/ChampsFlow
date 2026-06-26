@@ -1,83 +1,102 @@
 /**
- * Design tokens — Organic Posts
+ * Design tokens — Ozvor brand
  *
- * v4 dark-mode strategy:
- *  - OS preference:   @media (prefers-color-scheme: dark) targeting html:not([data-theme])
- *  - Manual override: html[data-theme="dark"]  /  html[data-theme="light"]
- *  Both selectors apply the same variable set so the ThemeToggle component
- *  only needs to set/remove the data-theme attribute on <html>.
+ * v5 dark-first strategy:
+ *  - :root holds DARK values (dark is the default theme — no attribute needed)
+ *  - html[data-theme="light"] is the explicit opt-in override
+ *  - OS preference is NOT used — dark is always the default regardless of system setting.
+ *
+ * All existing custom-property NAMES are preserved so every component re-skins
+ * with zero per-component edits. Only values change.
  */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 
-  /* ── Colors — light mode (TrustIndex AI brand) ─────────────────────
-   * Core navy #071426 · Signal Cyan #25D5FF · Index Blue #4F7CFF
-   * Proof Green #28E0A6 · Cloud #F7FAFC · Ink #0B1220 · Slate #64748B
-   * Primary = Index Blue (accessible on white); Cyan reserved for accents
-   * on dark surfaces (cyan-on-white fails contrast). */
-  /* Warm / approachable SMB palette — friendly green + warm cream, AA-safe.
-   * (Replaces the cool Index-Blue system; data-viz keeps its categorical ramp.) */
-  --color-bg:              #FCFAF5;  /* warm off-white page background */
-  --color-primary:         #0A7E5A;  /* Friendly Green (AA on white for text + buttons) */
-  --color-primary-hover:   #086A4C;
-  --color-accent-cyan:     #25D5FF;  /* legacy dark-surface accent (kept) */
-  --color-accent-amber:    #E0982F;  /* warm secondary accent */
-  --color-surface:         #ffffff;
-  --color-surface-muted:   #FBF7F0;  /* warm cream */
-  --color-border:          #ECE5D9;  /* warm border */
-  --color-error:           #dc2626;
-  --color-success:         #0C8A63;  /* Proof Green (slightly deeper for warm bg contrast) */
-  --color-success-subtle:  rgba(15, 180, 136, 0.15);
-  --color-success-surface: rgba(15, 180, 136, 0.06);
-  --color-muted:           #6E665A;  /* warm slate */
-  --color-text:            #1A1712;  /* warm near-black */
-  --color-badge-ai-bg:     #E9F6EF;  /* soft green tint */
-  --color-badge-ai-text:   #0A7E5A;
+  /* ── Colors — dark mode (Ozvor emerald/gold palette) ──────────────────
+   * Canvas #0a0f0d · Emerald #27c98a · Gold #e6a93f
+   * Dark is the DEFAULT — no data-theme attribute on <html>. */
 
-  /* ── Badge / status semantic tokens ───────────────────────────────── */
-  /* Plan tier badges */
-  --color-badge-plan-free-bg:     #F1F5F9;
-  --color-badge-plan-free-text:   #6E665A;
-  --color-badge-plan-starter-bg:  #EFF6FF;
-  --color-badge-plan-starter-text:#1D4ED8;
-  --color-badge-plan-growth-bg:   #F0FDF4;
-  --color-badge-plan-growth-text: #15803D;
-  --color-badge-plan-agency-bg:   #F5F3FF;
-  --color-badge-plan-agency-text: #7C3AED;
-  /* Status / lifecycle badges */
-  --color-badge-status-active-bg:    #dcfce7;
-  --color-badge-status-active-text:  #15803d;
-  --color-badge-status-info-bg:      #eff6ff;
-  --color-badge-status-info-text:    #1d4ed8;
-  --color-badge-status-warn-bg:      #fef9c3;
-  --color-badge-status-warn-text:    #a16207;
-  --color-badge-status-error-bg:     #fee2e2;
-  --color-badge-status-error-text:   #b91c1c;
-  --color-badge-status-neutral-bg:   #f3f4f6;
-  --color-badge-status-neutral-text: #6b7280;
-  /* Connected / system status */
-  --color-badge-connected-bg:    rgba(15,180,136,0.12);
-  --color-badge-connected-text:  var(--color-success);
-  /* Warning / EU note */
-  --color-note-warn:  #d97706;
-  /* Font size for small badges (smaller than caption) */
-  --font-size-badge:  0.6875rem;  /* 11px — between caption(12px) and 0.6rem */
+  --color-bg:              #0a0f0d;
+  --color-surface:         #0e1714;
+  --color-surface-muted:   #0c1411;
+  --color-border:          rgba(180,214,198,0.12);
+  --color-text:            #f6faf7;
+  --color-muted:           #a6b4ac;
 
-  /* Marketing surface tokens — warm green system */
-  --color-teal-surface:    #EAF7F0;
-  --color-teal-border:     #CFE9DB;
-  --color-stat-bar:        #16231C;  /* deep warm green-charcoal */
-  --color-pricing-dark:    #16231C;
-  --color-highlight-border:#CFE9DB;
+  --color-primary:         #27c98a;
+  --color-primary-hover:   #2de09a;
+  --color-accent-amber:    #e6a93f;
+  --color-accent-cyan:     #5fdfa8;
 
-  /* Focus */
-  --color-focus-outline:   #0A7E5A;
+  --color-error:           #f0584e;
+  --color-success:         #27c98a;
+  --color-success-subtle:  rgba(39,201,138,0.15);
+  --color-success-surface: rgba(39,201,138,0.07);
+
+  --color-focus-outline:   #27c98a;
   --focus-outline-width:   3px;
   --focus-outline-offset:  2px;
 
+  /* Badge — AI */
+  --color-badge-ai-bg:     rgba(39,201,138,0.12);
+  --color-badge-ai-text:   #5fdfa8;
+
+  /* Font size for small badges */
+  --font-size-badge:       0.6875rem;
+
+  /* Marketing surface tokens */
+  --color-teal-surface:    rgba(14,23,20,0.80);
+  --color-teal-border:     rgba(180,214,198,0.15);
+  --color-stat-bar:        #06140e;
+  --color-pricing-dark:    #06140e;
+  --color-highlight-border:rgba(39,201,138,0.25);
+
+  /* Plan tier badges — dark */
+  --color-badge-plan-free-bg:       rgba(166,180,172,0.12);
+  --color-badge-plan-free-text:     #a6b4ac;
+  --color-badge-plan-starter-bg:    rgba(39,201,138,0.10);
+  --color-badge-plan-starter-text:  #5fdfa8;
+  --color-badge-plan-growth-bg:     rgba(39,201,138,0.14);
+  --color-badge-plan-growth-text:   #27c98a;
+  --color-badge-plan-agency-bg:     rgba(230,169,63,0.12);
+  --color-badge-plan-agency-text:   #e6c07a;
+
+  /* Status / lifecycle badges — dark */
+  --color-badge-status-active-bg:   rgba(39,201,138,0.14);
+  --color-badge-status-active-text: #27c98a;
+  --color-badge-status-info-bg:     rgba(95,223,168,0.10);
+  --color-badge-status-info-text:   #5fdfa8;
+  --color-badge-status-warn-bg:     rgba(230,169,63,0.14);
+  --color-badge-status-warn-text:   #e6c07a;
+  --color-badge-status-error-bg:    rgba(240,88,78,0.14);
+  --color-badge-status-error-text:  #f0584e;
+  --color-badge-status-neutral-bg:  rgba(166,180,172,0.12);
+  --color-badge-status-neutral-text:#a6b4ac;
+
+  /* Connected */
+  --color-badge-connected-bg:   rgba(39,201,138,0.12);
+  --color-badge-connected-text: #27c98a;
+
+  /* Warning note */
+  --color-note-warn: #e6c07a;
+
+  /* ── New Ozvor tokens ────────────────────────────────────────────── */
+  --color-gold:       #e6a93f;
+  --color-gold-ink:   #e6c07a;
+  --color-accent-ink: #5fdfa8;
+  --atmo-op:          0.5;
+  --atmo-blend:       screen;
+
+  /* ── Shadows — dark-adjusted ─────────────────────────────────────── */
+  --shadow-card:       0 1px 3px rgba(0,0,0,.6), 0 1px 2px rgba(0,0,0,.5);
+  --shadow-card-hover: 0 8px 24px rgba(0,0,0,.6), 0 2px 8px rgba(0,0,0,.5);
+  --shadow-modal:      0 20px 25px -5px rgba(0,0,0,.7), 0 10px 10px -5px rgba(0,0,0,.5);
+  --shadow-blue:       0 8px 32px rgba(39,201,138,0.18);
+
   /* ── Typography ────────────────────────────────────────────────── */
-  --font-family: "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-family: "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:   "JetBrains Mono", ui-monospace, monospace;
 
   --font-size-h1:       1.5rem;
   --font-size-h2:       1.25rem;
@@ -113,12 +132,12 @@
   --space-20: 5rem;
   --space-24: 6rem;
 
-  --padding-component:      var(--space-3) var(--space-4);
-  --gap-section:            var(--space-6);
-  --gap-section-large:      var(--space-8);
-  --margin-page-mobile:     var(--space-4);
-  --margin-page-tablet:     var(--space-6);
-  --margin-page-desktop:    var(--space-8);
+  --padding-component:   var(--space-3) var(--space-4);
+  --gap-section:         var(--space-6);
+  --gap-section-large:   var(--space-8);
+  --margin-page-mobile:  var(--space-4);
+  --margin-page-tablet:  var(--space-6);
+  --margin-page-desktop: var(--space-8);
 
   /* ── Radius ────────────────────────────────────────────────────── */
   --radius-sm:    6px;
@@ -132,12 +151,6 @@
   --min-tap-target:    44px;
   --min-button-height: 48px;
   --bottom-nav-height: 56px;
-
-  /* ── Shadows ───────────────────────────────────────────────────── */
-  --shadow-card:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
-  --shadow-card-hover: 0 8px 24px rgba(0,0,0,.10), 0 2px 8px rgba(0,0,0,.06);
-  --shadow-modal:      0 20px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04);
-  --shadow-blue:       0 8px 32px rgba(37,99,235,.18);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -155,116 +168,81 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
- * Dark mode — OS-level preference (no explicit user choice stored)
- * ───────────────────────────────────────────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  html:not([data-theme]) {
-    --color-bg:              #06121f;
-    --color-primary:         #34D399;
-    --color-primary-hover:   #5ee9b4;
-    --color-surface:         #0a1a30;
-    --color-surface-muted:   #0f2742;
-    --color-border:          #334155;
-    --color-error:           #f87171;
-    --color-success:         #34d399;
-    --color-success-subtle:  rgba(52, 211, 153, 0.18);
-    --color-success-surface: rgba(52, 211, 153, 0.07);
-    --color-muted:           #94a3b8;
-    --color-text:            #f1f5f9;
-    --color-badge-ai-bg:     #1e3a5f;
-    --color-badge-ai-text:   #93c5fd;
-    --color-focus-outline:   #60a5fa;
-    --color-teal-surface:    #0e1a2f;
-    --color-teal-border:     #1e3a5f;
-    --color-stat-bar:        #020617;
-    --color-pricing-dark:    #020617;
-    --color-highlight-border:rgba(96,165,250,.25);
-    --shadow-card:           0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
-    --shadow-card-hover:     0 8px 24px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
-    --shadow-modal:          0 20px 25px -5px rgba(0,0,0,.6), 0 10px 10px -5px rgba(0,0,0,.4);
-    --shadow-blue:           0 8px 32px rgba(96,165,250,.12);
-    /* Badge / status — dark-mode overrides */
-    --color-badge-plan-free-bg:       #1e293b;
-    --color-badge-plan-free-text:     #94a3b8;
-    --color-badge-plan-starter-bg:    #1e3a5f;
-    --color-badge-plan-starter-text:  #93c5fd;
-    --color-badge-plan-growth-bg:     #052e16;
-    --color-badge-plan-growth-text:   #4ade80;
-    --color-badge-plan-agency-bg:     #2e1065;
-    --color-badge-plan-agency-text:   #c4b5fd;
-    --color-badge-status-active-bg:   rgba(52,211,153,0.15);
-    --color-badge-status-active-text: #4ade80;
-    --color-badge-status-info-bg:     #1e3a5f;
-    --color-badge-status-info-text:   #93c5fd;
-    --color-badge-status-warn-bg:     rgba(251,191,36,0.15);
-    --color-badge-status-warn-text:   #fbbf24;
-    --color-badge-status-error-bg:    rgba(248,113,113,0.15);
-    --color-badge-status-error-text:  #f87171;
-    --color-badge-status-neutral-bg:  #1e293b;
-    --color-badge-status-neutral-text:#94a3b8;
-    --color-badge-connected-bg:       rgba(52,211,153,0.15);
-    --color-badge-connected-text:     #34d399;
-    --color-note-warn:                #fbbf24;
-  }
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Dark mode — manual override via ThemeToggle (data-theme="dark")
- * ───────────────────────────────────────────────────────────────────────── */
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --color-bg:              #06121f;
-  --color-primary:         #34D399;
-  --color-primary-hover:   #5ee9b4;
-  --color-surface:         #0a1a30;
-  --color-surface-muted:   #0f2742;
-  --color-border:          #334155;
-  --color-error:           #f87171;
-  --color-success:         #34d399;
-  --color-success-subtle:  rgba(52, 211, 153, 0.18);
-  --color-success-surface: rgba(52, 211, 153, 0.07);
-  --color-muted:           #94a3b8;
-  --color-text:            #f1f5f9;
-  --color-badge-ai-bg:     #1e3a5f;
-  --color-badge-ai-text:   #93c5fd;
-  --color-focus-outline:   #60a5fa;
-  --color-teal-surface:    #0e1a2f;
-  --color-teal-border:     #1e3a5f;
-  --color-stat-bar:        #020617;
-  --color-pricing-dark:    #020617;
-  --color-highlight-border:rgba(96,165,250,.25);
-  --shadow-card:           0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
-  --shadow-card-hover:     0 8px 24px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
-  --shadow-modal:          0 20px 25px -5px rgba(0,0,0,.6), 0 10px 10px -5px rgba(0,0,0,.4);
-  --shadow-blue:           0 8px 32px rgba(96,165,250,.12);
-  /* Badge / status — dark-mode overrides */
-  --color-badge-plan-free-bg:       #1e293b;
-  --color-badge-plan-free-text:     #94a3b8;
-  --color-badge-plan-starter-bg:    #1e3a5f;
-  --color-badge-plan-starter-text:  #93c5fd;
-  --color-badge-plan-growth-bg:     #052e16;
-  --color-badge-plan-growth-text:   #4ade80;
-  --color-badge-plan-agency-bg:     #2e1065;
-  --color-badge-plan-agency-text:   #c4b5fd;
-  --color-badge-status-active-bg:   rgba(52,211,153,0.15);
-  --color-badge-status-active-text: #4ade80;
-  --color-badge-status-info-bg:     #1e3a5f;
-  --color-badge-status-info-text:   #93c5fd;
-  --color-badge-status-warn-bg:     rgba(251,191,36,0.15);
-  --color-badge-status-warn-text:   #fbbf24;
-  --color-badge-status-error-bg:    rgba(248,113,113,0.15);
-  --color-badge-status-error-text:  #f87171;
-  --color-badge-status-neutral-bg:  #1e293b;
-  --color-badge-status-neutral-text:#94a3b8;
-  --color-badge-connected-bg:       rgba(52,211,153,0.15);
-  --color-badge-connected-text:     #34d399;
-  --color-note-warn:                #fbbf24;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────
- * Light mode — manual override (data-theme="light") always stays light
- * even if OS switches to dark.
+ * Light mode — explicit opt-in via data-theme="light"
+ * (Dark is the root default; this block overrides to the cream/emerald palette.)
  * ───────────────────────────────────────────────────────────────────────── */
 html[data-theme="light"] {
   color-scheme: light;
+
+  --color-bg:              #f3f1e8;
+  --color-surface:         #ffffff;
+  --color-surface-muted:   #f7f6ef;
+  --color-border:          rgba(20,45,32,0.12);
+  --color-text:            #16221b;
+  --color-muted:           #51625a;
+
+  --color-primary:         #0c7d54;
+  --color-primary-hover:   #0a6b47;
+  --color-accent-amber:    #e6a93f;
+  --color-accent-cyan:     #0c7d54;
+
+  --color-error:           #c9312b;
+  --color-success:         #0c7d54;
+  --color-success-subtle:  rgba(12,125,84,0.12);
+  --color-success-surface: rgba(12,125,84,0.06);
+
+  --color-focus-outline:   #0c7d54;
+
+  /* Badge — AI */
+  --color-badge-ai-bg:     rgba(12,125,84,0.10);
+  --color-badge-ai-text:   #0c7d54;
+
+  /* Marketing surface tokens */
+  --color-teal-surface:    #eef6f1;
+  --color-teal-border:     rgba(20,45,32,0.12);
+  --color-stat-bar:        #16221b;
+  --color-pricing-dark:    #16221b;
+  --color-highlight-border:rgba(12,125,84,0.20);
+
+  /* Plan tier badges — light */
+  --color-badge-plan-free-bg:       #f1f5f0;
+  --color-badge-plan-free-text:     #51625a;
+  --color-badge-plan-starter-bg:    #e8f5ee;
+  --color-badge-plan-starter-text:  #0c7d54;
+  --color-badge-plan-growth-bg:     #e8f5ee;
+  --color-badge-plan-growth-text:   #0c7d54;
+  --color-badge-plan-agency-bg:     #fdf3e3;
+  --color-badge-plan-agency-text:   #9a6a1e;
+
+  /* Status / lifecycle badges — light */
+  --color-badge-status-active-bg:   rgba(12,125,84,0.12);
+  --color-badge-status-active-text: #0c7d54;
+  --color-badge-status-info-bg:     rgba(12,125,84,0.08);
+  --color-badge-status-info-text:   #0c7d54;
+  --color-badge-status-warn-bg:     rgba(185,121,31,0.12);
+  --color-badge-status-warn-text:   #9a6a1e;
+  --color-badge-status-error-bg:    rgba(201,49,43,0.12);
+  --color-badge-status-error-text:  #c9312b;
+  --color-badge-status-neutral-bg:  #f1f5f0;
+  --color-badge-status-neutral-text:#51625a;
+
+  /* Connected */
+  --color-badge-connected-bg:   rgba(12,125,84,0.10);
+  --color-badge-connected-text: #0c7d54;
+
+  /* Warning note */
+  --color-note-warn: #9a6a1e;
+
+  /* New Ozvor tokens — light overrides */
+  --color-gold:       #e6a93f;
+  --color-gold-ink:   #9a6a1e;
+  --color-accent-ink: #0c7d54;
+  --atmo-op:          0.42;
+  --atmo-blend:       multiply;
+
+  /* Shadows — light-adjusted */
+  --shadow-card:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05);
+  --shadow-card-hover: 0 8px 24px rgba(0,0,0,.10), 0 2px 8px rgba(0,0,0,.06);
+  --shadow-modal:      0 20px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04);
+  --shadow-blue:       0 8px 32px rgba(12,125,84,0.15);
 }

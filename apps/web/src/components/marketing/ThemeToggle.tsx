@@ -3,14 +3,12 @@
 /**
  * ThemeToggle — light/dark switcher for marketing pages.
  *
- * Robust strategy:
- *  - On mount: resolve the *effective* theme (stored choice → OS preference)
- *    and write data-theme onto <html> so the DOM, localStorage, and the
- *    button's icon are always in sync. This fixes the case where an OS-dark
- *    user had no explicit choice — the first click now reliably flips.
- *  - On click: flip, persist to localStorage, set data-theme immediately.
- *  - Renders a real <button> on the server (moon icon default) so there is
- *    never an invisible-placeholder flash.
+ * Dark-first strategy (v2):
+ *  - Dark is the DEFAULT — no data-theme attribute on <html>.
+ *  - Light is explicit opt-in: sets data-theme="light".
+ *  - On mount: resolve stored preference; dark = remove attribute, light = set attribute.
+ *  - On click: flip between the two states.
+ *  - SSR renders the moon icon (dark default) — no hydration flash.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -21,20 +19,20 @@ const STORAGE_KEY = "op-theme";
 function resolveTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "dark" || stored === "light") return stored;
+    if (stored === "light") return "light";
   } catch {
     /* localStorage blocked */
   }
-  try {
-    if (window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
-  } catch {
-    /* matchMedia unavailable */
-  }
-  return "light";
+  // Dark is default — no OS preference check needed
+  return "dark";
 }
 
 function applyTheme(theme: Theme) {
-  document.documentElement.setAttribute("data-theme", theme);
+  if (theme === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
   try {
     localStorage.setItem(STORAGE_KEY, theme);
   } catch {
@@ -43,16 +41,15 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
-  // On mount: sync DOM + state to the effective theme.
+  // On mount: resolve stored preference and sync DOM + state.
   useEffect(() => {
     const t = resolveTheme();
     setTheme(t);
     setMounted(true);
-    // Ensure <html> matches what we resolved (covers OS-dark with no choice).
-    document.documentElement.setAttribute("data-theme", t);
+    applyTheme(t);
   }, []);
 
   const toggle = useCallback(() => {
@@ -63,7 +60,8 @@ export function ThemeToggle() {
     });
   }, []);
 
-  const isDark = mounted && theme === "dark";
+  // When not mounted (SSR), show moon because dark is the default.
+  const isDark = !mounted || theme === "dark";
 
   return (
     <button
