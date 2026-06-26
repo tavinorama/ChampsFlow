@@ -538,7 +538,7 @@ export default function LandingPage() {
                     <span style={{
                       fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.08em',
                       textTransform:'uppercase',padding:'3px 8px',borderRadius:5,
-                      background:'rgba(230,169,63,0.16)',color:'var(--color-gold-ink,#e6c07a)',
+                      background:'rgba(39,201,138,0.12)',color:'var(--color-accent-ink,#5fdfa8)',
                     }}>One-time</span>
                   </div>
                   <div style={{marginTop:7,fontSize:14.5,lineHeight:1.5,color:'var(--color-muted)'}}>
@@ -551,8 +551,8 @@ export default function LandingPage() {
                     marginTop:8,display:'inline-block',
                     fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:13.5,fontWeight:700,
                     padding:'9px 16px',borderRadius:9,border:'none',
-                    background:'linear-gradient(135deg,#e6a93f,#b9791f)',
-                    color:'#1a1305',textDecoration:'none',
+                    background:'linear-gradient(135deg,#27c98a,#0c7d54)',
+                    color:'#06140e',textDecoration:'none',
                   }}>Get the Kit →</Link>
                 </div>
               </div>
@@ -564,15 +564,15 @@ export default function LandingPage() {
                 position:'absolute',left:-46,top:18,
                 display:'grid',placeItems:'center',
                 width:36,height:36,borderRadius:'50%',
-                background:'rgba(230,169,63,0.10)',
-                border:'2px solid rgba(230,169,63,0.4)',
+                background:'rgba(39,201,138,0.10)',
+                border:'2px solid rgba(39,201,138,0.5)',
                 fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,
-                color:'var(--color-gold-ink,#e6c07a)',zIndex:2,
+                color:'var(--color-accent-ink,#5fdfa8)',zIndex:2,
               }}>03</span>
               <div style={{
                 display:'flex',alignItems:'center',gap:20,flexWrap:'wrap',
                 padding:'22px 24px',borderRadius:15,
-                border:'1px solid rgba(230,169,63,0.20)',
+                border:'1px solid var(--color-border)',
                 background:'var(--color-surface)',
               }}>
                 <div style={{flex:1,minWidth:240}}>
@@ -581,7 +581,7 @@ export default function LandingPage() {
                     <span style={{
                       fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.08em',
                       textTransform:'uppercase',padding:'3px 8px',borderRadius:5,
-                      background:'rgba(230,169,63,0.12)',color:'var(--color-gold-ink,#e6c07a)',
+                      background:'rgba(39,201,138,0.12)',color:'var(--color-accent-ink,#5fdfa8)',
                     }}>Monthly/annual</span>
                   </div>
                   <div style={{marginTop:7,fontSize:14.5,lineHeight:1.5,color:'var(--color-muted)'}}>
@@ -589,14 +589,13 @@ export default function LandingPage() {
                   </div>
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:22,fontWeight:800,color:'var(--color-gold-ink,#e6c07a)'}}>from $99</div>
+                  <div style={{fontSize:22,fontWeight:800,color:'var(--color-text)'}}>from $99</div>
                   <Link href="/pricing" style={{
                     marginTop:8,display:'inline-block',
                     fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:13.5,fontWeight:700,
-                    padding:'9px 16px',borderRadius:9,
-                    border:'1px solid rgba(230,169,63,0.4)',
-                    background:'rgba(230,169,63,0.10)',
-                    color:'var(--color-gold-ink,#e6c07a)',textDecoration:'none',
+                    padding:'9px 16px',borderRadius:9,border:'none',
+                    background:'linear-gradient(135deg,#27c98a,#0c7d54)',
+                    color:'#06140e',textDecoration:'none',
                   }}>See plans →</Link>
                 </div>
               </div>
