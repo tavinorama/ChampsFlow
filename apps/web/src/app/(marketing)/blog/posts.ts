@@ -130,6 +130,56 @@ export const POSTS: Post[] = [
   },
   {
     type: "article",
+    slug: "schema-markup-for-ai-search",
+    title: "Schema Markup: How to Speak the Language AI Engines Read",
+    excerpt:
+      "Schema markup is the unglamorous, high-leverage GEO move most small businesses skip. It's how you tell an AI exactly what you are, what you offer, and why it can trust the answer.",
+    readTime: "8 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "how-to-measure-ai-visibility",
+    title: "How to Measure Whether AI Actually Mentions Your Brand",
+    excerpt:
+      "You can't improve what you don't measure — and \"I asked ChatGPT once and it mentioned us\" isn't measurement. Here's how to build a real AI-visibility baseline.",
+    readTime: "8 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "zero-click-search-and-ai-traffic",
+    title: "Zero-Click Search Is Here. Does AI Traffic Still Convert?",
+    excerpt:
+      "AI answers questions without sending a click — which sounds like a disaster for businesses. The data is more interesting (and more hopeful) than the panic suggests.",
+    readTime: "8 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "geo-vs-seo-where-to-spend-2026",
+    title: "GEO vs SEO: What's the Same, What's New, and Where to Spend in 2026",
+    excerpt:
+      "GEO didn't kill SEO — it built a second floor on top of it. An honest map of what overlaps, what's genuinely new, and how a small business should split its effort.",
+    readTime: "8 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "30-day-geo-plan-small-business",
+    title: "A 30-Day GEO Starter Plan for Small Businesses",
+    excerpt:
+      "No agency, no big budget, an hour or two a week. A concrete four-week plan to go from invisible in AI answers to showing up — and knowing it.",
+    readTime: "9 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
     slug: "how-small-businesses-get-cited-by-chatgpt",
     title:
       "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity (and Why It Matters in 2026)",

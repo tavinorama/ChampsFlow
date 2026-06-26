@@ -348,6 +348,281 @@ export const BLOG_CONTENT: BlogContent[] = [
     ],
     sources: [S.seRankingReviews, S.brightlocal, S.ahrefsFresh, S.soci],
   },
+  // 6 ───────────────────────────────────────────────────────────────────────
+  {
+    slug: "schema-markup-for-ai-search",
+    title: "Schema Markup: How to Speak the Language AI Engines Read",
+    dek: "Schema markup is the unglamorous, high-leverage GEO move most small businesses skip. It's how you tell an AI exactly what you are, what you offer, and why it can trust the answer.",
+    category: "Technical GEO",
+    datePublished: "2026-06-26",
+    dateDisplay: "26 June 2026",
+    readTime: "8 min read",
+    keywords: ["schema markup", "structured data", "AI search", "JSON-LD", "GEO technical"],
+    takeaways: [
+      "Schema markup (structured data) is machine-readable labelling that tells engines what your content *means*, not just what it says.",
+      "It measurably helps AI engines understand and surface your content — and most small-business sites have little or none.",
+      "The high-value types for SMBs are Organization, LocalBusiness, Product/Service, FAQ, Review/AggregateRating, and Article.",
+      "It's cheap, low-risk, and one of the few GEO levers entirely within your control.",
+    ],
+    body: [
+      { t: "p", text: "Most GEO advice is about *what* you write. This one is about how you *label* it. Schema markup is the quiet, technical layer that turns a page a human reads into data a machine can be certain about — and certainty is exactly what an AI engine wants before it puts your name in an answer." },
+
+      { t: "h2", id: "what", text: "What schema markup actually is" },
+      { t: "p", text: "Schema markup (usually written as **JSON-LD**, a small block of structured data in your page's code) is a vocabulary — from schema.org — for describing things. Instead of leaving an engine to *infer* that \"Acme Plumbing\" is a local business in Porto open until 6pm with a 4.8 rating, you state it explicitly in a format built for machines. You're removing ambiguity." },
+      { t: "p", text: "Humans never see it. Engines do. And the difference between *guessing* what your page means and *knowing* it is the difference between being a maybe and being a confident citation." },
+
+      { t: "h2", id: "evidence", text: "Does it actually help with AI?" },
+      { t: "p", text: "Yes — and there's evidence, not just folklore. Otterly.ai's analysis of schema markup's real impact on AI search found structured data associated with better understanding and surfacing of content in AI answers. Practitioner syntheses of citation ranking factors repeatedly list clear structure and markup among the signals correlated with being cited." },
+      { t: "cite", text: `${S.otterly}; ${S.zyppy}` },
+      { t: "p", text: "It also compounds with everything else. Schema makes your reviews legible (feeding the reputation signals AI weights), your FAQs answer-shaped, and your entity (who you are) unambiguous — which helps engines connect mentions of you across the web." },
+
+      { t: "h2", id: "types", text: "The types that matter for small businesses" },
+      { t: "ul", items: [
+        "**Organization** — your name, logo, URL, and social profiles. Establishes your entity so engines can connect mentions of you elsewhere.",
+        "**LocalBusiness** — address, hours, phone, service area, geo-coordinates. Essential for local discovery.",
+        "**Product / Service** — what you sell, with descriptions and (where relevant) price. Helps you match product queries.",
+        "**FAQPage** — question-and-answer pairs. This is gold for GEO: it's literally pre-formatted answers to specific questions.",
+        "**Review / AggregateRating** — your ratings and review counts, made machine-readable (feeds the reputation signals AI leans on).",
+        "**Article** — for blog posts: headline, author, publisher, dates. (This very page uses it.)",
+      ] },
+      { t: "cite", text: S.seRankingReviews },
+
+      { t: "h2", id: "faq", text: "Why FAQ schema is the SMB sweet spot" },
+      { t: "p", text: "If you do only one thing, do this. AI engines answer *questions*. FAQ schema lets you publish the exact questions your customers ask, paired with crisp, specific answers — in the precise format an engine wants to retrieve and quote. \"How long does Invisalign take?\" → \"Typically 6–18 months depending on complexity.\" That's a citation waiting to happen, and the markup makes it unmissable." },
+
+      { t: "h2", id: "how", text: "How to add it without a developer" },
+      { t: "ol", items: [
+        "**Inventory** the entities you want understood: your business, your top services, your FAQs, your reviews.",
+        "**Generate** JSON-LD — most site platforms (WordPress, Shopify, Squarespace, Wix) have schema plugins or built-in settings; Google's Structured Data Markup Helper can also generate it.",
+        "**Place** it in the page's HTML head (JSON-LD is a single script block — no visible change).",
+        "**Validate** with Google's Rich Results Test and the schema.org validator to catch errors.",
+        "**Keep it true.** Schema must match the visible page — never mark up ratings or hours you don't actually have.",
+      ] },
+
+      { t: "h2", id: "bottom-line", text: "The bottom line" },
+      { t: "p", text: "Schema markup won't write your content or earn your reviews. But of all the GEO levers, it's the one most fully in your control, the cheapest to implement, and the lowest-risk — and most of your competitors haven't bothered. It's the closest thing GEO has to free points. Take them." },
+    ],
+    sources: [S.otterly, S.zyppy, S.seRankingReviews, S.geoPaper],
+  },
+
+  // 7 ───────────────────────────────────────────────────────────────────────
+  {
+    slug: "how-to-measure-ai-visibility",
+    title: "How to Measure Whether AI Actually Mentions Your Brand",
+    dek: "You can't improve what you don't measure — and \"I asked ChatGPT once and it mentioned us\" isn't measurement. Here's how to build a real AI-visibility baseline.",
+    category: "Measurement",
+    datePublished: "2026-06-26",
+    dateDisplay: "26 June 2026",
+    readTime: "8 min read",
+    keywords: ["measure AI visibility", "AI visibility tracking", "share of voice AI", "GEO metrics", "AI brand monitoring"],
+    takeaways: [
+      "AI answers are non-deterministic: ask the same prompt twice and the named brands can differ — so single checks are noise, not data.",
+      "A real baseline means a fixed prompt set, run repeatedly, across multiple engines, scored consistently.",
+      "Track three things: presence (are you named?), position (how prominently?), and sentiment (how favourably?).",
+      "Re-run on a schedule so you can see whether your GEO work is actually moving the needle.",
+    ],
+    body: [
+      { t: "p", text: "Ask an AI assistant whether it recommends your business and it might say yes. Ask again an hour later and it might not mention you at all. That's not a glitch — it's how these systems work. Which means the casual \"I checked and we're in there\" tells you almost nothing. To know where you really stand, you need to measure like a scientist, not a tourist." },
+
+      { t: "h2", id: "why-hard", text: "Why measuring AI visibility is genuinely hard" },
+      { t: "p", text: "Large language models are non-deterministic: the same prompt can yield different answers across runs, because of sampling, live-retrieval variation, and personalisation. Search Engine Land's repeated-run testing found only about five brands tend to surface per category — and the set shifts between runs. So a single query is a coin flip, not a measurement." },
+      { t: "cite", text: S.repeatRuns },
+      { t: "p", text: "The implication is simple but easy to ignore: you must run each prompt *multiple times* and aggregate, or you're measuring randomness." },
+
+      { t: "h2", id: "method", text: "A measurement method that holds up" },
+      { t: "ol", items: [
+        "**Fix a prompt set.** Write 20–50 prompts a real customer would ask — \"best [category] in [city]\", \"alternatives to [competitor]\", \"is [your brand] any good?\". Keep them stable so results are comparable over time.",
+        "**Cover the engines that matter.** Run the set across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews — visibility differs sharply between them.",
+        "**Repeat each prompt.** Run every prompt several times per engine and aggregate. One run is anecdote; several is data.",
+        "**Score consistently.** For each result, record presence (named or not), position (first, in a list, an afterthought), and sentiment (positive, neutral, negative).",
+        "**Log the sources.** Note which sites the engine cited — that tells you *where* to invest (your site, Reddit, reviews, LinkedIn).",
+      ] },
+
+      { t: "h2", id: "metrics", text: "The three metrics that matter" },
+      { t: "ul", items: [
+        "**Presence (Share of Voice).** Across your prompt set and engines, how often are you named at all — and how does that compare to competitors? This is your headline number.",
+        "**Position.** Being named first or in the lead sentence is worth far more than a passing mention at the end. Weight accordingly.",
+        "**Sentiment.** AI doesn't just list you — it characterises you. \"Reliable and well-reviewed\" and \"a budget option with mixed feedback\" are both mentions; only one wins customers.",
+      ] },
+
+      { t: "h2", id: "cadence", text: "Why cadence beats one-off checks" },
+      { t: "p", text: "AI search rewards freshness, and the underlying models and indexes change constantly. A baseline you measure once decays immediately. Re-running your prompt set on a schedule — monthly is a sensible floor — turns a snapshot into a trend line, which is the only way to know whether publishing that content, earning those reviews, or fixing your schema actually changed anything." },
+      { t: "cite", text: S.ahrefsFresh },
+
+      { t: "h2", id: "diy-vs-tool", text: "DIY or tooled?" },
+      { t: "p", text: "You can absolutely start by hand: a spreadsheet, a fixed prompt list, and a disciplined monthly hour. It's tedious and the repetition-and-aggregation step is easy to skimp on, but it's real measurement and it's free. As it grows — more prompts, more engines, more competitors, more runs — automated tracking pays for itself by doing the repetition consistently and scoring it the same way every time. Either way, the principle is identical: fixed prompts, multiple runs, multiple engines, consistent scoring, on a schedule." },
+
+      { t: "h2", id: "start", text: "Start with a baseline this week" },
+      { t: "p", text: "Pick ten prompts your customers actually ask. Run each three times across two or three engines. Tally presence, position, and sentiment, and note the sources cited. That single afternoon gives you something most of your competitors have never had: an honest answer to \"when a customer asks AI, does it name us — and what does it say?\" Everything else in GEO is about moving those numbers." },
+    ],
+    sources: [S.repeatRuns, S.ahrefsFresh, S.siana, S.semrushDomains, S.geoPaper],
+  },
+
+  // 8 ───────────────────────────────────────────────────────────────────────
+  {
+    slug: "zero-click-search-and-ai-traffic",
+    title: "Zero-Click Search Is Here. Does AI Traffic Still Convert?",
+    dek: "AI answers questions without sending a click — which sounds like a disaster for businesses. The data is more interesting (and more hopeful) than the panic suggests.",
+    category: "Strategy",
+    datePublished: "2026-06-26",
+    dateDisplay: "26 June 2026",
+    readTime: "8 min read",
+    keywords: ["zero-click search", "AI traffic conversion", "does AI traffic convert", "AI Overviews CTR", "GEO ROI"],
+    takeaways: [
+      "Zero-click is real: most Google searches now end without a click to an external site, and AI summaries accelerate it.",
+      "But the visits AI *does* send tend to be higher-intent — multiple studies report AI-referred traffic converting better than average.",
+      "The evidence isn't unanimous: at least one large study found no conversion advantage, so claims deserve honesty.",
+      "The strategic takeaway: being named in the answer matters even when there's no click, and the clicks you do get are worth more.",
+    ],
+    body: [
+      { t: "p", text: "Here's the fear, stated plainly: if AI answers the question, nobody clicks through to your site, and your traffic — and your sales — collapse. It's a reasonable worry. It's also only half the story, and the missing half changes the conclusion." },
+
+      { t: "h2", id: "zero-click", text: "The zero-click reality" },
+      { t: "p", text: "The click really is shrinking. Pew Research found Google users are significantly less likely to click any link when an AI summary appears. SparkToro's 2026 analysis estimates that fewer than one-third of Google searches still send a click to the open web. When an AI Overview or chatbot answers the question, the visit you used to compete for often simply doesn't happen." },
+      { t: "cite", text: `${S.pew}; ${S.sparktoro}; ${S.seer}` },
+      { t: "p", text: "If your entire strategy depends on ranking for a link and capturing the click, that strategy is eroding under you. This is the genuine threat, and pretending otherwise helps no one." },
+
+      { t: "h2", id: "but", text: "But the clicks that remain are better" },
+      { t: "p", text: "Now the other half. The visits AI *does* send tend to be unusually high-intent — someone who read a synthesised answer, saw you named as a credible option, and chose to click through is closer to deciding than a random searcher. Microsoft's Clarity team reported AI-referred traffic converting at roughly three times the rate of other channels. Forrester's 2026 buyer work makes the same structural point: zero-click is only half the AI story — the influence on the buyer happens *inside* the answer, before any click." },
+      { t: "cite", text: `${S.clarity}; ${S.forrester}; ${S.g2}` },
+
+      { t: "h2", id: "honesty", text: "The honest counter-evidence" },
+      { t: "p", text: "Good strategy survives contact with inconvenient data, so here it is: not every study agrees. Amsive's analysis across 54 sites found that LLM-referred traffic did *not* uniformly convert better than organic — the advantage varied and sometimes vanished. The truthful synthesis is that AI traffic is often higher-intent, but \"3x\" is not a law of nature; it depends on your category, your offer, and how you're characterised in the answer." },
+      { t: "cite", text: S.amsive },
+
+      { t: "h2", id: "reframe", text: "Reframing the goal: presence over clicks" },
+      { t: "p", text: "Put the two halves together and the strategy reframes itself. In a zero-click world, **being named in the answer is the win** — even without a click, you've earned consideration, brand recall, and trust at the exact moment of decision. And when a click does come, it's worth more than the old organic click was. Both arguments point the same way: get into the answer, and make sure the answer describes you well." },
+      { t: "p", text: "That's a different scoreboard than \"rank #1 for the keyword.\" It rewards being the credible, specific, well-reviewed option an engine is comfortable naming — which is exactly what GEO builds." },
+
+      { t: "h2", id: "do", text: "What to do about it" },
+      { t: "ol", items: [
+        "**Measure presence, not just traffic.** Track how often AI names you and how it describes you — that's the leading indicator now.",
+        "**Win the characterisation.** Specific, sourced, well-reviewed businesses get described favourably; vague ones get skipped or hedged.",
+        "**Make the click count.** For the high-intent visitors who do arrive, ensure your landing experience converts — they're already warm.",
+        "**Don't abandon SEO.** Strong fundamentals still feed both link clicks and AI citations; this is additive, not a replacement.",
+      ] },
+    ],
+    sources: [S.pew, S.sparktoro, S.seer, S.clarity, S.forrester, S.amsive, S.g2, S.bain],
+  },
+
+  // 9 ───────────────────────────────────────────────────────────────────────
+  {
+    slug: "geo-vs-seo-where-to-spend-2026",
+    title: "GEO vs SEO: What's the Same, What's New, and Where to Spend in 2026",
+    dek: "GEO didn't kill SEO — it built a second floor on top of it. Here's an honest map of what overlaps, what's genuinely new, and how a small business should split its effort.",
+    category: "Strategy",
+    datePublished: "2026-06-26",
+    dateDisplay: "26 June 2026",
+    readTime: "8 min read",
+    keywords: ["GEO vs SEO", "SEO and GEO", "AI search strategy", "where to invest GEO", "generative engine optimization"],
+    takeaways: [
+      "GEO and SEO share a foundation: a crawlable, fast, credible site with genuine expertise. Neglect that and both fail.",
+      "What's new in GEO: optimising for synthesised answers and named citations, off-site presence, evidence density, and entity clarity.",
+      "The target differs — SEO chases rankings and clicks; GEO chases mentions and trust inside the answer.",
+      "For most SMBs in 2026, the smart split is to keep doing core SEO and layer GEO on top, not to abandon one for the other.",
+    ],
+    body: [
+      { t: "p", text: "Every few years a new acronym arrives promising that everything before it is dead. GEO is not that. The most useful way to think about Generative Engine Optimization is not as SEO's replacement but as its second storey: it sits on the same foundation, but the rooms upstairs are arranged differently." },
+
+      { t: "h2", id: "same", text: "What's the same (the shared foundation)" },
+      { t: "p", text: "A lot, and it's worth saying clearly because it's where panic-driven advice goes wrong. Both SEO and GEO need: a site that engines can crawl and parse; pages that load and render without tripping over JavaScript; genuine topical authority; clear information architecture; and real expertise behind the words. If a crawler can't read you, neither Google nor ChatGPT can cite you — Ahrefs found a large share of the pages AI *wants* to cite are effectively blocked. The fundamentals are non-negotiable for both games." },
+      { t: "cite", text: S.ahrefsCited },
+
+      { t: "h2", id: "new", text: "What's genuinely new in GEO" },
+      { t: "ul", items: [
+        "**Optimising for answers, not links.** The unit of success is being named and quoted inside a synthesised answer, not ranking a URL.",
+        "**Evidence density.** Adding specific statistics and cited quotes measurably raised citation visibility in the GEO research — a lever SEO never emphasised.",
+        "**Off-site presence.** AI leans heavily on third-party sources (Reddit, LinkedIn, reviews, Wikipedia). Your own page is one input among many.",
+        "**Entity clarity.** Engines need to know *who you are* and connect mentions across the web — structured data and consistent identity matter more.",
+        "**Cross-engine reality.** There's no single \"#1\" — ChatGPT, Perplexity, Gemini, and AI Overviews can each name a different set.",
+      ] },
+      { t: "cite", text: `${S.geoPaper}; ${S.profound}; ${S.semrushLinkedin}` },
+
+      { t: "h2", id: "different-target", text: "The target is different" },
+      { t: "p", text: "SEO asks: *can I rank on page one and earn the click?* GEO asks: *when an engine synthesises an answer, will it name me, place me well, and describe me favourably?* The first is a position in a list of links; the second is a sentence in a paragraph of prose. They're related — authority feeds both — but you optimise for them differently, and you measure them differently (rankings and clicks vs presence, position, and sentiment in answers)." },
+
+      { t: "h2", id: "spend", text: "Where a small business should spend" },
+      { t: "p", text: "Here's an honest allocation for most SMBs in 2026 — not a formula, a starting point:" },
+      { t: "ol", items: [
+        "**Keep the SEO fundamentals running (≈ half your effort).** Crawlable, fast site; clear service/location pages; legitimate authority. This is the foundation both games stand on.",
+        "**Layer GEO on top (≈ the other half).** Make key pages answer specific questions; add FAQ and structured data; back claims with numbers; earn mentions on the third-party sources AI trusts; keep reviews fresh.",
+        "**Measure both.** Track rankings/traffic *and* AI presence/sentiment, so you can see which investments pay off where.",
+      ] },
+      { t: "p", text: "The mistake to avoid in both directions: don't bet the business on link-clicks that are shrinking, and don't torch your working SEO to chase a shiny acronym. The businesses that win are doing the boring fundamentals *and* the new layer." },
+
+      { t: "h2", id: "edge", text: "The small-business edge" },
+      { t: "p", text: "One closing encouragement. GEO is new enough that most local and small businesses have done nothing — one industry index found the vast majority of contractors entirely absent from AI answers. That's not just a risk; it's an opening. The field is uncrowded in a way SEO hasn't been for a decade. Showing up consistently now is how you claim space before everyone else notices the game has changed." },
+      { t: "cite", text: `${S.hvac}; ${S.hubspot}` },
+    ],
+    sources: [S.ahrefsCited, S.geoPaper, S.profound, S.semrushLinkedin, S.hvac, S.hubspot, S.zyppy],
+  },
+
+  // 10 ──────────────────────────────────────────────────────────────────────
+  {
+    slug: "30-day-geo-plan-small-business",
+    title: "A 30-Day GEO Starter Plan for Small Businesses",
+    dek: "No agency, no big budget, an hour or two a week. Here's a concrete four-week plan to go from invisible in AI answers to showing up — and knowing it.",
+    category: "Playbook",
+    datePublished: "2026-06-26",
+    dateDisplay: "26 June 2026",
+    readTime: "9 min read",
+    keywords: ["GEO plan", "GEO checklist", "small business AI visibility", "how to start GEO", "30 day GEO"],
+    takeaways: [
+      "GEO is learnable in a few focused hours a week — you don't need an agency to start.",
+      "Week 1 is measurement; Week 2 fixes your own site; Week 3 builds off-site presence; Week 4 establishes a sustainable rhythm.",
+      "The goal of the first month isn't perfection — it's a baseline, a few concrete improvements, and a repeatable habit.",
+      "By day 30 you'll know whether AI names you, you'll have removed the obvious blockers, and you'll have a system to keep improving.",
+    ],
+    body: [
+      { t: "p", text: "Most GEO advice tells you what matters and leaves you staring at a blank week. This is the opposite: a concrete, four-week plan you can run alongside actually running your business. It assumes no budget beyond your time and no skills beyond a willingness to be specific. By the end, you'll have a baseline, a handful of real improvements, and — most importantly — a habit." },
+
+      { t: "h2", id: "week1", text: "Week 1 — Measure (you can't fix what you can't see)" },
+      { t: "p", text: "Resist the urge to start \"doing\" before you know where you stand. Spend week one building a baseline." },
+      { t: "ol", items: [
+        "**Write 10 customer prompts** — the real questions buyers ask: \"best [your category] in [your area]\", \"[competitor] alternatives\", \"is [your brand] good?\".",
+        "**Run each three times** across ChatGPT, Perplexity, and Gemini. Yes, three times — answers vary, so repetition is the measurement.",
+        "**Record presence, position, sentiment** for each, plus which sources the engine cited.",
+        "**Tally your baseline:** out of all runs, how often are you named, how prominently, and how favourably — versus competitors?",
+      ] },
+      { t: "cite", text: S.repeatRuns },
+      { t: "p", text: "Most owners find this sobering — often they're barely mentioned. That's the point: now you have a number to beat." },
+
+      { t: "h2", id: "week2", text: "Week 2 — Fix your own foundation" },
+      { t: "p", text: "Make the source you fully control as citable as possible." },
+      { t: "ol", items: [
+        "**Check crawlability.** Make sure your key pages are readable without JavaScript and you're not blocking AI crawlers. A blocked page can't be cited — and that's a common own-goal.",
+        "**Rewrite your top pages to be specific.** Replace \"we help you smile\" with the actual service, location, price range, and timeline. Say the words customers search.",
+        "**Add an FAQ page** answering your 8–12 most-asked questions, crisply. This is the most directly citable content you can publish.",
+        "**Add structured data** (Organization, LocalBusiness, FAQ, Review) via your platform's schema plugin, then validate it.",
+      ] },
+      { t: "cite", text: `${S.ahrefsCited}; ${S.otterly}; ${S.geoPaper}` },
+
+      { t: "h2", id: "week3", text: "Week 3 — Build off-site presence" },
+      { t: "p", text: "AI leans on third-party sources more than your own site, so plant your flag where it looks." },
+      { t: "ol", items: [
+        "**Earn fresh, specific reviews.** Ask your last 10 happy customers, and ask for detail (the service, the outcome). Reviews feed the reputation signals AI weights for local and product answers.",
+        "**Answer two real questions** in the communities your customers use — a relevant subreddit, Quora, or an industry forum. Be genuinely helpful, not promotional.",
+        "**Post one specific, useful piece** on LinkedIn if you're B2B or a service — long-form, answer-shaped. Modest accounts get cited too; relevance beats reach.",
+        "**Fix directory consistency** — same name, category, address, and hours everywhere AI might read them.",
+      ] },
+      { t: "cite", text: `${S.profound}; ${S.brightlocal}; ${S.semrushLinkedin}` },
+
+      { t: "h2", id: "week4", text: "Week 4 — Establish the rhythm" },
+      { t: "p", text: "GEO rewards consistency, so the final week is about turning a sprint into a system." },
+      { t: "ol", items: [
+        "**Set a publishing cadence** you can actually sustain — one specific, useful piece per week beats five in a burst then silence. Freshness is a relevance signal.",
+        "**Schedule the monthly re-measure.** Put your Week-1 prompt set on a recurring monthly slot so you can watch the trend.",
+        "**Pick next month's targets** from your data — the prompts where you're absent or poorly described are your roadmap.",
+        "**Keep reviews flowing** — make the ask part of your routine, not a one-off campaign.",
+      ] },
+      { t: "cite", text: S.ahrefsFresh },
+
+      { t: "h2", id: "day30", text: "Where you'll be at day 30" },
+      { t: "p", text: "You won't be \"finished\" — GEO isn't a project with an end date. But in one month, with a couple of focused hours a week, you'll have gone from guessing to knowing: a real baseline, a crawlable and specific website, an FAQ and schema engines can read, fresh reviews and a few genuine off-site mentions, and a monthly habit that compounds. That puts you ahead of the large majority of small businesses that are still completely absent from AI answers — and it's the unglamorous, repeatable work that actually gets you named." },
+      { t: "cite", text: S.hvac },
+    ],
+    sources: [S.repeatRuns, S.ahrefsCited, S.otterly, S.geoPaper, S.profound, S.brightlocal, S.semrushLinkedin, S.ahrefsFresh, S.hvac],
+  },
 ];
 
 export function findBlogContent(slug: string): BlogContent | undefined {
