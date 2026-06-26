@@ -300,7 +300,7 @@ We will tell you plainly what GEO **can** and **cannot** do, because the field i
 
 Here is the path, and it starts free.
 
-**Step 1 — The free AI Visibility Test.** In a couple of minutes, with no credit card, you find out exactly where you stand: how often you are cited across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, benchmarked against up to three competitors, with your **TrustIndex Score** — a single number built on three vectors: **Brand (30%)** (does AI recognize you as a real, established business?), **Performance (35%)** (can engines technically read and parse your site?), and **AI (35%)** (how often, how prominently, and how favorably are you actually cited?). The free tier covers 1 brand, 3 competitors, 50 prompts, and a monthly audit.
+**Step 1 — The free AI Visibility Test.** In a couple of minutes, with no credit card, you find out exactly where you stand: how often you are cited across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, benchmarked against a competitor, with your **TrustIndex Score** — a single number built on three vectors: **Brand (30%)** (does AI recognize you as a real, established business?), **Performance (35%)** (can engines technically read and parse your site?), and **AI (35%)** (how often, how prominently, and how favorably are you actually cited?). The free tier covers 1 brand, 1 competitor, and a 10-prompt snapshot audit.
 
 **Step 2 — The Get-Cited Kit ($29).** The Kit turns the diagnosis into action: your prioritized top fixes ranked by impact and effort, three ready-to-publish drafts — a blog post, a LinkedIn post, and an FAQ entry, each with schema.org markup — written to follow the citation-worthy traits from Section 4, plus this whitepaper as your manual for the *why*.
 

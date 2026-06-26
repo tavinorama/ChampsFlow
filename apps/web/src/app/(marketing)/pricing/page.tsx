@@ -44,7 +44,7 @@ const PLANS: Plan[] = [
     price: "$0",
     per: "",
     sub: "See where you stand — no card.",
-    features: ["1 brand", "One buyer-prompt audit", "Up to 3 competitors", "All 5 AI engines", "Instant TrustIndex AI Score"],
+    features: ["1 brand", "10-prompt snapshot audit", "1 competitor", "All 5 AI engines", "Instant TrustIndex AI Score"],
     cta: "Run the free test",
     href: "/test",
     accent: "muted",
