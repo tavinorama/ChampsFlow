@@ -20,6 +20,7 @@ import {
   type ArticlePost,
   type VideoPost,
 } from "./posts";
+import { SoftCTA } from "../../../components/marketing/SoftCTA";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -154,6 +155,16 @@ export default function BlogIndexPage() {
           )
         )}
       </ul>
+
+      {/* Soft CTA nudge */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <SoftCTA
+          headline="See if AI recommends your business — or a competitor"
+          subline="Run the free 60-second AI Visibility Test. No card, no install."
+          primary={{ label: "Run the free test →", href: "/test" }}
+          secondary={{ label: "Or grab the $29 Get-Cited Kit", href: "/kit" }}
+        />
+      </div>
     </div>
   );
 }

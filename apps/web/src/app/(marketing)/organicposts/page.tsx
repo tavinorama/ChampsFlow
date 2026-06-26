@@ -11,6 +11,7 @@
 
 import type { Metadata } from "next";
 import { BookCallButton } from "../../../components/BookCallButton";
+import { SoftCTA } from "../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title: "OrganicPosts by TrustIndex AI — Publish the proof AI needs to trust you",
@@ -711,6 +712,16 @@ export default function OrganicPostsPage() {
           All prices are &ldquo;from&rdquo; — final scope depends on brand complexity and audit findings.
         </p>
       </section>
+
+      {/* Soft CTA nudge — for visitors considering DIY first */}
+      <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "0 var(--space-4) var(--space-12)" }}>
+        <SoftCTA
+          headline="Not sure if you need done-for-you? Start with the free test."
+          subline="The AI Visibility Test shows your exact gaps — then you'll know whether DIY or a Sprint is right."
+          primary={{ label: "Run the free test", href: "/test" }}
+          secondary={{ label: "Or grab the $29 Get-Cited Kit →", href: "/kit" }}
+        />
+      </div>
     </>
   );
 }

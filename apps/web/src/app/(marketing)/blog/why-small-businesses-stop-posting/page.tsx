@@ -22,6 +22,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -486,6 +487,16 @@ export default function BlogPost1Page() {
           If you want a tool built around this, we are building it. Run the free AI Visibility Test and see where you stand today.
         </p>
       </article>
+
+      {/* Soft CTA nudge */}
+      <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "0 var(--space-4) var(--space-8)" }}>
+        <SoftCTA
+          headline="Curious how AI describes your brand right now?"
+          subline="Run the free 60-second AI Visibility Test — see if ChatGPT, Claude, and Perplexity recommend you or a competitor."
+          primary={{ label: "Run the free test", href: "/test" }}
+          secondary={{ label: "Prefer to DIY? The $29 Get-Cited Kit →", href: "/kit" }}
+        />
+      </div>
 
       {/* CTA section */}
       <section

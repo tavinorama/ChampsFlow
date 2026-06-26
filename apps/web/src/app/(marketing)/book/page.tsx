@@ -32,6 +32,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendlyEmbedSection } from "./CalendlyEmbedSection";
+import { SoftCTA } from "../../../components/marketing/SoftCTA";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -231,6 +232,16 @@ export default function BookPage() {
       ) : (
         <FallbackSection />
       )}
+
+      {/* Soft CTA nudge — for visitors not yet ready to book */}
+      <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "var(--space-8) var(--space-4) var(--space-12)" }}>
+        <SoftCTA
+          headline="Not ready to book? Start smaller."
+          subline="Run the free AI Visibility Test first — takes 60 seconds and shows your exact gap."
+          primary={{ label: "Run the free test", href: "/test" }}
+          secondary={{ label: "Or get the $29 Get-Cited Kit", href: "/kit" }}
+        />
+      </div>
     </>
   );
 }

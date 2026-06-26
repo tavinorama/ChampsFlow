@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import { GeoGraphBackdrop } from "../../../components/marketing/GeoGraphBackdrop";
+import { SoftCTA } from "../../../components/marketing/SoftCTA";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -407,6 +408,15 @@ export default function PricingPage() {
           </a>
         </div>
       </section>
+
+      {/* Soft CTA nudge — free test for undecided visitors */}
+      <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "0 var(--space-4) var(--space-12)" }}>
+        <SoftCTA
+          headline="Not sure which plan? Start with the free test."
+          subline="See your AI visibility score first — then the right tier becomes obvious."
+          primary={{ label: "Run the free test →", href: "/test" }}
+        />
+      </div>
     </main>
   );
 }
