@@ -159,7 +159,7 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
       signal: controller.signal,
       headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
-        model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-5",
+        model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-6",
         max_tokens: maxTokens,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: userPrompt }],
