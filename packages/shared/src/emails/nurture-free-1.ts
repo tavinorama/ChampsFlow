@@ -15,7 +15,7 @@
  *   - No full PII logged — log events are metadata-only
  */
 
-const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://trustindexai.com";
+const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
 export interface NurtureEmailParams {
   /** Recipient email address. */
@@ -45,7 +45,7 @@ export async function sendNurtureFree1Email(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const verdict = params.metadata?.verdict as string | undefined;
   const verdictLine = verdict
@@ -72,12 +72,12 @@ export async function sendNurtureFree1Email(
     "",
     ctaUrl,
     "",
-    "— The TrustIndex AI Team",
-    "https://trustindexai.com",
+    "— The Ozvor Team",
+    "https://ozvor.com",
     "",
     "---",
-    "You opted in at trustindexai.com. Unsubscribe: " + params.unsubscribeUrl,
-    "TrustIndex AI · trustindexai.com",
+    "You opted in at ozvor.com. Unsubscribe: " + params.unsubscribeUrl,
+    "Ozvor · ozvor.com",
   ].join("\n");
 
   // ----- HTML body -----
@@ -96,7 +96,7 @@ export async function sendNurtureFree1Email(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI
+      Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       Your AI Invisibility result
@@ -142,9 +142,9 @@ export async function sendNurtureFree1Email(
   <!-- Unsubscribe footer -->
   <hr style="border:none;border-top:1px solid #E5E7EB;margin:28px 0 16px 0;" />
   <p style="font-size:11px;color:#9CA3AF;margin:0;text-align:center;">
-    You received this email because you opted in at trustindexai.com.<br/>
+    You received this email because you opted in at ozvor.com.<br/>
     <a href="${params.unsubscribeUrl}" style="color:#6B7280;">Unsubscribe</a> &nbsp;&middot;&nbsp;
-    TrustIndex AI · trustindexai.com
+    Ozvor · ozvor.com
   </p>
 </body>
 </html>`;

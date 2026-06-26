@@ -7,14 +7,14 @@
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Terms of Service — TrustIndex AI",
-  description: "The terms governing your use of TrustIndex AI and OrganicPosts.",
-  alternates: { canonical: "https://trustindexai.com/terms-of-service" },
+  title: "Terms of Service | Ozvor",
+  description: "The terms governing your use of Ozvor and OrganicPosts.",
+  alternates: { canonical: "https://ozvor.com/terms-of-service" },
   openGraph: {
-    title: "Terms of Service — TrustIndex AI",
-    description: "The terms governing your use of TrustIndex AI and OrganicPosts.",
-    url: "https://trustindexai.com/terms-of-service",
-    siteName: "TrustIndex AI",
+    title: "Terms of Service | Ozvor",
+    description: "The terms governing your use of Ozvor and OrganicPosts.",
+    url: "https://ozvor.com/terms-of-service",
+    siteName: "Ozvor",
     type: "website",
   },
   robots: {
@@ -28,10 +28,10 @@ export default function TermsOfServicePage() {
     <LegalPage
       title="Terms of Service"
       updated="13 June 2026"
-      intro="These Terms govern your access to and use of the TrustIndex AI platform and the OrganicPosts service (together, the “Service”), operated by TrustIndex AI (a company being incorporated in Brazil). By creating an account or using the Service, you agree to these Terms."
+      intro={'These Terms govern your access to and use of the Ozvor platform and the OrganicPosts service (together, the “Service”), operated by Ozvor (a company being incorporated in Brazil). By creating an account or using the Service, you agree to these Terms.'}
     >
       <LegalSection n="1" title="Who we are">
-        <p>The Service is operated by <strong>TrustIndex AI</strong> (“we”, “us”), home jurisdiction Brazil. TrustIndex AI is an AI-search visibility (Generative Engine Optimization, “GEO”) platform; <strong>OrganicPosts by TrustIndex AI</strong> is our optional done-for-you content service. We are not affiliated with, and are a different company from, “Trustindex.io” (an online-review widget provider).</p>
+        <p>The Service is operated by <strong>Ozvor</strong> (“we”, “us”), home jurisdiction Brazil. Ozvor is an AI-search visibility (Generative Engine Optimization, “GEO”) platform; <strong>OrganicPosts by TrustIndex AI</strong> is our optional done-for-you content service. We are not affiliated with, and are a different company from, “Trustindex.io” (an online-review widget provider).</p>
       </LegalSection>
 
       <LegalSection n="2" title="What the Service does">
@@ -76,7 +76,7 @@ export default function TermsOfServicePage() {
       </LegalSection>
 
       <LegalSection n="12" title="Governing law and contact">
-        <p>These Terms are governed by the laws of Brazil, without prejudice to mandatory consumer-protection rights you may have in your country of residence. Questions: <a href="mailto:hello@trustindexai.com" style={{ color: "var(--color-primary)" }}>hello@trustindexai.com</a>. For privacy matters: <a href="mailto:dpo@trustindexai.com" style={{ color: "var(--color-primary)" }}>dpo@trustindexai.com</a>.</p>
+        <p>These Terms are governed by the laws of Brazil, without prejudice to mandatory consumer-protection rights you may have in your country of residence. Questions: <a href="mailto:hello@ozvor.com" style={{ color: "var(--color-primary)" }}>hello@ozvor.com</a>. For privacy matters: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>.</p>
       </LegalSection>
     </LegalPage>
   );

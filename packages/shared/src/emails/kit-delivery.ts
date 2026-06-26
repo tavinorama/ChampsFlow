@@ -28,7 +28,7 @@ export interface KitDeliveryEmailParams {
 
 // Use WEB_ORIGIN env (same pattern as products.ts webOrigin()) so staging
 // emails link to the correct environment, not production.
-const KIT_BASE_URL = `${process.env["WEB_ORIGIN"] ?? "https://trustindexai.com"}/kit`;
+const KIT_BASE_URL = `${process.env["WEB_ORIGIN"] ?? "https://ozvor.com"}/kit`;
 
 /**
  * Send the Get-Cited Kit delivery email via Resend.
@@ -47,7 +47,7 @@ export async function sendKitDeliveryEmail(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const kitUrl = `${KIT_BASE_URL}/${params.orderToken}`;
   const subject = "Your Get-Cited Kit is ready — access it here";
@@ -60,10 +60,10 @@ export async function sendKitDeliveryEmail(
     "",
     kitUrl,
     "",
-    "Questions? Reply to this email or write to hello@trustindexai.com",
+    "Questions? Reply to this email or write to hello@ozvor.com",
     "",
-    "— The TrustIndex AI Team",
-    "https://trustindexai.com",
+    "— The Ozvor Team",
+    "https://ozvor.com",
   ].join("\n");
 
   // ----- HTML body -----
@@ -82,7 +82,7 @@ export async function sendKitDeliveryEmail(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI
+      Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       Your Get-Cited Kit is ready
@@ -120,9 +120,9 @@ export async function sendKitDeliveryEmail(
   <hr style="border:none;border-top:1px solid #E5E7EB;margin-bottom:16px;" />
   <p style="font-size:12px;color:#9CA3AF;margin:0;">
     Questions? Reply to this email or write to
-    <a href="mailto:hello@trustindexai.com" style="color:#2563EB;">hello@trustindexai.com</a>
+    <a href="mailto:hello@ozvor.com" style="color:#2563EB;">hello@ozvor.com</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://trustindexai.com" style="color:#2563EB;">trustindexai.com</a>
+    <a href="https://ozvor.com" style="color:#2563EB;">ozvor.com</a>
   </p>
 </body>
 </html>`;

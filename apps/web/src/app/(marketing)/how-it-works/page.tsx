@@ -5,7 +5,7 @@
  *  0. Metadata + JSON-LD
  *  1. Hero — "Get recommended when AI answers your customers"
  *  2. Why AI search visibility matters now (3 stat cards)
- *  3. How TrustIndex AI gets you cited (5 numbered outcome steps)
+ *  3. How Ozvor gets you cited (5 numbered outcome steps)
  *  4. Google alignment proof (kept from previous page)
  *  5. Trust strip (customer-benefit framing of safety/compliance)
  *  6. Final CTA → /test
@@ -22,32 +22,32 @@ import { BookCallButton } from "../../../components/BookCallButton";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "How TrustIndex AI Works — Get Recommended by AI Search",
+  title: "How Ozvor Works — Get Recommended by AI Search",
   description:
-    "When someone asks ChatGPT, Claude, Perplexity, or Google who's the best in your category, TrustIndex AI shows you whether you're one of the named businesses — and exactly how to get there.",
-  alternates: { canonical: "https://trustindexai.com/how-it-works" },
+    "When someone asks ChatGPT, Claude, Perplexity, or Google who's the best in your category, Ozvor shows you whether you're one of the named businesses — and exactly how to get there.",
+  alternates: { canonical: "https://ozvor.com/how-it-works" },
   openGraph: {
-    title: "How TrustIndex AI Works — Get Recommended by AI Search",
+    title: "How Ozvor Works — Get Recommended by AI Search",
     description:
       "Audit → Score → Plan → Publish → Monitor. The 5-step loop that gets SMBs cited by AI answer engines.",
-    url: "https://trustindexai.com/how-it-works",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/how-it-works",
+    siteName: "Ozvor",
     type: "website",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "How TrustIndex AI Works — Get Recommended by AI Search",
+        alt: "How Ozvor Works — Get Recommended by AI Search",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "How TrustIndex AI Works — Get Recommended by AI Search",
+    title: "How Ozvor Works — Get Recommended by AI Search",
     description:
       "Audit → Score → Plan → Publish → Monitor. The 5-step loop that gets SMBs cited by AI answer engines.",
-    images: ["https://trustindexai.com/og-default.png"],
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -58,20 +58,20 @@ export const metadata: Metadata = {
 const howItWorksJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  name: "How TrustIndex AI Works — Get Recommended by AI Search",
+  name: "How Ozvor Works — Get Recommended by AI Search",
   description:
     "Audit → Score → Plan → Publish → Monitor. The 5-step loop that gets SMBs cited by AI answer engines.",
-  url: "https://trustindexai.com/how-it-works",
+  url: "https://ozvor.com/how-it-works",
   isPartOf: {
     "@type": "WebSite",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "How it works", item: "https://trustindexai.com/how-it-works" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "How it works", item: "https://ozvor.com/how-it-works" },
     ],
   },
 };
@@ -134,7 +134,7 @@ function HeroSection() {
               flexShrink: 0,
             }}
           />
-          How TrustIndex AI works
+          How Ozvor works
         </div>
 
         <h1
@@ -166,7 +166,7 @@ function HeroSection() {
         >
           When someone asks ChatGPT, Claude, Perplexity, or Google &ldquo;who&rsquo;s the
           best [your category]?&rdquo;, the answer names two or three businesses — not
-          ten links. TrustIndex AI shows you whether you&rsquo;re one of them, and
+          ten links. Ozvor shows you whether you&rsquo;re one of them, and
           exactly how to get there.
         </p>
 
@@ -339,7 +339,7 @@ function WhyItMattersSection() {
 }
 
 // ---------------------------------------------------------------------------
-// Section 2 — How TrustIndex AI gets you cited (5 outcome steps)
+// Section 2 — How Ozvor gets you cited (5 outcome steps)
 // ---------------------------------------------------------------------------
 
 const OUTCOME_STEPS = [
@@ -403,7 +403,7 @@ function HowWeGetYouCitedSection() {
             margin: "0 0 var(--space-10) 0",
           }}
         >
-          How TrustIndex AI gets you cited
+          How Ozvor gets you cited
         </h2>
 
         <ol
@@ -609,7 +609,7 @@ function GoogleAlignmentSection() {
               color: "var(--color-text)",
             }}
           >
-            Google Search Console vs. TrustIndex AI
+            Google Search Console vs. Ozvor
           </h3>
           <div style={{ overflowX: "auto" }}>
             <table
@@ -643,7 +643,7 @@ function GoogleAlignmentSection() {
                       borderBottom: "1px solid var(--color-border)",
                     }}
                   >
-                    TrustIndex AI
+                    Ozvor
                   </th>
                 </tr>
               </thead>
@@ -693,7 +693,7 @@ function GoogleAlignmentSection() {
             }}
           >
             Search Console tells you that you appeared in Google&rsquo;s AI features.
-            TrustIndex AI tells you why, against whom, across every major AI engine
+            Ozvor tells you why, against whom, across every major AI engine
             &mdash; and what to do next.
           </p>
         </div>

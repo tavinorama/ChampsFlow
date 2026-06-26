@@ -21,6 +21,7 @@
  */
 
 import { headers } from "next/headers";
+import { SITE_URL, SITE_NAME } from "../lib/site";
 import { Schibsted_Grotesk, JetBrains_Mono } from "next/font/google";
 import "../styles/tokens.css";
 import { DpaGate } from "../components/DpaGate";
@@ -43,15 +44,15 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  metadataBase: new URL("https://trustindexai.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "TrustIndex AI — Know if AI trusts your brand",
-    template: "%s — TrustIndex AI",
+    default: `${SITE_NAME} — Know if AI trusts your brand`,
+    template: `%s | ${SITE_NAME}`,
   },
   description:
-    "AI Search Trust Intelligence for SMBs. TrustIndex AI audits how your brand appears across AI search, benchmarks competitors, finds trust gaps, and builds the GEO content plan you need to get cited organically.",
+    "AI Search Trust Intelligence for SMBs. Ozvor audits how your brand appears across AI search, benchmarks competitors, finds trust gaps, and builds the GEO content plan you need to get cited organically.",
   openGraph: {
-    siteName: "TrustIndex AI",
+    siteName: SITE_NAME,
     type: "website",
     locale: "en_US",
     images: [
@@ -59,13 +60,13 @@ export const metadata = {
         url: "/og-default.png",
         width: 1200,
         height: 630,
-        alt: "TrustIndex AI — Know if AI trusts your brand",
+        alt: `${SITE_NAME} — Know if AI trusts your brand`,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    site: "@trustindexai",
+    site: "@ozvor",
     images: ["/og-default.png"],
   },
   robots: {

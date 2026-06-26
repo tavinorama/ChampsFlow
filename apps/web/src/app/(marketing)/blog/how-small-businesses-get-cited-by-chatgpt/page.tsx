@@ -31,25 +31,25 @@ import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
-    "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity | TrustIndex AI",
+    "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity | Ozvor",
   description:
     "Learn how small businesses get cited by ChatGPT, Claude, and Perplexity. GEO (Generative Engine Optimization) explained with research, examples, and practical steps.",
   alternates: {
     canonical:
-      "https://trustindexai.com/blog/how-small-businesses-get-cited-by-chatgpt",
+      "https://ozvor.com/blog/how-small-businesses-get-cited-by-chatgpt",
   },
   openGraph: {
     title:
-      "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity | TrustIndex AI",
+      "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity | Ozvor",
     description:
       "Learn how small businesses get cited by ChatGPT, Claude, and Perplexity. GEO (Generative Engine Optimization) explained with research, examples, and practical steps.",
-    url: "https://trustindexai.com/blog/how-small-businesses-get-cited-by-chatgpt",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/blog/how-small-businesses-get-cited-by-chatgpt",
+    siteName: "Ozvor",
     type: "article",
     publishedTime: "2026-05-19",
     images: [
       {
-        url: "https://trustindexai.com/blog/how-small-businesses-get-cited-by-chatgpt/og-image.png",
+        url: "https://ozvor.com/blog/how-small-businesses-get-cited-by-chatgpt/og-image.png",
         width: 1200,
         height: 630,
         alt: "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity",
@@ -71,15 +71,15 @@ const jsonLd = {
     "A research-backed guide to Generative Engine Optimization (GEO) for small businesses — what it is, why it matters, and how consistent social media posting feeds AI citation systems.",
   author: {
     "@type": "Organization",
-    name: "TrustIndex AI",
+    name: "Ozvor",
   },
   publisher: {
     "@type": "Organization",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
     logo: {
       "@type": "ImageObject",
-      url: "https://trustindexai.com/logo.png",
+      url: "https://ozvor.com/logo.png",
     },
   },
   datePublished: "2026-05-19",
@@ -87,7 +87,7 @@ const jsonLd = {
   mainEntityOfPage: {
     "@type": "WebPage",
     "@id":
-      "https://trustindexai.com/blog/generative-engine-optimization-small-business",
+      "https://ozvor.com/blog/generative-engine-optimization-small-business",
   },
   keywords: [
     "generative engine optimization small business",
@@ -194,13 +194,13 @@ const breadcrumbJsonLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-    { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+    { "@type": "ListItem", position: 2, name: "Blog", item: "https://ozvor.com/blog" },
     {
       "@type": "ListItem",
       position: 3,
       name: "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity",
-      item: "https://trustindexai.com/blog/how-small-businesses-get-cited-by-chatgpt",
+      item: "https://ozvor.com/blog/how-small-businesses-get-cited-by-chatgpt",
     },
   ],
 };
@@ -290,7 +290,7 @@ export default function PillarGeoPage() {
                 fontWeight: 600,
               }}
             >
-              <span>TrustIndex AI Research</span>
+              <span>Ozvor Research</span>
               <span aria-hidden="true">·</span>
               <time dateTime="2026-05-19">19 May 2026</time>
               <span aria-hidden="true">·</span>
@@ -352,7 +352,7 @@ export default function PillarGeoPage() {
               ["sources", "Where citations actually come from"],
               ["what-gets-cited", "What content gets cited"],
               ["five-traits", "Five traits of citation-worthy posts"],
-              ["where-we-fit", "Where TrustIndex AI fits"],
+              ["where-we-fit", "Where Ozvor fits"],
               ["start", "Start building your GEO presence"],
             ].map(([id, label]) => (
               <li key={id} style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.5 }}>
@@ -830,8 +830,8 @@ export default function PillarGeoPage() {
 
         <hr style={PROSE.hr} />
 
-        {/* Section: Where TrustIndex AI fits */}
-        <h2 id="where-we-fit" style={PROSE.h2}>Where TrustIndex AI fits</h2>
+        {/* Section: Where Ozvor fits */}
+        <h2 id="where-we-fit" style={PROSE.h2}>Where Ozvor fits</h2>
 
         <p style={PROSE.p}>
           The research is clear on what builds GEO visibility: consistent posting
@@ -841,7 +841,7 @@ export default function PillarGeoPage() {
         </p>
 
         <p style={PROSE.p}>
-          TrustIndex AI is built to handle the consistency problem. You tell it
+          Ozvor is built to handle the consistency problem. You tell it
           what you want to say &mdash; a topic, a link, a brief &mdash; and
           Anthropic Claude Sonnet drafts a post shaped for the platform you are
           posting to and structured for the specific, direct style that AI
@@ -879,7 +879,7 @@ export default function PillarGeoPage() {
         </p>
 
         <p style={PROSE.p}>
-          TrustIndex AI is live. Run the free AI Visibility Test and see your TrustIndex Score in 60 seconds &mdash; no credit card required. Founding members (first 100 annual subscribers) get a 30% founder discount plus a 30-day money-back guarantee.
+          Ozvor is live. Run the free AI Visibility Test and see your TrustIndex Score in 60 seconds &mdash; no credit card required. Founding members (first 100 annual subscribers) get a 30% founder discount plus a 30-day money-back guarantee.
         </p>
 
         {/* Sources */}

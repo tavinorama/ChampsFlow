@@ -7,7 +7,7 @@
  * Compliance: unsubscribeUrl in footer, no tracking pixels, no external assets.
  */
 
-const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://trustindexai.com";
+const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
 export interface NurtureEmailParams {
   to: string;
@@ -30,7 +30,7 @@ export async function sendNurtureKit3Email(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const bookUrl = `${WEB_ORIGIN}/book`;
   const subject =
@@ -53,13 +53,13 @@ export async function sendNurtureKit3Email(
     "",
     "Book a call: " + bookUrl,
     "",
-    "— The TrustIndex AI Team",
-    "https://trustindexai.com",
+    "— The Ozvor Team",
+    "https://ozvor.com",
     "",
     "---",
     "No more emails about this from us.",
     "Unsubscribe: " + params.unsubscribeUrl,
-    "TrustIndex AI · trustindexai.com",
+    "Ozvor · ozvor.com",
   ].join("\n");
 
   // ----- HTML body -----
@@ -78,7 +78,7 @@ export async function sendNurtureKit3Email(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI &middot; OrganicPosts
+      Ozvor &middot; OrganicPosts
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       One founder&rsquo;s 30-day AI citation result
@@ -151,7 +151,7 @@ export async function sendNurtureKit3Email(
   <p style="font-size:11px;color:#9CA3AF;margin:0;text-align:center;">
     No more emails about this from us.<br/>
     <a href="${params.unsubscribeUrl}" style="color:#6B7280;">Unsubscribe</a> &nbsp;&middot;&nbsp;
-    TrustIndex AI &middot; trustindexai.com
+    Ozvor &middot; ozvor.com
   </p>
 </body>
 </html>`;

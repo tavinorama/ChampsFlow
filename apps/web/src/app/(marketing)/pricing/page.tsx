@@ -17,32 +17,32 @@ import { SoftCTA } from "../../../components/marketing/SoftCTA";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "Pricing — TrustIndex AI",
+  title: "Pricing — Ozvor",
   description:
-    "TrustIndex AI pricing: Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back guarantee. Founding members get 30% off annual plans.",
-  alternates: { canonical: "https://trustindexai.com/pricing" },
+    "Ozvor pricing: Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back guarantee. Founding members get 30% off annual plans.",
+  alternates: { canonical: "https://ozvor.com/pricing" },
   openGraph: {
-    title: "Pricing — TrustIndex AI",
+    title: "Pricing — Ozvor",
     description:
       "Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back. Founding member discount on annual plans.",
-    url: "https://trustindexai.com/pricing",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/pricing",
+    siteName: "Ozvor",
     type: "website",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "TrustIndex AI pricing — Free, Growth $99/mo, Agency $249/mo",
+        alt: "Ozvor pricing — Free, Growth $99/mo, Agency $249/mo",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pricing — TrustIndex AI",
+    title: "Pricing — Ozvor",
     description:
       "Free audit, $99/mo Growth, $249/mo Agency. 30-day money-back guarantee.",
-    images: ["https://trustindexai.com/og-default.png"],
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -53,15 +53,15 @@ export const metadata: Metadata = {
 const pricingJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  name: "TrustIndex AI — Pricing",
+  name: "Ozvor — Pricing",
   description:
-    "Pricing for TrustIndex AI: Free (0$), Growth ($99/mo), Agency ($249/mo). 30-day money-back guarantee.",
-  url: "https://trustindexai.com/pricing",
+    "Pricing for Ozvor: Free (0$), Growth ($99/mo), Agency ($249/mo). 30-day money-back guarantee.",
+  url: "https://ozvor.com/pricing",
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Pricing", item: "https://trustindexai.com/pricing" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Pricing", item: "https://ozvor.com/pricing" },
     ],
   },
   offers: [

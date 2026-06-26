@@ -6,7 +6,7 @@
  * Hard rules: RESEND_API_KEY from env, unsubscribe footer required.
  */
 
-const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://trustindexai.com";
+const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
 export interface NurtureEmailParams {
   to: string;
@@ -29,7 +29,7 @@ export async function sendNurtureFree3Email(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const kitUrl = `${WEB_ORIGIN}/kit`;
   const subject = "The $29 fix for AI invisibility (your top-3 actions inside)";
@@ -48,12 +48,12 @@ export async function sendNurtureFree3Email(
     "",
     "Get the Kit — $29: " + kitUrl,
     "",
-    "— The TrustIndex AI Team",
-    "https://trustindexai.com",
+    "— The Ozvor Team",
+    "https://ozvor.com",
     "",
     "---",
-    "You opted in at trustindexai.com. Unsubscribe: " + params.unsubscribeUrl,
-    "TrustIndex AI · trustindexai.com",
+    "You opted in at ozvor.com. Unsubscribe: " + params.unsubscribeUrl,
+    "Ozvor · ozvor.com",
   ].join("\n");
 
   // ----- HTML body -----
@@ -72,7 +72,7 @@ export async function sendNurtureFree3Email(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI
+      Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       The $29 fix for AI invisibility
@@ -122,9 +122,9 @@ export async function sendNurtureFree3Email(
   <!-- Unsubscribe footer -->
   <hr style="border:none;border-top:1px solid #E5E7EB;margin:28px 0 16px 0;" />
   <p style="font-size:11px;color:#9CA3AF;margin:0;text-align:center;">
-    You received this email because you opted in at trustindexai.com.<br/>
+    You received this email because you opted in at ozvor.com.<br/>
     <a href="${params.unsubscribeUrl}" style="color:#6B7280;">Unsubscribe</a> &nbsp;&middot;&nbsp;
-    TrustIndex AI · trustindexai.com
+    Ozvor · ozvor.com
   </p>
 </body>
 </html>`;

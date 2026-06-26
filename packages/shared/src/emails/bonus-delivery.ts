@@ -2,7 +2,7 @@
  * Bonus delivery email — sent after a new paid subscription is confirmed
  * (checkout.session.completed for Growth or Agency plan).
  *
- * Subject: "Your TrustIndex AI bonuses are ready — here's what to do first"
+ * Subject: "Your Ozvor bonuses are ready — here's what to do first"
  * Content: Welcome + 4 downloadable bonus assets + first-action guidance.
  *
  * Sub-processor: Resend (architecture §11 — DPA executed, EU infrastructure,
@@ -26,35 +26,35 @@ export interface BonusDeliveryEmailParams {
   annual?: boolean;
 }
 
-const DASHBOARD_URL = "https://trustindexai.com/dashboard";
-const HOW_IT_WORKS_URL = "https://trustindexai.com/how-it-works";
+const DASHBOARD_URL = "https://ozvor.com/dashboard";
+const HOW_IT_WORKS_URL = "https://ozvor.com/how-it-works";
 
 const BONUS_ASSETS = [
   {
     label: "The GEO Visibility Guide (30-page PDF)",
-    url: "https://trustindexai.com/downloads/The-GEO-Visibility-Guide.pdf",
-    resourcePage: "https://trustindexai.com/resources/geo-visibility-guide",
+    url: "https://ozvor.com/downloads/The-GEO-Visibility-Guide.pdf",
+    resourcePage: "https://ozvor.com/resources/geo-visibility-guide",
     description:
       "The definitive playbook for making your brand visible inside ChatGPT, Claude, Perplexity, and Google AI Overviews.",
   },
   {
     label: "LLM Citation Tracker (.xlsx)",
-    url: "https://trustindexai.com/downloads/LLM-Citation-Tracker.xlsx",
-    resourcePage: "https://trustindexai.com/resources/llm-citation-tracker",
+    url: "https://ozvor.com/downloads/LLM-Citation-Tracker.xlsx",
+    resourcePage: "https://ozvor.com/resources/llm-citation-tracker",
     description:
       "Track which AI models mention your brand, how often, and where you rank against competitors.",
   },
   {
     label: "LLM Citation Tracker — Methodology (PDF)",
-    url: "https://trustindexai.com/downloads/LLM-Citation-Tracker-Methodology.pdf",
-    resourcePage: "https://trustindexai.com/resources/llm-citation-tracker",
+    url: "https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf",
+    resourcePage: "https://ozvor.com/resources/llm-citation-tracker",
     description:
       "The scoring methodology behind the tracker — understand exactly what drives AI citations.",
   },
   {
     label: "5 High-Citation Post Templates (PDF)",
-    url: "https://trustindexai.com/downloads/5-High-Citation-Post-Templates.pdf",
-    resourcePage: "https://trustindexai.com/resources/5-high-citation-post-templates",
+    url: "https://ozvor.com/downloads/5-High-Citation-Post-Templates.pdf",
+    resourcePage: "https://ozvor.com/resources/5-high-citation-post-templates",
     description:
       "Ready-to-use content formats that consistently get referenced by AI models.",
   },
@@ -77,7 +77,7 @@ export async function sendBonusDeliveryEmail(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const planLabel =
     params.plan === "agency" ? "Agency" : "Growth";
@@ -85,7 +85,7 @@ export async function sendBonusDeliveryEmail(
   const isAgencyAnnual = params.plan === "agency" && params.annual === true;
 
   const subject =
-    "Your TrustIndex AI bonuses are ready — here's what to do first";
+    "Your Ozvor bonuses are ready — here's what to do first";
 
   // ----- Plain-text body -----
   const bonusLines = BONUS_ASSETS.map(
@@ -97,7 +97,7 @@ export async function sendBonusDeliveryEmail(
     : "";
 
   const textBody = [
-    `Welcome to TrustIndex AI ${planLabel} (${billingLabel})!`,
+    `Welcome to Ozvor ${planLabel} (${billingLabel})!`,
     "",
     "Your bonuses are ready for download:",
     "",
@@ -110,10 +110,10 @@ export async function sendBonusDeliveryEmail(
     "2. Open the GEO Visibility Guide and complete the top-3 quick wins in Section 2.",
     "3. Use the Citation Tracker to baseline your current AI mention rate.",
     "",
-    "Questions? Reply to this email or write to hello@trustindexai.com",
+    "Questions? Reply to this email or write to hello@ozvor.com",
     "",
-    "— The TrustIndex AI Team",
-    "https://trustindexai.com",
+    "— The Ozvor Team",
+    "https://ozvor.com",
   ].join("\n");
 
   // ----- HTML body -----
@@ -157,7 +157,7 @@ export async function sendBonusDeliveryEmail(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI
+      Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       Welcome to ${planLabel}! Your bonuses are ready.
@@ -168,7 +168,7 @@ export async function sendBonusDeliveryEmail(
   </div>
 
   <p style="color:#374151;margin-bottom:24px;">
-    Thanks for joining TrustIndex AI. Everything you need to start showing up in
+    Thanks for joining Ozvor. Everything you need to start showing up in
     ChatGPT, Claude, Perplexity, and Google AI Overviews is below.
   </p>
 
@@ -223,9 +223,9 @@ export async function sendBonusDeliveryEmail(
   <hr style="border:none;border-top:1px solid #E5E7EB;margin-bottom:16px;" />
   <p style="font-size:12px;color:#9CA3AF;margin:0;">
     Questions? Reply to this email or write to
-    <a href="mailto:hello@trustindexai.com" style="color:#2563EB;">hello@trustindexai.com</a>
+    <a href="mailto:hello@ozvor.com" style="color:#2563EB;">hello@ozvor.com</a>
     &nbsp;&middot;&nbsp;
-    <a href="https://trustindexai.com" style="color:#2563EB;">trustindexai.com</a>
+    <a href="https://ozvor.com" style="color:#2563EB;">ozvor.com</a>
   </p>
 </body>
 </html>`;

@@ -28,7 +28,7 @@ export function LegalPage({
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", backgroundColor: "var(--color-bg)" }}>
       <header style={{ borderBottom: "1px solid var(--color-border)", backgroundColor: "var(--color-surface)" }}>
         <div style={{ maxWidth: "820px", margin: "0 auto", padding: "var(--space-4)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Link href="/" style={{ textDecoration: "none" }} aria-label="TrustIndex AI — home">
+          <Link href="/" style={{ textDecoration: "none" }} aria-label="Ozvor — home">
             <Logo markSize={26} wordSize="1rem" />
           </Link>
           <Link href="/" style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-primary)", textDecoration: "none", fontWeight: 600 }}>

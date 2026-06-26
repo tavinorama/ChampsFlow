@@ -372,7 +372,7 @@ function USCopy() {
           margin: "0 0 12px 0",
         }}
       >
-        When you upload content or connect a social account, TrustIndex AI
+        When you upload content or connect a social account, Ozvor
         processes that information on your behalf under our Data Processing
         Terms. Please review the key points below before continuing.
       </p>

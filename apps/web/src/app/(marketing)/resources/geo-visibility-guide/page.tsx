@@ -15,19 +15,19 @@ import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
-    "The GEO Visibility Guide — How Small Businesses Get Cited by ChatGPT in 2026 | TrustIndex AI",
+    "The GEO Visibility Guide — How Small Businesses Get Cited by ChatGPT in 2026 | Ozvor",
   description:
     "A free 30-page guide on Generative Engine Optimization for small businesses: how AI engines decide who to cite, the 5 traits of citation-worthy content, a 4-week posting calendar, local & industry playbooks, and a 90-day GEO roadmap. Free with the Growth plan.",
   alternates: {
-    canonical: "https://trustindexai.com/resources/geo-visibility-guide",
+    canonical: "https://ozvor.com/resources/geo-visibility-guide",
   },
   openGraph: {
     title:
-      "The GEO Visibility Guide — 30 pages on getting cited by ChatGPT, Claude & Perplexity | TrustIndex AI",
+      "The GEO Visibility Guide — 30 pages on getting cited by ChatGPT, Claude & Perplexity | Ozvor",
     description:
       "The complete small-business guide to Generative Engine Optimization: peer-reviewed science, concrete posting cadences, local playbooks, and a 90-day roadmap. Free PDF download.",
-    url: "https://trustindexai.com/resources/geo-visibility-guide",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/resources/geo-visibility-guide",
+    siteName: "Ozvor",
     type: "article",
   },
 };
@@ -137,21 +137,21 @@ const GUIDE_LD = JSON.stringify({
   "@graph": [
     {
       "@type": "Article",
-      "@id": "https://trustindexai.com/resources/geo-visibility-guide",
+      "@id": "https://ozvor.com/resources/geo-visibility-guide",
       headline:
         "The GEO Visibility Guide — How Small Businesses Get Cited by ChatGPT, Claude, Perplexity & Gemini in 2026",
       description:
         "A 30-page guide on Generative Engine Optimization for small businesses: peer-reviewed science, 5-trait citation framework, 4-week posting calendar, local & industry playbooks, and a 90-day roadmap.",
-      author: { "@type": "Organization", name: "TrustIndex AI" },
+      author: { "@type": "Organization", name: "Ozvor" },
       publisher: {
         "@type": "Organization",
-        name: "TrustIndex AI",
-        url: "https://trustindexai.com",
+        name: "Ozvor",
+        url: "https://ozvor.com",
       },
       datePublished: "2026-06-01",
       dateModified: "2026-06-24",
       inLanguage: "en",
-      url: "https://trustindexai.com/resources/geo-visibility-guide",
+      url: "https://ozvor.com/resources/geo-visibility-guide",
       about: { "@type": "Thing", name: "Generative Engine Optimization" },
     },
     {
@@ -161,19 +161,19 @@ const GUIDE_LD = JSON.stringify({
           "@type": "ListItem",
           position: 1,
           name: "Home",
-          item: "https://trustindexai.com",
+          item: "https://ozvor.com",
         },
         {
           "@type": "ListItem",
           position: 2,
           name: "Resources",
-          item: "https://trustindexai.com/resources",
+          item: "https://ozvor.com/resources",
         },
         {
           "@type": "ListItem",
           position: 3,
           name: "GEO Visibility Guide",
-          item: "https://trustindexai.com/resources/geo-visibility-guide",
+          item: "https://ozvor.com/resources/geo-visibility-guide",
         },
       ],
     },
@@ -249,7 +249,7 @@ export default function GeoVisibilityGuidePage() {
               marginBottom: "var(--space-6)",
             }}
           >
-            by TrustIndex AI &middot; Version 1.0 &middot; 2026 &middot; 30 pages
+            by Ozvor &middot; Version 1.0 &middot; 2026 &middot; 30 pages
           </p>
 
           {/* Primary CTA */}
@@ -609,7 +609,7 @@ export default function GeoVisibilityGuidePage() {
             }}
           >
             You can run every step yourself, by hand. At the end of the guide
-            we show you where TrustIndex AI automates the parts that quietly get
+            we show you where Ozvor automates the parts that quietly get
             dropped — and how to start for free.
           </p>
           <p

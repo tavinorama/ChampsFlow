@@ -61,7 +61,7 @@ export default function IntegrationsPage() {
         AI engines, keys &amp; connections
       </h1>
       <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, margin: "0 0 var(--space-6) 0" }}>
-        Connect your own AI provider keys (optional), or let TrustIndex AI use its
+        Connect your own AI provider keys (optional), or let Ozvor use its
         included keys. Every connection shows what it powers and what data it
         accesses. <a href="/how-it-works" style={{ color: "var(--color-primary)" }}>See how the audit works →</a>
       </p>

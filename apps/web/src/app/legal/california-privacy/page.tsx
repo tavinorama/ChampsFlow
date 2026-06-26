@@ -19,7 +19,7 @@ import Link from "next/link";
 import { Footer } from "../../../components/Footer";
 
 export const metadata = {
-  title: "California Privacy Rights — TrustIndex AI",
+  title: "California Privacy Rights | Ozvor",
   description:
     "Your California privacy rights under the CCPA/CPRA. Learn how to opt out and exercise your rights.",
 };
@@ -93,7 +93,7 @@ export default function CaliforniaPrivacyPage() {
         <Section>
           <SectionHeading>Categories of personal information we collect</SectionHeading>
           <Body>
-            TrustIndex AI collects the following categories of personal
+            Ozvor collects the following categories of personal
             information, as defined by the CCPA:
           </Body>
           <ul style={LIST_STYLE}>
@@ -208,10 +208,10 @@ export default function CaliforniaPrivacyPage() {
             <li style={LIST_ITEM_STYLE}>
               <strong>By email:</strong>{" "}
               <a
-                href="mailto:privacy@trustindexai.com"
+                href="mailto:privacy@ozvor.com"
                 style={{ color: "var(--color-primary)" }}
               >
-                privacy@trustindexai.com
+                privacy@ozvor.com
               </a>
             </li>
           </ul>
@@ -260,10 +260,10 @@ export default function CaliforniaPrivacyPage() {
           <Body>
             For privacy-related questions, contact our Privacy Team at{" "}
             <a
-              href="mailto:privacy@trustindexai.com"
+              href="mailto:privacy@ozvor.com"
               style={{ color: "var(--color-primary)" }}
             >
-              privacy@trustindexai.com
+              privacy@ozvor.com
             </a>
             . For general inquiries, see our{" "}
             <Link href="/privacy-policy" style={{ color: "var(--color-primary)" }}>

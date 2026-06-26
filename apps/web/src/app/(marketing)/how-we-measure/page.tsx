@@ -21,7 +21,7 @@ import { SoftCTA } from "../../../components/marketing/SoftCTA";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "How We Measure the TrustIndex Score | TrustIndex AI",
+  title: "How We Measure the TrustIndex Score | Ozvor",
   description:
     "The exact methodology behind the TrustIndex Score: three vectors, five AI engines, and an honest account of what's measured vs. still on the roadmap.",
 };

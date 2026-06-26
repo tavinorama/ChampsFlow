@@ -1,5 +1,5 @@
 /**
- * Blog index — TrustIndex AI content hub
+ * Blog index — Ozvor content hub
  * Route: /blog (within (marketing) route group)
  *
  * Renders all published articles and videos in one chronological list.
@@ -27,18 +27,18 @@ import { SoftCTA } from "../../../components/marketing/SoftCTA";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "Blog — TrustIndex AI",
+  title: "Blog — Ozvor",
   description:
     "Articles and videos about AI search visibility, GEO (Generative Engine Optimization), and building a brand that AI systems cite and recommend.",
   alternates: {
-    canonical: "https://trustindexai.com/blog",
+    canonical: "https://ozvor.com/blog",
   },
   openGraph: {
-    title: "Blog — TrustIndex AI",
+    title: "Blog — Ozvor",
     description:
       "Articles and videos about AI search visibility, GEO, and building a brand that AI systems cite and recommend.",
-    url: "https://trustindexai.com/blog",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/blog",
+    siteName: "Ozvor",
     type: "website",
   },
 };
@@ -53,34 +53,34 @@ const videoPosts = PUBLISHED_POSTS.filter((p) => p.type === "video") as VideoPos
 const blogIndexJsonLd = {
   "@context": "https://schema.org",
   "@type": "CollectionPage",
-  name: "Blog — TrustIndex AI",
+  name: "Blog — Ozvor",
   description:
     "Articles and videos about AI search visibility, GEO (Generative Engine Optimization), and building a brand that AI systems cite and recommend.",
-  url: "https://trustindexai.com/blog",
+  url: "https://ozvor.com/blog",
   isPartOf: {
     "@type": "WebSite",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Blog", item: "https://ozvor.com/blog" },
     ],
   },
   hasPart: [
     ...articlePosts.map((post) => ({
       "@type": "BlogPosting",
       headline: post.title,
-      url: `https://trustindexai.com/blog/${post.slug}`,
+      url: `https://ozvor.com/blog/${post.slug}`,
       datePublished: post.publishedAt,
     })),
     ...videoPosts.map((post) => ({
       "@type": "VideoObject",
       name: post.title,
       description: post.excerpt,
-      url: `https://trustindexai.com/blog/watch/${post.slug}`,
+      url: `https://ozvor.com/blog/watch/${post.slug}`,
       thumbnailUrl: youtubeThumbnailUrl(post.youtubeId),
       uploadDate: post.publishedAt,
       embedUrl: `https://www.youtube-nocookie.com/embed/${post.youtubeId}`,

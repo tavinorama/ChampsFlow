@@ -34,7 +34,7 @@ export interface FreeTestResultEmailParams {
   enginesLive: number;
   /** Ordered upsell recommendations */
   recommendations: Array<{ plan: string; reason: string; href: string }>;
-  /** Base URL for absolute links (defaults to WEB_ORIGIN env or https://trustindexai.com) */
+  /** Base URL for absolute links (defaults to WEB_ORIGIN env or https://ozvor.com) */
   webOrigin?: string;
 }
 
@@ -69,12 +69,12 @@ export async function sendFreeTestResultEmail(
   }
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "TrustIndex AI <hello@trustindexai.com>";
+    process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const origin =
     params.webOrigin ??
     process.env.WEB_ORIGIN ??
-    "https://trustindexai.com";
+    "https://ozvor.com";
 
   const subject = `Your AI Visibility snapshot for ${params.brand}`;
 
@@ -138,8 +138,8 @@ export async function sendFreeTestResultEmail(
     "─".repeat(50),
     "This is a one-time transactional result email triggered by your AI Visibility Test.",
     "No subscription required to receive this message.",
-    "Questions? Reply to this email or write to hello@trustindexai.com",
-    "https://trustindexai.com",
+    "Questions? Reply to this email or write to hello@ozvor.com",
+    "https://ozvor.com",
   ]
     .filter((l) => l !== undefined)
     .join("\n");
@@ -195,7 +195,7 @@ export async function sendFreeTestResultEmail(
   <!-- Header -->
   <div style="margin-bottom:24px;">
     <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
-      TrustIndex AI
+      Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
       Your AI Visibility Snapshot
@@ -302,11 +302,11 @@ export async function sendFreeTestResultEmail(
   <hr style="border:none;border-top:1px solid #E5E7EB;margin-bottom:16px;" />
   <p style="font-size:12px;color:#9CA3AF;margin:0 0 4px 0;">
     This is a transactional result email triggered by your AI Visibility Test at
-    <a href="https://trustindexai.com" style="color:#2563EB;">trustindexai.com</a>.
+    <a href="https://ozvor.com" style="color:#2563EB;">ozvor.com</a>.
   </p>
   <p style="font-size:12px;color:#9CA3AF;margin:0;">
     This is a one-time result email. No subscription required to receive this message.
-    Questions? <a href="mailto:hello@trustindexai.com" style="color:#2563EB;">hello@trustindexai.com</a>
+    Questions? <a href="mailto:hello@ozvor.com" style="color:#2563EB;">hello@ozvor.com</a>
   </p>
 
 </body>

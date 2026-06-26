@@ -9,9 +9,9 @@
 import { LegalPage, LegalSection } from "../../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Data Processing Agreement — TrustIndex AI",
-  description: "The DPA governing TrustIndex AI's processing of personal data on behalf of business customers (GDPR Art. 28, LGPD).",
-  alternates: { canonical: "https://trustindexai.com/legal/dpa" },
+  title: "Data Processing Agreement | Ozvor",
+  description: "The DPA governing Ozvor's processing of personal data on behalf of business customers (GDPR Art. 28, LGPD).",
+  alternates: { canonical: "https://ozvor.com/legal/dpa" },
 };
 
 export default function DpaPage() {
@@ -19,10 +19,10 @@ export default function DpaPage() {
     <LegalPage
       title="Data Processing Agreement (DPA)"
       updated="13 June 2026"
-      intro="This DPA forms part of the Terms of Service between you (the “Customer”, acting as data controller) and TrustIndex AI (the “Processor”) and applies where we process personal data on your behalf under the GDPR (Art. 28), the LGPD, and applicable US state laws. By using the Service you accept this DPA on behalf of your organisation."
+      intro={'This DPA forms part of the Terms of Service between you (the “Customer”, acting as data controller) and Ozvor (the “Processor”) and applies where we process personal data on your behalf under the GDPR (Art. 28), the LGPD, and applicable US state laws. By using the Service you accept this DPA on behalf of your organisation.'}
     >
       <LegalSection n="1" title="Roles">
-        <p>For personal data you submit or that we process to provide the Service to you (your account staff, your brand data), you are the <strong>controller</strong> and TrustIndex AI is the <strong>processor</strong>. For our own operational data (e.g. billing relationship), TrustIndex AI is an independent controller as described in the <a href="/privacy-policy" style={{ color: "var(--color-primary)" }}>Privacy Policy</a>.</p>
+        <p>For personal data you submit or that we process to provide the Service to you (your account staff, your brand data), you are the <strong>controller</strong> and Ozvor is the <strong>processor</strong>. For our own operational data (e.g. billing relationship), Ozvor is an independent controller as described in the <a href="/privacy-policy" style={{ color: "var(--color-primary)" }}>Privacy Policy</a>.</p>
       </LegalSection>
 
       <LegalSection n="2" title="Subject-matter, nature and purpose">
@@ -65,7 +65,7 @@ export default function DpaPage() {
       </LegalSection>
 
       <LegalSection n="10" title="Liability and order of precedence">
-        <p>This DPA is governed by the Terms of Service and the laws of Brazil. In case of conflict on data-protection matters, this DPA prevails over the Terms. Liability is subject to the limitations in the Terms. Contact: <a href="mailto:dpo@trustindexai.com" style={{ color: "var(--color-primary)" }}>dpo@trustindexai.com</a>.</p>
+        <p>This DPA is governed by the Terms of Service and the laws of Brazil. In case of conflict on data-protection matters, this DPA prevails over the Terms. Liability is subject to the limitations in the Terms. Contact: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>.</p>
       </LegalSection>
     </LegalPage>
   );

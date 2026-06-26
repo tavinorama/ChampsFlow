@@ -41,18 +41,18 @@ import { SoftCTA } from "../../../components/marketing/SoftCTA";
 const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "";
 
 export const metadata: Metadata = {
-  title: "Book a GEO Strategy Call — TrustIndex AI",
+  title: "Book a GEO Strategy Call — Ozvor",
   description:
-    "Book a 20-minute GEO strategy call with the TrustIndex AI team. We'll review your AI search visibility gaps and walk you through a personalised action plan.",
+    "Book a 20-minute GEO strategy call with the Ozvor team. We'll review your AI search visibility gaps and walk you through a personalised action plan.",
   alternates: {
-    canonical: "https://trustindexai.com/book",
+    canonical: "https://ozvor.com/book",
   },
   openGraph: {
-    title: "Book a GEO Strategy Call — TrustIndex AI",
+    title: "Book a GEO Strategy Call — Ozvor",
     description:
       "20 minutes to understand your AI search visibility and get a personalised GEO action plan.",
-    url: "https://trustindexai.com/book",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/book",
+    siteName: "Ozvor",
     type: "website",
   },
 };
@@ -64,20 +64,20 @@ export const metadata: Metadata = {
 const bookPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebPage",
-  name: "Book a GEO Strategy Call — TrustIndex AI",
+  name: "Book a GEO Strategy Call — Ozvor",
   description:
-    "Book a 20-minute GEO strategy call with the TrustIndex AI team.",
-  url: "https://trustindexai.com/book",
+    "Book a 20-minute GEO strategy call with the Ozvor team.",
+  url: "https://ozvor.com/book",
   isPartOf: {
     "@type": "WebSite",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Book a call", item: "https://trustindexai.com/book" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Book a call", item: "https://ozvor.com/book" },
     ],
   },
 };
@@ -90,7 +90,7 @@ const VALUE_POINTS = [
   "We review your brand's current AI search visibility — what AI says about you today.",
   "We identify the highest-impact GEO gaps specific to your category and location.",
   "You leave with a prioritised action plan you can start executing immediately.",
-  "No pitch. If TrustIndex AI is a good fit, we'll tell you — if not, we'll say so too.",
+  "No pitch. If Ozvor is a good fit, we'll tell you — if not, we'll say so too.",
 ];
 
 // ---------------------------------------------------------------------------

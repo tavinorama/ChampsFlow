@@ -478,7 +478,7 @@ function PublicNavbar() {
         {/* Logo */}
         <Link
           href="/"
-          aria-label="TrustIndex AI — home"
+          aria-label="Ozvor — home"
           style={{
             textDecoration: "none",
             display: "flex",
@@ -646,8 +646,8 @@ function MarketingFooter() {
           <CookieConsentTrigger className="mk-footer-link">
             Cookie preferences
           </CookieConsentTrigger>
-          <FooterLink href="mailto:hello@trustindexai.com">
-            hello@trustindexai.com
+          <FooterLink href="mailto:hello@ozvor.com">
+            hello@ozvor.com
           </FooterLink>
         </nav>
 
@@ -670,7 +670,7 @@ function MarketingFooter() {
               lineHeight: "var(--line-height-caption)",
             }}
           >
-            &copy; {currentYear} TrustIndex&nbsp;AI &mdash; AI Search Trust
+            &copy; {currentYear} Ozvor &mdash; AI Search Trust
             Intelligence. Serving SMBs in Brazil, the EU, and the United States.
           </p>
           <span

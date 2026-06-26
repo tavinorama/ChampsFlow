@@ -30,25 +30,25 @@ import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
-    "Why Small Businesses Stop Posting on Social Media | TrustIndex AI",
+    "Why Small Businesses Stop Posting on Social Media | Ozvor",
   description:
     "Most small businesses don't have a social media consistency problem. They have a starting problem. Here's why typical fixes fail — and what actually works.",
   alternates: {
     canonical:
-      "https://trustindexai.com/blog/why-small-businesses-stop-posting",
+      "https://ozvor.com/blog/why-small-businesses-stop-posting",
   },
   openGraph: {
     title:
-      "Why Small Businesses Stop Posting on Social Media | TrustIndex AI",
+      "Why Small Businesses Stop Posting on Social Media | Ozvor",
     description:
       "Most small businesses don't have a social media consistency problem. They have a starting problem. Here's why typical fixes fail — and what actually works.",
-    url: "https://trustindexai.com/blog/why-small-businesses-stop-posting",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/blog/why-small-businesses-stop-posting",
+    siteName: "Ozvor",
     type: "article",
     publishedTime: "2026-05-11",
     images: [
       {
-        url: "https://trustindexai.com/blog/why-small-businesses-stop-posting/og-image.png",
+        url: "https://ozvor.com/blog/why-small-businesses-stop-posting/og-image.png",
         width: 1200,
         height: 630,
         alt: "Why Small Businesses Stop Posting on Social Media",
@@ -72,25 +72,25 @@ const jsonLd = {
   dateModified: "2026-05-11",
   author: {
     "@type": "Organization",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
   publisher: {
     "@type": "Organization",
-    name: "TrustIndex AI",
+    name: "Ozvor",
     logo: {
       "@type": "ImageObject",
-      url: "https://trustindexai.com/logo.png",
+      url: "https://ozvor.com/logo.png",
     },
   },
   mainEntityOfPage: {
     "@type": "WebPage",
     "@id":
-      "https://trustindexai.com/blog/why-small-businesses-stop-posting-social-media",
+      "https://ozvor.com/blog/why-small-businesses-stop-posting-social-media",
   },
   image: {
     "@type": "ImageObject",
-    url: "https://trustindexai.com/blog/why-small-businesses-stop-posting/og-image.png",
+    url: "https://ozvor.com/blog/why-small-businesses-stop-posting/og-image.png",
     width: 1200,
     height: 630,
   },
@@ -170,13 +170,13 @@ const breadcrumbJsonLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-    { "@type": "ListItem", position: 2, name: "Blog", item: "https://trustindexai.com/blog" },
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+    { "@type": "ListItem", position: 2, name: "Blog", item: "https://ozvor.com/blog" },
     {
       "@type": "ListItem",
       position: 3,
       name: "Why Small Businesses Stop Posting on Social Media",
-      item: "https://trustindexai.com/blog/why-small-businesses-stop-posting",
+      item: "https://ozvor.com/blog/why-small-businesses-stop-posting",
     },
   ],
 };
@@ -241,7 +241,7 @@ export default function BlogPost1Page() {
               fontFamily: "var(--font-family)",
             }}
           >
-            <span>TrustIndex AI</span>
+            <span>Ozvor</span>
             <span aria-hidden="true">&middot;</span>
             <time dateTime="2026-05-11">11 May 2026</time>
             <span aria-hidden="true">&middot;</span>

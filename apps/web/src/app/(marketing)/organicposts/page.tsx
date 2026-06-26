@@ -2,8 +2,8 @@
  * /organicposts — OrganicPosts by TrustIndex AI (consultancy service page)
  *
  * Per the brand architecture: OrganicPosts is the GEO content execution arm of
- * TrustIndex AI — NOT a separate product, NOT generic social media management.
- * Relationship: "TrustIndex AI finds the gaps. OrganicPosts helps publish the fix."
+ * Ozvor — NOT a separate product, NOT generic social media management.
+ * Relationship: "Ozvor finds the gaps. OrganicPosts helps publish the fix."
  *
  * Copy sourced from the brand package (organicposts-landing-page-copy.md).
  * Uses the same marketing layout, tokens, and dark-mode system as the platform site.
@@ -16,18 +16,18 @@ import { SoftCTA } from "../../../components/marketing/SoftCTA";
 export const metadata: Metadata = {
   title: "OrganicPosts by TrustIndex AI — Publish the proof AI needs to trust you",
   description:
-    "OrganicPosts is the GEO content consulting and execution arm of TrustIndex AI. We create and publish the proof, pages, and posts AI search systems need to understand, cite, and recommend your brand.",
+    "OrganicPosts is the GEO content consulting and execution arm of Ozvor. We create and publish the proof, pages, and posts AI search systems need to understand, cite, and recommend your brand.",
   alternates: { canonical: "https://organicposts.ai/" },
   openGraph: {
     title: "OrganicPosts by TrustIndex AI — GEO content execution",
     description:
-      "Turn your AI search gaps into organic content that gets found. The consultancy execution arm of TrustIndex AI.",
+      "Turn your AI search gaps into organic content that gets found. The consultancy execution arm of Ozvor.",
     url: "https://organicposts.ai/",
     siteName: "OrganicPosts by TrustIndex AI",
     type: "website",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
         alt: "OrganicPosts by TrustIndex AI — GEO content execution",
@@ -38,8 +38,8 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "OrganicPosts by TrustIndex AI — GEO content execution",
     description:
-      "Turn your AI search gaps into organic content that gets found. The consultancy execution arm of TrustIndex AI.",
-    images: ["https://trustindexai.com/og-default.png"],
+      "Turn your AI search gaps into organic content that gets found. The consultancy execution arm of Ozvor.",
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -56,8 +56,8 @@ const organicPostsServiceJsonLd = {
   url: "https://organicposts.ai/",
   provider: {
     "@type": "Organization",
-    name: "TrustIndex AI",
-    url: "https://trustindexai.com",
+    name: "Ozvor",
+    url: "https://ozvor.com",
   },
   serviceType: "GEO Content Execution",
   areaServed: ["US", "EU", "BR"],
@@ -127,7 +127,7 @@ const organicPostsServiceJsonLd = {
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
       { "@type": "ListItem", position: 2, name: "OrganicPosts", item: "https://organicposts.ai/" },
     ],
   },
@@ -155,11 +155,11 @@ const CREATES = {
 };
 
 const STEPS = [
-  { n: "1", title: "Audit", body: "We use TrustIndex AI to see how your company appears in AI search and which competitors are recommended instead." },
+  { n: "1", title: "Audit", body: "We use Ozvor to see how your company appears in AI search and which competitors are recommended instead." },
   { n: "2", title: "Map", body: "We convert visibility gaps into a prioritized content plan by prompt, buyer intent, competitor, and missing proof." },
   { n: "3", title: "Create", body: "We produce organic content assets designed to make your company easier to understand, verify, cite, and recommend." },
   { n: "4", title: "Publish", body: "We organize website, LinkedIn, Google Business Profile, newsletter, and owned-channel publishing workflows." },
-  { n: "5", title: "Monitor", body: "We track changes in AI answers, citations, mentions, and competitor displacement using TrustIndex AI." },
+  { n: "5", title: "Monitor", body: "We track changes in AI answers, citations, mentions, and competitor displacement using Ozvor." },
 ];
 
 // GEO Sprint tiers — done-for-you, founder-led (all CTAs → /book, not self-serve Stripe checkout).
@@ -238,7 +238,7 @@ const OFFERS = [
     tag: "30-day execution",
     price: "from $1,500",
     priceNote: "one-time",
-    body: "A focused sprint for companies that need to act on their TrustIndex AI audit. Three tiers — from top-3 fixes to full multi-brand execution.",
+    body: "A focused sprint for companies that need to act on their Ozvor audit. Three tiers — from top-3 fixes to full multi-brand execution.",
     includes: [
       "Sprint Starter — from $1,500 (top-3 fixes)",
       "Sprint Standard — from $2,400 (full plan + content)",
@@ -296,7 +296,7 @@ export default function OrganicPostsPage() {
             fontSize: "clamp(1rem, 1.5vw, 1.125rem)", lineHeight: 1.75, color: "var(--color-muted)",
             fontFamily: "var(--font-family)", maxWidth: "56ch", margin: "0 auto var(--space-8)",
           }}>
-            OrganicPosts is the GEO content consulting and execution arm of TrustIndex AI. We create and
+            OrganicPosts is the GEO content consulting and execution arm of Ozvor. We create and
             publish the proof, pages, posts, and authority signals AI search systems need to understand,
             cite, and recommend your brand.
           </p>
@@ -305,7 +305,7 @@ export default function OrganicPostsPage() {
             <a href="/" style={ctaSecondary}>Run my TrustIndex Audit</a>
           </div>
           <p style={{ marginTop: "var(--space-5)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-            TrustIndex AI finds the gaps. OrganicPosts helps publish the fix.
+            Ozvor finds the gaps. OrganicPosts helps publish the fix.
           </p>
           <p style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
             Prefer to talk it through first?{" "}
@@ -360,7 +360,7 @@ export default function OrganicPostsPage() {
               {
                 n: "1",
                 title: "Run your free audit",
-                body: "Go to /test, enter your brand name. TrustIndex AI probes ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — then scores you across AI, Performance, and Brand trust.",
+                body: "Go to /test, enter your brand name. Ozvor probes ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — then scores you across AI, Performance, and Brand trust.",
               },
               {
                 n: "2",
@@ -445,7 +445,7 @@ export default function OrganicPostsPage() {
           <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, fontFamily: "var(--font-family)", margin: 0 }}>
             We publish the fixes. You watch your TrustIndex Score climb.
             All tiers are founder-led — you talk directly to the person doing the work.
-            Every engagement begins with a TrustIndex AI audit so the plan is driven by data,
+            Every engagement begins with a Ozvor audit so the plan is driven by data,
             not guesswork. CTAs below connect you to a free 20-min call, not an automated checkout.
           </p>
         </div>

@@ -142,7 +142,7 @@ export function Footer() {
             color: "var(--color-muted)",
           }}
         >
-          &copy; {currentYear} TrustIndex AI. All rights reserved.
+          &copy; {currentYear} Ozvor. All rights reserved.
         </p>
       </div>
     </footer>

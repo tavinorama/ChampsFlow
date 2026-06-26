@@ -232,7 +232,7 @@ export default function LostEmailEscalationPage() {
         }}
       >
         Use this form if you can no longer access the email address associated
-        with your TrustIndex AI account. Our privacy team will manually verify
+        with your Ozvor account. Our privacy team will manually verify
         your identity within <strong>5 business days</strong>.
       </p>
 
@@ -251,7 +251,7 @@ export default function LostEmailEscalationPage() {
         }}
       >
         <strong>Tip:</strong> Your account ID can be found in any prior email
-        from TrustIndex AI (e.g., welcome email, billing receipts).
+        from Ozvor (e.g., welcome email, billing receipts).
       </div>
 
       <form onSubmit={(e) => void handleSubmit(e)} noValidate>

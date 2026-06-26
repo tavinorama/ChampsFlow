@@ -1,7 +1,7 @@
 /**
  * SoftCTA — reusable soft call-to-action band
  *
- * Renders a gentle nudge toward the TrustIndex AI value ladder:
+ * Renders a gentle nudge toward the Ozvor value ladder:
  *   Free test (/test) → Kit $29 (/kit) → Growth $99/mo → Agency → /book
  *
  * Two visual tones:

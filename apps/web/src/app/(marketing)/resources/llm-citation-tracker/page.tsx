@@ -16,19 +16,19 @@ import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
   title:
-    "LLM Citation Tracker — Monitor When ChatGPT, Claude & Perplexity Name Your Business | TrustIndex AI",
+    "LLM Citation Tracker — Monitor When ChatGPT, Claude & Perplexity Name Your Business | Ozvor",
   description:
     "A free spreadsheet template and methodology for tracking when AI answer engines cite your business. 10 minutes a week, no tools required. Download the .xlsx template and the 7-page methodology PDF.",
   alternates: {
-    canonical: "https://trustindexai.com/resources/llm-citation-tracker",
+    canonical: "https://ozvor.com/resources/llm-citation-tracker",
   },
   openGraph: {
     title:
-      "LLM Citation Tracker — Free spreadsheet to monitor your AI search visibility | TrustIndex AI",
+      "LLM Citation Tracker — Free spreadsheet to monitor your AI search visibility | Ozvor",
     description:
       "Track when ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview name your business. 10 minutes a week. Free .xlsx template and methodology PDF.",
-    url: "https://trustindexai.com/resources/llm-citation-tracker",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/resources/llm-citation-tracker",
+    siteName: "Ozvor",
     type: "article",
   },
 };
@@ -104,21 +104,21 @@ const TRACKER_LD = JSON.stringify({
   "@graph": [
     {
       "@type": "TechArticle",
-      "@id": "https://trustindexai.com/resources/llm-citation-tracker",
+      "@id": "https://ozvor.com/resources/llm-citation-tracker",
       headline:
         "LLM Citation Tracker — Monitor When ChatGPT, Claude, Perplexity & Gemini Mention Your Business",
       description:
         "A manual methodology and spreadsheet template for tracking AI citation visibility. 10 minutes per week, no tools or subscriptions required.",
-      author: { "@type": "Organization", name: "TrustIndex AI" },
+      author: { "@type": "Organization", name: "Ozvor" },
       publisher: {
         "@type": "Organization",
-        name: "TrustIndex AI",
-        url: "https://trustindexai.com",
+        name: "Ozvor",
+        url: "https://ozvor.com",
       },
       datePublished: "2026-06-01",
       dateModified: "2026-06-24",
       inLanguage: "en",
-      url: "https://trustindexai.com/resources/llm-citation-tracker",
+      url: "https://ozvor.com/resources/llm-citation-tracker",
       about: {
         "@type": "Thing",
         name: "AI citation monitoring for small businesses",
@@ -131,19 +131,19 @@ const TRACKER_LD = JSON.stringify({
           "@type": "ListItem",
           position: 1,
           name: "Home",
-          item: "https://trustindexai.com",
+          item: "https://ozvor.com",
         },
         {
           "@type": "ListItem",
           position: 2,
           name: "Resources",
-          item: "https://trustindexai.com/resources",
+          item: "https://ozvor.com/resources",
         },
         {
           "@type": "ListItem",
           position: 3,
           name: "LLM Citation Tracker",
-          item: "https://trustindexai.com/resources/llm-citation-tracker",
+          item: "https://ozvor.com/resources/llm-citation-tracker",
         },
       ],
     },
@@ -219,7 +219,7 @@ export default function LlmCitationTrackerPage() {
               marginBottom: "var(--space-6)",
             }}
           >
-            by TrustIndex AI &middot; 2026 &middot; Included with paid plans
+            by Ozvor &middot; 2026 &middot; Included with paid plans
           </p>
 
           {/* Download buttons */}
@@ -744,7 +744,7 @@ export default function LlmCitationTrackerPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            When to automate — and where TrustIndex AI fits
+            When to automate — and where Ozvor fits
           </h2>
 
           <p
@@ -795,8 +795,8 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             That&rsquo;s the line where you graduate to{" "}
-            <strong>TrustIndex AI</strong> — the AI Search Trust Intelligence
-            platform this tracker comes from. TrustIndex AI automates everything
+            <strong>Ozvor</strong> — the AI Search Trust Intelligence
+            platform this tracker comes from. Ozvor automates everything
             above, computes your <strong>TrustIndex Score</strong> (Brand 30% /
             Performance 35% / AI 35%), benchmarks you against your competitors,
             and builds a <strong>GEO content plan</strong> so you&rsquo;re not
@@ -940,7 +940,7 @@ export default function LlmCitationTrackerPage() {
             lineHeight: 1.6,
           }}
         >
-          by TrustIndex AI · trustindexai.com · hello@trustindexai.com
+          by Ozvor · ozvor.com · hello@ozvor.com
           <br />
           Research anchor: Aggarwal et al., &ldquo;GEO: Generative Engine
           Optimization,&rdquo; KDD 2024, arXiv:2311.09735. All figures attributed

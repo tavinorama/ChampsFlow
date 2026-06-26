@@ -16,17 +16,17 @@ export const metadata: Metadata = {
   title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29)",
   description:
     "One-time $29. Know exactly why you're invisible in AI search — get your full TrustIndex audit, your top 3 fixes, and 3 ready-to-publish content drafts. No subscription required.",
-  alternates: { canonical: "https://trustindexai.com/kit" },
+  alternates: { canonical: "https://ozvor.com/kit" },
   openGraph: {
     title: "The Get-Cited Kit — Full AI Audit + 3 Ready Drafts for $29",
     description:
       "One-time $29. Know exactly why you're invisible in AI search — full TrustIndex audit, top 3 fixes, 3 ready-to-publish drafts. No subscription.",
-    url: "https://trustindexai.com/kit",
-    siteName: "TrustIndex AI",
+    url: "https://ozvor.com/kit",
+    siteName: "Ozvor",
     type: "website",
     images: [
       {
-        url: "https://trustindexai.com/og-default.png",
+        url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
         alt: "The Get-Cited Kit — Full AI Audit + 3 Ready Drafts for $29",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     title: "The Get-Cited Kit — Full AI Audit + 3 Ready Drafts for $29",
     description:
       "One-time $29. Know exactly why you're invisible in AI search. No subscription.",
-    images: ["https://trustindexai.com/og-default.png"],
+    images: ["https://ozvor.com/og-default.png"],
   },
 };
 
@@ -52,29 +52,29 @@ const kitJsonLd = {
   name: "The Get-Cited Kit",
   description:
     "Full AI Visibility Audit across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — plus your TrustIndex Score, your top 3 highest-impact fixes, and 3 ready-to-publish content drafts (blog, LinkedIn, FAQ with schema.org markup). Includes a GEO guide PDF and a 30-day re-test voucher.",
-  url: "https://trustindexai.com/kit",
+  url: "https://ozvor.com/kit",
   brand: {
     "@type": "Brand",
-    name: "TrustIndex AI",
+    name: "Ozvor",
   },
   offers: {
     "@type": "Offer",
     price: "29",
     priceCurrency: "USD",
     availability: "https://schema.org/InStock",
-    url: "https://trustindexai.com/kit",
+    url: "https://ozvor.com/kit",
     priceValidUntil: "2027-12-31",
     seller: {
       "@type": "Organization",
-      name: "TrustIndex AI",
-      url: "https://trustindexai.com",
+      name: "Ozvor",
+      url: "https://ozvor.com",
     },
   },
   breadcrumb: {
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://trustindexai.com" },
-      { "@type": "ListItem", position: 2, name: "Get-Cited Kit", item: "https://trustindexai.com/kit" },
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://ozvor.com" },
+      { "@type": "ListItem", position: 2, name: "Get-Cited Kit", item: "https://ozvor.com/kit" },
     ],
   },
 };
