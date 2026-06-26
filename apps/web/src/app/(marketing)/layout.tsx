@@ -1,16 +1,15 @@
 /**
  * Marketing layout — TrustIndex AI
  *
- * v5 changes:
- *  - ThemeToggle added to navbar (manual light/dark switch)
- *  - MARKETING_STYLES extended to cover html[data-theme="dark"] in addition
- *    to @media (prefers-color-scheme: dark) — so both OS and manual toggle
- *    activate all dark-mode CSS classes correctly.
- *  - mk-hero-bg / mk-cta-bg use flat, on-brand warm radial tints in BOTH light
- *    and dark mode (no photo backgrounds). The earlier dark-only Unsplash photo
- *    was removed for visual consistency + to avoid an external request.
- *  - mk-navbar dark mode covers [data-theme="dark"] explicitly.
- *  - mk-price-pill dark mode shadow covered.
+ * v6 changes:
+ *  - Inter / Plus Jakarta Sans import removed; global Schibsted Grotesk
+ *    (set via --font-family in tokens.css) now flows through unobstructed.
+ *  - --font-family override block removed from MARKETING_STYLES so the dark-
+ *    first global token is not clobbered.
+ *  - @media (prefers-color-scheme: dark) blocks removed — the site is dark-
+ *    first (dark = no data-theme attribute). The html[data-theme="dark"] rules
+ *    are kept for the manual ThemeToggle; the OS-preference pattern conflicts
+ *    with the no-attribute=dark contract and has been removed.
  *
  * Route group (marketing) gets its own layout WITHOUT the authenticated
  * app chrome (no BottomNav, no DpaGate, no CaliforniaBanner).
@@ -23,7 +22,6 @@
  */
 
 import Link from "next/link";
-import { Inter } from "next/font/google";
 import "../../styles/tokens.css";
 import { SkipToMainContent } from "../../components/marketing/SkipToMainContent";
 import { ThemeToggle } from "../../components/marketing/ThemeToggle";
@@ -33,31 +31,17 @@ import { CookieConsentTrigger } from "../../components/CookieConsent";
 import { ChatWidget } from "../../components/ChatWidget";
 
 // ---------------------------------------------------------------------------
-// Font — Plus Jakarta Sans (self-hosted at build time, GDPR friendly)
-// ---------------------------------------------------------------------------
-
-const jakarta = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap",
-  variable: "--font-jakarta",
-});
-
-// ---------------------------------------------------------------------------
 // Marketing CSS classes
 // Rules that need hover, pseudo-selectors, media queries, or data-theme
 // selectors must live here — they cannot be expressed as inline styles.
 //
-// Dark mode pattern:
-//   @media (prefers-color-scheme: dark) { html:not([data-theme]) .cls {} }
-//   html[data-theme="dark"] .cls {}
-// Both rules carry the same declarations so ThemeToggle only sets data-theme.
+// Dark mode pattern (v6 — dark-first):
+//   No-attribute = dark (default). html[data-theme="dark"] covers the manual
+//   toggle case. @media (prefers-color-scheme) is NOT used — removed entirely.
 // ---------------------------------------------------------------------------
 
 // Dark hero/CTA: flat warm-green-charcoal surfaces with subtle on-brand radial
-// tints — consistent with the light mode (both flat, no photos). The previous
-// external Unsplash "Earth from space" photo was removed (off-brand stock look +
-// external request); both modes now share the same flat, warm treatment.
+// tints — consistent with the light mode (both flat, no photos).
 const DARK_HERO_BG = `
   background:
     radial-gradient(ellipse at 10% 0%, rgba(52,211,153,0.10) 0%, transparent 55%),
@@ -73,11 +57,6 @@ const DARK_CTA_BG = `
 `;
 
 const MARKETING_STYLES = `
-  /* ── Font override ───────────────────────────────────────────────── */
-  .mk-root {
-    --font-family: var(--font-jakarta, 'Plus Jakarta Sans', system-ui, sans-serif);
-  }
-
   /* ── Smooth anchor scrolling for in-page CTAs (#pricing, #faq-heading) ── */
   html { scroll-behavior: smooth; }
 
@@ -102,11 +81,6 @@ const MARKETING_STYLES = `
       radial-gradient(ellipse at 90% 100%, rgba(224,152,47,0.07) 0%, transparent 55%),
       var(--color-bg, #FCFAF5);
   }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme]) .mk-hero-bg {
-      ${DARK_HERO_BG}
-    }
-  }
   html[data-theme="dark"] .mk-hero-bg {
     ${DARK_HERO_BG}
   }
@@ -123,11 +97,6 @@ const MARKETING_STYLES = `
       radial-gradient(ellipse at 50% 100%, rgba(10,126,90,0.07) 0%, transparent 60%),
       var(--color-surface);
     border-top: 1px solid var(--color-border);
-  }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme]) .mk-cta-bg {
-      ${DARK_CTA_BG}
-    }
   }
   html[data-theme="dark"] .mk-cta-bg {
     ${DARK_CTA_BG}
@@ -189,11 +158,6 @@ const MARKETING_STYLES = `
     border-radius: var(--radius-lg);
     box-shadow: 0 2px 12px rgba(22,163,74,0.12);
   }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme]) .mk-price-pill {
-      box-shadow: 0 2px 12px rgba(52,211,153,0.15);
-    }
-  }
   html[data-theme="dark"] .mk-price-pill {
     box-shadow: 0 2px 12px rgba(52,211,153,0.15);
   }
@@ -241,7 +205,7 @@ const MARKETING_STYLES = `
 
   /* ── Navbar ───────────────────────────────────────────────────────── */
   .mk-navbar {
-    background: rgba(255,255,255,0.88);
+    background: rgba(11,17,15,0.72);
     border-bottom: 1px solid var(--color-border);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
@@ -249,13 +213,8 @@ const MARKETING_STYLES = `
     top: 0;
     z-index: 100;
   }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme]) .mk-navbar {
-      background: rgba(15,23,42,0.88);
-    }
-  }
-  html[data-theme="dark"] .mk-navbar {
-    background: rgba(15,23,42,0.88);
+  html[data-theme="light"] .mk-navbar {
+    background: rgba(243,241,232,0.80);
   }
 
   /* ── Toggle button hover ──────────────────────────────────────────── */
@@ -405,9 +364,6 @@ const MARKETING_STYLES = `
   @media (min-width: 769px) {
     .mk-sticky-bar { display: none !important; }
   }
-  @media (prefers-color-scheme: dark) {
-    html:not([data-theme]) .mk-sticky-bar { background: #0E1A14; }
-  }
   html[data-theme="dark"] .mk-sticky-bar { background: #0E1A14; }
 `;
 
@@ -421,7 +377,7 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`${jakarta.variable} mk-root`}>
+    <div className="mk-root">
       {/* Sitewide structured data — Organization + WebSite (injected once in this
           layout so every public marketing page inherits them automatically) */}
       <script

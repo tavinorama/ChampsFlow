@@ -1,23 +1,27 @@
 /**
- * Landing page v5 — TrustIndex AI
+ * Landing page v6 — TrustIndex AI / Ozvor
  * Route: / (within (marketing) route group)
  *
- * v5 changes:
- *  - Hero: fully centred layout (single column, max-width 720px), form
- *    centred below headline, mockup drops as a full-width element below.
- *  - All emoji replaced with clean monoline SVG icon components.
- *  - Background images handled in (marketing)/layout.tsx MARKETING_STYLES
- *    (mk-hero-bg dark mode = 4K Unsplash photo + overlay).
- *  - Trust signals centred below the compact form.
- *  - TheShift "Then/Now" search/AI icons are now SVG.
+ * Rebuilt to match the Ozvor design mockup:
+ *  11 sections in order:
+ *   1. Hero — eyebrow + H1 + subopy + CTAs + trust ticks + dashboard mock
+ *   2. Engines strip
+ *   3. Stats (3 cards)
+ *   4. Search Moved (the shift)
+ *   5. The Ladder (Free → Kit → Plans → OrganicPosts)
+ *   6. Inside the Platform (Audit / Benchmark / Plan)
+ *   7. Who it's for
+ *   8. Privacy-first
+ *   9. Building in public
+ *  10. FAQ (details/summary, first item open)
+ *  11. Final CTA
  *
- * Static rendering: no dynamic data.
+ * Static rendering: no dynamic data. Server Component — no "use client".
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StickyBuyBar } from "../../components/marketing/StickyBuyBar";
-import { GeoGraphBackdrop } from "../../components/marketing/GeoGraphBackdrop";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -97,6 +101,43 @@ const jsonLd = {
 };
 
 // ---------------------------------------------------------------------------
+// FAQ data
+// ---------------------------------------------------------------------------
+
+const faqs = [
+  {
+    q: "What exactly is a TrustIndex AI Score?",
+    a: "It's a 0–100 composite score measuring how well AI search engines trust and cite your brand. It's built from three vectors: AI (citation rate + position + sentiment across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview), Performance (technical factors: schema.org markup, AI crawler access, content citation-worthiness), and Brand (off-site authority on the 7 sources AI cites most — Reddit, Wikipedia, LinkedIn, G2, Trustpilot, Crunchbase, YouTube). Every number is measured, not estimated.",
+  },
+  {
+    q: "Isn't this just what Google Search Console already shows?",
+    a: "No. Search Console reports Google traffic only — and its AI report only covers AI Overviews on Google. We cover five engines simultaneously (ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview), measure competitor displacement, classify sentiment, and produce a content plan to close your gaps. Search Console tells you what happened on Google; we show you what AI thinks of your brand across the whole answer surface.",
+  },
+  {
+    q: "Will this work with any niche or industry?",
+    a: "Yes. The audit sends the buyer prompts your actual customers ask — prompts you define. The platform measures your brand against those prompts across all five engines. It works for local services, B2B SaaS, DTC, agencies, and professional practices equally.",
+  },
+  {
+    q: "Is my content safe? Will you train AI on my data?",
+    a: "Never. Your brand data, audit results, and content drafts are never used to train any AI model. All LLM calls use zero-data-retention (ZDR) agreements with Anthropic. We act as a GDPR data processor, not a controller. EU data stays on EU infrastructure.",
+  },
+  {
+    q: "What's OrganicPosts? Is it the same thing?",
+    a: "OrganicPosts is the consultancy arm — a managed engagement where our team builds your AI-visibility project with you. The platform (Free / Kit / Plans) is self-serve: you run it yourself. OrganicPosts is for founders and marketers who'd rather hand off the research, content creation, and publishing cadence to a team. It's the top rung of the ladder.",
+  },
+];
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -107,2502 +148,686 @@ export default function LandingPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      {/* FAQPage structured data — standard SEO schema (the practice we sell). */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            mainEntity: FAQ_ITEMS.map((item) => ({
-              "@type": "Question",
-              name: item.q,
-              acceptedAnswer: { "@type": "Answer", text: item.a },
-            })),
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
+
+      {/* Page-scoped keyframes + responsive overrides */}
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes ti-pulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+        @keyframes ti-rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+        .ti-rise { animation: ti-rise .7s cubic-bezier(.2,.7,.2,1) both; }
+        @media (max-width:860px) {
+          .ti-grid3 { grid-template-columns:1fr !important; }
+          .ti-dash { grid-template-columns:1fr !important; }
+          .ti-shift { grid-template-columns:1fr !important; }
+          .ti-shift-arrow { justify-self:center !important; transform:rotate(90deg); }
+        }
+        @media (max-width:860px) {
+          .ti-dash > div:first-child { border-right:none !important; border-bottom:1px solid var(--color-border) !important; }
+        }
+        @media (max-width:520px) {
+          .ti-hero-h1 { font-size:40px !important; line-height:1.02 !important; }
+        }
+        details summary::-webkit-details-marker { display:none; }
+        details[open] summary span:last-child { transform: rotate(45deg); transition: transform 0.2s; }
+      `}} />
+
       <StickyBuyBar />
-      <HeroSection />
-      <EarlyPricingTeaserSection />
-      <EnginesCoverageSection />
-      <StatBarSection />
-      <TheShiftSection />
-      <HowItWorksSection />
-      <WhoItsForSection />
-      <StartHereSection />
-      <PrivacyAISection />
-      <ComparisonSection />
-      <FoundingMemberSection />
-      <PricingSection />
-      <SocialProofSection />
-      <FAQSection />
-      <FinalCtaSection />
-    </>
-  );
-}
 
-// ---------------------------------------------------------------------------
-// SVG icon library — all 18×18, monoline, currentColor
-// ---------------------------------------------------------------------------
+      {/* ── SECTION 1: HERO ─────────────────────────────────────────── */}
+      <section style={{
+        position:'relative',
+        padding:'96px 32px 60px',
+        backgroundImage:'radial-gradient(var(--color-border) 1px, transparent 1px)',
+        backgroundSize:'32px 32px',
+        overflow:'hidden',
+      }}>
+        {/* top fade overlay */}
+        <div style={{position:'absolute',inset:0,background:'radial-gradient(60% 50% at 50% 0%, transparent, var(--color-bg, #0a0f0d) 78%)',pointerEvents:'none'}} aria-hidden="true"/>
 
-function IconLink() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
+        <div style={{position:'relative',maxWidth:'1120px',margin:'0 auto',textAlign:'center'}}>
 
-function IconPenSparkle() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M20 7l-1-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-function IconShieldCheck() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <polyline points="9 12 11 14 15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function IconLock() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" strokeWidth="2"/>
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function IconHandStop() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M18 8h1a4 4 0 0 1 0 8h-1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <line x1="6" y1="1" x2="6" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="10" y1="1" x2="10" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="14" y1="1" x2="14" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-function IconGlobe() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-      <line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" stroke="currentColor" strokeWidth="2"/>
-    </svg>
-  );
-}
-
-function IconSearch() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/>
-      <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-function IconCpu() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="2"/>
-      <rect x="9" y="9" width="6" height="6" stroke="currentColor" strokeWidth="2"/>
-      <line x1="9" y1="1" x2="9" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="15" y1="1" x2="15" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="9" y1="20" x2="9" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="15" y1="20" x2="15" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="20" y1="9" x2="23" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="20" y1="14" x2="23" y2="14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="1" y1="9" x2="4" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="1" y1="14" x2="4" y2="14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ① Hero — centred single-column + full-width mockup below
-// ---------------------------------------------------------------------------
-
-function HeroSection() {
-  return (
-    <section
-      aria-labelledby="hero-heading"
-      className="mk-hero-bg"
-      style={{ padding: "var(--space-24) var(--space-4) var(--space-20)", position: "relative", overflow: "hidden" }}
-    >
-      <GeoGraphBackdrop opacity={0.45} />
-      {/* Copy — centred narrow column */}
-      <div
-        style={{
-          maxWidth: "680px",
-          margin: "0 auto",
-          textAlign: "center",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        {/* Pre-headline badge */}
-        <div
-          className="mk-badge"
-          style={{ marginBottom: "var(--space-6)", display: "inline-flex" }}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "50%",
-              backgroundColor: "var(--color-primary)",
-              flexShrink: 0,
-            }}
-          />
-          AI Search Trust Intelligence &middot; Built for SMBs
-        </div>
-
-        <h1
-          id="hero-heading"
-          style={{
-            fontSize: "clamp(2.5rem, 5.5vw, 4rem)",
-            fontWeight: "800",
-            lineHeight: 1.08,
-            letterSpacing: "-0.035em",
-            color: "var(--color-text)",
-            fontFamily: "var(--font-family)",
-            margin: "0 0 var(--space-5) 0",
-            textWrap: "balance",
-          }}
-        >
-          Audit + Execute.{" "}
-          <span style={{ color: "var(--color-primary)" }}>
-            In one platform.
-          </span>
-        </h1>
-
-        <p
-          style={{
-            fontSize: "clamp(1rem, 1.5vw, 1.125rem)",
-            lineHeight: 1.75,
-            color: "var(--color-muted)",
-            fontFamily: "var(--font-family)",
-            margin: "0 0 var(--space-8) 0",
-            maxWidth: "54ch",
-            marginLeft: "auto",
-            marginRight: "auto",
-          }}
-        >
-          The only GEO tool that audits how your brand appears across ChatGPT,
-          Perplexity, Gemini, and Google AI &mdash; then writes the fix.
-          Know if AI trusts your brand, benchmark competitors, and publish
-          content that earns citations.
-        </p>
-
-        {/* Two-CTA row */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--space-3)",
-            alignItems: "center",
-            margin: "0 auto var(--space-6)",
-            maxWidth: "480px",
-          }}
-        >
-          <Link
-            href="/test"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              minHeight: "52px",
-              padding: "0 var(--space-6)",
-              backgroundColor: "var(--color-primary)",
-              color: "#fff",
-              borderRadius: "var(--radius-md)",
-              fontSize: "1rem",
-              fontWeight: 700,
-              fontFamily: "var(--font-family)",
-              textDecoration: "none",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Run the free AI Visibility Test &mdash; free
-          </Link>
-          <Link
-            href="/login?plan=growth&next=checkout"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              minHeight: "52px",
-              padding: "0 var(--space-6)",
-              backgroundColor: "transparent",
-              color: "var(--color-primary)",
-              border: "1.5px solid var(--color-primary)",
-              borderRadius: "var(--radius-md)",
-              fontSize: "1rem",
-              fontWeight: 700,
-              fontFamily: "var(--font-family)",
-              textDecoration: "none",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Start Growth &mdash; $99/mo
-          </Link>
-        </div>
-
-        {/* Trust signals — centred */}
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "var(--space-5)",
-            justifyContent: "center",
-          }}
-        >
-          {[
-            "30-day money-back guarantee",
-            "No auto-publish, ever",
-            "Privacy-first",
-          ].map((t) => (
-            <span
-              key={t}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-1)",
-                fontSize: "var(--font-size-caption)",
-                color: "var(--color-muted)",
-                fontFamily: "var(--font-family)",
-                fontWeight: "500",
-              }}
-            >
-              <CheckIcon />
-              {t}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Mockup — full width below the copy */}
-      <div
-        style={{
-          maxWidth: "960px",
-          margin: "var(--space-16) auto 0",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <div
-          role="img"
-          aria-label="Product mockup — the TrustIndex Score audit screen with the 3-vector breakdown and competitor benchmark"
-          style={{
-            borderRadius: "var(--radius-xl)",
-            overflow: "hidden",
-            boxShadow:
-              "0 32px 80px -16px rgba(10,126,90,0.16), 0 4px 20px rgba(0,0,0,0.08)",
-            border: "1px solid var(--color-border)",
-          }}
-        >
-          <AppMockupSVG />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="var(--color-success)" opacity="0.15"/>
-      <polyline points="8 12 11 15 16 9" stroke="var(--color-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-/** On-brand GEO mockup: the TrustIndex Score audit screen. */
-function AppMockupSVG() {
-  const vectors = [
-    { label: "AI", val: 58, color: "#2563eb" },
-    { label: "Performance", val: 71, color: "#7c3aed" },
-    { label: "Brand", val: 49, color: "#0fb488" },
-  ];
-  const R = 54;
-  const C = 2 * Math.PI * R;
-  const overall = 64;
-  return (
-    <svg
-      viewBox="0 0 840 480"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ display: "block", width: "100%", height: "auto" }}
-      aria-hidden="true"
-    >
-      <rect width="840" height="480" fill="#f8fafc" />
-
-      {/* Browser chrome */}
-      <rect width="840" height="48" fill="#f1f5f9" />
-      <circle cx="22" cy="24" r="6" fill="#fca5a5" />
-      <circle cx="40" cy="24" r="6" fill="#fcd34d" />
-      <circle cx="58" cy="24" r="6" fill="#86efac" />
-      <rect x="90" y="14" width="420" height="20" rx="5" fill="#e2e8f0" />
-      <text x="100" y="27.5" fontSize="9.5" fill="#94a3b8" fontFamily="monospace">
-        app.ozvor.com/brands/acme-crm
-      </text>
-
-      {/* Sidebar */}
-      <rect x="0" y="48" width="180" height="432" fill="#f8fafc" />
-      <line x1="180" y1="48" x2="180" y2="480" stroke="#e2e8f0" strokeWidth="1" />
-      <text x="24" y="91" fontSize="12" fill="#94a3b8" fontFamily="system-ui,sans-serif">Dashboard</text>
-      <rect x="14" y="110" width="152" height="34" rx="7" fill="#eff6ff" />
-      <text x="24" y="131" fontSize="12" fill="#0A7E5A" fontFamily="system-ui,sans-serif" fontWeight="700">Brands</text>
-      <text x="24" y="168" fontSize="12" fill="#94a3b8" fontFamily="system-ui,sans-serif">Content Plan</text>
-      <text x="24" y="202" fontSize="12" fill="#94a3b8" fontFamily="system-ui,sans-serif">Monitoring</text>
-
-      {/* Header */}
-      <text x="208" y="84" fontSize="17" fill="#0f172a" fontFamily="system-ui,sans-serif" fontWeight="800" letterSpacing="-0.5">
-        Acme CRM — TrustIndex Score
-      </text>
-      <rect x="208" y="96" width="150" height="22" rx="11" fill="#ecfdf5" stroke="#a7f3d0" strokeWidth="1" />
-      <circle cx="222" cy="107" r="4" fill="#0fb488" />
-      <text x="232" y="111" fontSize="9.5" fill="#047857" fontFamily="system-ui,sans-serif" fontWeight="700">
-        50 AI probes · 5 engines
-      </text>
-
-      {/* Score ring card */}
-      <rect x="208" y="134" width="232" height="180" rx="12" fill="white" stroke="#e2e8f0" strokeWidth="1.5" />
-      <circle cx="324" cy="212" r={R} fill="none" stroke="#eef2f7" strokeWidth="14" />
-      <circle
-        cx="324" cy="212" r={R} fill="none" stroke="#0A7E5A" strokeWidth="14" strokeLinecap="round"
-        strokeDasharray={`${(overall / 100) * C} ${C}`} transform="rotate(-90 324 212)"
-      />
-      <text x="324" y="206" fontSize="38" fill="#0f172a" fontFamily="system-ui,sans-serif" fontWeight="800" textAnchor="middle">{overall}</text>
-      <text x="324" y="228" fontSize="11" fill="#94a3b8" fontFamily="system-ui,sans-serif" textAnchor="middle">/ 100</text>
-      <text x="324" y="292" fontSize="11.5" fill="#64748b" fontFamily="system-ui,sans-serif" fontWeight="600" textAnchor="middle">Overall TrustIndex Score</text>
-
-      {/* 3 vectors card */}
-      <rect x="456" y="134" width="352" height="180" rx="12" fill="white" stroke="#e2e8f0" strokeWidth="1.5" />
-      {vectors.map((v, i) => {
-        const y = 168 + i * 48;
-        return (
-          <g key={v.label}>
-            <text x="478" y={y} fontSize="12" fill="#334155" fontFamily="system-ui,sans-serif" fontWeight="600">{v.label}</text>
-            <text x="786" y={y} fontSize="12" fill="#0f172a" fontFamily="system-ui,sans-serif" fontWeight="800" textAnchor="end">{v.val}</text>
-            <rect x="478" y={y + 8} width="308" height="9" rx="4.5" fill="#eef2f7" />
-            <rect x="478" y={y + 8} width={(v.val / 100) * 308} height="9" rx="4.5" fill={v.color} />
-          </g>
-        );
-      })}
-
-      {/* Competitor benchmark card */}
-      <rect x="208" y="330" width="600" height="118" rx="12" fill="white" stroke="#e2e8f0" strokeWidth="1.5" />
-      <text x="228" y="358" fontSize="12.5" fill="#0f172a" fontFamily="system-ui,sans-serif" fontWeight="800">
-        Who AI recommends instead of you
-      </text>
-      <text x="228" y="386" fontSize="11" fill="#dc2626" fontFamily="system-ui,sans-serif" fontWeight="600">Competitor A</text>
-      <rect x="360" y="378" width="320" height="9" rx="4.5" fill="#fee2e2" />
-      <rect x="360" y="378" width="216" height="9" rx="4.5" fill="#ef4444" />
-      <text x="788" y="386" fontSize="11" fill="#64748b" fontFamily="system-ui,sans-serif" fontWeight="700" textAnchor="end">6 / 10</text>
-      <text x="228" y="414" fontSize="11" fill="#d97706" fontFamily="system-ui,sans-serif" fontWeight="600">Competitor B</text>
-      <rect x="360" y="406" width="320" height="9" rx="4.5" fill="#fef3c7" />
-      <rect x="360" y="406" width="144" height="9" rx="4.5" fill="#f59e0b" />
-      <text x="788" y="414" fontSize="11" fill="#64748b" fontFamily="system-ui,sans-serif" fontWeight="700" textAnchor="end">4 / 10</text>
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ② Stat Bar — 3 numbers with sparklines
-// ---------------------------------------------------------------------------
-
-const STATS = [
-  {
-    number: "200M",
-    label: "Weekly active ChatGPT users",
-    source: "OpenAI / Axios, Aug 2024",
-    sparkline: "M0,28 L8,22 L16,18 L24,14 L32,8 L40,4",
-  },
-  {
-    number: "40%",
-    label: "Citation visibility lift from GEO content",
-    source: "Princeton, Georgia Tech & Allen AI — KDD 2024",
-    sparkline: "M0,28 L8,26 L16,22 L24,16 L32,10 L40,4",
-  },
-  {
-    number: "#2",
-    label: "LinkedIn's rank in AI search citations",
-    source: "Semrush — 89,000 URL study, 2025",
-    sparkline: "M0,28 L8,24 L16,20 L24,16 L32,10 L40,6",
-  },
-];
-
-function StatBarSection() {
-  return (
-    <section
-      aria-label="Key statistics on AI search growth"
-      className="mk-stat-bar"
-      style={{ padding: "var(--space-12) var(--space-4)" }}
-    >
-      <div
-        style={{
-          maxWidth: "1120px",
-          margin: "0 auto",
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "var(--space-8)",
-          alignItems: "start",
-        }}
-      >
-        {STATS.map((s) => (
-          <div key={s.number}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-end",
-                gap: "var(--space-3)",
-                marginBottom: "var(--space-2)",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "clamp(2.5rem, 5vw, 3.75rem)",
-                  fontWeight: "800",
-                  color: "#34D399",
-                  fontFamily: "var(--font-family)",
-                  lineHeight: 1,
-                  letterSpacing: "-0.04em",
-                }}
-              >
-                {s.number}
-              </p>
-              <svg
-                width="44"
-                height="32"
-                viewBox="0 0 44 32"
-                fill="none"
-                aria-hidden="true"
-                style={{ marginBottom: "8px", flexShrink: 0 }}
-              >
-                <path
-                  d={s.sparkline}
-                  stroke="#34d399"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx="40" cy="4" r="3" fill="#34d399" />
-              </svg>
-            </div>
-            <p
-              style={{
-                margin: "0 0 var(--space-1) 0",
-                fontSize: "var(--font-size-body-sm)",
-                color: "#e2e8f0",
-                fontFamily: "var(--font-family)",
-                lineHeight: 1.5,
-                fontWeight: "600",
-              }}
-            >
-              {s.label}
-            </p>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "var(--font-size-caption)",
-                color: "#64748b",
-                fontFamily: "var(--font-family)",
-              }}
-            >
-              {s.source}
-            </p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ③ The Shift
-// ---------------------------------------------------------------------------
-
-function TheShiftSection() {
-  return (
-    <section
-      aria-labelledby="shift-heading"
-      style={{
-        backgroundColor: "var(--color-surface-muted)",
-        padding: "var(--space-20) var(--space-4)",
-      }}
-    >
-      <div style={{ maxWidth: "820px", margin: "0 auto" }}>
-        <h2
-          id="shift-heading"
-          style={{
-            fontSize: "clamp(1.875rem, 4vw, 3rem)",
-            fontWeight: "800",
-            letterSpacing: "-0.03em",
-            color: "var(--color-text)",
-            fontFamily: "var(--font-family)",
-            lineHeight: 1.1,
-            marginBottom: "var(--space-10)",
-          }}
-        >
-          Search moved.
-          <br />
-          Most businesses haven&rsquo;t noticed yet.
-        </h2>
-
-        {/* Then / Now split */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
-            gap: "var(--space-4)",
-            alignItems: "center",
-            marginBottom: "var(--space-10)",
-          }}
-        >
-          {/* Then */}
-          <div
-            style={{
-              backgroundColor: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-lg)",
-              padding: "var(--space-5)",
-              boxShadow: "var(--shadow-card)",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 var(--space-2) 0",
-                fontSize: "var(--font-size-caption)",
-                fontWeight: "700",
-                color: "var(--color-muted)",
-                fontFamily: "var(--font-family)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              2 years ago
-            </p>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-2)",
-                marginBottom: "var(--space-3)",
-                color: "var(--color-muted)",
-              }}
-            >
-              <IconSearch />
-              <span
-                style={{
-                  fontSize: "var(--font-size-body-sm)",
-                  fontWeight: "700",
-                  color: "var(--color-text)",
-                  fontFamily: "var(--font-family)",
-                }}
-              >
-                Google
-              </span>
-            </div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "var(--font-size-caption)",
-                color: "var(--color-muted)",
-                fontFamily: "var(--font-family)",
-                lineHeight: 1.5,
-              }}
-            >
-              &ldquo;best accountant for freelancers berlin&rdquo; → 10 blue
-              links
-            </p>
+          {/* Eyebrow pill */}
+          <div style={{
+            display:'inline-flex',alignItems:'center',gap:9,
+            padding:'7px 15px',borderRadius:999,
+            border:'1px solid rgba(39,201,138,0.32)',
+            background:'rgba(39,201,138,0.07)',
+            fontFamily:"'JetBrains Mono',monospace",
+            fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',
+            color:'var(--color-accent-ink)',
+          }}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:'#27c98a',
+              animation:'ti-pulse 2s infinite',display:'inline-block'}} aria-hidden="true"/>
+            AI Search Trust Intelligence · Built for SMBs
           </div>
 
-          {/* Arrow */}
-          <div
-            aria-hidden="true"
-            style={{
-              fontSize: "1.25rem",
-              color: "var(--color-muted)",
-              textAlign: "center",
-            }}
-          >
-            →
-          </div>
+          {/* H1 */}
+          <h1 className="ti-hero-h1" style={{
+            margin:'26px auto 0',maxWidth:880,
+            fontSize:'clamp(44px,7vw,86px)',lineHeight:0.98,
+            fontWeight:800,letterSpacing:'-0.035em',color:'var(--color-text)',
+          }}>
+            Know if AI trusts your brand.<br/>
+            <span style={{
+              background:'linear-gradient(120deg,#3ad79a,#0e8a59)',
+              WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent',
+            }}>Then fix it.</span>
+          </h1>
 
-          {/* Now */}
-          <div
-            style={{
-              backgroundColor: "var(--color-badge-ai-bg)",
-              border: "1px solid var(--color-highlight-border)",
-              borderRadius: "var(--radius-lg)",
-              padding: "var(--space-5)",
-              boxShadow: "var(--shadow-card)",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 var(--space-2) 0",
-                fontSize: "var(--font-size-caption)",
-                fontWeight: "700",
-                color: "var(--color-primary)",
-                fontFamily: "var(--font-family)",
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-              }}
-            >
-              Today
-            </p>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-2)",
-                marginBottom: "var(--space-3)",
-                color: "var(--color-badge-ai-text)",
-              }}
-            >
-              <IconCpu />
-              <span
-                style={{
-                  fontSize: "var(--font-size-body-sm)",
-                  fontWeight: "700",
-                  color: "var(--color-badge-ai-text)",
-                  fontFamily: "var(--font-family)",
-                }}
-              >
-                ChatGPT · Claude · Perplexity · Gemini
-              </span>
-            </div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "var(--font-size-caption)",
-                color: "var(--color-badge-ai-text)",
-                fontFamily: "var(--font-family)",
-                lineHeight: 1.5,
-              }}
-            >
-              &ldquo;The best accountant for Berlin freelancers is{" "}
-              <strong>Muster GmbH</strong> — they specialize in digital nomads
-              and post weekly LinkedIn guides.&rdquo;
-            </p>
-          </div>
-        </div>
-
-        {/* And now Google too — Google's own search is now AI-first */}
-        <div
-          style={{
-            backgroundColor: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            borderLeft: "4px solid var(--color-primary)",
-            borderRadius: "var(--radius-lg)",
-            padding: "var(--space-5) var(--space-6)",
-            boxShadow: "var(--shadow-card)",
-            marginBottom: "var(--space-10)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-2)" }}>
-            <IconSearch />
-            <span style={{ fontSize: "var(--font-size-caption)", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-primary)", fontFamily: "var(--font-family)" }}>
-              And now — Google too
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)", textAlign: "justify", textJustify: "inter-word", hyphens: "auto" }}>
-            This isn&rsquo;t just the new AI tools — <strong>Google itself changed how search works.</strong> Its
-            new <strong>AI Mode</strong> answers your question directly, and <strong>AI Overviews</strong> sit above
-            the old blue links. The same query now returns an AI answer that names a few businesses — not a page of
-            links you scroll. By Google I/O 2026, AI Mode had passed <strong>1 billion monthly users</strong> and AI
-            Overviews appeared in <strong>over 25% of searches</strong>.{" "}
-            <Cite>Google I/O 2026.</Cite>{" "}
-            The channel everyone already trusts is now an answer engine — so the question is simply whether that
-            answer includes you.
-          </p>
-        </div>
-
-        {/* Body text */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)", textAlign: "justify", textJustify: "inter-word", hyphens: "auto" }}>
-          <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>
-            ChatGPT reached 200 million weekly active users by August 2024.{" "}
-            <Cite>OpenAI / Axios, August 2024.</Cite>{" "}
-            Perplexity crossed 15 million monthly active users within two years of launch.{" "}
-            <Cite>Backlinko, citing Perplexity data.</Cite>{" "}
-            When those users ask for a recommendation, the AI answers with names. Those names come from content it has indexed and evaluated.
+          {/* Subcopy */}
+          <p style={{
+            margin:'24px auto 0',maxWidth:600,
+            fontSize:19,lineHeight:1.55,color:'var(--color-muted)',
+          }}>
+            The only platform that audits how your brand shows up across ChatGPT, Perplexity, Gemini &amp; Google AI — benchmarks your rivals, and writes the content that earns the citation.
           </p>
 
-          <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>
-            Research published at KDD 2024 by Princeton, Georgia Tech, and the Allen Institute for AI defined Generative Engine Optimization (GEO) and found that applying structured, specific, citation-worthy content techniques can lift a source&rsquo;s visibility in AI-generated answers by up to 40%.{" "}
-            <Cite>Aggarwal et al., KDD 2024, arxiv.org/abs/2311.09735.</Cite>
-          </p>
-
-          <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>
-            The businesses getting cited are posting consistently on LinkedIn. A 2025 Semrush study of 89,000 LinkedIn URLs found LinkedIn is the second most-cited source in AI search — and the top source for professional queries.{" "}
-            <Cite>Semrush, &ldquo;We Analyzed 89K LinkedIn URLs Cited in AI Search,&rdquo; semrush.com.</Cite>{" "}
-            Ozvor handles the consistency.
-          </p>
-
-          <p style={{ margin: 0, fontSize: "var(--font-size-body)", lineHeight: 1.75, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>
-            In June 2026, Google&rsquo;s official Search documentation formally recognized Generative Engine Optimization — confirming the durable levers are unique, useful, crawlable content and genuine authority, not gimmicks like special &ldquo;AI files&rdquo;.{" "}
-            <Cite>Google Search Central, developers.google.com, June 2026.</Cite>{" "}
-            Ozvor is built to that guidance — and unlike Google&rsquo;s own Search Console AI report (Google-only, your site only), it measures you across <strong>every</strong> major AI engine, against your competitors, with the reasons and the fix.
-          </p>
-        </div>
-
-        {/* Callout */}
-        <div className="mk-callout" style={{ marginTop: "var(--space-8)", marginBottom: "var(--space-6)" }}>
-          <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-badge-ai-text)", fontFamily: "var(--font-family)", lineHeight: 1.65, fontWeight: "500" }}>
-            GEO is not marketing terminology. It was defined in peer-reviewed research at one of the most competitive venues in data science. We will tell you what is substantiated and what is not.
-          </p>
-        </div>
-
-        <a
-          href="/blog/how-small-businesses-get-cited-by-chatgpt"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-2)",
-            color: "var(--color-primary)",
-            textDecoration: "none",
-            fontSize: "var(--font-size-body-sm)",
-            fontWeight: "700",
-            fontFamily: "var(--font-family)",
-          }}
-        >
-          Read the full GEO research guide →
-        </a>
-      </div>
-    </section>
-  );
-}
-
-function Cite({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        fontSize: "0.7rem",
-        color: "var(--color-muted)",
-        fontFamily: "var(--font-family)",
-        fontStyle: "italic",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Engines coverage — the multi-engine moat (honest: these are the engines we
-// actually query + the sources we actually check). Borrowed UX pattern from
-// review/SaaS sites' "integrations" strip; reframed for GEO.
-// ---------------------------------------------------------------------------
-
-const ENGINES = ["ChatGPT", "Claude", "Perplexity", "Gemini", "Google AI Overview"];
-const SOURCES = ["Reddit", "Wikipedia", "LinkedIn", "G2", "Trustpilot", "Crunchbase", "YouTube"];
-
-function EnginesCoverageSection() {
-  return (
-    <section aria-label="Coverage" style={{ padding: "var(--space-12) var(--space-4)", borderBottom: "1px solid var(--color-border)" }}>
-      <div style={{ maxWidth: "960px", margin: "0 auto", textAlign: "center" }}>
-        <p style={{ margin: "0 0 var(--space-5) 0", fontSize: "var(--font-size-caption)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-          We measure every AI engine your buyers use
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", justifyContent: "center", marginBottom: "var(--space-5)" }}>
-          {ENGINES.map((e) => (
-            <span key={e} style={{
-              display: "inline-flex", alignItems: "center", gap: "var(--space-2)",
-              padding: "8px 16px", borderRadius: "var(--radius-pill)",
-              border: "1px solid var(--color-border)", backgroundColor: "var(--color-surface)",
-              fontSize: "var(--font-size-body-sm)", fontWeight: 700, color: "var(--color-text)", fontFamily: "var(--font-family)",
+          {/* CTAs */}
+          <div style={{display:'flex',gap:14,justifyContent:'center',flexWrap:'wrap',marginTop:36}}>
+            <Link href="/test" style={{
+              display:'inline-flex',alignItems:'center',gap:9,
+              background:'linear-gradient(135deg,#27c98a,#0c7d54)',
+              color:'#06140e',fontFamily:"'Schibsted Grotesk',sans-serif",
+              fontSize:16,fontWeight:700,padding:'15px 26px',
+              borderRadius:12,border:'none',textDecoration:'none',
+              boxShadow:'0 10px 32px rgba(39,201,138,0.32)',
             }}>
-              <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "var(--color-primary)" }} />
-              {e}
-            </span>
-          ))}
-        </div>
-        <p style={{ margin: "0 0 var(--space-3) 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-          …and the high-authority sources they cite most:
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", justifyContent: "center" }}>
-          {SOURCES.map((s) => (
-            <span key={s} style={{
-              padding: "5px 12px", borderRadius: "var(--radius-pill)",
-              backgroundColor: "var(--color-surface-muted)", border: "1px solid var(--color-border)",
-              fontSize: "var(--font-size-caption)", fontWeight: 600, color: "var(--color-muted)", fontFamily: "var(--font-family)",
-            }}>{s}</span>
-          ))}
-        </div>
-        <p style={{ margin: "var(--space-5) 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-          Google&rsquo;s own report covers Google only. We cover the whole AI-answer surface.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Who it's for — ICP segments (honest, no fabricated proof)
-// ---------------------------------------------------------------------------
-
-const SEGMENTS: Array<{ tag: string; who: string; pain: string; help: string }> = [
-  {
-    tag: "Local & professional services",
-    who: "Law firms, clinics, accountants, agencies — businesses won on trust.",
-    pain: "“A client said they asked ChatGPT and a competitor came up, not us.”",
-    help: "See exactly which rival AI names in your city/category — and publish the proof that earns the citation.",
-  },
-  {
-    tag: "Boutique agencies",
-    who: "SEO, content & PR shops whose clients are asking about AI search.",
-    pain: "“Clients want an AI-search answer and I’m improvising.”",
-    help: "A white-label, multi-brand audit you can resell — Score → Plan → drafts, with your logo.",
-  },
-  {
-    tag: "Funded B2B SaaS & DTC",
-    who: "Seed–Series A teams who live and die by efficient pipeline.",
-    pain: "“AI recommends a competitor tool by name — and I can’t show a number.”",
-    help: "One trackable KPI (your TrustIndex Score) across every engine, plus the content plan to move it.",
-  },
-];
-
-function WhoItsForSection() {
-  return (
-    <section aria-labelledby="who-heading" style={{ padding: "var(--space-20) var(--space-4)", backgroundColor: "var(--color-surface-muted)" }}>
-      <div style={{ maxWidth: "960px", margin: "0 auto" }}>
-        <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--font-size-caption)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-primary)", fontFamily: "var(--font-family)" }}>
-          Who it&rsquo;s for
-        </p>
-        <h2 id="who-heading" style={{ fontSize: "clamp(1.875rem, 4vw, 2.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, color: "var(--color-text)", fontFamily: "var(--font-family)", margin: "0 0 var(--space-8) 0" }}>
-          Built for businesses that win on trust.
-        </h2>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "var(--space-5)" }}>
-          {SEGMENTS.map((s) => (
-            <div key={s.tag} style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-              <span style={{ fontSize: "var(--font-size-h4)", fontWeight: 800, color: "var(--color-text)", fontFamily: "var(--font-family)" }}>{s.tag}</span>
-              <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, fontFamily: "var(--font-family)" }}>{s.who}</span>
-              <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", lineHeight: 1.6, fontStyle: "italic", fontFamily: "var(--font-family)", borderLeft: "3px solid var(--color-border)", paddingLeft: "var(--space-3)" }}>{s.pain}</span>
-              <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", lineHeight: 1.6, fontFamily: "var(--font-family)", marginTop: "auto" }}>
-                <strong style={{ color: "var(--color-primary)" }}>→ </strong>{s.help}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Start Here — the two entry products (free Invisibility Test + $29 Kit)
-// ---------------------------------------------------------------------------
-
-function StartHereSection() {
-  return (
-    <section
-      aria-labelledby="start-here-heading"
-      style={{ padding: "var(--space-20) var(--space-4)" }}
-    >
-      <div style={{ maxWidth: "960px", margin: "0 auto" }}>
-        <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--font-size-caption)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-primary)", fontFamily: "var(--font-family)" }}>
-          Start here
-        </p>
-        <h2 id="start-here-heading" style={{ fontSize: "clamp(1.875rem, 4vw, 2.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1, color: "var(--color-text)", fontFamily: "var(--font-family)", margin: "0 0 var(--space-3) 0" }}>
-          See the gap free. Fix it for $29.
-        </h2>
-        <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, fontFamily: "var(--font-family)", margin: "0 0 var(--space-8) 0", maxWidth: "62ch" }}>
-          You don&rsquo;t have to commit to a subscription to start. The free test shows the gap; the
-          $29 Kit <strong>completes it</strong> with your full audit, drafts, and a plain-English GEO guide;
-          the weekly Plans keep your score moving. One process, three steps.
-        </p>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-5)" }}>
-          {/* Free test */}
-          <div style={ladderCard(false)}>
-            <span style={ladderTag("var(--color-surface-muted)", "var(--color-muted)")}>Step 1 · Free</span>
-            <h3 style={ladderTitle}>The AI Invisibility Test</h3>
-            <p style={ladderBody}>
-              In 60 seconds, see whether ChatGPT, Claude, Perplexity and Gemini recommend
-              <strong> you</strong> or your competitor — across the real engines buyers use.
-            </p>
-            <ul style={ladderList}>
-              <li>One buyer prompt, every major AI engine</li>
-              <li>Head-to-head vs one competitor</li>
-              <li>Instant scorecard — no credit card</li>
-            </ul>
-            <a href="/test" style={ladderBtn(false)}>Run my free test &rarr;</a>
-          </div>
-
-          {/* $29 Kit */}
-          <div style={ladderCard(true)}>
-            <span style={ladderTag("var(--color-badge-ai-bg)", "var(--color-badge-ai-text)")}>Step 2 · $29 one-time</span>
-            <h3 style={ladderTitle}>The Get-Cited Kit</h3>
-            <p style={ladderBody}>
-              Know <em>why</em> you&rsquo;re invisible — and leave with content ready to publish.
-              No subscription, no GEO degree required.
-            </p>
-            <ul style={ladderList}>
-              <li>Part 1: full audit + your TrustIndex Score</li>
-              <li>Your top 3 highest-impact fixes</li>
-              <li><strong>3 ready-to-publish drafts</strong> (blog + LinkedIn + FAQ, with schema)</li>
-              <li>Part 2: plain-English GEO guide (downloadable PDF)</li>
-              <li>Publish checklist + 30-day re-test</li>
-            </ul>
-            <a href="/kit" style={ladderBtn(true)}>Get the Kit — $29</a>
-          </div>
-        </div>
-
-        <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", margin: "var(--space-5) 0 0 0", lineHeight: 1.6 }}>
-          Ready for ongoing monitoring? The <a href="#pricing" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "none" }}>Growth plan</a> re-runs your audit weekly and tracks your score over time.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-const ladderCard = (highlight: boolean): React.CSSProperties => ({
-  backgroundColor: "var(--color-surface)",
-  border: highlight ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
-  borderRadius: "var(--radius-xl)",
-  padding: "var(--space-6)",
-  boxShadow: "var(--shadow-card)",
-  display: "flex",
-  flexDirection: "column",
-  gap: "var(--space-3)",
-});
-const ladderTag = (bg: string, color: string): React.CSSProperties => ({
-  alignSelf: "flex-start",
-  fontSize: "0.7rem",
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  padding: "3px 10px",
-  borderRadius: "var(--radius-pill)",
-  backgroundColor: bg,
-  color,
-});
-const ladderTitle: React.CSSProperties = { fontSize: "var(--font-size-h3)", fontWeight: 800, margin: 0, color: "var(--color-text)", fontFamily: "var(--font-family)" };
-const ladderBody: React.CSSProperties = { fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: 0, fontFamily: "var(--font-family)" };
-const ladderList: React.CSSProperties = { margin: 0, paddingLeft: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-1)", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", fontFamily: "var(--font-family)", lineHeight: 1.5 };
-function ladderBtn(primary: boolean): React.CSSProperties {
-  return {
-    marginTop: "auto",
-    display: "inline-block",
-    textAlign: "center",
-    textDecoration: "none",
-    height: "46px",
-    lineHeight: "46px",
-    padding: "0 var(--space-5)",
-    borderRadius: "var(--radius-md)",
-    fontWeight: 800,
-    fontSize: "var(--font-size-body-sm)",
-    fontFamily: "var(--font-family)",
-    backgroundColor: primary ? "var(--color-primary)" : "transparent",
-    color: primary ? "#fff" : "var(--color-primary)",
-    border: primary ? "none" : "1px solid var(--color-primary)",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// ④ How It Works
-// ---------------------------------------------------------------------------
-
-const STEPS = [
-  {
-    n: "01",
-    Icon: IconSearch,
-    title: "Audit",
-    body: "Ozvor runs a portfolio of real buyer prompts across ChatGPT, Perplexity, Gemini, and Google AI Overview, then measures whether your brand is mentioned, cited, and recommended — your baseline TrustIndex Score.",
-    accent: false,
-    iconColor: "var(--color-muted)",
-  },
-  {
-    n: "02",
-    Icon: IconCpu,
-    title: "Benchmark",
-    body: "See exactly which competitors AI systems recommend instead of you, on which prompts, and what sources they trust. Your category ownership and displacement, made measurable.",
-    accent: true,
-    iconColor: "var(--color-primary)",
-  },
-  {
-    n: "03",
-    Icon: IconShieldCheck,
-    title: "Plan & publish",
-    body: "Ozvor turns the gaps into a prioritized GEO content plan. OrganicPosts by TrustIndex AI helps you publish the proof, pages, and posts AI needs — then monitors your score over time.",
-    accent: false,
-    iconColor: "var(--color-success)",
-  },
-];
-
-function HowItWorksSection() {
-  return (
-    <section
-      aria-labelledby="how-heading"
-      style={{
-        backgroundColor: "var(--color-surface)",
-        padding: "var(--space-20) var(--space-4)",
-      }}
-    >
-      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: "var(--space-12)" }}>
-          <h2
-            id="how-heading"
-            style={{
-              fontSize: "clamp(1.875rem, 4vw, 3rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.03em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.1,
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            Audit. Benchmark.
-            <br />
-            Plan &amp; publish.
-          </h2>
-          <p
-            style={{
-              fontSize: "clamp(1rem, 1.5vw, 1.125rem)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.7,
-              maxWidth: "44ch",
-              margin: "0 auto",
-            }}
-          >
-            From &ldquo;are we even in AI answers?&rdquo; to a published plan
-            that gets you cited.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "var(--space-6)",
-          }}
-        >
-          {STEPS.map((step) => (
-            <div
-              key={step.n}
-              className="mk-step-card"
-              style={{
-                padding: "var(--space-8)",
-                position: "relative",
-                overflow: "hidden",
-                ...(step.accent
-                  ? {
-                      background:
-                        "linear-gradient(135deg, var(--color-badge-ai-bg), var(--color-surface))",
-                      borderColor: "var(--color-highlight-border)",
-                    }
-                  : {}),
-              }}
-            >
-              {/* Decorative large number */}
-              <span
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  top: "-4px",
-                  right: "var(--space-4)",
-                  fontSize: "6rem",
-                  fontWeight: "800",
-                  lineHeight: 1,
-                  color: step.accent
-                    ? "rgba(10,126,90,0.07)"
-                    : "var(--color-border)",
-                  fontFamily: "var(--font-family)",
-                  userSelect: "none",
-                  letterSpacing: "-0.04em",
-                }}
-              >
-                {step.n}
-              </span>
-
-              {/* SVG Icon tile */}
-              <div
-                aria-hidden="true"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: step.accent
-                    ? "var(--color-badge-ai-bg)"
-                    : "var(--color-surface-muted)",
-                  border: `1px solid ${step.accent ? "var(--color-highlight-border)" : "var(--color-border)"}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: step.iconColor,
-                  marginBottom: "var(--space-5)",
-                }}
-              >
-                <step.Icon />
-              </div>
-
-              <h3
-                style={{
-                  fontSize: "var(--font-size-h2)",
-                  fontWeight: "700",
-                  letterSpacing: "-0.02em",
-                  color: "var(--color-text)",
-                  fontFamily: "var(--font-family)",
-                  marginBottom: "var(--space-3)",
-                  marginTop: 0,
-                }}
-              >
-                {step.title}
-              </h3>
-              <p
-                style={{
-                  fontSize: "var(--font-size-body-sm)",
-                  lineHeight: 1.7,
-                  color: "var(--color-muted)",
-                  fontFamily: "var(--font-family)",
-                  margin: 0,
-                }}
-              >
-                {step.body}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ⑤ Privacy & AI
-// ---------------------------------------------------------------------------
-
-const PRIVACY_BLOCKS = [
-  {
-    Icon: IconLock,
-    iconColor: "var(--color-primary)",
-    title: "No training on your data",
-    body: "We use Anthropic Claude. Under Anthropic's API terms, your content is not used to train AI models and is not retained beyond what is needed to return your result. We never sell or share it.",
-  },
-  {
-    Icon: IconHandStop,
-    iconColor: "#d97706",
-    title: "Draft-and-confirm is a design decision, not a toggle",
-    body: "The AI produces a draft. You read it, edit it, and click Approve and Schedule. Nothing is published automatically. There is no setting to bypass this step. We have not built one and do not plan to.",
-  },
-  {
-    Icon: IconGlobe,
-    iconColor: "var(--color-success)",
-    title: "Privacy-first AI processing",
-    body: "We never use your data to train AI models, and our AI providers are contractually restricted from training on your content. We act as a data processor under GDPR Article 28 — you remain the controller. EU-region inference and additional data-residency controls are on our roadmap; until they ship we disclose exactly which providers process your data (see our Sub-processors page).",
-  },
-];
-
-function PrivacyAISection() {
-  return (
-    <section
-      aria-labelledby="privacy-heading"
-      className="mk-teal-surface"
-      style={{ padding: "var(--space-20) var(--space-4)" }}
-    >
-      <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "var(--space-10)" }}>
-          <h2
-            id="privacy-heading"
-            style={{
-              fontSize: "clamp(1.875rem, 4vw, 3rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.03em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.1,
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            How your data is protected.
-          </h2>
-          <p
-            style={{
-              fontSize: "clamp(1rem, 1.5vw, 1.125rem)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.7,
-              maxWidth: "48ch",
-            }}
-          >
-            Privacy-first is not a marketing badge. It is built into the
-            architecture and the contracts.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          {PRIVACY_BLOCKS.map((b) => (
-            <div
-              key={b.title}
-              className="mk-privacy-card"
-              style={{
-                padding: "var(--space-6)",
-                display: "flex",
-                gap: "var(--space-5)",
-                alignItems: "flex-start",
-              }}
-            >
-              {/* SVG icon tile */}
-              <div
-                aria-hidden="true"
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: "var(--color-teal-surface)",
-                  border: "1px solid var(--color-teal-border)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: b.iconColor,
-                  flexShrink: 0,
-                }}
-              >
-                <b.Icon />
-              </div>
-              <div>
-                <h3
-                  style={{
-                    fontSize: "var(--font-size-h3)",
-                    fontWeight: "700",
-                    letterSpacing: "-0.01em",
-                    color: "var(--color-text)",
-                    fontFamily: "var(--font-family)",
-                    marginBottom: "var(--space-2)",
-                    marginTop: 0,
-                  }}
-                >
-                  {b.title}
-                </h3>
-                <p
-                  style={{
-                    fontSize: "var(--font-size-body-sm)",
-                    lineHeight: 1.7,
-                    color: "var(--color-muted)",
-                    fontFamily: "var(--font-family)",
-                    margin: 0,
-                  }}
-                >
-                  {b.body}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ⑥ Comparison Table — visual indicators ✓ / ✗ / ~ / ?
-// ---------------------------------------------------------------------------
-
-const COMPARISON_ROWS = [
-  {
-    feature: "Content drafted for LLM visibility (GEO)",
-    buffer: "no", hootsuite: "no", later: "no", predis: "no",
-    op: "Yes — structured, specific drafts shaped for AI citation",
-  },
-  {
-    feature: "No AI training on your content",
-    buffer: "unknown", hootsuite: "unknown", later: "unknown", predis: "unknown",
-    op: "Yes — provider-contractual (Anthropic API terms)",
-  },
-  {
-    feature: "EU-region inference",
-    buffer: "partial", hootsuite: "partial", later: "unknown", predis: "unknown",
-    op: "On our roadmap",
-  },
-  {
-    feature: "Draft-and-confirm (no autonomous posting)",
-    buffer: "no", hootsuite: "no", later: "no", predis: "no",
-    op: "Yes — always, by design",
-  },
-  {
-    feature: "AI disclosure (EU AI Act Art. 50 transparency)",
-    buffer: "unknown", hootsuite: "unknown", later: "unknown", predis: "unknown",
-    op: "Yes — named model + visible badge on every draft",
-  },
-];
-
-type CellValue = "no" | "partial" | "unknown" | string;
-
-function CompCell({ value, isOP = false }: { value: CellValue; isOP?: boolean }) {
-  if (isOP && value !== "On our roadmap") {
-    return (
-      <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "top", backgroundColor: "rgba(22,163,74,0.06)" }}>
-        <span style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", gap: "var(--space-1)" }}>
-          <span style={{ color: "var(--color-success)", fontWeight: "700", flexShrink: 0, fontSize: "1rem" }} aria-hidden="true">✓</span>
-          <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-success)", fontWeight: "600", fontFamily: "var(--font-family)", lineHeight: 1.5, textAlign: "left" }}>{value}</span>
-        </span>
-      </td>
-    );
-  }
-  if (isOP && value === "On our roadmap") {
-    return (
-      <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "top", backgroundColor: "rgba(22,163,74,0.06)" }}>
-        <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: "600", fontFamily: "var(--font-family)", lineHeight: 1.5 }}>{value}</span>
-      </td>
-    );
-  }
-
-  if (value === "no") {
-    return (
-      <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "middle" }}>
-        <span aria-label="No" style={{ display: "inline-flex", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(220,38,38,0.08)", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: "700", color: "var(--color-error)" }}>✗</span>
-      </td>
-    );
-  }
-
-  if (value === "partial") {
-    return (
-      <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "middle" }}>
-        <span aria-label="Partial" style={{ display: "inline-flex", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "rgba(217,119,6,0.1)", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: "700", color: "#d97706" }}>~</span>
-      </td>
-    );
-  }
-
-  return (
-    <td style={{ padding: "var(--space-3) var(--space-4)", textAlign: "center", verticalAlign: "middle" }}>
-      <span aria-label="Not publicly disclosed" style={{ display: "inline-flex", width: "24px", height: "24px", borderRadius: "50%", backgroundColor: "var(--color-surface-muted)", alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: "700", color: "var(--color-muted)", border: "1px solid var(--color-border)" }}>?</span>
-    </td>
-  );
-}
-
-function ComparisonSection() {
-  return (
-    <section
-      aria-labelledby="comparison-heading"
-      style={{ padding: "var(--space-20) var(--space-4)", backgroundColor: "var(--color-surface-muted)" }}
-    >
-      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: "var(--space-10)" }}>
-          <h2
-            id="comparison-heading"
-            style={{
-              fontSize: "clamp(1.875rem, 4vw, 3rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.03em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.1,
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            How Ozvor compares.
-          </h2>
-          <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", fontFamily: "var(--font-family)", maxWidth: "50ch", margin: "0 auto", lineHeight: 1.7 }}>
-            GEO visibility and privacy-first AI are new categories. No competitor has made either a core part of their product.
-          </p>
-        </div>
-
-        {/* Legend */}
-        <div style={{ display: "flex", gap: "var(--space-5)", marginBottom: "var(--space-4)", justifyContent: "flex-end", flexWrap: "wrap" }}>
-          {[
-            { icon: "✓", bg: "rgba(22,163,74,0.08)", color: "var(--color-success)", label: "Yes" },
-            { icon: "✗", bg: "rgba(220,38,38,0.08)", color: "var(--color-error)", label: "No" },
-            { icon: "~", bg: "rgba(217,119,6,0.1)", color: "#d97706", label: "Partial" },
-            { icon: "?", bg: "var(--color-surface-muted)", color: "var(--color-muted)", label: "Not disclosed" },
-          ].map((l) => (
-            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-              <span style={{ display: "inline-flex", width: "22px", height: "22px", borderRadius: "50%", backgroundColor: l.bg, alignItems: "center", justifyContent: "center", fontSize: "0.7rem", fontWeight: "700", color: l.color, border: l.label === "Not disclosed" ? "1px solid var(--color-border)" : "none" }}>{l.icon}</span>
-              <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>{l.label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Desktop table */}
-        <div
-          className="mk-comparison-table"
-          style={{ overflowX: "auto", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-card)", overflow: "hidden" }}
-          role="region"
-          aria-label="Comparison table"
-          tabIndex={0}
-        >
-          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--font-family)", fontSize: "var(--font-size-body-sm)" }}>
-            <caption style={{ captionSide: "bottom", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginTop: "var(--space-4)", textAlign: "left", padding: "var(--space-2) 0" }}>
-              &ldquo;Not disclosed&rdquo; means no public documentation found as of 2026-05-11. VP Legal verifies all competitor rows before this table goes live.
-            </caption>
-            <thead>
-              <tr className="mk-table-header">
-                <th scope="col" style={{ padding: "var(--space-4)", textAlign: "left", fontWeight: "700", color: "#e2e8f0", fontSize: "var(--font-size-caption)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Feature</th>
-                {["Buffer", "Hootsuite", "Later", "Predis.ai"].map((col) => (
-                  <th key={col} scope="col" style={{ padding: "var(--space-4)", textAlign: "center", fontWeight: "600", color: "#64748b", whiteSpace: "nowrap", fontSize: "var(--font-size-body-sm)" }}>{col}</th>
-                ))}
-                <th scope="col" style={{ padding: "var(--space-4)", textAlign: "center", fontWeight: "700", color: "#34D399", whiteSpace: "nowrap", fontSize: "var(--font-size-body-sm)" }}>Ozvor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPARISON_ROWS.map((row, i) => (
-                <tr key={row.feature} style={{ backgroundColor: i % 2 === 0 ? "var(--color-surface)" : "var(--color-surface-muted)", borderBottom: "1px solid var(--color-border)" }}>
-                  <td style={{ padding: "var(--space-3) var(--space-4)", fontWeight: "600", color: "var(--color-text)", verticalAlign: "middle", maxWidth: "240px" }}>{row.feature}</td>
-                  <CompCell value={row.buffer} />
-                  <CompCell value={row.hootsuite} />
-                  <CompCell value={row.later} />
-                  <CompCell value={row.predis} />
-                  <CompCell value={row.op} isOP />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile cards */}
-        <div className="mk-comparison-cards" style={{ display: "none", flexDirection: "column", gap: "var(--space-4)", marginTop: "var(--space-4)" }} aria-hidden="true">
-          {COMPARISON_ROWS.map((row) => (
-            <div key={row.feature} style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)" }}>
-              <p style={{ fontWeight: "700", marginBottom: "var(--space-3)", marginTop: 0, color: "var(--color-text)", fontFamily: "var(--font-family)", fontSize: "var(--font-size-body-sm)" }}>{row.feature}</p>
-              {[["Buffer", row.buffer], ["Hootsuite", row.hootsuite], ["Later", row.later], ["Predis.ai", row.predis], ["Ozvor", row.op]].map(([tool, val]) => (
-                <div key={tool} style={{ display: "flex", justifyContent: "space-between", padding: "var(--space-1) 0", fontSize: "var(--font-size-caption)", fontFamily: "var(--font-family)", borderBottom: "1px solid var(--color-border)", gap: "var(--space-3)" }}>
-                  <span style={{ color: "var(--color-muted)" }}>{tool}</span>
-                  <span style={{ color: tool === "Ozvor" ? "var(--color-success)" : "var(--color-muted)", fontWeight: tool === "Ozvor" ? "600" : undefined, textAlign: "right", maxWidth: "60%" }}>{val}</span>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ⑦ Founding Member Offer
-// ---------------------------------------------------------------------------
-
-const BONUS_CARDS = [
-  {
-    n: "01",
-    title: "GEO Visibility Guide",
-    desc: "30-page PDF covering the Princeton GEO research, five traits of citation-worthy posts, and a four-week posting schedule you can start this week.",
-    note: "Included free in Growth plan",
-    parts: ["Part 1: The AI Search Shift", "Part 2: How LLMs Decide What to Cite", "Part 3: The Anatomy of a Citation-Worthy Post"],
-  },
-  {
-    n: "02",
-    title: "LLM Citation Tracker",
-    desc: "Google Sheets template + methodology for monitoring when ChatGPT, Claude, Perplexity, and Gemini mention your business. 10 minutes per week.",
-    note: "Included free in Growth plan",
-    parts: ["10 customisable weekly queries", "Spreadsheet with 9 tracking columns", "How to interpret citation positions"],
-  },
-  {
-    n: "03",
-    title: "5 High-Citation Post Templates",
-    desc: "Fill-in-the-blank LinkedIn post structures derived from Princeton GEO research. Each template maps to a research-backed principle.",
-    note: "Included free in Growth plan",
-    parts: ["Template 1: The Data Story", "Template 2: The Expert Recommendation", "+ 3 more templates"],
-  },
-];
-
-function FoundingMemberSection() {
-  return (
-    <section
-      aria-labelledby="founding-heading"
-      className="mk-teal-surface"
-      style={{ padding: "var(--space-20) var(--space-4)" }}
-    >
-      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: "var(--space-12)" }}>
-          {/* Badge */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", backgroundColor: "var(--color-surface)", border: "1px solid var(--color-teal-border)", borderRadius: "var(--radius-pill)", padding: "var(--space-1) var(--space-4)", marginBottom: "var(--space-6)" }}>
-            <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", backgroundColor: "var(--color-success)", flexShrink: 0 }} aria-hidden="true" />
-            <span style={{ fontSize: "var(--font-size-caption)", fontWeight: "700", color: "var(--color-success)", fontFamily: "var(--font-family)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Founding Member Offer</span>
-          </div>
-
-          <h2
-            id="founding-heading"
-            style={{
-              fontSize: "clamp(1.875rem, 4vw, 3rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.03em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.1,
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            First 100 members.
-            <br />
-            30% founder discount. Personal onboarding.
-          </h2>
-          <p style={{ fontSize: "clamp(1rem, 1.5vw, 1.125rem)", color: "var(--color-muted)", fontFamily: "var(--font-family)", lineHeight: 1.7, maxWidth: "56ch", margin: "0 auto var(--space-8)" }}>
-            Pricing is <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>$99/month Growth</strong> and <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>$249/month Agency</strong>. Founding members get a <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> — applied <strong style={{ color: "var(--color-text)", fontWeight: "700" }}>only when you pay annually</strong>.
-          </p>
-
-          {/* Price pills with strike-through public price */}
-          <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "var(--space-4)", marginBottom: "var(--space-6)" }}>
-            {[
-              { plan: "Growth plan", original: "$99/mo", price: "$69/mo", suffix: "billed annually · 30% off" },
-              { plan: "Agency plan", original: "$249/mo", price: "$174/mo", suffix: "billed annually · 30% off" },
-            ].map((p) => (
-              <div key={p.plan} className="mk-price-pill" style={{ padding: "var(--space-4) var(--space-6)", textAlign: "center", minWidth: "220px" }}>
-                <p style={{ margin: "0 0 var(--space-1) 0", fontSize: "var(--font-size-caption)", fontWeight: "700", color: "var(--color-success)", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>{p.plan}</p>
-                <p style={{ margin: 0, fontSize: "var(--font-size-h2)", fontWeight: "800", color: "var(--color-text)", fontFamily: "var(--font-family)", letterSpacing: "-0.02em", display: "flex", alignItems: "baseline", justifyContent: "center", gap: "var(--space-2)" }}>
-                  <span style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", textDecoration: "line-through", fontWeight: "500" }}>{p.original}</span>
-                  <span>{p.price}</span>
-                </p>
-                <p style={{ margin: "var(--space-1) 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>{p.suffix}</p>
-              </div>
-            ))}
-          </div>
-
-          <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", fontFamily: "var(--font-family)", lineHeight: 1.7, maxWidth: "52ch", margin: "0 auto" }}>
-            No countdown timer. No fake scarcity. When the cohort fills, it fills. If the product is not what we said, we offer a <strong style={{ fontWeight: "700" }}>30-day money-back guarantee</strong> — no forms, no friction.
-          </p>
-        </div>
-
-        {/* Bonus cards */}
-        <h3 style={{ fontSize: "var(--font-size-h2)", fontWeight: "700", color: "var(--color-text)", fontFamily: "var(--font-family)", textAlign: "center", marginBottom: "var(--space-6)", letterSpacing: "-0.02em" }}>
-          Founding members also receive
-        </h3>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--space-6)" }}>
-          {BONUS_CARDS.map((card) => (
-            <article
-              key={card.title}
-              className="mk-bonus-card"
-              aria-label={`Bonus ${card.n}: ${card.title}`}
-              style={{ padding: "var(--space-6)", display: "flex", flexDirection: "column" }}
-            >
-              <span
-                aria-hidden="true"
-                style={{ fontSize: "2.75rem", fontWeight: "800", color: "var(--color-teal-border)", fontFamily: "var(--font-family)", lineHeight: 1, marginBottom: "var(--space-3)", letterSpacing: "-0.04em" }}
-              >
-                {card.n}
-              </span>
-              <h4 style={{ fontSize: "var(--font-size-h3)", fontWeight: "700", color: "var(--color-text)", fontFamily: "var(--font-family)", marginBottom: "var(--space-3)", marginTop: 0 }}>{card.title}</h4>
-              <p style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.7, color: "var(--color-muted)", fontFamily: "var(--font-family)", margin: "0 0 var(--space-4) 0", flexGrow: 1 }}>{card.desc}</p>
-              <ul aria-label={`${card.title} contents`} style={{ margin: "0 0 var(--space-4) 0", padding: "0 0 0 var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", lineHeight: 1.7 }}>
-                {card.parts.map((p) => <li key={p} style={{ marginBottom: "var(--space-1)" }}>{p}</li>)}
-              </ul>
-              <p style={{ margin: 0, fontSize: "var(--font-size-caption)", fontWeight: "700", color: "var(--color-success)", fontFamily: "var(--font-family)" }}>✓ {card.note}</p>
-            </article>
-          ))}
-        </div>
-
-        <p style={{ textAlign: "center", marginTop: "var(--space-8)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-          Founding members also receive personal onboarding from the founder. Bonuses delivered by email after signup.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Social Proof — "Building in public" + testimonial scaffold
-// ---------------------------------------------------------------------------
-
-function SocialProofSection() {
-  return (
-    <section
-      aria-labelledby="social-proof-heading"
-      style={{
-        backgroundColor: "var(--color-surface-muted)",
-        padding: "var(--space-20) var(--space-4)",
-        borderTop: "1px solid var(--color-border)",
-      }}
-    >
-      <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
-
-        {/* ── "Building in public" founder case study ── */}
-        <div style={{ textAlign: "center", marginBottom: "var(--space-12)" }}>
-          <div
-            className="mk-badge"
-            style={{ marginBottom: "var(--space-4)", display: "inline-flex" }}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                backgroundColor: "var(--color-primary)",
-                flexShrink: 0,
-              }}
-            />
-            Building in public
-          </div>
-          <h2
-            id="social-proof-heading"
-            style={{
-              fontSize: "clamp(1.875rem, 4vw, 2.75rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.03em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.1,
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            We use Ozvor on ourselves.
-          </h2>
-          <p
-            style={{
-              fontSize: "var(--font-size-body)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              maxWidth: "60ch",
-              margin: "0 auto var(--space-8)",
-              lineHeight: 1.7,
-            }}
-          >
-            The best way to prove a GEO platform works is to dog-food it publicly. We
-            audit Ozvor and OrganicPosts across ChatGPT, Claude, Perplexity,
-            Gemini, and Google AI Overview &mdash; every week &mdash; and share the
-            real numbers.
-          </p>
-        </div>
-
-        {/* Founder live-audit card */}
-        <div
-          style={{
-            maxWidth: "780px",
-            margin: "0 auto var(--space-12)",
-            backgroundColor: "var(--color-surface)",
-            border: "1.5px solid var(--color-primary)",
-            borderRadius: "var(--radius-xl)",
-            padding: "var(--space-8)",
-            boxShadow: "var(--shadow-card-hover)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-3)",
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            {/* Founder initials avatar */}
-            <div
-              aria-hidden="true"
-              style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                backgroundColor: "var(--color-primary)",
-                color: "#fff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: "800",
-                fontSize: "var(--font-size-h3)",
-                fontFamily: "var(--font-family)",
-                flexShrink: 0,
-              }}
-            >
-              OF
-            </div>
-            <div>
-              <p
-                style={{
-                  margin: 0,
-                  fontWeight: "700",
-                  fontSize: "var(--font-size-body-sm)",
-                  color: "var(--color-text)",
-                  fontFamily: "var(--font-family)",
-                }}
-              >
-                Otavio (founder)
-              </p>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "var(--font-size-caption)",
-                  color: "var(--color-muted)",
-                  fontFamily: "var(--font-family)",
-                }}
-              >
-                Live audit &mdash; updated weekly
-              </p>
-            </div>
-            <span
-              aria-label="Live — updated this week"
-              style={{
-                marginLeft: "auto",
-                fontSize: "var(--font-size-badge)",
-                fontWeight: "700",
-                backgroundColor: "var(--color-badge-status-active-bg)",
-                color: "var(--color-badge-status-active-text)",
-                borderRadius: "var(--radius-pill)",
-                padding: "3px 10px",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Live
-            </span>
-          </div>
-
-          {/* Score display — placeholder until live numbers are wired */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: "var(--space-4)",
-              marginBottom: "var(--space-5)",
-            }}
-          >
-            {[
-              { label: "TrustIndex Score", value: "—", note: "Running audit…" },
-              { label: "Citation rate", value: "—", note: "Across 5 engines" },
-              { label: "Top competitor", value: "—", note: "in AI answers" },
-            ].map((m) => (
-              <div
-                key={m.label}
-                style={{
-                  backgroundColor: "var(--color-surface-muted)",
-                  borderRadius: "var(--radius-md)",
-                  padding: "var(--space-4)",
-                  textAlign: "center",
-                }}
-              >
-                <p
-                  style={{
-                    margin: "0 0 var(--space-1) 0",
-                    fontSize: "clamp(1.75rem, 3vw, 2.25rem)",
-                    fontWeight: "800",
-                    color: "var(--color-primary)",
-                    fontFamily: "var(--font-family)",
-                    letterSpacing: "-0.04em",
-                    lineHeight: 1,
-                  }}
-                >
-                  {m.value}
-                </p>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "var(--font-size-caption)",
-                    fontWeight: "600",
-                    color: "var(--color-text)",
-                    fontFamily: "var(--font-family)",
-                  }}
-                >
-                  {m.label}
-                </p>
-                <p
-                  style={{
-                    margin: "var(--space-1) 0 0 0",
-                    fontSize: "var(--font-size-badge)",
-                    color: "var(--color-muted)",
-                    fontFamily: "var(--font-family)",
-                  }}
-                >
-                  {m.note}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <p
-            style={{
-              fontSize: "var(--font-size-body-sm)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.6,
-              margin: 0,
-              borderTop: "1px solid var(--color-border)",
-              paddingTop: "var(--space-4)",
-            }}
-          >
-            We publish our real audit scores weekly. As we ship GEO improvements,
-            you&rsquo;ll see the numbers move &mdash; or not. No spin, no cherry-picked
-            snapshots. If you want to follow along, the score updates every Monday.
-          </p>
-        </div>
-
-        {/* ── Testimonials scaffold (clearly marked as coming soon) ── */}
-        <div>
-          <h3
-            style={{
-              fontSize: "clamp(1.25rem, 2.5vw, 1.75rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.02em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              textAlign: "center",
-              marginBottom: "var(--space-3)",
-            }}
-          >
-            Early access voices
-          </h3>
-          <p
-            style={{
-              textAlign: "center",
-              fontSize: "var(--font-size-body-sm)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              marginBottom: "var(--space-8)",
-            }}
-          >
-            We&rsquo;re in early access. Real quotes from early users will appear here as
-            they come in &mdash; no fabricated testimonials, ever.
-          </p>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              gap: "var(--space-5)",
-            }}
-          >
-            {[
-              {
-                placeholder: "Early user from healthcare services",
-                quote: "Spot reserved for an early-access user quote.",
-              },
-              {
-                placeholder: "Early user from professional services",
-                quote: "Spot reserved for an early-access user quote.",
-              },
-              {
-                placeholder: "Early user from e-commerce",
-                quote: "Spot reserved for an early-access user quote.",
-              },
-            ].map((t) => (
-              <article
-                key={t.placeholder}
-                aria-label={`Testimonial placeholder — ${t.placeholder}`}
-                style={{
-                  backgroundColor: "var(--color-surface)",
-                  border: "1px dashed var(--color-border)",
-                  borderRadius: "var(--radius-lg)",
-                  padding: "var(--space-6)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--space-3)",
-                  opacity: 0.7,
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: "var(--font-size-body-sm)",
-                    color: "var(--color-muted)",
-                    fontFamily: "var(--font-family)",
-                    lineHeight: 1.6,
-                    margin: 0,
-                    fontStyle: "italic",
-                  }}
-                >
-                  &ldquo;{t.quote}&rdquo;
-                </p>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "var(--font-size-caption)",
-                    fontWeight: "600",
-                    color: "var(--color-muted)",
-                    fontFamily: "var(--font-family)",
-                  }}
-                >
-                  {t.placeholder}
-                </p>
-              </article>
-            ))}
-          </div>
-          <p
-            style={{
-              textAlign: "center",
-              marginTop: "var(--space-6)",
-              fontSize: "var(--font-size-caption)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            Want to be our first published case study?{" "}
-            <a
-              href="/test"
-              style={{
-                color: "var(--color-primary)",
-                fontWeight: "600",
-                textDecoration: "underline",
-              }}
-            >
-              Run the free test
-            </a>{" "}
-            and share your results.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ⑧ Pricing
-// ---------------------------------------------------------------------------
-
-function PricingSection() {
-  return (
-    <section
-      aria-labelledby="pricing-heading"
-      style={{ backgroundColor: "var(--color-surface)", padding: "var(--space-20) var(--space-4)" }}
-    >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: "var(--space-10)" }}>
-          <h2
-            id="pricing-heading"
-            style={{
-              fontSize: "clamp(1.875rem, 4vw, 3rem)",
-              fontWeight: "800",
-              letterSpacing: "-0.03em",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.1,
-              marginBottom: "var(--space-3)",
-            }}
-          >
-            Replace a $30k/year specialist for less than $100/month.
-          </h2>
-          <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", fontFamily: "var(--font-family)", maxWidth: "60ch", margin: "0 auto", lineHeight: 1.7 }}>
-            30-day money-back guarantee · Cancel any time · No lock-in contracts
-          </p>
-        </div>
-
-        {/* Annual website bonus callout — the Hormozi anchor */}
-        <div
-          style={{
-            maxWidth: "880px",
-            margin: "0 auto var(--space-10)",
-            padding: "var(--space-5) var(--space-6)",
-            background: "linear-gradient(135deg, var(--color-badge-ai-bg), var(--color-surface))",
-            border: "1.5px solid var(--color-primary)",
-            borderRadius: "var(--radius-lg)",
-            display: "flex",
-            gap: "var(--space-4)",
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flexShrink: 0, color: "var(--color-primary)" }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 2 L15 9 L22 10 L17 15 L18 22 L12 18 L6 22 L7 15 L2 10 L9 9 Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <div style={{ flex: "1 1 320px" }}>
-            <p style={{ margin: "0 0 var(--space-1) 0", fontSize: "var(--font-size-caption)", fontWeight: "700", color: "var(--color-primary)", fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-              Annual only · 30% founder discount + free website
-            </p>
-            <p style={{ margin: 0, fontSize: "var(--font-size-body)", fontWeight: "600", color: "var(--color-text)", fontFamily: "var(--font-family)", lineHeight: 1.5 }}>
-              Pay annually and you unlock the <strong style={{ fontWeight: "800" }}>30% founder discount</strong> — plus we&rsquo;ll <strong style={{ fontWeight: "800" }}>build you a professional website</strong>, delivered in week 1 of your onboarding. 5 pages, your copy, our design. Yours to keep. (The 30% founder discount applies to annual plans only.)
-            </p>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: "var(--space-6)",
-            maxWidth: "1120px",
-            margin: "0 auto",
-            alignItems: "start",
-          }}
-        >
-          <PricingCard
-            name="Free"
-            subtitle="Run your first AI visibility audit."
-            price="$0"
-            period="forever"
-            annual="No credit card required"
-            features={[
-              "1 brand",
-              "3 competitors benchmarked",
-              "50 buyer prompts / audit",
-              "Monthly audit + TrustIndex Score",
-              "Basic GEO content plan",
-            ]}
-            ctaLabel="Run the free test"
-            ctaHref="/test"
-          />
-          <PricingCard
-            name="Growth"
-            subtitle="For SMBs actively investing in AI visibility."
-            price="$99"
-            period="/mo"
-            annual="Annual: $831/year — 30% founder discount ($69/mo)"
-            features={[
-              "1 brand",
-              "10 competitors benchmarked",
-              "250 buyer prompts / audit",
-              "Weekly monitoring + answer-drift alerts",
-              "Citation share tracking",
-              "GEO content briefs (LinkedIn + website)",
-              "Annual: free 5-page website (week 1)",
-            ]}
-            featured
-            ctaLabel="Start Growth — $99/mo"
-            ctaHref="/login?plan=growth&next=checkout"
-          />
-          <PricingCard
-            name="Agency"
-            subtitle="For agencies managing multiple SMB clients."
-            price="$249"
-            period="/mo"
-            annual="Annual: $2,091/year — 30% founder discount ($174/mo)"
-            features={[
-              "Multi-client dashboard (up to 25 brands)",
-              "10 competitors per brand",
-              "Weekly monitoring on every client",
-              "White-label reports",
-              "Client approval workflow",
-              "Priority support · 4h SLA",
-              "Annual: website + 3 client landings",
-            ]}
-            ctaLabel="Start Agency — $249/mo"
-            ctaHref="/login?plan=agency&next=checkout"
-          />
-        </div>
-
-        <p style={{ textAlign: "center", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)", marginTop: "var(--space-8)", maxWidth: "60ch", margin: "var(--space-8) auto 0", lineHeight: 1.7 }}>
-          First 100 subscribers get the <strong style={{ color: "var(--color-success)", fontWeight: "700" }}>30% founder discount</strong> on annual plans ($831 Growth / $2,091 Agency per year) — applied only when you pay annually.
-          All plans include a 30-day money-back guarantee. Personal onboarding from the founder available — <a href="/book" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "underline" }}>book a call</a>.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function PricingCard({
-  name, subtitle, price, period, annual, features, featured = false,
-  ctaLabel = "Get started",
-  ctaHref = "/test",
-}: {
-  name: string; subtitle: string; price: string; period: string;
-  annual: string; features: string[]; featured?: boolean;
-  ctaLabel?: string; ctaHref?: string;
-}) {
-  const textColor = featured ? "#f1f5f9" : "var(--color-text)";
-  const mutedColor = featured ? "#94a3b8" : "var(--color-muted)";
-  const checkColor = featured ? "#34d399" : "var(--color-success)";
-
-  return (
-    <div
-      className={featured ? "mk-featured-card" : "mk-regular-card"}
-      style={{ padding: "var(--space-8)", display: "flex", flexDirection: "column", position: "relative" }}
-    >
-      {featured && (
-        <div
-          aria-label="Most popular"
-          style={{
-            position: "absolute",
-            top: "-14px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            backgroundColor: "var(--color-primary)",
-            color: "#fff",
-            fontSize: "var(--font-size-caption)",
-            fontWeight: "700",
-            fontFamily: "var(--font-family)",
-            padding: "3px 16px",
-            borderRadius: "var(--radius-pill)",
-            letterSpacing: "0.05em",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Most popular
-        </div>
-      )}
-
-      <p style={{ margin: "0 0 var(--space-2) 0", fontSize: "var(--font-size-caption)", fontWeight: "700", color: mutedColor, fontFamily: "var(--font-family)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{subtitle}</p>
-      <h3 style={{ fontSize: "var(--font-size-h1)", fontWeight: "800", color: textColor, fontFamily: "var(--font-family)", marginBottom: "var(--space-2)", marginTop: 0, letterSpacing: "-0.03em" }}>{name}</h3>
-
-      <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-1)", marginBottom: "var(--space-1)" }}>
-        <span style={{ fontSize: "clamp(2.25rem, 4vw, 3rem)", fontWeight: "800", color: textColor, fontFamily: "var(--font-family)", letterSpacing: "-0.04em", lineHeight: 1 }}>{price}</span>
-        <span style={{ fontSize: "var(--font-size-body)", color: mutedColor, fontFamily: "var(--font-family)" }}>{period}</span>
-      </div>
-
-      <p style={{ fontSize: "var(--font-size-caption)", color: featured ? "#34D399" : "var(--color-muted)", fontFamily: "var(--font-family)", marginBottom: "var(--space-6)", marginTop: 0, fontWeight: "500" }}>{annual}</p>
-
-      <ul aria-label={`${name} plan features`} style={{ listStyle: "none", margin: "0 0 var(--space-8) 0", padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)", flexGrow: 1 }}>
-        {features.map((f) => (
-          <li key={f} style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: featured ? "#e2e8f0" : "var(--color-text)", fontFamily: "var(--font-family)", lineHeight: 1.6 }}>
-            <span aria-hidden="true" style={{ color: checkColor, fontWeight: "700", flexShrink: 0, lineHeight: 1.6 }}>✓</span>
-            {f}
-          </li>
-        ))}
-      </ul>
-
-      <a
-        href={ctaHref}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "100%",
-          boxSizing: "border-box",
-          padding: "var(--space-4)",
-          backgroundColor: featured ? "var(--color-primary)" : "transparent",
-          color: featured ? "#fff" : "var(--color-primary)",
-          border: featured ? "none" : "2px solid var(--color-primary)",
-          borderRadius: "var(--radius-md)",
-          fontSize: "var(--font-size-body-sm)",
-          fontWeight: "700",
-          fontFamily: "var(--font-family)",
-          textDecoration: "none",
-          minHeight: "var(--min-button-height)",
-          letterSpacing: "-0.01em",
-          textAlign: "center",
-        }}
-      >
-        {ctaLabel}
-      </a>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ⑨ FAQ
-// ---------------------------------------------------------------------------
-
-const FAQ_ITEMS = [
-  { q: "How does showing up in ChatGPT actually work?", a: "ChatGPT, Claude, Perplexity, and Gemini generate answers by drawing on content they have indexed or can retrieve in real time. Platforms like LinkedIn are heavily indexed by AI systems — Semrush's analysis of 89,000 LinkedIn URLs found it is the second most-cited source in AI search overall. When you post consistently on LinkedIn with specific, structured, useful content, you increase the probability that those systems have something to find and cite when a relevant query comes in. There is no guaranteed path to citation — but consistent, quality posting is the best-documented input." },
-  { q: "Is GEO real or marketing hype?", a: "Generative Engine Optimization is a legitimate emerging field. The term was formally defined in a paper by researchers at Princeton, Georgia Tech, and the Allen Institute for AI, published at KDD 2024. The paper demonstrated up to 40% improvements in AI citation visibility through structured content techniques. In June 2026, Google's official Search documentation formally recognized GEO/AEO as well. It is an early field, and not every claim made under the 'GEO' banner is well-founded — Google itself notes that llms.txt files and special 'AI schema' are not required. We follow Google's official guidance, do not score those gimmicks, and tell you what is substantiated and what is not." },
-  { q: "Isn't this just Google's free Search Console AI report?", a: "No — they answer different questions. Google's Search Console AI performance report (launched June 2026) tells you that your own pages appeared in Google's AI features. It covers Google only, your own site only, and at launch shows no click data and no competitors. Ozvor measures your brand across every major AI engine — ChatGPT, Claude, Perplexity, and Gemini as well as Google AI Overview — shows which competitors get recommended instead of you, how AI describes you (sentiment), and gives you a prioritized plan to fix the gaps. Use Search Console as your Google thermometer; use Ozvor for the full diagnosis and treatment, across the whole AI-answer surface. We're built to Google's official guidance and pass the three vendor-vetting questions Google published." },
-  { q: "How long until I appear in LLM answers?", a: "There is no fixed timeline. Based on the GEO research and observed patterns in how AI systems refresh their data, consistent posting over 4–8 weeks is a reasonable starting point. Individual citation frequency varies by niche, competition, and the specificity of your content." },
-  { q: "Can you guarantee my business will be cited?", a: "No, and anyone who says they can guarantee AI citations is overstating what the research supports. GEO research shows that specific, structured, data-backed, consistently published content is cited more frequently than vague or irregular content. We give you the tools to produce that kind of content at scale. The AI systems make their own decisions about what to cite." },
-  { q: "How much does it cost?", a: "Four tiers. Free: 1 brand, 3 competitors, 50 prompts, monthly audit + TrustIndex Score, no credit card. Growth: $99/month — 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, GEO content briefs. Agency: $249/month — multi-client dashboard (up to 25 brands), white-label reports, client approval workflow. Founding members (the first 100 annual subscribers) get a 30% founder discount — applied only when you pay annually ($831/year Growth and $2,091/year Agency, vs $99/$249 per month). Annual plans also include a free 5-page website (Growth) or website + 3 client landing pages (Agency). 30-day money-back guarantee on all paid plans." },
-  { q: "How do I get access?", a: "Run the free AI Visibility Test now — no credit card required. For a personal setup call with the founder, book 20 minutes at ozvor.com/book." },
-  { q: "Which AI engines do you audit?", a: "We audit your brand across ChatGPT (OpenAI), Claude (Anthropic), Perplexity, Gemini (Google), and Google AI Overview. Each audit fires a configurable set of prompts — 50 prompts on the Free plan, 250 on Growth — and records whether your brand was mentioned, how it was described, and which competitors were cited instead." },
-  { q: "What data do you store?", a: "We store your account information (name and email), the brand and competitor names you configure, and the audit results (prompt text, AI responses, TrustIndex scores). Audit data is encrypted at rest and scoped to your workspace only. You can request deletion of all your data at any time from account settings." },
-  { q: "Does the AI learn from my data?", a: "No. We use Anthropic Claude. Under Anthropic's API terms, your content is not used to train AI models and is not retained beyond what is needed to return your result. We never sell or share your content with third parties for training purposes. We disclose every AI sub-processor on our Sub-processors page, and EU-region inference is on our roadmap." },
-  { q: "Can I cancel at any time?", a: "Yes. No lock-in. Cancel your subscription or request deletion of all your data from account settings at any time. Your audit history and TrustIndex scores are retained for 30 days after cancellation, then permanently deleted. Cancellation takes effect at end of billing period." },
-];
-
-function FAQSection() {
-  return (
-    <section
-      aria-labelledby="faq-heading"
-      style={{ backgroundColor: "var(--color-surface-muted)", padding: "var(--space-20) var(--space-4)" }}
-    >
-      <div style={{ maxWidth: "720px", margin: "0 auto" }}>
-        <h2
-          id="faq-heading"
-          style={{
-            fontSize: "clamp(1.875rem, 4vw, 3rem)",
-            fontWeight: "800",
-            letterSpacing: "-0.03em",
-            color: "var(--color-text)",
-            fontFamily: "var(--font-family)",
-            lineHeight: 1.1,
-            marginBottom: "var(--space-10)",
-            textAlign: "center",
-          }}
-        >
-          Questions we get asked.
-        </h2>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-          {FAQ_ITEMS.map((item) => (
-            <details key={item.q} className="mk-faq-item">
-              <summary
-                style={{
-                  padding: "var(--space-4) var(--space-5)",
-                  fontSize: "var(--font-size-body)",
-                  fontWeight: "600",
-                  letterSpacing: "-0.01em",
-                  color: "var(--color-text)",
-                  fontFamily: "var(--font-family)",
-                  minHeight: "var(--min-tap-target)",
-                }}
-              >
-                {item.q}
-                <span
-                  aria-hidden="true"
-                  style={{
-                    fontSize: "var(--font-size-h3)",
-                    color: "var(--color-primary)",
-                    marginLeft: "var(--space-4)",
-                    flexShrink: 0,
-                    fontWeight: "300",
-                  }}
-                >
-                  +
-                </span>
-              </summary>
-              <p
-                style={{
-                  margin: 0,
-                  padding: "var(--space-4) var(--space-5) var(--space-5)",
-                  fontSize: "var(--font-size-body-sm)",
-                  lineHeight: 1.75,
-                  color: "var(--color-muted)",
-                  fontFamily: "var(--font-family)",
-                  borderTop: "1px solid var(--color-border)",
-                }}
-              >
-                {item.a}
-              </p>
-            </details>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ⑩ Final CTA
-// ---------------------------------------------------------------------------
-
-function FinalCtaSection() {
-  return (
-    <section
-      aria-labelledby="final-cta-heading"
-      id="final-cta"
-      className="mk-cta-bg"
-      style={{ padding: "var(--space-24) var(--space-4)", position: "relative", overflow: "hidden" }}
-    >
-      <GeoGraphBackdrop opacity={0.35} />
-      <div style={{ maxWidth: "520px", margin: "0 auto", textAlign: "center", position: "relative", zIndex: 1 }}>
-        <h2
-          id="final-cta-heading"
-          style={{
-            fontSize: "clamp(2rem, 4vw, 3.25rem)",
-            fontWeight: "800",
-            letterSpacing: "-0.035em",
-            color: "var(--color-text)",
-            fontFamily: "var(--font-family)",
-            lineHeight: 1.1,
-            marginBottom: "var(--space-4)",
-          }}
-        >
-          Your competitors aren&rsquo;t doing this yet.
-        </h2>
-        <p
-          style={{
-            fontSize: "clamp(1rem, 1.5vw, 1.125rem)",
-            color: "var(--color-muted)",
-            fontFamily: "var(--font-family)",
-            lineHeight: 1.75,
-            marginBottom: "var(--space-10)",
-          }}
-        >
-          Ozvor is live. Run your free AI Visibility Test in 60 seconds &mdash; no credit card.
-        </p>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--space-3)",
-            alignItems: "center",
-          }}
-        >
-          <Link
-            href="/test"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              minHeight: "52px",
-              padding: "0 var(--space-6)",
-              backgroundColor: "var(--color-primary)",
-              color: "#fff",
-              borderRadius: "var(--radius-md)",
-              fontSize: "1rem",
-              fontWeight: 700,
-              fontFamily: "var(--font-family)",
-              textDecoration: "none",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Run the free test &mdash; free
-          </Link>
-          <Link
-            href="/login?plan=growth&next=checkout"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              minHeight: "52px",
-              padding: "0 var(--space-6)",
-              backgroundColor: "transparent",
-              color: "var(--color-primary)",
-              border: "1.5px solid var(--color-primary)",
-              borderRadius: "var(--radius-md)",
-              fontSize: "1rem",
-              fontWeight: 700,
-              fontFamily: "var(--font-family)",
-              textDecoration: "none",
-              letterSpacing: "-0.01em",
-            }}
-          >
-            Start Growth &mdash; $99/mo
-          </Link>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Early pricing teaser — compact 3-column grid, just below the hero
-// ---------------------------------------------------------------------------
-
-function EarlyPricingTeaserSection() {
-  const plans = [
-    {
-      name: "Free",
-      price: "$0",
-      keyFeature: "AI Visibility Test + TrustIndex Score",
-      ctaLabel: "Run the free test",
-      ctaHref: "/test",
-      featured: false,
-    },
-    {
-      name: "Growth",
-      price: "$99/mo",
-      keyFeature: "Weekly monitoring + GEO content briefs",
-      ctaLabel: "Start Growth",
-      ctaHref: "/login?plan=growth&next=checkout",
-      featured: true,
-    },
-    {
-      name: "Agency",
-      price: "$249/mo",
-      keyFeature: "Multi-client dashboard, white-label reports",
-      ctaLabel: "Start Agency",
-      ctaHref: "/login?plan=agency&next=checkout",
-      featured: false,
-    },
-  ];
-
-  return (
-    <section
-      aria-labelledby="pricing-teaser-heading"
-      style={{
-        backgroundColor: "var(--color-surface)",
-        borderBottom: "1px solid var(--color-border)",
-        padding: "var(--space-8) var(--space-4)",
-      }}
-    >
-      <h2
-        id="pricing-teaser-heading"
-        style={{
-          position: "absolute",
-          width: "1px",
-          height: "1px",
-          padding: 0,
-          margin: "-1px",
-          overflow: "hidden",
-          clip: "rect(0,0,0,0)",
-          whiteSpace: "nowrap",
-          border: 0,
-        }}
-      >
-        Plans at a glance
-      </h2>
-      <div
-        style={{
-          maxWidth: "960px",
-          margin: "0 auto",
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "var(--space-4)",
-        }}
-      >
-        {plans.map((plan) => (
-          <div
-            key={plan.name}
-            style={{
-              padding: "var(--space-5) var(--space-5)",
-              borderRadius: "var(--radius-lg)",
-              border: plan.featured
-                ? "2px solid var(--color-primary)"
-                : "1px solid var(--color-border)",
-              backgroundColor: plan.featured
-                ? "var(--color-badge-ai-bg)"
-                : "var(--color-surface)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-2)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-2)" }}>
-              <span
-                style={{
-                  fontSize: "var(--font-size-caption)",
-                  fontWeight: 700,
-                  color: "var(--color-muted)",
-                  fontFamily: "var(--font-family)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                {plan.name}
-              </span>
-              <span
-                style={{
-                  fontSize: "var(--font-size-body)",
-                  fontWeight: 800,
-                  color: "var(--color-text)",
-                  fontFamily: "var(--font-family)",
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                {plan.price}
-              </span>
-            </div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "var(--font-size-caption)",
-                color: "var(--color-muted)",
-                fontFamily: "var(--font-family)",
-                lineHeight: 1.5,
-                flex: 1,
-              }}
-            >
-              {plan.keyFeature}
-            </p>
-            <Link
-              href={plan.ctaHref}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "44px",
-                padding: "0 var(--space-4)",
-                backgroundColor: plan.featured ? "var(--color-primary)" : "transparent",
-                color: plan.featured ? "#fff" : "var(--color-primary)",
-                border: plan.featured ? "none" : "1.5px solid var(--color-primary)",
-                borderRadius: "var(--radius-md)",
-                fontSize: "0.875rem",
-                fontWeight: 700,
-                fontFamily: "var(--font-family)",
-                textDecoration: "none",
-                marginTop: "var(--space-1)",
-              }}
-            >
-              {plan.ctaLabel}
+              Run the free AI Visibility Test →
+            </Link>
+            <Link href="/pricing" style={{
+              background:'var(--color-surface-muted)',border:'1px solid var(--color-border)',
+              color:'var(--color-text)',fontFamily:"'Schibsted Grotesk',sans-serif",
+              fontSize:16,fontWeight:600,padding:'15px 26px',
+              borderRadius:12,textDecoration:'none',display:'inline-block',
+            }}>
+              See plans — from $99/mo
             </Link>
           </div>
-        ))}
-      </div>
-    </section>
+
+          {/* Trust ticks */}
+          <div style={{display:'flex',gap:22,justifyContent:'center',flexWrap:'wrap',marginTop:26,fontSize:13.5,color:'var(--color-muted)'}}>
+            <span style={{display:'inline-flex',gap:7,alignItems:'center'}}><span style={{color:'#27c98a'}}>✓</span> 30-day money-back</span>
+            <span style={{display:'inline-flex',gap:7,alignItems:'center'}}><span style={{color:'#27c98a'}}>✓</span> No auto-publish, ever</span>
+            <span style={{display:'inline-flex',gap:7,alignItems:'center'}}><span style={{color:'#27c98a'}}>✓</span> Privacy-first by design</span>
+          </div>
+
+          {/* Dashboard mock */}
+          <div className="ti-rise" style={{
+            margin:'56px auto 0',maxWidth:920,
+            borderRadius:16,border:'1px solid var(--color-border)',
+            background:'var(--color-surface)',
+            boxShadow:'0 40px 100px rgba(0,0,0,0.55)',
+            overflow:'hidden',textAlign:'left',
+          }}>
+            {/* Browser chrome bar */}
+            <div style={{
+              display:'flex',alignItems:'center',gap:8,
+              padding:'13px 16px',
+              borderBottom:'1px solid var(--color-border)',
+              background:'var(--color-surface-muted)',
+            }}>
+              <span style={{width:11,height:11,borderRadius:'50%',background:'#f0584e',display:'inline-block'}} aria-hidden="true"/>
+              <span style={{width:11,height:11,borderRadius:'50%',background:'#f5bd4f',display:'inline-block'}} aria-hidden="true"/>
+              <span style={{width:11,height:11,borderRadius:'50%',background:'#54c860',display:'inline-block'}} aria-hidden="true"/>
+              <span style={{marginLeft:14,fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:'var(--color-muted)'}}>app.ozvor.com/brands/acme-crm</span>
+            </div>
+            {/* Dashboard grid */}
+            <div className="ti-dash" style={{display:'grid',gridTemplateColumns:'0.9fr 1.1fr',gap:0}}>
+              {/* Left: gauge + bars */}
+              <div style={{padding:'30px 28px',borderRight:'1px solid var(--color-border)'}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>Acme CRM · 50 AI probes · 5 engines</div>
+                <div style={{display:'flex',alignItems:'center',gap:22,marginTop:22}}>
+                  {/* Conic gauge */}
+                  <div role="img" aria-label="TrustIndex AI Score: 64 out of 100" style={{
+                    position:'relative',width:128,height:128,borderRadius:'50%',
+                    background:'conic-gradient(#27c98a 0% 64%, var(--color-border) 64% 100%)',
+                    display:'grid',placeItems:'center',flexShrink:0,
+                  }}>
+                    <div style={{
+                      width:96,height:96,borderRadius:'50%',
+                      background:'var(--color-surface)',
+                      display:'grid',placeItems:'center',
+                    }}>
+                      <div style={{textAlign:'center'}}>
+                        <div style={{fontSize:34,fontWeight:800,color:'var(--color-text)',lineHeight:1}}>64</div>
+                        <div style={{fontSize:11,color:'var(--color-muted)'}}>/ 100</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,color:'var(--color-muted)'}}>Overall</div>
+                    <div style={{fontSize:15,fontWeight:700,color:'var(--color-text)'}}>TrustIndex AI Score</div>
+                    <div style={{marginTop:8,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-accent-ink)'}}>▲ +6 this week</div>
+                  </div>
+                </div>
+                {/* Score bars */}
+                <div style={{marginTop:24,display:'flex',flexDirection:'column',gap:13}}>
+                  {[{label:'AI',val:58,w:'58%',bar:'linear-gradient(90deg,#27c98a,#0c7d54)'},{label:'Performance',val:71,w:'71%',bar:'linear-gradient(90deg,#27c98a,#0c7d54)'},{label:'Brand',val:49,w:'49%',bar:'linear-gradient(90deg,#e6a93f,#b9791f)'}].map(s=>(
+                    <div key={s.label}>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:12.5,color:'var(--color-muted)'}}>
+                        <span>{s.label}</span><span style={{color:'var(--color-text)',fontWeight:600}}>{s.val}</span>
+                      </div>
+                      <div style={{marginTop:5,height:6,borderRadius:3,background:'var(--color-border)'}}>
+                        <div style={{height:6,width:s.w,borderRadius:3,background:s.bar}} aria-hidden="true"/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Right: competitor list + fix */}
+              <div style={{padding:'30px 28px'}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>Who AI recommends instead of you</div>
+                <div style={{marginTop:18,display:'flex',flexDirection:'column',gap:10}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'13px 15px',borderRadius:11,background:'rgba(240,88,78,0.08)',border:'1px solid rgba(240,88,78,0.18)'}}>
+                    <span style={{fontWeight:600,color:'var(--color-text)'}}>Competitor A</span>
+                    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:'#f0847c'}}>cited 6 / 10</span>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'13px 15px',borderRadius:11,background:'var(--color-surface-muted)',border:'1px solid var(--color-border)'}}>
+                    <span style={{fontWeight:600,color:'var(--color-text)'}}>Competitor B</span>
+                    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:'var(--color-muted)'}}>cited 4 / 10</span>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'13px 15px',borderRadius:11,background:'rgba(39,201,138,0.08)',border:'1px solid rgba(39,201,138,0.28)'}}>
+                    <span style={{fontWeight:700,color:'var(--color-text)'}}>Acme CRM (you)</span>
+                    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:'var(--color-accent-ink)'}}>cited 2 / 10</span>
+                  </div>
+                </div>
+                <div style={{marginTop:18,padding:'14px 15px',borderRadius:11,border:'1px dashed rgba(39,201,138,0.35)',background:'rgba(39,201,138,0.05)'}}>
+                  <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10.5,letterSpacing:'0.08em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Recommended fix</div>
+                  <div style={{marginTop:5,fontSize:13.5,color:'var(--color-muted)',lineHeight:1.45}}>Publish a comparison page + 2 LinkedIn proof posts. Est. +9 score in 30 days.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* ── SECTION 2: ENGINES STRIP ─────────────────────────────────── */}
+      <section style={{padding:'44px 32px',borderTop:'1px solid var(--color-border)',borderBottom:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:1080,margin:'0 auto',textAlign:'center'}}>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-muted)'}}>
+            We measure every AI engine your buyers actually use
+          </div>
+          <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap',marginTop:20}}>
+            {['ChatGPT','Claude','Perplexity','Gemini','Google AI Overview'].map(e=>(
+              <span key={e} style={{padding:'9px 17px',borderRadius:10,border:'1px solid var(--color-border)',background:'var(--color-surface-muted)',fontWeight:600,fontSize:14.5,color:'var(--color-muted)'}}>
+                {e}
+              </span>
+            ))}
+          </div>
+          <div style={{marginTop:22,fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>
+            …and the high-authority sources they cite most
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap',marginTop:14}}>
+            {['Reddit','Wikipedia','LinkedIn','G2','Trustpilot','Crunchbase','YouTube'].map(s=>(
+              <span key={s} style={{padding:'6px 13px',borderRadius:999,fontSize:13,color:'var(--color-muted)',border:'1px solid var(--color-border)'}}>
+                {s}
+              </span>
+            ))}
+          </div>
+          <p style={{margin:'26px auto 0',maxWidth:560,fontSize:14.5,color:'var(--color-muted)'}}>
+            Google&apos;s own report covers Google only. <span style={{color:'var(--color-text)'}}>We cover the whole AI-answer surface.</span>
+          </p>
+        </div>
+      </section>
+
+      {/* ── SECTION 3: STATS ─────────────────────────────────────────── */}
+      <section style={{padding:'72px 32px'}}>
+        <div className="ti-grid3" style={{maxWidth:1080,margin:'0 auto',display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:20}}>
+          {[
+            {n:'900M',label:'weekly ChatGPT users',src:'OpenAI, Feb 2026'},
+            {n:'2.5B',label:'AI prompts per day',src:'OpenAI, 2026'},
+            {n:'+35%',label:'more clicks for AI-cited brands',src:'Seer Interactive, 2026'},
+          ].map(st=>(
+            <div key={st.n} style={{padding:'30px 26px',borderRadius:16,border:'1px solid var(--color-border)',background:'var(--color-surface)'}}>
+              <div style={{fontSize:48,fontWeight:800,letterSpacing:'-0.03em',background:'linear-gradient(120deg,#3ad79a,#0e8a59)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent',fontFamily:"'JetBrains Mono',monospace"}}>
+                {st.n}
+              </div>
+              <div style={{marginTop:8,fontSize:15,fontWeight:600,color:'var(--color-text)'}}>{st.label}</div>
+              <div style={{marginTop:10,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-muted)'}}>{st.src}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── SECTION 4: SEARCH MOVED ──────────────────────────────────── */}
+      <section style={{padding:'72px 32px',borderTop:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:1000,margin:'0 auto'}}>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)',textAlign:'center'}}>The shift</div>
+          <h2 style={{margin:'14px auto 0',maxWidth:720,textAlign:'center',fontSize:'clamp(30px,4.4vw,46px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.05,color:'var(--color-text)'}}>
+            Search moved. Most businesses haven&apos;t noticed yet.
+          </h2>
+          <div className="ti-shift" style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',gap:18,alignItems:'stretch',marginTop:44}}>
+            {/* Before */}
+            <div style={{display:'flex',flexDirection:'column',padding:24,borderRadius:14,border:'1px solid var(--color-border)',background:'var(--color-surface-muted)'}}>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-muted)'}}>2 YEARS AGO · GOOGLE</div>
+              <div style={{marginTop:10,fontSize:15,color:'var(--color-muted)'}}>&quot;best accountant for freelancers berlin&quot;</div>
+              <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:14}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:600,color:'#6ea8ff',lineHeight:1.2}}>Müller &amp; Partner — Tax advisors Berlin</div>
+                  <div style={{fontSize:11,color:'#7fbf8f'}}>muellerpartner.de › steuerberatung</div>
+                  <div style={{marginTop:2,fontSize:12,color:'var(--color-muted)',lineHeight:1.4}}>Full-service Steuerberatung for SMEs and the self-employed in Berlin-Mitte…</div>
+                </div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:600,color:'#6ea8ff',lineHeight:1.2}}>Top 10 accountants for freelancers (2024)</div>
+                  <div style={{fontSize:11,color:'#7fbf8f'}}>freelance-blog.de › best-accountants</div>
+                </div>
+              </div>
+              <div style={{marginTop:'auto',paddingTop:14,fontSize:12.5,color:'var(--color-muted)'}}>→ 10 blue links you scroll &amp; compare yourself</div>
+            </div>
+            {/* Arrow */}
+            <div className="ti-shift-arrow" style={{display:'grid',placeItems:'center',width:42,height:42,borderRadius:'50%',background:'linear-gradient(135deg,#27c98a,#0c7d54)',color:'#06140e',fontSize:20,fontWeight:800,flexShrink:0}} aria-hidden="true">→</div>
+            {/* After */}
+            <div style={{display:'flex',flexDirection:'column',padding:24,borderRadius:14,border:'1px solid rgba(39,201,138,0.30)',background:'rgba(39,201,138,0.06)'}}>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-accent-ink)'}}>TODAY · CHATGPT · PERPLEXITY · GEMINI</div>
+              <div style={{marginTop:10,fontSize:15,color:'var(--color-muted)'}}>&quot;best accountant for freelancers berlin&quot;</div>
+              <div style={{marginTop:16,fontSize:16,lineHeight:1.55,color:'var(--color-text)'}}>
+                &quot;The best accountant for Berlin freelancers is <strong style={{color:'var(--color-accent-ink)'}}>Muster GmbH</strong> — they specialize in digital nomads and post weekly LinkedIn guides on freelance taxes.&quot;
+              </div>
+              <div style={{marginTop:'auto',paddingTop:14,fontSize:12.5,color:'var(--color-muted)'}}>→ one answer, one name recommended</div>
+            </div>
+          </div>
+          <p style={{margin:'34px auto 0',maxWidth:760,textAlign:'center',fontSize:16,lineHeight:1.6,color:'var(--color-muted)'}}>
+            And now — <strong style={{color:'var(--color-text)'}}>Google too.</strong> AI Mode passed <strong style={{color:'var(--color-text)'}}>1 billion monthly users</strong> and AI Overviews appear in <strong style={{color:'var(--color-text)'}}>25%+ of searches</strong>. The channel everyone already trusts is now an answer engine — so the only question is whether that answer includes you.
+          </p>
+          <div style={{textAlign:'center',marginTop:22}}>
+            <Link href="/blog" style={{background:'none',border:'none',fontSize:15,fontWeight:600,color:'var(--color-accent-ink)',textDecoration:'none'}}>
+              Read the full GEO research guide →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 5: THE LADDER ────────────────────────────────────── */}
+      <section style={{
+        position:'relative',
+        padding:'84px 32px 90px',
+        background:'radial-gradient(100% 60% at 50% 100%, rgba(230,169,63,0.08), transparent 55%)',
+      }}>
+        <div style={{maxWidth:980,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>One continuous path</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:680,fontSize:'clamp(30px,4.6vw,48px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.04,color:'var(--color-text)'}}>
+              Start free. Climb only when you&apos;re ready.
+            </h2>
+            <p style={{margin:'18px auto 0',maxWidth:580,fontSize:17,lineHeight:1.55,color:'var(--color-muted)'}}>
+              Four rungs, one outcome: your brand getting cited by AI. You start hands-on with the tools — we step in to do it <em style={{color:'var(--color-gold-ink,#e6c07a)',fontStyle:'normal',fontWeight:600}}>with</em> you at the top.
+            </p>
+          </div>
+
+          {/* YOU DO IT band */}
+          <div style={{marginTop:46,display:'flex',alignItems:'center',gap:14}}>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.14em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>You do it</span>
+            <span style={{flex:1,height:1,background:'linear-gradient(90deg,rgba(39,201,138,0.4),transparent)'}} aria-hidden="true"/>
+          </div>
+
+          {/* Ladder rungs with vertical connector */}
+          <div style={{position:'relative',marginTop:22,paddingLeft:46}}>
+            {/* Emerald→gold connector line */}
+            <div style={{
+              position:'absolute',left:17,top:8,bottom:8,width:2,
+              background:'linear-gradient(180deg,#27c98a 0%,#27c98a 62%,#e6a93f 100%)',
+            }} aria-hidden="true"/>
+
+            {/* Rung 1: Free */}
+            <div style={{position:'relative',marginBottom:16}}>
+              <span style={{
+                position:'absolute',left:-46,top:18,
+                display:'grid',placeItems:'center',
+                width:36,height:36,borderRadius:'50%',
+                background:'rgba(39,201,138,0.14)',
+                border:'2px solid #27c98a',
+                fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,
+                color:'var(--color-accent-ink)',zIndex:2,
+              }}>01</span>
+              <div style={{
+                display:'flex',alignItems:'center',gap:20,flexWrap:'wrap',
+                padding:'22px 24px',borderRadius:15,
+                border:'1px solid rgba(39,201,138,0.30)',
+                background:'rgba(39,201,138,0.06)',
+              }}>
+                <div style={{flex:1,minWidth:240}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                    <span style={{fontSize:19,fontWeight:700,color:'var(--color-text)'}}>Free AI Visibility Test</span>
+                    <span style={{
+                      fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.08em',
+                      textTransform:'uppercase',padding:'3px 8px',borderRadius:5,
+                      background:'rgba(39,201,138,0.16)',color:'var(--color-accent-ink)',
+                    }}>Free forever</span>
+                  </div>
+                  <div style={{marginTop:7,fontSize:14.5,lineHeight:1.5,color:'var(--color-muted)'}}>
+                    Run one buyer prompt. See how your brand compares to competitors across ChatGPT, Perplexity, Gemini and Google AI — in 60 seconds.
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:22,fontWeight:800,color:'var(--color-accent-ink)'}}>$0</div>
+                  <Link href="/test" style={{
+                    marginTop:8,display:'inline-block',
+                    fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:13.5,fontWeight:700,
+                    padding:'9px 16px',borderRadius:9,border:'none',
+                    background:'linear-gradient(135deg,#27c98a,#0c7d54)',
+                    color:'#06140e',textDecoration:'none',
+                  }}>Run the test →</Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Rung 2: Kit $29 */}
+            <div style={{position:'relative',marginBottom:16}}>
+              <span style={{
+                position:'absolute',left:-46,top:18,
+                display:'grid',placeItems:'center',
+                width:36,height:36,borderRadius:'50%',
+                background:'rgba(39,201,138,0.10)',
+                border:'2px solid rgba(39,201,138,0.5)',
+                fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,
+                color:'var(--color-accent-ink)',zIndex:2,
+              }}>02</span>
+              <div style={{
+                display:'flex',alignItems:'center',gap:20,flexWrap:'wrap',
+                padding:'22px 24px',borderRadius:15,
+                border:'1px solid var(--color-border)',
+                background:'var(--color-surface)',
+              }}>
+                <div style={{flex:1,minWidth:240}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                    <span style={{fontSize:19,fontWeight:700,color:'var(--color-text)'}}>The Get-Cited Kit</span>
+                    <span style={{
+                      fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.08em',
+                      textTransform:'uppercase',padding:'3px 8px',borderRadius:5,
+                      background:'rgba(230,169,63,0.16)',color:'var(--color-gold-ink,#e6c07a)',
+                    }}>One-time</span>
+                  </div>
+                  <div style={{marginTop:7,fontSize:14.5,lineHeight:1.5,color:'var(--color-muted)'}}>
+                    Full audit + top-3 actionable fixes + 3 ready-to-publish content drafts with schema. A complete playbook you own forever.
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:22,fontWeight:800,color:'var(--color-text)'}}>$29</div>
+                  <Link href="/kit" style={{
+                    marginTop:8,display:'inline-block',
+                    fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:13.5,fontWeight:700,
+                    padding:'9px 16px',borderRadius:9,border:'none',
+                    background:'linear-gradient(135deg,#e6a93f,#b9791f)',
+                    color:'#1a1305',textDecoration:'none',
+                  }}>Get the Kit →</Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Rung 3: Plans from $99 */}
+            <div style={{position:'relative',marginBottom:0}}>
+              <span style={{
+                position:'absolute',left:-46,top:18,
+                display:'grid',placeItems:'center',
+                width:36,height:36,borderRadius:'50%',
+                background:'rgba(230,169,63,0.10)',
+                border:'2px solid rgba(230,169,63,0.4)',
+                fontFamily:"'JetBrains Mono',monospace",fontWeight:600,fontSize:14,
+                color:'var(--color-gold-ink,#e6c07a)',zIndex:2,
+              }}>03</span>
+              <div style={{
+                display:'flex',alignItems:'center',gap:20,flexWrap:'wrap',
+                padding:'22px 24px',borderRadius:15,
+                border:'1px solid rgba(230,169,63,0.20)',
+                background:'var(--color-surface)',
+              }}>
+                <div style={{flex:1,minWidth:240}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                    <span style={{fontSize:19,fontWeight:700,color:'var(--color-text)'}}>Growth &amp; Agency Plans</span>
+                    <span style={{
+                      fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.08em',
+                      textTransform:'uppercase',padding:'3px 8px',borderRadius:5,
+                      background:'rgba(230,169,63,0.12)',color:'var(--color-gold-ink,#e6c07a)',
+                    }}>Monthly/annual</span>
+                  </div>
+                  <div style={{marginTop:7,fontSize:14.5,lineHeight:1.5,color:'var(--color-muted)'}}>
+                    Weekly automated monitoring, competitor benchmarking, full content studio, and the GEO content plan — done by the platform, every Monday.
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:22,fontWeight:800,color:'var(--color-gold-ink,#e6c07a)'}}>from $99</div>
+                  <Link href="/pricing" style={{
+                    marginTop:8,display:'inline-block',
+                    fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:13.5,fontWeight:700,
+                    padding:'9px 16px',borderRadius:9,
+                    border:'1px solid rgba(230,169,63,0.4)',
+                    background:'rgba(230,169,63,0.10)',
+                    color:'var(--color-gold-ink,#e6c07a)',textDecoration:'none',
+                  }}>See plans →</Link>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Transition divider */}
+          <div style={{margin:'8px 0 8px 46px',display:'flex',alignItems:'center',gap:14}}>
+            <span style={{flex:1,height:1,background:'linear-gradient(90deg,transparent,rgba(230,169,63,0.5))'}} aria-hidden="true"/>
+            <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-gold-ink,#e6c07a)'}}>Where you stop doing it alone →</span>
+            <span style={{flex:1,height:1,background:'linear-gradient(90deg,rgba(230,169,63,0.5),transparent)'}} aria-hidden="true"/>
+          </div>
+
+          {/* OrganicPosts summit card — gold gradient border */}
+          <div style={{
+            position:'relative',marginTop:18,borderRadius:18,
+            padding:2,
+            background:'linear-gradient(135deg,#e6a93f,#b9791f,#27c98a)',
+          }}>
+            <div style={{
+              borderRadius:16,padding:'34px 32px',
+              background:'var(--color-surface)',
+              display:'flex',alignItems:'center',gap:28,flexWrap:'wrap',
+            }}>
+              <div style={{flex:1,minWidth:280}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <span style={{
+                    fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.1em',
+                    textTransform:'uppercase',padding:'4px 9px',borderRadius:6,
+                    background:'rgba(230,169,63,0.16)',color:'var(--color-gold-ink,#e6c07a)',
+                  }}>Done with you · the summit</span>
+                </div>
+                <h3 style={{margin:'14px 0 0',fontSize:27,fontWeight:800,letterSpacing:'-0.02em',color:'var(--color-text)'}}>
+                  OrganicPosts
+                </h3>
+                <p style={{margin:'10px 0 0',maxWidth:460,fontSize:15.5,lineHeight:1.55,color:'var(--color-muted)'}}>
+                  When you&apos;d rather not run it yourself: our team builds your AI-visibility project with you — research, content, publishing cadence and monitoring, done as a managed engagement.
+                </p>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-muted)'}}>Managed engagement</div>
+                <div style={{fontSize:20,fontWeight:800,color:'var(--color-gold-ink,#e6c07a)'}}>Let&apos;s scope it</div>
+                <Link href="/organicposts" style={{
+                  marginTop:10,display:'inline-block',
+                  fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:14,fontWeight:700,
+                  padding:'12px 22px',borderRadius:11,border:'none',
+                  background:'linear-gradient(135deg,#e6a93f,#b9791f)',
+                  color:'#1a1305',textDecoration:'none',
+                  boxShadow:'0 10px 28px rgba(230,169,63,0.28)',
+                }}>Explore OrganicPosts →</Link>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* ── SECTION 6: INSIDE THE PLATFORM ───────────────────────────── */}
+      <section style={{padding:'80px 32px',borderTop:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:1080,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Inside the platform</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:640,fontSize:'clamp(28px,4.2vw,44px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.06,color:'var(--color-text)'}}>
+              Audit. Benchmark. Plan &amp; publish.
+            </h2>
+            <p style={{margin:'16px auto 0',maxWidth:560,fontSize:16.5,color:'var(--color-muted)'}}>
+              From &quot;are we even in AI answers?&quot; to a published plan that gets you cited.
+            </p>
+          </div>
+          <div className="ti-grid3" style={{marginTop:46,display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:20}}>
+            {[
+              {num:'01',title:'Audit',body:'We send 50 buyer prompts across all five AI engines and measure how often your brand is cited, where you appear, and how competitors outrank you.'},
+              {num:'02',title:'Benchmark',body:'See exactly which competitors AI recommends instead of you, their citation rate by engine, and the content gap that explains the difference.'},
+              {num:'03',title:'Plan & publish',body:'The platform writes a prioritized GEO content plan — blog posts, FAQ schemas, LinkedIn drafts — tailored to close your specific citation gaps.'},
+            ].map(s=>(
+              <div key={s.num} style={{padding:'28px 26px',borderRadius:16,border:'1px solid var(--color-border)',background:'var(--color-surface)'}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:'#27c98a'}}>{s.num}</div>
+                <h3 style={{margin:'12px 0 0',fontSize:20,fontWeight:700,color:'var(--color-text)'}}>{s.title}</h3>
+                <p style={{margin:'10px 0 0',fontSize:14.5,lineHeight:1.55,color:'var(--color-muted)'}}>{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 7: WHO IT'S FOR ───────────────────────────────────── */}
+      <section style={{padding:'80px 32px'}}>
+        <div style={{maxWidth:1080,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Who it&apos;s for</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:600,fontSize:'clamp(28px,4.2vw,44px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.06,color:'var(--color-text)'}}>
+              Built for businesses that win on trust.
+            </h2>
+          </div>
+          <div className="ti-grid3" style={{marginTop:46,display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:20}}>
+            {[
+              {who:'Local & professional services',pain:'I tried blogging for years but ChatGPT never mentions my clinic.',fix:'Audit your current AI presence, benchmark the practice two blocks over, and publish the FAQ content that earns citations.'},
+              {who:'Boutique agencies',pain:"My clients ask why their competitors show up in AI answers and they don't. I have no answer.",fix:'Run multi-brand audits from one Agency account, surface the gap, and deliver a citation plan per client.'},
+              {who:'Funded B2B SaaS & DTC',pain:'Our SEO is solid but AI search treats us as if we don\'t exist.',fix:'Measure your AI citation rate across all five engines, detect which competitor is winning AI share-of-voice, and fix the content gaps.'},
+            ].map(p=>(
+              <div key={p.who} style={{padding:'28px 26px',borderRadius:16,border:'1px solid var(--color-border)',background:'var(--color-surface)'}}>
+                <div style={{fontSize:17,fontWeight:700,color:'var(--color-text)'}}>{p.who}</div>
+                <div style={{marginTop:14,padding:'14px 15px',borderRadius:11,background:'rgba(240,88,78,0.07)',border:'1px solid rgba(240,88,78,0.16)',fontSize:14,lineHeight:1.5,color:'#d6b8b3',fontStyle:'italic'}}>
+                  &quot;{p.pain}&quot;
+                </div>
+                <div style={{marginTop:14,fontSize:14.5,lineHeight:1.55,color:'var(--color-muted)'}}>
+                  <span style={{color:'var(--color-accent-ink)',fontWeight:700}}>→ </span>{p.fix}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 8: PRIVACY-FIRST ─────────────────────────────────── */}
+      <section style={{padding:'80px 32px',borderTop:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:1080,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Privacy-first by architecture</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:640,fontSize:'clamp(28px,4.2vw,42px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.06,color:'var(--color-text)'}}>
+              Your data is protected by design, not by promise.
+            </h2>
+          </div>
+          <div className="ti-grid3" style={{marginTop:46,display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:20}}>
+            {[
+              {icon:'🔒',title:'No training on your data',body:'We never use your brand data, audit results, or content to train AI models. Your prompts go to providers with zero-data-retention (ZDR) agreements only.'},
+              {icon:'✓',title:'Draft-and-confirm by design',body:'No content is ever published without your explicit approval. Every AI-generated draft is reviewed by you before it goes anywhere.'},
+              {icon:'§',title:'GDPR processor role',body:'We act as a data processor, not a controller, for your brand data. Full DPA available. EU data stays on EU infrastructure (eu-central-1).'},
+            ].map(pr=>(
+              <div key={pr.title} style={{padding:'28px 26px',borderRadius:16,border:'1px solid var(--color-border)',background:'var(--color-surface)'}}>
+                <div style={{display:'grid',placeItems:'center',width:40,height:40,borderRadius:11,background:'rgba(39,201,138,0.12)',border:'1px solid rgba(39,201,138,0.28)',color:'var(--color-accent-ink)',fontSize:18}}>
+                  {pr.icon}
+                </div>
+                <h3 style={{margin:'16px 0 0',fontSize:17,fontWeight:700,color:'var(--color-text)'}}>{pr.title}</h3>
+                <p style={{margin:'9px 0 0',fontSize:14,lineHeight:1.55,color:'var(--color-muted)'}}>{pr.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 9: BUILDING IN PUBLIC ────────────────────────────── */}
+      <section style={{padding:'80px 32px'}}>
+        <div style={{maxWidth:900,margin:'0 auto',borderRadius:18,border:'1px solid var(--color-border)',background:'var(--color-surface)',padding:'42px 40px',textAlign:'center'}}>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Building in public</div>
+          <h2 style={{margin:'14px auto 0',maxWidth:580,fontSize:'clamp(26px,3.6vw,38px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.08,color:'var(--color-text)'}}>
+            We run Ozvor on ourselves — every Monday.
+          </h2>
+          <p style={{margin:'16px auto 0',maxWidth:560,fontSize:16,lineHeight:1.55,color:'var(--color-muted)'}}>
+            The best way to prove a GEO platform works is to dog-food it publicly. We publish our own audit scores across all five engines weekly — no spin, no cherry-picked snapshots. As we ship improvements, you watch the numbers move.
+          </p>
+          <div style={{display:'flex',gap:16,justifyContent:'center',flexWrap:'wrap',marginTop:28}}>
+            {[
+              {label:'Current TrustIndex Score',val:'72'},
+              {label:'Weeks since launch',val:'8'},
+              {label:'Score improvement',val:'+28'},
+            ].map(l=>(
+              <div key={l.label} style={{minWidth:150,padding:'18px 22px',borderRadius:13,border:'1px solid var(--color-border)',background:'var(--color-surface-muted)'}}>
+                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>{l.label}</div>
+                <div style={{marginTop:8,fontSize:26,fontWeight:800,color:'var(--color-accent-ink)',fontFamily:"'JetBrains Mono',monospace"}}>{l.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 10: FAQ ───────────────────────────────────────────── */}
+      <section style={{padding:'80px 32px',borderTop:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:780,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>FAQ</div>
+            <h2 id="faq-heading" style={{margin:'14px auto 0',fontSize:'clamp(28px,4vw,42px)',fontWeight:800,letterSpacing:'-0.03em',color:'var(--color-text)'}}>
+              Questions we get asked.
+            </h2>
+          </div>
+          <div style={{marginTop:40,display:'flex',flexDirection:'column',gap:10}}>
+            {faqs.map((f,i)=>(
+              <details key={f.q} open={i===0} style={{borderRadius:13,border:'1px solid var(--color-border)',background:'var(--color-surface)',overflow:'hidden'}}>
+                <summary style={{
+                  width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,
+                  textAlign:'left',cursor:'pointer',
+                  padding:'20px 22px',
+                  fontFamily:"'Schibsted Grotesk',sans-serif",fontSize:16.5,fontWeight:600,color:'var(--color-text)',
+                  listStyle:'none',
+                }}>
+                  <span>{f.q}</span>
+                  <span style={{flexShrink:0,fontSize:20,color:'var(--color-accent-ink)'}} aria-hidden="true">+</span>
+                </summary>
+                <div style={{padding:'0 22px 22px',fontSize:14.5,lineHeight:1.6,color:'var(--color-muted)'}}>
+                  {f.a}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 11: FINAL CTA ─────────────────────────────────────── */}
+      <section style={{
+        position:'relative',
+        padding:'96px 32px',
+        background:'radial-gradient(100% 80% at 50% 0%, rgba(39,201,138,0.14), transparent 60%)',
+        textAlign:'center',
+        overflow:'hidden',
+      }}>
+        <div style={{maxWidth:720,margin:'0 auto'}}>
+          <h2 style={{fontSize:'clamp(32px,5vw,56px)',fontWeight:800,letterSpacing:'-0.035em',lineHeight:1.02,color:'var(--color-text)'}}>
+            Your competitors aren&apos;t doing this yet.
+          </h2>
+          <p style={{margin:'20px auto 0',maxWidth:520,fontSize:18,color:'var(--color-muted)'}}>
+            Run your free AI Visibility Test in 60 seconds. See the gap today — no credit card.
+          </p>
+          <div style={{display:'flex',gap:14,justifyContent:'center',flexWrap:'wrap',marginTop:34}}>
+            <Link href="/test" style={{
+              background:'linear-gradient(135deg,#27c98a,#0c7d54)',
+              color:'#06140e',
+              fontFamily:"'Schibsted Grotesk',sans-serif",
+              fontSize:16,fontWeight:700,padding:'15px 28px',
+              borderRadius:12,border:'none',textDecoration:'none',display:'inline-block',
+              boxShadow:'0 10px 32px rgba(39,201,138,0.32)',
+            }}>Run the free test →</Link>
+            <Link href="/pricing" style={{
+              background:'var(--color-surface-muted)',border:'1px solid var(--color-border)',
+              color:'var(--color-text)',
+              fontFamily:"'Schibsted Grotesk',sans-serif",
+              fontSize:16,fontWeight:600,padding:'15px 28px',
+              borderRadius:12,textDecoration:'none',display:'inline-block',
+            }}>See plans</Link>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }
