@@ -316,18 +316,62 @@ const MARKETING_STYLES = `
     .mk-comparison-cards { display: flex !important; }
   }
 
+  /* ── Navbar entry-offer pills (Free + Kit) ───────────────────────── */
+  /* Free pill — ghost/outlined style to signal "no cost" */
+  .mk-nav-free {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-family: var(--font-family);
+    color: var(--color-primary);
+    text-decoration: none;
+    border: 1.5px solid var(--color-primary);
+    border-radius: var(--radius-pill);
+    padding: 0.375rem 0.875rem;
+    white-space: nowrap;
+    min-height: var(--min-tap-target);
+    transition: background 0.15s, color 0.15s;
+  }
+  .mk-nav-free:hover {
+    background: var(--color-primary);
+    color: #fff;
+  }
+
+  /* Kit pill — filled/amber accent to signal "paid, entry" */
+  .mk-nav-kit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-family: var(--font-family);
+    color: #fff;
+    text-decoration: none;
+    background: var(--color-accent-amber);
+    border: 1.5px solid transparent;
+    border-radius: var(--radius-pill);
+    padding: 0.375rem 0.875rem;
+    white-space: nowrap;
+    min-height: var(--min-tap-target);
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .mk-nav-kit:hover { opacity: 0.88; }
+
   /* ── Responsive navbar: hide secondary links on small screens, keep the
-        "Free AI Test" CTA + theme toggle + Sign in. Prevents wrapping/overflow. */
+        Free + Kit CTAs + theme toggle + Sign in. Prevents wrapping/overflow. */
   .mk-navlink, .mk-signin { white-space: nowrap; }
   @media (max-width: 700px) {
     .mk-navlink-hide-sm { display: none !important; }
   }
-  /* On very small phones, drop the extra "Free AI Test" nav link and tighten the
-     Sign-in button so it never clips at the right edge. The hero CTA + the sticky
-     buy bar already surface the free test, so nothing is lost. */
+  /* On very small phones (≤480px): show only Free + Kit pills + ThemeToggle +
+     Sign-in. All labels are already short ("Free" / "Kit $29"); tighten padding
+     on Sign-in so nothing clips. StickyBuyBar carries Growth CTA on mobile. */
   @media (max-width: 480px) {
-    .mk-navlink-hide-xs { display: none !important; }
-    .mk-signin { padding: 0.5rem 0.875rem; }
+    .mk-nav-free { padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+    .mk-nav-kit  { padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+    .mk-signin   { padding: 0.375rem 0.75rem;  font-size: 0.75rem; }
   }
 
   /* ── Smooth focus outlines ────────────────────────────────────────── */
@@ -440,7 +484,9 @@ function PublicNavbar() {
           <Logo markSize={28} wordSize="1.0625rem" />
         </Link>
 
-        {/* Right: OrganicPosts service link + theme toggle + sign in */}
+        {/* Right: sales value-ladder CTAs + secondary links + sign in
+              Order (left → right): secondary links (hidden sm) | Free | Kit | Pricing | ThemeToggle | Sign in
+              On mobile ≤480px: only Free + Kit + ThemeToggle + Sign in are visible. */}
         <div
           style={{
             display: "flex",
@@ -448,39 +494,7 @@ function PublicNavbar() {
             gap: "var(--space-3)",
           }}
         >
-          <Link
-            href="/test"
-            className="mk-navlink mk-navlink-hide-xs"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 700,
-              color: "var(--color-primary)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            Free AI Test
-          </Link>
-          <Link
-            href="/login?plan=growth&next=checkout"
-            className="mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.8125rem",
-              fontWeight: 700,
-              color: "#fff",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-              backgroundColor: "var(--color-primary)",
-              borderRadius: "var(--radius-pill)",
-              padding: "0.375rem 0.875rem",
-              whiteSpace: "nowrap",
-              display: "inline-flex",
-              alignItems: "center",
-              minHeight: "var(--min-tap-target)",
-            }}
-          >
-            Start Growth $99
-          </Link>
+          {/* ── Secondary nav links (hidden on ≤700px) ────────────────── */}
           <Link
             href="/blog"
             className="mk-navlink mk-navlink-hide-sm"
@@ -508,19 +522,6 @@ function PublicNavbar() {
             How it works
           </Link>
           <Link
-            href="/pricing"
-            className="mk-navlink mk-navlink-hide-sm"
-            style={{
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              color: "var(--color-text)",
-              textDecoration: "none",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            Pricing
-          </Link>
-          <Link
             href="/results"
             className="mk-navlink mk-navlink-hide-sm"
             style={{
@@ -546,8 +547,44 @@ function PublicNavbar() {
           >
             OrganicPosts
           </Link>
+
+          {/* ── Sales ladder: Free → Kit → Pricing ────────────────────── */}
+          {/* 1. Free AI Test — always visible (entry offer, no cost) */}
+          <Link
+            href="/test"
+            className="mk-nav-free"
+            aria-label="Try the free AI visibility test"
+          >
+            Free
+          </Link>
+
+          {/* 2. Kit $29 — always visible (first paid, low-friction) */}
+          <Link
+            href="/kit"
+            className="mk-nav-kit"
+            aria-label="Get the GEO Starter Kit for $29"
+          >
+            Kit $29
+          </Link>
+
+          {/* 3. Plans / Pricing — hidden on ≤700px (StickyBuyBar carries Growth on mobile) */}
+          <Link
+            href="/pricing"
+            className="mk-navlink mk-navlink-hide-sm"
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              color: "var(--color-text)",
+              textDecoration: "none",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            Plans
+          </Link>
+
+          {/* ── Utility: theme toggle + sign in ───────────────────────── */}
           <ThemeToggle />
-          <Link href="/login" className="mk-signin">
+          <Link href="/login" className="mk-signin" aria-label="Sign in to your account">
             Sign in
           </Link>
         </div>
