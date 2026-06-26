@@ -981,8 +981,12 @@ export function InvisibilityTestClient() {
   // Form state
   const [brand, setBrand] = useState("");
   const [competitor, setCompetitor] = useState("");
+  const [competitor2, setCompetitor2] = useState("");
+  const [competitor3, setCompetitor3] = useState("");
+  const [extraComp, setExtraComp] = useState(0); // 0, 1 or 2 extra competitor fields shown
   const [category, setCategory] = useState("");
-  const [region, setRegion] = useState<"US" | "EU">("US");
+  const [sector, setSector] = useState("");
+  const [country, setCountry] = useState("United States");
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -996,13 +1000,25 @@ export function InvisibilityTestClient() {
   // Stable IDs for accessible label wiring
   const brandId = useId();
   const competitorId = useId();
+  const competitor2Id = useId();
+  const competitor3Id = useId();
   const categoryId = useId();
-  const regionId = useId();
+  const sectorId = useId();
+  const countryId = useId();
   const emailId = useId();
   const emailErrorId = useId();
 
   // Derive domain from brand (best-effort)
   const derivedDomain: string | null = null; // backend derives it; we don't have explicit field
+
+  // Country select → engine routing region (EU countries route GDPR-safe).
+  const EU_COUNTRIES = ["Portugal", "Germany", "United Kingdom", "Spain"];
+  const region: "US" | "EU" = EU_COUNTRIES.includes(country) ? "EU" : "US";
+  // Up to 3 competitors, de-duplicated + non-empty.
+  const competitors = [competitor, competitor2, competitor3]
+    .map((c) => c.trim())
+    .filter((c, i, a) => c.length > 0 && a.indexOf(c) === i)
+    .slice(0, 3);
 
   // Email validation
   const showEmailError =
@@ -1035,8 +1051,11 @@ export function InvisibilityTestClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           brand: brand.trim(),
-          competitor: competitor.trim(),
+          competitor: competitors[0] ?? "",
+          competitors,
           category: category.trim(),
+          sector,
+          country,
           region,
           email: email.trim(),
         }),
@@ -1137,8 +1156,8 @@ export function InvisibilityTestClient() {
       </Field>
 
       <Field
-        label="A competitor"
-        hint="optional — we'll compare you head-to-head"
+        label="Competitors"
+        hint="optional — up to 3; we compare you head-to-head"
         fieldId={competitorId}
       >
         <input
@@ -1149,6 +1168,47 @@ export function InvisibilityTestClient() {
           autoComplete="off"
           style={inputStyle}
         />
+        {extraComp >= 1 && (
+          <input
+            id={competitor2Id}
+            value={competitor2}
+            onChange={(e) => setCompetitor2(e.target.value)}
+            placeholder="Another competitor"
+            autoComplete="off"
+            aria-label="Second competitor"
+            style={{ ...inputStyle, marginTop: "var(--space-2)" }}
+          />
+        )}
+        {extraComp >= 2 && (
+          <input
+            id={competitor3Id}
+            value={competitor3}
+            onChange={(e) => setCompetitor3(e.target.value)}
+            placeholder="A third competitor"
+            autoComplete="off"
+            aria-label="Third competitor"
+            style={{ ...inputStyle, marginTop: "var(--space-2)" }}
+          />
+        )}
+        {extraComp < 2 && (
+          <button
+            type="button"
+            onClick={() => setExtraComp((n) => Math.min(2, n + 1))}
+            style={{
+              marginTop: "var(--space-2)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: "var(--color-accent-ink, var(--color-primary))",
+              fontWeight: 600,
+              fontSize: "var(--font-size-body-sm)",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            + Add another competitor
+          </button>
+        )}
       </Field>
 
       <Field
@@ -1168,15 +1228,30 @@ export function InvisibilityTestClient() {
         />
       </Field>
 
-      <Field label="Data region" fieldId={regionId}>
+      <Field label="Sector" hint="so we localise the buyer prompts" fieldId={sectorId}>
         <select
-          id={regionId}
-          value={region}
-          onChange={(e) => setRegion(e.target.value as "US" | "EU")}
+          id={sectorId}
+          value={sector}
+          onChange={(e) => setSector(e.target.value)}
           style={inputStyle}
         >
-          <option value="US">US</option>
-          <option value="EU">EU (GDPR routing)</option>
+          <option value="">Select your sector</option>
+          {["Professional services", "Local services", "B2B SaaS", "E-commerce / DTC", "Agency", "Healthcare", "Other"].map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Country" hint="GDPR-safe routing for EU countries" fieldId={countryId}>
+        <select
+          id={countryId}
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
+          style={inputStyle}
+        >
+          {["Brazil", "United States", "Portugal", "Germany", "United Kingdom", "Spain", "Other"].map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
         </select>
       </Field>
 
