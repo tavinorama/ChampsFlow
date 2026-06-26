@@ -16,9 +16,20 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { apiFetch, ensureProvisioned } from "../../lib/supabase-browser";
+import { apiFetch, ensureProvisioned, getSupabase } from "../../lib/supabase-browser";
 import { TrustIndexScorecard } from "../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../components/ScoreTrend";
+
+// Account areas surfaced on the dashboard main page (separate from brand info).
+const ACCOUNT_LINKS: Array<{ href: string; title: string; desc: string }> = [
+  { href: "/account/billing", title: "Billing & plan", desc: "Subscription, invoices, plan limits." },
+  { href: "/account/integrations", title: "AI engines & keys", desc: "Connect your own provider keys." },
+  { href: "/account/api-keys", title: "API keys", desc: "Pull your scores into your own tools." },
+  { href: "/account/connections", title: "Connections", desc: "Publishing channels via secure OAuth." },
+  { href: "/account/data-privacy", title: "Data & privacy", desc: "Export, delete, control your data." },
+  { href: "/account/system-status", title: "System status", desc: "Live status of the audit engines." },
+  { href: "/account/legal", title: "Legal", desc: "Terms, privacy, DPA, sub-processors." },
+];
 
 interface Brand {
   id: string;
@@ -123,6 +134,10 @@ export default function DashboardPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [featured, setFeatured] = useState<FeaturedData | null>(null);
   const [featuredLoading, setFeaturedLoading] = useState(false);
+  // Account info (separate from brand data) for the dashboard's Account section.
+  const [plan, setPlan] = useState<string | null>(null);
+  const [planStatus, setPlanStatus] = useState<string | null>(null);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +164,25 @@ export default function DashboardPage() {
         }
       } else {
         setError("Could not load your dashboard.");
+      }
+
+      // Account info (best-effort — runs after provisioning; never blocks the
+      // dashboard). Plan + email for the Account & settings section.
+      try {
+        const planRes = await apiFetch("/api/billing/plan");
+        if (planRes.ok) {
+          const pd = await planRes.json();
+          setPlan(pd.plan ?? null);
+          setPlanStatus(pd.status ?? null);
+        }
+      } catch {
+        /* non-fatal */
+      }
+      try {
+        const { data: u } = await getSupabase().auth.getUser();
+        setAccountEmail(u.user?.email ?? null);
+      } catch {
+        /* non-fatal */
       }
     } catch {
       setError("Could not load your dashboard. Check your connection.");
@@ -507,6 +541,104 @@ export default function DashboardPage() {
         TrustIndex Score trend keeps updating. Turn it on for the brands you want
         to track continuously.
       </p>
+
+      {/* ── Account & settings — your account, separate from brand data ───── */}
+      <hr
+        style={{
+          border: "none",
+          borderTop: "1px solid var(--color-border)",
+          margin: "var(--space-10) 0 var(--space-6)",
+        }}
+      />
+      <section aria-labelledby="account-heading">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: "var(--space-3)",
+            flexWrap: "wrap",
+            marginBottom: "var(--space-4)",
+          }}
+        >
+          <h2 id="account-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: 0 }}>
+            Account &amp; settings
+          </h2>
+          {accountEmail && (
+            <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+              {accountEmail}
+            </span>
+          )}
+        </div>
+
+        {/* Plan strip */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "var(--space-3)",
+            flexWrap: "wrap",
+            padding: "var(--space-4) var(--space-5)",
+            backgroundColor: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            marginBottom: "var(--space-4)",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: "var(--font-size-caption)",
+                color: "var(--color-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                fontWeight: 700,
+              }}
+            >
+              Your plan
+            </div>
+            <div style={{ fontSize: "var(--font-size-h4)", fontWeight: 800, textTransform: "capitalize" }}>
+              {plan ?? "Free"}
+              {planStatus && planStatus !== "active" ? ` · ${planStatus}` : ""}
+            </div>
+          </div>
+          <a
+            href="/account/billing"
+            style={{ color: "var(--color-primary)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}
+          >
+            Manage billing →
+          </a>
+        </div>
+
+        {/* Account areas */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: "var(--space-3)",
+          }}
+        >
+          {ACCOUNT_LINKS.map((s) => (
+            <a
+              key={s.href}
+              href={s.href}
+              style={{
+                display: "block",
+                padding: "var(--space-4)",
+                backgroundColor: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                textDecoration: "none",
+                color: "var(--color-text)",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>{s.title}</div>
+              <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{s.desc}</div>
+            </a>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }
