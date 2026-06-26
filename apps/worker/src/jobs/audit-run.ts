@@ -159,6 +159,40 @@ export async function processAuditJob(
 
     // Build probe portfolio.
     const prompts = buildPromptPortfolio(brand.name, brand.category);
+
+    // Append custom prompts from the audit_prompt table (Prompt Library capability).
+    // CRITICAL: any error here MUST NOT propagate — the audit must always complete
+    // even if the audit_prompt table is missing or the query fails for any reason.
+    try {
+      const customRows = await sql<{ text: string }[]>`
+        SELECT text
+          FROM audit_prompt
+         WHERE brand_id = ${brand_id}
+           AND is_custom = TRUE
+         ORDER BY sort_order ASC
+      `;
+      if (customRows.length > 0) {
+        // Normalise defaults for dedup comparison (lowercase trim).
+        const defaultsNorm = new Set(prompts.map((p) => p.toLowerCase().trim()));
+        let added = 0;
+        for (const row of customRows) {
+          if (added >= 10) break;
+          const norm = row.text.toLowerCase().trim();
+          if (!defaultsNorm.has(norm)) {
+            prompts.push(row.text);
+            added += 1;
+          }
+        }
+      }
+    } catch (err) {
+      // Table not yet migrated (42P01) or any other DB error — log and continue
+      // with defaults only. Never let this block the audit.
+      logger.warn("custom_prompts_load_failed", {
+        brand_id,
+        message: (err as Error).message,
+      });
+    }
+
     const queries: ProbeQuery[] = prompts.map((t) => ({
       queryHash: sha256(t),
       queryText: t,

@@ -48,6 +48,7 @@ import { registerProductRoutes } from "./routes/products";
 import { registerNurtureRoutes } from "./routes/nurture";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerAuditRoutes } from "./routes/audits";
+import { registerPromptRoutes } from "./routes/prompts";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
 import { registerAdminRoutes } from "./routes/admin";
@@ -231,6 +232,8 @@ registerDraftRoutes(app, db);
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
 registerAuditRoutes(app, db);
+// C8: Prompt Library — GET/POST/DELETE /api/brands/:id/prompts
+registerPromptRoutes(app, db);
 // OrganicPosts done-for-you handoff: POST/GET /api/engagements (auth, tenant-scoped)
 registerEngagementRoutes(app, db);
 // Founder Admin Dashboard — all routes requireSuperAdmin (cross-tenant, login role)
