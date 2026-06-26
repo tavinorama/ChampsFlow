@@ -17,6 +17,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../../lib/supabase-browser";
 import { TrustIndexScorecard, VECTOR_COLORS } from "../../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../../components/ScoreTrend";
+import { PromptsPanel } from "./PromptsPanel";
 
 interface AuditState {
   id?: string;
@@ -355,6 +356,9 @@ export default function BrandDetailPage() {
 
       {/* Competitor benchmark — who AI recommends instead of you */}
       <CompetitorBenchmark brandId={brandId} benchmark={breakdown?.competitors ?? []} />
+
+      {/* Prompt library — standard + custom queries used in every audit */}
+      <PromptsPanel brandId={brandId} />
 
       {/* Done-for-you — hand the plan to OrganicPosts (the paid service) */}
       <DoneForYou brandId={brandId} brandName={brandName} overallScore={breakdown?.scores?.overall ?? overall} />
