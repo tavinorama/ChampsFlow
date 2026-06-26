@@ -255,7 +255,7 @@ export async function runInvisibilityTest(
     bestPosition: number | null;
     competitorCited: boolean;
   }
-  const byProvider = new Map<string, EngineAgg>();
+  const byProvider = new Map<EngineResult["engine"], EngineAgg>();
   for (const r of probeResult.responses) {
     const parsed = parseCitation(r.rawText ?? "", brand);
     const compCited =
