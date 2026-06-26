@@ -90,7 +90,7 @@ interface Breakdown {
     findings: string[];
   } | null;
   evidence: Evidence[];
-  topSources: Array<{ domain: string; label: string; count: number }>;
+  topSources: Array<{ domain: string; label: string; type?: string; usedPct?: number; avgCitations?: number; isYou?: boolean; count?: number }>;
 }
 
 const POLL_MS = 2500;
@@ -119,6 +119,11 @@ export default function BrandDetailPage() {
   const [resolvedAuditId, setResolvedAuditId] = useState<string>("");
   const [brandName, setBrandName] = useState<string | undefined>(undefined);
   const [trend, setTrend] = useState<Array<{ recorded_at: string; score_overall: number | null }>>([]);
+  const [brandSettings, setBrandSettings] = useState<{
+    tracked_models: string[] | null;
+    tracking_frequency: string | null;
+  } | null>(null);
+  const [planTier, setPlanTier] = useState<string | null>(null);
   const pollCount = useRef(0);
 
   const computeOverall = useCallback((a: AuditState): number | null => {
@@ -146,6 +151,45 @@ export default function BrandDetailPage() {
         const data = (await res.json()) as { brands?: Array<{ id: string; name: string }> };
         const match = (data.brands ?? []).find((b) => b.id === brandId);
         if (match && !cancelled) setBrandName(match.name);
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [brandId]);
+
+  // Fetch brand settings (tracked_models, tracking_frequency) — non-blocking.
+  useEffect(() => {
+    if (!brandId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(`/api/brands/${brandId}`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { tracked_models?: string[] | null; tracking_frequency?: string | null };
+        if (!cancelled) {
+          setBrandSettings({
+            tracked_models: data.tracked_models ?? null,
+            tracking_frequency: data.tracking_frequency ?? null,
+          });
+        }
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [brandId]);
+
+  // Fetch plan tier — non-blocking, graceful on failure.
+  useEffect(() => {
+    if (!brandId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/billing/plan");
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { plan?: string };
+        if (!cancelled && data.plan) setPlanTier(data.plan);
       } catch {
         /* non-blocking */
       }
@@ -344,6 +388,14 @@ export default function BrandDetailPage() {
         {breakdown?.offsite && <OffsitePresence offsite={breakdown.offsite} />}
         {breakdown?.site_crawl && <CrawlFindings crawl={breakdown.site_crawl} />}
       </VectorPanel>
+
+      {/* AI Models settings — which engines to probe and at what frequency */}
+      <AiModelsPanel
+        brandId={brandId}
+        settings={brandSettings}
+        planTier={planTier}
+        onSettingsSaved={(updated) => setBrandSettings(updated)}
+      />
 
       {/* Top Cited Sources — where AI finds answers about the brand */}
       <TopSourcesPanel sources={breakdown?.topSources ?? []} />
@@ -1806,12 +1858,394 @@ function camel(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Top Cited Sources panel — where AI finds answers about the brand
+// AI Models panel — configure which engines to probe + tracking frequency
 // ---------------------------------------------------------------------------
 
-function TopSourcesPanel({ sources }: { sources: Array<{ domain: string; label: string; count: number }> }) {
-  const capped = sources.slice(0, 12);
-  const maxCount = capped.reduce((m, s) => Math.max(m, s.count), 0) || 1;
+interface AiModelsProps {
+  brandId: string;
+  settings: { tracked_models: string[] | null; tracking_frequency: string | null } | null;
+  planTier: string | null;
+  onSettingsSaved: (updated: { tracked_models: string[]; tracking_frequency: string }) => void;
+}
+
+const AI_ENGINES: { id: string; label: string }[] = [
+  { id: "openai", label: "ChatGPT" },
+  { id: "anthropic", label: "Claude" },
+  { id: "perplexity", label: "Perplexity" },
+  { id: "gemini", label: "Gemini" },
+  { id: "serp", label: "Google AI Overview" },
+];
+
+const AI_ENGINES_COMING_SOON: string[] = ["DeepSeek R1", "Grok", "Llama"];
+
+const DEFAULT_MODELS = ["openai", "anthropic", "perplexity", "gemini", "serp"];
+
+function AiModelsPanel({ brandId, settings, planTier, onSettingsSaved }: AiModelsProps) {
+  const [localModels, setLocalModels] = useState<string[]>(
+    settings?.tracked_models ?? DEFAULT_MODELS
+  );
+  const [localFreq, setLocalFreq] = useState<"weekly" | "daily">(
+    (settings?.tracking_frequency === "daily" ? "daily" : "weekly")
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [savedOk, setSavedOk] = useState(false);
+  const [modelError, setModelError] = useState("");
+
+  // Sync local state when settings prop is loaded/updated
+  useEffect(() => {
+    if (!settings) return;
+    setLocalModels(settings.tracked_models ?? DEFAULT_MODELS);
+    setLocalFreq(settings.tracking_frequency === "daily" ? "daily" : "weekly");
+  }, [settings]);
+
+  const isLoading = settings === null;
+
+  // Detect whether anything has changed from last-saved settings
+  const hasChanges =
+    settings !== null &&
+    (JSON.stringify(localModels.slice().sort()) !==
+      JSON.stringify((settings.tracked_models ?? DEFAULT_MODELS).slice().sort()) ||
+      localFreq !== (settings.tracking_frequency === "daily" ? "daily" : "weekly"));
+
+  function toggleModel(id: string) {
+    setModelError("");
+    setLocalModels((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) {
+          setModelError("At least one AI model must be selected.");
+          return prev;
+        }
+        return prev.filter((m) => m !== id);
+      }
+      return [...prev, id];
+    });
+  }
+
+  async function save() {
+    if (saving || !hasChanges) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const res = await apiFetch(`/api/brands/${brandId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tracked_models: localModels,
+          tracking_frequency: localFreq,
+        }),
+      });
+      if (res.status === 403) {
+        const data = (await res.json()) as { error?: { message?: string } };
+        setSaveError(
+          data.error?.message ??
+            "Daily tracking is an Agency-plan feature. Upgrade to Agency to enable daily monitoring."
+        );
+        return;
+      }
+      if (!res.ok) throw new Error("Save failed");
+      onSettingsSaved({ tracked_models: localModels, tracking_frequency: localFreq });
+      setSavedOk(true);
+      // Reset savedOk after 2s
+      setTimeout(() => setSavedOk(false), 2000);
+    } catch {
+      setSaveError("Could not save settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const loadingOpacity: React.CSSProperties = isLoading ? { opacity: 0.4 } : {};
+
+  const comingSoonBadgeStyle: React.CSSProperties = {
+    fontSize: "var(--font-size-badge)",
+    fontWeight: 600,
+    padding: "1px 6px",
+    borderRadius: "var(--radius-sm)",
+    backgroundColor: "var(--color-surface-muted)",
+    color: "var(--color-muted)",
+    marginLeft: "var(--space-2)",
+  };
+
+  return (
+    <section
+      aria-labelledby="ai-models-heading"
+      style={{
+        backgroundColor: "var(--color-surface)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-6)",
+        boxShadow: "var(--shadow-card)",
+        marginBottom: "var(--space-4)",
+      }}
+    >
+      <h2
+        id="ai-models-heading"
+        style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}
+      >
+        AI Models
+      </h2>
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
+        Choose which AI engines to probe in every audit — and how often. Changes take effect on the next audit run.
+      </p>
+
+      {/* Engine checkboxes */}
+      <div
+        role="group"
+        aria-label="AI engines to probe"
+        style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)", marginBottom: "var(--space-4)", ...loadingOpacity }}
+      >
+        {AI_ENGINES.map((engine) => (
+          <label
+            key={engine.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              minHeight: "var(--min-tap-target)",
+              cursor: "pointer",
+              fontSize: "var(--font-size-body-sm)",
+              fontWeight: 600,
+              color: "var(--color-text)",
+              padding: "0 var(--space-1)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={localModels.includes(engine.id)}
+              onChange={() => toggleModel(engine.id)}
+              style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "var(--color-primary)", flexShrink: 0 }}
+            />
+            {engine.label}
+          </label>
+        ))}
+
+        {/* Coming soon rows */}
+        {AI_ENGINES_COMING_SOON.map((name) => {
+          const csId = `engine-cs-${name.toLowerCase().replace(/\s+/g, "-")}`;
+          return (
+            <label
+              key={name}
+              htmlFor={csId}
+              aria-disabled="true"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-3)",
+                minHeight: "var(--min-tap-target)",
+                opacity: 0.5,
+                cursor: "not-allowed",
+                fontSize: "var(--font-size-body-sm)",
+                fontWeight: 600,
+                color: "var(--color-text)",
+                padding: "0 var(--space-1)",
+              }}
+            >
+              <input
+                id={csId}
+                type="checkbox"
+                disabled
+                style={{ width: "18px", height: "18px", cursor: "not-allowed", flexShrink: 0 }}
+              />
+              {name}
+              <span style={comingSoonBadgeStyle}>Coming soon</span>
+            </label>
+          );
+        })}
+      </div>
+
+      {modelError && (
+        <p role="alert" style={{ margin: "0 0 var(--space-3) 0", fontSize: "var(--font-size-caption)", color: "var(--color-error)", fontWeight: 600 }}>
+          {modelError}
+        </p>
+      )}
+
+      {/* Tracking frequency */}
+      <fieldset
+        style={{
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          padding: "var(--space-4)",
+          marginBottom: "var(--space-4)",
+          ...loadingOpacity,
+        }}
+      >
+        <legend style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 700, color: "var(--color-text)", padding: "0 var(--space-2)" }}>
+          Tracking frequency
+        </legend>
+
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-3)",
+            minHeight: "var(--min-tap-target)",
+            cursor: "pointer",
+            fontSize: "var(--font-size-body-sm)",
+            fontWeight: 600,
+            color: "var(--color-text)",
+          }}
+        >
+          <input
+            type="radio"
+            name={`freq-${brandId}`}
+            value="weekly"
+            checked={localFreq === "weekly"}
+            onChange={() => setLocalFreq("weekly")}
+            style={{ width: "18px", height: "18px", cursor: "pointer", accentColor: "var(--color-primary)", flexShrink: 0 }}
+          />
+          Weekly
+        </label>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-3)",
+            minHeight: "var(--min-tap-target)",
+            opacity: planTier !== "agency" ? 0.5 : 1,
+            cursor: planTier !== "agency" ? "not-allowed" : "pointer",
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              fontSize: "var(--font-size-body-sm)",
+              fontWeight: 600,
+              color: "var(--color-text)",
+              cursor: planTier !== "agency" ? "not-allowed" : "pointer",
+              flex: 1,
+            }}
+          >
+            <input
+              type="radio"
+              name={`freq-${brandId}`}
+              value="daily"
+              checked={localFreq === "daily"}
+              onChange={() => setLocalFreq("daily")}
+              disabled={planTier !== "agency"}
+              style={{
+                width: "18px",
+                height: "18px",
+                cursor: planTier !== "agency" ? "not-allowed" : "pointer",
+                accentColor: "var(--color-primary)",
+                flexShrink: 0,
+              }}
+            />
+            Daily
+          </label>
+          {planTier !== "agency" && (
+            <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontStyle: "italic" }}>
+              (Agency plan only — upgrade to enable daily monitoring)
+            </span>
+          )}
+        </div>
+      </fieldset>
+
+      {/* Save button + feedback */}
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || !hasChanges}
+          aria-busy={saving}
+          style={{
+            minHeight: "44px",
+            padding: "0 var(--space-5)",
+            backgroundColor: saving || !hasChanges ? "var(--color-surface-muted)" : "var(--color-primary)",
+            color: saving || !hasChanges ? "var(--color-muted)" : "#fff",
+            border: "none",
+            borderRadius: "var(--radius-md)",
+            fontWeight: 700,
+            fontSize: "var(--font-size-body-sm)",
+            cursor: saving || !hasChanges ? "not-allowed" : "pointer",
+            fontFamily: "var(--font-family)",
+            transition: "background-color 0.15s ease",
+          }}
+        >
+          {saving ? "Saving…" : "Save AI settings"}
+        </button>
+
+        {savedOk && (
+          <span
+            role="status"
+            aria-live="polite"
+            style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-success)", fontWeight: 700 }}
+          >
+            Saved
+          </span>
+        )}
+      </div>
+
+      {saveError && (
+        <p
+          role="alert"
+          style={{ margin: "var(--space-3) 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-error)", fontWeight: 600, lineHeight: 1.5 }}
+        >
+          {saveError}
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Top Cited Sources panel — searchable table of where AI finds answers
+// ---------------------------------------------------------------------------
+
+type TopSource = { domain: string; label: string; type?: string; usedPct?: number; avgCitations?: number; isYou?: boolean; count?: number };
+
+function typeTag(type: string | undefined): React.ReactElement {
+  if (!type) return <span style={{ color: "var(--color-muted)" }}>—</span>;
+
+  const colorMap: Record<string, { bg: string; fg: string }> = {
+    UGC:       { bg: "rgba(99,102,241,0.12)",   fg: "#6366f1" },
+    Review:    { bg: "rgba(234,179,8,0.12)",    fg: "#ca8a04" },
+    Social:    { bg: "rgba(59,130,246,0.12)",   fg: "#2563eb" },
+    Reference: { bg: "rgba(139,92,246,0.12)",   fg: "#7c3aed" },
+    News:      { bg: "rgba(239,68,68,0.12)",    fg: "#dc2626" },
+    You:       { bg: "var(--color-badge-connected-bg)", fg: "var(--color-badge-connected-text)" },
+    Web:       { bg: "var(--color-surface-muted)", fg: "var(--color-muted)" },
+  };
+
+  const colors = colorMap[type] ?? colorMap["Web"];
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: "1px 6px",
+      borderRadius: "var(--radius-sm)",
+      fontSize: "var(--font-size-badge)",
+      fontWeight: 700,
+      backgroundColor: colors.bg,
+      color: colors.fg,
+      whiteSpace: "nowrap",
+    }}>
+      {type}
+    </span>
+  );
+}
+
+function TopSourcesPanel({ sources }: { sources: TopSource[] }) {
+  const [query, setQuery] = useState("");
+
+  const isEnriched = sources.length > 0 && sources[0]?.usedPct !== undefined;
+
+  // Sort: enriched → usedPct desc; legacy → count desc
+  const sorted = [...sources].sort((a, b) => {
+    if (isEnriched) return (b.usedPct ?? 0) - (a.usedPct ?? 0);
+    return (b.count ?? 0) - (a.count ?? 0);
+  });
+
+  const capped = sorted.slice(0, 25);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? capped.filter(
+        (s) => s.domain.toLowerCase().includes(q) || (s.label ?? "").toLowerCase().includes(q)
+      )
+    : capped;
 
   return (
     <section
@@ -1832,97 +2266,122 @@ function TopSourcesPanel({ sources }: { sources: Array<{ domain: string; label: 
         Where AI gets its answers about you
       </h2>
 
-      {capped.length === 0 ? (
+      {sources.length === 0 ? (
         <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: 0 }}>
           No sources cited yet — run an audit to discover where AI finds information about your brand.
         </p>
       ) : (
-        <ul role="list" aria-label="Top cited sources" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-          {capped.map((src, idx) => {
-            const barPct = Math.round((src.count / maxCount) * 100);
-            const isEven = idx % 2 === 0;
-            return (
-              <li
-                role="listitem"
-                key={src.domain}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-3)",
-                  padding: "var(--space-2) var(--space-3)",
-                  borderRadius: "var(--radius-md)",
-                  backgroundColor: isEven ? "var(--color-surface-muted)" : "transparent",
-                }}
-              >
-                {/* Rank */}
-                <span
-                  style={{
-                    fontSize: "var(--font-size-caption)",
-                    fontWeight: 700,
-                    color: "var(--color-muted)",
-                    minWidth: "1.5rem",
-                    textAlign: "right",
-                    flexShrink: 0,
-                  }}
-                >
-                  {idx + 1}
-                </span>
+        <>
+          {/* Search input */}
+          <div style={{ marginBottom: "var(--space-3)" }}>
+            <input
+              type="search"
+              aria-label="Filter by domain"
+              placeholder="Filter by domain…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{
+                width: "100%",
+                maxWidth: "320px",
+                height: "var(--min-tap-target)",
+                padding: "0 var(--space-3)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "var(--color-surface-muted)",
+                color: "var(--color-text)",
+                fontSize: "var(--font-size-body-sm)",
+                fontFamily: "var(--font-family)",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
 
-                {/* Label */}
-                <span
+          {/* No-match state */}
+          {filtered.length === 0 && q ? (
+            <p
+              role="status"
+              aria-live="polite"
+              style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: 0 }}
+            >
+              No sources match &ldquo;<em>{query}</em>&rdquo;.
+            </p>
+          ) : (
+            /* Table */
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-body-sm)" }}>
+                <caption
                   style={{
-                    fontSize: "var(--font-size-body-sm)",
-                    fontWeight: 600,
-                    color: "var(--color-text)",
-                    minWidth: "120px",
-                    flexShrink: 0,
+                    position: "absolute",
+                    width: "1px",
+                    height: "1px",
+                    padding: 0,
+                    margin: "-1px",
                     overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    clip: "rect(0,0,0,0)",
                     whiteSpace: "nowrap",
+                    border: 0,
                   }}
                 >
-                  {src.label || src.domain}
-                </span>
-
-                {/* Bar track */}
-                <div
-                  aria-hidden="true"
-                  style={{
-                    flex: 1,
-                    height: "8px",
-                    borderRadius: "var(--radius-pill)",
-                    backgroundColor: "var(--color-border)",
-                    overflow: "hidden",
-                    minWidth: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${barPct}%`,
-                      height: "100%",
-                      backgroundColor: "var(--color-primary)",
-                      borderRadius: "var(--radius-pill)",
-                    }}
-                  />
-                </div>
-
-                {/* Count */}
-                <span
-                  style={{
-                    fontSize: "var(--font-size-caption)",
-                    fontWeight: 700,
-                    color: "var(--color-muted)",
-                    minWidth: "2.5rem",
-                    textAlign: "right",
-                    flexShrink: 0,
-                  }}
-                >
-                  {src.count}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+                  Top cited sources by AI engines
+                </caption>
+                <thead>
+                  <tr style={{ backgroundColor: "var(--color-surface-muted)", textAlign: "left" }}>
+                    <th scope="col" style={thStyle}>Domain</th>
+                    <th scope="col" style={thStyle}>Type</th>
+                    <th scope="col" style={thStyle}>{isEnriched ? "Used %" : "Citations"}</th>
+                    <th scope="col" style={thStyle}>Avg. Citations</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((src) => (
+                    <tr
+                      key={src.domain}
+                      style={{
+                        borderTop: "1px solid var(--color-border)",
+                        backgroundColor: src.isYou ? "var(--color-success-surface)" : "transparent",
+                      }}
+                    >
+                      {/* Domain */}
+                      <td style={tdStyle}>
+                        <span style={{ fontWeight: src.isYou ? 700 : 400 }}>
+                          {src.label || src.domain}
+                        </span>
+                        {src.isYou && (
+                          <span style={{
+                            display: "inline-block",
+                            marginLeft: "var(--space-2)",
+                            padding: "2px 6px",
+                            borderRadius: "var(--radius-sm)",
+                            fontSize: "var(--font-size-badge)",
+                            fontWeight: 700,
+                            backgroundColor: "var(--color-badge-connected-bg)",
+                            color: "var(--color-badge-connected-text)",
+                          }}>
+                            You
+                          </span>
+                        )}
+                      </td>
+                      {/* Type */}
+                      <td style={tdStyle}>{typeTag(src.type)}</td>
+                      {/* Used % or Citations */}
+                      <td style={tdStyle}>
+                        {src.usedPct != null
+                          ? `${src.usedPct}%`
+                          : src.count != null
+                          ? src.count
+                          : "—"}
+                      </td>
+                      {/* Avg. Citations */}
+                      <td style={tdStyle}>
+                        {src.avgCitations != null ? src.avgCitations.toFixed(1) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -1966,6 +2425,7 @@ function ExportCsvButton({ auditId }: { auditId: string }) {
   return (
     <div>
       <button
+        type="button"
         onClick={() => void handleExport()}
         disabled={busy || !auditId}
         aria-label="Export audit data as CSV"

@@ -31,7 +31,7 @@ import Redis from "ioredis";
 import { Worker } from "bullmq";
 import { logger } from "../../../packages/shared/src/logger";
 import { processPublishJob } from "./jobs/publish";
-import { processAuditJob } from "./jobs/audit-run";
+import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import {
   createWorkerDb,
@@ -142,6 +142,37 @@ void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
 });
 
 // ---------------------------------------------------------------------------
+// Daily brand monitor loop — enqueues scheduled-audit jobs for brands with
+// tracking_frequency='daily' and monitoring_enabled=TRUE.
+//
+// Uses a separate postgres client (same pattern as _nurtureSql).
+// Does NOT replace the weekly BullMQ repeatable jobs — both coexist.
+// Graceful fallback: if tracking_frequency column missing (42703) or any
+// error, processDailyMonitoredBrands logs a warning and returns without
+// crashing the worker.
+// ---------------------------------------------------------------------------
+
+let _dailyMonitorSql: import("postgres").Sql | null = null;
+function getDailyMonitorSql(): import("postgres").Sql {
+  if (_dailyMonitorSql) return _dailyMonitorSql;
+  _dailyMonitorSql = createWorkerDb();
+  return _dailyMonitorSql;
+}
+
+const DAILY_MONITOR_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+const dailyMonitorInterval = setInterval(() => {
+  void processDailyMonitoredBrands(getDailyMonitorSql()).catch((err: Error) => {
+    logger.error("daily_monitor_poll_error", { message: err.message });
+  });
+}, DAILY_MONITOR_INTERVAL_MS);
+
+// Run once at boot (catches brands due from before restart)
+void processDailyMonitoredBrands(getDailyMonitorSql()).catch((err: Error) => {
+  logger.error("daily_monitor_boot_error", { message: err.message });
+});
+
+// ---------------------------------------------------------------------------
 // Worker event listeners for structured logging
 // ---------------------------------------------------------------------------
 
@@ -197,6 +228,8 @@ const shutdown = async (signal: string): Promise<void> => {
 
   // Stop the nurture poll loop immediately
   clearInterval(nurtureInterval);
+  // Stop the daily brand monitor loop
+  clearInterval(dailyMonitorInterval);
 
   try {
     // Close workers — waits for in-flight jobs to complete
@@ -216,6 +249,12 @@ const shutdown = async (signal: string): Promise<void> => {
 
   try {
     if (_nurtureSql) await _nurtureSql.end({ timeout: 5 }).catch(() => {});
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    if (_dailyMonitorSql) await _dailyMonitorSql.end({ timeout: 5 }).catch(() => {});
   } catch {
     // Best-effort
   }
