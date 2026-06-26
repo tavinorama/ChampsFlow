@@ -532,10 +532,10 @@ function PublicNavbar() {
           <ThemeToggle />
           <Link
             href="/login"
-            className="mk-signin mk-navlink-hide-sm"
-            aria-label="Sign in to your account"
+            className="mk-signin"
+            aria-label="Log in to your account"
           >
-            Sign in
+            Log in
           </Link>
           <Link
             href="/test"
