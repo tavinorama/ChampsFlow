@@ -520,6 +520,15 @@ export async function processAuditJob(
        WHERE id = ${audit_id}
     `;
 
+    // Record estimated audit spend in the monthly budget ledger (visibility only
+    // — audits are NOT hard-capped, so paying customers are never cut off).
+    try {
+      const auditCostCents = Number(process.env["AUDIT_COST_CENTS"] ?? 80);
+      await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
+    } catch (err) {
+      logger.warn("audit_spend_record_failed", { message: (err as Error).message });
+    }
+
     logger.info("audit_completed", {
       audit_id,
       overall: score.overall,
