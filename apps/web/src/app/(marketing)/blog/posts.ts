@@ -76,6 +76,58 @@ export const POSTS: Post[] = [
   },
 
   // ── Articles ─────────────────────────────────────────────────────────────
+  // GEO series — rendered by the data-driven [slug] route from _content.ts
+  {
+    type: "article",
+    slug: "what-is-generative-engine-optimization",
+    title: "What Is Generative Engine Optimization (GEO)? A Plain-English 2026 Field Guide",
+    excerpt:
+      "SEO got you ranked. GEO gets you named. What changed, why it matters for small businesses, and what actually moves the needle — without the hype.",
+    readTime: "9 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+    isPillar: true,
+  },
+  {
+    type: "article",
+    slug: "ai-search-replacing-google-local-discovery",
+    title: "AI Search Is Quietly Replacing Google for Local Discovery — Here's the Data",
+    excerpt:
+      "\"Find me a good plumber near here\" used to mean a map and ten links. Now it means three names. If you run a local business, that shift is already costing you leads you'll never see.",
+    readTime: "8 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "how-ai-engines-choose-which-brands-to-name",
+    title: "How ChatGPT, Claude, Perplexity & Gemini Decide Which Brands to Name",
+    excerpt:
+      "AI recommendations feel like magic. They're not. Two mechanisms — training and retrieval — decide who gets named, and understanding them tells you exactly where to spend your effort.",
+    readTime: "9 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "most-cited-sources-in-ai-search-2026",
+    title: "Where AI Gets Its Answers: The Most-Cited Sources in AI Search (2026)",
+    excerpt:
+      "If you want to be quoted by AI, it helps to know where AI looks. The answer is surprisingly concentrated — and most of it isn't your website.",
+    readTime: "8 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
+  {
+    type: "article",
+    slug: "online-reviews-are-an-ai-ranking-factor",
+    title: "Your Star Rating Is Now an AI Ranking Factor",
+    excerpt:
+      "Reviews were always good for conversion. In 2026 they do something else: they help decide whether an AI recommends you at all.",
+    readTime: "7 min read",
+    publishedAt: "2026-06-26",
+    publishedAtDisplay: "26 June 2026",
+  },
   {
     type: "article",
     slug: "how-small-businesses-get-cited-by-chatgpt",
