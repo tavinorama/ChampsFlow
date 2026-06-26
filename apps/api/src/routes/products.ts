@@ -112,7 +112,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/test — The AI Invisibility Test (free lead magnet)
   // -------------------------------------------------------------------------
   app.post("/api/test", async (c) => {
-    let body: { brand?: string; competitor?: string; category?: string; region?: string; email?: string; marketing_consent?: boolean; domain?: string };
+    let body: { brand?: string; competitor?: string; competitors?: string[]; category?: string; sector?: string; country?: string; region?: string; email?: string; marketing_consent?: boolean; domain?: string };
     try {
       body = await c.req.json();
     } catch {
@@ -120,7 +120,14 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
     const brand = (body.brand ?? "").trim();
     const category = (body.category ?? "").trim();
-    const competitor = (body.competitor ?? "").trim() || null;
+    // Accept competitors[] (mockup: up to 3); the free test uses the primary one
+    // for the head-to-head. Fall back to the single `competitor` field.
+    const competitorList = Array.isArray(body.competitors)
+      ? body.competitors.map((x) => (x ?? "").trim()).filter(Boolean)
+      : [];
+    const competitor = (competitorList[0] ?? (body.competitor ?? "").trim()) || null;
+    const sector = (body.sector ?? "").trim() || null;
+    const country = (body.country ?? "").trim() || null;
     const region = normRegion(body.region);
     const email = (body.email ?? "").trim() || null;
     const domain = (body.domain ?? "").trim() || null;
@@ -163,9 +170,9 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     try {
       const ip = clientIp(c);
       await db.query(
-        `INSERT INTO lead_capture (id, email, brand, competitor, category, region, result, source, ip_truncated, marketing_consent, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'invisibility_test',$8,$9, NOW())`,
-        [leadId, email, brand, competitor, category, region, JSON.stringify(result), ip ? truncateIp(ip) : null, marketingConsent]
+        `INSERT INTO lead_capture (id, email, brand, competitor, category, region, sector, country, result, source, ip_truncated, marketing_consent, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'invisibility_test',$10,$11, NOW())`,
+        [leadId, email, brand, competitor, category, region, sector, country, JSON.stringify(result), ip ? truncateIp(ip) : null, marketingConsent]
       );
       testId = leadId;
     } catch (err) {
