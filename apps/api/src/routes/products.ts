@@ -154,6 +154,31 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       );
     }
 
+    // Monthly budget cap (founder's platform-key spend). The free test is the
+    // runaway-cost, unauthenticated surface, so it is hard-capped against the
+    // whole month's spend (free tests + audits). Fail-open: if the ledger can't
+    // be read, don't block legitimate traffic.
+    const budgetCents = Math.round(Number(process.env["MONTHLY_BUDGET_USD"] ?? 100) * 100);
+    const freeTestCostCents = Number(process.env["FREE_TEST_COST_CENTS"] ?? 3);
+    try {
+      const spendRows = await db.query<{ c: number }>(
+        `SELECT COALESCE(SUM(est_cost_cents), 0)::int AS c FROM api_spend WHERE created_at >= date_trunc('month', NOW())`
+      );
+      const spentCents = Number(spendRows.rows[0]?.c ?? 0);
+      if (spentCents + freeTestCostCents > budgetCents) {
+        return c.json(
+          {
+            message:
+              "We've reached this month's free-test capacity. Start a plan to run audits now — or try again next month.",
+            code: "BUDGET_REACHED",
+          },
+          429
+        );
+      }
+    } catch (err) {
+      logger.warn("budget_check_failed_open", { message: (err as Error).message });
+    }
+
     let result;
     try {
       result = await runInvisibilityTest(brand, competitor, category, region, domain);
@@ -161,6 +186,11 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       logger.error("invisibility_test_failed", { message: (err as Error).message });
       return c.json({ message: "Could not run the test right now. Try again." }, 502);
     }
+
+    // Record estimated spend for the monthly budget ledger (best-effort).
+    void db
+      .query(`INSERT INTO api_spend (op, est_cost_cents) VALUES ('free_test', $1)`, [freeTestCostCents])
+      .catch(() => {});
 
     // Best-effort lead capture (email NOT logged). Never blocks the response.
     // testId lets the visitor carry this test into the Kit checkout so the Kit's
