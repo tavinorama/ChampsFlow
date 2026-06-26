@@ -68,7 +68,7 @@ const PLANS: Plan[] = [
     features: ["Multi-client dashboard (up to 25 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual: website + 3 client landings"],
     cta: "Start Agency",
     href: "/login?plan=agency&next=checkout",
-    accent: "gold",
+    accent: "emerald",
   },
 ];
 
@@ -116,16 +116,16 @@ export default function PricingPage() {
         </p>
       </div>
 
-      {/* Founding-member band (gold) */}
-      <div style={{ marginTop: "var(--space-10)", border: "1px solid var(--color-gold)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", background: "var(--color-surface)", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--space-4)" }}>
+      {/* Founding-member band (emerald — self-serve discount; gold is reserved for OrganicPosts) */}
+      <div style={{ marginTop: "var(--space-10)", border: "1px solid rgba(39,201,138,0.4)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", background: "var(--color-surface)", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--space-4)" }}>
         <div>
-          <span className="pr-eyebrow" style={{ color: "var(--color-gold-ink)" }}>Founding member offer · first 100</span>
+          <span className="pr-eyebrow" style={{ color: "var(--color-accent-ink)" }}>Founding member offer · first 100</span>
           <h2 style={{ margin: "var(--space-2) 0 var(--space-1)", fontSize: "var(--font-size-h2)", fontWeight: 800 }}>30% founder discount + a free 5-page website</h2>
           <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, maxWidth: "560px" }}>
             Applied only when you pay annually. No countdown, no fake scarcity — when the cohort fills, it fills.
           </p>
         </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-gold-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>$69/mo · $174/mo</div>
+        <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>$69/mo · $174/mo</div>
       </div>
 
       {/* Plan cards */}
@@ -152,7 +152,7 @@ export default function PricingPage() {
               {pl.price}<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>{pl.per}</span>
             </div>
             <div style={{ marginTop: "var(--space-1)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", minHeight: "32px" }}>{pl.sub}</div>
-            <Link href={pl.href} className={`pr-cta ${pl.accent === "gold" ? "pr-cta-gold" : pl.featured ? "pr-cta-emerald" : "pr-cta-ghost"}`}>
+            <Link href={pl.href} className={`pr-cta ${pl.featured || pl.accent === "emerald" ? "pr-cta-emerald" : "pr-cta-ghost"}`}>
               {pl.cta}
             </Link>
             <ul style={{ listStyle: "none", margin: "var(--space-5) 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
