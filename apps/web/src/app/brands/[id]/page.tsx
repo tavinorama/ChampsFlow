@@ -125,6 +125,7 @@ export default function BrandDetailPage() {
   } | null>(null);
   const [planTier, setPlanTier] = useState<string | null>(null);
   const pollCount = useRef(0);
+  const [section, setSection] = useState<DashSection>("overview");
 
   const computeOverall = useCallback((a: AuditState): number | null => {
     if (a.score_brand == null || a.score_performance == null || a.score_ai == null) return null;
@@ -275,20 +276,44 @@ export default function BrandDetailPage() {
 
   return (
     <main style={{
-      maxWidth: "760px", margin: "0 auto",
-      padding: "var(--space-8) var(--space-4) calc(var(--bottom-nav-height) + var(--space-12))",
+      maxWidth: "1180px", margin: "0 auto",
+      padding: "var(--space-6) var(--space-4) calc(var(--bottom-nav-height) + var(--space-12))",
       fontFamily: "var(--font-family)", color: "var(--color-text)",
     }}>
-      <a href="/dashboard" style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600 }}>
-        ← Dashboard
-      </a>
-      <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-4) 0 var(--space-2) 0" }}>
-        TrustIndex Score
-      </h1>
-      <div aria-live="polite" style={{ marginBottom: "var(--space-6)", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
-        {isWorking ? <Spinner label={statusMsg} /> : statusMsg}
-      </div>
+      <style>{DASH_STYLES}</style>
+      <div className="bd-shell">
+        {/* ── Sidebar nav ───────────────────────────────────────────── */}
+        <nav className="bd-nav" aria-label="Brand dashboard sections">
+          <a href="/dashboard" className="bd-back" style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600 }}>
+            ← Dashboard
+          </a>
+          <div className="bd-brandname">{brandName ?? "Your brand"}</div>
+          <div className="bd-navlist" role="tablist" aria-orientation="vertical">
+            {DASH_NAV.map((item) => (
+              <button
+                key={item.id}
+                role="tab"
+                aria-selected={section === item.id}
+                aria-current={section === item.id ? "page" : undefined}
+                className={`bd-navitem${section === item.id ? " bd-navitem--active" : ""}`}
+                onClick={() => setSection(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </nav>
 
+        {/* ── Main panel ────────────────────────────────────────────── */}
+        <div className="bd-main">
+          <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-2) 0" }}>
+            TrustIndex Score
+          </h1>
+          <div aria-live="polite" style={{ marginBottom: "var(--space-6)", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
+            {isWorking ? <Spinner label={statusMsg} /> : statusMsg}
+          </div>
+
+      {section === "overview" && (<>
       {/* Scorecard hero — matches the landing page hero mockup */}
       <div style={{ marginBottom: "var(--space-6)" }}>
         <TrustIndexScorecard
@@ -389,28 +414,11 @@ export default function BrandDetailPage() {
         {breakdown?.site_crawl && <CrawlFindings crawl={breakdown.site_crawl} />}
       </VectorPanel>
 
-      {/* AI Models settings — which engines to probe and at what frequency */}
-      <AiModelsPanel
-        brandId={brandId}
-        settings={brandSettings}
-        planTier={planTier}
-        onSettingsSaved={(updated) => setBrandSettings(updated)}
-      />
-
-      {/* Top Cited Sources — where AI finds answers about the brand */}
-      <TopSourcesPanel sources={breakdown?.topSources ?? []} />
-
-      {/* GEO Content Plan — what to publish (C3) */}
-      <GeoContentPlan brandId={brandId} auditId={resolvedAuditId} />
-
-      {/* Content Studio — draft the actual posts (C4) */}
-      <ContentStudio brandId={brandId} />
-
       {/* Competitor benchmark — who AI recommends instead of you */}
       <CompetitorBenchmark brandId={brandId} benchmark={breakdown?.competitors ?? []} />
 
-      {/* Prompt library — standard + custom queries used in every audit */}
-      <PromptsPanel brandId={brandId} />
+      {/* Domains by type — donut of cited-source categories */}
+      <DomainsByTypeCard sources={breakdown?.topSources ?? []} />
 
       {/* Done-for-you — hand the plan to OrganicPosts (the paid service) */}
       <DoneForYou brandId={brandId} brandName={brandName} overallScore={breakdown?.scores?.overall ?? overall} />
@@ -423,7 +431,151 @@ export default function BrandDetailPage() {
           isn&rsquo;t connected yet — never presented as real signal.
         </p>
       )}
+      </>)}
+
+      {/* ── Sources section — Find Key Sources ──────────────────────── */}
+      {section === "sources" && (
+        <TopSourcesPanel sources={breakdown?.topSources ?? []} />
+      )}
+
+      {/* ── Content section — plan + studio (our "execute" edge) ─────── */}
+      {section === "content" && (<>
+        <GeoContentPlan brandId={brandId} auditId={resolvedAuditId} />
+        <ContentStudio brandId={brandId} />
+      </>)}
+
+      {/* ── Models section — engines + frequency ────────────────────── */}
+      {section === "models" && (
+        <AiModelsPanel
+          brandId={brandId}
+          settings={brandSettings}
+          planTier={planTier}
+          onSettingsSaved={(updated) => setBrandSettings(updated)}
+        />
+      )}
+
+      {/* ── Prompts section — managed prompt library ────────────────── */}
+      {section === "prompts" && (
+        <PromptsPanel brandId={brandId} />
+      )}
+
+      {/* ── Settings section — brand basics + account links ─────────── */}
+      {section === "settings" && (
+        <SettingsCard brandName={brandName} />
+      )}
+        </div>{/* /bd-main */}
+      </div>{/* /bd-shell */}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard sections (Peec-style sidebar nav) + Domains-by-type donut
+// ---------------------------------------------------------------------------
+
+type DashSection = "overview" | "content" | "sources" | "models" | "prompts" | "settings";
+
+const DASH_NAV: { id: DashSection; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "content", label: "Content" },
+  { id: "sources", label: "Sources" },
+  { id: "models", label: "Models" },
+  { id: "prompts", label: "Prompts" },
+  { id: "settings", label: "Settings" },
+];
+
+const DASH_STYLES = `
+  .bd-shell { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-8); align-items: start; }
+  .bd-nav { position: sticky; top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
+  .bd-back { display: inline-block; margin-bottom: var(--space-2); }
+  .bd-brandname { font-size: var(--font-size-body); font-weight: 800; color: var(--color-text); letter-spacing: -0.01em; margin-bottom: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bd-navlist { display: flex; flex-direction: column; gap: 2px; }
+  .bd-navitem { text-align: left; background: transparent; border: none; cursor: pointer; font-family: var(--font-family); font-size: var(--font-size-body-sm); font-weight: 600; color: var(--color-muted); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); min-height: var(--min-tap-target); transition: background 0.12s, color 0.12s; }
+  .bd-navitem:hover { background: var(--color-surface-muted); color: var(--color-text); }
+  .bd-navitem--active { background: var(--color-badge-ai-bg); color: var(--color-primary); }
+  .bd-navitem:focus-visible { outline: var(--focus-outline-width) solid var(--color-focus-outline); outline-offset: 2px; }
+  .bd-main { min-width: 0; }
+  @media (max-width: 900px) {
+    .bd-shell { grid-template-columns: 1fr; gap: var(--space-5); }
+    .bd-nav { position: static; }
+    .bd-navlist { flex-direction: row; overflow-x: auto; gap: var(--space-1); padding-bottom: var(--space-1); -webkit-overflow-scrolling: touch; }
+    .bd-navitem { white-space: nowrap; flex: 0 0 auto; }
+    .bd-brandname { display: none; }
+  }
+`;
+
+const DONUT_TYPE_COLORS: Record<string, string> = {
+  UGC: "#f59e0b", Review: "#2563eb", Social: "#7c3aed", Reference: "#0fb488",
+  News: "#ef4444", Web: "#64748b", You: "#0A7E5A",
+};
+
+function DomainsByTypeCard({ sources }: { sources: TopSource[] }) {
+  const counts = new Map<string, number>();
+  for (const s of sources) {
+    const t = ((s as { type?: string }).type) || "Web";
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  const entries = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((n, [, c]) => n + c, 0);
+  if (total === 0) return null;
+
+  const size = 140, stroke = 22, r = (size - stroke) / 2, cx = size / 2, cy = size / 2;
+  const C = 2 * Math.PI * r;
+  let offset = 0;
+  const arcs = entries.map(([type, count]) => {
+    const frac = count / total;
+    const seg = { type, dash: frac * C, off: offset };
+    offset += frac * C;
+    return seg;
+  });
+
+  return (
+    <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="domains-by-type-heading">
+      <h2 id="domains-by-type-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-4) 0" }}>
+        Domains by type
+      </h2>
+      <div style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-6)" }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`Cited sources across ${total} domains by type`} style={{ flexShrink: 0 }}>
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--color-surface-muted)" strokeWidth={stroke} />
+          {arcs.map((a) => (
+            <circle key={a.type} cx={cx} cy={cy} r={r} fill="none"
+              stroke={DONUT_TYPE_COLORS[a.type] ?? "#64748b"} strokeWidth={stroke}
+              strokeDasharray={`${a.dash} ${C - a.dash}`} strokeDashoffset={-a.off}
+              transform={`rotate(-90 ${cx} ${cy})`} />
+          ))}
+          <text x={cx} y={cy - 2} textAnchor="middle" fontSize="22" fontWeight="800" fill="var(--color-text)" fontFamily="var(--font-family)">{total}</text>
+          <text x={cx} y={cy + 16} textAnchor="middle" fontSize="10" fill="var(--color-muted)" fontFamily="var(--font-family)">domains</text>
+        </svg>
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)", minWidth: "160px" }}>
+          {entries.map(([type, count]) => (
+            <li key={type} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)" }}>
+              <span aria-hidden="true" style={{ width: "10px", height: "10px", borderRadius: "2px", backgroundColor: DONUT_TYPE_COLORS[type] ?? "#64748b", flexShrink: 0 }} />
+              <span style={{ color: "var(--color-text)", fontWeight: 600 }}>{type}</span>
+              <span style={{ color: "var(--color-muted)", marginLeft: "auto" }}>{count} · {Math.round((count / total) * 100)}%</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+function SettingsCard({ brandName }: { brandName: string | undefined }) {
+  return (
+    <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="settings-heading">
+      <h2 id="settings-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-4) 0" }}>
+        Settings
+      </h2>
+      <div style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+        <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+          Brand: <strong style={{ color: "var(--color-text)" }}>{brandName ?? "—"}</strong>. Choose which AI engines and how often we track in the <strong>Models</strong> tab.
+        </p>
+        <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
+          <a href="/account/billing" style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>Manage plan &amp; billing →</a>
+          <a href="/account" style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>Account settings →</a>
+        </div>
+      </div>
+    </section>
   );
 }
 
