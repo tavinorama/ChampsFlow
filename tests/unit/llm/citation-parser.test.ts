@@ -182,3 +182,29 @@ describe("parseCitation — combined mention + position + sources", () => {
     expect(result.sources.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Whole-word matching — no false positives (anti-score-inflation)
+// ---------------------------------------------------------------------------
+
+describe("parseCitation — whole-word matching (no false positives)", () => {
+  it("does NOT match the brand as a substring of a longer word", () => {
+    // Brand "Flow" must not count as cited just because "workflow" appears.
+    expect(parseCitation("Improve your workflow and cashflow today.", "Flow").mentioned).toBe(false);
+  });
+
+  it("does NOT match a short brand inside other words", () => {
+    expect(parseCitation("The setup is uploaded and supported.", "Up").mentioned).toBe(false);
+  });
+
+  it("DOES match the brand as a standalone word", () => {
+    const r = parseCitation("We recommend Flow for small teams.", "Flow");
+    expect(r.mentioned).toBe(true);
+    expect(r.position).toBe(1);
+  });
+
+  it("matches multi-word brands but respects boundaries", () => {
+    expect(parseCitation("Try Acme CRM, it's great.", "Acme CRM").mentioned).toBe(true);
+    expect(parseCitation("see acme-crm-software.example", "Acme CRM").mentioned).toBe(false);
+  });
+});

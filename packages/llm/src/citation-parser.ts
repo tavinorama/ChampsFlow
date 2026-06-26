@@ -98,7 +98,18 @@ export function parseCitation(raw: string, brandName: string): CitationParseResu
   }
 
   const sentences = splitSentences(raw);
-  const brandPattern = new RegExp(brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  // Match the brand ONLY as a whole token, never as a substring of a longer word.
+  // Without this, a brand like "Flow" falsely matches "workflow"/"cashflow" and a
+  // short/common brand name gets counted as "cited" everywhere — inflating the
+  // score with data that isn't real. Unicode-aware so accented names still match.
+  const escaped = brandName.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let brandPattern: RegExp;
+  try {
+    brandPattern = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu");
+  } catch {
+    // Fallback for runtimes without lookbehind / \p{} support.
+    brandPattern = new RegExp(`\\b${escaped}\\b`, "i");
+  }
 
   let firstMentionPosition: number | null = null;
 

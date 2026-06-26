@@ -282,6 +282,15 @@ export async function runInvisibilityTest(
     ? "Entity signals measured from homepage."
     : "No domain — brand signals use neutral defaults.";
 
+  // Real share-of-voice vs the competitor — NOT the raw citation rate. If neither
+  // is cited it's 0 (honest: you have no share). This stops a single citation
+  // from inflating the Performance vector and makes "losing to the competitor"
+  // show up truthfully.
+  const shareOfVoice =
+    brandEngineCount + competitorEngineCount > 0
+      ? brandEngineCount / (brandEngineCount + competitorEngineCount)
+      : 0;
+
   // --- Compute GEO score ---
   const score = computeGeoScore({
     ai: {
@@ -293,12 +302,15 @@ export async function runInvisibilityTest(
       schemaCoverage,
       llmsTxtPresent: crawl.performance.llmsTxtPresent,
       aiCrawlerAccess,
-      citationShareVsCompetitors: citationRate,
+      citationShareVsCompetitors: shareOfVoice,
       aioPresence: false, // not measured in free tier
     },
     brand: {
       entityCompleteness,
-      citationVolume: citationRate,
+      // Honest brand-citation signal = real share-of-voice, not a third copy of
+      // citationRate (which previously triple-counted one signal into AI +
+      // Performance + Brand and pushed brand-new sites to ~100).
+      citationVolume: shareOfVoice,
       eeaSignal: crawl.brand.eeaSignal,
     },
   });
