@@ -89,6 +89,7 @@ interface Breakdown {
     findings: string[];
   } | null;
   evidence: Evidence[];
+  topSources: Array<{ domain: string; label: string; count: number }>;
 }
 
 const POLL_MS = 2500;
@@ -264,6 +265,22 @@ export default function BrandDetailPage() {
           }
           brandName={brandName}
         />
+        {/* Export + methodology link row */}
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-4)", marginTop: "var(--space-3)", flexWrap: "wrap" }}>
+          <a
+            href="/how-we-measure"
+            style={{
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              textDecoration: "underline",
+              fontFamily: "var(--font-family)",
+              alignSelf: "center",
+            }}
+          >
+            How is this measured?
+          </a>
+          <ExportCsvButton auditId={resolvedAuditId} />
+        </div>
       </div>
 
       {/* Score trend chart — shown prominently when history exists */}
@@ -326,6 +343,9 @@ export default function BrandDetailPage() {
         {breakdown?.offsite && <OffsitePresence offsite={breakdown.offsite} />}
         {breakdown?.site_crawl && <CrawlFindings crawl={breakdown.site_crawl} />}
       </VectorPanel>
+
+      {/* Top Cited Sources — where AI finds answers about the brand */}
+      <TopSourcesPanel sources={breakdown?.topSources ?? []} />
 
       {/* GEO Content Plan — what to publish (C3) */}
       <GeoContentPlan brandId={brandId} auditId={resolvedAuditId} />
@@ -1236,7 +1256,7 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)", marginBottom: "var(--space-2)" }}>
         <h2 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: 0 }}>GEO Content Plan</h2>
-        <button onClick={generate} disabled={busy || !auditId} style={{
+        <button type="button" onClick={generate} disabled={busy || !auditId} style={{
           height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff",
           border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
           cursor: busy || !auditId ? "not-allowed" : "pointer", opacity: busy || !auditId ? 0.6 : 1,
@@ -1272,8 +1292,8 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
                 <div style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", marginBottom: "var(--space-1)" }}>{t.gap}</div>
                 <div style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 600, color: "var(--color-text)", marginBottom: "var(--space-2)" }}>→ {t.action}</div>
                 <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                  <button onClick={() => setStatus(t.id, "accepted")} style={miniBtn(true)}>Accept</button>
-                  <button onClick={() => setStatus(t.id, "rejected")} style={miniBtn(false)}>Reject</button>
+                  <button type="button" onClick={() => setStatus(t.id, "accepted")} style={miniBtn(true)}>Accept</button>
+                  <button type="button" onClick={() => setStatus(t.id, "rejected")} style={miniBtn(false)}>Reject</button>
                 </div>
               </li>
             ))}
@@ -1504,7 +1524,7 @@ function CrawlFindings({ crawl }: { crawl: { reachable: boolean; domain: string 
           : "Website crawl — not available"}
       </p>
       {!crawl.reachable && (
-        <p style={{ fontSize: "var(--font-size-caption)", color: "#d97706", margin: "0 0 var(--space-2) 0" }}>
+        <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-note-warn)", margin: "0 0 var(--space-2) 0" }}>
           {crawl.domain
             ? "We couldn't reach your site, so these inputs use neutral baselines."
             : "Add your website domain to the brand to measure these from your real site."}
@@ -1547,10 +1567,10 @@ function ContentTraits({ content }: {
             <div key={k}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--font-size-caption)", marginBottom: "2px" }}>
                 <span>{TRAIT_LABELS[k] ?? k}</span>
-                <span style={{ fontWeight: 700, color: v >= 0.5 ? "var(--color-success)" : "#d97706" }}>{pct}%</span>
+                <span style={{ fontWeight: 700, color: v >= 0.5 ? "var(--color-success)" : "var(--color-note-warn)" }}>{pct}%</span>
               </div>
               <div style={{ height: "6px", borderRadius: "var(--radius-pill)", backgroundColor: "var(--color-surface-muted)", overflow: "hidden" }}>
-                <div style={{ width: `${pct}%`, height: "100%", backgroundColor: v >= 0.5 ? "var(--color-success)" : "#d97706" }} />
+                <div style={{ width: `${pct}%`, height: "100%", backgroundColor: v >= 0.5 ? "var(--color-success)" : "var(--color-note-warn)" }} />
               </div>
             </div>
           );
@@ -1621,14 +1641,14 @@ function SentimentBreakdown({ sentiment }: {
         <div style={{ display: "flex", height: "10px", borderRadius: "var(--radius-pill)", overflow: "hidden", marginBottom: "var(--space-2)" }}>
           {sentiment.positive > 0 && <div style={{ width: seg(sentiment.positive), backgroundColor: "var(--color-success)" }} title={`Positive: ${sentiment.positive}`} />}
           {sentiment.neutral > 0 && <div style={{ width: seg(sentiment.neutral), backgroundColor: "var(--color-border)" }} title={`Neutral: ${sentiment.neutral}`} />}
-          {sentiment.negative > 0 && <div style={{ width: seg(sentiment.negative), backgroundColor: "#dc2626" }} title={`Negative: ${sentiment.negative}`} />}
+          {sentiment.negative > 0 && <div style={{ width: seg(sentiment.negative), backgroundColor: "var(--color-error)" }} title={`Negative: ${sentiment.negative}`} />}
         </div>
       )}
       {sentiment.analyzed && (
         <div style={{ display: "flex", gap: "var(--space-3)", fontSize: "var(--font-size-caption)", marginBottom: "var(--space-2)" }}>
           <span style={{ color: "var(--color-success)", fontWeight: 600 }}>● {sentiment.positive} positive</span>
           <span style={{ color: "var(--color-muted)", fontWeight: 600 }}>● {sentiment.neutral} neutral</span>
-          <span style={{ color: "#dc2626", fontWeight: 600 }}>● {sentiment.negative} negative</span>
+          <span style={{ color: "var(--color-error)", fontWeight: 600 }}>● {sentiment.negative} negative</span>
         </div>
       )}
       {sentiment.findings.length > 0 && (
@@ -1695,7 +1715,7 @@ function EntityGraphPanel({ entity }: {
         Knowledge-graph entity {entity.live ? "(live)" : "(demo data)"}
       </p>
       {!entity.found ? (
-        <p style={{ fontSize: "var(--font-size-caption)", color: "#d97706", lineHeight: 1.5, margin: "0 0 var(--space-2) 0" }}>
+        <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-note-warn)", lineHeight: 1.5, margin: "0 0 var(--space-2) 0" }}>
           No knowledge-graph entity resolved — AI engines may not recognize you as a distinct entity. High-value gap.
         </p>
       ) : (
@@ -1781,6 +1801,199 @@ function camel(s: string): string {
   return s.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 }
 
+// ---------------------------------------------------------------------------
+// Top Cited Sources panel — where AI finds answers about the brand
+// ---------------------------------------------------------------------------
+
+function TopSourcesPanel({ sources }: { sources: Array<{ domain: string; label: string; count: number }> }) {
+  const capped = sources.slice(0, 12);
+  const maxCount = capped.reduce((m, s) => Math.max(m, s.count), 0) || 1;
+
+  return (
+    <section
+      aria-labelledby="top-sources-heading"
+      style={{
+        marginBottom: "var(--space-4)",
+        backgroundColor: "var(--color-surface)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-6)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      <h2
+        id="top-sources-heading"
+        style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: "0 0 var(--space-4) 0" }}
+      >
+        Where AI gets its answers about you
+      </h2>
+
+      {capped.length === 0 ? (
+        <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: 0 }}>
+          No sources cited yet — run an audit to discover where AI finds information about your brand.
+        </p>
+      ) : (
+        <ul role="list" aria-label="Top cited sources" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          {capped.map((src, idx) => {
+            const barPct = Math.round((src.count / maxCount) * 100);
+            const isEven = idx % 2 === 0;
+            return (
+              <li
+                role="listitem"
+                key={src.domain}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-3)",
+                  padding: "var(--space-2) var(--space-3)",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: isEven ? "var(--color-surface-muted)" : "transparent",
+                }}
+              >
+                {/* Rank */}
+                <span
+                  style={{
+                    fontSize: "var(--font-size-caption)",
+                    fontWeight: 700,
+                    color: "var(--color-muted)",
+                    minWidth: "1.5rem",
+                    textAlign: "right",
+                    flexShrink: 0,
+                  }}
+                >
+                  {idx + 1}
+                </span>
+
+                {/* Label */}
+                <span
+                  style={{
+                    fontSize: "var(--font-size-body-sm)",
+                    fontWeight: 600,
+                    color: "var(--color-text)",
+                    minWidth: "120px",
+                    flexShrink: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {src.label || src.domain}
+                </span>
+
+                {/* Bar track */}
+                <div
+                  aria-hidden="true"
+                  style={{
+                    flex: 1,
+                    height: "8px",
+                    borderRadius: "var(--radius-pill)",
+                    backgroundColor: "var(--color-border)",
+                    overflow: "hidden",
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${barPct}%`,
+                      height: "100%",
+                      backgroundColor: "var(--color-primary)",
+                      borderRadius: "var(--radius-pill)",
+                    }}
+                  />
+                </div>
+
+                {/* Count */}
+                <span
+                  style={{
+                    fontSize: "var(--font-size-caption)",
+                    fontWeight: 700,
+                    color: "var(--color-muted)",
+                    minWidth: "2.5rem",
+                    textAlign: "right",
+                    flexShrink: 0,
+                  }}
+                >
+                  {src.count}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Export CSV button — downloads audit data
+// ---------------------------------------------------------------------------
+
+function ExportCsvButton({ auditId }: { auditId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleExport() {
+    if (!auditId || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await apiFetch(`/api/audits/${auditId}/export?format=csv`);
+      if (!res.ok) {
+        setError("Export failed. Please try again.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      // Get filename from Content-Disposition header if available, fallback to generic
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)/i);
+      a.download = match?.[1] ?? "trustindex-export.csv";
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Export failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => void handleExport()}
+        disabled={busy || !auditId}
+        aria-label="Export audit data as CSV"
+        aria-busy={busy}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          height: "var(--min-tap-target)",
+          padding: "0 var(--space-4)",
+          backgroundColor: "var(--color-surface)",
+          color: "var(--color-primary)",
+          border: "1.5px solid var(--color-primary)",
+          borderRadius: "var(--radius-md)",
+          fontSize: "var(--font-size-body-sm)",
+          fontWeight: 600,
+          fontFamily: "var(--font-family)",
+          cursor: busy || !auditId ? "not-allowed" : "pointer",
+          opacity: busy || !auditId ? 0.6 : 1,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {busy ? "Exporting…" : "Export CSV"}
+      </button>
+      {error && (
+        <p role="alert" style={{ margin: "var(--space-2) 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-error)" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Spinner({ label }: { label: string }) {
   return (

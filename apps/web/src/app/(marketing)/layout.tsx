@@ -633,6 +633,7 @@ function MarketingFooter() {
           aria-label="Legal links"
           style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-4)" }}
         >
+          <FooterLink href="/how-we-measure">How we measure</FooterLink>
           <FooterLink href="/terms-of-service">Terms of Service</FooterLink>
           <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
           <FooterLink href="/legal/cookies">Cookie Policy</FooterLink>

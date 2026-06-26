@@ -36,6 +36,101 @@ import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
 
 // ---------------------------------------------------------------------------
+// topSources helper — aggregates citation URLs from evidence rows and offsite
+// source entries into a ranked list of domains. Used by both the breakdown
+// endpoint and the export endpoint.
+// ---------------------------------------------------------------------------
+
+const DOMAIN_LABELS: Record<string, string> = {
+  "reddit.com": "Reddit",
+  "en.wikipedia.org": "Wikipedia",
+  "wikipedia.org": "Wikipedia",
+  "linkedin.com": "LinkedIn",
+  "g2.com": "G2",
+  "trustpilot.com": "Trustpilot",
+  "crunchbase.com": "Crunchbase",
+  "youtube.com": "YouTube",
+  "github.com": "GitHub",
+  "twitter.com": "X (Twitter)",
+  "x.com": "X (Twitter)",
+  "forbes.com": "Forbes",
+  "techcrunch.com": "TechCrunch",
+  "capterra.com": "Capterra",
+  "producthunt.com": "Product Hunt",
+};
+
+interface TopSource {
+  domain: string;
+  label: string;
+  count: number;
+}
+
+interface OffsiteSource {
+  id: string;
+  label: string;
+  domain: string;
+  present: boolean;
+  count: number;
+}
+
+function computeTopSources(
+  evidenceRows: Array<{ sources: unknown }>,
+  providerBreakdown: Record<string, unknown>
+): TopSource[] {
+  const domainCounts = new Map<string, number>();
+
+  // 1. Count domains from raw citation URLs in evidence[].sources
+  for (const row of evidenceRows) {
+    const sources = Array.isArray(row.sources) ? (row.sources as unknown[]) : [];
+    for (const src of sources) {
+      if (typeof src !== "string") continue;
+      try {
+        const hostname = new URL(src).hostname.replace(/^www\./, "");
+        domainCounts.set(hostname, (domainCounts.get(hostname) ?? 0) + 1);
+      } catch {
+        // skip malformed URLs
+      }
+    }
+  }
+
+  // 2. Merge with offsite.sources (domain + label + count from provider_breakdown)
+  const offsiteSources: OffsiteSource[] =
+    (providerBreakdown as { offsite?: { sources?: OffsiteSource[] } }).offsite?.sources ?? [];
+
+  for (const os of offsiteSources) {
+    // Skip zero-count entries (present === false and count === 0)
+    if (!os.count || os.count === 0) continue;
+    const domain = (os.domain ?? "").replace(/^www\./, "");
+    if (!domain) continue;
+    domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + os.count);
+  }
+
+  // 3. Build output array with friendly labels, sort descending, cap at 12
+  const result: TopSource[] = [];
+  for (const [domain, count] of domainCounts.entries()) {
+    const label = DOMAIN_LABELS[domain] ?? domain;
+    result.push({ domain, label, count });
+  }
+
+  result.sort((a, b) => b.count - a.count);
+  return result.slice(0, 12);
+}
+
+// ---------------------------------------------------------------------------
+// CSV escaping helper — used by the export endpoint
+// ---------------------------------------------------------------------------
+
+function csvEsc(val: string | number | boolean | null | undefined): string {
+  const s = String(val ?? "");
+  // Prevent CSV formula injection (OWASP): prefix formula-trigger chars with '
+  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+  if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes("\r")) {
+    return `"${safe.replace(/"/g, '""')}"`;
+  }
+  return safe;
+}
+
+// ---------------------------------------------------------------------------
 // Plan-limit helper — reads the tenant's denormalized plan_tier and returns
 // its PLAN_LIMITS. Defaults to 'free' if unset/unknown. (Enforcement is by
 // explicit COUNT vs limit at each create site; tenant_id filter is explicit so
@@ -465,6 +560,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     // provider_breakdown may be a jsonb object (already parsed by pg driver).
     const bd = (scoreRow?.provider_breakdown ?? {}) as Record<string, unknown>;
 
+    // Compute top cited sources — pure aggregation, no extra DB query.
+    const topSources = computeTopSources(evidenceRes.rows, bd);
+
     return c.json({
       scores: scoreRow
         ? {
@@ -501,7 +599,149 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         position: r.citation_rank,
         sources: Array.isArray(r.sources) ? r.sources : [],
       })),
+      // Aggregated top citation domains (max 12, sorted by frequency).
+      topSources,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/audits/:id/export?format=csv — download audit data as a file
+  // Supports format=csv only for now; xlsx/json can be added via the switch.
+  // -------------------------------------------------------------------------
+  app.get("/api/audits/:id/export", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const auditId = c.req.param("id");
+    const format = c.req.query("format");
+
+    // Validate format before doing any DB work.
+    switch (format) {
+      case "csv":
+        break;
+      default:
+        return c.json({ message: "Unsupported format. Use ?format=csv" }, 400);
+    }
+
+    await db.setTenantId(auth.tenantId);
+
+    // Auth + ownership check — same pattern as breakdown endpoint.
+    const auditRes = await db.query<{ brand_id: string; status: string }>(
+      `SELECT brand_id, status FROM geo_audit WHERE id = $1`,
+      [auditId]
+    );
+    const audit = auditRes.rows[0];
+    if (!audit) return c.json({ message: "Audit not found." }, 404);
+
+    // Fetch the brand name for the filename.
+    const brandRes = await db.query<{ name: string }>(
+      `SELECT name FROM brands WHERE id = $1`,
+      [audit.brand_id]
+    );
+    const brandName = brandRes.rows[0]?.name ?? "brand";
+
+    // Load scores + provider_breakdown.
+    const scoreRes = await db.query<{
+      score_brand: number;
+      score_performance: number;
+      score_ai: number;
+      provider_breakdown: unknown;
+      recorded_at: string;
+    }>(
+      `SELECT score_brand, score_performance, score_ai, provider_breakdown, recorded_at
+         FROM geo_score WHERE audit_id = $1 ORDER BY recorded_at DESC LIMIT 1`,
+      [auditId]
+    );
+    const scoreRow = scoreRes.rows[0];
+
+    // Load citation evidence rows.
+    const evidenceRes = await db.query<{
+      provider: string;
+      query_text: string | null;
+      cited: boolean;
+      citation_rank: number | null;
+      sources: unknown;
+    }>(
+      `SELECT provider, query_text, cited, citation_rank, sources
+         FROM citation_check
+        WHERE audit_id = $1
+        ORDER BY cited DESC, provider ASC`,
+      [auditId]
+    );
+
+    // Sanitise brand name for the filename.
+    const sanitized = brandName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    const safeBase = sanitized || "audit";
+    const dateStr = scoreRow?.recorded_at
+      ? scoreRow.recorded_at.slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const safeFilename = `trustindex-${safeBase}-${dateStr}.csv`;
+
+    if (format === "csv") {
+      const bd = (scoreRow?.provider_breakdown ?? {}) as Record<string, unknown>;
+      const overall = (bd as { overall?: number }).overall ?? null;
+
+      const lines: string[] = [];
+
+      // Section 1 — Summary header
+      lines.push("TrustIndex AI Audit Export");
+      lines.push(`Brand,${csvEsc(brandName)}`);
+      lines.push(`Date,${csvEsc(dateStr)}`);
+      lines.push(`Overall Score,${csvEsc(overall)}`);
+      lines.push(`Brand Score,${csvEsc(scoreRow?.score_brand ?? "")}`);
+      lines.push(`Performance Score,${csvEsc(scoreRow?.score_performance ?? "")}`);
+      lines.push(`AI Score,${csvEsc(scoreRow?.score_ai ?? "")}`);
+      lines.push("");
+
+      // Section 2 — Per-engine evidence
+      lines.push("AI Evidence");
+      lines.push("Engine,Prompt,Cited,Position");
+      for (const row of evidenceRes.rows) {
+        lines.push(
+          [
+            csvEsc(row.provider),
+            csvEsc(row.query_text),
+            csvEsc(row.cited),
+            csvEsc(row.citation_rank),
+          ].join(",")
+        );
+      }
+      lines.push("");
+
+      // Section 3 — Competitor benchmark
+      lines.push("Competitor Benchmark");
+      lines.push("Name,Mentions,Displacement");
+      const competitors = (bd as { competitors?: Array<{ name?: string; mentions?: number; displacement?: number }> }).competitors ?? [];
+      for (const comp of competitors) {
+        lines.push(
+          [
+            csvEsc(comp.name),
+            csvEsc(comp.mentions),
+            csvEsc(comp.displacement),
+          ].join(",")
+        );
+      }
+      lines.push("");
+
+      // Section 4 — Top cited sources (reuse helper — no extra DB query)
+      const topSources = computeTopSources(evidenceRes.rows, bd);
+      lines.push("Top Cited Sources");
+      lines.push("Domain,Label,Count");
+      for (const src of topSources) {
+        lines.push([csvEsc(src.domain), csvEsc(src.label), csvEsc(src.count)].join(","));
+      }
+
+      c.header("Content-Type", "text/csv; charset=utf-8");
+      c.header(
+        "Content-Disposition",
+        `attachment; filename="${safeFilename}"; filename*=UTF-8''${safeFilename}`
+      );
+      return c.text(lines.join("\r\n"));
+    }
+
+    // Unreachable — switch above already guards; satisfies TypeScript control flow.
+    return c.json({ message: "Unsupported format. Use ?format=csv" }, 400);
   });
 
   // -------------------------------------------------------------------------
