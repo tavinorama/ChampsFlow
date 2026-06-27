@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { RingFlow, ContentEngine } from "../../../components/marketing/illustrations";
 
 export const metadata: Metadata = {
   title: "OrganicPosts — We build your AI visibility with you",
@@ -51,11 +52,12 @@ const PAGE_CSS = `
   .op-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); }
   @media (max-width: 760px) { .op-grid { grid-template-columns: 1fr; } }
   .op-ph {
-    aspect-ratio: 16 / 7; border-radius: var(--radius-lg);
+    border-radius: var(--radius-lg);
     background-color: var(--color-surface-muted);
     background-image: repeating-linear-gradient(135deg, rgba(230,169,63,0.06) 0 12px, transparent 12px 24px);
-    border: 1px solid var(--color-gold); display: grid; place-items: center; text-align: center; padding: var(--space-6);
+    border: 1px solid var(--color-gold); display: grid; place-items: center; text-align: center; padding: var(--space-8) var(--space-6);
   }
+  .op-hero-illu { width: 100%; max-width: 560px; height: auto; }
   .op-cta-gold { display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:#1a1206; text-decoration:none; background:linear-gradient(135deg,#e6a93f,#b9791f); border-radius:var(--radius-md); padding:0.8rem 1.5rem; box-shadow:0 10px 32px rgba(230,169,63,0.30); }
   .op-cta-ghost { display:inline-flex; align-items:center; justify-content:center; font-weight:600; color:var(--color-gold-ink); text-decoration:none; border:1px solid var(--color-gold); border-radius:var(--radius-md); padding:0.8rem 1.5rem; }
 `;
@@ -78,9 +80,7 @@ export default function OrganicPostsPage() {
       <Link href="/book" className="op-cta-gold">Scope your project &rarr;</Link>
 
       <div className="op-ph" style={{ marginTop: "var(--space-10)" }}>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.8125rem", color: "var(--color-muted)", letterSpacing: "0.06em" }}>
-          [ founder / team working session &mdash; or a real client dashboard ]
-        </span>
+        <RingFlow className="op-hero-illu" />
       </div>
 
       {/* The engagement */}
@@ -97,6 +97,9 @@ export default function OrganicPostsPage() {
               <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.6, fontSize: "var(--font-size-body-sm)" }}>{s.d}</p>
             </div>
           ))}
+        </div>
+        <div style={{ marginTop: "var(--space-10)", display: "grid", placeItems: "center" }}>
+          <ContentEngine className="op-hero-illu" />
         </div>
       </section>
 
