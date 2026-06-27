@@ -65,9 +65,10 @@ export function Footer() {
         borderTop: "1px solid var(--color-border)",
         backgroundColor: "var(--color-surface)",
         padding: "var(--space-6) var(--space-4)",
-        // Ensure footer does not overlap BottomNav on mobile (BottomNav is 56px)
-        // On pages WITH BottomNav, page content already has paddingBottom: 80px;
-        // footer sits above the nav in document flow when not position:fixed.
+        // Clear the fixed BottomNav so the footer isn't jammed under it on app
+        // pages (the cause of the "desformatado" footer). Harmless on pages
+        // without a BottomNav — just extra bottom breathing room.
+        marginBottom: "calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px))",
       }}
     >
       <div

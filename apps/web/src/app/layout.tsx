@@ -25,6 +25,7 @@ import { SITE_URL, SITE_NAME } from "../lib/site";
 import { Schibsted_Grotesk, JetBrains_Mono } from "next/font/google";
 import "../styles/tokens.css";
 import { DpaGate } from "../components/DpaGate";
+import { AppTopBar } from "../components/AppTopBar";
 import { Footer } from "../components/Footer";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 import { CookieConsent } from "../components/CookieConsent";
@@ -176,6 +177,7 @@ export default async function RootLayout({
           // Authenticated app routes: full chrome.
           <>
             <CaliforniaBanner country={country} />
+            <AppTopBar />
             <DpaGate>{children}</DpaGate>
             <Footer />
           </>
