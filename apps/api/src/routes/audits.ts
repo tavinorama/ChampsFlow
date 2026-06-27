@@ -438,7 +438,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const auth = c.get("auth");
       await db.setTenantId(auth.tenantId);
       const competitorId = c.req.param("competitorId");
-      await db.query(`DELETE FROM competitor WHERE id = $1`, [competitorId]);
+      await db.query(`DELETE FROM competitor WHERE id = $1 AND tenant_id = $2`, [competitorId, auth.tenantId]);
       return c.json({ removed: true });
     }
   );
@@ -1278,12 +1278,102 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       if (!topic) return c.json({ message: "topic is required." }, 400);
 
       await db.setTenantId(auth.tenantId);
-      const brandRes = await db.query<{ name: string; category: string | null }>(
-        `SELECT name, category FROM brands WHERE id = $1`,
+      const brandRes = await db.query<{ name: string; category: string | null; domain: string | null; market: string | null; region: string }>(
+        `SELECT name, category, domain, market, region FROM brands WHERE id = $1`,
         [brandId]
       );
       const brand = brandRes.rows[0];
       if (!brand) return c.json({ message: "Brand not found." }, 404);
+
+      // Assemble a brand description from available fields (no free-text description
+      // column on brands; derive from market + category).
+      const brandDescription = brand.market && brand.category
+        ? `a ${brand.category} company serving ${brand.market}`
+        : brand.market
+        ? `serving ${brand.market}`
+        : brand.category
+        ? `a ${brand.category} company`
+        : null;
+
+      // Optional: fetch plan task context when plan_task_id is supplied.
+      let auditGap: string | null = null;
+      let auditEvidence: string | null = null;
+      if (body.plan_task_id) {
+        // Join through strategy_plan to verify the task belongs to the brand being
+        // requested (plan_task has no brand_id column; brand isolation goes via plan_id →
+        // strategy_plan.brand_id). This prevents intra-tenant cross-brand context
+        // contamination where a user supplies another brand's plan_task_id.
+        const taskRes = await db.query<{ gap: string; evidence: string | null; metric: string | null; vector: string }>(
+          `SELECT pt.gap, pt.evidence, pt.metric, pt.vector
+             FROM plan_task pt
+             JOIN strategy_plan sp ON sp.id = pt.plan_id
+            WHERE pt.id = $1 AND pt.tenant_id = $2 AND sp.brand_id = $3`,
+          [body.plan_task_id, auth.tenantId, brandId]
+        );
+        const task = taskRes.rows[0];
+        if (task) {
+          auditGap = task.gap ?? null;
+          auditEvidence = task.evidence ?? null;
+        }
+      }
+
+      // Fetch latest completed audit for this brand to enrich content generation
+      // with absent prompts, weak content traits, and missing off-site sources.
+      let absentPrompts: string[] | null = null;
+      let weakContentTraits: string[] | null = null;
+      let missingSourceNames: string[] | null = null;
+      let competitorPressureCount: number | null = null;
+
+      const latestAuditRes = await db.query<{ audit_id: string; provider_breakdown: unknown }>(
+        `SELECT ga.id as audit_id, gs.provider_breakdown
+           FROM geo_audit ga
+           JOIN geo_score gs ON gs.audit_id = ga.id
+          WHERE ga.brand_id = $1 AND ga.status = 'complete'
+          ORDER BY ga.created_at DESC
+          LIMIT 1`,
+        [brandId]
+      );
+      const latestAudit = latestAuditRes.rows[0];
+
+      if (latestAudit) {
+        const auditId = latestAudit.audit_id;
+        const bd = (latestAudit.provider_breakdown ?? {}) as Record<string, unknown>;
+
+        // Absent prompts: buyer questions where the brand is not cited (max 3).
+        const absentPromptsRes = await db.query<{ query_text: string }>(
+          `SELECT DISTINCT query_text FROM citation_check
+            WHERE audit_id = $1 AND cited = false AND query_text IS NOT NULL
+            LIMIT 3`,
+          [auditId]
+        );
+        if (absentPromptsRes.rows.length > 0) {
+          absentPrompts = absentPromptsRes.rows.map((r) => r.query_text).filter(Boolean);
+        }
+
+        // Weak content traits: traits with score < 0.5 from provider_breakdown.content.traits.
+        type TraitsMap = Record<string, number>;
+        const contentTraits = (bd as { content?: { traits?: TraitsMap } }).content?.traits;
+        if (contentTraits) {
+          const weak = Object.entries(contentTraits)
+            .filter(([, v]) => typeof v === "number" && v < 0.5)
+            .map(([k]) => k);
+          if (weak.length > 0) weakContentTraits = weak;
+        }
+
+        // Missing off-site sources (max 3 by label).
+        type OffsiteSourceEntry = { label?: string; present?: boolean };
+        const offsiteSourcesRaw = (bd as { offsite?: { sources?: OffsiteSourceEntry[] } }).offsite?.sources ?? [];
+        const missingSrc = offsiteSourcesRaw
+          .filter((s) => s.present === false && typeof s.label === "string")
+          .map((s) => s.label as string)
+          .slice(0, 3);
+        if (missingSrc.length > 0) missingSourceNames = missingSrc;
+
+        // Competitor pressure count (anonymised — GEO-A2: no competitor names).
+        const compCount = ((bd as { competitors?: Array<{ displacement: number }> }).competitors ?? [])
+          .filter((x) => x.displacement > 0).length;
+        if (compCount > 0) competitorPressureCount = compCount;
+      }
 
       // BYOK cost model: client-internal content generation runs on the CLIENT's
       // own Anthropic key when connected (they pay their AI cost); falls back to
@@ -1301,9 +1391,23 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           length: (["short", "medium", "long"] as const).includes(body.length as "short" | "medium" | "long")
             ? (body.length as "short" | "medium" | "long")
             : undefined,
+          brandDescription,
+          brandMarket: brand.market ?? null,
+          auditGap,
+          auditEvidence,
+          absentPrompts,
+          weakContentTraits,
+          missingSourceNames,
+          competitorPressureCount,
         },
         { apiKey: clientKey ?? undefined }
       );
+
+      // If no API key is configured, return the graceful error without inserting
+      // a content_piece row (there's nothing to approve or publish).
+      if (draft.generatedBy === "error") {
+        return c.json({ ...draft, ai_generated: false, status: "error" }, 402);
+      }
 
       const id = randomUUID();
       await db.query(
@@ -1355,7 +1459,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
       // Allow inline edit of the body (client refines the draft) + status change.
       if (typeof body.body === "string") {
-        await db.query(`UPDATE content_piece SET body = $2 WHERE id = $1`, [contentId, body.body]);
+        await db.query(`UPDATE content_piece SET body = $2 WHERE id = $1 AND tenant_id = $3`, [contentId, body.body, auth.tenantId]);
       }
       const status = body.status;
       if (status) {
@@ -1364,11 +1468,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         }
         if (status === "approved" || status === "published") {
           await db.query(
-            `UPDATE content_piece SET status = $2, approved_at = NOW(), approved_by = $3 WHERE id = $1`,
-            [contentId, status, auth.userId]
+            `UPDATE content_piece SET status = $2, approved_at = NOW(), approved_by = $3 WHERE id = $1 AND tenant_id = $4`,
+            [contentId, status, auth.userId, auth.tenantId]
           );
         } else {
-          await db.query(`UPDATE content_piece SET status = $2 WHERE id = $1`, [contentId, status]);
+          await db.query(`UPDATE content_piece SET status = $2 WHERE id = $1 AND tenant_id = $3`, [contentId, status, auth.tenantId]);
         }
       }
       return c.json({ id: contentId, status: status ?? "draft" });

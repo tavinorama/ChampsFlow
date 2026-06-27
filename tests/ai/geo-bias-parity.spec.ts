@@ -27,7 +27,7 @@ import { analyzeSentiment } from "../../packages/llm/src/sentiment";
 import { parseCitation } from "../../packages/llm/src/citation-parser";
 import { detectCompetitors } from "../../packages/llm/src/competitor-detect";
 import { generateStrategy, type StrategyInputs } from "../../packages/llm/src/strategy-generator";
-import { generateContent } from "../../packages/llm/src/content-studio";
+import { templateDraft } from "../../packages/llm/src/content-studio";
 
 // Brand names of diverse linguistic origins (incl. diacritics + multi-word).
 const BRAND_CORPUS = [
@@ -154,7 +154,13 @@ describe("GEO-A8 §4 — strategy generator is name-blind", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Content Studio template parity (keyless template path)
+// 5. Content Studio template parity (structural fairness of the template layer)
+// GEO-A8: the templateDraft function must produce identically-structured output
+// for every brand name (no cultural-origin discrimination in heading/placeholder/
+// schema structure). The test uses templateDraft directly — the exported function
+// that generates structured placeholder scaffolding. (generateContent without a
+// key now returns a graceful error message, not a template, per Requirement 5;
+// the parity concern is with the template itself, so we test that directly.)
 // ---------------------------------------------------------------------------
 
 describe("GEO-A8 §5 — content template structural parity", () => {
@@ -165,11 +171,10 @@ describe("GEO-A8 §5 — content template structural parity", () => {
     return `${headings}/${placeholders}/${schemaType}`;
   }
 
-  it("produces structurally identical blog drafts for every name origin", async () => {
-    delete process.env["ANTHROPIC_API_KEY"];
+  it("produces structurally identical blog drafts for every name origin", () => {
     const outcomes: string[] = [];
     for (const name of BRAND_CORPUS) {
-      const d = await generateContent({ contentType: "blog", brandName: name, category: "CRM", topic: "How to choose a CRM" });
+      const d = templateDraft({ contentType: "blog", brandName: name, category: "CRM", topic: "How to choose a CRM" });
       outcomes.push(structure(d.body, d.schemaMarkup));
       expect(d.body).toContain(name); // name interpolated, not dropped
     }
@@ -177,11 +182,10 @@ describe("GEO-A8 §5 — content template structural parity", () => {
     results.push("| Content Studio (blog template) | PASS — identical heading/placeholder/schema structure for all 10 name origins |");
   });
 
-  it("produces structurally identical FAQ drafts (FAQPage schema) for every origin", async () => {
-    delete process.env["ANTHROPIC_API_KEY"];
+  it("produces structurally identical FAQ drafts (FAQPage schema) for every origin", () => {
     const outcomes: string[] = [];
     for (const name of BRAND_CORPUS) {
-      const d = await generateContent({ contentType: "faq", brandName: name, category: "CRM", topic: "Is it secure?" });
+      const d = templateDraft({ contentType: "faq", brandName: name, category: "CRM", topic: "Is it secure?" });
       outcomes.push(structure(d.body, d.schemaMarkup));
     }
     expect(new Set(outcomes).size).toBe(1);

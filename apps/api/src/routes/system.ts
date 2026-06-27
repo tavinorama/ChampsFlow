@@ -140,11 +140,11 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
           summary:
             "Asks realistic buyer prompts to multiple AI engines and records if your brand is mentioned, cited, where it ranks, and which sources the answer used.",
           tools: [
-            { id: "anthropic", label: "Anthropic Claude", powers: "Probe an AI answer engine", key: "ANTHROPIC_API_KEY (or AWS Bedrock)", connected: anthropic, mockFallback: true },
-            { id: "openai", label: "OpenAI GPT-4o", powers: "Probe ChatGPT-style answers", key: "OPENAI_API_KEY", connected: present("OPENAI_API_KEY"), mockFallback: true },
-            { id: "gemini", label: "Google Gemini", powers: "Probe Gemini answers", key: "GEMINI_API_KEY", connected: present("GEMINI_API_KEY"), mockFallback: true },
-            { id: "perplexity", label: "Perplexity", powers: "Probe Perplexity answers", key: "PERPLEXITY_API_KEY", connected: present("PERPLEXITY_API_KEY"), mockFallback: true, euNote: "Blocked for EU brands until SCCs confirmed." },
-            { id: "serp", label: "Google AI Overview (DataForSEO/SerpAPI)", powers: "Capture AI Overview + cited sources", key: "SERP_API_KEY", connected: present("SERP_API_KEY"), mockFallback: true },
+            { id: "anthropic", label: "Anthropic Claude", powers: "Probe an AI answer engine", key: "Anthropic / AWS Bedrock", connected: anthropic, mockFallback: true },
+            { id: "openai", label: "OpenAI GPT-4o", powers: "Probe ChatGPT-style answers", key: "OpenAI", connected: present("OPENAI_API_KEY"), mockFallback: true },
+            { id: "gemini", label: "Google Gemini", powers: "Probe Gemini answers", key: "Google", connected: present("GEMINI_API_KEY"), mockFallback: true },
+            { id: "perplexity", label: "Perplexity", powers: "Probe Perplexity answers", key: "Perplexity", connected: present("PERPLEXITY_API_KEY"), mockFallback: true, euNote: "Blocked for EU brands until SCCs confirmed." },
+            { id: "serp", label: "Google AI Overview (DataForSEO/SerpAPI)", powers: "Capture AI Overview + cited sources", key: "SERP provider", connected: present("SERP_API_KEY"), mockFallback: true },
           ],
         },
         {
@@ -154,8 +154,8 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
             "Beyond the probes: classifies how AI portrays you (sentiment), deep-dives Reddit (the #1 source AI cites — threads, subreddits, perception), checks the 7 sources AI cites most, and resolves your brand in the public knowledge graph (Wikidata/Wikipedia consistency).",
           tools: [
             { id: "sentiment", label: "Sentiment classifier", powers: "How AI answers portray your brand (positive/neutral/negative)", key: "none — runs on probe answers", connected: true, mockFallback: false },
-            { id: "reddit-dive", label: "Reddit deep-dive (public results)", powers: "Threads, subreddits, and perception on the #1 AI-cited source", key: "SERP_API_KEY", connected: present("SERP_API_KEY"), mockFallback: true },
-            { id: "offsite", label: "Off-site authority (7 sources)", powers: "Presence on Reddit, Wikipedia, LinkedIn, G2, Trustpilot, Crunchbase, YouTube", key: "SERP_API_KEY", connected: present("SERP_API_KEY"), mockFallback: true },
+            { id: "reddit-dive", label: "Reddit deep-dive (public results)", powers: "Threads, subreddits, and perception on the #1 AI-cited source", key: "SERP provider", connected: present("SERP_API_KEY"), mockFallback: true },
+            { id: "offsite", label: "Off-site authority (7 sources)", powers: "Presence on Reddit, Wikipedia, LinkedIn, G2, Trustpilot, Crunchbase, YouTube", key: "SERP provider", connected: present("SERP_API_KEY"), mockFallback: true },
             { id: "entity-graph", label: "Knowledge-graph entity (Wikidata/Wikipedia)", powers: "Entity resolution + cross-source consistency — public APIs", key: "none — public, key-free", connected: true, mockFallback: true },
           ],
         },

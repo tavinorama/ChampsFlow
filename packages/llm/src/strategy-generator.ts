@@ -236,10 +236,93 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
     v === "ai" ? "Website (comparison/FAQ)" : v === "performance" ? "Website (content)" : "LinkedIn + profiles";
   const calendar: CalendarItem[] = recs.slice(0, 4).map((r, i) => ({
     week: i + 1,
-    topic: r.action,
+    topic: toCalendarTopic(r, inputs.absentPrompts),
     channel: channelFor(r.vector),
     vector: r.vector,
   }));
 
   return { recommendations: recs, calendar };
+}
+
+/**
+ * Convert a recommendation's action instruction into a publishable content topic.
+ *
+ * The calendar `action` field is written as an instruction (e.g. "Add Organization,
+ * FAQPage, and Article schema to your key pages."). That is not a content topic.
+ * This function derives a buyer-facing topic from the recommendation's vector,
+ * gap, and any absent buyer prompts so the calendar entry can be handed directly
+ * to the Content Studio.
+ *
+ * @param rec - The recommendation to derive a topic from.
+ * @param absentPrompts - Verbatim buyer queries where the brand was absent
+ *   (from the audit's citation_check). Used as the most specific signal for
+ *   AI-vector entries.
+ */
+export function toCalendarTopic(rec: Recommendation, absentPrompts?: string[]): string {
+  const action = rec.action;
+
+  // AI vector — highest priority: use an absent prompt if available, as that is
+  // the exact buyer question the piece must answer.
+  if (rec.vector === "ai") {
+    if (absentPrompts && absentPrompts.length > 0) {
+      // Use the first absent prompt directly — it is the exact buyer query to answer.
+      return absentPrompts[0] as string;
+    }
+    // No absent prompts — derive from the action text.
+    if (/comparison|alternative/i.test(action)) {
+      return "Comparison guide: what to look for (and what to avoid)";
+    }
+    if (/FAQ|question/i.test(action)) {
+      return "Frequently asked questions: what buyers ask before choosing";
+    }
+    // Generic AI fallback.
+    return stripInstruction(action);
+  }
+
+  // Performance vector — schema / content / data oriented.
+  if (rec.vector === "performance") {
+    if (/schema/i.test(action)) {
+      return "What is [category]? A complete buyer's guide";
+    }
+    if (/statistic|number|benchmark|data/i.test(action)) {
+      return "The data: key benchmarks buyers use to evaluate [category]";
+    }
+    if (/FAQ|question/i.test(action)) {
+      return "FAQ: the most common questions about [category]";
+    }
+    if (/crawl|robot|access/i.test(action)) {
+      return "How [brand] makes its expertise findable in AI search";
+    }
+    // Generic performance fallback.
+    return stripInstruction(action);
+  }
+
+  // Brand vector — entity / off-site / profile oriented.
+  if (rec.vector === "brand") {
+    if (/off-site|profile|review|G2|Trustpilot|LinkedIn|reddit/i.test(action)) {
+      return "About us: what [brand] does and who we serve";
+    }
+    if (/entity|Wikidata|Wikipedia|consistent/i.test(action)) {
+      return "[brand] company profile: who we are and what we stand for";
+    }
+    // Generic brand fallback.
+    return stripInstruction(action);
+  }
+
+  // Unknown vector — safe fallback.
+  return stripInstruction(action);
+}
+
+/**
+ * Strip leading imperative verbs from an action string to turn an instruction
+ * into a topic. Caps at 80 characters.
+ *
+ * E.g. "Add Organization, FAQPage, and Article schema to your key pages."
+ *   → "Organization, FAQPage, and Article schema on your key pages"
+ */
+function stripInstruction(action: string): string {
+  return action
+    .replace(/^(Add|Create|Publish|Establish|Allow|Strengthen|Enable|Back|Ensure)\s+/i, "")
+    .replace(/\.$/, "")
+    .slice(0, 80);
 }
