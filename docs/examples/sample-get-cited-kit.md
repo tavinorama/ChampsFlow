@@ -25,7 +25,7 @@ in two parts and ending in an upsell to the subscription Plans:
 
 ---
 
-## 1. Your TrustIndex Score
+## 1. Your Ozvor AI Visibility Score
 
 **Overall: 75 / 100**
 

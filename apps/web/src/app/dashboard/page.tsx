@@ -13,6 +13,10 @@
  * with a compact TrustIndexScorecard, fetching its breakdown from the same
  * /api/brands/:id/score + /api/audits/:id/breakdown endpoints the brand
  * detail page uses. Gracefully degrades to the summary tiles on failure.
+ *
+ * Visual language: matches the landing page design system —
+ * dark-first surfaces, emerald (#27c98a) accents, mono uppercase eyebrows,
+ * rounded cards, gradient CTAs, section rhythm (eyebrow → heading → content).
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -20,16 +24,109 @@ import { apiFetch, ensureProvisioned, getSupabase } from "../../lib/supabase-bro
 import { TrustIndexScorecard } from "../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../components/ScoreTrend";
 
+// ---------------------------------------------------------------------------
+// Page-scoped styles injected once (keyframes + responsive overrides)
+// ---------------------------------------------------------------------------
+
+const DASHBOARD_STYLES = `
+  @keyframes db-pulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+  @keyframes db-rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+  .db-rise { animation: db-rise .55s cubic-bezier(.2,.7,.2,1) both; }
+
+  .db-brand-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-5) var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    text-decoration: none;
+    color: var(--color-text);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .15s ease;
+  }
+  .db-brand-card:hover {
+    border-color: rgba(39,201,138,0.38);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
+  .db-brand-card--featured {
+    border-color: rgba(39,201,138,0.4);
+    box-shadow: 0 0 0 2px rgba(39,201,138,0.18), var(--shadow-card);
+  }
+  .db-brand-card--featured:hover {
+    border-color: rgba(39,201,138,0.65);
+    box-shadow: 0 0 0 2px rgba(39,201,138,0.28), var(--shadow-card-hover);
+  }
+
+  .db-account-link {
+    display: block;
+    padding: var(--space-4) var(--space-5);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: var(--color-text);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .15s ease;
+  }
+  .db-account-link:hover {
+    border-color: rgba(39,201,138,0.38);
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
+
+  .db-monitoring-toggle:focus-visible {
+    outline: var(--focus-outline-width) solid var(--color-focus-outline);
+    outline-offset: var(--focus-outline-offset);
+    border-radius: var(--radius-sm);
+  }
+
+  @media (max-width: 640px) {
+    .db-brand-card {
+      flex-wrap: wrap;
+      padding: var(--space-4) var(--space-5);
+    }
+    .db-stats-row {
+      grid-template-columns: 1fr !important;
+    }
+  }
+  @media (max-width: 480px) {
+    .db-account-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+`;
+
+function useDashboardStyles() {
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("db-page-styles")) return;
+    const el = document.createElement("style");
+    el.id = "db-page-styles";
+    el.textContent = DASHBOARD_STYLES;
+    document.head.appendChild(el);
+  }, []);
+}
+
+// ---------------------------------------------------------------------------
 // Account areas surfaced on the dashboard main page (separate from brand info).
-const ACCOUNT_LINKS: Array<{ href: string; title: string; desc: string }> = [
-  { href: "/account/billing", title: "Billing & plan", desc: "Subscription, invoices, plan limits." },
-  { href: "/account/integrations", title: "AI engines & keys", desc: "Connect your own provider keys." },
-  { href: "/account/api-keys", title: "API keys", desc: "Pull your scores into your own tools." },
-  { href: "/account/connections", title: "Connections", desc: "Publishing channels via secure OAuth." },
-  { href: "/account/data-privacy", title: "Data & privacy", desc: "Export, delete, control your data." },
-  { href: "/account/system-status", title: "System status", desc: "Live status of the audit engines." },
-  { href: "/account/legal", title: "Legal", desc: "Terms, privacy, DPA, sub-processors." },
+// ---------------------------------------------------------------------------
+
+const ACCOUNT_LINKS: Array<{ href: string; title: string; desc: string; icon: string }> = [
+  { href: "/account/billing",       title: "Billing & plan",    desc: "Subscription, invoices, plan limits.",    icon: "💳" },
+  { href: "/account/integrations",  title: "AI engines & keys", desc: "Connect your own provider keys.",          icon: "🔌" },
+  { href: "/account/api-keys",      title: "API keys",          desc: "Pull your scores into your own tools.",    icon: "🗝️" },
+  { href: "/account/connections",   title: "Connections",       desc: "Publishing channels via secure OAuth.",    icon: "🔗" },
+  { href: "/account/data-privacy",  title: "Data & privacy",    desc: "Export, delete, control your data.",       icon: "🔒" },
+  { href: "/account/system-status", title: "System status",     desc: "Live status of the audit engines.",        icon: "📡" },
+  { href: "/account/legal",         title: "Legal",             desc: "Terms, privacy, DPA, sub-processors.",    icon: "§" },
 ];
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface Brand {
   id: string;
@@ -52,11 +149,14 @@ interface FeaturedData {
   trendData?: Array<{ recorded_at: string; score_overall: number | null }>;
 }
 
+// ---------------------------------------------------------------------------
+// Data loader — unchanged from original
+// ---------------------------------------------------------------------------
+
 async function loadFeaturedBreakdown(
   brand: Brand
 ): Promise<FeaturedData | null> {
   try {
-    // Step 1: get latest audit id + scores
     const scoreRes = await apiFetch(`/api/brands/${brand.id}/score`);
     if (!scoreRes.ok) return null;
     const scoreData = (await scoreRes.json()) as {
@@ -86,7 +186,6 @@ async function loadFeaturedBreakdown(
       }>,
     };
 
-    // Step 2: get breakdown for vector-level data + competitors + probes
     if (latest.audit_id) {
       const bdRes = await apiFetch(
         `/api/audits/${latest.audit_id}/breakdown`
@@ -127,14 +226,19 @@ async function loadFeaturedBreakdown(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Page component
+// ---------------------------------------------------------------------------
+
 export default function DashboardPage() {
+  useDashboardStyles();
+
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [featured, setFeatured] = useState<FeaturedData | null>(null);
   const [featuredLoading, setFeaturedLoading] = useState(false);
-  // Account info (separate from brand data) for the dashboard's Account section.
   const [plan, setPlan] = useState<string | null>(null);
   const [planStatus, setPlanStatus] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
@@ -142,8 +246,6 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // First-login provisioning: if this is a brand-new user with no tenant yet,
-      // create their tenant + refresh the session so the next call is authorized.
       await ensureProvisioned();
       const res = await apiFetch("/api/brands");
       if (res.ok) {
@@ -151,7 +253,6 @@ export default function DashboardPage() {
         const loadedBrands: Brand[] = data.brands ?? [];
         setBrands(loadedBrands);
 
-        // Feature the first brand that has a score (most likely most recent).
         const candidate = loadedBrands.find(
           (b) => typeof b.latest_score === "number"
         );
@@ -166,8 +267,6 @@ export default function DashboardPage() {
         setError("Could not load your dashboard.");
       }
 
-      // Account info (best-effort — runs after provisioning; never blocks the
-      // dashboard). Plan + email for the Account & settings section.
       try {
         const planRes = await apiFetch("/api/billing/plan");
         if (planRes.ok) {
@@ -199,7 +298,6 @@ export default function DashboardPage() {
     if (busyId) return;
     setBusyId(brand.id);
     const next = !brand.monitoring_enabled;
-    // optimistic
     setBrands((bs) =>
       bs.map((b) => (b.id === brand.id ? { ...b, monitoring_enabled: next } : b))
     );
@@ -211,7 +309,6 @@ export default function DashboardPage() {
       });
       if (!res.ok) throw new Error();
     } catch {
-      // revert
       setBrands((bs) =>
         bs.map((b) =>
           b.id === brand.id ? { ...b, monitoring_enabled: !next } : b
@@ -233,36 +330,135 @@ export default function DashboardPage() {
         )
       : null;
 
-  // Show featured scorecard only when we have breakdown data
   const showFeatured = featured !== null && !loading;
-  // Show tiles when no featured data is available (fallback) or as supplemental summary
   const showTiles = !showFeatured && !loading;
 
   return (
     <main
+      aria-label="Dashboard"
       style={{
-        maxWidth: "880px",
+        maxWidth: "960px",
         margin: "0 auto",
-        padding:
-          "var(--space-8) var(--space-4) calc(var(--bottom-nav-height) + var(--space-12))",
+        padding: "0 var(--space-4) calc(var(--bottom-nav-height) + var(--space-12))",
         fontFamily: "var(--font-family)",
         color: "var(--color-text)",
       }}
     >
-      <h1
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <section
+        aria-label="AI Visibility Score hero"
         style={{
-          fontSize: "var(--font-size-h1)",
-          fontWeight: 800,
-          letterSpacing: "-0.02em",
-          margin: "0 0 var(--space-6) 0",
+          position: "relative",
+          padding: "var(--space-10) var(--space-6) var(--space-8)",
+          marginBottom: "var(--space-6)",
+          backgroundImage: "radial-gradient(var(--color-border) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+          borderRadius: "var(--radius-xl)",
+          border: "1px solid var(--color-border)",
+          overflow: "hidden",
         }}
       >
-        Dashboard
-      </h1>
+        {/* Radial fade overlay so dot-grid fades into the surface */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(70% 65% at 50% 0%, transparent, var(--color-surface) 82%)",
+            pointerEvents: "none",
+            borderRadius: "var(--radius-xl)",
+          }}
+        />
+        {/* Emerald glow */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "radial-gradient(50% 40% at 50% 0%, rgba(39,201,138,0.12) 0%, transparent 70%)",
+            pointerEvents: "none",
+            borderRadius: "var(--radius-xl)",
+          }}
+        />
 
+        <div style={{ position: "relative" }}>
+          {/* Eyebrow pill */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-pill)",
+              border: "1px solid rgba(39,201,138,0.32)",
+              background: "rgba(39,201,138,0.07)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.6875rem",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase" as const,
+              color: "var(--color-accent-ink)",
+              marginBottom: "var(--space-4)",
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#27c98a",
+                display: "inline-block",
+                animation: "db-pulse 2s infinite",
+              }}
+            />
+            AI Search Trust Intelligence
+          </div>
+
+          {/* Heading */}
+          <h1
+            style={{
+              margin: "0 0 var(--space-2) 0",
+              fontSize: "clamp(1.75rem, 4vw, 2.5rem)",
+              fontWeight: 800,
+              letterSpacing: "-0.035em",
+              lineHeight: 1.05,
+              color: "var(--color-text)",
+            }}
+          >
+            Your AI Visibility{" "}
+            <span
+              style={{
+                background: "linear-gradient(120deg,#3ad79a,#0e8a59)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              Dashboard
+            </span>
+          </h1>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-body)",
+              color: "var(--color-muted)",
+              lineHeight: 1.55,
+              maxWidth: 520,
+            }}
+          >
+            Track how AI search engines cite your brand, monitor weekly score
+            changes, and act on the gaps.
+          </p>
+        </div>
+      </section>
+
+      {/* ── ERROR ALERT ────────────────────────────────────────────────── */}
       {error && (
         <div
           role="alert"
+          aria-live="assertive"
           style={{
             padding: "var(--space-3) var(--space-4)",
             backgroundColor: "var(--color-badge-status-error-bg)",
@@ -277,30 +473,88 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Featured brand scorecard — mirrors the landing hero */}
+      {/* ── LOADING SKELETON ───────────────────────────────────────────── */}
       {loading && (
-        <p style={{ color: "var(--color-muted)" }}>Loading&hellip;</p>
+        <div
+          aria-busy="true"
+          aria-label="Loading your dashboard"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            marginBottom: "var(--space-8)",
+          }}
+        >
+          {[120, 80, 60].map((h, i) => (
+            <div
+              key={i}
+              style={{
+                height: h,
+                borderRadius: "var(--radius-lg)",
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                opacity: 1 - i * 0.15,
+              }}
+            />
+          ))}
+        </div>
       )}
 
+      {/* ── FEATURED SCORECARD — hero element ─────────────────────────── */}
       {featuredLoading && !loading && (
         <div
+          aria-busy="true"
+          aria-label="Loading featured scorecard"
           style={{
-            backgroundColor: "var(--color-surface)",
+            background: "var(--color-surface)",
             border: "1px solid var(--color-border)",
             borderRadius: "var(--radius-lg)",
             padding: "var(--space-8)",
             boxShadow: "var(--shadow-card)",
             marginBottom: "var(--space-8)",
-            color: "var(--color-muted)",
-            fontSize: "var(--font-size-body-sm)",
           }}
         >
-          Loading scorecard&hellip;
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.6875rem",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase" as const,
+              color: "var(--color-muted)",
+            }}
+          >
+            Loading scorecard&hellip;
+          </div>
         </div>
       )}
 
       {showFeatured && featured && (
-        <div style={{ marginBottom: "var(--space-8)" }}>
+        <section
+          aria-labelledby="featured-scorecard-heading"
+          className="db-rise"
+          style={{
+            marginBottom: "var(--space-8)",
+            background: "var(--color-surface)",
+            border: "1px solid rgba(39,201,138,0.28)",
+            borderRadius: "var(--radius-xl)",
+            padding: "var(--space-6)",
+            boxShadow: "0 0 0 1px rgba(39,201,138,0.08), var(--shadow-card)",
+          }}
+        >
+          {/* Section eyebrow */}
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.6875rem",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase" as const,
+              color: "var(--color-accent-ink)",
+              marginBottom: "var(--space-3)",
+            }}
+          >
+            Featured brand · Latest audit
+          </div>
+
           <TrustIndexScorecard
             compact
             overall={featured.overall}
@@ -313,16 +567,39 @@ export default function DashboardPage() {
             probeSummary={featured.probeSummary}
             brandName={featured.brandName}
           />
+
           {featured.trendData && featured.trendData.length >= 2 && (
-            <div style={{ marginTop: "var(--space-4)" }}>
+            <div
+              style={{
+                marginTop: "var(--space-5)",
+                padding: "var(--space-4) var(--space-5)",
+                background: "var(--color-surface-muted)",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.6875rem",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase" as const,
+                  color: "var(--color-muted)",
+                  marginBottom: "var(--space-3)",
+                }}
+              >
+                Score trend
+              </div>
               <ScoreTrend trend={featured.trendData} compact brandName={featured.brandName} />
             </div>
           )}
+
           <p
             style={{
               fontSize: "var(--font-size-caption)",
               color: "var(--color-muted)",
-              marginTop: "var(--space-3)",
+              marginTop: "var(--space-4)",
+              marginBottom: 0,
               lineHeight: 1.5,
             }}
           >
@@ -333,41 +610,44 @@ export default function DashboardPage() {
             >
               {featured.brandName}
             </a>
-            . View full breakdown and GEO plan.
+            {" "}— view the full breakdown and GEO plan.
           </p>
-        </div>
+        </section>
       )}
 
-      {/* Fallback summary tiles (shown when featured scorecard is not available) */}
+      {/* ── STATS STRIP (shown below featured or as fallback) ─────────── */}
       {showTiles && (
-        <div
+        <section
+          aria-label="Summary statistics"
+          className="db-stats-row"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gridTemplateColumns: "repeat(3, 1fr)",
             gap: "var(--space-4)",
             marginBottom: "var(--space-8)",
           }}
         >
-          <Tile label="Brands tracked" value={String(brands.length)} />
-          <Tile
+          <StatTile label="Brands tracked" value={String(brands.length)} />
+          <StatTile
             label="Avg AI Visibility"
             value={avg != null && !Number.isNaN(avg) ? String(avg) : "—"}
           />
-          <Tile label="Weekly monitoring" value={`${monitored} active`} />
-        </div>
+          <StatTile label="Weekly monitoring" value={`${monitored}`} suffix="active" />
+        </section>
       )}
 
-      {/* Summary stats strip (always shown once brands load, below featured) */}
       {showFeatured && brands.length > 0 && (
         <div
+          aria-label="Summary statistics"
           style={{
             display: "flex",
             gap: "var(--space-6)",
             flexWrap: "wrap",
             marginBottom: "var(--space-6)",
-            padding: "var(--space-3) var(--space-4)",
-            backgroundColor: "var(--color-surface-muted)",
+            padding: "var(--space-3) var(--space-5)",
+            background: "var(--color-surface-muted)",
             borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-border)",
             fontSize: "var(--font-size-caption)",
             color: "var(--color-muted)",
           }}
@@ -389,168 +669,141 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "var(--space-4)",
-        }}
-      >
-        <h2
-          style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: 0 }}
-        >
-          Your brands
-        </h2>
-        <a
-          href="/brands"
-          style={{
-            color: "var(--color-primary)",
-            fontWeight: 700,
-            textDecoration: "none",
-            fontSize: "var(--font-size-body-sm)",
-          }}
-        >
-          + Add brand
-        </a>
-      </div>
-
-      <div aria-live="polite">
-        {loading ? null : brands.length === 0 ? (
-          <p
+      {/* ── BRANDS SECTION ─────────────────────────────────────────────── */}
+      {!loading && (
+        <section aria-labelledby="brands-heading">
+          {/* Section header */}
+          <div
             style={{
-              color: "var(--color-muted)",
-              fontSize: "var(--font-size-body-sm)",
-            }}
-          >
-            No brands yet.{" "}
-            <a href="/brands" style={{ color: "var(--color-primary)" }}>
-              Add your first brand
-            </a>{" "}
-            to run an audit.
-          </p>
-        ) : (
-          <ul
-            style={{
-              listStyle: "none",
-              padding: 0,
-              margin: 0,
               display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-3)",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              gap: "var(--space-4)",
+              marginBottom: "var(--space-2)",
             }}
           >
-            {brands.map((b) => (
-              <li
-                key={b.id}
+            <div>
+              <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "var(--space-4)",
-                  padding: "var(--space-4) var(--space-5)",
-                  backgroundColor: "var(--color-surface)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "var(--radius-md)",
-                  // Highlight the featured brand row
-                  boxShadow:
-                    featured?.brandId === b.id
-                      ? "0 0 0 2px var(--color-primary)"
-                      : "var(--shadow-card)",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.6875rem",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase" as const,
+                  color: "var(--color-accent-ink)",
+                  marginBottom: "var(--space-1)",
                 }}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <a
-                    href={`/brands/${b.id}`}
-                    style={{
-                      fontWeight: 700,
-                      color: "var(--color-text)",
-                      textDecoration: "none",
-                    }}
-                  >
-                    {b.name}
-                  </a>
-                  <div
-                    style={{
-                      fontSize: "var(--font-size-caption)",
-                      color: "var(--color-muted)",
-                    }}
-                  >
-                    {b.region}
-                    {b.category ? ` · ${b.category}` : ""}
-                  </div>
-                </div>
+                Your brands
+              </div>
+              <h2
+                id="brands-heading"
+                style={{
+                  fontSize: "var(--font-size-h2)",
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  margin: 0,
+                  color: "var(--color-text)",
+                }}
+              >
+                Brand scorecards
+              </h2>
+            </div>
+            <a
+              href="/brands"
+              aria-label="Add a new brand"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                background: "linear-gradient(135deg,#27c98a,#0c7d54)",
+                color: "#06140e",
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-body-sm)",
+                fontWeight: 700,
+                padding: "10px 18px",
+                borderRadius: "var(--radius-md)",
+                textDecoration: "none",
+                boxShadow: "0 6px 20px rgba(39,201,138,0.24)",
+                minHeight: "var(--min-tap-target)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + Add brand
+            </a>
+          </div>
 
-                {typeof b.latest_score === "number" ? (
-                  <ScoreMiniRing score={b.latest_score} />
-                ) : (
-                  <span
-                    style={{
-                      fontSize: "var(--font-size-caption)",
-                      color: "var(--color-muted)",
-                    }}
-                  >
-                    no audit yet
-                  </span>
-                )}
+          {/* Brand list */}
+          <div aria-live="polite" aria-label="Brand list">
+            {brands.length === 0 ? (
+              <EmptyBrandsState />
+            ) : (
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: "var(--space-4) 0 0",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-3)",
+                }}
+              >
+                {brands.map((b) => (
+                  <li key={b.id}>
+                    <BrandCard
+                      brand={b}
+                      isFeatured={featured?.brandId === b.id}
+                      busyId={busyId}
+                      onToggle={toggleMonitoring}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
 
-                <label
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "var(--space-2)",
-                    cursor: busyId === b.id ? "wait" : "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!b.monitoring_enabled}
-                    disabled={busyId === b.id}
-                    onChange={() => toggleMonitoring(b)}
-                    style={{
-                      width: 18,
-                      height: 18,
-                      accentColor: "var(--color-primary)",
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "var(--font-size-caption)",
-                      color: "var(--color-muted)",
-                    }}
-                  >
-                    Weekly
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* Weekly monitoring explainer */}
+      {!loading && brands.length > 0 && (
+        <p
+          style={{
+            marginTop: "var(--space-6)",
+            padding: "var(--space-4) var(--space-5)",
+            background: "rgba(39,201,138,0.05)",
+            border: "1px dashed rgba(39,201,138,0.28)",
+            borderRadius: "var(--radius-md)",
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            lineHeight: 1.6,
+          }}
+        >
+          <strong style={{ color: "var(--color-accent-ink)", fontFamily: "var(--font-mono)", textTransform: "uppercase" as const, letterSpacing: "0.08em", fontSize: "0.625rem" }}>
+            Weekly monitoring
+          </strong>{" "}
+          re-runs the AI Visibility Audit every Monday so your Ozvor AI Visibility
+          Score trend keeps updating. Turn it on for the brands you want to track
+          continuously.
+        </p>
+      )}
 
-      <p
-        style={{
-          marginTop: "var(--space-8)",
-          fontSize: "var(--font-size-caption)",
-          color: "var(--color-muted)",
-          lineHeight: 1.6,
-        }}
+      {/* ── ACCOUNT & SETTINGS ─────────────────────────────────────────── */}
+      <section
+        aria-labelledby="account-heading"
+        style={{ marginTop: "var(--space-12)" }}
       >
-        Weekly monitoring re-runs the AI Visibility Audit every Monday so your
-        Ozvor AI Visibility Score trend keeps updating. Turn it on for the brands you want
-        to track continuously.
-      </p>
-
-      {/* ── Account & settings — your account, separate from brand data ───── */}
-      <hr
-        style={{
-          border: "none",
-          borderTop: "1px solid var(--color-border)",
-          margin: "var(--space-10) 0 var(--space-6)",
-        }}
-      />
-      <section aria-labelledby="account-heading">
+        {/* Section eyebrow + heading */}
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "0.6875rem",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase" as const,
+            color: "var(--color-accent-ink)",
+            marginBottom: "var(--space-1)",
+          }}
+        >
+          Your account
+        </div>
         <div
           style={{
             display: "flex",
@@ -558,14 +811,29 @@ export default function DashboardPage() {
             alignItems: "baseline",
             gap: "var(--space-3)",
             flexWrap: "wrap",
-            marginBottom: "var(--space-4)",
+            marginBottom: "var(--space-5)",
           }}
         >
-          <h2 id="account-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: 0 }}>
+          <h2
+            id="account-heading"
+            style={{
+              fontSize: "var(--font-size-h2)",
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              margin: 0,
+              color: "var(--color-text)",
+            }}
+          >
             Account &amp; settings
           </h2>
           {accountEmail && (
-            <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+            <span
+              style={{
+                fontSize: "var(--font-size-caption)",
+                color: "var(--color-muted)",
+                fontFamily: "var(--font-mono)",
+              }}
+            >
               {accountEmail}
             </span>
           )}
@@ -577,45 +845,84 @@ export default function DashboardPage() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: "var(--space-3)",
+            gap: "var(--space-4)",
             flexWrap: "wrap",
-            padding: "var(--space-4) var(--space-5)",
-            backgroundColor: "var(--color-surface)",
+            padding: "var(--space-5) var(--space-6)",
+            background: "var(--color-surface)",
             border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-card)",
             marginBottom: "var(--space-4)",
           }}
         >
           <div>
             <div
               style={{
-                fontSize: "var(--font-size-caption)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.6875rem",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase" as const,
                 color: "var(--color-muted)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                fontWeight: 700,
+                marginBottom: "var(--space-1)",
               }}
             >
               Your plan
             </div>
-            <div style={{ fontSize: "var(--font-size-h4)", fontWeight: 800, textTransform: "capitalize" }}>
+            <div
+              style={{
+                fontSize: "var(--font-size-h3)",
+                fontWeight: 800,
+                textTransform: "capitalize",
+                color: "var(--color-text)",
+                letterSpacing: "-0.01em",
+              }}
+            >
               {plan ?? "Free"}
-              {planStatus && planStatus !== "active" ? ` · ${planStatus}` : ""}
+              {planStatus && planStatus !== "active" ? (
+                <span
+                  style={{
+                    marginLeft: "var(--space-2)",
+                    fontSize: "var(--font-size-caption)",
+                    color: "var(--color-note-warn)",
+                    fontWeight: 600,
+                    fontFamily: "var(--font-mono)",
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  · {planStatus}
+                </span>
+              ) : null}
             </div>
           </div>
           <a
             href="/account/billing"
-            style={{ color: "var(--color-primary)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              background: "linear-gradient(135deg,#27c98a,#0c7d54)",
+              color: "#06140e",
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-body-sm)",
+              fontWeight: 700,
+              padding: "10px 18px",
+              borderRadius: "var(--radius-md)",
+              textDecoration: "none",
+              boxShadow: "0 6px 20px rgba(39,201,138,0.22)",
+              minHeight: "var(--min-tap-target)",
+              whiteSpace: "nowrap",
+            }}
           >
             Manage billing →
           </a>
         </div>
 
-        {/* Account areas */}
+        {/* Account area cards */}
         <div
+          className="db-account-grid"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             gap: "var(--space-3)",
           }}
         >
@@ -623,18 +930,36 @@ export default function DashboardPage() {
             <a
               key={s.href}
               href={s.href}
-              style={{
-                display: "block",
-                padding: "var(--space-4)",
-                backgroundColor: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)",
-                textDecoration: "none",
-                color: "var(--color-text)",
-              }}
+              className="db-account-link"
             >
-              <div style={{ fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>{s.title}</div>
-              <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{s.desc}</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  marginBottom: "var(--space-1)",
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: "1rem" }}>{s.icon}</span>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "var(--font-size-body-sm)",
+                    color: "var(--color-text)",
+                  }}
+                >
+                  {s.title}
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: "var(--font-size-caption)",
+                  color: "var(--color-muted)",
+                  lineHeight: 1.45,
+                }}
+              >
+                {s.desc}
+              </div>
             </a>
           ))}
         </div>
@@ -644,45 +969,329 @@ export default function DashboardPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Summary tiles (fallback when no featured scorecard)
+// StatTile — fallback summary tile when featured scorecard is unavailable
 // ---------------------------------------------------------------------------
 
-function Tile({ label, value }: { label: string; value: string }) {
+function StatTile({
+  label,
+  value,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+}) {
   return (
     <div
       style={{
-        backgroundColor: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
+        padding: "var(--space-5) var(--space-5)",
         borderRadius: "var(--radius-lg)",
-        padding: "var(--space-5)",
+        border: "1px solid var(--color-border)",
+        background: "var(--color-surface)",
         boxShadow: "var(--shadow-card)",
       }}
     >
       <div
         style={{
-          fontSize: "clamp(1.75rem, 4vw, 2.25rem)",
-          fontWeight: 800,
-          letterSpacing: "-0.03em",
-          color: "var(--color-text)",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: "var(--font-size-caption)",
+          fontFamily: "var(--font-mono)",
+          fontSize: "0.6875rem",
+          letterSpacing: "0.1em",
+          textTransform: "uppercase" as const,
           color: "var(--color-muted)",
-          marginTop: "var(--space-1)",
+          marginBottom: "var(--space-2)",
         }}
       >
         {label}
       </div>
+      <div
+        style={{
+          fontSize: "clamp(2rem, 5vw, 2.75rem)",
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          lineHeight: 1,
+          background: "linear-gradient(120deg,#3ad79a,#0e8a59)",
+          WebkitBackgroundClip: "text",
+          backgroundClip: "text",
+          color: "transparent",
+          fontFamily: "var(--font-mono)",
+        }}
+      >
+        {value}
+      </div>
+      {suffix && (
+        <div
+          style={{
+            marginTop: "var(--space-1)",
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+          }}
+        >
+          {suffix}
+        </div>
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Mini score ring for brand list rows — more visual than the flat ScoreBadge
+// BrandCard — single brand row in the brand list
+// ---------------------------------------------------------------------------
+
+function BrandCard({
+  brand,
+  isFeatured,
+  busyId,
+  onToggle,
+}: {
+  brand: Brand;
+  isFeatured: boolean;
+  busyId: string | null;
+  onToggle: (brand: Brand) => void;
+}) {
+  return (
+    <div
+      className={`db-brand-card${isFeatured ? " db-brand-card--featured" : ""}`}
+    >
+      {/* Brand name + meta */}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        {isFeatured && (
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.6rem",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase" as const,
+              color: "var(--color-accent-ink)",
+              marginBottom: "var(--space-1)",
+            }}
+          >
+            Featured
+          </div>
+        )}
+        <a
+          href={`/brands/${brand.id}`}
+          style={{
+            fontWeight: 700,
+            fontSize: "var(--font-size-body)",
+            color: "var(--color-text)",
+            textDecoration: "none",
+            display: "block",
+            lineHeight: 1.3,
+          }}
+        >
+          {brand.name}
+        </a>
+        <div
+          style={{
+            marginTop: "var(--space-1)",
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {brand.region}
+          {brand.category ? ` · ${brand.category}` : ""}
+        </div>
+      </div>
+
+      {/* Score ring or placeholder */}
+      {typeof brand.latest_score === "number" ? (
+        <ScoreMiniRing score={brand.latest_score} />
+      ) : (
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            padding: "4px 10px",
+            borderRadius: "var(--radius-pill)",
+            border: "1px solid var(--color-border)",
+            background: "var(--color-surface-muted)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          no audit yet
+        </span>
+      )}
+
+      {/* View detail CTA */}
+      <a
+        href={`/brands/${brand.id}`}
+        aria-label={`View full report for ${brand.name}`}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          fontSize: "var(--font-size-caption)",
+          fontWeight: 700,
+          color: "var(--color-accent-ink)",
+          textDecoration: "none",
+          padding: "6px 12px",
+          borderRadius: "var(--radius-sm)",
+          border: "1px solid rgba(39,201,138,0.30)",
+          background: "rgba(39,201,138,0.07)",
+          whiteSpace: "nowrap",
+          minHeight: "var(--min-tap-target)",
+          transition: "background .15s ease, border-color .15s ease",
+        }}
+      >
+        View report →
+      </a>
+
+      {/* Weekly monitoring toggle */}
+      <label
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          cursor: busyId === brand.id ? "wait" : "pointer",
+          flexShrink: 0,
+          minHeight: "var(--min-tap-target)",
+        }}
+        aria-label={`Weekly monitoring for ${brand.name}: ${brand.monitoring_enabled ? "enabled" : "disabled"}`}
+      >
+        <input
+          type="checkbox"
+          className="db-monitoring-toggle"
+          checked={!!brand.monitoring_enabled}
+          disabled={busyId === brand.id}
+          onChange={() => onToggle(brand)}
+          aria-label={`Enable weekly monitoring for ${brand.name}`}
+          style={{
+            width: 18,
+            height: 18,
+            accentColor: "var(--color-primary)",
+            cursor: busyId === brand.id ? "wait" : "pointer",
+          }}
+        />
+        <span
+          style={{
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            userSelect: "none" as const,
+          }}
+        >
+          Weekly
+        </span>
+      </label>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EmptyBrandsState — on-brand empty state
+// ---------------------------------------------------------------------------
+
+function EmptyBrandsState() {
+  return (
+    <div
+      style={{
+        marginTop: "var(--space-4)",
+        padding: "var(--space-10) var(--space-6)",
+        background: "var(--color-surface)",
+        border: "1px dashed rgba(39,201,138,0.32)",
+        borderRadius: "var(--radius-xl)",
+        textAlign: "center",
+      }}
+    >
+      {/* Decorative ring */}
+      <div
+        aria-hidden="true"
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 72,
+          height: 72,
+          borderRadius: "50%",
+          background: "rgba(39,201,138,0.10)",
+          border: "2px solid rgba(39,201,138,0.28)",
+          margin: "0 auto var(--space-5)",
+        }}
+      >
+        <svg
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="9"
+            stroke="#27c98a"
+            strokeWidth="1.8"
+            fill="none"
+            strokeDasharray="4 2"
+          />
+          <line x1="12" y1="8" x2="12" y2="16" stroke="#27c98a" strokeWidth="1.8" strokeLinecap="round" />
+          <line x1="8" y1="12" x2="16" y2="12" stroke="#27c98a" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      </div>
+
+      {/* Eyebrow */}
+      <div
+        style={{
+          fontFamily: "var(--font-mono)",
+          fontSize: "0.6875rem",
+          letterSpacing: "0.12em",
+          textTransform: "uppercase" as const,
+          color: "var(--color-accent-ink)",
+          marginBottom: "var(--space-2)",
+        }}
+      >
+        No brands yet
+      </div>
+
+      <h3
+        style={{
+          fontSize: "var(--font-size-h2)",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          margin: "0 0 var(--space-3)",
+          color: "var(--color-text)",
+        }}
+      >
+        Add your first brand
+      </h3>
+      <p
+        style={{
+          maxWidth: 420,
+          margin: "0 auto var(--space-6)",
+          fontSize: "var(--font-size-body-sm)",
+          lineHeight: 1.6,
+          color: "var(--color-muted)",
+        }}
+      >
+        Run your first AI Visibility Audit and see how AI search engines cite
+        your brand across ChatGPT, Claude, Perplexity, Gemini, and Google AI.
+      </p>
+
+      <a
+        href="/brands"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          background: "linear-gradient(135deg,#27c98a,#0c7d54)",
+          color: "#06140e",
+          fontFamily: "var(--font-family)",
+          fontSize: "var(--font-size-body)",
+          fontWeight: 700,
+          padding: "14px 24px",
+          borderRadius: "var(--radius-md)",
+          textDecoration: "none",
+          boxShadow: "0 10px 28px rgba(39,201,138,0.28)",
+          minHeight: "var(--min-tap-target)",
+        }}
+      >
+        Run your first audit →
+      </a>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ScoreMiniRing — compact SVG ring for brand list rows
 // ---------------------------------------------------------------------------
 
 function ScoreMiniRing({ score }: { score: number }) {

@@ -156,7 +156,12 @@ export function buildTestPrompts(category: string, brand: string): string[] {
   ];
 }
 
-const LIVE_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "gemini", "perplexity"];
+// ALL 5 engines — matches the "All 5 AI engines" promise on the Free plan and
+// the in-platform audit (which also runs all 5). serp = Google AI Overview
+// (DataForSEO). The routing gate still drops region-blocked engines (e.g. EU),
+// and any engine without its key falls back to deterministic mock, so this is
+// safe even when some keys are unset.
+const LIVE_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "gemini", "perplexity", "serp"];
 
 /**
  * Returns true only if the specific provider's API key env var is set.
@@ -168,6 +173,7 @@ function isProviderLive(provider: LLMProvider): boolean {
     case "openai":     return !!process.env["OPENAI_API_KEY"];
     case "gemini":     return !!process.env["GEMINI_API_KEY"];
     case "perplexity": return !!process.env["PERPLEXITY_API_KEY"];
+    case "serp":       return !!process.env["SERP_API_KEY"];
     default:           return false;
   }
 }
