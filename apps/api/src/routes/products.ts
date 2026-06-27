@@ -136,7 +136,31 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     if (!brand) return c.json({ message: "Brand name is required." }, 400);
     if (!category) return c.json({ message: "Category is required." }, 400);
-    if (email && !EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
+    if (!email) return c.json({ message: "Email is required to run the free test." }, 400);
+    if (!EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
+
+    // One free test per email. If this email already ran one, don't run another
+    // (cost control + funnel: push them to convert). Best-effort — a DB error
+    // fails open so a transient issue never blocks a genuine first test.
+    try {
+      const prior = await db.query<{ id: string }>(
+        `SELECT id FROM lead_capture WHERE lower(email) = lower($1) LIMIT 1`,
+        [email]
+      );
+      if (prior.rows.length > 0) {
+        return c.json(
+          {
+            alreadyUsed: true,
+            message:
+              "This email already used its free AI Visibility Test. Create your account to run more audits, or get the $29 Get-Cited Kit.",
+            code: "FREE_TEST_ALREADY_USED",
+          },
+          200
+        );
+      }
+    } catch (err) {
+      logger.warn("free_test_dedupe_check_failed_open", { message: (err as Error).message });
+    }
 
     // Rate limit: 8 free tests / hour / IP (fail-open on Redis error)
     const rawIp = clientIp(c);
