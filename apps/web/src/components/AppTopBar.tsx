@@ -50,7 +50,7 @@ export function AppTopBar() {
       >
         <span aria-hidden="true">←</span> Back
       </button>
-      <ThemeToggle />
+      <ThemeToggle showLabel />
     </div>
   );
 }
