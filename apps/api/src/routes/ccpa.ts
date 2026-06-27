@@ -118,7 +118,7 @@ async function sendConfirmationEmail(
   requestType: string
 ): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
-  const fromAddress = process.env.RESEND_FROM_ADDRESS ?? "privacy@trustindexai.com";
+  const fromAddress = process.env.RESEND_FROM_ADDRESS ?? "privacy@ozvor.com";
 
   if (!apiKey) {
     logger.warn("ccpa_resend_not_configured", {
@@ -149,7 +149,7 @@ async function sendConfirmationEmail(
           <p><strong>${requestTypeLabel}</strong></p>
           <p>We will process your request within 45 days as required by California law.
              You may receive a follow-up email if we need to verify your identity.</p>
-          <p>If you did not submit this request, please contact us at privacy@trustindexai.com.</p>
+          <p>If you did not submit this request, please contact us at privacy@ozvor.com.</p>
           <p>Thank you,<br/>The Organic Posts Privacy Team</p>
         `,
       }),

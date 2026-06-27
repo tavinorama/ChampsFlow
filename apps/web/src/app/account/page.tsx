@@ -7,6 +7,7 @@
  */
 
 import Link from "next/link";
+import { AccountEmailBadge } from "../../components/AccountEmailBadge";
 
 interface Section {
   href: string;
@@ -41,6 +42,8 @@ export default function AccountHubPage() {
       <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, margin: "0 0 var(--space-6) 0" }}>
         Manage your subscription, connections, data and developer access.
       </p>
+
+      <AccountEmailBadge />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
         {SECTIONS.map((s) => (

@@ -444,8 +444,9 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         );
       }
 
-      // Billing interval — annual unlocks the founder discount (annual-only rule).
-      const interval: "month" | "year" = body.interval === "year" ? "year" : "month";
+      // Billing interval — ANNUAL is the default (founder rule + better retention);
+      // monthly is opt-in only. Annual also unlocks the founder discount.
+      const interval: "month" | "year" = body.interval === "month" ? "month" : "year";
       // Founder discount is applied by the Stripe layer ONLY when interval==='year'
       // (createCheckoutSession enforces it); a monthly request silently gets no
       // founder discount.

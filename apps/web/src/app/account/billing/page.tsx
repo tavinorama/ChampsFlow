@@ -213,8 +213,9 @@ function BillingPageInner(): React.ReactElement {
   const [fetchError, setFetchError] = useState<string | null>(null);
   // Monthly vs annual pricing view. Annual unlocks the founder 30% discount
   // (which the API applies only to annual checkouts).
+  // Annual is the default selection (better value + unlocks founder discount).
   const [billingInterval, setBillingInterval] =
-    useState<BillingInterval>("month");
+    useState<BillingInterval>("year");
   // Guard: track whether we've already fired the auto-checkout so it only
   // runs once per page load (prevents loops on checkout cancel/return).
   const autoCheckoutFiredRef = useRef(false);

@@ -105,7 +105,7 @@ async function sendConfirmationEmail(email: string): Promise<void> {
   if (!resendApiKey) return;
 
   const fromAddress =
-    process.env.EMAIL_FROM ?? "hello@trustindexai.com";
+    process.env.EMAIL_FROM ?? "hello@ozvor.com";
 
   const htmlBody = `<!DOCTYPE html>
 <html lang="en">

@@ -827,14 +827,14 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
     });
 
     // Send alert to DSR operations email
-    const opsEmail = process.env.DSR_OPERATIONS_EMAIL ?? "privacy@trustindexai.com";
+    const opsEmail = process.env.DSR_OPERATIONS_EMAIL ?? "privacy@ozvor.com";
     try {
       const resendApiKey = process.env.RESEND_API_KEY;
       if (resendApiKey) {
         const { Resend } = await import("resend");
         const resend = new Resend(resendApiKey);
         await resend.emails.send({
-          from: process.env.EMAIL_FROM ?? "noreply@trustindexai.com",
+          from: process.env.EMAIL_FROM ?? "noreply@ozvor.com",
           to: opsEmail,
           subject: `[DSR Escalation] Lost-email request — Account ID: ${account_id.trim()}`,
           text: [

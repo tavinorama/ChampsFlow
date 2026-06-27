@@ -164,8 +164,8 @@ export async function createCheckoutSession(
   // EU/US get card. Stripe handles currency per the configured Price.
   region: "BR" | "EU" | "US" = "EU",
   // Billing interval. "year" uses the annual price IDs and is the ONLY interval
-  // eligible for the founder discount.
-  interval: BillingInterval = "month",
+  // eligible for the founder discount. Annual is the DEFAULT (monthly is opt-in).
+  interval: BillingInterval = "year",
   // Whether the buyer is a founding member. The 30% founder discount is applied
   // ONLY when this is true AND interval === "year" (annual-only business rule).
   founder = false

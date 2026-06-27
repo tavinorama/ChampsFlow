@@ -30,7 +30,6 @@
 
 import { useState, useRef } from "react";
 import Link from "next/link";
-import { Footer } from "../../../components/Footer";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "rate_limited";
 
@@ -152,7 +151,6 @@ export default function DoNotSellPage() {
             </p>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -180,7 +178,6 @@ export default function DoNotSellPage() {
             </p>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -430,7 +427,6 @@ export default function DoNotSellPage() {
         </p>
       </div>
 
-      <Footer />
     </div>
   );
 }
