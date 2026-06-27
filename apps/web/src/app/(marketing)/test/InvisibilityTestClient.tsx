@@ -1004,6 +1004,36 @@ function ResultsPanel({
         </p>
       </div>
 
+      {/* Preview banner — when NO engine is live, the Visibility score is not a
+          real measurement. Be unmistakably honest (never present sample data as
+          a real score). */}
+      {!result.live && (
+        <div
+          role="alert"
+          style={{
+            ...cardStyle,
+            border: "1px solid var(--color-warning, #e6a93f)",
+            background: "rgba(230,169,63,0.08)",
+            display: "flex",
+            gap: "var(--space-3)",
+            alignItems: "flex-start",
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: "1.25rem", lineHeight: 1 }}>⚠️</span>
+          <div>
+            <strong style={{ display: "block", marginBottom: "var(--space-1)", color: "var(--color-text)" }}>
+              Preview mode — this isn&rsquo;t your real score yet
+            </strong>
+            <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              No live AI engines are connected, so the <strong>Visibility</strong> number below is
+              sample data — not a measurement of how ChatGPT, Claude, Perplexity, Gemini &amp; Google AI
+              actually answer about your brand. Citation Readiness (from your live site crawl) is real.
+              Connect provider keys to unlock your real Ozvor AI Visibility Score.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* C) Ozvor Scorecard */}
       <div style={cardStyle}>
         <TrustIndexScorecard
@@ -1117,6 +1147,7 @@ export function InvisibilityTestClient() {
   // Machine state
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<FreeTestResult | null>(null);
+  const [alreadyUsed, setAlreadyUsed] = useState<string | null>(null);
   const [testId, setTestId] = useState<string | null>(null);
   const [apiError, setApiError] = useState("");
 
@@ -1214,8 +1245,17 @@ export function InvisibilityTestClient() {
         setApiError(msg);
       } else {
         const data = await res.json();
-        setResult(data.result);
-        setTestId(data.testId ?? null);
+        // One free test per email — the API returns alreadyUsed instead of a
+        // fresh result. Show a conversion nudge, not a (missing) scorecard.
+        if (data.alreadyUsed) {
+          setAlreadyUsed(
+            data.message ??
+              "This email already used its free test. Create your account or get the Get-Cited Kit."
+          );
+        } else {
+          setResult(data.result);
+          setTestId(data.testId ?? null);
+        }
       }
     } catch {
       setApiError("Network error. Please check your connection and try again.");
@@ -1260,6 +1300,28 @@ export function InvisibilityTestClient() {
           setSubmitAttempted(false);
         }}
       />
+    );
+  }
+
+  // ---- Already-used state — one free test per email; nudge to convert ----
+  if (alreadyUsed) {
+    return (
+      <div style={cardStyle} role="status">
+        <h2 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-h3)", fontWeight: 800, letterSpacing: "-0.02em" }}>
+          You&rsquo;ve already used your free test
+        </h2>
+        <p style={{ margin: "0 0 var(--space-5)", color: "var(--color-muted)", lineHeight: 1.7, fontSize: "var(--font-size-body-sm)" }}>
+          {alreadyUsed}
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          <a href="/login?plan=growth&next=checkout&interval=year" style={{ ...primaryBtn(false), textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            Create your account →
+          </a>
+          <a href={kitHref} style={{ ...outlinedBtn(), textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            Get the Kit — $29
+          </a>
+        </div>
+      </div>
     );
   }
 

@@ -294,20 +294,26 @@ export async function runInvisibilityTest(
   }));
 
   const totalEngines = engines.length;
-  const brandEngineCount = engines.filter((e) => e.brandCited).length;
-  const competitorEngineCount = engines.filter((e) => e.competitorCited).length;
   const enginesLive = engines.filter((e) => e.live).length;
+  // Citation counts come from LIVE engines ONLY. Mock/demo engines (no provider
+  // key) must never fabricate a citation that inflates the score — that's how a
+  // 1-day-old domain wrongly scored ~88. With 0 live engines, nothing is
+  // measured: brandEngineCount = 0 and the AI vector is 0 (the UI flags it as a
+  // preview, not a real score).
+  const brandEngineCount = engines.filter((e) => e.live && e.brandCited).length;
+  const competitorEngineCount = engines.filter((e) => e.live && e.competitorCited).length;
 
   // --- AI vector ---
   // Honest rate over EVERY (prompt × engine) cell — not just per-engine — so one
   // lucky prompt can't read as 100%.
-  const totalCells = Array.from(byProvider.values()).reduce((s, a) => s + a.totalCells, 0);
-  const citedCells = Array.from(byProvider.values()).reduce((s, a) => s + a.citedCells, 0);
+  const liveAggs = Array.from(byProvider.values()).filter((a) => a.live);
+  const totalCells = liveAggs.reduce((s, a) => s + a.totalCells, 0);
+  const citedCells = liveAggs.reduce((s, a) => s + a.citedCells, 0);
   const citationRate = totalCells > 0 ? citedCells / totalCells : 0;
 
   // Average position across engines where brand was cited
   const citedPositions = engines
-    .filter((e) => e.brandCited && e.brandPosition !== null)
+    .filter((e) => e.live && e.brandCited && e.brandPosition !== null)
     .map((e) => e.brandPosition as number);
   const avgPosition: number | null =
     citedPositions.length > 0
@@ -317,10 +323,12 @@ export async function runInvisibilityTest(
   const avgPositionScore = avgPosition !== null ? 1 / avgPosition : 0;
 
   // Sentiment: analyze probe answers where brand was cited
-  const sentimentInputs = probeResult.responses.map((r) => ({
-    text: r.rawText ?? "",
-    mentioned: parseCitation(r.rawText ?? "", brand).mentioned,
-  }));
+  const sentimentInputs = probeResult.responses
+    .filter((r) => isProviderLive(r.provider))
+    .map((r) => ({
+      text: r.rawText ?? "",
+      mentioned: parseCitation(r.rawText ?? "", brand).mentioned,
+    }));
   const sentimentResult = analyzeSentiment(sentimentInputs, brand);
   const sentiment = sentimentResult.sentimentScore; // 0.5 if nothing classified
 
