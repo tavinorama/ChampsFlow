@@ -980,7 +980,7 @@ export default function PillarGeoPage() {
               Run free AI test &mdash; free
             </Link>
             <Link
-              href="/login?plan=growth&next=checkout"
+              href="/login?plan=growth&next=checkout&interval=year"
               style={{
                 display: "inline-flex",
                 alignItems: "center",

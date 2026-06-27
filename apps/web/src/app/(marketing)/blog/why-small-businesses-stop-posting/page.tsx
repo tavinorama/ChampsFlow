@@ -552,7 +552,7 @@ export default function BlogPost1Page() {
               Run free test &mdash; no credit card
             </Link>
             <Link
-              href="/login?plan=growth&next=checkout"
+              href="/login?plan=growth&next=checkout&interval=year"
               style={{
                 display: "inline-flex",
                 alignItems: "center",

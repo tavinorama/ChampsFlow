@@ -13,10 +13,26 @@
  */
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { ThemeToggle } from "./marketing/ThemeToggle";
+import { getSupabase } from "../lib/supabase-browser";
 
 export function AppTopBar() {
   const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await getSupabase().auth.signOut();
+    } catch {
+      /* even if the network call fails, send them to the public site */
+    }
+    // Full reload to clear any client state + land on the marketing home.
+    window.location.href = "/";
+  }
+
   return (
     <div
       style={{
@@ -50,7 +66,33 @@ export function AppTopBar() {
       >
         <span aria-hidden="true">←</span> Back
       </button>
-      <ThemeToggle showLabel />
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          aria-label="Log out of your account"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-1)",
+            minHeight: "var(--min-tap-target, 44px)",
+            padding: "0 var(--space-3)",
+            background: "none",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            cursor: loggingOut ? "default" : "pointer",
+            color: "var(--color-text)",
+            fontWeight: 600,
+            fontSize: "var(--font-size-body-sm)",
+            fontFamily: "var(--font-family)",
+            opacity: loggingOut ? 0.6 : 1,
+          }}
+        >
+          {loggingOut ? "Logging out…" : "Log out"}
+        </button>
+        <ThemeToggle showLabel />
+      </div>
     </div>
   );
 }

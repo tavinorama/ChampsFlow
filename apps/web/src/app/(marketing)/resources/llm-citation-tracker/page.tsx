@@ -281,7 +281,7 @@ export default function LlmCitationTrackerPage() {
               color: "var(--color-muted)",
             }}
           >
-            Free to download. Included with Growth ($99/mo) and Agency ($149/mo)
+            Free to download. Included with Growth ($99/mo) and Agency ($249/mo)
             plans.
           </p>
         </header>
@@ -880,7 +880,7 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Agency — $149/mo</strong> (or $1,251/yr founder) — up to 25
+              <strong>Agency — $249/mo</strong> (or $2,091/yr founder) — up to 25
               brands, white-label reports, client workflow.
             </li>
           </ul>
