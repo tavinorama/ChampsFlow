@@ -234,7 +234,7 @@ registerDraftRoutes(app, db);
 //   Public read-only (API-key-authed): GET /api/v1/{me,brands,brands/:id,
 //     brands/:id/audits,audits/:id}
 registerApiKeyRoutes(app, db);
-// C1: GEO Audit Engine (TrustIndex AI)
+// C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
 registerAuditRoutes(app, db);

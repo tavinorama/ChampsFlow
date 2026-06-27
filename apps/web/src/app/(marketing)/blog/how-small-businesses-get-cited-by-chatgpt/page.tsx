@@ -879,7 +879,7 @@ export default function PillarGeoPage() {
         </p>
 
         <p style={PROSE.p}>
-          Ozvor is live. Run the free AI Visibility Test and see your TrustIndex Score in 60 seconds &mdash; no credit card required. Founding members (first 100 annual subscribers) get a 30% founder discount plus a 30-day money-back guarantee.
+          Ozvor is live. Run the free AI Visibility Test and see your Ozvor AI Visibility Score in 60 seconds &mdash; no credit card required. Founding members (first 100 annual subscribers) get a 30% founder discount plus a 30-day money-back guarantee.
         </p>
 
         {/* Sources */}
@@ -957,7 +957,7 @@ export default function PillarGeoPage() {
               marginBottom: "var(--space-6)",
             }}
           >
-            Run the free test now and see your TrustIndex Score in 60 seconds.
+            Run the free test now and see your Ozvor AI Visibility Score in 60 seconds.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
             <Link

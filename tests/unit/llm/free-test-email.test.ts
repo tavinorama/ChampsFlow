@@ -51,7 +51,7 @@ describe("sendFreeTestResultEmail", () => {
 
   it("calls resend.emails.send with correct to, from (EMAIL_FROM), and subject containing the brand", async () => {
     process.env["RESEND_API_KEY"] = "re_test_key_123";
-    process.env["EMAIL_FROM"] = "TrustIndex AI <hello@trustindexai.com>";
+    process.env["EMAIL_FROM"] = "Ozvor <hello@ozvor.com>";
 
     // Capture what gets passed to resend.emails.send
     const sendMock = vi.fn().mockResolvedValue({ id: "email_test_id" });
@@ -80,7 +80,7 @@ describe("sendFreeTestResultEmail", () => {
     };
 
     expect(call.to).toBe("test@example.com");
-    expect(call.from).toBe("TrustIndex AI <hello@trustindexai.com>");
+    expect(call.from).toBe("Ozvor <hello@ozvor.com>");
     expect(call.subject).toContain("Acme Corp");
     expect(typeof call.text).toBe("string");
     expect(call.text.length).toBeGreaterThan(0);

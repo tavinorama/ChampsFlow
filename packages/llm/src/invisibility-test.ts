@@ -1,5 +1,5 @@
 /**
- * invisibility-test.ts — TrustIndex AI · "The AI Invisibility Test" (lead magnet)
+ * invisibility-test.ts — Ozvor · "The AI Invisibility Test" (lead magnet)
  *
  * The free hook: ONE high-intent buyer prompt, run across the AI engines for the
  * client's brand vs ONE competitor. Returns a visceral, instant scorecard:

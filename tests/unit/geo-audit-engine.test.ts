@@ -132,7 +132,7 @@ describe("parseCitation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scoring engine — TrustIndex Score
+// Scoring engine — Ozvor AI Visibility Score
 // ---------------------------------------------------------------------------
 
 describe("computeGeoScore", () => {

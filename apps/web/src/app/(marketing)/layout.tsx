@@ -1,5 +1,5 @@
 /**
- * Marketing layout — TrustIndex AI
+ * Marketing layout — Ozvor
  *
  * v6 changes:
  *  - Inter / Plus Jakarta Sans import removed; global Schibsted Grotesk
@@ -380,7 +380,7 @@ const MARKETING_STYLES = `
     .mk-signin   { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
     /* On phones the brand wordmark is the space hog. Show the logo MARK only so
        Free + Kit $29 + theme toggle + Sign in all fit without clipping. The full
-       "TrustIndex AI" wordmark returns on wider screens. */
+       "Ozvor" wordmark returns on wider screens. */
     .mk-logo-word { display: none !important; }
   }
 
@@ -602,7 +602,7 @@ function MarketingFooter() {
               }}
             >
               Ozvor is the home of{" "}
-              <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>TrustIndex AI</strong>{" "}
+              <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>Ozvor</strong>{" "}
               &mdash; the method that combines AI, Brand &amp; Performance to earn your place in AI
               answers &mdash; and{" "}
               <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>OrganicPosts</strong>.

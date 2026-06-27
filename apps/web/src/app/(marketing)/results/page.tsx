@@ -3,7 +3,7 @@
  *
  * Honest, no-fabrication page:
  *  1. Hero "Real numbers, published every Monday."
- *  2. Live panel — 8-week TrustIndex AI Score trend (44→72) + citation-rate-by-engine bars.
+ *  2. Live panel — 8-week Ozvor AI Visibility Score trend (44→72) + citation-rate-by-engine bars.
  *  3. "No fabricated testimonials. Ever." — three dashed reserved-quote slots.
  *  4. CTA — run the test & share your results.
  * Server component, SSR, real <a href>.
@@ -15,11 +15,11 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Case study — Real Ozvor numbers, published every Monday",
   description:
-    "We run Ozvor on ourselves and publish the raw numbers weekly: an 8-week TrustIndex AI Score trend and citation rate by engine. No fabricated testimonials — ever.",
+    "We run Ozvor on ourselves and publish the raw numbers weekly: an 8-week Ozvor AI Visibility Score trend and citation rate by engine. No fabricated testimonials — ever.",
   alternates: { canonical: "https://ozvor.com/results" },
   openGraph: {
     title: "Case study — Real Ozvor numbers, every Monday",
-    description: "Building in public: our own TrustIndex AI Score over 8 weeks + citation rate by engine.",
+    description: "Building in public: our own Ozvor AI Visibility Score over 8 weeks + citation rate by engine.",
     url: "https://ozvor.com/results",
     siteName: "Ozvor",
     type: "website",
@@ -61,7 +61,7 @@ export default function ResultsPage() {
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "640px", margin: 0 }}>
         We run Ozvor on ourselves and publish the raw score every week. No cherry-picking — just the
-        TrustIndex AI Score moving (or not) across the five engines.
+        Ozvor AI Visibility Score moving (or not) across the five engines.
       </p>
 
       {/* Live panels */}
@@ -69,10 +69,10 @@ export default function ResultsPage() {
         {/* Trend */}
         <div className="res-card">
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "var(--space-4)" }}>
-            <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 700 }}>TrustIndex AI Score · 8 weeks</h2>
+            <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 700 }}>Ozvor AI Visibility Score · 8 weeks</h2>
             <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)" }}>{TREND[0]} → {TREND[TREND.length - 1]}</span>
           </div>
-          <div className="res-bars" role="img" aria-label={`Weekly TrustIndex AI Score from ${TREND[0]} to ${TREND[TREND.length - 1]} over 8 weeks`}>
+          <div className="res-bars" role="img" aria-label={`Weekly Ozvor AI Visibility Score from ${TREND[0]} to ${TREND[TREND.length - 1]} over 8 weeks`}>
             {TREND.map((v, i) => (
               <div key={i} className="res-bar" style={{ height: `${(v / maxTrend) * 100}%`, opacity: i === TREND.length - 1 ? 1 : 0.65 }} />
             ))}

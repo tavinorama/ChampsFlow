@@ -357,7 +357,7 @@ export default async function VideoPostPage({
             Ozvor is an AI Search Trust Intelligence platform for small
             and medium businesses. We audit how your brand appears across
             ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — then
-            give you the TrustIndex Score and a GEO content plan to improve
+            give you the Ozvor AI Visibility Score and a GEO content plan to improve
             your visibility.
           </p>
         </section>
@@ -434,7 +434,7 @@ export default async function VideoPostPage({
               marginBottom: "var(--space-6)",
             }}
           >
-            Run a free TrustIndex Audit and find out if AI recommends your
+            Run a free Ozvor AI Visibility Audit and find out if AI recommends your
             business — or a competitor. Takes 60 seconds. No credit card
             required.
           </p>

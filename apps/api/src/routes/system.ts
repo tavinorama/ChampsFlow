@@ -1,5 +1,5 @@
 /**
- * System transparency routes — TrustIndex AI
+ * System transparency routes — Ozvor
  *
  * GET /api/system/capabilities  (PUBLIC, no auth)
  *   Reports every engine/tool the product uses, what it powers, what
@@ -161,7 +161,7 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
         },
         {
           id: "score",
-          name: "TrustIndex Score",
+          name: "Ozvor AI Visibility Score",
           summary:
             "A 0–100 score from three weighted vectors (AI 35%, Performance 35%, Brand 30%). Every input is labelled measured (live) or baseline (placeholder). Aligned with Google's official 2026 generative-AI guidance — llms.txt is informational only and never scored.",
           tools: [],
@@ -190,7 +190,7 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
           id: "monitor",
           name: "Weekly Monitor (flywheel)",
           summary:
-            "Re-runs the audit weekly, tracks your TrustIndex Score over time, and flags competitor mentions, lost citations, and answer drift.",
+            "Re-runs the audit weekly, tracks your Ozvor AI Visibility Score over time, and flags competitor mentions, lost citations, and answer drift.",
           tools: [],
         },
       ],

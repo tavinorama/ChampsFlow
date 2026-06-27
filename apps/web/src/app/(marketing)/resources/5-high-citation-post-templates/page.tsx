@@ -921,7 +921,7 @@ export default function PostTemplatesPage() {
             working — which queries you&rsquo;re cited for, what position, by which
             engine, versus which competitors — is step two. Ozvor audits
             how your brand appears across all five AI surfaces, computes your{" "}
-            <strong>TrustIndex Score</strong> (Brand 30% / Performance 35% / AI
+            <strong>Ozvor AI Visibility Score</strong> (Brand 30% / Performance 35% / AI
             35%), benchmarks you against up to 10 competitors, and builds a
             prioritised GEO content plan.
           </p>

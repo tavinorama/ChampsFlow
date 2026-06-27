@@ -1,5 +1,5 @@
 /**
- * cookieConsent.ts — TrustIndex AI consent storage + gating utilities
+ * cookieConsent.ts — Ozvor consent storage + gating utilities
  *
  * JURISDICTION HEURISTIC
  * ─────────────────────────────────────────────────────────────────────────

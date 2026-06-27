@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 /**
- * sitemap.xml — public, AI-crawlable surface of TrustIndex AI.
+ * sitemap.xml — public, AI-crawlable surface of Ozvor.
  *
  * Lists only indexable marketing/content/legal routes. Authenticated app
  * routes (/dashboard, /brands, /account/*), legacy routes (/create, /schedule),

@@ -5,7 +5,7 @@
  *  1. Hero
  *  2. Four-move walkthrough — 01/02/03 emerald (Audit · Benchmark · Plan & publish)
  *     + 04 GOLD "Monitor — or hand it to us" → OrganicPosts (the ladder summit)
- *  3. "What your TrustIndex AI Score is made of" — AI / Performance / Brand sub-scores
+ *  3. "What your Ozvor AI Visibility Score is made of" — AI / Performance / Brand sub-scores
  *  4. CTA → free test
  */
 
@@ -42,7 +42,7 @@ const howToJsonLd = {
     { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini and Google AI Overview and record whether you're cited." },
     { "@type": "HowToStep", position: 2, name: "Benchmark", text: "See who AI recommends instead of you, and the sources it trusts." },
     { "@type": "HowToStep", position: 3, name: "Plan & publish", text: "Get a GEO content plan and let Content Studio draft the fix you publish." },
-    { "@type": "HowToStep", position: 4, name: "Monitor", text: "Re-run weekly and track your TrustIndex AI Score — or hand the engagement to OrganicPosts." },
+    { "@type": "HowToStep", position: 4, name: "Monitor", text: "Re-run weekly and track your Ozvor AI Visibility Score — or hand the engagement to OrganicPosts." },
   ],
 };
 
@@ -147,7 +147,7 @@ export default function HowItWorksPage() {
           num="04"
           gold
           title="Monitor — or hand it to us"
-          body="Growth and Agency re-run your audit weekly and track your TrustIndex AI Score over time. When you'd rather not run it yourself, OrganicPosts does the whole engagement with you."
+          body="Growth and Agency re-run your audit weekly and track your Ozvor AI Visibility Score over time. When you'd rather not run it yourself, OrganicPosts does the whole engagement with you."
         />
         <div style={{ paddingLeft: "calc(44px + var(--space-5))" }}>
           <Link href="/organicposts" style={{ color: "var(--color-gold-ink)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}>
@@ -158,9 +158,9 @@ export default function HowItWorksPage() {
 
       {/* Score breakdown */}
       <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="score-made-of">
-        <span className="hiw-eyebrow">The TrustIndex AI method · AI × Brand × Performance</span>
+        <span className="hiw-eyebrow">The Ozvor method · AI × Brand × Performance</span>
         <h2 id="score-made-of" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-3) 0 var(--space-6)" }}>
-          What your TrustIndex AI Score is made of.
+          What your Ozvor AI Visibility Score is made of.
         </h2>
         <div className="hiw-grid">
           {VECTORS.map((v) => (

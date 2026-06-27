@@ -156,7 +156,7 @@ export default function ApiKeysPage() {
         API keys
       </h1>
       <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, margin: "0 0 var(--space-6) 0" }}>
-        Pull your TrustIndex AI Scores and audit history into your own tools — dashboards,
+        Pull your Ozvor AI Visibility Scores and audit history into your own tools — dashboards,
         spreadsheets, Zapier, anything that speaks HTTP. Keys are read-only and scoped to your
         workspace.
       </p>
@@ -355,7 +355,7 @@ export default function ApiKeysPage() {
           <div style={{ fontWeight: 700, marginBottom: "var(--space-1)" }}>Endpoints (read-only)</div>
           <ul style={{ margin: 0, paddingLeft: "1.1rem", color: "var(--color-muted)" }}>
             <li><code style={codeInline}>GET /v1/me</code> — your workspace, plan and key scopes</li>
-            <li><code style={codeInline}>GET /v1/brands</code> — all brands + latest TrustIndex AI Score</li>
+            <li><code style={codeInline}>GET /v1/brands</code> — all brands + latest Ozvor AI Visibility Score</li>
             <li><code style={codeInline}>GET /v1/brands/:id</code> — brand detail + score breakdown</li>
             <li><code style={codeInline}>GET /v1/brands/:id/audits</code> — recent audits for a brand</li>
             <li><code style={codeInline}>GET /v1/audits/:id</code> — a single audit&rsquo;s scores</li>

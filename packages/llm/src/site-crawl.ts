@@ -1,5 +1,5 @@
 /**
- * Site crawl — TrustIndex AI
+ * Site crawl — Ozvor
  *
  * Turns the Brand + Performance score vectors from baseline placeholders into
  * MEASURED signal by analyzing the brand's actual website. No new deps: uses
@@ -24,7 +24,7 @@
 
 const TIMEOUT_MS = 8000;
 const MAX_BODY = 512 * 1024; // 512KB
-const UA = "TrustIndexAI-Crawler/1.0 (+https://trustindexai.com/bot)";
+const UA = "OzvorBot-Crawler/1.0 (+https://ozvor.com/bot)";
 
 export interface SiteCrawlResult {
   reachable: boolean;

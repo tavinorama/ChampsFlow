@@ -197,7 +197,7 @@ export async function sendBonusDeliveryEmail(
       </li>
       <li>
         <strong>Fix the top-3 issues</strong> &mdash; your audit highlights the highest-impact
-        changes. Knock those out first; they typically lift your TrustIndex Score
+        changes. Knock those out first; they typically lift your Ozvor AI Visibility Score
         within one audit cycle.
       </li>
       <li>

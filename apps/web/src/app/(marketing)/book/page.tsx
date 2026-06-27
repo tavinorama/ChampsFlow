@@ -156,7 +156,7 @@ export default function BookPage() {
             In 20 minutes we&rsquo;ll walk through your brand&rsquo;s AI
             search visibility, identify the gaps costing you citations, and
             map out the three actions with the biggest impact on your
-            TrustIndex Score.
+            Ozvor AI Visibility Score.
           </p>
 
           {/* Value bullets */}
@@ -217,7 +217,7 @@ export default function BookPage() {
                   fontWeight: "var(--font-weight-semibold)",
                 }}
               >
-                free TrustIndex Audit
+                free Ozvor AI Visibility Audit
               </Link>{" "}
               — it takes 60 seconds and gives us something concrete to discuss
               on the call.
@@ -284,7 +284,7 @@ function FallbackSection() {
           }}
         >
           The booking calendar is not yet configured. In the meantime, run your
-          free TrustIndex Audit to get your AI search visibility score
+          free Ozvor AI Visibility Audit to get your AI search visibility score
           instantly.
         </p>
         <Link

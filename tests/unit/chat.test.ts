@@ -285,7 +285,7 @@ describe("POST /api/chat — prompt sanitization", () => {
 
     expect(res.status).toBe(200);
     const json = await res.json() as Record<string, unknown>;
-    expect(json["reply"]).toContain("TrustIndex AI");
+    expect(json["reply"]).toContain("Ozvor");
     // Must NOT have called Anthropic
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -366,7 +366,7 @@ describe("POST /api/chat — Anthropic integration", () => {
   it("returns 200 with reply from Anthropic on success", async () => {
     const app = buildApp();
     mockFetch.mockResolvedValueOnce(
-      anthropicOkResponse("TrustIndex AI helps you get cited by AI.")
+      anthropicOkResponse("Ozvor helps you get cited by AI.")
     );
 
     const res = await app.fetch(
@@ -374,7 +374,7 @@ describe("POST /api/chat — Anthropic integration", () => {
     );
     expect(res.status).toBe(200);
     const json = await res.json() as Record<string, unknown>;
-    expect(json["reply"]).toBe("TrustIndex AI helps you get cited by AI.");
+    expect(json["reply"]).toBe("Ozvor helps you get cited by AI.");
   });
 
   it("returns 200 with canned offline response when ANTHROPIC_API_KEY is missing", async () => {
@@ -535,7 +535,7 @@ describe("POST /api/chat — output scrubber", () => {
     expect(res.status).toBe(200);
     const json = await res.json() as Record<string, unknown>;
     // Must NOT echo the system prompt — must return the redirect instead
-    expect(json["reply"]).toContain("TrustIndex AI");
+    expect(json["reply"]).toContain("Ozvor");
     expect(json["reply"]).not.toContain("INVIOLABLE");
   });
 
@@ -550,7 +550,7 @@ describe("POST /api/chat — output scrubber", () => {
     );
     expect(res.status).toBe(200);
     const json = await res.json() as Record<string, unknown>;
-    expect(json["reply"]).toContain("TrustIndex AI");
+    expect(json["reply"]).toContain("Ozvor");
     expect(json["reply"]).not.toContain("sk-ant-");
   });
 
@@ -565,13 +565,13 @@ describe("POST /api/chat — output scrubber", () => {
     );
     expect(res.status).toBe(200);
     const json = await res.json() as Record<string, unknown>;
-    expect(json["reply"]).toContain("TrustIndex AI");
+    expect(json["reply"]).toContain("Ozvor");
     expect(json["reply"]).not.toContain("═══");
   });
 
   it("passes through clean model output without scrubbing", async () => {
     mockFetch.mockResolvedValueOnce(
-      anthropicOkResponse("Great question! TrustIndex AI audits your brand across ChatGPT, Claude, Perplexity, and Gemini. Start with the free test at /test.")
+      anthropicOkResponse("Great question! Ozvor audits your brand across ChatGPT, Claude, Perplexity, and Gemini. Start with the free test at /test.")
     );
 
     const app = buildApp();
@@ -580,7 +580,7 @@ describe("POST /api/chat — output scrubber", () => {
     );
     expect(res.status).toBe(200);
     const json = await res.json() as Record<string, unknown>;
-    expect(json["reply"]).toContain("TrustIndex AI");
+    expect(json["reply"]).toContain("Ozvor");
     expect(json["reply"]).toContain("/test");
   });
 });

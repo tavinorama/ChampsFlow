@@ -1,5 +1,5 @@
 /**
- * offsite-signal.ts — TrustIndex AI
+ * offsite-signal.ts — Ozvor
  *
  * Measures a brand's presence on the high-authority sources AI engines cite
  * MOST often (frequently more than the brand's own site): Reddit, Wikipedia,

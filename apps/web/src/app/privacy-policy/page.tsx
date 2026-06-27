@@ -46,7 +46,7 @@ export default function PrivacyPolicyPage() {
             <tbody>
               <tr><td style={cell}>Account: email, role, Supabase user ID</td><td style={cell}>Create your account, passwordless login</td><td style={cell}>Contract (Art. 6(1)(b) / Art. 7(V))</td></tr>
               <tr><td style={cell}>Brand profile: brand name, domain, settings</td><td style={cell}>Run audits and monitoring</td><td style={cell}>Contract</td></tr>
-              <tr><td style={cell}>Audit evidence: synthetic prompts, citation flags, source URLs</td><td style={cell}>Compute your TrustIndex Score</td><td style={cell}>Contract</td></tr>
+              <tr><td style={cell}>Audit evidence: synthetic prompts, citation flags, source URLs</td><td style={cell}>Compute your Ozvor AI Visibility Score</td><td style={cell}>Contract</td></tr>
               <tr><td style={cell}>Off-site signals (public sources)</td><td style={cell}>Measure brand authority</td><td style={cell}>Legitimate interests (Art. 6(1)(f) / Art. 7(IX))</td></tr>
               <tr><td style={cell}>Billing: name, email, Stripe ID, region (no card data stored by us)</td><td style={cell}>Process payments</td><td style={cell}>Contract</td></tr>
               <tr><td style={cell}>BYOK API keys (encrypted, AES-256-GCM)</td><td style={cell}>Run audits with your own provider keys</td><td style={cell}>Contract</td></tr>

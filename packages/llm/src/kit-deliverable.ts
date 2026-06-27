@@ -1,8 +1,8 @@
 /**
- * kit-deliverable.ts — TrustIndex AI · "The Get-Cited Kit" ($29 tripwire)
+ * kit-deliverable.ts — Ozvor · "The Get-Cited Kit" ($29 tripwire)
  *
  * Assembles the one-time, no-subscription deliverable a buyer gets for $29:
- *   1. Full AI Visibility audit + TrustIndex Score (3 vectors)
+ *   1. Full AI Visibility audit + Ozvor AI Visibility Score (3 vectors)
  *   2. Top 3 highest-impact "get cited" fixes (from the strategy engine)
  *   3. Three ready-to-publish drafts (blog + LinkedIn + FAQ, with schema.org)
  *   4. A "where to publish" checklist

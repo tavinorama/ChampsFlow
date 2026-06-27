@@ -1,5 +1,5 @@
 /**
- * reddit-signal.ts — TrustIndex AI · C5 Reddit deep-dive
+ * reddit-signal.ts — Ozvor · C5 Reddit deep-dive
  *
  * Reddit is the #1 most-cited domain across ChatGPT / Gemini / Perplexity
  * (2025 Semrush studies). offsite-signal.ts already records a binary

@@ -300,11 +300,11 @@ We will tell you plainly what GEO **can** and **cannot** do, because the field i
 
 Here is the path, and it starts free.
 
-**Step 1 — The free AI Visibility Test.** In a couple of minutes, with no credit card, you find out exactly where you stand: how often you are cited across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, benchmarked against a competitor, with your **TrustIndex Score** — a single number built on three vectors: **Brand (30%)** (does AI recognize you as a real, established business?), **Performance (35%)** (can engines technically read and parse your site?), and **AI (35%)** (how often, how prominently, and how favorably are you actually cited?). The free tier covers 1 brand, 1 competitor, and a 10-prompt snapshot audit.
+**Step 1 — The free AI Visibility Test.** In a couple of minutes, with no credit card, you find out exactly where you stand: how often you are cited across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, benchmarked against a competitor, with your **Ozvor AI Visibility Score** — a single number built on three vectors: **Brand (30%)** (does AI recognize you as a real, established business?), **Performance (35%)** (can engines technically read and parse your site?), and **AI (35%)** (how often, how prominently, and how favorably are you actually cited?). The free tier covers 1 brand, 1 competitor, and a 10-prompt snapshot audit.
 
 **Step 2 — The Get-Cited Kit ($29).** The Kit turns the diagnosis into action: your prioritized top fixes ranked by impact and effort, three ready-to-publish drafts — a blog post, a LinkedIn post, and an FAQ entry, each with schema.org markup — written to follow the citation-worthy traits from Section 4, plus this whitepaper as your manual for the *why*.
 
-**Step 3 — Ongoing monitoring (Growth & Agency).** Because where AI looks changes constantly, a one-time snapshot goes stale. The subscription plans re-run your probes on a schedule, track your TrustIndex Score over time, alert you when a competitor displaces you or an engine drops you, and keep feeding you the next content drafts to publish:
+**Step 3 — Ongoing monitoring (Growth & Agency).** Because where AI looks changes constantly, a one-time snapshot goes stale. The subscription plans re-run your probes on a schedule, track your Ozvor AI Visibility Score over time, alert you when a competitor displaces you or an engine drops you, and keep feeding you the next content drafts to publish:
 
 - **Growth — $99/mo** (or **$831/yr** with founder pricing): 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, and GEO content.
 - **Agency — $149/mo** (or **$1,251/yr** with founder pricing): up to 25 brands, white-label reports, and client workflow — built for agencies and multi-location operators.
@@ -357,7 +357,7 @@ The sequence is deliberate, and the first step costs nothing: **see where you st
 
   plansCta: {
     heading: "Your Kit is a snapshot. AI search moves every week.",
-    body: "The Get-Cited Kit shows you where you stand today and gives you three fixes and three drafts to act on. But AI answers change constantly — new competitors get cited, engines re-index, your fixes start (or stop) working. A one-time audit can't tell you whether you're gaining or losing ground. That's what the subscription Plans do: re-run your probes on a schedule, track your TrustIndex Score over time, alert you when a competitor displaces you or an engine drops you, and keep feeding you the next content drafts to publish. Growth ($99/mo, or $831/yr founder pricing) covers weekly monitoring for one brand; Agency ($149/mo, or $1,251/yr founder pricing) adds more brands and competitor tracking. Knock out your three fixes first — then keep the gains compounding instead of going stale.",
+    body: "The Get-Cited Kit shows you where you stand today and gives you three fixes and three drafts to act on. But AI answers change constantly — new competitors get cited, engines re-index, your fixes start (or stop) working. A one-time audit can't tell you whether you're gaining or losing ground. That's what the subscription Plans do: re-run your probes on a schedule, track your Ozvor AI Visibility Score over time, alert you when a competitor displaces you or an engine drops you, and keep feeding you the next content drafts to publish. Growth ($99/mo, or $831/yr founder pricing) covers weekly monitoring for one brand; Agency ($149/mo, or $1,251/yr founder pricing) adds more brands and competitor tracking. Knock out your three fixes first — then keep the gains compounding instead of going stale.",
     buttonLabel: "See Growth & Agency plans",
   },
 };
@@ -823,7 +823,7 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
       >
         © 2026 Ozvor · ozvor.com · hello@ozvor.com
         <br />
-        The Get-Cited Kit, Part 2 of 3. Part 1: your TrustIndex Score report. Part 3:
+        The Get-Cited Kit, Part 2 of 3. Part 1: your Ozvor AI Visibility Score report. Part 3:
         your three ready-to-publish drafts.
       </p>
     </article>

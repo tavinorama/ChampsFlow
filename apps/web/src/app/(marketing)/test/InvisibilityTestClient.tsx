@@ -900,7 +900,7 @@ function ResultsPanel({
         </p>
       </div>
 
-      {/* C) TrustIndex Scorecard */}
+      {/* C) Ozvor Scorecard */}
       <div style={cardStyle}>
         <TrustIndexScorecard
           overall={result.score.overall}

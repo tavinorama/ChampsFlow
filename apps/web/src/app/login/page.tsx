@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /login — passwordless magic-link sign in + optional social OAuth (TrustIndex AI)
+ * /login — passwordless magic-link sign in + optional social OAuth (Ozvor)
  *
  * Uses Supabase Auth OTP (email magic link). No passwords are handled by this
  * app at any point. On success Supabase emails a link; clicking it returns the

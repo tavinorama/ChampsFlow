@@ -21,9 +21,9 @@ import { SoftCTA } from "../../../components/marketing/SoftCTA";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "How We Measure the TrustIndex Score | Ozvor",
+  title: "How We Measure the Ozvor AI Visibility Score | Ozvor",
   description:
-    "The exact methodology behind the TrustIndex Score: three vectors, five AI engines, and an honest account of what's measured vs. still on the roadmap.",
+    "The exact methodology behind the Ozvor AI Visibility Score: three vectors, five AI engines, and an honest account of what's measured vs. still on the roadmap.",
 };
 
 // ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ export default function HowWeMeasurePage() {
             color: "var(--color-text)",
           }}
         >
-          How we measure the TrustIndex Score
+          How we measure the Ozvor AI Visibility Score
         </h1>
         <p
           style={{
@@ -132,7 +132,7 @@ export default function HowWeMeasurePage() {
             margin: "0 0 var(--space-6) 0",
           }}
         >
-          The TrustIndex Score is a weighted average of three sub-scores. Each
+          The Ozvor AI Visibility Score is a weighted average of three sub-scores. Each
           sub-score is an integer from 0 to 100. The overall formula is:
         </p>
         <div

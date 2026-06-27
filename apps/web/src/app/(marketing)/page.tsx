@@ -1,5 +1,5 @@
 /**
- * Landing page v6 — TrustIndex AI / Ozvor
+ * Landing page v6 — Ozvor / Ozvor
  * Route: / (within (marketing) route group)
  *
  * Rebuilt to match the Ozvor design mockup:
@@ -30,12 +30,12 @@ import { StickyBuyBar } from "../../components/marketing/StickyBuyBar";
 export const metadata: Metadata = {
   title: "Ozvor — Audit + Execute your GEO strategy",
   description:
-    "The AI Search Visibility + GEO execution platform for SMBs. Ozvor shows where your brand stands across ChatGPT, Claude, Perplexity, Gemini & Google AI, why competitors win, and turns the gaps into publish-ready fixes — with your TrustIndex AI Score.",
+    "The AI Search Visibility + GEO execution platform for SMBs. Ozvor shows where your brand stands across ChatGPT, Claude, Perplexity, Gemini & Google AI, why competitors win, and turns the gaps into publish-ready fixes — with your Ozvor AI Visibility Score.",
   alternates: { canonical: "https://ozvor.com/" },
   openGraph: {
     title: "Ozvor — Audit + Execute your GEO strategy",
     description:
-      "The AI Search Visibility + GEO execution platform for SMBs. Ozvor shows where your brand stands across ChatGPT, Claude, Perplexity, Gemini & Google AI, why competitors win, and turns the gaps into publish-ready fixes — with your TrustIndex AI Score.",
+      "The AI Search Visibility + GEO execution platform for SMBs. Ozvor shows where your brand stands across ChatGPT, Claude, Perplexity, Gemini & Google AI, why competitors win, and turns the gaps into publish-ready fixes — with your Ozvor AI Visibility Score.",
     url: "https://ozvor.com/",
     siteName: "Ozvor",
     images: [
@@ -66,7 +66,7 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: "Ozvor",
   description:
-    "AI Search Trust Intelligence platform for SMBs. Audits brand visibility across ChatGPT, Perplexity, Gemini, and Google AI; benchmarks competitor citations; computes a TrustIndex Score; and builds a GEO content plan for organic AI-search visibility.",
+    "AI Search Trust Intelligence platform for SMBs. Audits brand visibility across ChatGPT, Perplexity, Gemini, and Google AI; benchmarks competitor citations; computes a Ozvor AI Visibility Score; and builds a GEO content plan for organic AI-search visibility.",
   url: "https://ozvor.com",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
@@ -106,7 +106,7 @@ const jsonLd = {
 
 const faqs = [
   {
-    q: "What exactly is a TrustIndex AI Score?",
+    q: "What exactly is a Ozvor AI Visibility Score?",
     a: "It's a 0–100 composite score measuring how well AI search engines trust and cite your brand. It's built from three vectors: AI (citation rate + position + sentiment across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview), Performance (technical factors: schema.org markup, AI crawler access, content citation-worthiness), and Brand (off-site authority on the 7 sources AI cites most — Reddit, Wikipedia, LinkedIn, G2, Trustpilot, Crunchbase, YouTube). Every number is measured, not estimated.",
   },
   {
@@ -281,7 +281,7 @@ export default function LandingPage() {
                 <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>Acme CRM · 50 AI probes · 5 engines</div>
                 <div style={{display:'flex',alignItems:'center',gap:22,marginTop:22}}>
                   {/* Conic gauge */}
-                  <div role="img" aria-label="TrustIndex AI Score: 64 out of 100" style={{
+                  <div role="img" aria-label="Ozvor AI Visibility Score: 64 out of 100" style={{
                     position:'relative',width:128,height:128,borderRadius:'50%',
                     background:'conic-gradient(#27c98a 0% 64%, var(--color-border) 64% 100%)',
                     display:'grid',placeItems:'center',flexShrink:0,
@@ -299,7 +299,7 @@ export default function LandingPage() {
                   </div>
                   <div>
                     <div style={{fontSize:13,color:'var(--color-muted)'}}>Overall</div>
-                    <div style={{fontSize:15,fontWeight:700,color:'var(--color-text)'}}>TrustIndex AI Score</div>
+                    <div style={{fontSize:15,fontWeight:700,color:'var(--color-text)'}}>Ozvor AI Visibility Score</div>
                     <div style={{marginTop:8,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-accent-ink)'}}>▲ +6 this week</div>
                   </div>
                 </div>
@@ -749,7 +749,7 @@ export default function LandingPage() {
           </p>
           <div style={{display:'flex',gap:16,justifyContent:'center',flexWrap:'wrap',marginTop:28}}>
             {[
-              {label:'Current TrustIndex Score',val:'72'},
+              {label:'Current Ozvor AI Visibility Score',val:'72'},
               {label:'Weeks since launch',val:'8'},
               {label:'Score improvement',val:'+28'},
             ].map(l=>(

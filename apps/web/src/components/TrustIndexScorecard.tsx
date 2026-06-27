@@ -127,8 +127,8 @@ function ScoreRingSVG({ value, size }: { value: number | null; size: number }) {
       role="img"
       aria-label={
         value == null
-          ? "Overall TrustIndex Score: not yet computed"
-          : `Overall TrustIndex Score: ${value} out of 100`
+          ? "Overall Ozvor AI Visibility Score: not yet computed"
+          : `Overall Ozvor AI Visibility Score: ${value} out of 100`
       }
       style={{ display: "block", flexShrink: 0 }}
     >
@@ -437,8 +437,8 @@ export function TrustIndexScorecard({
     <section
       aria-label={
         brandName
-          ? `${brandName} — TrustIndex Scorecard`
-          : "TrustIndex Scorecard"
+          ? `${brandName} — Ozvor Scorecard`
+          : "Ozvor Scorecard"
       }
       style={{
         display: "flex",
@@ -468,7 +468,7 @@ export function TrustIndexScorecard({
                 color: "var(--color-text)",
               }}
             >
-              {brandName} &#8212; TrustIndex Score
+              {brandName} &#8212; Ozvor AI Visibility Score
             </h2>
           )}
           {probeSummary && <ProbePill summary={probeSummary} />}
@@ -505,7 +505,7 @@ export function TrustIndexScorecard({
               whiteSpace: "nowrap",
             }}
           >
-            Overall TrustIndex Score
+            Overall Ozvor AI Visibility Score
           </p>
         </div>
 

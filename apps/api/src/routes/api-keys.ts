@@ -11,7 +11,7 @@
  *
  *  2. Public read-only API (API-key-authed) — for the customer's own systems:
  *       GET /api/v1/me                        — tenant + plan + scopes (auth probe)
- *       GET /api/v1/brands                    — list brands + latest TrustIndex Score
+ *       GET /api/v1/brands                    — list brands + latest Ozvor AI Visibility Score
  *       GET /api/v1/brands/:id                — brand detail + latest score breakdown
  *       GET /api/v1/brands/:id/audits         — recent audits for a brand
  *       GET /api/v1/audits/:id                — a single audit's scores
@@ -173,7 +173,7 @@ export function requireApiKey(db: PostgresClient) {
 }
 
 // ---------------------------------------------------------------------------
-// Score helper — derive the overall TrustIndex Score from the three vectors
+// Score helper — derive the overall Ozvor AI Visibility Score from the three vectors
 // (AI 35 / Performance 35 / Brand 30), matching the public report endpoint.
 // ---------------------------------------------------------------------------
 
@@ -300,7 +300,7 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
     return c.json({ tenant_id: tenantId, plan: rows[0]?.plan_tier ?? null, scopes, key_id: id });
   });
 
-  // GET /api/v1/brands — list brands with the latest overall TrustIndex Score.
+  // GET /api/v1/brands — list brands with the latest overall Ozvor AI Visibility Score.
   app.get("/api/v1/brands", apiKey, async (c) => {
     const { rows } = await db.query<{
       id: string;

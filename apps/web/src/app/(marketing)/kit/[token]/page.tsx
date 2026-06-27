@@ -111,13 +111,13 @@ function KitView({ d }: { d: Deliverable }) {
       </h2>
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-5) 0" }}>
         {d.fromTest
-          ? `Your free test showed how ${d.brand} appeared for one buyer question across ${d.fromTest.totalEngines} AI engines. This is the complete audit it was a preview of — every buyer prompt, every engine, your full TrustIndex Score, and exactly where you’re losing citations.`
-          : "Your free test asked one buyer question across the AI engines. This is the full version: every high-intent buyer prompt in your category, across every engine, scored on all three TrustIndex vectors — Brand, Performance, and AI."}
+          ? `Your free test showed how ${d.brand} appeared for one buyer question across ${d.fromTest.totalEngines} AI engines. This is the complete audit it was a preview of — every buyer prompt, every engine, your full Ozvor AI Visibility Score, and exactly where you’re losing citations.`
+          : "Your free test asked one buyer question across the AI engines. This is the full version: every high-intent buyer prompt in your category, across every engine, scored on all three Ozvor AI Visibility vectors — Brand, Performance, and AI."}
       </p>
 
       {/* Score */}
       <div style={card}>
-        <h3 style={h2}>Your TrustIndex Score</h3>
+        <h3 style={h2}>Your Ozvor AI Visibility Score</h3>
         <div style={{ display: "flex", gap: "var(--space-5)", flexWrap: "wrap", alignItems: "baseline" }}>
           <div style={{ fontSize: "3rem", fontWeight: 800, color: "var(--color-primary)" }}>{d.score.overall}<span style={{ fontSize: "1rem", color: "var(--color-muted)" }}>/100</span></div>
           <div style={{ display: "flex", gap: "var(--space-4)", fontSize: "var(--font-size-body-sm)" }}>
@@ -194,7 +194,7 @@ function KitView({ d }: { d: Deliverable }) {
           You found the gaps. Keep them closed.
         </p>
         <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-4) 0" }}>
-          Your Kit is a one-time snapshot: your TrustIndex Score, your 3 fixes, 3 drafts to publish. But AI answers move
+          Your Kit is a one-time snapshot: your Ozvor AI Visibility Score, your 3 fixes, 3 drafts to publish. But AI answers move
           every week — new competitors get cited, and a page you publish today can lift your score in 30 days or quietly
           slip back. <strong>Growth</strong> re-runs your full audit weekly, alerts you the moment your score or citation
           share moves, and hands you fresh content briefs. <strong>Agency</strong> does the same across up to 25 brands.
