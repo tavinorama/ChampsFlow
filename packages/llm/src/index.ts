@@ -163,8 +163,9 @@ export type {
   GeoScoreResult,
   AnonymisedBenchmark,
   StrategyPromptInput,
+  ThreeScoreResult,
 } from "./scoring";
-export { computeGeoScore, buildStrategyPromptInput } from "./scoring";
+export { computeGeoScore, buildStrategyPromptInput, computeThreeScores } from "./scoring";
 
 // Site crawl — measures Brand + Performance inputs from the real website.
 export type { SiteCrawlResult } from "./site-crawl";

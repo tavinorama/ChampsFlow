@@ -1481,6 +1481,8 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
   // -------------------------------------------------------------------------
   // GET /api/brands/:id/score — latest Ozvor AI Visibility Score + 90-day trend
+  // Returns three product-facing scores (visibility, citationReadiness,
+  // executionProgress) derived at read time — no new DB columns required.
   // -------------------------------------------------------------------------
   app.get("/api/brands/:id/score", requireAuth, async (c) => {
     const auth = c.get("auth");
@@ -1505,8 +1507,55 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       [brandId]
     );
 
+    // Execution Progress — live from plan_task (not stored in snapshot).
+    // Counts across the brand's LATEST plan only (most recent strategy_plan row).
+    // null when no plan exists or no tasks created.
+    let executionProgress: number | null = null;
+    try {
+      const planRes = await db.query<{ id: string }>(
+        `SELECT id FROM strategy_plan WHERE brand_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [brandId]
+      );
+      const planId = planRes.rows[0]?.id ?? null;
+      if (planId) {
+        const taskRes = await db.query<{ total: string; done: string }>(
+          `SELECT
+             COUNT(*) FILTER (WHERE status != 'rejected') AS total,
+             COUNT(*) FILTER (WHERE status = 'done')     AS done
+           FROM plan_task WHERE plan_id = $1`,
+          [planId]
+        );
+        const total = parseInt(taskRes.rows[0]?.total ?? "0", 10);
+        const done  = parseInt(taskRes.rows[0]?.done  ?? "0", 10);
+        // null = no cards (not started); 0 = cards exist but none done
+        executionProgress = total > 0 ? Math.round((done / total) * 100) : null;
+      }
+    } catch {
+      // plan_task table may not exist yet — degrade gracefully
+      executionProgress = null;
+    }
+
+    // Derive three product-facing scores from the latest snapshot.
     const latest = trend.rows[0] ?? null;
-    return c.json({ brand_id: brandId, latest, trend: trend.rows });
+    let threeScores: {
+      visibility: number;
+      citationReadiness: number;
+      executionProgress: number | null;
+    } | null = null;
+    if (
+      latest &&
+      latest.score_ai != null &&
+      latest.score_performance != null &&
+      latest.score_brand != null
+    ) {
+      const visibility = latest.score_ai;
+      const citationReadiness = Math.round(
+        Math.min(100, Math.max(0, latest.score_performance * 0.6 + latest.score_brand * 0.4))
+      );
+      threeScores = { visibility, citationReadiness, executionProgress };
+    }
+
+    return c.json({ brand_id: brandId, latest, trend: trend.rows, threeScores, executionProgress });
   });
 
   // -------------------------------------------------------------------------

@@ -14,8 +14,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { computeGeoScore } from "../../../packages/llm/src/scoring";
-import type { GeoScoreInputs } from "../../../packages/llm/src/scoring";
+import { computeGeoScore, computeThreeScores } from "../../../packages/llm/src/scoring";
+import type { GeoScoreInputs, GeoScoreResult } from "../../../packages/llm/src/scoring";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -274,5 +274,119 @@ describe("computeGeoScore — clamping behavior", () => {
     expect(Number.isInteger(result.performance)).toBe(true);
     expect(Number.isInteger(result.ai)).toBe(true);
     expect(Number.isInteger(result.overall)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeThreeScores — three product-facing scores
+// ---------------------------------------------------------------------------
+
+describe("computeThreeScores — visibility", () => {
+  it("visibility equals the ai sub-score from computeGeoScore", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(three.visibility).toBe(geo.ai);
+  });
+
+  it("visibility = 0 when ai sub-score is 0", () => {
+    const geo = computeGeoScore(ZERO_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(three.visibility).toBe(0);
+  });
+
+  it("visibility = 100 when ai sub-score is 100", () => {
+    const geo = computeGeoScore(PERFECT_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(three.visibility).toBe(100);
+  });
+});
+
+describe("computeThreeScores — citationReadiness", () => {
+  it("citationReadiness = round(performance*0.6 + brand*0.4) for typical inputs", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, null);
+    const expected = Math.round(Math.min(100, Math.max(0, geo.performance * 0.6 + geo.brand * 0.4)));
+    expect(three.citationReadiness).toBe(expected);
+  });
+
+  it("citationReadiness = 0 for all-zero vectors", () => {
+    const geo = computeGeoScore(ZERO_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(three.citationReadiness).toBe(0);
+  });
+
+  it("citationReadiness = 100 for all-max vectors", () => {
+    const geo = computeGeoScore(PERFECT_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(three.citationReadiness).toBe(100);
+  });
+
+  it("citationReadiness is clamped to [0, 100]", () => {
+    // Simulate a raw geoResult with sub-scores at boundary values to ensure clamping
+    const geo: GeoScoreResult = { brand: 100, performance: 100, ai: 100, overall: 100 };
+    const three = computeThreeScores(geo, null);
+    expect(three.citationReadiness).toBeGreaterThanOrEqual(0);
+    expect(three.citationReadiness).toBeLessThanOrEqual(100);
+  });
+
+  it("citationReadiness is an integer", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(Number.isInteger(three.citationReadiness)).toBe(true);
+  });
+
+  it("weights performance more than brand (60/40 split)", () => {
+    // performance=100, brand=0 → citationReadiness=60
+    const perfOnly: GeoScoreResult = { brand: 0, performance: 100, ai: 0, overall: 35 };
+    expect(computeThreeScores(perfOnly, null).citationReadiness).toBe(60);
+
+    // brand=100, performance=0 → citationReadiness=40
+    const brandOnly: GeoScoreResult = { brand: 100, performance: 0, ai: 0, overall: 30 };
+    expect(computeThreeScores(brandOnly, null).citationReadiness).toBe(40);
+  });
+});
+
+describe("computeThreeScores — executionProgress", () => {
+  it("passes through null when no plan cards exist", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(three.executionProgress).toBeNull();
+  });
+
+  it("passes through 0 when cards exist but none are done", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, 0);
+    expect(three.executionProgress).toBe(0);
+  });
+
+  it("passes through 100 when all cards are done", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, 100);
+    expect(three.executionProgress).toBe(100);
+  });
+
+  it("passes through partial progress (50%)", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, 50);
+    expect(three.executionProgress).toBe(50);
+  });
+});
+
+describe("computeThreeScores — result shape", () => {
+  it("returns exactly the three expected keys", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, 42);
+    expect(Object.keys(three).sort()).toEqual(["citationReadiness", "executionProgress", "visibility"]);
+  });
+
+  it("visibility and citationReadiness are always integers in [0, 100]", () => {
+    const geo = computeGeoScore(TYPICAL_INPUTS);
+    const three = computeThreeScores(geo, null);
+    expect(Number.isInteger(three.visibility)).toBe(true);
+    expect(Number.isInteger(three.citationReadiness)).toBe(true);
+    expect(three.visibility).toBeGreaterThanOrEqual(0);
+    expect(three.visibility).toBeLessThanOrEqual(100);
+    expect(three.citationReadiness).toBeGreaterThanOrEqual(0);
+    expect(three.citationReadiness).toBeLessThanOrEqual(100);
   });
 });

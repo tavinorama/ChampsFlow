@@ -206,6 +206,66 @@ export function computeGeoScore(inputs: GeoScoreInputs): GeoScoreResult {
 }
 
 // ---------------------------------------------------------------------------
+// Three-score split — product-facing scores for the Ozvor AI Visibility Score
+// ---------------------------------------------------------------------------
+
+/**
+ * ThreeScoreResult — the three product-facing scores for the Ozvor AI Visibility Score.
+ * All values are integers in [0, 100] except executionProgress which may be null.
+ *
+ * Visibility = the AI vector (what AI engines actually observe: citation rate + position + sentiment).
+ * CitationReadiness = weighted blend of performance (0.60) + brand (0.40) vectors —
+ *   these measure what the brand CONTROLS (schema, crawlers, content, entity completeness,
+ *   off-site presence, E-E-A-T). Weights: 0.60 performance + 0.40 brand.
+ * ExecutionProgress = % of accepted plan_task rows marked done (null = no cards yet).
+ */
+export interface ThreeScoreResult {
+  /** Visibility (0–100): what AI engines do with the brand — citation rate, position, sentiment. */
+  visibility: number;
+  /**
+   * Citation Readiness (0–100): how ready the brand is to be cited.
+   * Formula: round(clamp(performance * 0.60 + brand * 0.40))
+   * Weights: performance 60% (schema, AI-crawler access, content, share-of-voice, AIO)
+   *          brand 40% (entity completeness, E-E-A-T, off-site authority)
+   */
+  citationReadiness: number;
+  /**
+   * Execution Progress (0–100): % of action cards (plan_task) completed.
+   * null when no cards have been created for this brand (not started, not 0%).
+   * Computed live from plan_task — never stored as a snapshot.
+   */
+  executionProgress: number | null;
+}
+
+/**
+ * computeThreeScores — derives the three product-facing scores from the
+ * existing GeoScoreResult vectors + a live execution progress value.
+ *
+ * Citation Readiness weights:
+ *   performance × 0.60 — schema coverage, AI-crawler access, content citation-worthiness,
+ *                         share-of-voice, Google AIO presence. These are what brands can
+ *                         directly fix via technical and content improvements.
+ *   brand × 0.40 — entity completeness, E-E-A-T signal, off-site authority. These are
+ *                   controllable (Wikidata edits, review-site presence) but slower to move.
+ *
+ * @param geoResult  Output of computeGeoScore() — the three raw vectors
+ * @param executionProgress  Pre-computed execution % (0–100), or null if no cards exist
+ * @returns ThreeScoreResult — the three product-facing scores
+ */
+export function computeThreeScores(
+  geoResult: GeoScoreResult,
+  executionProgress: number | null
+): ThreeScoreResult {
+  // Visibility = the AI sub-score (observed citations)
+  const visibility = geoResult.ai;
+
+  // Citation Readiness = performance × 0.60 + brand × 0.40 (both 0–100)
+  const citationReadiness = clamp100(geoResult.performance * 0.6 + geoResult.brand * 0.4);
+
+  return { visibility, citationReadiness, executionProgress };
+}
+
+// ---------------------------------------------------------------------------
 // GEO-A2 — Strategy prompt input builder
 // ---------------------------------------------------------------------------
 

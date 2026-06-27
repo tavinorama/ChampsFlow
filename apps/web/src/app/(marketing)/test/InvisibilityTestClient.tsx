@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef, useEffect, useId } from "react";
-import { TrustIndexScorecard } from "../../../components/TrustIndexScorecard";
+import { TrustIndexScorecard, THREE_SCORE_COLORS } from "../../../components/TrustIndexScorecard";
 
 // ---------------------------------------------------------------------------
 // Engine label map
@@ -215,7 +215,7 @@ function purpleBtn(): React.CSSProperties {
   return {
     height: "48px",
     padding: "0 var(--space-5)",
-    backgroundColor: "#7c3aed",
+    backgroundColor: THREE_SCORE_COLORS.citationReadiness,
     color: "#fff",
     border: "none",
     borderRadius: "var(--radius-md)",
@@ -1008,15 +1008,29 @@ function ResultsPanel({
       <div style={cardStyle}>
         <TrustIndexScorecard
           overall={result.score.overall}
-          vectors={{
-            ai: result.score.ai,
-            performance: result.score.performance,
-            brand: result.score.brand,
+          threeScores={{
+            visibility: result.score.ai,
+            citationReadiness: Math.round(
+              Math.min(100, Math.max(0, result.score.performance * 0.6 + result.score.brand * 0.4))
+            ),
+            executionProgress: null,
           }}
           probeSummary={`${result.enginesLive} of ${result.totalEngines} engines live`}
           brandName={brand}
           compact={false}
         />
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            lineHeight: 1.5,
+            borderTop: "1px solid var(--color-border)",
+            paddingTop: "var(--space-3)",
+          }}
+        >
+          Execution unlocks in-platform &mdash; track fixes as you complete them.
+        </p>
       </div>
 
       {/* D) Per-engine breakdown */}

@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../../lib/supabase-browser";
-import { TrustIndexScorecard, VECTOR_COLORS } from "../../../components/TrustIndexScorecard";
+import { TrustIndexScorecard, VECTOR_COLORS, type ThreeScores } from "../../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../../components/ScoreTrend";
 import { PromptsPanel } from "./PromptsPanel";
 
@@ -114,6 +114,7 @@ export default function BrandDetailPage() {
 
   const [audit, setAudit] = useState<AuditState | null>(null);
   const [overall, setOverall] = useState<number | null>(null);
+  const [threeScores, setThreeScores] = useState<ThreeScores | null>(null);
   const [statusMsg, setStatusMsg] = useState("Loading…");
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [resolvedAuditId, setResolvedAuditId] = useState<string>("");
@@ -252,6 +253,14 @@ export default function BrandDetailPage() {
               score_brand?: number | null;
             }>
           );
+          // Read threeScores from the updated API response when available.
+          if (data.threeScores) {
+            setThreeScores({
+              visibility: data.threeScores.visibility ?? null,
+              citationReadiness: data.threeScores.citationReadiness ?? null,
+              executionProgress: data.threeScores.executionProgress ?? null,
+            });
+          }
           if (latest) {
             setAudit({
               status: "complete",
@@ -321,11 +330,16 @@ export default function BrandDetailPage() {
       <div style={{ marginBottom: "var(--space-6)" }}>
         <TrustIndexScorecard
           overall={breakdown?.scores?.overall ?? overall}
-          vectors={{
-            ai: breakdown?.scores?.ai ?? audit?.score_ai ?? null,
-            performance: breakdown?.scores?.performance ?? audit?.score_performance ?? null,
-            brand: breakdown?.scores?.brand ?? audit?.score_brand ?? null,
-          }}
+          threeScores={threeScores ?? undefined}
+          vectors={
+            threeScores == null
+              ? {
+                  ai: breakdown?.scores?.ai ?? audit?.score_ai ?? null,
+                  performance: breakdown?.scores?.performance ?? audit?.score_performance ?? null,
+                  brand: breakdown?.scores?.brand ?? audit?.score_brand ?? null,
+                }
+              : undefined
+          }
           competitors={
             (breakdown?.competitors ?? [])
               .filter((c) => c.displacement > 0)
