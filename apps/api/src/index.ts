@@ -54,6 +54,7 @@ import { registerSystemRoutes } from "./routes/system";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerChatRoutes } from "./routes/chat";
 import { registerApiKeyRoutes } from "./routes/api-keys";
+import { registerAgencyRoutes } from "./routes/agency";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -297,6 +298,14 @@ registerNurtureRoutes(app, db);
 // First-login tenant provisioning — POST /api/account/bootstrap
 // (verifies the Supabase JWT itself; allows the no-tenant-yet case)
 registerOnboardingRoutes(app, db);
+
+// Agency OS v1 — white-label branding, report share tokens, branded public reports
+// GET/PUT /api/agency/white-label    — requireAuth + owner + agency plan
+// POST /api/brands/:id/share        — requireAuth + owner + agency plan
+// GET  /api/brands/:id/shares       — requireAuth + owner + agency plan
+// DELETE /api/brands/:id/shares/:id — requireAuth + owner + agency plan
+// GET  /api/r/:token                — PUBLIC (capability-URL, no auth)
+registerAgencyRoutes(app, db);
 
 // ---------------------------------------------------------------------------
 // Global error handler
