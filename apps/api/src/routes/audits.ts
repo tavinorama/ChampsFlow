@@ -32,6 +32,7 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType } from "../../../../packages/llm/src/index";
+import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
 
@@ -319,6 +320,13 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       category?: string;
       market?: string;
       region?: string;
+      linkedin_url?: string;
+      reddit_url?: string;
+      wikipedia_url?: string;
+      g2_url?: string;
+      trustpilot_url?: string;
+      crunchbase_url?: string;
+      youtube_url?: string;
     };
     try {
       body = await c.req.json();
@@ -332,6 +340,22 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const region = (body.region ?? "EU").toUpperCase();
     if (!VALID_REGIONS.has(region)) {
       return c.json({ message: "region must be 'EU' or 'US'." }, 400);
+    }
+
+    // Validate each non-empty profile URL via SSRF guard before any DB work.
+    const profileUrlFields = [
+      "linkedin_url", "reddit_url", "wikipedia_url", "g2_url",
+      "trustpilot_url", "crunchbase_url", "youtube_url",
+    ] as const;
+    for (const field of profileUrlFields) {
+      const val = body[field];
+      if (val && val.trim() !== "") {
+        try {
+          await assertPublicUrl(new URL(val.trim()));
+        } catch {
+          return c.json({ message: `Invalid profile URL: ${field}` }, 400);
+        }
+      }
     }
 
     await db.setTenantId(tenantId);
@@ -351,8 +375,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
     const id = randomUUID();
     await db.query(
-      `INSERT INTO brands (id, tenant_id, name, domain, category, market, region, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      `INSERT INTO brands (id, tenant_id, name, domain, category, market, region,
+         linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
       [
         id,
         tenantId,
@@ -361,6 +386,13 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         body.category ?? null,
         body.market ?? null,
         region,
+        body.linkedin_url?.trim() || null,
+        body.reddit_url?.trim() || null,
+        body.wikipedia_url?.trim() || null,
+        body.g2_url?.trim() || null,
+        body.trustpilot_url?.trim() || null,
+        body.crunchbase_url?.trim() || null,
+        body.youtube_url?.trim() || null,
       ]
     );
 
@@ -457,10 +489,19 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       region: string;
       monitoring_enabled: boolean;
       latest_score: number | null;
+      linkedin_url: string | null;
+      reddit_url: string | null;
+      wikipedia_url: string | null;
+      g2_url: string | null;
+      trustpilot_url: string | null;
+      crunchbase_url: string | null;
+      youtube_url: string | null;
     }>(
       // geo_score stores the overall in provider_breakdown->>'overall' (applied
       // schema has no dedicated score_overall column on geo_score).
       `SELECT b.id, b.name, b.domain, b.category, b.region, b.monitoring_enabled,
+              b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url,
+              b.trustpilot_url, b.crunchbase_url, b.youtube_url,
               (s.provider_breakdown->>'overall')::int AS latest_score
          FROM brands b
          LEFT JOIN LATERAL (
@@ -480,6 +521,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   // GET /api/brands/:id — fetch a single brand profile (settings included)
   // Returns tracked_models and tracking_frequency with graceful fallback if
   // the migration columns don't exist yet (42703 error → return without them).
+  // Also returns all 7 profile URL columns.
   // -------------------------------------------------------------------------
   app.get("/api/brands/:id", requireAuth, async (c) => {
     const auth = c.get("auth");
@@ -497,8 +539,16 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         monitoring_enabled: boolean;
         tracked_models: unknown;
         tracking_frequency: string | null;
+        linkedin_url: string | null;
+        reddit_url: string | null;
+        wikipedia_url: string | null;
+        g2_url: string | null;
+        trustpilot_url: string | null;
+        crunchbase_url: string | null;
+        youtube_url: string | null;
       }>(
-        `SELECT id, name, domain, category, region, monitoring_enabled, tracked_models, tracking_frequency
+        `SELECT id, name, domain, category, region, monitoring_enabled, tracked_models, tracking_frequency,
+                linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
            FROM brands WHERE id = $1`,
         [brandId]
       );
@@ -518,8 +568,17 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           category: string | null;
           region: string;
           monitoring_enabled: boolean;
+          linkedin_url: string | null;
+          reddit_url: string | null;
+          wikipedia_url: string | null;
+          g2_url: string | null;
+          trustpilot_url: string | null;
+          crunchbase_url: string | null;
+          youtube_url: string | null;
         }>(
-          `SELECT id, name, domain, category, region, monitoring_enabled FROM brands WHERE id = $1`,
+          `SELECT id, name, domain, category, region, monitoring_enabled,
+                  linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+             FROM brands WHERE id = $1`,
           [brandId]
         );
         const brand = fallbackRes.rows[0];
@@ -673,6 +732,116 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         }
         throw err;
       }
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/brands/:id/profiles — update brand public profile URLs
+  // Only profile URL fields may be updated via this endpoint.
+  // Body: partial set of linkedin_url, reddit_url, wikipedia_url, g2_url,
+  //       trustpilot_url, crunchbase_url, youtube_url
+  //
+  // Rate limit: this endpoint resolves up to 7 DNS lookups per request via
+  // assertPublicUrl. A per-tenant rate limit of 20 req/min should be enforced
+  // here to prevent CPU/DNS abuse.
+  // TODO (next sprint): apply Upstash Redis Ratelimit (sliding window, 20 req/min
+  // per tenant) using the same pattern as POST /api/brands/:id/audit once the
+  // Upstash client is provisioned and the UPSTASH_REDIS_REST_URL env var is set.
+  // -------------------------------------------------------------------------
+  app.patch(
+    "/api/brands/:id/profiles",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const { tenantId } = auth;
+      const brandId = c.req.param("id");
+
+      let body: {
+        linkedin_url?: string;
+        reddit_url?: string;
+        wikipedia_url?: string;
+        g2_url?: string;
+        trustpilot_url?: string;
+        crunchbase_url?: string;
+        youtube_url?: string;
+      };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      const profileUrlFields = [
+        "linkedin_url", "reddit_url", "wikipedia_url", "g2_url",
+        "trustpilot_url", "crunchbase_url", "youtube_url",
+      ] as const;
+
+      // At least one field must be provided.
+      const providedFields = profileUrlFields.filter((f) => f in body);
+      if (providedFields.length === 0) {
+        return c.json({ message: "At least one profile URL field must be provided." }, 400);
+      }
+
+      // Validate each non-empty URL via SSRF guard.
+      for (const field of providedFields) {
+        const val = (body as Record<string, string | undefined>)[field];
+        if (val && val.trim() !== "") {
+          try {
+            await assertPublicUrl(new URL(val.trim()));
+          } catch {
+            return c.json({ message: `Invalid profile URL: ${field}` }, 400);
+          }
+        }
+      }
+
+      await db.setTenantId(tenantId);
+
+      // Confirm the brand belongs to this tenant (RLS also enforces).
+      const brandCheck = await db.query<{ id: string }>(
+        `SELECT id FROM brands WHERE id = $1 AND tenant_id = $2`,
+        [brandId, tenantId]
+      );
+      if (!brandCheck.rows[0]) return c.json({ message: "Brand not found." }, 404);
+
+      // Build parameterized SET clause for only the provided fields.
+      // We never allow non-URL fields through this endpoint.
+      const setClauses: string[] = [];
+      // brandId is `string | undefined` from Hono's req.param(); we narrow to
+      // string via the brandCheck query above (which would 404 if undefined resolves
+      // to "undefined" in the DB). Cast safely since we've already confirmed it exists.
+      const params: unknown[] = [brandId as string];
+      let paramIndex = 2;
+
+      for (const field of profileUrlFields) {
+        if (field in body) {
+          const val = (body as Record<string, string | undefined>)[field];
+          setClauses.push(`${field} = $${paramIndex}`);
+          const trimmed = val !== undefined ? val.trim() : "";
+          params.push(trimmed !== "" ? trimmed : null);
+          paramIndex += 1;
+        }
+      }
+      setClauses.push(`updated_at = NOW()`);
+
+      const result = await db.query<{
+        id: string;
+        linkedin_url: string | null;
+        reddit_url: string | null;
+        wikipedia_url: string | null;
+        g2_url: string | null;
+        trustpilot_url: string | null;
+        crunchbase_url: string | null;
+        youtube_url: string | null;
+      }>(
+        `UPDATE brands
+            SET ${setClauses.join(", ")}
+          WHERE id = $1
+          RETURNING id, linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url`,
+        params
+      );
+
+      return c.json(result.rows[0]);
     }
   );
 

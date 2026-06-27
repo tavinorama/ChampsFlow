@@ -160,10 +160,25 @@ export async function processAuditJob(
     // Mark running.
     await sql`UPDATE geo_audit SET status = 'running' WHERE id = ${audit_id}`;
 
-    // Load the brand (with model tracking settings if available).
+    // Load the brand (with model tracking settings and profile URLs if available).
     const brandRows = await sql<
-      { name: string; category: string | null; domain: string | null; tracked_models: unknown; tracking_frequency: string | null }[]
-    >`SELECT name, category, domain, tracked_models, tracking_frequency FROM brands WHERE id = ${brand_id}`;
+      {
+        name: string;
+        category: string | null;
+        domain: string | null;
+        tracked_models: unknown;
+        tracking_frequency: string | null;
+        linkedin_url: string | null;
+        reddit_url: string | null;
+        wikipedia_url: string | null;
+        g2_url: string | null;
+        trustpilot_url: string | null;
+        crunchbase_url: string | null;
+        youtube_url: string | null;
+      }[]
+    >`SELECT name, category, domain, tracked_models, tracking_frequency,
+             linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+        FROM brands WHERE id = ${brand_id}`;
     const brand = brandRows[0];
     if (!brand) {
       await sql`UPDATE geo_audit SET status = 'failed' WHERE id = ${audit_id}`;
@@ -268,8 +283,20 @@ export async function processAuditJob(
     // conceptually with the probe loop below but awaited here for the score.
     const crawl = await crawlSite(brand.domain);
 
+    // Build profile URL map from brand-supplied profile URLs (capability #79).
+    // Only non-null values are included; null means "not provided" (no override).
+    const profileUrls: Partial<Record<string, string>> = {};
+    if (brand.linkedin_url)   profileUrls["linkedin"]   = brand.linkedin_url;
+    if (brand.reddit_url)     profileUrls["reddit"]     = brand.reddit_url;
+    if (brand.wikipedia_url)  profileUrls["wikipedia"]  = brand.wikipedia_url;
+    if (brand.g2_url)         profileUrls["g2"]         = brand.g2_url;
+    if (brand.trustpilot_url) profileUrls["trustpilot"] = brand.trustpilot_url;
+    if (brand.crunchbase_url) profileUrls["crunchbase"] = brand.crunchbase_url;
+    if (brand.youtube_url)    profileUrls["youtube"]    = brand.youtube_url;
+
     // Off-site signal — presence on Reddit/Wikipedia/G2/etc. (where AI cites most).
-    const offsite = await measureOffsiteSignal(brand.name);
+    // Pass profile URLs so provided ones skip SERP lookup and are verified directly.
+    const offsite = await measureOffsiteSignal(brand.name, Object.keys(profileUrls).length > 0 ? profileUrls : undefined);
 
     // Reddit deep-dive (C5) — threads/subreddits/sentiment on the #1 cited source.
     // GEO-A2: own brand only. Live via SERP; mock fallback when keyless.

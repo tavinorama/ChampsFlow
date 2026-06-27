@@ -17,7 +17,10 @@
  * Stores only source names + presence/count — no PII, no scraped content.
  */
 
+import { guardedFetch } from "./ssrf-guard";
+
 const TIMEOUT_MS = 12_000;
+const PROFILE_REACH_TIMEOUT_MS = 5_000;
 
 /** The authoritative citation sources we check, with a weight reflecting how
  *  heavily AI engines cite each (Reddit/Wikipedia highest per 2025 studies). */
@@ -38,6 +41,10 @@ export interface OffsitePresence {
   present: boolean;
   /** Approx result count from the SERP (or mock). */
   count: number;
+  /** True when a provided profile URL was used and confirmed reachable (live) or trusted (mock). */
+  verified?: boolean;
+  /** The profile URL supplied by the brand owner (if any). */
+  providedUrl?: string;
 }
 
 export interface OffsiteSignalResult {
@@ -91,8 +98,19 @@ async function serpCount(query: string, apiKey: string): Promise<number | null> 
 /**
  * Measure off-site presence for a brand. Uses live SERP when SERP_API_KEY is
  * set, else a deterministic mock. Never throws — returns a result either way.
+ *
+ * @param brandName   The brand name to look up.
+ * @param profileUrls Optional map from source id to a brand-provided profile URL
+ *                    (e.g. `{ "linkedin": "https://linkedin.com/company/acme" }`).
+ *                    When provided, the SERP lookup for that source is skipped in
+ *                    live mode and the URL is confirmed with a lightweight HEAD
+ *                    fetch instead. In mock mode the provided URL is treated as
+ *                    present without a network call.
  */
-export async function measureOffsiteSignal(brandName: string): Promise<OffsiteSignalResult> {
+export async function measureOffsiteSignal(
+  brandName: string,
+  profileUrls?: Partial<Record<string, string>>
+): Promise<OffsiteSignalResult> {
   const apiKey = process.env["SERP_API_KEY"];
   const findings: string[] = [];
 
@@ -102,7 +120,32 @@ export async function measureOffsiteSignal(brandName: string): Promise<OffsiteSi
   if (apiKey) {
     live = true;
     const results = await Promise.all(
-      OFFSITE_SOURCES.map(async (s) => {
+      OFFSITE_SOURCES.map(async (s): Promise<OffsitePresence> => {
+        const providedUrl = profileUrls?.[s.id];
+
+        if (providedUrl) {
+          // Brand supplied a profile URL — skip SERP, verify reachability via HEAD.
+          let reachable = false;
+          try {
+            const res = await guardedFetch(providedUrl, { timeoutMs: PROFILE_REACH_TIMEOUT_MS });
+            // 2xx or 3xx-terminal (guardedFetch follows redirects manually and
+            // returns the final non-redirect response, so status < 400 = success).
+            reachable = res.status < 400;
+          } catch {
+            // Network error, SSRF block, or timeout → treat as absent.
+            reachable = false;
+          }
+
+          if (reachable) {
+            findings.push(`${s.label}: verified via provided profile URL.`);
+            return { id: s.id, label: s.label, domain: s.domain, present: true, count: 1, verified: true, providedUrl };
+          } else {
+            findings.push(`${s.label}: provided profile URL did not resolve — counted as absent.`);
+            return { id: s.id, label: s.label, domain: s.domain, present: false, count: 0, verified: false, providedUrl };
+          }
+        }
+
+        // No provided URL — use normal SERP lookup.
         const count = await serpCount(`site:${s.domain} "${brandName}"`, apiKey);
         // null = SERP call failed for this source; treat as unknown→absent but note it.
         const c = count ?? 0;
@@ -111,8 +154,25 @@ export async function measureOffsiteSignal(brandName: string): Promise<OffsiteSi
     );
     presence = results;
   } else {
-    presence = mockPresence(brandName);
+    // Mock mode — deterministic hash-based results.
+    const mock = mockPresence(brandName);
+    presence = mock.map((p) => {
+      const providedUrl = profileUrls?.[p.id];
+      if (providedUrl) {
+        // In mock mode, treat any provided URL as present (no real network call).
+        // Add a demo-mode note so consumers know this is not a live confirmation.
+        return { ...p, present: true, count: p.count > 0 ? p.count : 1, verified: true, providedUrl };
+      }
+      return p;
+    });
     findings.push("Off-site signal is using demo data — connect a SERP API key for live measurement.");
+
+    // Note any provided URLs used in demo mode so the caller knows.
+    for (const s of OFFSITE_SOURCES) {
+      if (profileUrls?.[s.id]) {
+        findings.push(`${s.label}: profile URL recorded (demo mode — not verified against a live endpoint).`);
+      }
+    }
   }
 
   // Weighted authority score across sources.
