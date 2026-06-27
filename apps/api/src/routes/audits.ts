@@ -215,6 +215,30 @@ function csvEsc(val: string | number | boolean | null | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// extractBlockedCrawlers — parses site-crawl findings strings and extracts
+// the names of known AI crawlers that are blocked in robots.txt.
+// Pure function — no I/O, no side effects.
+// ---------------------------------------------------------------------------
+
+const KNOWN_CRAWLERS = ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"] as const;
+
+function extractBlockedCrawlers(findings: string[]): string[] {
+  const blocked: string[] = [];
+  for (const crawlerName of KNOWN_CRAWLERS) {
+    for (const finding of findings) {
+      if (
+        finding.toLowerCase().includes("blocked") &&
+        finding.toLowerCase().includes(crawlerName.toLowerCase())
+      ) {
+        blocked.push(crawlerName);
+        break; // avoid duplicates — one finding is enough per crawler name
+      }
+    }
+  }
+  return blocked;
+}
+
+// ---------------------------------------------------------------------------
 // Plan-limit helper — reads the tenant's denormalized plan_tier and returns
 // its PLAN_LIMITS. Defaults to 'free' if unset/unknown. (Enforcement is by
 // explicit COUNT vs limit at each create site; tenant_id filter is explicit so
@@ -1087,6 +1111,40 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const sr = scoreRes.rows[0];
       const bd = (sr?.provider_breakdown ?? {}) as Record<string, unknown>;
 
+      // Fetch absent prompts (verbatim query text where brand was NOT cited, capped at 5).
+      const absentPromptsRes = await db.query<{ query_text: string }>(
+        `SELECT DISTINCT query_text FROM citation_check
+          WHERE audit_id = $1 AND cited = false AND query_text IS NOT NULL
+          LIMIT 5`,
+        [auditId]
+      );
+
+      // Fetch providers that did not cite the brand.
+      const absentEngineRes = await db.query<{ provider: string }>(
+        `SELECT DISTINCT provider FROM citation_check
+          WHERE audit_id = $1 AND cited = false
+          LIMIT 20`,
+        [auditId]
+      );
+
+      // Parse blocked crawlers from site-crawl findings in provider_breakdown.
+      const siteCrawlFindings = (
+        (bd as { siteCrawl?: { findings?: unknown } }).siteCrawl?.findings
+      );
+      const findingsArr = Array.isArray(siteCrawlFindings)
+        ? (siteCrawlFindings as unknown[]).filter((f): f is string => typeof f === "string")
+        : [];
+      const blockedCrawlers = extractBlockedCrawlers(findingsArr);
+
+      // Parse missing off-site sources from provider_breakdown.
+      type OffsiteSourceEntry = { label?: string; present?: boolean };
+      const offsiteSourcesRaw = (
+        (bd as { offsite?: { sources?: OffsiteSourceEntry[] } }).offsite?.sources ?? []
+      );
+      const missingSources = offsiteSourcesRaw
+        .filter((s) => s.present === false && typeof s.label === "string")
+        .map((s) => s.label as string);
+
       const inputs: StrategyInputs = {
         scores: {
           brand: sr?.score_brand ?? 50,
@@ -1099,6 +1157,10 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         contentTraits: (bd as { content?: { traits?: Record<string, number> } }).content?.traits ?? null,
         displacedByCompetitors: ((bd as { competitors?: Array<{ displacement: number }> }).competitors ?? [])
           .filter((x) => x.displacement > 0).length,
+        absentPrompts: absentPromptsRes.rows.map((r) => r.query_text).filter(Boolean),
+        absentEngines: absentEngineRes.rows.map((r) => r.provider).filter(Boolean),
+        missingSources,
+        blockedCrawlers,
       };
 
       const plan = generateStrategy(inputs);
@@ -1111,9 +1173,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       );
       for (const r of plan.recommendations) {
         await db.query(
-          `INSERT INTO plan_task (tenant_id, plan_id, vector, gap, action, effort, impact, priority, status, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'proposed', NOW())`,
-          [auth.tenantId, planId, r.vector, r.gap, r.action, r.effort, r.impact, r.priority]
+          `INSERT INTO plan_task (tenant_id, plan_id, vector, gap, action, effort, impact, priority, evidence, metric, owner, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'proposed', NOW())`,
+          [auth.tenantId, planId, r.vector, r.gap, r.action, r.effort, r.impact, r.priority, r.evidence ?? null, r.metric ?? null, r.owner ?? "you"]
         );
       }
 
@@ -1140,8 +1202,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const taskRes = await db.query<{
       id: string; vector: string; gap: string; action: string;
       effort: string; impact: string; priority: number; status: string;
+      evidence: string | null; metric: string | null; owner: string;
     }>(
-      `SELECT id, vector, gap, action, effort, impact, priority, status
+      `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner
          FROM plan_task WHERE plan_id = $1 ORDER BY priority DESC`,
       [plan.id]
     );
@@ -1179,7 +1242,13 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         return c.json({ message: "status must be proposed|accepted|rejected|done." }, 400);
       }
       await db.setTenantId(auth.tenantId);
-      await db.query(`UPDATE plan_task SET status = $2 WHERE id = $1`, [taskId, status]);
+      const result = await db.query<{ id: string }>(
+        `UPDATE plan_task SET status = $2 WHERE id = $1 AND tenant_id = $3 RETURNING id`,
+        [taskId, status, auth.tenantId]
+      );
+      if (result.rows.length === 0) {
+        return c.json({ message: "Task not found." }, 404);
+      }
       return c.json({ id: taskId, status });
     }
   );

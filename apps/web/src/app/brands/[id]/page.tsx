@@ -1050,6 +1050,16 @@ const REGEN_BUTTONS: { label: string; instructions: string }[] = [
   { label: "Add statistics", instructions: "Strengthen with at least 3 specific statistics. Use [PLACEHOLDER: source] if unknown." },
 ];
 
+function miniBtn(primary: boolean): React.CSSProperties {
+  return {
+    minHeight: "32px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+    borderRadius: "var(--radius-sm)", cursor: "pointer",
+    border: primary ? "none" : "1px solid var(--color-border)",
+    backgroundColor: primary ? "var(--color-success)" : "transparent",
+    color: primary ? "#fff" : "var(--color-muted)",
+  };
+}
+
 function ContentStudio({ brandId }: { brandId: string }) {
   const [items, setItems] = useState<ContentItem[]>([]);
   const [type, setType] = useState<"blog" | "linkedin" | "faq">("blog");
@@ -1403,12 +1413,21 @@ function ContentStudio({ brandId }: { brandId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// GEO Content Plan (C3) — generate + accept/reject recommendations + calendar
+// Action Cards (C3) — generate + accept/reject/done recommendations + calendar
 // ---------------------------------------------------------------------------
 
 interface PlanTask {
-  id: string; vector: "brand" | "performance" | "ai"; gap: string; action: string;
-  effort: "low" | "medium" | "high"; impact: "low" | "medium" | "high"; status: string;
+  id: string;
+  vector: "brand" | "performance" | "ai";
+  gap: string;
+  action: string;
+  effort: "low" | "medium" | "high";
+  impact: "low" | "medium" | "high";
+  priority: number;
+  status: string; // 'proposed' | 'accepted' | 'rejected' | 'done'
+  evidence?: string | null;
+  metric?: string | null;
+  owner?: string | null; // 'you' | 'organicposts' | 'platform'
 }
 interface CalItem { week: number; topic: string; channel: string; vector: string }
 
@@ -1453,11 +1472,37 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
 
   const vColor = (v: string) =>
     VECTOR_COLORS[v as keyof typeof VECTOR_COLORS] ?? VECTOR_COLORS.brand;
-  const badge = (label: string, kind: "effort" | "impact") => (
-    <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)" }}>
+
+  const metaBadge = (label: string, kind: "effort" | "impact") => (
+    <span style={{
+      fontSize: "var(--font-size-badge)", fontWeight: 700, textTransform: "uppercase",
+      padding: "2px 6px", borderRadius: "var(--radius-sm)",
+      backgroundColor: "var(--color-surface-muted)", color: "var(--color-muted)",
+    }}>
       {kind}: {label}
     </span>
   );
+
+  const ownerBadge = (owner: string | null | undefined) => {
+    if (!owner) return null;
+    const styles: Record<string, { bg: string; color: string; label: string }> = {
+      you: { bg: "rgba(120,120,140,0.15)", color: "var(--color-muted)", label: "You act" },
+      organicposts: { bg: "rgba(15,180,136,0.12)", color: "var(--color-success)", label: "OrganicPosts" },
+      platform: { bg: "rgba(59,130,246,0.12)", color: "var(--color-accent-cyan, #60a5fa)", label: "Platform" },
+    };
+    const s = styles[owner] ?? styles.you;
+    return (
+      <span style={{
+        fontSize: "var(--font-size-badge)", fontWeight: 700, textTransform: "uppercase",
+        padding: "2px 6px", borderRadius: "var(--radius-sm)",
+        backgroundColor: s.bg, color: s.color,
+      }}>
+        {s.label}
+      </span>
+    );
+  };
+
+  const doneTasks = tasks.filter((t) => t.status === "done").length;
 
   return (
     <section style={{
@@ -1466,18 +1511,23 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
       padding: "var(--space-6)", boxShadow: "var(--shadow-card)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)", marginBottom: "var(--space-2)" }}>
-        <h2 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: 0 }}>GEO Content Plan</h2>
-        <button type="button" onClick={generate} disabled={busy || !auditId} style={{
-          height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff",
-          border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
-          cursor: busy || !auditId ? "not-allowed" : "pointer", opacity: busy || !auditId ? 0.6 : 1,
-        }}>
+        <h2 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: 0 }}>Action Cards</h2>
+        <button
+          type="button"
+          onClick={generate}
+          disabled={busy || !auditId}
+          style={{
+            height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff",
+            border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
+            cursor: busy || !auditId ? "not-allowed" : "pointer", opacity: busy || !auditId ? 0.6 : 1,
+          }}
+        >
           {busy ? "Generating…" : hasPlan ? "Regenerate plan" : "Generate plan"}
         </button>
       </div>
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
-        Prioritized actions from your audit gaps. <strong>AI-assisted drafts</strong> — accept the ones you&rsquo;ll act on.
-        OrganicPosts can execute the accepted plan for you.
+        Evidence-backed actions from your audit. Each card shows the specific finding, what to fix, and how to know it worked.{" "}
+        <strong>Accept what you&rsquo;ll tackle</strong> — OrganicPosts can execute the rest.
       </p>
 
       {tasks.length === 0 ? (
@@ -1486,25 +1536,195 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
         </p>
       ) : (
         <>
+          {/* Progress indicator */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: "var(--space-3)",
+            marginBottom: "var(--space-4)", padding: "var(--space-3) var(--space-4)",
+            backgroundColor: "var(--color-surface-muted)", borderRadius: "var(--radius-md)",
+          }}>
+            <div style={{ flex: 1, height: "6px", borderRadius: "3px", backgroundColor: "var(--color-border)", overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: "3px",
+                backgroundColor: "var(--color-success)",
+                width: tasks.length > 0 ? `${Math.round((doneTasks / tasks.length) * 100)}%` : "0%",
+                transition: "width 0.3s ease",
+              }} />
+            </div>
+            <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: 0, whiteSpace: "nowrap", fontWeight: 600 }}>
+              {doneTasks} of {tasks.length} actions done
+            </p>
+          </div>
+
           <ul style={{ listStyle: "none", padding: 0, margin: "0 0 var(--space-6) 0", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
             {tasks.map((t) => (
-              <li key={t.id} style={{
-                padding: "var(--space-4)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-                borderLeft: `4px solid ${vColor(t.vector)}`,
-                opacity: t.status === "rejected" ? 0.5 : 1,
-                backgroundColor: t.status === "accepted" ? "rgba(15,180,136,0.06)" : "var(--color-surface)",
-              }}>
-                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-1)", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 800, textTransform: "uppercase", color: vColor(t.vector) }}>{t.vector}</span>
-                  {badge(t.impact, "impact")}{badge(t.effort, "effort")}
-                  {t.status === "accepted" && <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-success)" }}>✓ ACCEPTED</span>}
-                  {t.status === "rejected" && <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-muted)" }}>REJECTED</span>}
+              <li
+                key={t.id}
+                role="article"
+                style={{
+                  padding: "var(--space-4)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  borderLeft: `4px solid ${t.status === "done" ? "var(--color-success)" : vColor(t.vector)}`,
+                  opacity: t.status === "rejected" ? 0.4 : t.status === "done" ? 0.7 : 1,
+                  backgroundColor: t.status === "accepted" ? "var(--color-success-surface, rgba(39,201,138,0.07))"
+                    : t.status === "done" ? "var(--color-success-surface, rgba(39,201,138,0.07))"
+                    : "var(--color-surface)",
+                  transition: "opacity 0.2s ease, background-color 0.2s ease",
+                }}
+              >
+                {/* Header row: vector + impact + effort + owner badges */}
+                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-2)", flexWrap: "wrap" }}>
+                  <span style={{
+                    fontSize: "var(--font-size-badge)", fontWeight: 800, textTransform: "uppercase",
+                    color: vColor(t.vector), padding: "2px 6px", borderRadius: "var(--radius-sm)",
+                    border: `1px solid ${vColor(t.vector)}22`,
+                    backgroundColor: `${vColor(t.vector)}11`,
+                  }}>
+                    {t.vector}
+                  </span>
+                  {metaBadge(t.impact, "impact")}
+                  {metaBadge(t.effort, "effort")}
+                  {ownerBadge(t.owner)}
+                  {t.status === "accepted" && (
+                    <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-success)", marginLeft: "auto" }}>
+                      ACCEPTED
+                    </span>
+                  )}
+                  {t.status === "done" && (
+                    <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-success)", marginLeft: "auto" }}>
+                      ✓ DONE
+                    </span>
+                  )}
+                  {t.status === "rejected" && (
+                    <span style={{ fontSize: "var(--font-size-badge)", fontWeight: 700, color: "var(--color-muted)", marginLeft: "auto" }}>
+                      DISMISSED
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", marginBottom: "var(--space-1)" }}>{t.gap}</div>
-                <div style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 600, color: "var(--color-text)", marginBottom: "var(--space-2)" }}>→ {t.action}</div>
-                <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                  <button type="button" onClick={() => setStatus(t.id, "accepted")} style={miniBtn(true)}>Accept</button>
-                  <button type="button" onClick={() => setStatus(t.id, "rejected")} style={miniBtn(false)}>Reject</button>
+
+                {/* Evidence line */}
+                {t.evidence && (
+                  <p
+                    aria-label="Audit finding"
+                    style={{
+                      fontSize: "var(--font-size-caption)", color: "var(--color-muted)",
+                      fontStyle: "italic", margin: "0 0 var(--space-2) 0", lineHeight: 1.5,
+                    }}
+                  >
+                    <strong style={{ fontStyle: "normal", color: "var(--color-muted)" }}>Finding:</strong>{" "}
+                    {t.evidence}
+                  </p>
+                )}
+
+                {/* Action line */}
+                <p style={{
+                  fontSize: "var(--font-size-body-sm)", fontWeight: 700, color: "var(--color-text)",
+                  margin: "0 0 var(--space-2) 0", lineHeight: 1.5,
+                }}>
+                  {t.action}
+                </p>
+
+                {/* Metric line */}
+                {t.metric && (
+                  <p style={{
+                    fontSize: "var(--font-size-caption)", color: "var(--color-muted)",
+                    margin: "0 0 var(--space-3) 0", lineHeight: 1.5,
+                  }}>
+                    <strong style={{ color: "var(--color-muted)" }}>Watch:</strong>{" "}
+                    {t.metric}
+                  </p>
+                )}
+                {!t.metric && <div style={{ marginBottom: "var(--space-3)" }} />}
+
+                {/* Status controls */}
+                <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                  {t.status === "proposed" && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label={`Accept action: ${t.action}`}
+                        onClick={() => setStatus(t.id, "accepted")}
+                        style={{
+                          minHeight: "44px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+                          borderRadius: "var(--radius-sm)", cursor: "pointer", border: "none",
+                          backgroundColor: "var(--color-success)", color: "#fff",
+                        }}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Dismiss action: ${t.action}`}
+                        onClick={() => setStatus(t.id, "rejected")}
+                        style={{
+                          minHeight: "44px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+                          borderRadius: "var(--radius-sm)", cursor: "pointer",
+                          border: "1px solid var(--color-border)", backgroundColor: "transparent", color: "var(--color-muted)",
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </>
+                  )}
+
+                  {t.status === "accepted" && (
+                    <>
+                      <button
+                        type="button"
+                        aria-label={`Mark done: ${t.action}`}
+                        onClick={() => setStatus(t.id, "done")}
+                        style={{
+                          minHeight: "44px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+                          borderRadius: "var(--radius-sm)", cursor: "pointer", border: "none",
+                          backgroundColor: "var(--color-accent-amber, #e6a93f)", color: "#fff",
+                        }}
+                      >
+                        Mark done
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Dismiss action: ${t.action}`}
+                        onClick={() => setStatus(t.id, "rejected")}
+                        style={{
+                          minHeight: "44px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+                          borderRadius: "var(--radius-sm)", cursor: "pointer",
+                          border: "1px solid var(--color-border)", backgroundColor: "transparent", color: "var(--color-muted)",
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </>
+                  )}
+
+                  {t.status === "done" && (
+                    <button
+                      type="button"
+                      aria-label={`Reopen action: ${t.action}`}
+                      onClick={() => setStatus(t.id, "proposed")}
+                      style={{
+                        minHeight: "44px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+                        borderRadius: "var(--radius-sm)", cursor: "pointer",
+                        border: "1px solid var(--color-border)", backgroundColor: "transparent", color: "var(--color-muted)",
+                      }}
+                    >
+                      Reopen
+                    </button>
+                  )}
+
+                  {t.status === "rejected" && (
+                    <button
+                      type="button"
+                      aria-label={`Reopen action: ${t.action}`}
+                      onClick={() => setStatus(t.id, "proposed")}
+                      style={{
+                        minHeight: "44px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
+                        borderRadius: "var(--radius-sm)", cursor: "pointer",
+                        border: "1px solid var(--color-border)", backgroundColor: "transparent", color: "var(--color-muted)",
+                      }}
+                    >
+                      Reopen
+                    </button>
+                  )}
                 </div>
               </li>
             ))}
@@ -1527,16 +1747,6 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
       )}
     </section>
   );
-}
-
-function miniBtn(primary: boolean): React.CSSProperties {
-  return {
-    minHeight: "32px", padding: "0 var(--space-3)", fontSize: "var(--font-size-caption)", fontWeight: 700,
-    borderRadius: "var(--radius-sm)", cursor: "pointer",
-    border: primary ? "none" : "1px solid var(--color-border)",
-    backgroundColor: primary ? "var(--color-success)" : "transparent",
-    color: primary ? "#fff" : "var(--color-muted)",
-  };
 }
 
 // ---------------------------------------------------------------------------

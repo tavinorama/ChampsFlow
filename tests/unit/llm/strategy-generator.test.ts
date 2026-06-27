@@ -107,3 +107,102 @@ describe("generateStrategy", () => {
     expect(Array.isArray(plan.calendar)).toBe(true);
   });
 });
+
+describe("generateStrategy — Action Cards v1 enrichment", () => {
+  it("populates evidence with blocked crawler names when blockedCrawlers is provided", () => {
+    const inputs: StrategyInputs = {
+      scores: { brand: 50, performance: 50, ai: 50, overall: 50 },
+      components: {
+        brand: { entityCompleteness: 0.5 },
+        performance: { schemaCoverage: 0.5, aiCrawlerAccess: 0.5, llmsTxtPresent: false, citationShareVsCompetitors: 0.5, aioPresence: false },
+        ai: { citationRate: 0.8, avgPositionScore: 0.8, sentimentScore: 0.7 },
+      },
+      blockedCrawlers: ["GPTBot", "ClaudeBot"],
+    };
+    const plan = generateStrategy(inputs);
+    const crawlerRec = plan.recommendations.find(r => r.vector === "performance" && r.action.toLowerCase().includes("crawler"));
+    expect(crawlerRec).toBeDefined();
+    expect(crawlerRec?.evidence).toContain("GPTBot");
+    expect(crawlerRec?.evidence).toContain("ClaudeBot");
+  });
+
+  it("populates evidence with absent prompt text when absentPrompts is provided", () => {
+    const inputs: StrategyInputs = {
+      scores: { brand: 50, performance: 50, ai: 30, overall: 43 },
+      components: {
+        brand: { entityCompleteness: 0.5 },
+        performance: { schemaCoverage: 0.5, aiCrawlerAccess: 1, llmsTxtPresent: false, citationShareVsCompetitors: 0.5, aioPresence: false },
+        ai: { citationRate: 0.2, avgPositionScore: 0.3, sentimentScore: 0.7 },
+      },
+      absentPrompts: ["best CRM for small business", "top alternatives to Salesforce"],
+      absentEngines: ["chatgpt", "gemini"],
+    };
+    const plan = generateStrategy(inputs);
+    const citRec = plan.recommendations.find(r => r.vector === "ai" && r.action.toLowerCase().includes("answer-shaped"));
+    expect(citRec).toBeDefined();
+    expect(citRec?.evidence).toContain("best CRM for small business");
+    expect(citRec?.evidence).toContain("chatgpt");
+    expect(citRec?.metric).toContain("Citation rate");
+    expect(citRec?.owner).toBe("you");
+  });
+
+  it("populates evidence with missing source names when missingSources is provided", () => {
+    const inputs: StrategyInputs = {
+      scores: { brand: 40, performance: 50, ai: 50, overall: 47 },
+      components: {
+        brand: { entityCompleteness: 0.5 },
+        performance: { schemaCoverage: 0.5, aiCrawlerAccess: 1, llmsTxtPresent: false, citationShareVsCompetitors: 0.5, aioPresence: false },
+        ai: { citationRate: 0.7, avgPositionScore: 0.6, sentimentScore: 0.7 },
+      },
+      offsiteSources: [
+        { label: "G2", present: false },
+        { label: "Trustpilot", present: false },
+        { label: "Reddit", present: true },
+      ],
+      missingSources: ["G2", "Trustpilot"],
+    };
+    const plan = generateStrategy(inputs);
+    const offsiteRec = plan.recommendations.find(r => r.vector === "brand" && r.gap.toLowerCase().includes("absent"));
+    expect(offsiteRec).toBeDefined();
+    expect(offsiteRec?.evidence).toContain("G2");
+    expect(offsiteRec?.evidence).toContain("Trustpilot");
+    expect(offsiteRec?.metric).toContain("high-authority sources");
+    expect(offsiteRec?.owner).toBe("you");
+  });
+
+  it("never leaks competitor names into action, evidence, or calendar topic (GEO-A2)", () => {
+    const inputs: StrategyInputs = {
+      ...weakInputs, // reuse weakInputs from parent describe
+      displacedByCompetitors: 2,
+      absentPrompts: ["best project management software"],
+      absentEngines: ["chatgpt"],
+    };
+    const plan = generateStrategy(inputs);
+    const allText = JSON.stringify(plan);
+    // No competitor names should appear anywhere — only anonymised count
+    expect(allText).not.toMatch(/HubSpot|Salesforce|Pipedrive|Asana|Monday/i);
+    // The displacement rec uses the count, not names
+    const dispRec = plan.recommendations.find(r => r.gap.includes("displaced") || r.gap.includes("Competitors"));
+    expect(dispRec?.evidence).toBeUndefined(); // evidence is omitted for displacement rec
+  });
+
+  it("omits evidence field entirely when specific inputs are not available", () => {
+    // With no absentPrompts / blockedCrawlers / missingSources
+    const inputs: StrategyInputs = {
+      scores: { brand: 40, performance: 40, ai: 30, overall: 37 },
+      components: {
+        brand: { entityCompleteness: 0.3 },
+        performance: { schemaCoverage: 0.3, aiCrawlerAccess: 0.5, llmsTxtPresent: false, citationShareVsCompetitors: 0.3, aioPresence: false },
+        ai: { citationRate: 0.2, avgPositionScore: 0.2, sentimentScore: 0.5 },
+      },
+      // no absentPrompts, no blockedCrawlers, no missingSources
+    };
+    const plan = generateStrategy(inputs);
+    // crawler rec — no blockedCrawlers provided → evidence should be undefined (not a fabricated string with actual names)
+    const crawlerRec = plan.recommendations.find(r => r.action.toLowerCase().includes("crawler"));
+    // evidence may be undefined or may fall back to the generic gap string — what it MUST NOT do is contain specific crawler names not in the input
+    if (crawlerRec?.evidence) {
+      expect(crawlerRec.evidence).not.toMatch(/GPTBot|ClaudeBot|PerplexityBot/);
+    }
+  });
+});
