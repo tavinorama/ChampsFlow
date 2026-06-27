@@ -32,47 +32,45 @@ export interface ContentRequest {
   tone?: string;
   /** Approximate length target */
   length?: "short" | "medium" | "long";
+
+  // --- Brand-grounded audit context (all optional; enriches specificity when present) ---
+
+  /** What the brand does (from crawl/site or user-entered description). */
+  brandDescription?: string | null;
+  /** Brand market/geography (e.g. "Brazilian SMBs", "US startups"). */
+  brandMarket?: string | null;
+  /** The specific audit gap this piece closes (from plan_task.gap). */
+  auditGap?: string | null;
+  /** The evidence from the audit that confirms this gap (from plan_task.evidence).
+   *  NOTE: comes from our own DB (plan_task.evidence); not user-supplied input.
+   *  We do NOT sanitize it — it was already validated when the plan was generated.
+   *  (GEO-SEC-2: sanitization is only required for user-supplied text, not DB-internal data.) */
+  auditEvidence?: string | null;
+  /** The specific buyer prompts where the brand is currently absent (from citation_check). */
+  absentPrompts?: string[] | null;
+  /** Content traits that are weak for this brand (from content-geo traits). */
+  weakContentTraits?: string[] | null;
+  /** High-authority off-site sources where the brand is missing (for context). */
+  missingSourceNames?: string[] | null;
+  /** Anonymised count of competitors displacing the brand (GEO-A2: no names). */
+  competitorPressureCount?: number | null;
 }
 
 export interface ContentDraft {
   title: string;
   body: string;
   schemaMarkup: string | null;
-  generatedBy: "rules" | "llm";
+  generatedBy: "rules" | "llm" | "error";
   /** Which API key paid for this generation. "client" = the tenant's BYOK key
    *  (the intended cost model for client-internal content); "platform" = the
    *  operator's key (fallback); "none" = keyless template (no LLM call). */
   keyUsed: "client" | "platform" | "none";
+  /** Rationale tying this piece to the audit — which gap it closes, which
+   *  prompts/engines it targets, why it should help citation probability.
+   *  References real audit findings. Null when no meaningful audit context
+   *  is available. */
+  rationale: string | null;
 }
-
-// GEO-A2 system prompt — shared by the live LLM path.
-const SYSTEM_PROMPT = [
-  "You are a GEO (Generative Engine Optimization) content writer for an SMB.",
-  "Write clear, specific, citation-worthy content (include concrete facts and",
-  "structure that AI engines can extract and cite).",
-  "HARD RULES (never violate):",
-  "1. Do NOT name or compare specific competitor brands or products.",
-  "2. Do NOT make comparative or superlative claims without a sourced factual basis.",
-  "3. Use ONLY facts the client provides. If a fact is needed but unknown, insert",
-  "   a clearly-marked [PLACEHOLDER: ...] rather than fabricating it.",
-  "Respond with the content only — no preamble.",
-  "",
-  "GEO CITATION QUALITY GUIDELINES (Princeton GEO research-backed):",
-  "- Include at least 2 specific statistics or data points, ideally with a year and source",
-  "  (e.g. 'a 2024 BrightEdge study found that 68% of zero-click searches now resolve",
-  "  through AI-generated answers'). If the client has not provided statistics, insert",
-  "  [PLACEHOLDER: statistic with year and source].",
-  "- Include at least 2-3 sourced or attributed claims using phrases like",
-  "  'according to [source]', 'a [year] study found', or 'research from [org] shows'.",
-  "  If sources are unknown, use [PLACEHOLDER: source attribution].",
-  "- Include at least one answer-shaped passage: state a question explicitly, then answer",
-  "  it in the same paragraph (this structure is directly extractable by AI engines).",
-  "- Where relevant, include a direct quotation wrapped in quotation marks from a credible",
-  "  source (e.g. an analyst, published report, or industry body). Use",
-  "  [PLACEHOLDER: direct quote from credible source] if none is available.",
-  "- Go deep on ONE focused idea per piece rather than covering everything superficially.",
-  "  Specificity and depth are what make content citation-worthy in AI search.",
-].join(" ");
 
 function faqSchema(brand: string, q: string, a: string): string {
   return JSON.stringify({
@@ -92,10 +90,165 @@ function articleSchema(brand: string, title: string): string {
   });
 }
 
-// ---- Template fallback (no keys) — structured, GEO-shaped, honest placeholders.
-function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"> {
+// ---- Dynamic system prompt — injects brand context for brand-specific output ----
+function buildSystemPrompt(req: ContentRequest): string {
+  const lines: string[] = [];
+
+  // Identity: tell the model exactly who it's writing for.
+  const brandDesc = req.brandDescription
+    ? `${req.brandName} — ${req.brandDescription}`
+    : req.brandMarket
+    ? `${req.brandName}, a ${req.category ?? "company"} serving ${req.brandMarket}`
+    : req.category
+    ? `${req.brandName} (${req.category})`
+    : req.brandName;
+
+  lines.push(
+    `You are a GEO (Generative Engine Optimization) content writer producing a draft for: ${brandDesc}.`
+  );
+
+  // Brand-specific specificity mandate — the core fix for generic output.
+  lines.push(
+    `Do NOT write content that would read the same for any brand in this category. ` +
+      `Every sentence must be specifically relevant to ${req.brandName} and their situation. ` +
+      `Generic category advice that any ${req.category ?? "company"} could publish is forbidden.`
+  );
+
+  // Audit gap context — if present, ground the piece in the specific finding.
+  if (req.auditGap) {
+    lines.push(`AUDIT CONTEXT — The specific gap this content addresses: "${req.auditGap}"`);
+  }
+
+  // Absent buyer prompts — the exact queries the LLM should help the brand answer.
+  if (req.absentPrompts && req.absentPrompts.length > 0) {
+    const promptList = req.absentPrompts.map((p) => `  • ${p}`).join("\n");
+    lines.push(
+      `BUYER INTENT — The brand is currently absent for these buyer queries:\n${promptList}\n` +
+        `Structure the content to directly and completely answer these questions.`
+    );
+  }
+
+  // Weak traits — tell the LLM what to improve.
+  if (req.weakContentTraits && req.weakContentTraits.length > 0) {
+    lines.push(
+      `CONTENT IMPROVEMENT TARGETS — These citation-worthiness traits are weak and must be strengthened: ` +
+        req.weakContentTraits.join(", ") +
+        `.`
+    );
+  }
+
+  // Off-site source context (for background only — not as confirmed presence).
+  if (req.missingSourceNames && req.missingSourceNames.length > 0) {
+    lines.push(
+      `CONTEXT — The brand is currently absent from these high-authority sources: ` +
+        req.missingSourceNames.join(", ") +
+        `. You may reference them as authoritative sources to cite or appear on, ` +
+        `but do NOT claim the brand already has a presence there.`
+    );
+  }
+
+  // Competitor pressure — anonymised only (GEO-A2: no competitor names).
+  if (req.competitorPressureCount && req.competitorPressureCount > 0) {
+    lines.push(
+      `COMPETITIVE CONTEXT — ${req.competitorPressureCount} competitors are currently displacing this brand in AI search results for buyer queries. ` +
+        `Do NOT name any competitors — reference only the category and the brand's own distinct positioning.`
+    );
+  }
+
+  // Fabrication hard rule.
+  lines.push(
+    `FABRICATION RULE — Use ONLY facts the client provides. If a fact is needed but unknown, ` +
+      `insert a clearly-marked [PLACEHOLDER: describe what's needed] rather than fabricating it.`
+  );
+
+  // GEO-A2 hard rules.
+  lines.push(
+    `GEO HARD RULES (never violate):`,
+    `1. Do NOT name or compare specific competitor brands or products.`,
+    `2. Do NOT make comparative or superlative claims without a sourced factual basis.`,
+    `3. Respond with the content only — no preamble, no meta-commentary.`
+  );
+
+  // Citation quality guidelines (Princeton GEO research-backed).
+  lines.push(
+    `GEO CITATION QUALITY GUIDELINES:`,
+    `- Include at least 2 specific statistics or data points with a year and source ` +
+      `(e.g. 'a 2024 BrightEdge study found 68% of zero-click searches resolve through AI answers'). ` +
+      `If unavailable, insert [PLACEHOLDER: statistic with year and source].`,
+    `- Include at least 2–3 sourced or attributed claims using phrases like 'according to [source]', ` +
+      `'a [year] study found', or 'research from [org] shows'. Use [PLACEHOLDER: source attribution] if unknown.`,
+    `- Include at least one answer-shaped passage: state a question explicitly, then answer it ` +
+      `in the same paragraph (this structure is directly extractable by AI engines).`,
+    `- Where relevant, include a direct quotation wrapped in quotation marks from a credible source. ` +
+      `Use [PLACEHOLDER: direct quote from credible source] if none is available.`,
+    `- Go deep on ONE focused idea rather than covering everything superficially. ` +
+      `Specificity and depth are what make content citation-worthy in AI search.`
+  );
+
+  return lines.join("\n\n");
+}
+
+// ---- Deterministic rationale — built from audit inputs, NOT an LLM call ----
+function buildRationale(req: ContentRequest): string | null {
+  const hasGap = Boolean(req.auditGap);
+  const hasPrompts = Boolean(req.absentPrompts && req.absentPrompts.length > 0);
+  const hasTraits = Boolean(req.weakContentTraits && req.weakContentTraits.length > 0);
+
+  // Return null if there is no meaningful audit context to reference.
+  if (!hasGap && !hasPrompts && !hasTraits) return null;
+
+  const parts: string[] = [];
+
+  if (hasGap) {
+    parts.push(`This piece addresses the following audit gap: "${req.auditGap}".`);
+  }
+
+  if (hasPrompts && req.absentPrompts) {
+    const sample = req.absentPrompts.slice(0, 2);
+    if (sample.length === 1) {
+      parts.push(`It targets the buyer query where ${req.brandName} is currently absent: "${sample[0]}".`);
+    } else {
+      parts.push(
+        `It targets buyer queries where ${req.brandName} is currently absent, including: ` +
+          `"${sample[0]}" and "${sample[1]}".`
+      );
+    }
+  }
+
+  if (hasTraits && req.weakContentTraits) {
+    parts.push(
+      `The piece is structured to strengthen the following weak citation-worthiness traits: ` +
+        req.weakContentTraits.join(", ") +
+        `.`
+    );
+  }
+
+  // Note: missingSourceNames stay as context; we do NOT claim confirmed presence.
+  if (req.missingSourceNames && req.missingSourceNames.length > 0) {
+    parts.push(
+      `Publishing this content and seeking presence on high-authority sources ` +
+        `(the brand is currently absent from: ${req.missingSourceNames.join(", ")}) ` +
+        `should increase citation probability in AI search answers.`
+    );
+  } else {
+    parts.push(
+      `Publishing this piece should increase the probability that AI engines cite ` +
+        `${req.brandName} when answering buyer questions in this category.`
+    );
+  }
+
+  return parts.join(" ");
+}
+
+// ---- Template fallback (key present but LLM failed) — structured, GEO-shaped, honest placeholders.
+// Also exported for kit/demo use-cases that intentionally run without keys
+// (pre-account, $29 kit, invisibility test). These callers know they're in
+// mock/keyless mode and want a structured placeholder, not an error message.
+export function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"> {
   const cat = req.category?.trim() || "your category";
   const src = req.sourceUrl ? `\n\nReference: ${req.sourceUrl}` : "";
+  const rationale = buildRationale(req);
+
   if (req.contentType === "linkedin") {
     return {
       title: req.topic.slice(0, 80),
@@ -106,6 +259,7 @@ function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"> {
         `#${cat.replace(/\s+/g, "")} #GEO`,
       schemaMarkup: null,
       generatedBy: "rules",
+      rationale,
     };
   }
   if (req.contentType === "faq") {
@@ -116,6 +270,7 @@ function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"> {
       body: `**${q}**\n\n${a}`,
       schemaMarkup: faqSchema(req.brandName, q, a.replace(/\[PLACEHOLDER:[^\]]*\]/g, "…")),
       generatedBy: "rules",
+      rationale,
     };
   }
   // blog
@@ -127,7 +282,7 @@ function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"> {
     `## How ${req.brandName} approaches it\n[PLACEHOLDER: your specific, sourced method].\n\n` +
     `## Key takeaways\n- [PLACEHOLDER]\n- [PLACEHOLDER]\n\n` +
     `[Internal link: related service page]${src}`;
-  return { title, body, schemaMarkup: articleSchema(req.brandName, title), generatedBy: "rules" };
+  return { title, body, schemaMarkup: articleSchema(req.brandName, title), generatedBy: "rules", rationale };
 }
 
 async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<ContentDraft, "keyUsed"> | null> {
@@ -140,16 +295,66 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
     req.length === "short" ? 600 :
     req.length === "medium" ? 1200 : 2048;
 
-  const userPromptParts = [
+  // Build brand-grounded user prompt.
+  const userPromptParts: string[] = [
     `Write a ${req.contentType === "blog" ? "long-form blog post" : req.contentType === "faq" ? "FAQ entry" : "LinkedIn post"}`,
-    `for ${req.brandName} (${req.category ?? "general"}) on this topic: "${req.topic}".`,
-    req.sourceUrl ? `You may cite this source: ${req.sourceUrl}.` : "",
-    req.contentType === "blog" ? "Use an H1 and H2 structure and include an internal-link placeholder." : "",
-    req.tone ? `Write in a ${req.tone} tone.` : "",
-    lengthHint ? `Target length: ${lengthHint}.` : "",
-    req.instructions ? `Additional instruction: ${req.instructions}` : "",
+    `for ${req.brandName} on this topic: "${req.topic}".`,
   ];
+
+  // Audit gap context in the user prompt.
+  if (req.auditGap) {
+    userPromptParts.push(`This piece should close the following audit gap: "${req.auditGap}".`);
+  }
+
+  // Audit evidence — sourced from our DB, safe to pass through.
+  if (req.auditEvidence) {
+    userPromptParts.push(`Supporting evidence from the audit: "${req.auditEvidence}".`);
+  }
+
+  // Absent buyer prompts as concrete target intent.
+  if (req.absentPrompts && req.absentPrompts.length > 0) {
+    const promptList = req.absentPrompts.slice(0, 3).map((p) => `"${p}"`).join(", ");
+    userPromptParts.push(
+      `Target these exact buyer queries where the brand is currently absent: ${promptList}.`
+    );
+  }
+
+  // Weak content traits — tell the model what to fix.
+  if (req.weakContentTraits && req.weakContentTraits.length > 0) {
+    userPromptParts.push(
+      `Specifically improve these weak content traits: ${req.weakContentTraits.join(", ")}.`
+    );
+  }
+
+  // Format instructions by content type.
+  if (req.contentType === "blog") {
+    userPromptParts.push("Use an H1 and H2 structure and include an internal-link placeholder.");
+  } else if (req.contentType === "faq") {
+    userPromptParts.push("Format as a clear Question + Answer structure.");
+  } else {
+    userPromptParts.push("Keep it punchy and direct for LinkedIn. End with a relevant hashtag.");
+  }
+
+  if (req.sourceUrl) {
+    // Sanitize before injecting into the prompt — a client-supplied URL could
+    // carry prompt-injection text (security review 2026-06). Drop on rejection.
+    const ss = sanitizeUserPrompt(req.sourceUrl);
+    if (!ss.rejected) {
+      userPromptParts.push(`You may cite this source: ${ss.sanitized.slice(0, 200)}.`);
+    }
+  }
+  if (req.tone) {
+    userPromptParts.push(`Write in a ${req.tone} tone.`);
+  }
+  if (lengthHint) {
+    userPromptParts.push(`Target length: ${lengthHint}.`);
+  }
+  if (req.instructions) {
+    userPromptParts.push(`Additional instruction: ${req.instructions}`);
+  }
+
   const userPrompt = userPromptParts.filter(Boolean).join(" ");
+  const systemPrompt = buildSystemPrompt(req);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
@@ -161,7 +366,7 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
       body: JSON.stringify({
         model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-6",
         max_tokens: maxTokens,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
       }),
     });
@@ -173,7 +378,11 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
     const title = firstLine.replace(/^#+\s*/, "").slice(0, 120);
     const schema = req.contentType === "blog" ? articleSchema(req.brandName, title)
       : req.contentType === "faq" ? faqSchema(req.brandName, title, body.slice(0, 300)) : null;
-    return { title, body, schemaMarkup: schema, generatedBy: "llm" };
+
+    // Build rationale deterministically from audit inputs (not an extra LLM call).
+    const rationale = buildRationale(req);
+
+    return { title, body, schemaMarkup: schema, generatedBy: "llm", rationale };
   } catch {
     return null;
   } finally {
@@ -186,8 +395,20 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
  *
  * BYOK cost model: pass `opts.apiKey` with the CLIENT's own provider key for
  * client-internal content (the client pays their AI cost). If omitted, falls
- * back to the platform key (process.env) — and if neither is set, a keyless
- * structured template. `keyUsed` reports which key actually paid.
+ * back to the platform key (process.env) — and if neither is set, returns a
+ * graceful error draft (not a template). `keyUsed` reports which key paid.
+ *
+ * Key routing priority:
+ *   1. opts.apiKey (client BYOK key)   → keyUsed: "client"
+ *   2. ANTHROPIC_API_KEY env var        → keyUsed: "platform"
+ *   3. No key at all                    → generatedBy: "error", keyUsed: "none"
+ *
+ * Within the keyed path:
+ *   - Sanitize user-supplied topic/instructions (GEO-SEC-2)
+ *   - If sanitization passes → llmDraft()
+ *     - llmDraft succeeds → LLM draft (generatedBy: "llm")
+ *     - llmDraft fails (network/timeout/non-200) → template fallback (generatedBy: "rules")
+ *   - If sanitization rejects (injection attempt) → template fallback (generatedBy: "rules")
  */
 export async function generateContent(
   req: ContentRequest,
@@ -195,24 +416,45 @@ export async function generateContent(
 ): Promise<ContentDraft> {
   const clientKey = opts?.apiKey;
   const apiKey = clientKey ?? process.env["ANTHROPIC_API_KEY"];
-  if (apiKey) {
-    // GEO-SEC-2: topic is user-supplied — sanitize before any provider call.
-    // Rejected input never reaches the LLM; the safe template path is used.
-    const s = sanitizeUserPrompt(req.topic);
-    if (!s.rejected) {
-      // Sanitize instructions if provided. If rejected, drop them rather than
-      // failing the whole request — the rest of the generation proceeds normally.
-      let sanitizedInstructions: string | undefined;
-      if (req.instructions) {
-        const si = sanitizeUserPrompt(req.instructions);
-        sanitizedInstructions = si.rejected ? undefined : si.sanitized;
-      }
-      const draft = await llmDraft(
-        { ...req, topic: s.sanitized, instructions: sanitizedInstructions },
-        apiKey
-      );
-      if (draft) return { ...draft, keyUsed: clientKey ? "client" : "platform" };
-    }
+
+  // No key at all → graceful error (not a template skeleton).
+  if (!apiKey) {
+    return {
+      title: "AI key required",
+      body: "To generate content drafts, add your Anthropic API key in Account → AI engines & keys. Your key pays for content generation (you control the cost). The audit itself uses the platform key and works without your own key.",
+      schemaMarkup: null,
+      generatedBy: "error",
+      keyUsed: "none",
+      rationale: null,
+    };
   }
+
+  // GEO-SEC-2: topic is user-supplied — sanitize before any provider call.
+  // Rejected input never reaches the LLM; the safe template path is used.
+  const s = sanitizeUserPrompt(req.topic);
+  if (!s.rejected) {
+    // Sanitize instructions if provided. If rejected, drop them rather than
+    // failing the whole request — the rest of the generation proceeds normally.
+    let sanitizedInstructions: string | undefined;
+    if (req.instructions) {
+      const si = sanitizeUserPrompt(req.instructions);
+      sanitizedInstructions = si.rejected ? undefined : si.sanitized;
+    }
+    // Sanitize tone (user-supplied, though truncated to 50 chars in the route).
+    // Dropped on rejection, not fatal — the draft proceeds without a tone hint.
+    let sanitizedTone: string | undefined;
+    if (req.tone) {
+      const st = sanitizeUserPrompt(req.tone);
+      sanitizedTone = st.rejected ? undefined : st.sanitized;
+    }
+    const draft = await llmDraft(
+      { ...req, topic: s.sanitized, instructions: sanitizedInstructions, tone: sanitizedTone },
+      apiKey
+    );
+    if (draft) return { ...draft, keyUsed: clientKey ? "client" : "platform" };
+  }
+
+  // Template fallback: key present but LLM failed (network, timeout, non-200)
+  // OR sanitization rejected the topic (injection attempt).
   return { ...templateDraft(req), keyUsed: "none" };
 }

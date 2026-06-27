@@ -24,7 +24,7 @@ import { analyzeSentiment } from "./sentiment";
 import { analyzeRedditPresence } from "./reddit-signal";
 import { analyzeEntityGraph } from "./entity-graph";
 import { generateStrategy, type Recommendation } from "./strategy-generator";
-import { generateContent, type ContentDraft, type ContentType } from "./content-studio";
+import { generateContent, templateDraft, type ContentDraft, type ContentType } from "./content-studio";
 import type { InvisibilityTestResult } from "./invisibility-test";
 import type { LLMProvider, UserRegion } from "./providers/types";
 
@@ -180,12 +180,24 @@ export async function buildKitDeliverable(input: KitInput): Promise<KitDeliverab
   const topFixes = plan.recommendations.slice(0, 3);
 
   // --- 3 ready-to-publish drafts (blog + LinkedIn + FAQ) ---
+  // In non-live (mock/test) mode we use templateDraft directly — it produces a
+  // structured placeholder without requiring a key. We do NOT call generateContent
+  // without a key: that path now returns a graceful error message (for the API
+  // endpoint), not a structured template. The kit is designed to degrade gracefully
+  // to placeholders, not to show an "add your key" message to a pre-account buyer.
+  const platformKey = process.env["ANTHROPIC_API_KEY"];
   const types: ContentType[] = ["blog", "linkedin", "faq"];
   const drafts: Array<{ contentType: ContentType } & ContentDraft> = [];
   for (let i = 0; i < types.length; i++) {
     const rec = topFixes[i] ?? topFixes[0];
     const topic = rec?.action ?? `How ${brand} helps with ${category}`;
-    const draft = await generateContent({ contentType: types[i]!, brandName: brand, category, topic });
+    const contentReq = { contentType: types[i]!, brandName: brand, category, topic };
+    let draft: ContentDraft;
+    if (live && platformKey) {
+      draft = await generateContent(contentReq, { apiKey: platformKey });
+    } else {
+      draft = { ...templateDraft(contentReq), keyUsed: "none" };
+    }
     drafts.push({ contentType: types[i]!, ...draft });
   }
 

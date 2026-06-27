@@ -77,10 +77,12 @@ describe("founder discount — annual-only rule", () => {
     expect(args.allow_promotion_codes).toBe(true);
   });
 
-  it("defaults to monthly with no founder discount when interval/founder omitted", async () => {
+  it("defaults to ANNUAL (no founder discount unless founder) when interval/founder omitted", async () => {
+    // Annual is now the default billing interval (monthly is opt-in). Founder
+    // omitted → no coupon even on annual; promo codes stay open.
     await createCheckoutSession("t1", "a@b.co", "growth", "https://ok", "https://no");
     const args = lastArgs();
-    expect(args.line_items[0].price).toBe("price_growth_monthly");
+    expect(args.line_items[0].price).toBe("price_growth_annual");
     expect(args.discounts).toBeUndefined();
     expect(args.allow_promotion_codes).toBe(true);
   });

@@ -183,11 +183,11 @@ export { analyzeContentGeo } from "./content-geo";
 
 // Strategy Generator — GEO Content Plan (C3).
 export type { StrategyInputs, StrategyPlan, Recommendation, CalendarItem } from "./strategy-generator";
-export { generateStrategy } from "./strategy-generator";
+export { generateStrategy, toCalendarTopic } from "./strategy-generator";
 
 // Content Studio — draft generation for blog/LinkedIn/FAQ (C4, GEO-A2).
 export type { ContentType, ContentRequest, ContentDraft } from "./content-studio";
-export { generateContent } from "./content-studio";
+export { generateContent, templateDraft } from "./content-studio";
 
 // Sentiment — AI-vector brand perception classifier (removes last AI baseline).
 export type { SentimentResult, SentimentProbeInput } from "./sentiment";

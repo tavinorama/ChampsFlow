@@ -1282,3 +1282,96 @@ Owner: `devops-engineer`. Due: Gate 7.
 **Next action**: none — this closes the formal logging gap. Live privacy posture is governed by the Gate 3→4 DPIA and its GEO-D1/D2/D3 conditions; Gate 7 hard stops remain (EU Art. 27 representative + Encarregado/LGPD DPO).
 
 **Signed**: legal-privacy-officer (retroactively recorded) — 2026-06-13
+
+---
+
+## Implementation security audit (Gate 5→6 scope) — 2026-06-27 — security-compliance-officer
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+**Inputs reviewed**:
+- `apps/api/src/auth/middleware.ts` (JWT verification, requireAuth, requireSuperAdmin, requireApiKey, requireNotProcessingRestricted, DEV_AUTH_BYPASS gate)
+- `apps/api/src/routes/audits.ts` (PATCH /api/content/:id lines 1358/1367/1371; DELETE /api/brands/:id/competitors/:competitorId line 441; plan_task PATCH line 1246; public report endpoint line 1414)
+- `apps/api/src/routes/system.ts` (GET /api/system/capabilities — public, no auth)
+- `apps/api/src/routes/billing.ts` (Stripe webhook — raw body + constructEvent + Redis NX idempotency)
+- `apps/api/src/routes/admin.ts` (requireSuperAdmin on all admin routes)
+- `apps/api/src/routes/api-keys.ts` (SHA-256 storage, sliding-window rate limit)
+- `apps/api/src/routes/chat.ts` (x-forwarded-for trust, rate limiting)
+- `apps/api/src/db/client.ts` (SET LOCAL tenant, SET ROLE app_user, assertAppDbRoleSafe)
+- `apps/api/src/routes/dsr.ts` (DSR/CCPA routes, OTP brute-force, IP truncation)
+- `packages/llm/src/content-studio.ts` (source_url injection into LLM prompt — lines 98, 146)
+- `packages/llm/src/ssrf-guard.ts` (assertPublicUrl, guardedFetch — full SSRF blocklist)
+- `packages/llm/src/prompt-sanitizer.ts` (13 injection patterns, 4000-char cap)
+- `packages/shared/src/logger.ts` (SCRUBBED_FIELDS denylist — recursive)
+- `packages/shared/src/crypto.ts` (AES-256-GCM, key versioning)
+- `apps/web/src/middleware.ts` (nonce-based CSP, HSTS)
+- `apps/web/next.config.js` (static security headers)
+- `packages/db/migrations/` (RLS policies — content_piece, competitor, dsr_requests, ccpa_requests)
+- `apps/web/.env.local` (confirmed tracked in git via git ls-files --cached)
+- `npm audit` (2 Moderate CVEs — postcss via next; no High/Critical)
+
+---
+
+### Findings summary
+
+| # | Severity | Location | Finding |
+|---|---|---|---|
+| F-1 | High | `apps/web/.env.local` | File tracked in git; future secrets will be permanently committed |
+| F-2 | High | `apps/api/src/routes/audits.ts:1358,1367,1371,441` | No explicit `tenant_id` filter in UPDATE/DELETE — relies solely on RLS |
+| F-3 | Medium | `apps/api/src/routes/system.ts:200-201` | Public endpoint discloses internal env var names |
+| F-4 | Medium | `packages/llm/src/content-studio.ts:98,146` | `source_url` injected into LLM prompt without URL validation or SSRF guard |
+| F-5 | Medium | `apps/api/src/routes/chat.ts:172-174` | `x-forwarded-for` trusted first for rate-limit key — client-controllable |
+| F-6 | Low | `apps/web/src/middleware.ts` | HSTS missing `preload`; no `report-uri`/`report-to` on CSP |
+| F-7 | Low | npm audit | postcss Moderate CVE via `next` dependency — no High/Critical |
+| F-8 | Low | `apps/api/src/auth/middleware.ts` (requireNotProcessingRestricted) | Fails open on DB error — acceptable design, undocumented as known behaviour |
+
+No Critical findings. No secret literals in source code or bundles. No PII in logs. Stripe webhook signature verified before side-effects. SSRF guard (GEO-SEC-1/4) fully implemented. Prompt sanitizer centralized at gateway layer (GEO-SEC-2). Queue payloads contain IDs only (GEO-SEC-3). Admin routes all behind requireSuperAdmin.
+
+---
+
+### Conditions / Blockers
+
+**High — must be resolved before Gate 7 go-live:**
+
+1. [High] `apps/web/.env.local` tracked in git — run `git rm --cached apps/web/.env.local`, add explicit exclusion to `.gitignore`, create `apps/web/.env.local.example` as committed template. This is a BLOCK if any real secret is ever added to this file while it remains tracked. Current content is non-sensitive but the structural risk is present. Owner: devops-engineer or founder. Due: immediately / before next secret rotation touches this file.
+
+2. [High] `apps/api/src/routes/audits.ts:1358, 1367, 1371, 441` — Add `AND tenant_id = $N` to the three `UPDATE content_piece` statements and the `DELETE FROM competitor` statement. Pattern already correct at line 1246 (`plan_task` PATCH). RLS provides defence-in-depth but explicit tenant filter is required per the Gate 3→4 S-2/S-3 standard. Owner: backend-coder. Due: Gate 7.
+
+**Medium — must be addressed before or at Gate 7:**
+
+3. [Medium] `apps/api/src/routes/system.ts:200-201` — Remove `key` field (env var name disclosure) from public GET /api/system/capabilities response, or gate the full detail behind requireSuperAdmin. The `connected: boolean` field alone is sufficient for the product's transparency goal. Owner: backend-coder. Due: Gate 7.
+
+4. [Medium] `packages/llm/src/content-studio.ts:98,146` — Validate `source_url` through `assertPublicUrl()` (from ssrf-guard.ts) before injecting into LLM prompt. Also pass through `sanitizeUserPrompt()`. The field comes from an authenticated client but SSRF and prompt-injection vectors are still present. Owner: backend-coder. Due: Gate 7.
+
+5. [Medium] `apps/api/src/routes/chat.ts:172-174` + `/api/test` route — Document and enforce the trusted proxy tier: if requests arrive via Cloudflare/Railway edge, configure the Hono app to trust only the last N hops of `x-forwarded-for` corresponding to those infrastructure hops, not the raw header. This prevents rate-limit bypass via header forgery. Owner: devops-engineer. Due: Gate 7.
+
+**Low — pre-launch operational items:**
+
+6. [Low] `apps/web/src/middleware.ts` — Add `preload` directive to HSTS response header and add `report-uri`/`report-to` endpoint to CSP for violation telemetry. Owner: frontend-coder / devops-engineer. Due: Gate 7.
+
+7. [Low] npm lockfile — Track postcss CVE; upgrade `next` when a patched version ships (next release after 15.x that bundles postcss ≥8.5.10). No immediate action required (Moderate only). Owner: devops-engineer. Due: Gate 7 (monitor).
+
+8. [Low] `apps/api/src/auth/middleware.ts` (requireNotProcessingRestricted) — Document the fail-open behaviour (DB error → log + continue) as a known design decision in `docs/07-deploy.md` or the runbook. Owner: backend-coder / product-manager. Due: Gate 7.
+
+---
+
+### Gate 7 forward checklist (carry-over items confirmed still open)
+
+- GEO-D1: Provider SCC/EU-path confirmations (OpenAI, Perplexity, Gemini) — devops-engineer, Gate 7
+- GEO-SEC-5 first rotation execution — devops-engineer, Gate 7
+- SEC-G7-4: next.config.js frontend headers automated scan — devops-engineer, Gate 7
+- SEC-G7-5: E2E sandbox credentials (LinkedIn, Meta, Stripe test mode) — devops-engineer, Gate 7
+- SEC-G7-6: npm audit threshold raised to --audit-level=high — devops-engineer, Gate 7
+- SEC-G7-7: Railway secrets runtime-only confirmation — devops-engineer, Gate 7
+- EU Art. 27 representative + LGPD Encarregado appointment — founder, before EU/BR user onboarding
+- LGPD GEO-D3: BR→US transfer basis (ANPD mechanism) — founder + external counsel
+
+---
+
+**Artifacts updated**:
+- `docs/compliance/security-review-2026-06.md` — created (full findings report)
+- `docs/compliance/gate-log.md` — this entry (appended)
+
+**Next action**: APPROVED_WITH_CONDITIONS. Conditions F-1 (git-tracked .env.local) and F-2 (missing tenant filter) are High priority and must be resolved before Gate 7 sign-off. Conditions F-3 through F-5 are Medium and required at Gate 7. Conditions F-6 through F-8 are Low, addressed as part of Gate 7 deploy hardening. Pipeline may remain at Gate 7 preparation. `devops-engineer` and `backend-coder` receive this entry as their Gate 7 input. `security-compliance-officer` returns at Gate 7 for pre-launch sign-off.
+
+**Signed**: security-compliance-officer — 2026-06-27

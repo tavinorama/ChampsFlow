@@ -236,11 +236,14 @@ export function registerChatRoutes(app: Hono): void {
    */
   app.post("/api/chat", async (ctx: Context) => {
     // -------------------------------------------------------------------------
-    // Extract IP for rate limiting (using x-forwarded-for first per spec)
+    // Extract IP for rate limiting. Prefer cf-connecting-ip (set by Cloudflare
+    // from the real connection — not client-spoofable). Fall back to the LAST
+    // x-forwarded-for hop (the one our proxy appended), never the first (which
+    // a client can forge to evade rate limiting). Security review 2026-06.
     // -------------------------------------------------------------------------
     const rawIp =
-      ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      ctx.req.header("cf-connecting-ip") ??
+      ctx.req.header("cf-connecting-ip")?.trim() ??
+      ctx.req.header("x-forwarded-for")?.split(",").pop()?.trim() ??
       "unknown";
     const ipTruncated = truncateIp(rawIp);
 

@@ -998,6 +998,7 @@ function DoneForYou({
 interface ContentItem {
   id: string; content_type: string; title: string | null; body: string;
   schema_markup: string | null; ai_generated: boolean; status: string;
+  rationale?: string | null; // why this piece closes the audit gap
 }
 
 // --- GEO trait heuristics (client-side, no imports needed) ---
@@ -1067,6 +1068,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
   const [tone, setTone] = useState("professional");
   const [length, setLength] = useState<"short" | "medium" | "long">("medium");
   const [busy, setBusy] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   // Inline edit state
   const [editBody, setEditBody] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -1093,7 +1095,16 @@ function ContentStudio({ brandId }: { brandId: string }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content_type: type, topic: topic.trim(), tone, length }),
       });
-      if (res.ok) { setTopic(""); await load(); }
+      if (res.ok) {
+        setGenerateError(null);
+        setTopic("");
+        await load();
+      } else if (res.status === 402) {
+        const data = await res.json() as { body?: string };
+        setGenerateError(data.body ?? "An AI key is required to generate drafts.");
+      } else {
+        setGenerateError("Draft generation failed. Please try again.");
+      }
     } finally { setBusy(false); }
   }
 
@@ -1229,6 +1240,33 @@ function ContentStudio({ brandId }: { brandId: string }) {
         </button>
       </form>
 
+      {generateError && (
+        <div
+          role="alert"
+          aria-live="polite"
+          aria-atomic="true"
+          style={{
+            backgroundColor: "var(--color-surface-muted)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-3)",
+            margin: "var(--space-2) 0",
+            color: "var(--color-muted)",
+            fontSize: "var(--font-size-body-sm)",
+            lineHeight: 1.5,
+          }}
+        >
+          <span>{generateError}</span>
+          {" "}
+          <a
+            href="/account/integrations"
+            style={{ color: "var(--color-primary)", textDecoration: "underline" }}
+          >
+            Add your AI key →
+          </a>
+        </div>
+      )}
+
       {items.length === 0 ? (
         <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>No drafts yet.</p>
       ) : (
@@ -1272,6 +1310,17 @@ function ContentStudio({ brandId }: { brandId: string }) {
                 <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "0 0 var(--space-2) 0", lineHeight: 1.4 }}>
                   {geo.words} words · Grade {grade}
                 </p>
+
+                {it.rationale && (
+                  <p style={{
+                    fontSize: "var(--font-size-caption)", color: "var(--color-muted)",
+                    fontStyle: "italic", lineHeight: 1.5, margin: "0 0 var(--space-2) 0",
+                    borderLeft: "3px solid var(--color-border)",
+                    paddingLeft: "var(--space-2)",
+                  }}>
+                    <strong style={{ fontStyle: "normal" }}>Why this piece:</strong> {it.rationale}
+                  </p>
+                )}
 
                 {it.title && <div style={{ fontWeight: 700, marginBottom: "var(--space-1)" }}>{it.title}</div>}
 
