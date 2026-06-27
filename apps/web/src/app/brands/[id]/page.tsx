@@ -1275,7 +1275,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
             lineHeight: 1.5,
           }}
         >
-          <span>{generateError}</span>
+          <span style={{ whiteSpace: "pre-line" }}>{generateError}</span>
           {" "}
           <a
             href="/account/integrations"
@@ -1669,6 +1669,14 @@ function GeoContentPlan({ brandId, auditId }: { brandId: string; auditId: string
                     </span>
                   )}
                 </div>
+
+                {/* Gap summary — what's wrong */}
+                <p style={{
+                  fontSize: "var(--font-size-body-sm)", color: "var(--color-text)",
+                  margin: "0 0 var(--space-1) 0", lineHeight: 1.5,
+                }}>
+                  {t.gap}
+                </p>
 
                 {/* Evidence line */}
                 {t.evidence && (

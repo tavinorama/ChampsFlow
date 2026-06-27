@@ -58,7 +58,7 @@ describe("generateContent — no-key graceful error", () => {
     expect(d.generatedBy).toBe("error");
     expect(d.keyUsed).toBe("none");
     expect(d.body).toContain("Account → AI engines & keys");
-    expect(d.title).toBe("AI key required");
+    expect(d.title).toBe("Connect your AI key to generate content");
   });
 
   it("returns template (not error) when key present but LLM call fails", async () => {
