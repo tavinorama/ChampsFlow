@@ -36,6 +36,10 @@ export interface StrategyInputs {
   missingSources?: string[];
   /** Specific crawler(s) blocked in robots.txt (e.g., "GPTBot", "ClaudeBot"). */
   blockedCrawlers?: string[];
+  /** Brand name — used to fill [brand] placeholders in calendar topics. */
+  brandName?: string;
+  /** Category / industry — used to fill [category] placeholders in calendar topics. */
+  category?: string;
 }
 
 export interface Recommendation {
@@ -176,10 +180,15 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
     recs.push({
       vector: "performance",
       gap: "Your content lacks statistics and data points — a top driver of AI citations.",
-      action: "Add concrete numbers, benchmarks, and data to your key pages.",
+      action: inputs.absentPrompts && inputs.absentPrompts.length > 0
+        ? `Add specific statistics, benchmarks, and data to your key pages — especially on "${inputs.absentPrompts[0]}" type queries where buyers expect data-backed answers.`
+        : "Add specific statistics, benchmarks, and data points (with year and source) to your key pages.",
       effort: "medium", impact: "high", priority: 85,
       metric: "Content citation-worthiness score — statistics trait (target: >50%)",
       owner: "you",
+      ...(inputs.absentPrompts && inputs.absentPrompts.length > 0
+        ? { evidence: `Your brand is absent for buyer queries like: "${inputs.absentPrompts[0]}". Answer-shaped content directly addresses these.` }
+        : {}),
     });
   }
   if (num(traits["sourcedClaims"]) < 0.5) {
@@ -196,10 +205,15 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
     recs.push({
       vector: "ai",
       gap: "Little answer-shaped content (FAQ / Q&A structure) for engines to extract.",
-      action: "Add FAQ sections and question-style headings to your service pages.",
+      action: inputs.absentPrompts && inputs.absentPrompts.length > 0
+        ? `Add FAQ sections and Q&A-shaped headings to your service pages. Start with the exact buyer question: "${inputs.absentPrompts[0]}"`
+        : "Add FAQ sections and question-style headings to your service pages.",
       effort: "low", impact: "high", priority: 82,
       metric: "Content citation-worthiness score — answer-shaped trait (target: >50%)",
       owner: "you",
+      ...(inputs.absentPrompts && inputs.absentPrompts.length > 0
+        ? { evidence: `Your brand is absent for buyer queries like: "${inputs.absentPrompts[0]}". Answer-shaped content directly addresses these.` }
+        : {}),
     });
   }
 
@@ -219,9 +233,27 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
   // Always ensure at least 5 recommendations (AC-C3-1) — add evergreen GEO plays.
   // Evergreen cards have no evidence/metric — they are truly generic.
   const evergreen: Recommendation[] = [
-    { vector: "brand", gap: "Consistent entity signals improve how AI identifies you.", action: "Ensure name, logo, and description are consistent across all profiles.", effort: "low", impact: "medium", priority: 50, owner: "you" },
-    { vector: "performance", gap: "Fresh content is favoured by AI engines.", action: "Publish or refresh one citation-worthy article per week.", effort: "medium", impact: "medium", priority: 45, owner: "you" },
-    { vector: "ai", gap: "Regular monitoring catches answer drift early.", action: "Enable weekly monitoring and review the Ozvor AI Visibility trend.", effort: "low", impact: "medium", priority: 40, owner: "you" },
+    {
+      vector: "brand",
+      gap: "Consistent entity signals improve how AI identifies your brand.",
+      action: "Audit name, logo, description, and website URL across all public profiles for exact consistency.",
+      effort: "low", impact: "medium", priority: 50, owner: "you",
+      metric: "Entity completeness score (target: >70% on next audit)",
+    },
+    {
+      vector: "performance",
+      gap: "Fresh, dated content is favoured over stale pages by AI engines.",
+      action: "Publish or refresh one citation-worthy article per week — include a 'Last updated: [date]' line and at least one statistic.",
+      effort: "medium", impact: "medium", priority: 45, owner: "you",
+      metric: "Content freshness: number of pages with 'Last updated' within 90 days",
+    },
+    {
+      vector: "ai",
+      gap: "Without regular monitoring, AI answer drift goes undetected.",
+      action: "Enable weekly monitoring in Ozvor AI Visibility to catch score drops before they compound.",
+      effort: "low", impact: "medium", priority: 40, owner: "you",
+      metric: "Ozvor AI Visibility Score trend week-over-week (target: stable or improving)",
+    },
   ];
   for (const e of evergreen) {
     if (recs.length >= 5) break;
@@ -236,7 +268,7 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
     v === "ai" ? "Website (comparison/FAQ)" : v === "performance" ? "Website (content)" : "LinkedIn + profiles";
   const calendar: CalendarItem[] = recs.slice(0, 4).map((r, i) => ({
     week: i + 1,
-    topic: toCalendarTopic(r, inputs.absentPrompts),
+    topic: toCalendarTopic(r, inputs.absentPrompts, inputs.brandName, inputs.category),
     channel: channelFor(r.vector),
     vector: r.vector,
   }));
@@ -258,8 +290,15 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
  *   (from the audit's citation_check). Used as the most specific signal for
  *   AI-vector entries.
  */
-export function toCalendarTopic(rec: Recommendation, absentPrompts?: string[]): string {
+export function toCalendarTopic(
+  rec: Recommendation,
+  absentPrompts?: string[],
+  brandName?: string,
+  category?: string,
+): string {
   const action = rec.action;
+  const brand = brandName ?? "[brand]";
+  const cat = category ?? "[category]";
 
   // AI vector — highest priority: use an absent prompt if available, as that is
   // the exact buyer question the piece must answer.
@@ -282,16 +321,16 @@ export function toCalendarTopic(rec: Recommendation, absentPrompts?: string[]): 
   // Performance vector — schema / content / data oriented.
   if (rec.vector === "performance") {
     if (/schema/i.test(action)) {
-      return "What is [category]? A complete buyer's guide";
+      return `What is ${cat}? A complete buyer's guide`;
     }
     if (/statistic|number|benchmark|data/i.test(action)) {
-      return "The data: key benchmarks buyers use to evaluate [category]";
+      return `The data: key benchmarks buyers use to evaluate ${cat}`;
     }
     if (/FAQ|question/i.test(action)) {
-      return "FAQ: the most common questions about [category]";
+      return `FAQ: the most common questions about ${cat}`;
     }
     if (/crawl|robot|access/i.test(action)) {
-      return "How [brand] makes its expertise findable in AI search";
+      return `How ${brand} makes its expertise findable in AI search`;
     }
     // Generic performance fallback.
     return stripInstruction(action);
@@ -300,10 +339,10 @@ export function toCalendarTopic(rec: Recommendation, absentPrompts?: string[]): 
   // Brand vector — entity / off-site / profile oriented.
   if (rec.vector === "brand") {
     if (/off-site|profile|review|G2|Trustpilot|LinkedIn|reddit/i.test(action)) {
-      return "About us: what [brand] does and who we serve";
+      return `About us: what ${brand} does and who we serve`;
     }
     if (/entity|Wikidata|Wikipedia|consistent/i.test(action)) {
-      return "[brand] company profile: who we are and what we stand for";
+      return `${brand} company profile: who we are and what we stand for`;
     }
     // Generic brand fallback.
     return stripInstruction(action);

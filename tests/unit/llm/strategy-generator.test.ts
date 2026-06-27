@@ -206,3 +206,84 @@ describe("generateStrategy — Action Cards v1 enrichment", () => {
     }
   });
 });
+
+describe("generateStrategy — quality improvements", () => {
+  it("statistics card action references the absent prompt when available", () => {
+    const inputs: StrategyInputs = {
+      scores: { brand: 50, performance: 40, ai: 50, overall: 47 },
+      components: {
+        brand: { entityCompleteness: 0.5 },
+        performance: { schemaCoverage: 0.8, aiCrawlerAccess: 1, llmsTxtPresent: false, citationShareVsCompetitors: 0.5, aioPresence: false },
+        ai: { citationRate: 0.8, avgPositionScore: 0.7, sentimentScore: 0.7 },
+      },
+      contentTraits: { statistics: 0.2, sourcedClaims: 0.7, answerShaped: 0.7, quotations: 0.5, depth: 0.5 },
+      absentPrompts: ["best project management tool for remote teams"],
+    };
+    const plan = generateStrategy(inputs);
+    const statsCard = plan.recommendations.find(r => r.gap.toLowerCase().includes("statistic") || r.action.toLowerCase().includes("statistic"));
+    expect(statsCard).toBeDefined();
+    expect(statsCard?.action).toContain("best project management tool for remote teams");
+  });
+
+  it("answerShaped card action references the absent prompt when available", () => {
+    const inputs: StrategyInputs = {
+      scores: { brand: 50, performance: 40, ai: 50, overall: 47 },
+      components: {
+        brand: { entityCompleteness: 0.5 },
+        performance: { schemaCoverage: 0.8, aiCrawlerAccess: 1, llmsTxtPresent: false, citationShareVsCompetitors: 0.5, aioPresence: false },
+        ai: { citationRate: 0.8, avgPositionScore: 0.7, sentimentScore: 0.7 },
+      },
+      contentTraits: { statistics: 0.7, sourcedClaims: 0.7, answerShaped: 0.2, quotations: 0.5, depth: 0.5 },
+      absentPrompts: ["how to choose a CRM for a startup"],
+    };
+    const plan = generateStrategy(inputs);
+    const faqCard = plan.recommendations.find(r => r.gap.toLowerCase().includes("answer-shaped") || r.action.toLowerCase().includes("faq"));
+    expect(faqCard).toBeDefined();
+    expect(faqCard?.action).toContain("how to choose a CRM for a startup");
+  });
+
+  it("evergreen cards all have a metric field", () => {
+    // A strong brand triggers only evergreen cards
+    const strong: StrategyInputs = {
+      scores: { brand: 92, performance: 90, ai: 95, overall: 92 },
+      components: {
+        brand: { entityCompleteness: 0.95, citationVolume: 0.9, eeaSignal: 0.9 },
+        performance: { schemaCoverage: 0.95, llmsTxtPresent: true, aiCrawlerAccess: 1, citationShareVsCompetitors: 0.9, aioPresence: true },
+        ai: { citationRate: 0.9, avgPositionScore: 0.9, sentimentScore: 0.95 },
+      },
+      offsiteSources: [{ label: "Reddit", present: true }, { label: "Wikipedia", present: true }],
+      contentTraits: { statistics: 0.9, sourcedClaims: 0.9, answerShaped: 0.9, quotations: 0.9, depth: 0.9 },
+      displacedByCompetitors: 0,
+    };
+    const plan = generateStrategy(strong);
+    // All evergreen cards should have a metric
+    const evergreenCards = plan.recommendations.filter(r => r.priority <= 50);
+    expect(evergreenCards.length).toBeGreaterThan(0);
+    for (const card of evergreenCards) {
+      expect(card.metric).toBeDefined();
+      expect(typeof card.metric).toBe("string");
+      expect((card.metric as string).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("toCalendarTopic fills [brand] placeholder when brandName is provided in inputs", () => {
+    const inputs: StrategyInputs = {
+      scores: { brand: 40, performance: 50, ai: 50, overall: 47 },
+      brandName: "Acme Corp",
+      category: "CRM",
+      components: {
+        brand: { entityCompleteness: 0.3 },
+        performance: { schemaCoverage: 0.8, aiCrawlerAccess: 1, llmsTxtPresent: false, citationShareVsCompetitors: 0.5, aioPresence: false },
+        ai: { citationRate: 0.8, avgPositionScore: 0.7, sentimentScore: 0.7 },
+      },
+      offsiteSources: [{ label: "G2", present: false }, { label: "Reddit", present: false }],
+    };
+    const plan = generateStrategy(inputs);
+    const calendarTopics = plan.calendar.map(c => c.topic).join(" ");
+    // Should NOT contain literal [brand] placeholder
+    expect(calendarTopics).not.toContain("[brand]");
+    // Should contain the actual brand name somewhere
+    // (brand-vector calendar entries use brand name)
+    expect(calendarTopics).toContain("Acme Corp");
+  });
+});

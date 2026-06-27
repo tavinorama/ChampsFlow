@@ -186,3 +186,46 @@ describe("generateContent — brand-grounded inputs", () => {
     expect(d.rationale).not.toMatch(/confirmed you are on|you are on G2|you are on Trustpilot/i);
   });
 });
+
+describe("generateContent — strengthened prompt structure", () => {
+  it("blog user prompt mandates question-shaped H1 structure", async () => {
+    stubFetchCapture();
+    await generateContent({ ...baseReq, contentType: "blog" }, { apiKey: "sk-ant-test-key" });
+    const messages = (capturedBody?.["messages"] as Array<{ role: string; content: string }>) ?? [];
+    const userContent = messages[0]?.content ?? "";
+    expect(userContent).toMatch(/question|H1|FAQ/i);
+    expect(userContent).toMatch(/meta description|Meta:/i);
+  });
+
+  it("FAQ user prompt mandates Q&A structure with follow-up questions", async () => {
+    stubFetchCapture();
+    await generateContent({ ...baseReq, contentType: "faq" }, { apiKey: "sk-ant-test-key" });
+    const messages = (capturedBody?.["messages"] as Array<{ role: string; content: string }>) ?? [];
+    const userContent = messages[0]?.content ?? "";
+    expect(userContent).toMatch(/follow-up|FAQ|Q&A/i);
+    expect(userContent).toMatch(/Schema:/i);
+  });
+
+  it("LinkedIn user prompt forbids generic opener", async () => {
+    stubFetchCapture();
+    await generateContent({ ...baseReq, contentType: "linkedin" }, { apiKey: "sk-ant-test-key" });
+    const messages = (capturedBody?.["messages"] as Array<{ role: string; content: string }>) ?? [];
+    const userContent = messages[0]?.content ?? "";
+    expect(userContent).toMatch(/Never open with|In today's world/i);
+  });
+
+  it("no-key locked state title signals gating (not instruction only)", async () => {
+    delete process.env["ANTHROPIC_API_KEY"];
+    const d = await generateContent(baseReq);
+    expect(d.generatedBy).toBe("error");
+    expect(d.title.toLowerCase()).toMatch(/connect|key|generate/);
+    // Body still contains the navigation instruction
+    expect(d.body).toContain("Account → AI engines & keys");
+  });
+
+  it("long length uses max_tokens >= 3000", async () => {
+    stubFetchCapture();
+    await generateContent({ ...baseReq, length: "long" }, { apiKey: "sk-ant-test-key" });
+    expect((capturedBody?.["max_tokens"] as number)).toBeGreaterThanOrEqual(3000);
+  });
+});

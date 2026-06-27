@@ -293,7 +293,7 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
     req.length === "long" ? "~1000+ words" : null;
   const maxTokens =
     req.length === "short" ? 600 :
-    req.length === "medium" ? 1200 : 2048;
+    req.length === "medium" ? 1200 : 3072;
 
   // Build brand-grounded user prompt.
   const userPromptParts: string[] = [
@@ -328,11 +328,33 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
 
   // Format instructions by content type.
   if (req.contentType === "blog") {
-    userPromptParts.push("Use an H1 and H2 structure and include an internal-link placeholder.");
+    userPromptParts.push(
+      `Structure the blog post as follows (mandatory, in this order):` +
+      `\n1. H1 headline phrased as a question the buyer would actually ask (e.g. "How do [category] companies [solve problem]?") — never a generic "In today's world" opening.` +
+      `\n2. One-sentence meta description (prefix with "Meta: ") capturing the article's unique angle.` +
+      `\n3. Two-paragraph introduction that names ${req.brandName} and their specific situation by the second sentence.` +
+      `\n4. At least two H2 sections. Each H2 must also be phrased as a question where possible.` +
+      `\n5. An FAQ block (minimum 3 Q&A pairs) with "## Frequently Asked Questions" as the H2 — this structure is directly extractable by AI engines.` +
+      `\n6. Specific numbers and data points (add year + source). If unknown, mark them [add: statistic + source, e.g. "X% of buyers…" per [source] [year]].` +
+      `\n7. A "Schema type" note at the very end on its own line: "Schema: Article" (or FAQPage if FAQ-dominated).` +
+      `\n8. An internal-link placeholder at the end: "[Internal link: related service page]".` +
+      `\nDo NOT open with "In today's world", "In recent years", or any generic industry-overview sentence. Open with a direct answer or a compelling brand-specific claim.`
+    );
   } else if (req.contentType === "faq") {
-    userPromptParts.push("Format as a clear Question + Answer structure.");
+    userPromptParts.push(
+      `Format as a clear Q&A. Start with "## [Question phrased from buyer's perspective]?" as the heading. ` +
+      `Answer it fully in 2–4 paragraphs naming ${req.brandName} and their specific approach. ` +
+      `Include at least one data point (or mark it [add: statistic + source]). ` +
+      `End with 2–3 follow-up questions and short answers ("**Q:** … **A:** …") that buyers commonly ask next. ` +
+      `Add "Schema: FAQPage" on the last line.`
+    );
   } else {
-    userPromptParts.push("Keep it punchy and direct for LinkedIn. End with a relevant hashtag.");
+    userPromptParts.push(
+      `Write for LinkedIn. Open with a specific insight or surprising number (not a question). ` +
+      `Second line: what ${req.brandName} does about it — concrete, not vague. ` +
+      `3–5 punchy lines. End with 1 clear takeaway and 2–3 hashtags relevant to the category. ` +
+      `Never open with "In today's world" or "I'm excited to share".`
+    );
   }
 
   if (req.sourceUrl) {
@@ -420,8 +442,15 @@ export async function generateContent(
   // No key at all → graceful error (not a template skeleton).
   if (!apiKey) {
     return {
-      title: "AI key required",
-      body: "To generate content drafts, add your Anthropic API key in Account → AI engines & keys. Your key pays for content generation (you control the cost). The audit itself uses the platform key and works without your own key.",
+      title: "Connect your AI key to generate content",
+      body: [
+        "Content generation requires an AI key.",
+        "",
+        "Go to Account → AI engines & keys and add your Anthropic API key.",
+        "Your key pays for content generation at cost — you control what is generated and what it costs.",
+        "",
+        "The audit, scoring, and action plan work without an AI key. Content drafts and the AI Visibility Score details require one.",
+      ].join("\n"),
       schemaMarkup: null,
       generatedBy: "error",
       keyUsed: "none",

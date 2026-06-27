@@ -1,6 +1,6 @@
 # GEO Bias Parity Report — GEO-A8 (Gate 6→7)
 
-Generated: 2026-06-27T13:12:18.016Z
+Generated: 2026-06-27T13:33:36.792Z
 Brand-name corpus: 10 names across 8+ linguistic origins (incl. diacritics, hyphens, apostrophes, multi-word).
 
 | Layer | Parity result |
