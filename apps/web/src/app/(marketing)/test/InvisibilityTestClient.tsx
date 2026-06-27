@@ -706,7 +706,117 @@ function VectorNotes({ breakdown }: { breakdown: ScoreBreakdown }) {
 }
 
 // ---------------------------------------------------------------------------
-// Recommendation CTAs
+// Kit hero CTA — always shown regardless of score (founder requirement).
+// The natural next step after the free test is always the $29 Kit.
+// ---------------------------------------------------------------------------
+
+function KitHeroCta({ kitHref }: { kitHref: string }) {
+  return (
+    <section aria-labelledby="kit-hero-heading">
+      <h2
+        id="kit-hero-heading"
+        style={{
+          margin: "0 0 var(--space-4) 0",
+          fontSize: "var(--font-size-h3)",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          color: "var(--color-text)",
+        }}
+      >
+        Your next step
+      </h2>
+      <div
+        role="region"
+        aria-label="Get the Get-Cited Kit"
+        style={{
+          border: "1.5px solid rgba(39,201,138,0.35)",
+          borderRadius: "var(--radius-lg)",
+          padding: "var(--space-8) var(--space-6)",
+          backgroundColor: "var(--color-surface)",
+          boxShadow: "0 12px 40px rgba(39,201,138,0.14)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-4)",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              margin: "0 0 var(--space-2) 0",
+              fontSize: "var(--font-size-caption)",
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              color: "var(--color-accent-ink)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            Natural next step · one-time $29
+          </p>
+          <h3
+            style={{
+              margin: "0 0 var(--space-2) 0",
+              fontSize: "clamp(1.25rem, 3vw, 1.75rem)",
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              color: "var(--color-text)",
+            }}
+          >
+            The Get-Cited Kit
+          </h3>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              lineHeight: 1.6,
+            }}
+          >
+            Your free test shows the gap. The Kit closes it: a full audit across all 5 engines,
+            your top 3 citation fixes, and 3 ready-to-publish drafts (blog, LinkedIn, FAQ) — no subscription required.
+          </p>
+        </div>
+        <a
+          href={kitHref}
+          aria-label="Get the Get-Cited Kit — $29 one-time payment"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: "48px",
+            minWidth: "44px",
+            padding: "0 var(--space-6)",
+            borderRadius: "var(--radius-md)",
+            background: "linear-gradient(135deg,#27c98a,#0c7d54)",
+            color: "#06140e",
+            boxShadow: "0 10px 32px rgba(39,201,138,0.28)",
+            fontWeight: 800,
+            fontSize: "var(--font-size-body)",
+            textDecoration: "none",
+            width: "100%",
+            boxSizing: "border-box",
+            fontFamily: "var(--font-family)",
+          }}
+        >
+          Get the Kit — $29
+        </a>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            textAlign: "center",
+          }}
+        >
+          Secure checkout · one-time payment · no subscription
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recommendation CTAs — secondary plans (Kit excluded; it's always the hero)
 // ---------------------------------------------------------------------------
 
 function RecommendationCards({
@@ -714,7 +824,10 @@ function RecommendationCards({
 }: {
   recommendations: Recommendation[];
 }) {
-  if (recommendations.length === 0) return null;
+  // Filter out "kit" — it's always shown as the prominent hero above; rendering
+  // it again here would create a duplicate CTA.
+  const secondary = recommendations.filter((r) => r.plan !== "kit");
+  if (secondary.length === 0) return null;
 
   return (
     <section aria-labelledby="rec-heading">
@@ -728,13 +841,11 @@ function RecommendationCards({
           color: "var(--color-text)",
         }}
       >
-        Your personalized next steps
+        Also worth considering
       </h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-        {recommendations.map((rec) => {
+        {secondary.map((rec) => {
           const ctaLabel = PLAN_LABEL[rec.plan];
-          const isKit = rec.plan === "kit";
-          const isPrimary = isKit;
           const isPurple = rec.plan === "growth" || rec.plan === "agency";
           const isOutlined = rec.plan === "call";
 
@@ -745,8 +856,8 @@ function RecommendationCards({
               aria-label={`${rec.plan} recommendation`}
               style={{
                 border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "var(--space-5)",
+                borderRadius: "var(--radius-md)",
+                padding: "var(--space-4) var(--space-5)",
                 backgroundColor: "var(--color-surface)",
                 boxShadow: "var(--shadow-card)",
                 display: "flex",
@@ -766,16 +877,9 @@ function RecommendationCards({
               </p>
               <a
                 href={rec.href}
+                aria-label={ctaLabel}
                 style={
-                  isPrimary
-                    ? {
-                        ...primaryBtn(false),
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        textDecoration: "none",
-                      }
-                    : isPurple
+                  isPurple
                     ? purpleBtn()
                     : isOutlined
                     ? outlinedBtn()
@@ -929,12 +1033,15 @@ function ResultsPanel({
         <VectorNotes breakdown={result.breakdown} />
       </div>
 
-      {/* F) Recommendation CTAs */}
+      {/* F) Kit hero CTA — always prominent, regardless of score */}
+      <KitHeroCta kitHref={kitHref} />
+
+      {/* G) Secondary plan recommendations (Kit already shown above) */}
       <div style={cardStyle}>
         <RecommendationCards recommendations={result.recommendations} />
       </div>
 
-      {/* G) Reset link */}
+      {/* H) Reset link */}
       <div>
         <button
           type="button"
@@ -955,7 +1062,7 @@ function ResultsPanel({
         </button>
       </div>
 
-      {/* H) Disclaimer */}
+      {/* I) Disclaimer */}
       <p
         style={{
           margin: 0,

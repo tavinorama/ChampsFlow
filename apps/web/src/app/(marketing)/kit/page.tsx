@@ -12,6 +12,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { KitCheckoutForm } from "./KitCheckoutForm";
+import { UpsellLadder } from "../../../components/UpsellLadder";
 
 export const metadata: Metadata = {
   title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29) | Ozvor",
@@ -87,12 +88,40 @@ export default function KitPage() {
         <KitCheckoutForm />
       </div>
 
-      {/* Bridge to Growth */}
-      <p style={{ marginTop: "var(--space-10)", textAlign: "center", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
-        Ready for ongoing monitoring instead of a one-off?{" "}
-        <Link href="/pricing" style={{ color: "var(--color-accent-ink)", fontWeight: 600, textDecoration: "none" }}>
-          See the Growth plan ($99/mo) →
-        </Link>
+      {/* Upsell ladder — Growth is the natural next step after the Kit */}
+      <UpsellLadder
+        heading="Keep climbing — from snapshot to weekly momentum"
+        primary={{
+          title: "Growth Plan",
+          why: "Your Kit is a one-time snapshot. Growth re-runs your full audit weekly, alerts you when your score or citation share moves, and hands you fresh content briefs. The Kit was the first brick — Growth is the wall.",
+          price: "$99/mo",
+          href: "/login?plan=growth&next=checkout",
+          accent: "emerald",
+          ctaAriaLabel: "Start the Growth Plan — $99 per month",
+        }}
+        secondary={[
+          {
+            title: "Agency Plan",
+            why: "Monitor up to 25 brands, white-label reports, and a client approval workflow.",
+            price: "$249/mo",
+            href: "/login?plan=agency&next=checkout",
+            accent: "ghost",
+            ctaAriaLabel: "Start the Agency Plan — $249 per month",
+          },
+          {
+            title: "OrganicPosts",
+            why: "Rather have a team run the whole GEO project? Done-for-you managed engagement.",
+            price: "Custom",
+            href: "/organicposts",
+            accent: "ghost",
+            ctaAriaLabel: "Learn about OrganicPosts done-for-you engagement",
+          },
+        ]}
+        marginTop="var(--space-12)"
+      />
+
+      <p style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}>
+        Founder annual: Growth $831/yr (~$69/mo), Agency $2,076/yr (~$173/mo) &mdash; 30% off, first 100 founders, annual only. No guaranteed citations.
       </p>
     </main>
   );
