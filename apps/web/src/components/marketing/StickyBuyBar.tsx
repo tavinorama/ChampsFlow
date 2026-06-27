@@ -26,7 +26,7 @@ export function StickyBuyBar() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
         <Link
-          href="/login?plan=growth&next=checkout"
+          href="/login?plan=growth&next=checkout&interval=year"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -44,7 +44,7 @@ export function StickyBuyBar() {
             flex: "0 0 auto",
           }}
         >
-          Start Growth $99/mo
+          Start Growth · from $69/mo
         </Link>
         <Link
           href="/test"
