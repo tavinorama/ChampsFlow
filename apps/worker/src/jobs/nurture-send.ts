@@ -48,7 +48,7 @@ import { sendNurtureKit3Email } from "../../../../packages/shared/src/emails/nur
 // Constants
 // ---------------------------------------------------------------------------
 
-const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://trustindexai.com";
+const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
 // Inter-step delays in milliseconds (fixed offset from NOW())
 // free_to_kit:  step0→step1=3d, step1→step2=2d, step2→step3=2d

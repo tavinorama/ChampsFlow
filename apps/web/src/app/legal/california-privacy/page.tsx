@@ -16,7 +16,6 @@
  */
 
 import Link from "next/link";
-import { Footer } from "../../../components/Footer";
 
 export const metadata = {
   title: "California Privacy Rights | Ozvor",
@@ -274,7 +273,6 @@ export default function CaliforniaPrivacyPage() {
         </Section>
       </main>
 
-      <Footer />
     </div>
   );
 }

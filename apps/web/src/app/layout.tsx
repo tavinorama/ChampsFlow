@@ -26,7 +26,7 @@ import { Schibsted_Grotesk, JetBrains_Mono } from "next/font/google";
 import "../styles/tokens.css";
 import { DpaGate } from "../components/DpaGate";
 import { AppTopBar } from "../components/AppTopBar";
-import { Footer } from "../components/Footer";
+import { SiteFooter } from "../components/SiteFooter";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 import { CookieConsent } from "../components/CookieConsent";
 
@@ -179,7 +179,12 @@ export default async function RootLayout({
             <CaliforniaBanner country={country} />
             <AppTopBar />
             <DpaGate>{children}</DpaGate>
-            <Footer />
+            <SiteFooter />
+            {/* Clear the fixed mobile BottomNav so it never covers the footer. */}
+            <div
+              aria-hidden="true"
+              style={{ height: "calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px))" }}
+            />
           </>
         )}
         {/* Cookie consent banner — global, on every route (marketing + app).

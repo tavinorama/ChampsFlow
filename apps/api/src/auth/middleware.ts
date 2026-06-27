@@ -363,7 +363,7 @@ export function requireNotProcessingRestricted(db: DbClient) {
         return ctx.json({
           error: "processing_restricted",
           message:
-            "Processing restricted under GDPR Art. 18. Contact privacy@trustindexai.com to lift the restriction.",
+            "Processing restricted under GDPR Art. 18. Contact privacy@ozvor.com to lift the restriction.",
         }, 403);
       }
     } catch (err) {

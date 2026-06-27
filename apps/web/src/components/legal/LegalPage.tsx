@@ -9,7 +9,6 @@
  */
 
 import Link from "next/link";
-import { Footer } from "../Footer";
 import { Logo } from "../brand/Logo";
 import { SoftCTA } from "../marketing/SoftCTA";
 
@@ -53,8 +52,6 @@ export function LegalPage({
           tone="quiet"
         />
       </div>
-
-      <Footer />
     </div>
   );
 }
