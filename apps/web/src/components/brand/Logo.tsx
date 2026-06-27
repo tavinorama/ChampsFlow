@@ -5,7 +5,7 @@
  * Uses currentColor so it inherits the parent's color (works in nav, footer, etc.).
  *
  * Wordmark: "Ozvor" in Schibsted Grotesk 600, color var(--color-text).
- * No colored tile. No "TrustIndex AI" wordmark here (that's a sub-brand badge elsewhere).
+ * No colored tile. No "Ozvor" wordmark here (that's a sub-brand badge elsewhere).
  *
  * Pure component — usable from server or client components.
  */

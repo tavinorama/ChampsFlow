@@ -38,7 +38,7 @@ test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () =
     // Dev-unlock redirects to /kit/:token?dev_unlock=1 → delivery page builds it.
     await expect(page).toHaveURL(/\/kit\/.+dev_unlock=1/, { timeout: 20_000 });
     await expect(page.getByRole("heading", { name: /first step to getting cited/i })).toBeVisible({ timeout: 90_000 });
-    await expect(page.locator("body")).toContainText(/TrustIndex Score/i);
+    await expect(page.locator("body")).toContainText(/Ozvor AI Visibility Score/i);
     await expect(page.locator("body")).toContainText(/top 3 fixes/i);
     await expect(page.locator("body")).toContainText(/ready-to-publish drafts/i);
     // Three drafts with the persistent AI label.

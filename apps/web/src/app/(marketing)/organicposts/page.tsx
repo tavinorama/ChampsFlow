@@ -32,7 +32,7 @@ const STEPS: { n: string; t: string; d: string }[] = [
   { n: "01", t: "Discovery & research", d: "We map the real buyer prompts in your category, audit your baseline, and identify the citations worth winning." },
   { n: "02", t: "Content system", d: "A managed editorial calendar — proof pages, comparison content and LinkedIn posts engineered to be cited, written with you." },
   { n: "03", t: "Publish cadence", d: "We hold the cadence steady across your site and LinkedIn — and you approve every draft before it goes live." },
-  { n: "04", t: "Monitor & report", d: "Weekly TrustIndex AI tracking across all five engines, with a clear read on what moved your score and what comes next." },
+  { n: "04", t: "Monitor & report", d: "Weekly Ozvor tracking across all five engines, with a clear read on what moved your score and what comes next." },
 ];
 
 const DIY = [

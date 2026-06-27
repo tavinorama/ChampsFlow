@@ -1,5 +1,5 @@
 /**
- * ChatWidget — Floating sales chat widget for TrustIndex AI marketing pages.
+ * ChatWidget — Floating sales chat widget for Ozvor marketing pages.
  *
  * ENV VARS:
  *   NEXT_PUBLIC_CALENDLY_URL — (optional) Calendly booking URL shown in the chat panel.

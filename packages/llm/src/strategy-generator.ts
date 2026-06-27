@@ -1,5 +1,5 @@
 /**
- * strategy-generator.ts — TrustIndex AI · C3 GEO Content Plan
+ * strategy-generator.ts — Ozvor · C3 GEO Content Plan
  *
  * Converts a completed audit's measured signals into a prioritized, dated
  * action plan + 4-week content calendar. Deterministic rules engine (no LLM
@@ -165,7 +165,7 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
   const evergreen: Recommendation[] = [
     { vector: "brand", gap: "Consistent entity signals improve how AI identifies you.", action: "Ensure name, logo, and description are consistent across all profiles.", effort: "low", impact: "medium", priority: 50 },
     { vector: "performance", gap: "Fresh content is favoured by AI engines.", action: "Publish or refresh one citation-worthy article per week.", effort: "medium", impact: "medium", priority: 45 },
-    { vector: "ai", gap: "Regular monitoring catches answer drift early.", action: "Enable weekly monitoring and review the TrustIndex trend.", effort: "low", impact: "medium", priority: 40 },
+    { vector: "ai", gap: "Regular monitoring catches answer drift early.", action: "Enable weekly monitoring and review the Ozvor AI Visibility trend.", effort: "low", impact: "medium", priority: 40 },
   ];
   for (const e of evergreen) {
     if (recs.length >= 5) break;

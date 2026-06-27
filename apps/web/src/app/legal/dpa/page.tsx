@@ -1,8 +1,8 @@
 /**
  * /legal/dpa — Data Processing Agreement (public, viewable). Linked from the
  * site Footer ("Data Processing Agreement"). Grounded in docs/compliance/ropa.md
- * + dpia.md. Where TrustIndex AI processes personal data on behalf of a business
- * customer, TrustIndex AI is the processor and the customer is the controller.
+ * + dpia.md. Where Ozvor processes personal data on behalf of a business
+ * customer, Ozvor is the processor and the customer is the controller.
  * Counsel review required before paid EU/BR launch.
  */
 
@@ -26,7 +26,7 @@ export default function DpaPage() {
       </LegalSection>
 
       <LegalSection n="2" title="Subject-matter, nature and purpose">
-        <p>We process personal data only to provide the Service: running GEO audits, computing the TrustIndex Score, benchmarking competitors, generating plans and drafts, monitoring, billing, and support. By design, audit prompts are synthetic and contain no personal data; competitor names are never sent to AI providers.</p>
+        <p>We process personal data only to provide the Service: running GEO audits, computing the Ozvor AI Visibility Score, benchmarking competitors, generating plans and drafts, monitoring, billing, and support. By design, audit prompts are synthetic and contain no personal data; competitor names are never sent to AI providers.</p>
       </LegalSection>
 
       <LegalSection n="3" title="Duration, categories of data and data subjects">

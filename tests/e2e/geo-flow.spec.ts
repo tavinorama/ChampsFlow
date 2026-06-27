@@ -1,5 +1,5 @@
 /**
- * geo-flow.spec.ts — E2E for the GEO product (TrustIndex AI)
+ * geo-flow.spec.ts — E2E for the GEO product (Ozvor)
  *
  * The canonical customer journey, end to end, against a running stack:
  *   landing → how-it-works → create brand → run audit → score + breakdown
@@ -24,12 +24,12 @@ test.describe("GEO journey — audit to approved draft", () => {
     await expect(page.locator("h1")).toBeVisible();
     // Core positioning must be present (Google-aligned, AI-search wording).
     await expect(page.locator("body")).toContainText(/AI/);
-    await expect(page.locator("body")).toContainText(/TrustIndex/i);
+    await expect(page.locator("body")).toContainText(/Ozvor/i);
   });
 
   test("how-it-works explains the system and the Google alignment", async ({ page }) => {
     await page.goto("/how-it-works");
-    await expect(page.getByRole("heading", { name: /How TrustIndex AI works/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /From invisible to cited/i })).toBeVisible();
     // The transparency stages render from the live capabilities endpoint.
     await expect(page.locator("body")).toContainText(/AI Visibility Audit/i);
     await expect(page.locator("body")).toContainText(/Authority & Perception/i);
@@ -54,7 +54,7 @@ test.describe("GEO journey — audit to approved draft", () => {
     await expect(page).toHaveURL(/\/brands\//, { timeout: 15_000 });
 
     // 3. Wait for the score ring (audit completes in mock mode in seconds).
-    await expect(page.locator("body")).toContainText(/Overall TrustIndex Score/i, { timeout: 120_000 });
+    await expect(page.locator("body")).toContainText(/Overall Ozvor AI Visibility Score/i, { timeout: 120_000 });
 
     // 4. Breakdown — expand vectors via their unique hints.
     // Brand vector → Reddit deep-dive + knowledge-graph panels (C5/C7).

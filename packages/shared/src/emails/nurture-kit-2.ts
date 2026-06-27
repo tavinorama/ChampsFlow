@@ -36,7 +36,7 @@ export async function sendNurtureKit2Email(
 
   // ----- Plain-text body -----
   const textBody = [
-    `If you haven't acted on your Kit fixes yet for ${params.brand}, here's what OrganicPosts by TrustIndex AI can do for you:`,
+    `If you haven't acted on your Kit fixes yet for ${params.brand}, here's what OrganicPosts by Ozvor can do for you:`,
     "",
     "1. Implement your top-3 GEO fixes in 2 weeks",
     "2. Publish 3 citation-ready content pieces optimized for AI engines",
@@ -84,7 +84,7 @@ export async function sendNurtureKit2Email(
 
   <p style="color:#374151;margin-bottom:24px;">
     If you haven't acted on your Kit fixes yet for <strong>${params.brand}</strong>, here's what
-    OrganicPosts by TrustIndex AI can do for you:
+    OrganicPosts by Ozvor can do for you:
   </p>
 
   <!-- Services list -->

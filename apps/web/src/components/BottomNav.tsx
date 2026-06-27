@@ -96,7 +96,7 @@ export function BottomNav() {
     {
       label: "Dashboard",
       href: "/dashboard",
-      ariaLabel: "Dashboard — your brands and TrustIndex scores",
+      ariaLabel: "Dashboard — your brands and Ozvor AI Visibility scores",
       icon: (active) => <DashboardIcon active={active} />,
     },
     {

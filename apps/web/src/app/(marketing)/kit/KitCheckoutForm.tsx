@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 
 const STACK: [string, string][] = [
-  ["Part 1 — Full AI Visibility Audit", "Your free test, completed: all engines, all your buyer prompts, your TrustIndex Score + deep breakdown."],
+  ["Part 1 — Full AI Visibility Audit", "Your free test, completed: all engines, all your buyer prompts, your Ozvor AI Visibility Score + deep breakdown."],
   ["Your top 3 “get cited” fixes", "The 3 highest-impact actions, in plain language."],
   ["3 ready-to-publish drafts", "A blog post, a LinkedIn post, and an FAQ — written with schema.org, ready to post today."],
   ["The “where to publish” checklist", "Exactly where each piece goes so AI can find it."],

@@ -1,5 +1,5 @@
 /**
- * content-geo.ts — TrustIndex AI
+ * content-geo.ts — Ozvor
  *
  * Multi-page content citation-worthiness analysis. Beyond the homepage
  * technical scan (site-crawl.ts), this fetches several key pages (via sitemap)
@@ -21,7 +21,7 @@ import { guardedFetch } from "./ssrf-guard";
 const TIMEOUT_MS = 8000;
 const MAX_BODY = 512 * 1024;
 const MAX_PAGES = 6; // homepage + up to 5 sitemap pages
-const UA = "TrustIndexAI-Crawler/1.0 (+https://trustindexai.com/bot)";
+const UA = "OzvorBot-Crawler/1.0 (+https://ozvor.com/bot)";
 
 export interface ContentGeoResult {
   analyzed: boolean;

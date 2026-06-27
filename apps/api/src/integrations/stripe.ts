@@ -108,7 +108,7 @@ function getStripe(): Stripe {
 // These limits are enforced by requirePlanLimit middleware in billing.ts.
 // ---------------------------------------------------------------------------
 
-// TrustIndex AI plan tiers (brand-package pricing architecture):
+// Ozvor plan tiers (brand-package pricing architecture):
 //   free     — 1 brand, 3 competitors, 50 prompts, monthly audit
 //   growth   — 1 brand, 10 competitors, 250 prompts, weekly monitoring
 //   agency   — 25 brands, 10 competitors, 250 prompts, weekly monitoring (multi-client)

@@ -1,5 +1,5 @@
 /**
- * sentiment.ts — TrustIndex AI · AI-vector sentiment classifier
+ * sentiment.ts — Ozvor · AI-vector sentiment classifier
  *
  * Removes the last baseline in the AI sub-score (`sentimentScore`). Operates on
  * the probe answer text we already collect: for each probe where the brand is

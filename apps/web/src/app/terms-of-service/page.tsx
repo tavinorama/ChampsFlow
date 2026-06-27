@@ -35,7 +35,7 @@ export default function TermsOfServicePage() {
       </LegalSection>
 
       <LegalSection n="2" title="What the Service does">
-        <p>The Service audits how AI answer engines (e.g. ChatGPT, Claude, Perplexity, Gemini, Google AI Overview) reference a brand, computes a TrustIndex Score, benchmarks competitor mentions, and produces a GEO content plan and draft content. Audits query third-party AI providers and analyse publicly available web sources.</p>
+        <p>The Service audits how AI answer engines (e.g. ChatGPT, Claude, Perplexity, Gemini, Google AI Overview) reference a brand, computes a Ozvor AI Visibility Score, benchmarks competitor mentions, and produces a GEO content plan and draft content. Audits query third-party AI providers and analyse publicly available web sources.</p>
         <p><strong>No guarantee of results.</strong> AI systems are non-deterministic and outside our control. Scores, benchmarks and recommendations are evidence-based estimates, not guarantees of citation, ranking, traffic, or revenue. We do not promise any specific AI-search outcome.</p>
       </LegalSection>
 
@@ -56,7 +56,7 @@ export default function TermsOfServicePage() {
       </LegalSection>
 
       <LegalSection n="7" title="Intellectual property">
-        <p>The Service, including the TrustIndex Score methodology, software, and brand, is owned by us and protected by law. These Terms grant you a non-exclusive, non-transferable right to use the Service per your plan. Outputs we generate for you (drafts, plans, reports) are yours to use once delivered.</p>
+        <p>The Service, including the Ozvor AI Visibility Score methodology, software, and brand, is owned by us and protected by law. These Terms grant you a non-exclusive, non-transferable right to use the Service per your plan. Outputs we generate for you (drafts, plans, reports) are yours to use once delivered.</p>
       </LegalSection>
 
       <LegalSection n="8" title="Third-party providers">

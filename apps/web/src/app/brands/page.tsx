@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * /brands — TrustIndex AI brand list + create + trigger audit
+ * /brands — Ozvor brand list + create + trigger audit
  *
  * Flow:
  *  - Create a brand profile (name, domain, category, region).
- *  - Each brand row shows its latest TrustIndex Score (if any) and a
+ *  - Each brand row shows its latest Ozvor AI Visibility Score (if any) and a
  *    "Run audit" action that POSTs to /api/brands/:id/audit and navigates
  *    to the brand detail page where the score streams in.
  *
@@ -148,7 +148,7 @@ export default function BrandsPage() {
         Your brands
       </h1>
       <p style={{ color: "var(--color-muted)", margin: "0 0 var(--space-8) 0", fontSize: "var(--font-size-body-sm)" }}>
-        Add a brand, then run an AI Visibility Audit to see your TrustIndex Score.
+        Add a brand, then run an AI Visibility Audit to see your Ozvor AI Visibility Score.
       </p>
 
       {error && (
@@ -279,7 +279,7 @@ function Field({ id, label, hint, required, children }: {
 function ScoreBadge({ score }: { score: number }) {
   const color = score >= 67 ? "var(--color-success)" : score >= 34 ? "#d97706" : "var(--color-error)";
   return (
-    <span title="Latest TrustIndex Score" style={{
+    <span title="Latest Ozvor AI Visibility Score" style={{
       display: "inline-flex", alignItems: "baseline", gap: "2px",
       fontWeight: 800, color, fontSize: "var(--font-size-h3)", letterSpacing: "-0.02em",
     }}>

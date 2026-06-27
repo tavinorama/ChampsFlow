@@ -1,5 +1,5 @@
 /**
- * Structured logger for TrustIndex AI.
+ * Structured logger for Ozvor.
  *
  * Security requirements (S-4 / integration-coder hard rule #6):
  *  - NEVER logs: access_token, refresh_token, Authorization header values,

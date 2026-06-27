@@ -797,7 +797,7 @@ export default function LlmCitationTrackerPage() {
             That&rsquo;s the line where you graduate to{" "}
             <strong>Ozvor</strong> — the AI Search Trust Intelligence
             platform this tracker comes from. Ozvor automates everything
-            above, computes your <strong>TrustIndex Score</strong> (Brand 30% /
+            above, computes your <strong>Ozvor AI Visibility Score</strong> (Brand 30% /
             Performance 35% / AI 35%), benchmarks you against your competitors,
             and builds a <strong>GEO content plan</strong> so you&rsquo;re not
             guessing what to publish.
@@ -861,7 +861,7 @@ export default function LlmCitationTrackerPage() {
               }}
             >
               <strong>Free</strong> — 1 brand, 1 competitor, a 10-prompt snapshot
-              audit and TrustIndex Score. No credit card.
+              audit and Ozvor AI Visibility Score. No credit card.
             </li>
             <li
               style={{

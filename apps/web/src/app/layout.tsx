@@ -1,5 +1,5 @@
 /**
- * Root layout — TrustIndex AI (Next.js App Router)
+ * Root layout — Ozvor (Next.js App Router)
  *
  * Provides the single <html> + <body> for the whole app.
  *

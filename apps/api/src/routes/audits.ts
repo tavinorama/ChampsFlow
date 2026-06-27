@@ -1,11 +1,11 @@
 /**
- * C1 — GEO Audit Engine — Audit API routes (TrustIndex AI)
+ * C1 — GEO Audit Engine — Audit API routes (Ozvor)
  *
  * Routes (architecture §5 API contracts; brand-package product modules):
  *   POST /api/brands                      — create a brand profile (Owner/Editor)
  *   POST /api/brands/:id/audit            — trigger an AI Visibility Audit (Owner/Editor)
  *   GET  /api/audits/:id                  — fetch audit status + scores (all roles)
- *   GET  /api/brands/:id/score            — latest TrustIndex Score + trend (all roles)
+ *   GET  /api/brands/:id/score            — latest Ozvor AI Visibility Score + trend (all roles)
  *   GET  /api/reports/:report_token       — PUBLIC shareable audit report (no auth)
  *
  * The audit run itself is executed by the worker (apps/worker/jobs/audit-run.ts):
@@ -420,7 +420,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   );
 
   // -------------------------------------------------------------------------
-  // GET /api/brands — list this tenant's brands + latest TrustIndex Score
+  // GET /api/brands — list this tenant's brands + latest Ozvor AI Visibility Score
   // -------------------------------------------------------------------------
   app.get("/api/brands", requireAuth, async (c) => {
     const auth = c.get("auth");
@@ -985,7 +985,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const lines: string[] = [];
 
       // Section 1 — Summary header
-      lines.push("TrustIndex AI Audit Export");
+      lines.push("Ozvor Audit Export");
       lines.push(`Brand,${csvEsc(brandName)}`);
       lines.push(`Date,${csvEsc(dateStr)}`);
       lines.push(`Overall Score,${csvEsc(overall)}`);
@@ -1307,7 +1307,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   );
 
   // -------------------------------------------------------------------------
-  // GET /api/brands/:id/score — latest TrustIndex Score + 90-day trend
+  // GET /api/brands/:id/score — latest Ozvor AI Visibility Score + 90-day trend
   // -------------------------------------------------------------------------
   app.get("/api/brands/:id/score", requireAuth, async (c) => {
     const auth = c.get("auth");

@@ -1,5 +1,5 @@
 /**
- * C8 — Prompt Library — API routes (TrustIndex AI)
+ * C8 — Prompt Library — API routes (Ozvor)
  *
  * Routes:
  *   GET    /api/brands/:id/prompts            — list defaults + custom prompts (all roles)

@@ -1,5 +1,5 @@
 /**
- * entity-graph.ts — TrustIndex AI · C7 cross-source entity consistency
+ * entity-graph.ts — Ozvor · C7 cross-source entity consistency
  *
  * Closes the last BRAND baseline (entityCompleteness). AI engines resolve a
  * brand to a knowledge-graph ENTITY before they trust and cite it. A brand that
@@ -22,7 +22,7 @@
  */
 
 const TIMEOUT_MS = 10_000;
-const UA = "TrustIndexAI/1.0 (+https://trustindexai.com/bot)";
+const UA = "OzvorBot/1.0 (+https://ozvor.com/bot)";
 
 export interface EntityGraphResult {
   /** true if the live Wikidata/Wikipedia APIs were reached. */

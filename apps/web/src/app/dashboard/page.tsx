@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * /dashboard — TrustIndex AI flywheel hub
+ * /dashboard — Ozvor flywheel hub
  *
- * Shows every brand with its latest TrustIndex Score and a weekly-monitoring
+ * Shows every brand with its latest Ozvor AI Visibility Score and a weekly-monitoring
  * toggle (the never-ending flywheel). This is the screen SMBs check each week.
  *
  * Data: GET /api/brands (id, name, region, latest_score, monitoring_enabled).
@@ -350,7 +350,7 @@ export default function DashboardPage() {
         >
           <Tile label="Brands tracked" value={String(brands.length)} />
           <Tile
-            label="Avg TrustIndex"
+            label="Avg AI Visibility"
             value={avg != null && !Number.isNaN(avg) ? String(avg) : "—"}
           />
           <Tile label="Weekly monitoring" value={`${monitored} active`} />
@@ -378,7 +378,7 @@ export default function DashboardPage() {
           </span>
           {avg != null && !Number.isNaN(avg) && (
             <span>
-              Avg TrustIndex{" "}
+              Avg AI Visibility{" "}
               <strong style={{ color: "var(--color-text)" }}>{avg}</strong>
             </span>
           )}
@@ -538,7 +538,7 @@ export default function DashboardPage() {
         }}
       >
         Weekly monitoring re-runs the AI Visibility Audit every Monday so your
-        TrustIndex Score trend keeps updating. Turn it on for the brands you want
+        Ozvor AI Visibility Score trend keeps updating. Turn it on for the brands you want
         to track continuously.
       </p>
 
@@ -702,7 +702,7 @@ function ScoreMiniRing({ score }: { score: number }) {
 
   return (
     <span
-      title={`TrustIndex Score: ${score} / 100`}
+      title={`Ozvor AI Visibility Score: ${score} / 100`}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -715,7 +715,7 @@ function ScoreMiniRing({ score }: { score: number }) {
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         role="img"
-        aria-label={`TrustIndex Score ${score} out of 100`}
+        aria-label={`Ozvor AI Visibility Score ${score} out of 100`}
         style={{ display: "block" }}
       >
         <circle

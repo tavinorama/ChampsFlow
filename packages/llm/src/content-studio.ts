@@ -1,5 +1,5 @@
 /**
- * content-studio.ts — TrustIndex AI · C4 Multi-Channel Content Engine
+ * content-studio.ts — Ozvor · C4 Multi-Channel Content Engine
  *
  * Generates draft content (blog / LinkedIn / FAQ) for a plan recommendation.
  * Live path: Anthropic (or any keyed provider) writes the draft. Fallback:

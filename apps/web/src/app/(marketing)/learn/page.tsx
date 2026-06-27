@@ -13,11 +13,11 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Tutorials — Learn to use Ozvor",
   description:
-    "A 6-step getting-started path: create your workspace, run your first audit, read your TrustIndex AI Score, benchmark competitors, build your content plan, then publish & monitor. Watch or read.",
+    "A 6-step getting-started path: create your workspace, run your first audit, read your Ozvor AI Visibility Score, benchmark competitors, build your content plan, then publish & monitor. Watch or read.",
   alternates: { canonical: "https://ozvor.com/learn" },
   openGraph: {
     title: "Tutorials — Learn to use Ozvor",
-    description: "Watch or read: the 6-step path from sign-up to a moving TrustIndex AI Score.",
+    description: "Watch or read: the 6-step path from sign-up to a moving Ozvor AI Visibility Score.",
     url: "https://ozvor.com/learn",
     siteName: "Ozvor",
     type: "website",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 const STEPS: { n: string; dur: string; title: string; desc: string }[] = [
   { n: "1", dur: "3:10", title: "Getting started", desc: "Create your workspace, add your brand and the competitors you want to track." },
   { n: "2", dur: "4:05", title: "Run your first audit", desc: "Fire a portfolio of real buyer prompts across ChatGPT, Claude, Perplexity, Gemini and Google AI." },
-  { n: "3", dur: "5:20", title: "Read your TrustIndex AI Score", desc: "What the AI, Performance and Brand sub-scores mean — and which one to move first." },
+  { n: "3", dur: "5:20", title: "Read your Ozvor AI Visibility Score", desc: "What the AI, Performance and Brand sub-scores mean — and which one to move first." },
   { n: "4", dur: "4:30", title: "Benchmark competitors", desc: "See exactly who AI names instead of you, on which prompts, and the sources it trusts." },
   { n: "5", dur: "6:15", title: "Build your content plan", desc: "Turn the gaps into prioritized GEO briefs for your website and LinkedIn." },
   { n: "6", dur: "5:00", title: "Publish & monitor", desc: "Approve drafts with draft-and-confirm, then watch your score move every week." },
@@ -63,7 +63,7 @@ export default function LearnPage() {
         Learn Ozvor in one short path.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "640px", margin: 0 }}>
-        Six steps from sign-up to a moving TrustIndex AI Score. Watch the video or read the guide — whatever fits how you work.
+        Six steps from sign-up to a moving Ozvor AI Visibility Score. Watch the video or read the guide — whatever fits how you work.
       </p>
 
       {/* 6-step grid */}

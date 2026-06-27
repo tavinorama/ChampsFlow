@@ -3,7 +3,7 @@
  *
  * Grounded in docs/legal/sub-processors.md and Privacy Policy §4.
  * Lists the 11 sub-processors that may process personal data on behalf of
- * TrustIndex AI customers: Supabase, Anthropic, OpenAI, Google (Gemini),
+ * Ozvor customers: Supabase, Anthropic, OpenAI, Google (Gemini),
  * Perplexity, DataForSEO, SerpAPI, Stripe, Resend, Railway, Cloudflare.
  *
  * Art. 28 GDPR / LGPD mechanism note included; change-notification process
@@ -280,7 +280,7 @@ export default function SubProcessorsPage() {
                 <td style={cell}>
                   Public off-site signal collection — fetches publicly
                   available domain authority, backlink, and search-result data
-                  to support TrustIndex Score calculation.
+                  to support Ozvor AI Visibility Score calculation.
                 </td>
                 <td style={cell}>
                   Brand domain / URL (publicly available). No personal data
@@ -307,7 +307,7 @@ export default function SubProcessorsPage() {
                 </td>
                 <td style={cell}>
                   Public search-result signal collection — fetches Google AI
-                  Overview and traditional SERP data to support TrustIndex Score
+                  Overview and traditional SERP data to support Ozvor AI Visibility Score
                   calculation.
                 </td>
                 <td style={cell}>

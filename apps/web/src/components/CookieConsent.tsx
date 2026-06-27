@@ -40,7 +40,7 @@
  *
  * HONEST DISCLOSURE
  * ─────────────────────────────────────────────────────────────────────────
- *  At launch TrustIndex AI uses ONLY essential cookies. The banner and
+ *  At launch Ozvor uses ONLY essential cookies. The banner and
  *  customize panel state this explicitly. Toggles govern future scripts.
  */
 

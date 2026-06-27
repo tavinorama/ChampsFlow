@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * /brands/[id] — TrustIndex Score detail + deep breakdown
+ * /brands/[id] — Ozvor AI Visibility Score detail + deep breakdown
  *
  * - Polls a running audit (?audit=<id>) to completion, else loads latest score.
- * - Shows the overall TrustIndex Score + 3 vectors.
+ * - Shows the overall Ozvor AI Visibility Score + 3 vectors.
  * - Deep breakdown per vector: the component math, each input labelled
  *   "measured" (real signal this audit) vs "baseline" (placeholder pending
  *   the site-crawl/entity slice) — honest about what is and isn't live.
@@ -260,7 +260,7 @@ export default function BrandDetailPage() {
               score_ai: latest.score_ai,
             });
             setOverall(latest.score_overall ?? null);
-            setStatusMsg("Latest TrustIndex Score.");
+            setStatusMsg("Latest Ozvor AI Visibility Score.");
             if (latest.audit_id) {
               setResolvedAuditId(latest.audit_id);
               void loadBreakdown(latest.audit_id);
@@ -310,7 +310,7 @@ export default function BrandDetailPage() {
         {/* ── Main panel ────────────────────────────────────────────── */}
         <div className="bd-main">
           <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-2) 0" }}>
-            TrustIndex Score
+            Ozvor AI Visibility Score
           </h1>
           <div aria-live="polite" style={{ marginBottom: "var(--space-6)", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
             {isWorking ? <Spinner label={statusMsg} /> : statusMsg}
@@ -360,7 +360,7 @@ export default function BrandDetailPage() {
       {trend.length >= 2 && (
         <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="score-trend-heading">
           <h2 id="score-trend-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-4) 0" }}>
-            Your TrustIndex Score over time
+            Your Ozvor AI Visibility Score over time
           </h2>
           <div style={{
             backgroundColor: "var(--color-surface)",
@@ -645,7 +645,7 @@ const labelStyle: React.CSSProperties = {
 function buildNote(form: DfyFormState, brandName: string | undefined, overallScore: number | null): string {
   const parts: string[] = [];
   if (brandName) parts.push(`Brand: ${brandName}`);
-  if (overallScore != null) parts.push(`TrustIndex: ${overallScore}/100`);
+  if (overallScore != null) parts.push(`Ozvor AI Visibility Score: ${overallScore}/100`);
   if (form.companySize) parts.push(`Company size: ${form.companySize}`);
   if (form.volume) parts.push(`Volume: ${form.volume}/mo`);
   if (form.timeline) parts.push(`Timeline: ${form.timeline}`);

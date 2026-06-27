@@ -68,7 +68,7 @@ const PLAN_META: Record<
       "3 competitors benchmarked",
       "50 buyer-intent prompts per audit",
       "Monthly AI-visibility audit",
-      "TrustIndex Score across 5 AI engines",
+      "Ozvor AI Visibility Score across 5 AI engines",
     ],
     ctaLabel: "Current plan",
   },

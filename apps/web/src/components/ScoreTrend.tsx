@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * ScoreTrend — SVG sparkline/line chart for TrustIndex Score over time.
+ * ScoreTrend — SVG sparkline/line chart for Ozvor AI Visibility Score over time.
  *
  * Renders a polyline chart of `score_overall` values (0–100) from the
  * /api/brands/:id/score `trend[]` array (returned newest-first; reversed here
@@ -125,8 +125,8 @@ export function ScoreTrend({ trend, compact = false, brandName, multiSeries = fa
 
   const ariaLabel = [
     brandName
-      ? `TrustIndex Score trend for ${brandName}:`
-      : "TrustIndex Score trend:",
+      ? `Ozvor AI Visibility Score trend for ${brandName}:`
+      : "Ozvor AI Visibility Score trend:",
     `from ${firstScore} to ${latestScore},`,
     delta > 0
       ? `+${delta} points`
@@ -165,7 +165,7 @@ export function ScoreTrend({ trend, compact = false, brandName, multiSeries = fa
               color: "var(--color-text)",
               lineHeight: 1,
             }}
-            aria-label={`Current TrustIndex Score: ${latestScore}`}
+            aria-label={`Current Ozvor AI Visibility Score: ${latestScore}`}
           >
             {latestScore}
           </span>

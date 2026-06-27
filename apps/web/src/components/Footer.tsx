@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Footer — site-wide footer for TrustIndex AI
+ * Footer — site-wide footer for Ozvor
  *
  * v2: Added CookieConsentTrigger link ("Cookie preferences") alongside the
  * existing legal links so authenticated-app users can re-open the consent

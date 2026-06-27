@@ -16,7 +16,7 @@ import { KitCheckoutForm } from "./KitCheckoutForm";
 export const metadata: Metadata = {
   title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29) | Ozvor",
   description:
-    "One-time $29. Know exactly why you're invisible in AI search — get your full TrustIndex AI Score, your top 3 fixes, and 3 ready-to-publish content drafts. No subscription required.",
+    "One-time $29. Know exactly why you're invisible in AI search — get your full Ozvor AI Visibility Score, your top 3 fixes, and 3 ready-to-publish content drafts. No subscription required.",
   alternates: { canonical: "https://ozvor.com/kit" },
   openGraph: {
     title: "The Get-Cited Kit ($29) — Ozvor",
@@ -32,13 +32,13 @@ const kitJsonLd = {
   "@context": "https://schema.org",
   "@type": "Product",
   name: "The Get-Cited Kit",
-  description: "Full AI visibility audit + your TrustIndex AI Score + 3 ready-to-publish drafts + a plain-English GEO guide.",
+  description: "Full AI visibility audit + your Ozvor AI Visibility Score + 3 ready-to-publish drafts + a plain-English GEO guide.",
   brand: { "@type": "Brand", name: "Ozvor" },
   offers: { "@type": "Offer", price: "29", priceCurrency: "USD", availability: "https://schema.org/InStock", url: "https://ozvor.com/kit" },
 };
 
 const PARTS: { tag: string; t: string; items: string[] }[] = [
-  { tag: "Part 1", t: "Full audit + your TrustIndex AI Score", items: ["Your score across all 5 engines", "Your top 3 highest-impact fixes", "Head-to-head vs your main competitor"] },
+  { tag: "Part 1", t: "Full audit + your Ozvor AI Visibility Score", items: ["Your score across all 5 engines", "Your top 3 highest-impact fixes", "Head-to-head vs your main competitor"] },
   { tag: "Part 2", t: "3 ready-to-publish drafts", items: ["1 blog post (with schema)", "1 LinkedIn proof post", "1 FAQ block for your site"] },
   { tag: "Bonus", t: "Plain-English GEO guide (PDF)", items: ["Why AI cites what it cites", "A publish checklist", "Your 30-day re-test plan"] },
 ];

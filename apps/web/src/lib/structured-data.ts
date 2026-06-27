@@ -24,7 +24,7 @@ export const ORG = {
     height: 50,
   },
   description:
-    "AI Search Trust Intelligence platform for SMBs — audits brand visibility across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview; computes a 3-vector TrustIndex Score; benchmarks competitors; and builds a GEO content plan for organic AI-search visibility.",
+    "AI Search Trust Intelligence platform for SMBs — audits brand visibility across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview; computes a 3-vector Ozvor AI Visibility Score; benchmarks competitors; and builds a GEO content plan for organic AI-search visibility.",
   contactPoint: {
     "@type": "ContactPoint",
     contactType: "customer support",
