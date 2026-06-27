@@ -37,7 +37,10 @@ WHERE nspname = 'public'
     'competitor',
     'competitor_citation',
     'content_piece',
-    'provider_keys'
+    'provider_keys',
+    -- Attribution v1 (20260627000006_google_attribution)
+    'google_connection',
+    'google_metric_cache'
   )
   AND NOT relrowsecurity;
 

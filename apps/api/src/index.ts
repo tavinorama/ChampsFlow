@@ -55,6 +55,7 @@ import { registerAdminRoutes } from "./routes/admin";
 import { registerChatRoutes } from "./routes/chat";
 import { registerApiKeyRoutes } from "./routes/api-keys";
 import { registerAgencyRoutes } from "./routes/agency";
+import { registerAttributionRoutes } from "./routes/attribution";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -306,6 +307,17 @@ registerOnboardingRoutes(app, db);
 // DELETE /api/brands/:id/shares/:id — requireAuth + owner + agency plan
 // GET  /api/r/:token                — PUBLIC (capability-URL, no auth)
 registerAgencyRoutes(app, db);
+
+// Attribution v1 (#86) — Google Analytics + Search Console OAuth + metrics
+// GET    /api/google/status                                  — PUBLIC
+// POST   /api/brands/:id/google/connect/:kind                — requireAuth + owner/editor
+// GET    /api/google/callback                                — PUBLIC (OAuth redirect receiver)
+// GET    /api/brands/:id/google/connections                  — requireAuth
+// PATCH  /api/brands/:id/google/connections/:id/property     — requireAuth + owner/editor
+// DELETE /api/brands/:id/google/connections/:id              — requireAuth + owner/editor
+// GET    /api/brands/:id/google/metrics                      — requireAuth
+// GET    /api/brands/:id/attribution/summary                 — requireAuth
+registerAttributionRoutes(app, db);
 
 // ---------------------------------------------------------------------------
 // Global error handler

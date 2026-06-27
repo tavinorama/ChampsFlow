@@ -41,6 +41,28 @@ import { PlatformTile } from "../../../components/PlatformTile";
 import { BottomNav } from "../../../components/BottomNav";
 
 // ---------------------------------------------------------------------------
+// Attribution types
+// ---------------------------------------------------------------------------
+
+type GoogleConnectorKind = "ga4" | "gsc";
+
+interface GoogleConnection {
+  id: string;
+  kind: GoogleConnectorKind;
+  ga4PropertyId?: string | null;
+  gscSiteUrl?: string | null;
+  scope: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+interface BrandOption {
+  id: string;
+  name: string;
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -163,6 +185,554 @@ async function selectPage(accountId: string, pageId: string): Promise<void> {
     };
     throw new Error(body.error?.message ?? "Failed to select Facebook Page");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Google Connector helpers
+// ---------------------------------------------------------------------------
+
+async function fetchGoogleStatus(): Promise<{ configured: boolean }> {
+  const res = await fetch("/api/google/status", { credentials: "include" });
+  if (!res.ok) return { configured: false };
+  return (await res.json()) as { configured: boolean };
+}
+
+async function fetchBrands(): Promise<BrandOption[]> {
+  const res = await fetch("/api/brands", { credentials: "include" });
+  if (!res.ok) return [];
+  const body = (await res.json()) as { brands?: BrandOption[] };
+  return body.brands ?? [];
+}
+
+async function fetchGoogleConnections(brandId: string): Promise<GoogleConnection[]> {
+  const res = await fetch(`/api/brands/${brandId}/google/connections`, {
+    credentials: "include",
+  });
+  if (!res.ok) return [];
+  const body = (await res.json()) as GoogleConnection[] | { data?: GoogleConnection[] };
+  if (Array.isArray(body)) return body;
+  return (body as { data?: GoogleConnection[] }).data ?? [];
+}
+
+async function disconnectGoogleConnection(
+  brandId: string,
+  connectionId: string
+): Promise<void> {
+  const res = await fetch(
+    `/api/brands/${brandId}/google/connections/${connectionId}`,
+    { method: "DELETE", credentials: "include" }
+  );
+  if (!res.ok) {
+    const body = (await res.json()) as { error?: { message?: string } };
+    throw new Error(body.error?.message ?? "Failed to disconnect");
+  }
+}
+
+async function patchGoogleConnection(
+  brandId: string,
+  connectionId: string,
+  patch: { ga4PropertyId?: string; gscSiteUrl?: string }
+): Promise<void> {
+  const res = await fetch(
+    `/api/brands/${brandId}/google/connections/${connectionId}/property`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }
+  );
+  if (!res.ok) {
+    const body = (await res.json()) as { error?: { message?: string } };
+    throw new Error(body.error?.message ?? "Failed to update");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GoogleConnectorTile — one tile per connector kind (ga4 / gsc)
+// ---------------------------------------------------------------------------
+
+type GoogleConnectorTileProps = {
+  kind: GoogleConnectorKind;
+  googleConfigured: boolean;
+  selectedBrandId: string;
+  connection: GoogleConnection | null;
+  onConnect: (kind: GoogleConnectorKind) => void;
+  onDisconnect: (connectionId: string) => void;
+  onPropertyChange: (connectionId: string, field: "ga4PropertyId" | "gscSiteUrl", value: string) => void;
+  onPropertyBlur: (connectionId: string, kind: GoogleConnectorKind, value: string) => void;
+};
+
+const CONNECTOR_META: Record<
+  GoogleConnectorKind,
+  { title: string; description: string; propertyLabel: string; propertyPlaceholder: string }
+> = {
+  ga4: {
+    title: "Google Analytics 4",
+    description:
+      "See organic search sessions trend alongside your Ozvor AI Visibility Score.",
+    propertyLabel: "GA4 Property ID",
+    propertyPlaceholder: "properties/123456789",
+  },
+  gsc: {
+    title: "Google Search Console",
+    description:
+      "See clicks and impressions from Google Search alongside your Visibility Score.",
+    propertyLabel: "Site URL",
+    propertyPlaceholder: "https://example.com/",
+  },
+};
+
+function GoogleConnectorTile({
+  kind,
+  googleConfigured,
+  selectedBrandId,
+  connection,
+  onConnect,
+  onDisconnect,
+  onPropertyChange,
+  onPropertyBlur,
+}: GoogleConnectorTileProps) {
+  const meta = CONNECTOR_META[kind];
+  const isConnected = connection !== null && connection.revokedAt === null;
+  const propertyField = kind === "ga4" ? "ga4PropertyId" : "gscSiteUrl";
+  const propertyValue = isConnected ? (connection?.[propertyField] ?? "") : "";
+
+  const tileStyle: React.CSSProperties = {
+    backgroundColor: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-lg)",
+    padding: "var(--space-5)",
+    boxShadow: "var(--shadow-card)",
+  };
+
+  return (
+    <div style={tileStyle} role="region" aria-label={`${meta.title} connector`}>
+      {/* Tile header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "var(--space-3)",
+          marginBottom: "var(--space-3)",
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <h3
+            style={{
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-h4)",
+              fontWeight: "var(--font-weight-semibold)",
+              color: "var(--color-text)",
+              margin: "0 0 var(--space-1) 0",
+            }}
+          >
+            {meta.title}
+          </h3>
+          <p
+            style={{
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              margin: 0,
+              lineHeight: "var(--line-height-body)",
+            }}
+          >
+            {meta.description}
+          </p>
+        </div>
+
+        {/* Connection status badge */}
+        {isConnected && (
+          <span
+            aria-label="Connected"
+            style={{
+              display: "inline-block",
+              padding: "2px 8px",
+              borderRadius: "var(--radius-sm)",
+              fontSize: "var(--font-size-badge)",
+              fontWeight: 700,
+              fontFamily: "var(--font-family)",
+              backgroundColor: "var(--color-badge-connected-bg, rgba(15,180,136,0.12))",
+              color: "var(--color-badge-connected-text, #0fb488)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            Connected
+          </span>
+        )}
+      </div>
+
+      {/* Not configured — warn, no connect button */}
+      {!googleConfigured && (
+        <div
+          role="note"
+          style={{
+            backgroundColor: "var(--color-badge-status-warn-bg)",
+            border: "1px solid var(--color-accent-amber)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-3) var(--space-4)",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-note-warn)",
+              margin: 0,
+              lineHeight: "var(--line-height-body)",
+            }}
+          >
+            The founder has not configured Google OAuth credentials yet. Attribution data will
+            appear once this is set up.
+          </p>
+        </div>
+      )}
+
+      {/* Configured + not connected — show connect button */}
+      {googleConfigured && !isConnected && (
+        <button
+          type="button"
+          onClick={() => onConnect(kind)}
+          disabled={!selectedBrandId}
+          aria-label={
+            selectedBrandId
+              ? `Connect ${meta.title} for selected brand`
+              : `Select a brand first to connect ${meta.title}`
+          }
+          style={{
+            minHeight: "var(--min-tap-target)",
+            padding: "0 var(--space-5)",
+            backgroundColor: selectedBrandId ? "var(--color-primary)" : "var(--color-border)",
+            color: selectedBrandId ? "#fff" : "var(--color-muted)",
+            border: "none",
+            borderRadius: "var(--radius-md)",
+            fontFamily: "var(--font-family)",
+            fontSize: "var(--font-size-body-sm)",
+            fontWeight: "var(--font-weight-medium)",
+            cursor: selectedBrandId ? "pointer" : "not-allowed",
+          }}
+        >
+          Connect
+        </button>
+      )}
+
+      {/* Connected — property ID / site URL + disconnect */}
+      {googleConfigured && isConnected && connection && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          <div>
+            <label
+              htmlFor={`${kind}-property-${connection.id}`}
+              style={{
+                display: "block",
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-caption)",
+                fontWeight: "var(--font-weight-medium)",
+                color: "var(--color-muted)",
+                marginBottom: "var(--space-1)",
+              }}
+            >
+              {meta.propertyLabel}
+            </label>
+            <input
+              id={`${kind}-property-${connection.id}`}
+              type="text"
+              value={propertyValue}
+              placeholder={meta.propertyPlaceholder}
+              onChange={(e) => onPropertyChange(connection.id, propertyField as "ga4PropertyId" | "gscSiteUrl", e.target.value)}
+              onBlur={(e) => onPropertyBlur(connection.id, kind, e.target.value)}
+              aria-label={`${meta.propertyLabel} for ${meta.title}`}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                height: "var(--min-tap-target)",
+                padding: "0 var(--space-3)",
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-body-sm)",
+                color: "var(--color-text)",
+                backgroundColor: "var(--color-surface-muted)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                outline: "none",
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => onDisconnect(connection.id)}
+            aria-label={`Disconnect ${meta.title}`}
+            style={{
+              alignSelf: "flex-start",
+              minHeight: "var(--min-tap-target)",
+              padding: "0 var(--space-4)",
+              backgroundColor: "transparent",
+              color: "var(--color-error)",
+              border: "1px solid var(--color-error)",
+              borderRadius: "var(--radius-md)",
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-body-sm)",
+              fontWeight: "var(--font-weight-medium)",
+              cursor: "pointer",
+            }}
+          >
+            Disconnect
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AttributionSection — brand selector + two connector tiles
+// ---------------------------------------------------------------------------
+
+function AttributionSection({
+  onToast,
+}: {
+  onToast: (message: string, kind: "success" | "error") => void;
+}) {
+  const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [brands, setBrands] = useState<BrandOption[]>([]);
+  const [selectedBrandId, setSelectedBrandId] = useState<string>("");
+  const [connections, setConnections] = useState<GoogleConnection[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [propertyDraft, setPropertyDraft] = useState<Record<string, string>>({});
+  const googlePopupRef = useRef<Window | null>(null);
+
+  // Load google/status + brand list on mount.
+  useEffect(() => {
+    void (async () => {
+      const [status, brandList] = await Promise.all([fetchGoogleStatus(), fetchBrands()]);
+      setGoogleConfigured(status.configured);
+      setBrands(brandList);
+      if (brandList.length > 0 && !selectedBrandId) {
+        setSelectedBrandId(brandList[0].id);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load connections whenever selectedBrandId changes.
+  const loadConnections = useCallback(async (brandId: string) => {
+    if (!brandId) return;
+    setLoadingConnections(true);
+    try {
+      const conns = await fetchGoogleConnections(brandId);
+      setConnections(conns.filter((c) => c.revokedAt === null));
+    } catch {
+      /* non-blocking */
+    } finally {
+      setLoadingConnections(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedBrandId) void loadConnections(selectedBrandId);
+  }, [selectedBrandId, loadConnections]);
+
+  // Poll popup close → refresh connections.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (googlePopupRef.current && googlePopupRef.current.closed) {
+        googlePopupRef.current = null;
+        if (selectedBrandId) void loadConnections(selectedBrandId);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [selectedBrandId, loadConnections]);
+
+  function getConnection(kind: GoogleConnectorKind): GoogleConnection | null {
+    return connections.find((c) => c.kind === kind && c.revokedAt === null) ?? null;
+  }
+
+  async function handleConnect(kind: GoogleConnectorKind) {
+    if (!selectedBrandId) return;
+    try {
+      const res = await fetch(
+        `/api/brands/${selectedBrandId}/google/connect/${kind}`,
+        { method: "POST", credentials: "include" }
+      );
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: { message?: string } };
+        throw new Error(body.error?.message ?? "Failed to initiate connection");
+      }
+      const data = (await res.json()) as { authorizationUrl?: string; configured?: boolean };
+      if (data.configured === false) {
+        onToast("Google OAuth not configured yet.", "error");
+        return;
+      }
+      if (!data.authorizationUrl) {
+        onToast("No authorization URL returned.", "error");
+        return;
+      }
+      const popup = window.open(
+        data.authorizationUrl,
+        `google_oauth_${kind}`,
+        "width=600,height=700,scrollbars=yes,resizable=yes"
+      );
+      if (!popup) {
+        window.location.href = data.authorizationUrl;
+        return;
+      }
+      googlePopupRef.current = popup;
+    } catch (err) {
+      onToast((err as Error).message ?? "Failed to connect.", "error");
+    }
+  }
+
+  async function handleDisconnect(connectionId: string) {
+    if (!selectedBrandId) return;
+    try {
+      await disconnectGoogleConnection(selectedBrandId, connectionId);
+      onToast("Disconnected successfully.", "success");
+      await loadConnections(selectedBrandId);
+    } catch (err) {
+      onToast((err as Error).message ?? "Failed to disconnect.", "error");
+    }
+  }
+
+  function handlePropertyChange(
+    connectionId: string,
+    field: "ga4PropertyId" | "gscSiteUrl",
+    value: string
+  ) {
+    setPropertyDraft((prev) => ({ ...prev, [`${connectionId}-${field}`]: value }));
+    // Update local connection list optimistically.
+    setConnections((prev) =>
+      prev.map((c) => (c.id === connectionId ? { ...c, [field]: value } : c))
+    );
+  }
+
+  async function handlePropertyBlur(
+    connectionId: string,
+    kind: GoogleConnectorKind,
+    value: string
+  ) {
+    if (!selectedBrandId) return;
+    const draftKey = `${connectionId}-${kind === "ga4" ? "ga4PropertyId" : "gscSiteUrl"}`;
+    const current = propertyDraft[draftKey];
+    if (current === undefined) return; // Not changed.
+    try {
+      await patchGoogleConnection(
+        selectedBrandId,
+        connectionId,
+        kind === "ga4" ? { ga4PropertyId: value } : { gscSiteUrl: value }
+      );
+      setPropertyDraft((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
+    } catch (err) {
+      onToast((err as Error).message ?? "Failed to save property ID.", "error");
+    }
+  }
+
+  const KINDS: GoogleConnectorKind[] = ["ga4", "gsc"];
+
+  return (
+    <section aria-labelledby="attribution-sources-heading">
+      <h2
+        id="attribution-sources-heading"
+        style={{
+          fontFamily: "var(--font-family)",
+          fontSize: "var(--font-size-h3)",
+          fontWeight: "var(--font-weight-semibold)",
+          color: "var(--color-text)",
+          margin: "0 0 var(--space-4) 0",
+        }}
+      >
+        Attribution Data Sources
+      </h2>
+
+      {/* Brand selector */}
+      {googleConfigured !== false && (
+        <div style={{ marginBottom: "var(--space-4)" }}>
+          {brands.length === 0 ? (
+            <p
+              style={{
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-body-sm)",
+                color: "var(--color-muted)",
+                margin: 0,
+              }}
+            >
+              Create a brand first to connect attribution data sources.
+            </p>
+          ) : (
+            <div>
+              <label
+                htmlFor="google-brand-select"
+                style={{
+                  display: "block",
+                  fontFamily: "var(--font-family)",
+                  fontSize: "var(--font-size-body-sm)",
+                  fontWeight: "var(--font-weight-medium)",
+                  color: "var(--color-text)",
+                  marginBottom: "var(--space-2)",
+                }}
+              >
+                Connect to brand
+              </label>
+              <select
+                id="google-brand-select"
+                value={selectedBrandId}
+                onChange={(e) => setSelectedBrandId(e.target.value)}
+                aria-label="Select brand to connect attribution data sources"
+                style={{
+                  height: "var(--min-tap-target)",
+                  padding: "0 var(--space-3)",
+                  fontFamily: "var(--font-family)",
+                  fontSize: "var(--font-size-body-sm)",
+                  color: "var(--color-text)",
+                  backgroundColor: "var(--color-surface-muted)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  cursor: "pointer",
+                  minWidth: "200px",
+                }}
+              >
+                {brands.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Screen-reader live region for connection loading state */}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}
+      >
+        {loadingConnections ? "Loading connections…" : ""}
+      </div>
+
+      {/* Connector tiles */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+        {KINDS.map((kind) => (
+          <GoogleConnectorTile
+            key={kind}
+            kind={kind}
+            googleConfigured={googleConfigured ?? false}
+            selectedBrandId={selectedBrandId}
+            connection={loadingConnections ? null : getConnection(kind)}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onPropertyChange={handlePropertyChange}
+            onPropertyBlur={handlePropertyBlur}
+          />
+        ))}
+      </div>
+    </section>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +1089,27 @@ export default function ConnectionsPage() {
       }
     }
 
+    // Google OAuth callback params.
+    const googleConnected = params.get("google_connected");
+    const googleError = params.get("google_error");
+
+    if (googleConnected) {
+      const kindLabel =
+        googleConnected === "ga4"
+          ? "Google Analytics 4"
+          : googleConnected === "gsc"
+          ? "Google Search Console"
+          : googleConnected;
+      setToast({ message: `${kindLabel} connected.`, kind: "success" });
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+    if (googleError) {
+      setToast({ message: `Google connection failed: ${googleError}`, kind: "error" });
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
     if (success) {
       const platform = success.charAt(0).toUpperCase() + success.slice(1);
       setToast({ message: `${platform} connected successfully.`, kind: "success" });
@@ -837,6 +1428,21 @@ export default function ConnectionsPage() {
             ))}
           </div>
         )}
+
+        {/* Divider */}
+        <hr
+          style={{
+            border: "none",
+            borderTop: "1px solid var(--color-border)",
+            margin: "var(--space-8) 0",
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Attribution Data Sources section */}
+        <AttributionSection
+          onToast={(message, kind) => setToast({ message, kind })}
+        />
       </main>
 
       <BottomNav />

@@ -98,6 +98,22 @@ interface Breakdown {
   topSources: Array<{ domain: string; label: string; type?: string; usedPct?: number; avgCitations?: number; isYou?: boolean; count?: number }>;
 }
 
+// Attribution types
+interface AttributionMetricPoint {
+  date: string;
+  sessions?: number;
+  users?: number;
+  clicks?: number;
+  impressions?: number;
+}
+
+interface AttributionMetricSeries {
+  cachedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  series: AttributionMetricPoint[];
+}
+
 const POLL_MS = 2500;
 const MAX_POLLS = 80;
 
@@ -133,6 +149,13 @@ export default function BrandDetailPage() {
   const [shareState, setShareState] = useState<"idle" | "sharing" | "copied" | "error">("idle");
   const pollCount = useRef(0);
   const [section, setSection] = useState<DashSection>("overview");
+
+  // Attribution state — loaded async, non-blocking
+  const [attributionSummary, setAttributionSummary] = useState<string | null>(null);
+  const [attributionConfigured, setAttributionConfigured] = useState<boolean | null>(null);
+  const [ga4Metrics, setGa4Metrics] = useState<AttributionMetricSeries | null>(null);
+  const [gscMetrics, setGscMetrics] = useState<AttributionMetricSeries | null>(null);
+  const [attributionLoadState, setAttributionLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
   const computeOverall = useCallback((a: AuditState): number | null => {
     if (a.score_brand == null || a.score_performance == null || a.score_ai == null) return null;
@@ -289,6 +312,49 @@ export default function BrandDetailPage() {
       }
     })();
   }, [auditId, brandId, loadBreakdown]);
+
+  // Load attribution data when the Attribution section is opened (lazy).
+  useEffect(() => {
+    if (section !== "attribution" || !brandId) return;
+    if (attributionLoadState !== "idle") return;
+    setAttributionLoadState("loading");
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [summaryRes, metricsRes] = await Promise.all([
+          apiFetch(`/api/brands/${brandId}/attribution/summary`),
+          apiFetch(`/api/brands/${brandId}/google/metrics`),
+        ]);
+        if (cancelled) return;
+        if (summaryRes.ok) {
+          const sd = (await summaryRes.json()) as {
+            summary?: string | null;
+            configured?: boolean;
+            ga4Available?: boolean;
+            gscAvailable?: boolean;
+          };
+          setAttributionSummary(sd.summary ?? null);
+          setAttributionConfigured(sd.configured ?? (sd.ga4Available === true || sd.gscAvailable === true));
+        } else {
+          setAttributionConfigured(false);
+        }
+        if (metricsRes.ok) {
+          const md = (await metricsRes.json()) as {
+            configured?: boolean;
+            ga4?: AttributionMetricSeries | null;
+            gsc?: AttributionMetricSeries | null;
+          };
+          setGa4Metrics(md.ga4 ?? null);
+          setGscMetrics(md.gsc ?? null);
+          if (md.configured === false) setAttributionConfigured(false);
+        }
+        if (!cancelled) setAttributionLoadState("ready");
+      } catch {
+        if (!cancelled) setAttributionLoadState("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [section, brandId, attributionLoadState]);
 
   const isWorking = audit?.status === "pending" || audit?.status === "running" || (!audit && !!auditId);
 
@@ -521,6 +587,19 @@ export default function BrandDetailPage() {
         <PromptsPanel brandId={brandId} />
       )}
 
+      {/* ── Attribution section — GA4 + GSC overlaid on Visibility Score ── */}
+      {section === "attribution" && (
+        <AttributionPanel
+          brandId={brandId}
+          loadState={attributionLoadState}
+          configured={attributionConfigured}
+          summary={attributionSummary}
+          ga4Metrics={ga4Metrics}
+          gscMetrics={gscMetrics}
+          scoreTrend={trend}
+        />
+      )}
+
       {/* ── Settings section — brand basics + account links ─────────── */}
       {section === "settings" && (<>
         <SettingsCard brandName={brandName} />
@@ -536,7 +615,7 @@ export default function BrandDetailPage() {
 // Dashboard sections (Peec-style sidebar nav) + Domains-by-type donut
 // ---------------------------------------------------------------------------
 
-type DashSection = "overview" | "content" | "sources" | "models" | "prompts" | "settings";
+type DashSection = "overview" | "content" | "sources" | "models" | "prompts" | "settings" | "attribution";
 
 const DASH_NAV: { id: DashSection; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -544,6 +623,7 @@ const DASH_NAV: { id: DashSection; label: string }[] = [
   { id: "sources", label: "Sources" },
   { id: "models", label: "Models" },
   { id: "prompts", label: "Prompts" },
+  { id: "attribution", label: "Attribution" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -618,6 +698,496 @@ function DomainsByTypeCard({ sources }: { sources: TopSource[] }) {
             </li>
           ))}
         </ul>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Attribution Panel — GA4 + GSC overlaid with Ozvor AI Visibility Score trend
+// ---------------------------------------------------------------------------
+
+interface AttributionPanelProps {
+  brandId: string;
+  loadState: "idle" | "loading" | "ready" | "error";
+  configured: boolean | null;
+  summary: string | null;
+  ga4Metrics: AttributionMetricSeries | null;
+  gscMetrics: AttributionMetricSeries | null;
+  scoreTrend: Array<{ recorded_at: string; score_overall: number | null }>;
+}
+
+function relativeTime(isoStr: string): string {
+  const diffMs = Date.now() - new Date(isoStr).getTime();
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  if (hours < 1) return "less than 1 hour ago";
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+
+function AttributionPanel({
+  brandId,
+  loadState,
+  configured,
+  summary,
+  ga4Metrics,
+  gscMetrics,
+  scoreTrend,
+}: AttributionPanelProps) {
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-lg)",
+    padding: "var(--space-6)",
+    boxShadow: "var(--shadow-card)",
+    marginBottom: "var(--space-4)",
+  };
+
+  const headingStyle: React.CSSProperties = {
+    fontSize: "var(--font-size-h3)",
+    fontWeight: 700,
+    margin: "0 0 var(--space-4) 0",
+    color: "var(--color-text)",
+  };
+
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (loadState === "idle" || loadState === "loading") {
+    return (
+      <section aria-labelledby="attribution-heading" style={{ marginBottom: "var(--space-8)" }}>
+        <h2 id="attribution-heading" style={headingStyle}>Attribution</h2>
+        <div style={cardStyle} aria-busy="true" aria-label="Loading attribution data">
+          <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: 0 }}>
+            Loading attribution data…
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Error state ────────────────────────────────────────────────────────────
+  if (loadState === "error") {
+    return (
+      <section aria-labelledby="attribution-heading" style={{ marginBottom: "var(--space-8)" }}>
+        <h2 id="attribution-heading" style={headingStyle}>Attribution</h2>
+        <div style={{ ...cardStyle, borderColor: "var(--color-border)" }}>
+          <p role="status" style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: 0 }}>
+            Attribution data unavailable. Please try refreshing the page.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  // ── State A: Google OAuth not configured at all ────────────────────────────
+  if (configured === false && !ga4Metrics && !gscMetrics) {
+    return (
+      <section aria-labelledby="attribution-heading" style={{ marginBottom: "var(--space-8)" }}>
+        <h2 id="attribution-heading" style={headingStyle}>Attribution</h2>
+        <div style={cardStyle}>
+          <div
+            style={{
+              backgroundColor: "var(--color-surface-muted)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-4)",
+              marginBottom: "var(--space-4)",
+            }}
+            role="status"
+          >
+            <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", lineHeight: 1.6 }}>
+              Google Analytics &amp; Search Console aren&rsquo;t connected yet.
+            </p>
+          </div>
+          <a
+            href="/account/connections"
+            style={{
+              display: "inline-block",
+              color: "var(--color-primary)",
+              fontWeight: 600,
+              fontSize: "var(--font-size-body-sm)",
+              textDecoration: "none",
+              marginBottom: "var(--space-4)",
+            }}
+          >
+            Connect data sources →
+          </a>
+          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+            See how your Ozvor AI Visibility Score correlates with organic traffic.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  // ── State B: Configured but no data yet for this brand ────────────────────
+  const hasGa4Data = ga4Metrics && ga4Metrics.series.length > 0;
+  const hasGscData = gscMetrics && gscMetrics.series.length > 0;
+
+  if (!hasGa4Data && !hasGscData) {
+    return (
+      <section aria-labelledby="attribution-heading" style={{ marginBottom: "var(--space-8)" }}>
+        <h2 id="attribution-heading" style={headingStyle}>Attribution</h2>
+        <div style={cardStyle}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "var(--space-4)",
+              padding: "var(--space-6) var(--space-4)",
+              textAlign: "center",
+            }}
+          >
+            <svg
+              width="40"
+              height="40"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--color-muted)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0" />
+              <path d="M12 8v4l2 2" />
+            </svg>
+            <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              No data sources connected for this brand yet.
+            </p>
+            <a
+              href="/account/connections"
+              style={{
+                display: "inline-block",
+                minHeight: "var(--min-tap-target)",
+                padding: "0 var(--space-5)",
+                lineHeight: "var(--min-tap-target)",
+                backgroundColor: "var(--color-primary)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: "var(--font-size-body-sm)",
+                textDecoration: "none",
+                borderRadius: "var(--radius-md)",
+              }}
+              aria-label="Connect Google Analytics 4 or Search Console"
+            >
+              Connect GA4 or Search Console
+            </a>
+            <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              Connect Google Analytics 4 or Search Console to see whether your organic traffic moves with your Visibility Score.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ── State C: Data available — render overlay chart ─────────────────────────
+  // Build normalized time series for the chart.
+  // Score trend is the reference timeline (chronological).
+  const chronoTrend = [...scoreTrend]
+    .filter((r): r is { recorded_at: string; score_overall: number } => r.score_overall !== null)
+    .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
+
+  // For attribution series, we use their own date axis (may differ from score trend frequency).
+  // Build independent date sets for GA4 and GSC.
+  const ga4Points = hasGa4Data ? ga4Metrics!.series : [];
+  const gscPoints = hasGscData ? gscMetrics!.series : [];
+
+  // Merge all unique dates (score + ga4 + gsc) into a unified timeline.
+  const dateSet = new Set<string>();
+  for (const r of chronoTrend) dateSet.add(r.recorded_at.substring(0, 10));
+  for (const p of ga4Points) dateSet.add(p.date.substring(0, 10));
+  for (const p of gscPoints) dateSet.add(p.date.substring(0, 10));
+  const unifiedDates = [...dateSet].sort();
+
+  // Map score to unified timeline.
+  const scoreByDate = new Map<string, number>();
+  for (const r of chronoTrend) scoreByDate.set(r.recorded_at.substring(0, 10), r.score_overall);
+  const scoreValues = unifiedDates.map((d) => scoreByDate.get(d) ?? null);
+
+  // GA4 sessions per unified date.
+  const ga4ByDate = new Map<string, number>();
+  for (const p of ga4Points) if ((p.sessions ?? 0) > 0) ga4ByDate.set(p.date.substring(0, 10), p.sessions ?? 0);
+  const ga4RawValues = unifiedDates.map((d) => ga4ByDate.get(d) ?? null);
+  const ga4HasAnyData = ga4RawValues.some((v) => v !== null);
+
+  // GSC clicks per unified date.
+  const gscByDate = new Map<string, number>();
+  for (const p of gscPoints) if ((p.clicks ?? 0) > 0) gscByDate.set(p.date.substring(0, 10), p.clicks ?? 0);
+  const gscRawValues = unifiedDates.map((d) => gscByDate.get(d) ?? null);
+  const gscHasAnyData = gscRawValues.some((v) => v !== null);
+
+  // Normalize GA4 and GSC to 0–100 for overlay.
+  const ga4NonNull = ga4RawValues.filter((v): v is number => v !== null);
+  const gscNonNull = gscRawValues.filter((v): v is number => v !== null);
+  const ga4Max = ga4NonNull.length > 0 ? Math.max(...ga4NonNull) : 1;
+  const gscMax = gscNonNull.length > 0 ? Math.max(...gscNonNull) : 1;
+
+  // Build SVG chart data.
+  const viewW = 400;
+  const viewH = 100;
+  const padX = 4;
+  const padY = 6;
+  const n = unifiedDates.length;
+
+  function xAt(i: number): number {
+    return n <= 1 ? viewW / 2 : (i / (n - 1)) * (viewW - padX * 2) + padX;
+  }
+  function yAt(normalizedValue: number): number {
+    return viewH - padY - (normalizedValue / 100) * (viewH - padY * 2);
+  }
+
+  // Collect score segments (arrays of point strings, each being a connected segment).
+  function collectSegments(values: (number | null)[], normalizeMax: number): Array<{ x: number; y: number }[]> {
+    const result: Array<{ x: number; y: number }[]> = [];
+    let current: { x: number; y: number }[] = [];
+    values.forEach((v, i) => {
+      if (v !== null) {
+        const normalized = (v / normalizeMax) * 100;
+        current.push({ x: xAt(i), y: yAt(normalized) });
+      } else {
+        if (current.length >= 2) result.push(current);
+        current = [];
+      }
+    });
+    if (current.length >= 2) result.push(current);
+    return result;
+  }
+
+  const scoreSegments = collectSegments(scoreValues, 100);
+  const ga4Segments = ga4HasAnyData ? collectSegments(ga4RawValues, ga4Max) : [];
+  const gscSegments = gscHasAnyData ? collectSegments(gscRawValues, gscMax) : [];
+
+  // Determine time labels.
+  const firstDate = unifiedDates[0] ?? "";
+  const lastDate = unifiedDates[unifiedDates.length - 1] ?? "";
+  function fmtDate(d: string): string {
+    if (!d) return "";
+    return new Date(d + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+
+  // CachedAt — use the most recent cachedAt.
+  const cachedAt = ga4Metrics?.cachedAt ?? gscMetrics?.cachedAt ?? null;
+
+  // Connected info for chips.
+  const ga4Connection = hasGa4Data
+    ? { connected: true, label: ga4Metrics!.series[0] ? "Connected" : "Connected" }
+    : { connected: false, label: "Not connected" };
+  const gscConnection = hasGscData
+    ? { connected: true, label: "Connected" }
+    : { connected: false, label: "Not connected" };
+
+  const SCORE_COLOR = "var(--color-primary)";
+  const GA4_COLOR = "#f59e0b";
+  const GSC_COLOR = "#7c3aed";
+
+  return (
+    <section aria-labelledby="attribution-heading" style={{ marginBottom: "var(--space-8)" }}>
+      <h2 id="attribution-heading" style={headingStyle}>Attribution</h2>
+
+      <div style={cardStyle}>
+        {/* Header row with title + update time */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "var(--space-4)",
+            flexWrap: "wrap",
+            marginBottom: summary ? "var(--space-4)" : "var(--space-5)",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+            Organic traffic trends overlaid with your Ozvor AI Visibility Score.
+          </p>
+          {cachedAt && (
+            <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", whiteSpace: "nowrap" }}>
+              Updated {relativeTime(cachedAt)}
+            </span>
+          )}
+        </div>
+
+        {/* Summary callout (AI-generated insight) */}
+        {summary && (
+          <div
+            style={{
+              backgroundColor: "var(--color-badge-ai-bg, rgba(37,99,235,0.06))",
+              border: "1px solid rgba(37,99,235,0.2)",
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-3) var(--space-4)",
+              marginBottom: "var(--space-5)",
+            }}
+            role="note"
+            aria-label="Attribution summary"
+          >
+            <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", lineHeight: 1.7 }}>
+              {summary}
+            </p>
+          </div>
+        )}
+
+        {/* Chart legend */}
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--space-4)",
+            flexWrap: "wrap",
+            marginBottom: "var(--space-3)",
+          }}
+          aria-hidden="true"
+        >
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-1)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600 }}>
+            <span style={{ width: "14px", height: "3px", borderRadius: "2px", backgroundColor: SCORE_COLOR, display: "inline-block" }} />
+            Visibility Score
+          </span>
+          {ga4HasAnyData && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-1)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600 }}>
+              <span style={{ width: "14px", height: "3px", borderRadius: "2px", backgroundColor: GA4_COLOR, display: "inline-block" }} />
+              Organic Sessions (GA4)
+            </span>
+          )}
+          {gscHasAnyData && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-1)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600 }}>
+              <span style={{ width: "14px", height: "3px", borderRadius: "2px", backgroundColor: GSC_COLOR, display: "inline-block" }} />
+              Search Clicks (GSC)
+            </span>
+          )}
+        </div>
+
+        {/* SVG overlay chart */}
+        <svg
+          width="100%"
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          role="img"
+          aria-label={`Attribution chart: Ozvor AI Visibility Score${ga4HasAnyData ? ", organic sessions from GA4" : ""}${gscHasAnyData ? ", search clicks from GSC" : ""} over time`}
+          style={{ display: "block", overflow: "visible", marginBottom: "var(--space-1)" }}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* Score segments */}
+          {scoreSegments.map((seg, si) => (
+            <polyline
+              key={`score-${si}`}
+              points={seg.map((p) => `${p.x},${p.y}`).join(" ")}
+              stroke={SCORE_COLOR}
+              strokeWidth={2}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+          {/* GA4 sessions segments */}
+          {ga4Segments.map((seg, si) => (
+            <polyline
+              key={`ga4-${si}`}
+              points={seg.map((p) => `${p.x},${p.y}`).join(" ")}
+              stroke={GA4_COLOR}
+              strokeWidth={1.5}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="4 2"
+            />
+          ))}
+          {/* GSC clicks segments */}
+          {gscSegments.map((seg, si) => (
+            <polyline
+              key={`gsc-${si}`}
+              points={seg.map((p) => `${p.x},${p.y}`).join(" ")}
+              stroke={GSC_COLOR}
+              strokeWidth={1.5}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="2 2"
+            />
+          ))}
+        </svg>
+
+        {/* Date axis labels */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: "var(--space-5)",
+          }}
+          aria-hidden="true"
+        >
+          <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{fmtDate(firstDate)}</span>
+          <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{fmtDate(lastDate)}</span>
+        </div>
+
+        {/* Data source status chips */}
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", marginBottom: "var(--space-4)" }}
+          aria-label="Attribution data source status"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-caption)" }}>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "2px 8px",
+                borderRadius: "var(--radius-sm)",
+                fontWeight: 700,
+                fontSize: "var(--font-size-badge)",
+                backgroundColor: ga4Connection.connected ? "var(--color-badge-connected-bg, rgba(15,180,136,0.12))" : "var(--color-surface-muted)",
+                color: ga4Connection.connected ? "var(--color-badge-connected-text, #0fb488)" : "var(--color-muted)",
+              }}
+            >
+              GA4
+            </span>
+            <span style={{ color: "var(--color-muted)" }}>
+              {ga4Connection.connected
+                ? `Connected${ga4Metrics?.periodStart ? ` · ${fmtDate(ga4Metrics.periodStart)}–${fmtDate(ga4Metrics.periodEnd)}` : ""}`
+                : "Not connected"}
+            </span>
+            {!ga4Connection.connected && (
+              <a href="/account/connections" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "none" }} aria-label="Connect Google Analytics 4">
+                Connect →
+              </a>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--font-size-caption)" }}>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "2px 8px",
+                borderRadius: "var(--radius-sm)",
+                fontWeight: 700,
+                fontSize: "var(--font-size-badge)",
+                backgroundColor: gscConnection.connected ? "var(--color-badge-connected-bg, rgba(15,180,136,0.12))" : "var(--color-surface-muted)",
+                color: gscConnection.connected ? "var(--color-badge-connected-text, #0fb488)" : "var(--color-muted)",
+              }}
+            >
+              GSC
+            </span>
+            <span style={{ color: "var(--color-muted)" }}>
+              {gscConnection.connected
+                ? `Connected${gscMetrics?.periodStart ? ` · ${fmtDate(gscMetrics.periodStart)}–${fmtDate(gscMetrics.periodEnd)}` : ""}`
+                : "Not connected"}
+            </span>
+            {!gscConnection.connected && (
+              <a href="/account/connections" style={{ color: "var(--color-primary)", fontWeight: 600, textDecoration: "none" }} aria-label="Connect Google Search Console">
+                Connect →
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Manage link */}
+        <a
+          href="/account/connections"
+          style={{
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            textDecoration: "underline",
+          }}
+        >
+          Manage data sources
+        </a>
       </div>
     </section>
   );
