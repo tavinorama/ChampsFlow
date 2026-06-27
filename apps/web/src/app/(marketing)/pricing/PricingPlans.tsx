@@ -1,0 +1,193 @@
+"use client";
+
+/**
+ * PricingPlans — the interactive plan cards on the public /pricing page.
+ *
+ * Founder ask: the displayed price defaults to ANNUAL, and the visitor can flip
+ * to Monthly right in the box. The chosen interval is carried into the checkout
+ * funnel (?interval=…) so what they pick is what they're charged.
+ *
+ * Annual prices are the founder price (30% off the 12× list), which is the only
+ * annual price offered pre-launch (mirrors components/PlanCard + the founder
+ * band on this page). Annual is the default selection.
+ */
+
+import { useState } from "react";
+import Link from "next/link";
+
+type Interval = "year" | "month";
+
+type Plan = {
+  name: string;
+  monthly: string; // headline price when Monthly is selected
+  annualYear: string; // headline price when Annual is selected (founder /yr total)
+  annualPerMonth: string; // "≈ $69/mo" helper shown under the annual price
+  sub: string;
+  features: string[];
+  cta: string;
+  /** base href; interval is appended for paid plans */
+  href: string;
+  paid: boolean;
+  accent: "muted" | "emerald";
+  featured?: boolean;
+};
+
+const PLANS: Plan[] = [
+  {
+    name: "Free",
+    monthly: "$0",
+    annualYear: "$0",
+    annualPerMonth: "",
+    sub: "See where you stand — no card.",
+    features: ["1 brand", "10-prompt snapshot audit", "1 competitor", "All 5 AI engines", "Instant Ozvor AI Visibility Score"],
+    cta: "Run the free test",
+    href: "/test",
+    paid: false,
+    accent: "muted",
+  },
+  {
+    name: "Growth",
+    monthly: "$99",
+    annualYear: "$831",
+    annualPerMonth: "≈ $69/mo · 30% founder discount",
+    sub: "For one brand you want cited.",
+    features: ["Unlimited audits", "Weekly monitoring", "Up to 5 competitors", "GEO content plan + Content Studio", "CSV export", "Email support"],
+    cta: "Start Growth",
+    href: "/login?plan=growth&next=checkout",
+    paid: true,
+    accent: "emerald",
+    featured: true,
+  },
+  {
+    name: "Agency",
+    monthly: "$249",
+    annualYear: "$2,091",
+    annualPerMonth: "≈ $174/mo · 30% founder discount",
+    sub: "For agencies & multi-brand teams.",
+    features: ["Multi-client dashboard (up to 25 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual: website + 3 client landings"],
+    cta: "Start Agency",
+    href: "/login?plan=agency&next=checkout",
+    paid: true,
+    accent: "emerald",
+  },
+];
+
+export function PricingPlans() {
+  // Annual is the default (better value + unlocks the founder discount).
+  const [interval, setInterval] = useState<Interval>("year");
+
+  return (
+    <div style={{ marginTop: "var(--space-10)" }}>
+      {/* Interval toggle — Annual default, switch to Monthly in place */}
+      <div
+        role="group"
+        aria-label="Billing interval"
+        style={{
+          display: "inline-flex",
+          margin: "0 auto var(--space-6)",
+          padding: "4px",
+          gap: "4px",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          background: "var(--color-surface)",
+        }}
+      >
+        {([
+          { v: "year" as const, label: "Annual", note: "Save 30%" },
+          { v: "month" as const, label: "Monthly", note: null },
+        ]).map((opt) => {
+          const active = interval === opt.v;
+          return (
+            <button
+              key={opt.v}
+              type="button"
+              onClick={() => setInterval(opt.v)}
+              aria-pressed={active}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                minHeight: "var(--min-tap-target, 44px)",
+                padding: "0 var(--space-4)",
+                borderRadius: "var(--radius-sm)",
+                border: "none",
+                cursor: "pointer",
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-body-sm)",
+                fontWeight: 700,
+                background: active ? "linear-gradient(135deg,#27c98a,#0c7d54)" : "transparent",
+                color: active ? "#06140e" : "var(--color-text)",
+              }}
+            >
+              {opt.label}
+              {opt.note && (
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.625rem",
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    padding: "2px 6px",
+                    borderRadius: "var(--radius-sm)",
+                    background: active ? "rgba(6,20,14,0.18)" : "rgba(39,201,138,0.16)",
+                    color: active ? "#06140e" : "var(--color-accent-ink)",
+                  }}
+                >
+                  {opt.note}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Plan cards */}
+      <div className="pr-grid">
+        {PLANS.map((pl) => {
+          const isAnnual = interval === "year";
+          const priceMain = pl.name === "Free" ? "$0" : isAnnual ? pl.annualYear : pl.monthly;
+          const per = pl.name === "Free" ? "" : isAnnual ? "/yr" : "/mo";
+          const href = pl.paid ? `${pl.href}&interval=${interval}` : pl.href;
+          return (
+            <div
+              key={pl.name}
+              style={{
+                position: "relative",
+                padding: "var(--space-8) var(--space-6)",
+                borderRadius: "var(--radius-lg)",
+                border: pl.featured ? "1.5px solid var(--color-primary)" : "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+                boxShadow: pl.featured ? "0 12px 40px rgba(39,201,138,0.14)" : "var(--shadow-card)",
+              }}
+            >
+              {pl.featured && (
+                <span style={{ position: "absolute", top: "-11px", left: "var(--space-6)", fontFamily: "var(--font-mono)", fontSize: "0.625rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 11px", borderRadius: "var(--radius-sm)", background: "linear-gradient(135deg,#27c98a,#0c7d54)", color: "#06140e", fontWeight: 700 }}>
+                  Most popular
+                </span>
+              )}
+              <div style={{ fontSize: "1rem", fontWeight: 700, color: pl.accent === "emerald" ? "var(--color-accent-ink)" : "var(--color-muted)" }}>{pl.name}</div>
+              <div style={{ marginTop: "var(--space-2)", fontSize: "2.5rem", fontWeight: 800, letterSpacing: "-0.03em" }}>
+                {priceMain}<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>{per}</span>
+              </div>
+              {/* Annual helper line — keeps the per-month framing + founder context */}
+              <div style={{ marginTop: "var(--space-1)", minHeight: "18px", fontSize: "var(--font-size-caption)", color: "var(--color-accent-ink)", fontWeight: 600 }}>
+                {pl.paid && isAnnual ? pl.annualPerMonth : " "}
+              </div>
+              <div style={{ marginTop: "var(--space-1)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", minHeight: "32px" }}>{pl.sub}</div>
+              <Link href={href} className={`pr-cta ${pl.accent === "emerald" ? "pr-cta-emerald" : "pr-cta-ghost"}`} aria-label={`${pl.cta} — ${pl.name} plan, ${isAnnual ? "annual" : "monthly"} billing`}>
+                {pl.cta}
+              </Link>
+              <ul style={{ listStyle: "none", margin: "var(--space-5) 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                {pl.features.map((f) => (
+                  <li key={f} style={{ display: "flex", gap: "var(--space-2)", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.5 }}>
+                    <span aria-hidden="true" style={{ color: "var(--color-accent-ink)", fontWeight: 700 }}>&#10003;</span>{f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
