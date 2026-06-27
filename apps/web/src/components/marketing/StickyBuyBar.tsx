@@ -1,9 +1,20 @@
 "use client";
+
+/**
+ * StickyBuyBar — bottom-of-viewport persistent bar with primary Growth CTA.
+ *
+ * Growth CTA now triggers direct Stripe checkout via POST /api/checkout/direct
+ * (annual interval by default) instead of routing through /login?plan=...
+ * Free test link remains a plain Link to /test.
+ */
+
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useDirectCheckout } from "../../lib/use-direct-checkout";
 
 export function StickyBuyBar() {
   const [dismissed, setDismissed] = useState(false);
+  const { loading, error, startCheckout } = useDirectCheckout();
 
   useEffect(() => {
     if (sessionStorage.getItem("stickyBarDismissed") === "1") {
@@ -24,43 +35,65 @@ export function StickyBuyBar() {
       role="complementary"
       aria-label="Quick purchase options"
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flex: 1, minWidth: 0 }}>
-        <Link
-          href="/login?plan=growth&next=checkout&interval=year"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "44px",
-            padding: "0 var(--space-4)",
-            backgroundColor: "var(--color-primary)",
-            color: "#fff",
-            borderRadius: "var(--radius-md)",
-            fontSize: "0.875rem",
-            fontWeight: 700,
-            fontFamily: "var(--font-family)",
-            textDecoration: "none",
-            whiteSpace: "nowrap",
-            flex: "0 0 auto",
-          }}
-        >
-          Start Growth · from $69/mo
-        </Link>
-        <Link
-          href="/test"
-          style={{
-            fontSize: "0.875rem",
-            fontWeight: 600,
-            color: "var(--color-primary)",
-            textDecoration: "none",
-            fontFamily: "var(--font-family)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          Free test
-        </Link>
+      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: "var(--space-1)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          <button
+            type="button"
+            disabled={loading}
+            aria-busy={loading}
+            aria-label={loading ? "Opening Stripe checkout..." : "Start Growth plan — from $69/mo annual"}
+            onClick={() => startCheckout("growth", "year")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "44px",
+              padding: "0 var(--space-4)",
+              backgroundColor: "var(--color-primary)",
+              color: "#fff",
+              borderRadius: "var(--radius-md)",
+              fontSize: "0.875rem",
+              fontWeight: 700,
+              fontFamily: "var(--font-family)",
+              whiteSpace: "nowrap",
+              flex: "0 0 auto",
+              border: "none",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            {loading ? "Opening…" : "Start Growth · from $69/mo"}
+          </button>
+          <Link
+            href="/test"
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              color: "var(--color-primary)",
+              textDecoration: "none",
+              fontFamily: "var(--font-family)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Free test
+          </Link>
+        </div>
+        {error && (
+          <p
+            role="alert"
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-error)",
+              fontFamily: "var(--font-family)",
+            }}
+          >
+            {error}
+          </p>
+        )}
       </div>
       <button
+        type="button"
         onClick={dismiss}
         aria-label="Dismiss buy bar"
         style={{

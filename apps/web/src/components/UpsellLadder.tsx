@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * UpsellLadder — reusable upsell ladder component.
  *
@@ -8,7 +10,8 @@
  * Design rule: the natural next step is visually dominant; the rest are clearly
  * smaller. This is the founder's core requirement.
  *
- * No state, no side-effects — purely presentational.
+ * CTA rendering: if an item provides onClick, renders a <button> for client-side
+ * flows (e.g. direct Stripe checkout). If href is provided, renders a <Link>.
  */
 
 import Link from "next/link";
@@ -22,15 +25,24 @@ export interface UpsellItem {
   why: string;
   /** Price string shown on the CTA: "$99/mo", "$29", etc. */
   price: string;
-  /** The href the CTA navigates to. Must be a real destination — no dead "#". */
-  href: string;
+  /**
+   * The href the CTA navigates to. Required when onClick is not provided.
+   * Must be a real destination — no dead "#".
+   */
+  href?: string;
+  /**
+   * Optional click handler. When provided, renders a <button> instead of
+   * <Link href>. Use this for client-side flows (e.g. direct Stripe checkout)
+   * where a navigation href is not appropriate.
+   */
+  onClick?: () => void;
   /**
    * Visual accent. "emerald" = gradient green CTA (self-serve plans).
    * "gold" = gradient amber CTA (OrganicPosts / done-for-you).
    * "ghost" = outlined CTA (secondary or free).
    */
   accent?: "emerald" | "gold" | "ghost";
-  /** aria-label for the CTA anchor (accessibility). */
+  /** aria-label for the CTA anchor/button (accessibility). */
   ctaAriaLabel?: string;
 }
 
@@ -201,13 +213,24 @@ function PrimaryCard({ item }: { item: UpsellItem }) {
         </p>
       </div>
 
-      <Link
-        href={item.href}
-        style={ctaStyle(accent)}
-        aria-label={item.ctaAriaLabel ?? `${item.title} — ${item.price}`}
-      >
-        {item.title} — {item.price}
-      </Link>
+      {item.onClick ? (
+        <button
+          type="button"
+          onClick={item.onClick}
+          style={ctaStyle(accent)}
+          aria-label={item.ctaAriaLabel ?? `${item.title} — ${item.price}`}
+        >
+          {item.title} — {item.price}
+        </button>
+      ) : (
+        <Link
+          href={item.href ?? "/"}
+          style={ctaStyle(accent)}
+          aria-label={item.ctaAriaLabel ?? `${item.title} — ${item.price}`}
+        >
+          {item.title} — {item.price}
+        </Link>
+      )}
     </article>
   );
 }
@@ -256,13 +279,24 @@ function SecondaryCard({ item }: { item: UpsellItem }) {
           {item.why}
         </p>
       </div>
-      <Link
-        href={item.href}
-        style={secondaryCtaStyle(accent)}
-        aria-label={item.ctaAriaLabel ?? `${item.title} — ${item.price}`}
-      >
-        {item.title} →
-      </Link>
+      {item.onClick ? (
+        <button
+          type="button"
+          onClick={item.onClick}
+          style={secondaryCtaStyle(accent)}
+          aria-label={item.ctaAriaLabel ?? `${item.title} — ${item.price}`}
+        >
+          {item.title} →
+        </button>
+      ) : (
+        <Link
+          href={item.href ?? "/"}
+          style={secondaryCtaStyle(accent)}
+          aria-label={item.ctaAriaLabel ?? `${item.title} — ${item.price}`}
+        >
+          {item.title} →
+        </Link>
+      )}
     </article>
   );
 }

@@ -1,0 +1,281 @@
+/**
+ * checkout.ts — Public checkout-first route
+ *
+ * Allows marketing CTAs for Growth/Agency plans to go directly to Stripe
+ * Checkout without requiring a login first. The account is created/linked
+ * AFTER payment via the pending_subscription flow.
+ *
+ * Route:
+ *   POST /api/checkout/direct — NO auth middleware; rate limited 10/hour/IP
+ *
+ * Architecture refs:
+ *   docs/03-architecture.md §5 API contracts (checkout-first capability)
+ *   docs/02-prd.md          checkout-first acceptance criteria
+ *
+ * Hard rules enforced here:
+ *   - No auth middleware (public — pre-account buyers)
+ *   - Input validated at boundary: plan, interval, email
+ *   - Rate limited: 10 requests / hour / IP (sliding-window ZSET, Upstash Redis)
+ *   - Stripe not configured → 503 (no crash)
+ *   - No PII (email) in any log statement
+ *   - All config from environment only
+ */
+
+import { Hono } from "hono";
+import { Redis } from "@upstash/redis";
+import { createDirectCheckoutSession } from "../integrations/stripe";
+import type { BillingInterval } from "../integrations/stripe";
+import type { PostgresClient } from "./social-accounts";
+import { logger } from "../../../../packages/shared/src/logger";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function webOrigin(): string {
+  return process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "http://localhost:3000";
+}
+
+function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
+  const fwd = c.req.header("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return c.req.header("x-real-ip") ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// IP truncation for rate-limit key (GDPR data minimization)
+// IPv4: zero last octet. IPv6: keep first 3 groups (first 48 bits).
+// ---------------------------------------------------------------------------
+
+function truncateIpForRateLimit(ip: string): string {
+  if (!ip) return "unknown";
+  const v4 = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
+  if (v4) return `${v4[1]}.0`;
+  const colons = ip.split(":");
+  if (colons.length >= 4) return colons.slice(0, 3).join(":") + "::/48";
+  return "unknown";
+}
+
+// ---------------------------------------------------------------------------
+// Lazy Redis singleton for checkout rate limiting
+// ---------------------------------------------------------------------------
+
+let _checkoutRedis: Redis | null = null;
+
+function getCheckoutRedis(): Redis {
+  if (_checkoutRedis) return _checkoutRedis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for checkout rate limiting"
+    );
+  }
+  _checkoutRedis = new Redis({ url, token });
+  return _checkoutRedis;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limit: 10 direct checkout attempts / hour / IP — sliding-window ZSET
+// Key prefix: checkout_direct_rl:{truncatedIp}
+// ---------------------------------------------------------------------------
+
+const CHECKOUT_RATE_LIMIT = 10;
+const CHECKOUT_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour in ms
+const CHECKOUT_RATE_WINDOW_S = 3600;             // 1 hour in seconds (Redis EXPIRE)
+
+async function checkCheckoutRateLimit(ipTruncated: string): Promise<boolean> {
+  const redis = getCheckoutRedis();
+  const key = `checkout_direct_rl:${ipTruncated}`;
+  const now = Date.now();
+
+  const pipeline = redis.pipeline();
+  pipeline.zremrangebyscore(key, 0, now - CHECKOUT_RATE_WINDOW_MS);
+  pipeline.zadd(key, { score: now, member: String(now) + ":" + Math.random().toString(36).slice(2, 8) });
+  pipeline.zcard(key);
+  pipeline.expire(key, CHECKOUT_RATE_WINDOW_S);
+
+  const results = await pipeline.exec();
+  const count = results[2] as number;
+  return count <= CHECKOUT_RATE_LIMIT;
+}
+
+// ---------------------------------------------------------------------------
+// Route registration
+// ---------------------------------------------------------------------------
+
+export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
+  // -------------------------------------------------------------------------
+  // POST /api/checkout/direct
+  // Public — no auth. Marketing CTAs go here to start Stripe Checkout before
+  // account creation.
+  //
+  // Request body:
+  //   { plan: 'growth' | 'agency', interval?: 'month' | 'year', email?: string, founder?: boolean }
+  //
+  // Response 200: { url: string }     — Stripe checkout URL
+  // Response 400: validation error
+  // Response 429: rate limited
+  // Response 503: Stripe not configured
+  // -------------------------------------------------------------------------
+  app.post("/api/checkout/direct", async (c) => {
+    // -----------------------------------------------------------------------
+    // Rate limiting — before parsing body to fail fast on abuse
+    // -----------------------------------------------------------------------
+    const rawIp = clientIp(c);
+    const ipTruncated = rawIp ? truncateIpForRateLimit(rawIp) : "unknown";
+    try {
+      const allowed = await checkCheckoutRateLimit(ipTruncated);
+      if (!allowed) {
+        return c.json(
+          {
+            error: "rate_limited",
+            code: "RATE_LIMITED",
+            message: "Too many checkout attempts. Try again later.",
+          },
+          429
+        );
+      }
+    } catch (err) {
+      // Fail-open on Redis unavailability — do not block genuine buyers
+      logger.warn("checkout_direct_rate_limit_redis_unavailable", {
+        error_code: (err as NodeJS.ErrnoException).code ?? 'unknown',
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // Parse body
+    // -----------------------------------------------------------------------
+    let body: { plan?: unknown; interval?: unknown; email?: unknown; founder?: unknown };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: "invalid_body", code: "INVALID_BODY", message: "Invalid JSON body." },
+        400
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Validate — plan
+    // -----------------------------------------------------------------------
+    const plan = body.plan;
+    if (plan !== "growth" && plan !== "agency") {
+      return c.json(
+        {
+          error: "invalid_plan",
+          code: "INVALID_PLAN",
+          message: "plan must be growth or agency",
+        },
+        400
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Validate — interval (defaults to 'year' if omitted)
+    // -----------------------------------------------------------------------
+    const rawInterval = body.interval;
+    const interval: BillingInterval =
+      rawInterval === undefined ? "year" : (rawInterval as BillingInterval);
+
+    if (interval !== "month" && interval !== "year") {
+      return c.json(
+        {
+          error: "invalid_interval",
+          code: "INVALID_INTERVAL",
+          message: "interval must be month or year",
+        },
+        400
+      );
+    }
+
+    // -----------------------------------------------------------------------
+    // Validate — email (optional, but validated if provided)
+    // -----------------------------------------------------------------------
+    const rawEmail = body.email;
+    let email: string | undefined;
+    if (rawEmail !== undefined && rawEmail !== null && rawEmail !== "") {
+      if (typeof rawEmail !== "string" || !EMAIL_RE.test(rawEmail.trim())) {
+        return c.json(
+          {
+            error: "invalid_email",
+            code: "INVALID_EMAIL",
+            message: "email must be a valid email address",
+          },
+          400
+        );
+      }
+      email = rawEmail.trim();
+    }
+
+    // -----------------------------------------------------------------------
+    // founder flag — optional boolean from body
+    // -----------------------------------------------------------------------
+    const founder = body.founder === true;
+
+    // -----------------------------------------------------------------------
+    // Build URLs
+    // -----------------------------------------------------------------------
+    const origin = webOrigin();
+    // {CHECKOUT_SESSION_ID} is a Stripe-provided template variable — it is
+    // replaced by Stripe with the actual session ID on redirect.
+    const successUrl = `${origin}/welcome?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${origin}/pricing`;
+
+    // -----------------------------------------------------------------------
+    // Create Stripe checkout session
+    // -----------------------------------------------------------------------
+    try {
+      const { url } = await createDirectCheckoutSession(
+        plan,
+        interval,
+        founder,
+        successUrl,
+        cancelUrl,
+        email
+      );
+
+      logger.info("checkout_direct_session_created", {
+        plan_tier: plan,
+        billing_interval: interval,
+        // NOTE: email intentionally NOT logged — hard rule (PII)
+      });
+
+      return c.json({ url }, 200);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+
+      if (code === "stripe_not_configured" || code === "missing_price_id") {
+        logger.warn("checkout_direct_stripe_unavailable", {
+          error_code: code,
+          plan_tier: plan,
+        });
+        return c.json(
+          {
+            error: "checkout_unavailable",
+            code: "CHECKOUT_UNAVAILABLE",
+            message:
+              "Checkout is temporarily unavailable. Please try again shortly or contact support.",
+          },
+          503
+        );
+      }
+
+      // Unexpected error — log and return generic error
+      logger.error("checkout_direct_unexpected_error", {
+        message: (err as Error).message,
+        plan_tier: plan,
+      });
+      return c.json(
+        {
+          error: "internal_error",
+          code: "CHECKOUT_ERROR",
+          message: "An error occurred creating the checkout session.",
+        },
+        500
+      );
+    }
+  });
+}

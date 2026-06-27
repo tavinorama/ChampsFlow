@@ -40,7 +40,11 @@ WHERE nspname = 'public'
     'provider_keys',
     -- Attribution v1 (20260627000006_google_attribution)
     'google_connection',
-    'google_metric_cache'
+    'google_metric_cache',
+    -- Checkout-first onboarding (20260627000007_pending_subscription)
+    -- NOTE: this table has no tenant_id; RLS is enabled with a permissive
+    -- "service_all" policy (intentional — pre-tenant by design).
+    'pending_subscription'
   )
   AND NOT relrowsecurity;
 

@@ -899,18 +899,30 @@ async function handleCheckoutSessionCompleted(
     return;
   }
 
-  // Extract metadata (tenant_id and plan_tier set when creating the Checkout Session)
+  // ---------------------------------------------------------------------------
+  // Checkout-first (direct) flow branch
+  // Metadata.flow === 'direct' means the buyer paid before creating an account.
+  // ---------------------------------------------------------------------------
+  const flow = session.metadata?.flow;
   const tenantId = session.metadata?.tenant_id;
-  const planTierFromMeta = session.metadata?.plan_tier as PlanTier | undefined;
 
+  if (flow === "direct") {
+    // Only process subscription-mode sessions here (Kit payments exit above).
+    if (session.mode !== "subscription") return;
+    await handleDirectCheckoutCompleted(db, session, eventId);
+    return;
+  }
+
+  // Authed flow: tenant_id must be present in metadata
   if (!tenantId) {
     logger.error("stripe_checkout_completed_missing_tenant_id", {
       session_id: session.id,
       event_id: eventId,
     });
-    // Cannot process without tenant — do not throw (would cause retry loop for non-fixable issue)
     return;
   }
+
+  const planTierFromMeta = session.metadata?.plan_tier as PlanTier | undefined;
 
   const stripeCustomerId =
     typeof session.customer === "string" ? session.customer : null;
@@ -1234,5 +1246,158 @@ async function handleInvoicePaymentFailed(
     tenant_id: tenantId,
     event_id: eventId,
     plan_tier: planTier,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// handleDirectCheckoutCompleted — checkout-first flow (no pre-existing tenant)
+// ---------------------------------------------------------------------------
+// Called when checkout.session.completed fires for a session with
+// metadata.flow === 'direct' OR when there is no tenant_id in metadata.
+//
+// Two sub-cases:
+//   1. Email already belongs to an existing user → attach subscription directly.
+//   2. New buyer → write to pending_subscription; onboarding bootstrap claims
+//      it when they verify their email and create an account.
+//
+// This function intentionally does NOT use db.setTenantId() — it runs as the
+// service user (app_user) and the pending_subscription table has a permissive
+// RLS policy for that role (see migration 20260627000007).
+// ---------------------------------------------------------------------------
+async function handleDirectCheckoutCompleted(
+  db: PostgresClient,
+  session: Stripe.Checkout.Session,
+  eventId: string
+): Promise<void> {
+  // Extract session fields
+  const email = session.customer_details?.email ?? null;
+  const stripeCustomerId =
+    typeof session.customer === "string" ? session.customer : null;
+  const stripeSubscriptionId =
+    typeof session.subscription === "string" ? session.subscription : null;
+  const planTier = (session.metadata?.plan_tier as PlanTier | undefined) ?? "growth";
+  const interval = (session.metadata?.billing_interval ?? "year") as "month" | "year";
+
+  // All three are required to proceed; email is the lookup key for matching
+  if (!email || !stripeCustomerId || !stripeSubscriptionId) {
+    logger.warn("direct_checkout_completed_missing_fields", {
+      session_id: session.id,
+      event_id: eventId,
+      has_email: !!email,
+      has_customer: !!stripeCustomerId,
+      has_subscription: !!stripeSubscriptionId,
+      // NOTE: email not logged — PII
+    });
+    return;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Look up whether this email already belongs to an existing tenant.
+  // No db.setTenantId() needed — webhook runs as service, pending_subscription
+  // is pre-tenant and has a permissive RLS policy.
+  const { rows: existingRows } = await db.query<{ tenant_id: string }>(
+    `SELECT u.tenant_id FROM users u WHERE lower(u.email) = $1 LIMIT 1`,
+    [normalizedEmail]
+  );
+
+  const existingTenantId = existingRows[0]?.tenant_id ?? null;
+
+  if (existingTenantId) {
+    // -----------------------------------------------------------------------
+    // Case 1: Known user — attach subscription directly to their tenant.
+    // Same INSERT ON CONFLICT as the authed checkout path.
+    // -----------------------------------------------------------------------
+    const resolvedPlanTier: PlanTier = planTier;
+    const internalStatus = "active";
+
+    // Use the interval from metadata to set the correct current_period_end.
+    // Stripe fires customer.subscription.updated soon after, which will correct
+    // this to the exact Stripe billing anchor date. This initial value ensures the
+    // grace-period check has a reasonable value immediately after checkout.
+    const periodEndInterval = interval === "month" ? "1 month" : "1 year";
+
+    await db.query(
+      `INSERT INTO billing_subscriptions
+         (id, tenant_id, stripe_customer_id, stripe_subscription_id,
+          plan_tier, status, current_period_start, current_period_end,
+          stripe_event_id_last, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), $1, $2, $3, $4, $5,
+          NOW(), NOW() + $7::INTERVAL, $6, NOW(), NOW())
+       ON CONFLICT (stripe_subscription_id) DO UPDATE
+         SET stripe_customer_id    = EXCLUDED.stripe_customer_id,
+             plan_tier             = EXCLUDED.plan_tier,
+             status                = EXCLUDED.status,
+             current_period_start  = EXCLUDED.current_period_start,
+             current_period_end    = EXCLUDED.current_period_end,
+             stripe_event_id_last  = EXCLUDED.stripe_event_id_last,
+             updated_at            = NOW()
+       WHERE billing_subscriptions.stripe_event_id_last IS DISTINCT FROM $6`,
+      [
+        existingTenantId,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        resolvedPlanTier,
+        internalStatus,
+        eventId,
+        periodEndInterval,
+      ]
+    );
+
+    // Sync tenants.plan_tier (denormalized fast-lookup column)
+    await db.query(
+      `UPDATE tenants SET plan_tier = $1 WHERE id = $2`,
+      [resolvedPlanTier, existingTenantId]
+    );
+
+    await writeBillingAuditLog(db, {
+      tenantId: existingTenantId,
+      eventType: "billing_checkout_completed",
+      planTier: resolvedPlanTier,
+      stripeEventId: eventId,
+      status: internalStatus,
+    });
+
+    logger.info("direct_checkout_attached_to_existing_tenant", {
+      tenant_id: existingTenantId,
+      plan_tier: resolvedPlanTier,
+      event_id: eventId,
+      // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Case 2: New buyer — upsert into pending_subscription.
+  // The onboarding bootstrap route claims this on first login when the
+  // Supabase-verified email matches pending_subscription.email.
+  // -------------------------------------------------------------------------
+  await db.query(
+    `INSERT INTO pending_subscription
+       (email, stripe_customer_id, stripe_subscription_id, plan_tier,
+        billing_interval, status, stripe_event_id, created_at, updated_at)
+     VALUES
+       ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+     ON CONFLICT (stripe_subscription_id) DO UPDATE
+       SET status          = EXCLUDED.status,
+           stripe_event_id = EXCLUDED.stripe_event_id,
+           updated_at      = NOW()`,
+    [
+      normalizedEmail,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      planTier,
+      interval,
+      "active",
+      eventId,
+    ]
+  );
+
+  logger.info("direct_checkout_pending_subscription_created", {
+    plan_tier: planTier,
+    billing_interval: interval,
+    event_id: eventId,
+    // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
   });
 }

@@ -56,6 +56,7 @@ import { registerChatRoutes } from "./routes/chat";
 import { registerApiKeyRoutes } from "./routes/api-keys";
 import { registerAgencyRoutes } from "./routes/agency";
 import { registerAttributionRoutes } from "./routes/attribution";
+import { registerCheckoutRoutes } from "./routes/checkout";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -307,6 +308,10 @@ registerOnboardingRoutes(app, db);
 // DELETE /api/brands/:id/shares/:id — requireAuth + owner + agency plan
 // GET  /api/r/:token                — PUBLIC (capability-URL, no auth)
 registerAgencyRoutes(app, db);
+
+// Checkout-first — public Stripe checkout for Growth/Agency plans (no login required)
+// POST /api/checkout/direct — NO auth; rate limited 10/hour/IP
+registerCheckoutRoutes(app, db);
 
 // Attribution v1 (#86) — Google Analytics + Search Console OAuth + metrics
 // GET    /api/google/status                                  — PUBLIC
