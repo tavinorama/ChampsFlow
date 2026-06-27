@@ -290,18 +290,21 @@ function BillingPageInner(): React.ReactElement {
   // Handle plan selection → Stripe Checkout
   // -------------------------------------------------------------------------
   const handleChoosePlan = useCallback(
-    async (tier: PlanTier): Promise<void> => {
+    async (tier: PlanTier, intervalOverride?: BillingInterval): Promise<void> => {
       if (isCheckingOut || isOpeningPortal) return;
       setIsCheckingOut(true);
+      // Interval can be forced by the funnel (e.g. the /pricing toggle passes
+      // ?interval=…); otherwise use the page's current selection.
+      const iv: BillingInterval = intervalOverride ?? billingInterval;
       try {
         const res = await apiFetch("/api/billing/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             plan: tier,
-            interval: billingInterval,
+            interval: iv,
             // Founder discount is annual-only; the API ignores founder on monthly.
-            founder: billingInterval === "year",
+            founder: iv === "year",
           }),
         });
         if (!res.ok) {
@@ -335,12 +338,17 @@ function BillingPageInner(): React.ReactElement {
     if (isLoadingPlan || fetchError) return;
     const planParam = searchParams.get("plan");
     const autoCheckout = searchParams.get("autocheckout");
+    const intervalParam = searchParams.get("interval");
     if (autoCheckout === "1" && (planParam === "growth" || planParam === "agency")) {
       autoCheckoutFiredRef.current = true;
+      // Honor the interval chosen upstream (the /pricing annual/monthly toggle).
+      const iv: BillingInterval | undefined =
+        intervalParam === "month" ? "month" : intervalParam === "year" ? "year" : undefined;
+      if (iv) setBillingInterval(iv);
       // Clean the URL first — removes the query params so a refresh or
       // browser-back doesn't accidentally re-trigger the checkout flow.
       router.replace("/account/billing", { scroll: false });
-      void handleChoosePlan(planParam as PlanTier);
+      void handleChoosePlan(planParam as PlanTier, iv);
     }
   }, [isLoadingPlan, fetchError, searchParams, router, handleChoosePlan]);
 

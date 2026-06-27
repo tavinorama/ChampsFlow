@@ -36,9 +36,14 @@ const showOAuth = showGoogle || showMicrosoft;
  * Computes the post-login path. Used by both magic-link and OAuth flows so the
  * checkout funnel (?plan=growth&next=checkout) is preserved for every auth method.
  */
-function buildRedirectTarget(plan: string | null, nextParam: string | null): string {
+function buildRedirectTarget(
+  plan: string | null,
+  nextParam: string | null,
+  interval?: string | null
+): string {
   if (nextParam === "checkout" && plan) {
-    return `/account/billing?plan=${plan}&autocheckout=1`;
+    const iv = interval === "month" || interval === "year" ? `&interval=${interval}` : "";
+    return `/account/billing?plan=${plan}&autocheckout=1${iv}`;
   }
   if (nextParam && nextParam.startsWith("/")) {
     return nextParam;
@@ -87,6 +92,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [plan, setPlan] = useState<string | null>(null);
   const [nextParam, setNextParam] = useState<string | null>(null);
+  const [interval, setInterval] = useState<string | null>(null);
 
   // OAuth state
   const [oauthLoading, setOAuthLoading] = useState<"google" | "azure" | null>(null);
@@ -99,6 +105,8 @@ export default function LoginPage() {
       const n = params.get("next");
       if (p === "growth" || p === "agency") setPlan(p);
       if (n) setNextParam(n);
+      const iv = params.get("interval");
+      if (iv === "month" || iv === "year") setInterval(iv);
     }
   }, []);
 
@@ -110,7 +118,7 @@ export default function LoginPage() {
     try {
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}${buildRedirectTarget(plan, nextParam)}`
+          ? `${window.location.origin}${buildRedirectTarget(plan, nextParam, interval)}`
           : undefined;
       const { error } = await getSupabase().auth.signInWithOtp({
         email: email.trim(),
@@ -134,7 +142,7 @@ export default function LoginPage() {
     try {
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}${buildRedirectTarget(plan, nextParam)}`
+          ? `${window.location.origin}${buildRedirectTarget(plan, nextParam, interval)}`
           : undefined;
       const { error } = await getSupabase().auth.signInWithOAuth({
         provider,
