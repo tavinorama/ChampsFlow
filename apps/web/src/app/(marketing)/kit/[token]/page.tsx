@@ -10,6 +10,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
+import { UpsellLadder } from "../../../../components/UpsellLadder";
 
 interface Fix { vector: string; gap: string; action: string; effort: string; impact: string; priority: number }
 interface Draft { contentType: string; title: string; body: string; schemaMarkup: string | null; generatedBy: string }
@@ -188,26 +189,41 @@ function KitView({ d }: { d: Deliverable }) {
         </span>
       </div>
 
-      {/* Upsell to subscription Plans */}
-      <div style={{ ...card, marginTop: "var(--space-8)", border: "2px solid var(--color-primary)" }}>
-        <p style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
-          You found the gaps. Keep them closed.
-        </p>
-        <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-4) 0" }}>
-          Your Kit is a one-time snapshot: your Ozvor AI Visibility Score, your 3 fixes, 3 drafts to publish. But AI answers move
-          every week — new competitors get cited, and a page you publish today can lift your score in 30 days or quietly
-          slip back. <strong>Growth</strong> re-runs your full audit weekly, alerts you the moment your score or citation
-          share moves, and hands you fresh content briefs. <strong>Agency</strong> does the same across up to 25 brands.
-          This Kit was the first brick — the subscription is the wall.
-        </p>
-        <a href="/#pricing" style={{ display: "inline-flex", alignItems: "center", height: "48px", padding: "0 var(--space-6)", backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", fontWeight: 800, fontSize: "var(--font-size-body)", textDecoration: "none" }}>
-          Start weekly monitoring — Growth $99/mo →
-        </a>
-        <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "var(--space-3) 0 0 0" }}>
-          Founder annual: Growth $831/yr (~$69/mo), Agency $1,251/yr (~$104/mo) — 30% off, first 100 founders, annual
-          only. Cancel anytime. No guaranteed citations — we track the movement and tell you what changed.
-        </p>
-      </div>
+      {/* Upsell ladder — Growth is the natural next step after the Kit */}
+      <UpsellLadder
+        heading="You found the gaps. Keep them closed."
+        primary={{
+          title: "Growth Plan",
+          why: "Your Kit is a one-time snapshot. But AI answers move every week — new competitors get cited, and content you publish today can lift your score in 30 days or quietly slip back. Growth re-runs your full audit weekly, alerts you the moment your score or citation share moves, and delivers fresh content briefs. The Kit was the first brick — Growth is the wall.",
+          price: "$99/mo",
+          href: "/login?plan=growth&next=checkout",
+          accent: "emerald",
+          ctaAriaLabel: "Start weekly monitoring with the Growth Plan — $99 per month",
+        }}
+        secondary={[
+          {
+            title: "Agency Plan",
+            why: "Same weekly monitoring across up to 25 brands, with white-label reports and a client approval workflow.",
+            price: "$249/mo",
+            href: "/login?plan=agency&next=checkout",
+            accent: "ghost",
+            ctaAriaLabel: "Start the Agency Plan — $249 per month",
+          },
+          {
+            title: "OrganicPosts",
+            why: "Rather have a team run the whole GEO project for you? Managed done-for-you engagement.",
+            price: "Custom",
+            href: "/organicposts",
+            accent: "ghost",
+            ctaAriaLabel: "Learn about OrganicPosts done-for-you managed engagement",
+          },
+        ]}
+        marginTop="var(--space-8)"
+      />
+      <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "var(--space-3) 0 0 0" }}>
+        Founder annual: Growth $831/yr (~$69/mo), Agency $2,076/yr (~$173/mo) — 30% off, first 100 founders, annual
+        only. Cancel anytime. No guaranteed citations — we track the movement and tell you what changed.
+      </p>
 
       {/* Branded footer */}
       <footer style={{ marginTop: "var(--space-8)", paddingTop: "var(--space-5)", borderTop: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>

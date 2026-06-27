@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { UpsellLadder } from "../../../components/UpsellLadder";
 
 export const metadata: Metadata = {
   title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
@@ -165,6 +166,31 @@ export default function PricingPage() {
           </div>
         ))}
       </div>
+
+      {/* OrganicPosts done-for-you nudge — for Agency-context visitors who want
+          the full managed engagement rather than a self-serve subscription. */}
+      <UpsellLadder
+        heading="Need someone to run it for you?"
+        primary={{
+          title: "OrganicPosts",
+          why: "The self-serve plans give you the tools and intelligence. OrganicPosts is the done-with-you summit: a managed GEO project where our team runs discovery, content, cadence, and monitoring — you approve every draft before it goes live.",
+          price: "Starts with a call",
+          href: "/organicposts",
+          accent: "gold",
+          ctaAriaLabel: "Learn about OrganicPosts done-for-you GEO management",
+        }}
+        secondary={[
+          {
+            title: "Book a 20-min call",
+            why: "Scope the project — no commitment, no sales pitch.",
+            price: "Free",
+            href: "/book",
+            accent: "ghost",
+            ctaAriaLabel: "Book a free 20-minute GEO scoping call",
+          },
+        ]}
+        marginTop="var(--space-16)"
+      />
 
       {/* Comparison table */}
       <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="pr-compare">
