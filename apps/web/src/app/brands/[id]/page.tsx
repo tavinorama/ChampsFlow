@@ -130,6 +130,7 @@ export default function BrandDetailPage() {
     tracking_frequency: string | null;
   } | null>(null);
   const [planTier, setPlanTier] = useState<string | null>(null);
+  const [shareState, setShareState] = useState<"idle" | "sharing" | "copied" | "error">("idle");
   const pollCount = useRef(0);
   const [section, setSection] = useState<DashSection>("overview");
 
@@ -291,6 +292,19 @@ export default function BrandDetailPage() {
 
   const isWorking = audit?.status === "pending" || audit?.status === "running" || (!audit && !!auditId);
 
+  async function handleShare() {
+    setShareState("sharing");
+    try {
+      const res = await apiFetch(`/api/brands/${brandId}/share`, { method: "POST" });
+      if (!res.ok) { setShareState("error"); return; }
+      const data = (await res.json()) as { token?: string };
+      const url = `${window.location.origin}/r/${data.token ?? ""}`;
+      await navigator.clipboard.writeText(url);
+      setShareState("copied");
+      setTimeout(() => setShareState("idle"), 2000);
+    } catch { setShareState("error"); }
+  }
+
   return (
     <main style={{
       maxWidth: "1180px", margin: "0 auto",
@@ -323,9 +337,35 @@ export default function BrandDetailPage() {
 
         {/* ── Main panel ────────────────────────────────────────────── */}
         <div className="bd-main">
-          <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-2) 0" }}>
-            Ozvor AI Visibility Score
-          </h1>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-2)" }}>
+            <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+              Ozvor AI Visibility Score
+            </h1>
+            {planTier === "agency" && (
+              <button
+                onClick={() => void handleShare()}
+                disabled={shareState === "sharing"}
+                aria-label="Share report — copy link to clipboard"
+                style={{
+                  minHeight: "var(--min-tap-target)",
+                  padding: "0 var(--space-4)",
+                  backgroundColor: "transparent",
+                  color: shareState === "copied" ? "var(--color-success)" : "var(--color-primary)",
+                  border: `1.5px solid ${shareState === "copied" ? "var(--color-success)" : "var(--color-primary)"}`,
+                  borderRadius: "var(--radius-md)",
+                  fontSize: "var(--font-size-body-sm)",
+                  fontWeight: 700,
+                  fontFamily: "var(--font-family)",
+                  cursor: shareState === "sharing" ? "not-allowed" : "pointer",
+                  opacity: shareState === "sharing" ? 0.6 : 1,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {shareState === "sharing" ? "Sharing…" : shareState === "copied" ? "Link copied!" : "Share report"}
+              </button>
+            )}
+          </div>
           <div aria-live="polite" style={{ marginBottom: "var(--space-6)", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
             {isWorking ? <Spinner label={statusMsg} /> : statusMsg}
           </div>
