@@ -77,20 +77,48 @@ export const metadata = {
 };
 
 /**
- * Marketing route prefixes — when the pathname starts with any of these,
- * we render minimal chrome and let the (marketing)/layout.tsx own the
- * full presentation. Otherwise we render the authenticated chrome.
+ * Chrome routing. Three categories:
  *
- * NOTE: "/" exact match is also marketing (landing page).
+ * 1. MARKETING — the (marketing) route group. The marketing layout already
+ *    provides navbar + footer, so the root renders ONLY children (no AppTopBar,
+ *    no second footer). "/" is the landing page.
+ * 2. AUTHED APP — the logged-in product. Gets AppTopBar (Back + theme + logout),
+ *    the DPA gate, the footer, and bottom-nav clearance. The Back button lives
+ *    ONLY here (not on the landing or any free/public page).
+ * 3. OTHER PUBLIC — legal pages, login, shared report (/r/...). Public, so no
+ *    DPA gate and NO Back button — but they still get the footer.
  */
 const MARKETING_PREFIXES = [
   "/blog",
   "/resources",
+  "/book",
+  "/how-it-works",
+  "/how-we-measure",
+  "/kit",
+  "/learn",
+  "/organicposts",
+  "/pricing",
+  "/results",
+  "/test",
+];
+
+const AUTHED_APP_PREFIXES = [
+  "/dashboard",
+  "/brands",
+  "/account",
+  "/admin",
+  "/create",
+  "/drafts",
+  "/schedule",
 ];
 
 function isMarketingPath(pathname: string): boolean {
   if (pathname === "/") return true;
-  return MARKETING_PREFIXES.some((p) => pathname.startsWith(p));
+  return MARKETING_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+function isAuthedAppPath(pathname: string): boolean {
+  return AUTHED_APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
 export default async function RootLayout({
@@ -103,6 +131,7 @@ export default async function RootLayout({
   const pathname = headersList.get("x-pathname") ?? "";
   const nonce = headersList.get("x-nonce") ?? undefined;
   const isMarketing = isMarketingPath(pathname);
+  const isAuthedApp = isAuthedAppPath(pathname);
 
   return (
     <html lang="en" className={`${schibsted.variable} ${jetbrainsMono.variable}`}>
@@ -170,11 +199,13 @@ export default async function RootLayout({
           }
         `}</style>
         {isMarketing ? (
-          // Marketing routes: (marketing)/layout.tsx provides all chrome
-          // (skip link, navbar, main, marketing footer).
+          // 1. Marketing routes: (marketing)/layout.tsx owns all chrome
+          // (skip link, navbar, main, footer). Root adds nothing — otherwise
+          // the footer would be duplicated and a Back button would appear on
+          // free pages.
           children
-        ) : (
-          // Authenticated app routes: full chrome.
+        ) : isAuthedApp ? (
+          // 2. Authenticated app routes: full chrome incl. the Back button.
           <>
             <CaliforniaBanner country={country} />
             <AppTopBar />
@@ -185,6 +216,14 @@ export default async function RootLayout({
               aria-hidden="true"
               style={{ height: "calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px))" }}
             />
+          </>
+        ) : (
+          // 3. Other public routes (legal, login, shared report): footer only —
+          // no Back button (it's a free/public page), no DPA gate.
+          <>
+            <CaliforniaBanner country={country} />
+            {children}
+            <SiteFooter />
           </>
         )}
         {/* Cookie consent banner — global, on every route (marketing + app).
