@@ -11,6 +11,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ScorecardGlyph } from "../../../components/marketing/illustrations";
 
 export const metadata: Metadata = {
   title: "Case study — Real Ozvor numbers, published every Monday",
@@ -63,6 +64,10 @@ export default function ResultsPage() {
         We run Ozvor on ourselves and publish the raw score every week. No cherry-picking — just the
         Ozvor AI Visibility Score moving (or not) across the five engines.
       </p>
+
+      <div style={{ display: "grid", placeItems: "center", marginTop: "var(--space-8)" }}>
+        <ScorecardGlyph size={150} />
+      </div>
 
       {/* Live panels */}
       <div className="res-panels" style={{ marginTop: "var(--space-12)" }}>
