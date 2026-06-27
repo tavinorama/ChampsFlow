@@ -30,12 +30,12 @@ import { StickyBuyBar } from "../../components/marketing/StickyBuyBar";
 export const metadata: Metadata = {
   title: "Ozvor — Audit + Execute your GEO strategy",
   description:
-    "The only GEO platform that audits how your brand appears across AI search AND writes the fix. Ozvor benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
+    "The AI Search Visibility + GEO execution platform for SMBs. Ozvor shows where your brand stands across ChatGPT, Claude, Perplexity, Gemini & Google AI, why competitors win, and turns the gaps into publish-ready fixes — with your TrustIndex AI Score.",
   alternates: { canonical: "https://ozvor.com/" },
   openGraph: {
     title: "Ozvor — Audit + Execute your GEO strategy",
     description:
-      "The only GEO platform that audits how your brand appears across AI search AND writes the fix. Ozvor benchmarks competitors, computes your TrustIndex Score, and delivers ready-to-publish content — in one platform.",
+      "The AI Search Visibility + GEO execution platform for SMBs. Ozvor shows where your brand stands across ChatGPT, Claude, Perplexity, Gemini & Google AI, why competitors win, and turns the gaps into publish-ready fixes — with your TrustIndex AI Score.",
     url: "https://ozvor.com/",
     siteName: "Ozvor",
     images: [
@@ -222,7 +222,7 @@ export default function LandingPage() {
             margin:'24px auto 0',maxWidth:600,
             fontSize:19,lineHeight:1.55,color:'var(--color-muted)',
           }}>
-            The only platform that audits how your brand shows up across ChatGPT, Perplexity, Gemini &amp; Google AI — benchmarks your rivals, and writes the content that earns the citation.
+            Ozvor audits how your brand shows up across ChatGPT, Perplexity, Gemini &amp; Google AI, benchmarks your rivals, and turns the gaps into fixes you can publish.
           </p>
 
           {/* CTAs */}
@@ -380,7 +380,7 @@ export default function LandingPage() {
           {[
             {n:'900M',label:'weekly ChatGPT users',src:'OpenAI, Feb 2026'},
             {n:'2.5B',label:'AI prompts per day',src:'OpenAI, 2026'},
-            {n:'+35%',label:'more clicks for AI-cited brands',src:'Seer Interactive, 2026'},
+            {n:'+35%',label:'higher organic CTR for AI-cited pages (AIO queries)',src:'Seer Interactive, 2026'},
           ].map(st=>(
             <div key={st.n} style={{padding:'30px 26px',borderRadius:16,border:'1px solid var(--color-border)',background:'var(--color-surface)'}}>
               <div style={{fontSize:48,fontWeight:800,letterSpacing:'-0.03em',background:'linear-gradient(120deg,#3ad79a,#0e8a59)',WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent',fontFamily:"'JetBrains Mono',monospace"}}>
