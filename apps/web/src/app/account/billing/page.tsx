@@ -318,9 +318,14 @@ function BillingPageInner(): React.ReactElement {
         window.location.href = url;
       } catch (err) {
         setIsCheckingOut(false);
+        // Surface the actual reason so a failure is diagnostic, not a dead end
+        // (e.g. "Checkout isn't configured yet" vs a transient error).
+        const detail = err instanceof Error ? err.message : "";
         showToast(
           "error",
-          "Unable to start checkout. Please try again or contact support."
+          detail && !/^HTTP \d+$/.test(detail)
+            ? `Couldn't start checkout: ${detail}`
+            : "Unable to start checkout. Please try again or contact support."
         );
       }
     },
