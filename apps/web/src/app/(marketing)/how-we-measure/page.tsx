@@ -349,7 +349,21 @@ export default function HowWeMeasurePage() {
             Visibility = clamp((citationRate&times;0.50 + avgPositionScore&times;0.30 + sentimentScore&times;0.20)&times;100, 0, 100)
           </div>
 
-          <p style={honestNoteStyle}>
+          <div style={honestNoteStyle}>
+            <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700 }}>
+              Why we run each question multiple times
+            </p>
+            <p style={{ margin: 0, lineHeight: 1.7 }}>
+              AI engines are non-deterministic: the same question can get different
+              answers on different requests. We probe each buyer question N times per
+              engine (typically 3) and report a citation <em>rate</em> — not a single
+              coin flip. A brand mentioned in 3/3 runs has high confidence; a brand
+              mentioned in 1/3 runs is volatile and needs more work. When only 1 run
+              exists (older audits), we show &ldquo;single sample&rdquo; honestly.
+            </p>
+          </div>
+
+          <p style={{ ...honestNoteStyle, marginTop: "var(--space-3)" }}>
             <strong>Honest note:</strong> AI outputs are non-deterministic — the same
             prompt can produce different answers on different days. We probe 3&times;
             per engine and use mention <em>rates</em> for confidence, but this is

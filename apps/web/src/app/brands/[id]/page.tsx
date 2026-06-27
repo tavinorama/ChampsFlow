@@ -18,6 +18,7 @@ import { apiFetch } from "../../../lib/supabase-browser";
 import { TrustIndexScorecard, VECTOR_COLORS, type ThreeScores } from "../../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../../components/ScoreTrend";
 import { PromptsPanel } from "./PromptsPanel";
+import { confidenceLabel } from "../../../lib/confidence";
 
 interface AuditState {
   id?: string;
@@ -34,6 +35,9 @@ interface Evidence {
   cited: boolean;
   position: number | null;
   sources: string[];
+  mentionRate: number | null;
+  runsCount: number | null;
+  rawTextSnippet: string | null;
 }
 
 interface Breakdown {
@@ -47,6 +51,7 @@ interface Breakdown {
   baseline: Record<string, string[]> | null;
   probes_total: number;
   probes_cited: number | null;
+  probe_repeat: number | null;
   site_crawl: { reachable: boolean; domain: string | null; findings: string[] } | null;
   competitors: Array<{ name: string; mentions: number; displacement: number }>;
   offsite: {
@@ -403,7 +408,7 @@ export default function BrandDetailPage() {
       >
         {breakdown?.sentiment && <SentimentBreakdown sentiment={breakdown.sentiment} />}
         {breakdown?.evidence && breakdown.evidence.length > 0 && (
-          <EvidenceTable evidence={breakdown.evidence} />
+          <EvidenceTable evidence={breakdown.evidence} probeRepeat={breakdown.probe_repeat} />
         )}
       </VectorPanel>
 
@@ -2236,41 +2241,211 @@ function EntityGraphPanel({ entity }: {
 // AI evidence table — per prompt × engine
 // ---------------------------------------------------------------------------
 
-function EvidenceTable({ evidence }: { evidence: Evidence[] }) {
+// confidenceLabel — imported from ../../../lib/confidence (see that file for the rule definition)
+
+function EvidenceTable({
+  evidence,
+  probeRepeat,
+}: {
+  evidence: Evidence[];
+  probeRepeat: number | null;
+}) {
   return (
     <div style={{ marginTop: "var(--space-4)" }}>
-      <p style={{ fontSize: "var(--font-size-caption)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-muted)", margin: "0 0 var(--space-2) 0" }}>
+      <p
+        style={{
+          fontSize: "var(--font-size-caption)",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          color: "var(--color-muted)",
+          margin: "0 0 var(--space-2) 0",
+        }}
+      >
         Evidence — every prompt we asked, per engine
       </p>
-      <div style={{ overflowX: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-caption)" }}>
+
+      {/* Noise-floor note — only shown when multi-run probing was performed */}
+      {probeRepeat != null && probeRepeat > 1 && (
+        <p
+          style={{
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            margin: "0 0 var(--space-3) 0",
+            lineHeight: 1.6,
+          }}
+        >
+          AI answers are non-deterministic — we probe each question multiple
+          times and report the citation rate, not a single result.{" "}
+          <a
+            href="/how-we-measure"
+            style={{
+              color: "var(--color-primary)",
+              textDecoration: "underline",
+              fontWeight: 600,
+            }}
+          >
+            How we measure →
+          </a>
+        </p>
+      )}
+
+      <div
+        style={{
+          overflowX: "auto",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "var(--font-size-caption)",
+          }}
+        >
           <thead>
-            <tr style={{ backgroundColor: "var(--color-surface-muted)", textAlign: "left" }}>
+            <tr
+              style={{
+                backgroundColor: "var(--color-surface-muted)",
+                textAlign: "left",
+              }}
+            >
               <th style={thStyle}>Buyer prompt</th>
               <th style={thStyle}>Engine</th>
               <th style={thStyle}>Cited?</th>
+              <th style={thStyle}>Confidence</th>
               <th style={thStyle}>Position</th>
               <th style={thStyle}>Sources</th>
             </tr>
           </thead>
           <tbody>
-            {evidence.map((e, i) => (
-              <tr key={i} style={{ borderTop: "1px solid var(--color-border)" }}>
-                <td style={tdStyle}>{e.prompt ?? "—"}</td>
-                <td style={tdStyle}>{ENGINE_LABEL[e.engine] ?? e.engine}</td>
-                <td style={tdStyle}>
-                  <span style={{ color: e.cited ? "var(--color-success)" : "var(--color-muted)", fontWeight: 700 }}>
-                    {e.cited ? "✓ cited" : "— no"}
-                  </span>
-                </td>
-                <td style={tdStyle}>{e.position != null ? `#${e.position}` : "—"}</td>
-                <td style={tdStyle}>
-                  {e.sources.length > 0
-                    ? e.sources.map((s, j) => <div key={j} style={{ color: "var(--color-primary)", wordBreak: "break-all" }}>{s}</div>)
-                    : "—"}
-                </td>
-              </tr>
-            ))}
+            {evidence.map((e, i) => {
+              const conf = confidenceLabel(e.mentionRate, e.runsCount);
+              // Chip color per confidence level — token-only, no magic colors
+              const chipColor =
+                conf.level === "high"
+                  ? "var(--color-success)"
+                  : conf.level === "low"
+                  ? "var(--color-error)"
+                  : "var(--color-muted)";
+              const chipBg =
+                conf.level === "high"
+                  ? "var(--color-success-subtle)"
+                  : conf.level === "low"
+                  ? "var(--color-error-subtle, rgba(239,68,68,0.08))"
+                  : "var(--color-surface-muted)";
+
+              // Cap raw text at 2000 chars defensively (server already caps but be safe)
+              const snippet =
+                e.rawTextSnippet && e.rawTextSnippet.length > 0
+                  ? e.rawTextSnippet.slice(0, 2000)
+                  : null;
+
+              return (
+                <tr
+                  key={i}
+                  style={{ borderTop: "1px solid var(--color-border)" }}
+                >
+                  <td style={tdStyle}>{e.prompt ?? "—"}</td>
+                  <td style={tdStyle}>
+                    {ENGINE_LABEL[e.engine] ?? e.engine}
+                  </td>
+                  <td style={tdStyle}>
+                    <span
+                      style={{
+                        color: e.cited
+                          ? "var(--color-success)"
+                          : "var(--color-muted)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {e.cited ? "✓ cited" : "— no"}
+                    </span>
+                  </td>
+                  <td style={tdStyle}>
+                    {/* Confidence chip */}
+                    <span
+                      style={{
+                        display: "inline-block",
+                        fontSize: "var(--font-size-badge)",
+                        fontWeight: 700,
+                        padding: "2px var(--space-2)",
+                        borderRadius: "var(--radius-pill)",
+                        color: chipColor,
+                        backgroundColor: chipBg,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {conf.text}
+                    </span>
+
+                    {/* Expandable raw AI answer — only when snippet exists */}
+                    {snippet !== null && (
+                      <details
+                        style={{
+                          marginTop: "var(--space-1)",
+                          fontSize: "var(--font-size-caption)",
+                        }}
+                      >
+                        <summary
+                          style={{
+                            cursor: "pointer",
+                            color: "var(--color-primary)",
+                            fontWeight: 600,
+                            userSelect: "none",
+                            listStyle: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "var(--space-1)",
+                          }}
+                          aria-label="See actual AI answer"
+                        >
+                          ▶ See actual AI answer
+                        </summary>
+                        <pre
+                          style={{
+                            marginTop: "var(--space-2)",
+                            padding: "var(--space-2) var(--space-3)",
+                            backgroundColor: "var(--color-surface-muted)",
+                            border: "1px solid var(--color-border)",
+                            borderRadius: "var(--radius-md)",
+                            whiteSpace: "pre-wrap",
+                            fontFamily: "var(--font-family)",
+                            fontSize: "var(--font-size-caption)",
+                            color: "var(--color-muted)",
+                            lineHeight: 1.5,
+                            maxHeight: "200px",
+                            overflowY: "auto",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {snippet}
+                        </pre>
+                      </details>
+                    )}
+                  </td>
+                  <td style={tdStyle}>
+                    {e.position != null ? `#${e.position}` : "—"}
+                  </td>
+                  <td style={tdStyle}>
+                    {e.sources.length > 0
+                      ? e.sources.map((s, j) => (
+                          <div
+                            key={j}
+                            style={{
+                              color: "var(--color-primary)",
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            {s}
+                          </div>
+                        ))
+                      : "—"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

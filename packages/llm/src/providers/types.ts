@@ -85,7 +85,12 @@ export interface ProbeResponse {
   /** Fraction of runs where the brand was mentioned (0–1). With runs=1 this is
    *  0 or 1; with repeat>1 it captures non-determinism (e.g. 0.6 = 3 of 5). */
   mentionRate?: number;
-  /** Raw response text — processed in memory; discarded after parsing; NEVER written to DB */
+  /**
+   * Raw response text from the provider. A capped excerpt (≤2000 chars) is
+   * persisted as citation_check.raw_text_snippet to power the "see the actual
+   * answer" UI in the audit breakdown. The full text is NOT stored.
+   * Adapters must not include user-submitted PII in this field.
+   */
   rawText: string;
   /** Whether the brand was mentioned in the response */
   mentioned: boolean;

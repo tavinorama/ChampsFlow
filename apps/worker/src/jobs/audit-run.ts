@@ -93,6 +93,16 @@ function sha256(s: string): string {
  * length is capped, and at most 10 sources are kept per probe. Response text
  * itself is never stored (architecture §4.3).
  */
+/**
+ * Cap LLM-generated text for storage. The raw answer text is synthetic brand-
+ * visibility output — not PII — but we cap it at 2000 chars to control storage
+ * growth. Never log this value; never expose it in error messages.
+ */
+function capText(s: string | undefined): string | null {
+  if (!s) return null;
+  return s.slice(0, 2000);
+}
+
 function sanitizeSources(sources: string[] | undefined): string[] {
   return (sources ?? []).slice(0, 10).map((u) => {
     try {
@@ -321,12 +331,14 @@ export async function processAuditJob(
       // (the prompt is a synthetic category question, not PII; purged after 90d).
       await sql`
         INSERT INTO citation_check
-          (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources, processed_at)
+          (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
+           mention_rate, runs_count, raw_text_snippet, processed_at)
         VALUES
           (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
            ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
            ${resp.queryText ?? null},
-           ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))}, NOW())
+           ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
+           ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)}, NOW())
       `;
 
       await sql`

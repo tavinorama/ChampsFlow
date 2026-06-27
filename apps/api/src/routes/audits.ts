@@ -857,8 +857,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       cited: boolean;
       citation_rank: number | null;
       sources: unknown;
+      mention_rate: number | null;
+      runs_count: number | null;
+      raw_text_snippet: string | null;
     }>(
-      `SELECT provider, query_text, cited, citation_rank, sources
+      `SELECT provider, query_text, cited, citation_rank, sources, mention_rate, runs_count, raw_text_snippet
          FROM citation_check
         WHERE audit_id = $1
         ORDER BY cited DESC, provider ASC`,
@@ -901,6 +904,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       baseline: (bd as { baseline?: unknown }).baseline ?? null,
       probes_total: (bd as { probesTotal?: number }).probesTotal ?? evidenceRes.rows.length,
       probes_cited: (bd as { probesCited?: number }).probesCited ?? null,
+      probe_repeat: (bd as { probeRepeat?: number }).probeRepeat ?? null,
       // Site-crawl evidence shown under Brand/Performance.
       site_crawl: (bd as { siteCrawl?: unknown }).siteCrawl ?? null,
       // Competitor benchmark — who AI recommends instead of you (ranked).
@@ -921,6 +925,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         cited: r.cited,
         position: r.citation_rank,
         sources: Array.isArray(r.sources) ? r.sources : [],
+        mentionRate: r.mention_rate ?? null,
+        runsCount: r.runs_count ?? null,
+        rawTextSnippet: r.raw_text_snippet ?? null,
       })),
       // Aggregated top citation domains (max 25, sorted by frequency).
       topSources,
