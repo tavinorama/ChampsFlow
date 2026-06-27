@@ -21,7 +21,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, ensureProvisioned, getSupabase } from "../../lib/supabase-browser";
-import { TrustIndexScorecard } from "../../components/TrustIndexScorecard";
+import { TrustIndexScorecard, type ThreeScores } from "../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../components/ScoreTrend";
 
 // ---------------------------------------------------------------------------
@@ -144,6 +144,7 @@ interface FeaturedData {
   ai: number | null;
   performance: number | null;
   brand: number | null;
+  threeScores: ThreeScores | null;
   competitors: Array<{ name: string; displacement: number }>;
   probeSummary?: string;
   trendData?: Array<{ recorded_at: string; score_overall: number | null }>;
@@ -168,6 +169,11 @@ async function loadFeaturedBreakdown(
         score_overall?: number | null;
       };
       trend?: Array<{ recorded_at: string; score_overall: number | null }>;
+      threeScores?: {
+        visibility: number | null;
+        citationReadiness: number | null;
+        executionProgress: number | null;
+      };
     };
     const latest = scoreData.latest;
     if (!latest) return null;
@@ -179,6 +185,13 @@ async function loadFeaturedBreakdown(
       ai: latest.score_ai ?? null,
       performance: latest.score_performance ?? null,
       brand: latest.score_brand ?? null,
+      threeScores: scoreData.threeScores
+        ? {
+            visibility: scoreData.threeScores.visibility ?? null,
+            citationReadiness: scoreData.threeScores.citationReadiness ?? null,
+            executionProgress: scoreData.threeScores.executionProgress ?? null,
+          }
+        : null,
       competitors: [],
       trendData: (scoreData.trend ?? []) as Array<{
         recorded_at: string;
@@ -558,11 +571,16 @@ export default function DashboardPage() {
           <TrustIndexScorecard
             compact
             overall={featured.overall}
-            vectors={{
-              ai: featured.ai,
-              performance: featured.performance,
-              brand: featured.brand,
-            }}
+            threeScores={featured.threeScores ?? undefined}
+            vectors={
+              featured.threeScores == null
+                ? {
+                    ai: featured.ai,
+                    performance: featured.performance,
+                    brand: featured.brand,
+                  }
+                : undefined
+            }
             competitors={featured.competitors}
             probeSummary={featured.probeSummary}
             brandName={featured.brandName}

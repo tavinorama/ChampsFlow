@@ -9,20 +9,35 @@
  * Design language (from AppMockupSVG in (marketing)/page.tsx):
  *  - Score ring: SVG circle progress, green arc (var(--color-primary) / #0A7E5A),
  *    track #eef2f7, starting at 12 o'clock via rotate(-90).
- *  - 3 vectors: AI #2563eb (blue) · Performance #7c3aed (purple) · Brand #0fb488 (green).
+ *  - THREE primary scores: Visibility #2563eb · Citation Readiness #7c3aed · Execution #0fb488
  *  - Competitor card: bar rows with "N / 10" count, warm reds/ambers matching hero.
  *  - Card chrome: var(--color-surface), 1px var(--color-border),
  *    var(--radius-lg), var(--shadow-card).
- *  - Responsive: ring + vectors side-by-side on wide, stacked on narrow (375px).
+ *  - Responsive: ring + scores side-by-side on wide, stacked on narrow (375px).
+ *
+ * Mode selection:
+ *  - If `threeScores` is provided → THREE-score layout (primary mode)
+ *  - If only `vectors` is provided (legacy) → old AI/Performance/Brand layout
  *
  * Accessibility:
  *  - Ring: role="img" aria-label with full score description.
- *  - Vector bars: role="progressbar" aria-valuenow/min/max.
+ *  - Score bars: role="progressbar" aria-valuenow/min/max.
  *  - Competitor bars: role="progressbar" aria-valuenow/min/max.
  *  - WCAG AA contrast on all text (verified: all colors on white or tinted surfaces).
  */
 
 import { useEffect, useRef } from "react";
+
+// ---------------------------------------------------------------------------
+// Public interface — ThreeScores (primary) + ScorecardVectors (legacy)
+// ---------------------------------------------------------------------------
+
+export interface ThreeScores {
+  visibility: number | null;
+  citationReadiness: number | null;
+  /** null = no action cards yet (show "Not started" text, not a bar) */
+  executionProgress: number | null;
+}
 
 export interface ScorecardVectors {
   ai: number | null;
@@ -38,7 +53,10 @@ export interface ScorecardCompetitor {
 
 export interface TrustIndexScorecardProps {
   overall: number | null;
-  vectors: ScorecardVectors;
+  /** NEW: the three primary scores */
+  threeScores?: ThreeScores;
+  /** LEGACY: still accepted so old callers don't break until updated */
+  vectors?: ScorecardVectors;
   competitors?: ScorecardCompetitor[];
   /** e.g. "50 AI probes · 5 engines" */
   probeSummary?: string;
@@ -52,14 +70,19 @@ export interface TrustIndexScorecardProps {
 }
 
 // ---------------------------------------------------------------------------
-// Vector color map — single source of truth.
+// Color constants — single source of truth.
 // Exported so brands/[id] and dashboard can import and standardise on it.
-// Hero (AppMockupSVG): AI #2563eb · Performance #7c3aed · Brand #0fb488
 // ---------------------------------------------------------------------------
 export const VECTOR_COLORS = {
   ai: "#2563eb",
   performance: "#7c3aed",
   brand: "#0fb488",
+} as const;
+
+export const THREE_SCORE_COLORS = {
+  visibility: "#2563eb",
+  citationReadiness: "#7c3aed",
+  executionProgress: "#0fb488",
 } as const;
 
 // Competitor warm accent colors mirroring the hero SVG
@@ -186,7 +209,144 @@ function ScoreRingSVG({ value, size }: { value: number | null; size: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Vector bar row
+// Three-score rows (primary mode)
+// ---------------------------------------------------------------------------
+
+const THREE_SCORE_META: Array<{
+  key: keyof ThreeScores;
+  label: string;
+  description: string;
+  color: string;
+}> = [
+  {
+    key: "visibility",
+    label: "Visibility",
+    description: "What AI engines see when asked about your brand",
+    color: THREE_SCORE_COLORS.visibility,
+  },
+  {
+    key: "citationReadiness",
+    label: "Citation Readiness",
+    description: "How ready your content and presence is to be cited",
+    color: THREE_SCORE_COLORS.citationReadiness,
+  },
+  {
+    key: "executionProgress",
+    label: "Execution",
+    description: "% of recommended actions completed",
+    color: THREE_SCORE_COLORS.executionProgress,
+  },
+];
+
+function ThreeScoreRow({
+  meta,
+  value,
+  compact,
+}: {
+  meta: (typeof THREE_SCORE_META)[number];
+  value: number | null;
+  compact: boolean;
+}) {
+  const isExecution = meta.key === "executionProgress";
+  const isNotStarted = isExecution && value === null;
+
+  const filledPct = value == null ? 0 : Math.max(0, Math.min(100, value));
+  const displayText = value == null ? (isExecution ? "—" : "—") : String(value);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+        }}
+      >
+        <span
+          style={{
+            fontSize: compact
+              ? "var(--font-size-caption)"
+              : "var(--font-size-body-sm)",
+            fontWeight: "var(--font-weight-semibold)" as React.CSSProperties["fontWeight"],
+            color: isNotStarted ? "var(--color-muted)" : "var(--color-text)",
+          }}
+        >
+          {meta.label}
+        </span>
+        <span
+          style={{
+            fontSize: compact
+              ? "var(--font-size-body-sm)"
+              : "var(--font-size-h4)",
+            fontWeight: "var(--font-weight-bold)" as React.CSSProperties["fontWeight"],
+            color: isNotStarted ? "var(--color-muted)" : "var(--color-text)",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          {isNotStarted ? "—" : displayText}
+        </span>
+      </div>
+
+      {isNotStarted ? (
+        /* Execution not started — honest "no cards yet" state, no fabricated bar */
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            fontStyle: "italic",
+            lineHeight: 1.5,
+          }}
+        >
+          Create your action plan to track progress
+        </p>
+      ) : (
+        <div
+          role="progressbar"
+          aria-valuenow={value ?? 0}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${meta.label} score: ${displayText} out of 100`}
+          style={{
+            height: compact ? "7px" : "9px",
+            borderRadius: "var(--radius-pill)",
+            backgroundColor: "#eef2f7",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${filledPct}%`,
+              height: "100%",
+              backgroundColor: meta.color,
+              borderRadius: "var(--radius-pill)",
+              transition: "width 0.6s ease",
+            }}
+            aria-hidden="true"
+          />
+        </div>
+      )}
+
+      {!isNotStarted && (
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-muted)",
+            lineHeight: 1.4,
+          }}
+        >
+          {isExecution
+            ? "% of recommended actions completed"
+            : meta.description}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Legacy vector bar row (backward-compat path)
 // ---------------------------------------------------------------------------
 
 const VECTOR_LABELS: Record<keyof ScorecardVectors, string> = {
@@ -420,6 +580,7 @@ function CompetitorCard({ competitors }: { competitors: ScorecardCompetitor[] })
 
 export function TrustIndexScorecard({
   overall,
+  threeScores,
   vectors,
   competitors,
   probeSummary,
@@ -432,6 +593,9 @@ export function TrustIndexScorecard({
     !compact && Array.isArray(competitors) && competitors.length > 0;
 
   const ringSize = compact ? 120 : 160;
+
+  // Prefer threeScores when provided; fall back to legacy vectors.
+  const useThreeScores = threeScores != null;
 
   return (
     <section
@@ -475,7 +639,7 @@ export function TrustIndexScorecard({
         </div>
       )}
 
-      {/* Ring + Vectors grid — responsive via injected stylesheet */}
+      {/* Ring + Scores grid — responsive via injected stylesheet */}
       <div
         className={`tia-sc-grid${compact ? " tia-sc-grid--compact" : ""}`}
         style={compact ? { gap: "var(--space-4)" } : undefined}
@@ -505,11 +669,11 @@ export function TrustIndexScorecard({
               whiteSpace: "nowrap",
             }}
           >
-            Overall Ozvor AI Visibility Score
+            Ozvor AI Visibility Score
           </p>
         </div>
 
-        {/* Vectors card */}
+        {/* Scores card — three-score primary mode or legacy vectors */}
         <div
           style={{
             backgroundColor: "var(--color-surface)",
@@ -524,14 +688,25 @@ export function TrustIndexScorecard({
             justifyContent: "center",
           }}
         >
-          {VECTOR_ORDER.map((key) => (
-            <VectorRow
-              key={key}
-              vectorKey={key}
-              value={vectors[key]}
-              compact={compact}
-            />
-          ))}
+          {useThreeScores
+            ? THREE_SCORE_META.map((meta) => (
+                <ThreeScoreRow
+                  key={meta.key}
+                  meta={meta}
+                  value={threeScores[meta.key]}
+                  compact={compact}
+                />
+              ))
+            : vectors != null
+              ? VECTOR_ORDER.map((key) => (
+                  <VectorRow
+                    key={key}
+                    vectorKey={key}
+                    value={vectors[key]}
+                    compact={compact}
+                  />
+                ))
+              : null}
         </div>
       </div>
 
