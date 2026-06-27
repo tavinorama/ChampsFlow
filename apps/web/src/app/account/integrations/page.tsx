@@ -99,6 +99,31 @@ export default function IntegrationsPage() {
         publishing. <strong>Coming soon</strong> — you&rsquo;ll authorize each tool here and
         see exactly what data it reads or writes before enabling it.
       </div>
+
+      {/* Per-brand public profiles pointer — not managed here */}
+      <aside
+        aria-label="Per-brand public profiles note"
+        style={{
+          marginTop: "var(--space-8)",
+          padding: "var(--space-4) var(--space-5)",
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+          lineHeight: 1.6,
+        }}
+      >
+        Per-brand public profiles (LinkedIn, Reddit, Wikipedia…) are managed per brand under{" "}
+        <strong style={{ color: "var(--color-text)" }}>Brand Settings &rarr; Public profiles</strong>
+        {" "}— not here.{" "}
+        <a
+          href="/brands"
+          style={{ color: "var(--color-primary)", fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}
+        >
+          Go to Brands &rarr;
+        </a>
+      </aside>
     </main>
   );
 }
@@ -154,6 +179,7 @@ function ProviderRow({ tool, byok, oauth }: { tool: Tool; byok: boolean; oauth?:
               <input
                 type="password" value={keyVal} onChange={(e) => setKeyVal(e.target.value)}
                 placeholder={`Paste your ${tool.label} API key`} autoComplete="off"
+                aria-label={`${tool.label} API key`}
                 style={{ flex: "1 1 240px", minWidth: 0, height: "40px", padding: "0 var(--space-3)", fontSize: "var(--font-size-body-sm)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-surface-muted)", color: "var(--color-text)" }}
               />
               <button onClick={saveKey} disabled={saving || !keyVal.trim()} style={{ ...solidBtn, opacity: saving || !keyVal.trim() ? 0.6 : 1 }}>
@@ -161,7 +187,7 @@ function ProviderRow({ tool, byok, oauth }: { tool: Tool; byok: boolean; oauth?:
               </button>
             </div>
           )}
-          <p style={{ fontSize: "0.7rem", color: "var(--color-muted)", margin: "var(--space-2) 0 0 0" }}>
+          <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "var(--space-2) 0 0 0" }}>
             Stored encrypted (AES-256-GCM). Never displayed again or sent to the browser.
           </p>
         </div>
@@ -179,8 +205,9 @@ function ProviderRow({ tool, byok, oauth }: { tool: Tool; byok: boolean; oauth?:
 const linkBtn: React.CSSProperties = {
   background: "none", border: "none", padding: 0, color: "var(--color-primary)",
   fontWeight: 700, fontSize: "var(--font-size-body-sm)", cursor: "pointer", textDecoration: "none",
+  minHeight: "var(--min-tap-target)", display: "inline-flex", alignItems: "center",
 };
 const solidBtn: React.CSSProperties = {
-  height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff",
+  minHeight: "var(--min-tap-target)", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff",
   border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", cursor: "pointer",
 };

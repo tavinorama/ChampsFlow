@@ -30,6 +30,24 @@ interface Brand {
   latest_score?: number | null;
 }
 
+const PROFILE_FIELDS: { key: string; label: string; placeholder: string; stateKey: ProfileUrlKey }[] = [
+  { key: "linkedin_url",    label: "LinkedIn",    placeholder: "https://linkedin.com/company/your-brand",  stateKey: "linkedinUrl"    },
+  { key: "reddit_url",     label: "Reddit",      placeholder: "https://reddit.com/r/your-brand",           stateKey: "redditUrl"      },
+  { key: "wikipedia_url",  label: "Wikipedia",   placeholder: "https://en.wikipedia.org/wiki/Your_Brand",  stateKey: "wikipediaUrl"   },
+  { key: "g2_url",         label: "G2",          placeholder: "https://g2.com/products/your-brand",        stateKey: "g2Url"          },
+  { key: "trustpilot_url", label: "Trustpilot",  placeholder: "https://trustpilot.com/review/yourdomain.com", stateKey: "trustpilotUrl" },
+  { key: "crunchbase_url", label: "Crunchbase",  placeholder: "https://crunchbase.com/organization/your-brand", stateKey: "crunchbaseUrl" },
+  { key: "youtube_url",    label: "YouTube",     placeholder: "https://youtube.com/@YourBrand",            stateKey: "youtubeUrl"     },
+];
+
+type ProfileUrlKey = "linkedinUrl" | "redditUrl" | "wikipediaUrl" | "g2Url" | "trustpilotUrl" | "crunchbaseUrl" | "youtubeUrl";
+type ProfileUrlState = Record<ProfileUrlKey, string>;
+
+const EMPTY_PROFILE_URLS: ProfileUrlState = {
+  linkedinUrl: "", redditUrl: "", wikipediaUrl: "",
+  g2Url: "", trustpilotUrl: "", crunchbaseUrl: "", youtubeUrl: "",
+};
+
 export default function BrandsPage() {
   const router = useRouter();
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -47,11 +65,15 @@ export default function BrandsPage() {
   const [region, setRegion] = useState<Region>("US");
   const [creating, setCreating] = useState(false);
   const [triggering, setTriggering] = useState<string | null>(null);
+  // Public profile URL state
+  const [profileUrls, setProfileUrls] = useState<ProfileUrlState>(EMPTY_PROFILE_URLS);
+  const [profilesExpanded, setProfilesExpanded] = useState(false);
 
   const nameId = useId();
   const domainId = useId();
   const categoryId = useId();
   const regionId = useId();
+  const profilesSectionId = useId();
 
   const loadBrands = useCallback(async () => {
     setLoading(true);
@@ -89,6 +111,13 @@ export default function BrandsPage() {
           domain: domain.trim() || undefined,
           category: category.trim() || undefined,
           region,
+          ...(profileUrls.linkedinUrl.trim()    ? { linkedin_url:    profileUrls.linkedinUrl.trim()    } : {}),
+          ...(profileUrls.redditUrl.trim()      ? { reddit_url:      profileUrls.redditUrl.trim()      } : {}),
+          ...(profileUrls.wikipediaUrl.trim()   ? { wikipedia_url:   profileUrls.wikipediaUrl.trim()   } : {}),
+          ...(profileUrls.g2Url.trim()          ? { g2_url:          profileUrls.g2Url.trim()          } : {}),
+          ...(profileUrls.trustpilotUrl.trim()  ? { trustpilot_url:  profileUrls.trustpilotUrl.trim()  } : {}),
+          ...(profileUrls.crunchbaseUrl.trim()  ? { crunchbase_url:  profileUrls.crunchbaseUrl.trim()  } : {}),
+          ...(profileUrls.youtubeUrl.trim()     ? { youtube_url:     profileUrls.youtubeUrl.trim()     } : {}),
         }),
       });
       if (!res.ok) {
@@ -99,6 +128,8 @@ export default function BrandsPage() {
       setName("");
       setDomain("");
       setCategory("");
+      setProfileUrls(EMPTY_PROFILE_URLS);
+      setProfilesExpanded(false);
       await loadBrands();
     } catch {
       setError("Could not create the brand. Please check your connection.");
@@ -206,6 +237,71 @@ export default function BrandsPage() {
             <option value="US">US</option>
           </select>
         </Field>
+
+        {/* ── Public profiles — collapsible section ─────────────────── */}
+        <div style={{ marginBottom: "var(--space-4)" }}>
+          <button
+            type="button"
+            aria-expanded={profilesExpanded}
+            aria-controls={profilesSectionId}
+            onClick={() => setProfilesExpanded((v) => !v)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              color: "var(--color-primary)",
+              fontWeight: 700,
+              fontSize: "var(--font-size-body-sm)",
+              fontFamily: "var(--font-family)",
+              minHeight: "var(--min-tap-target)",
+            }}
+          >
+            <span aria-hidden="true" style={{ fontSize: "var(--font-size-caption)", transition: "transform 0.15s ease", display: "inline-block", transform: profilesExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+            Public profiles (optional)
+          </button>
+
+          <div
+            id={profilesSectionId}
+            role="region"
+            aria-label="Public profile URLs"
+            hidden={!profilesExpanded}
+            style={{ marginTop: "var(--space-3)" }}
+          >
+            <p style={{ margin: "0 0 var(--space-3) 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              Paste your brand&rsquo;s exact profile URLs. The audit uses these to confirm your presence on each platform directly — more accurate than name searches.
+            </p>
+            {PROFILE_FIELDS.map((f) => {
+              const inputId = `create-profile-${f.stateKey}`;
+              return (
+                <div key={f.stateKey} style={{ marginBottom: "var(--space-3)" }}>
+                  <label
+                    htmlFor={inputId}
+                    style={{ display: "block", fontSize: "var(--font-size-h4)", fontWeight: 600, marginBottom: "var(--space-2)" }}
+                  >
+                    {f.label}{" "}
+                    <span style={{ color: "var(--color-muted)", fontWeight: 400, fontSize: "var(--font-size-caption)" }}>
+                      (optional, improves audit accuracy)
+                    </span>
+                  </label>
+                  <input
+                    id={inputId}
+                    type="url"
+                    pattern="https?://.*"
+                    value={profileUrls[f.stateKey]}
+                    onChange={(e) => setProfileUrls((prev) => ({ ...prev, [f.stateKey]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    style={inputStyle}
+                    autoComplete="url"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         <button type="submit" disabled={creating || !name.trim()} style={primaryButtonStyle(creating || !name.trim())}>
           {creating ? "Adding…" : "Add brand"}

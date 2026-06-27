@@ -522,9 +522,10 @@ export default function BrandDetailPage() {
       )}
 
       {/* ── Settings section — brand basics + account links ─────────── */}
-      {section === "settings" && (
+      {section === "settings" && (<>
         <SettingsCard brandName={brandName} />
-      )}
+        <PublicProfilesCard brandId={brandId} />
+      </>)}
         </div>{/* /bd-main */}
       </div>{/* /bd-shell */}
     </main>
@@ -637,6 +638,199 @@ function SettingsCard({ brandName }: { brandName: string | undefined }) {
           <a href="/account" style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>Account settings →</a>
         </div>
       </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Public profiles settings card — per-brand profile URL management
+// ---------------------------------------------------------------------------
+
+const BRAND_PROFILE_FIELDS: { apiKey: string; stateKey: ProfileUrlStateKey; label: string; placeholder: string }[] = [
+  { apiKey: "linkedin_url",    stateKey: "linkedinUrl",    label: "LinkedIn",   placeholder: "https://linkedin.com/company/your-brand"        },
+  { apiKey: "reddit_url",      stateKey: "redditUrl",      label: "Reddit",     placeholder: "https://reddit.com/r/your-brand"                },
+  { apiKey: "wikipedia_url",   stateKey: "wikipediaUrl",   label: "Wikipedia",  placeholder: "https://en.wikipedia.org/wiki/Your_Brand"       },
+  { apiKey: "g2_url",          stateKey: "g2Url",          label: "G2",         placeholder: "https://g2.com/products/your-brand"             },
+  { apiKey: "trustpilot_url",  stateKey: "trustpilotUrl",  label: "Trustpilot", placeholder: "https://trustpilot.com/review/yourdomain.com"   },
+  { apiKey: "crunchbase_url",  stateKey: "crunchbaseUrl",  label: "Crunchbase", placeholder: "https://crunchbase.com/organization/your-brand"  },
+  { apiKey: "youtube_url",     stateKey: "youtubeUrl",     label: "YouTube",    placeholder: "https://youtube.com/@YourBrand"                 },
+];
+
+type ProfileUrlStateKey = "linkedinUrl" | "redditUrl" | "wikipediaUrl" | "g2Url" | "trustpilotUrl" | "crunchbaseUrl" | "youtubeUrl";
+type ProfileUrlsState = Record<ProfileUrlStateKey, string>;
+
+const EMPTY_PROFILE_URLS: ProfileUrlsState = {
+  linkedinUrl: "", redditUrl: "", wikipediaUrl: "",
+  g2Url: "", trustpilotUrl: "", crunchbaseUrl: "", youtubeUrl: "",
+};
+
+function profilesFromApiData(data: Record<string, unknown>): ProfileUrlsState {
+  return {
+    linkedinUrl:    typeof data.linkedin_url    === "string" ? data.linkedin_url    : "",
+    redditUrl:      typeof data.reddit_url      === "string" ? data.reddit_url      : "",
+    wikipediaUrl:   typeof data.wikipedia_url   === "string" ? data.wikipedia_url   : "",
+    g2Url:          typeof data.g2_url          === "string" ? data.g2_url          : "",
+    trustpilotUrl:  typeof data.trustpilot_url  === "string" ? data.trustpilot_url  : "",
+    crunchbaseUrl:  typeof data.crunchbase_url  === "string" ? data.crunchbase_url  : "",
+    youtubeUrl:     typeof data.youtube_url     === "string" ? data.youtube_url     : "",
+  };
+}
+
+function PublicProfilesCard({ brandId }: { brandId: string }) {
+  const [urls, setUrls] = useState<ProfileUrlsState>(EMPTY_PROFILE_URLS);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+
+  useEffect(() => {
+    if (!brandId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(`/api/brands/${brandId}`);
+        if (!res.ok || cancelled) { setLoadState("error"); return; }
+        const data = (await res.json()) as Record<string, unknown>;
+        if (!cancelled) {
+          setUrls(profilesFromApiData(data));
+          setLoadState("ready");
+        }
+      } catch {
+        if (!cancelled) setLoadState("error");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [brandId]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    setSaveStatus("idle");
+    try {
+      const body: Record<string, string> = {};
+      for (const f of BRAND_PROFILE_FIELDS) {
+        body[f.apiKey] = urls[f.stateKey].trim();
+      }
+      const res = await apiFetch(`/api/brands/${brandId}/profiles`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { setSaveStatus("error"); return; }
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus((cur) => cur === "saved" ? "idle" : cur), 3000);
+    } catch {
+      setSaveStatus("error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const profileInputStyle: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", height: "48px", padding: "0 var(--space-4)",
+    fontSize: "var(--font-size-body)", fontFamily: "var(--font-family)", color: "var(--color-text)",
+    backgroundColor: "var(--color-surface-muted)", border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-md)", outline: "none",
+  };
+
+  return (
+    <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="public-profiles-heading">
+      <h2 id="public-profiles-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-2) 0" }}>
+        Public profiles
+      </h2>
+      <p style={{ margin: "0 0 var(--space-4) 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+        Paste your brand&rsquo;s exact profile URLs. The audit uses these to confirm your presence on each platform directly — more accurate than name searches.
+      </p>
+
+      {loadState === "loading" && (
+        <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>Loading…</p>
+      )}
+
+      {loadState === "error" && (
+        <p role="alert" style={{ color: "var(--color-error)", fontSize: "var(--font-size-body-sm)" }}>
+          Could not load profile URLs. Please refresh the page.
+        </p>
+      )}
+
+      {loadState === "ready" && (
+        <form
+          onSubmit={(e) => void handleSave(e)}
+          aria-label="Public profile URLs"
+          style={{
+            backgroundColor: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            padding: "var(--space-6)",
+            boxShadow: "var(--shadow-card)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-4)",
+          }}
+        >
+          {BRAND_PROFILE_FIELDS.map((f) => {
+            const inputId = `profiles-${f.stateKey}-${brandId}`;
+            return (
+              <div key={f.stateKey}>
+                <label
+                  htmlFor={inputId}
+                  style={{ display: "block", fontSize: "var(--font-size-h4)", fontWeight: 600, marginBottom: "var(--space-2)" }}
+                >
+                  {f.label}{" "}
+                  <span style={{ color: "var(--color-muted)", fontWeight: 400, fontSize: "var(--font-size-caption)" }}>
+                    (optional, improves audit accuracy)
+                  </span>
+                </label>
+                <input
+                  id={inputId}
+                  type="url"
+                  pattern="https?://.*"
+                  value={urls[f.stateKey]}
+                  onChange={(e) => setUrls((prev) => ({ ...prev, [f.stateKey]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  style={profileInputStyle}
+                  autoComplete="url"
+                />
+              </div>
+            );
+          })}
+
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap", paddingTop: "var(--space-2)" }}>
+            <button
+              type="submit"
+              disabled={saving}
+              aria-busy={saving}
+              style={{
+                minHeight: "var(--min-button-height)",
+                padding: "0 var(--space-6)",
+                backgroundColor: saving ? "var(--color-muted)" : "var(--color-primary)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "var(--radius-md)",
+                fontSize: "var(--font-size-body)",
+                fontWeight: 600,
+                fontFamily: "var(--font-family)",
+                cursor: saving ? "not-allowed" : "pointer",
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? "Saving…" : "Save profiles"}
+            </button>
+
+            <div aria-live="polite" aria-atomic="true" style={{ minHeight: "1.4em" }}>
+              {saveStatus === "saved" && (
+                <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-success)", fontWeight: 700 }}>
+                  Saved.
+                </span>
+              )}
+              {saveStatus === "error" && (
+                <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-error)", fontWeight: 700 }}>
+                  Could not save. Please try again.
+                </span>
+              )}
+            </div>
+          </div>
+        </form>
+      )}
     </section>
   );
 }
