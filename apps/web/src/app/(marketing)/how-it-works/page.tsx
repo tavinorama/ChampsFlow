@@ -11,6 +11,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { StepGlyph } from "../../../components/marketing/illustrations";
 
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
@@ -80,7 +81,7 @@ const PAGE_CSS = `
   .hiw-cta-ghost { display:inline-flex; align-items:center; justify-content:center; font-weight:600; color:var(--color-accent-ink); text-decoration:none; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:0.8rem 1.5rem; }
 `;
 
-function StepRow({ num, title, body, gold = false }: { num: string; title: string; body: string; gold?: boolean }) {
+function StepRow({ num, title, body, gold = false, variant }: { num: string; title: string; body: string; gold?: boolean; variant: "audit" | "benchmark" | "plan" | "monitor" }) {
   const accent = gold ? "var(--color-gold)" : "var(--color-primary)";
   return (
     <div style={{ display: "flex", gap: "var(--space-5)", alignItems: "flex-start" }}>
@@ -114,9 +115,12 @@ function StepRow({ num, title, body, gold = false }: { num: string; title: strin
           boxShadow: "var(--shadow-card)",
         }}
       >
-        <h2 style={{ margin: 0, fontSize: "var(--font-size-h2)", fontWeight: 800, letterSpacing: "-0.02em", color: gold ? "var(--color-gold-ink)" : "var(--color-text)" }}>
-          {title}
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+          <StepGlyph variant={variant} size={40} />
+          <h2 style={{ margin: 0, fontSize: "var(--font-size-h2)", fontWeight: 800, letterSpacing: "-0.02em", color: gold ? "var(--color-gold-ink)" : "var(--color-text)" }}>
+            {title}
+          </h2>
+        </div>
         <p style={{ margin: "var(--space-3) 0 0", color: "var(--color-muted)", lineHeight: 1.7, fontSize: "var(--font-size-body)" }}>{body}</p>
       </div>
     </div>
@@ -140,12 +144,13 @@ export default function HowItWorksPage() {
 
       {/* Four-move walkthrough */}
       <div className="hiw-steps" style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)", marginTop: "var(--space-12)" }}>
-        {STEPS.map((s) => (
-          <StepRow key={s.num} num={s.num} title={s.title} body={s.body} />
+        {STEPS.map((s, i) => (
+          <StepRow key={s.num} num={s.num} title={s.title} body={s.body} variant={(["audit", "benchmark", "plan"] as const)[i] ?? "audit"} />
         ))}
         <StepRow
           num="04"
           gold
+          variant="monitor"
           title="Monitor — or hand it to us"
           body="Growth and Agency re-run your audit weekly and track your Ozvor AI Visibility Score over time. When you'd rather not run it yourself, OrganicPosts does the whole engagement with you."
         />
