@@ -40,7 +40,7 @@ function applyTheme(theme: Theme) {
   }
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ showLabel = false }: { showLabel?: boolean } = {}) {
   const [theme, setTheme] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
@@ -62,6 +62,7 @@ export function ThemeToggle() {
 
   // When not mounted (SSR), show moon because dark is the default.
   const isDark = !mounted || theme === "dark";
+  const actionLabel = isDark ? "Light mode" : "Dark mode";
 
   return (
     <button
@@ -69,26 +70,35 @@ export function ThemeToggle() {
       onClick={toggle}
       className="mk-theme-toggle"
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Light mode" : "Dark mode"}
+      title={actionLabel}
       style={{
         background: "var(--color-surface)",
         border: "1px solid var(--color-border)",
         borderRadius: "var(--radius-md)",
-        width: "40px",
+        // Labeled variant (app top bar): pill with text so it's unmistakable.
+        // Icon-only variant (marketing nav): square 40×40.
+        width: showLabel ? "auto" : "40px",
         height: "40px",
+        minHeight: "var(--min-tap-target, 44px)",
+        padding: showLabel ? "0 var(--space-3)" : 0,
+        gap: showLabel ? "var(--space-2)" : 0,
         cursor: "pointer",
-        color: "var(--color-muted)",
+        // Higher-contrast text color so it stands out on dark app surfaces.
+        color: showLabel ? "var(--color-text)" : "var(--color-muted)",
+        fontFamily: "var(--font-family)",
+        fontSize: "var(--font-size-body-sm)",
+        fontWeight: 600,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
         transition: "color 0.15s, border-color 0.15s, background 0.15s",
         flexShrink: 0,
-        padding: 0,
       }}
     >
       <span suppressHydrationWarning style={{ display: "inline-flex" }}>
         {isDark ? <SunIcon /> : <MoonIcon />}
       </span>
+      {showLabel && <span suppressHydrationWarning>{actionLabel}</span>}
     </button>
   );
 }
