@@ -24,6 +24,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { GeoGraphBackdrop } from "../../../../components/marketing/GeoGraphBackdrop";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { DirectCheckoutButton } from "../../../../components/marketing/DirectCheckoutButton";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -979,26 +980,11 @@ export default function PillarGeoPage() {
             >
               Run free AI test &mdash; free
             </Link>
-            <Link
-              href="/login?plan=growth&next=checkout&interval=year"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "52px",
-                padding: "0 var(--space-6)",
-                backgroundColor: "transparent",
-                color: "var(--color-primary)",
-                border: "1.5px solid var(--color-primary)",
-                borderRadius: "var(--radius-md)",
-                fontSize: "1rem",
-                fontWeight: 700,
-                fontFamily: "var(--font-family)",
-                textDecoration: "none",
-              }}
-            >
-              Start Growth &mdash; $99/mo
-            </Link>
+            <DirectCheckoutButton
+              plan="growth"
+              interval="year"
+              label="Start Growth — $99/mo"
+            />
           </div>
         </div>
       </section>

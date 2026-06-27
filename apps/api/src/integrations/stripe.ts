@@ -26,7 +26,7 @@
  * Plan tiers (USD; founder confirms price IDs via env vars):
  *   free:   $0/mo            — 1 brand, 1 competitor, 10-prompt snapshot audit, no monitoring
  *   growth: $99/mo or $831/yr — 1 brand, 10 competitors, 250 prompts, weekly monitoring
- *   agency: $149/mo or $1,251/yr — 25 brands, 10 competitors, 250 prompts, weekly monitoring
+ *   agency: $249/mo or $2,091/yr — 25 brands, 10 competitors, 250 prompts, weekly monitoring
  *   Founder 30% discount is annual-only (STRIPE_FOUNDER_COUPON_ID).
  *
  * Sub-processor status:
@@ -488,6 +488,164 @@ export function mapStripeStatusToInternal(
     case "paused":
     default:
       return "incomplete";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// createDirectCheckoutSession
+// ---------------------------------------------------------------------------
+// Creates a Stripe Checkout Session in subscription mode for the checkout-first
+// flow — the buyer pays BEFORE creating an account. No tenant_id in metadata;
+// the webhook handler writes to `pending_subscription` and the onboarding
+// bootstrap claims it on first login.
+//
+// Parameters:
+//   plan          — 'growth' | 'agency' (must have corresponding price ID in env)
+//   interval      — billing interval ('month' | 'year'). Annual is the default.
+//   founder       — apply the 30% founder coupon (annual-only, same rule as authed path)
+//   successUrl    — URL to redirect to on successful payment (include {CHECKOUT_SESSION_ID})
+//   cancelUrl     — URL to redirect to if user abandons checkout
+//   email         — optional; pre-fills the Stripe checkout form if provided
+//
+// Returns:
+//   { url: string } — Stripe-hosted checkout URL to redirect the user to
+//
+// Throws:
+//   Error with code 'stripe_not_configured' if STRIPE_SECRET_KEY is missing
+//   Error with code 'missing_price_id'      if env var for the plan is not set
+//   Error with code 'stripe_api_error'      for Stripe SDK errors
+// ---------------------------------------------------------------------------
+export async function createDirectCheckoutSession(
+  plan: "growth" | "agency",
+  interval: BillingInterval,
+  founder: boolean,
+  successUrl: string,
+  cancelUrl: string,
+  email?: string
+): Promise<{ url: string }> {
+  try {
+    const {
+      priceIdGrowth,
+      priceIdAgency,
+      priceIdGrowthAnnual,
+      priceIdAgencyAnnual,
+      founderCouponId,
+    } = getStripeConfig();
+
+    const priceId =
+      interval === "year"
+        ? plan === "growth"
+          ? priceIdGrowthAnnual
+          : priceIdAgencyAnnual
+        : plan === "growth"
+          ? priceIdGrowth
+          : priceIdAgency;
+
+    // Founder discount is ANNUAL-ONLY — identical rule to the authed path.
+    const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId);
+
+    if (!priceId) {
+      logger.error("stripe_direct_checkout_missing_price_id", {
+        plan_tier: plan,
+        billing_interval: interval,
+      });
+      const err = new Error(
+        `Stripe price ID for plan '${plan}' (interval: ${interval}) is not configured`
+      );
+      (err as NodeJS.ErrnoException).code = "missing_price_id";
+      throw err;
+    }
+
+    try {
+      const stripe = getStripe();
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        // Pre-fill email if provided (reduces checkout friction for buyers arriving
+        // from a CTA that already knows their email). Stripe collects + verifies
+        // the email during checkout; we read it back from session.customer_details.email
+        // in the webhook — we never trust the client-supplied value for entitlement.
+        ...(email ? { customer_email: email } : {}),
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        // flow='direct' marks this as a checkout-first session (no tenant_id).
+        // The webhook handler checks this flag to branch to handleDirectCheckoutCompleted.
+        metadata: {
+          plan_tier: plan,
+          billing_interval: interval,
+          founder_discount: String(applyFounderDiscount),
+          flow: "direct",
+        },
+        ...(applyFounderDiscount
+          ? { discounts: [{ coupon: founderCouponId as string }] }
+          : { allow_promotion_codes: true }),
+        subscription_data: {
+          metadata: {
+            plan_tier: plan,
+            billing_interval: interval,
+            flow: "direct",
+            // NOTE: no tenant_id — buyer has no account yet
+          },
+        },
+      });
+
+      if (!session.url) {
+        logger.error("stripe_direct_checkout_no_url", {
+          session_id: session.id,
+          // NOTE: no customer ID logged — hard rule
+        });
+        throw new Error("Stripe direct checkout session created but URL is null");
+      }
+
+      logger.info("stripe_direct_checkout_session_created", {
+        session_id: session.id,
+        plan_tier: plan,
+        billing_interval: interval,
+        // NOTE: no customer ID, no email logged — hard rule
+      });
+
+      return { url: session.url };
+    } catch (err) {
+      if (err instanceof Stripe.errors.StripeError) {
+        const isRetryable =
+          err.statusCode === undefined ||
+          err.statusCode >= 500 ||
+          err.statusCode === 429;
+
+        logger.error("stripe_direct_checkout_api_error", {
+          error_type: err.type,
+          error_code: err.code ?? "unknown",
+          retryable: isRetryable,
+          plan_tier: plan,
+        });
+
+        const wrappedErr = new Error(
+          `Stripe direct checkout error: ${err.type} — ${err.code ?? "unknown"}`
+        );
+        (wrappedErr as NodeJS.ErrnoException).code = "stripe_api_error";
+        throw wrappedErr;
+      }
+      // Re-throw missing_price_id and other non-Stripe errors
+      throw err;
+    }
+  } catch (err) {
+    // If getStripeConfig() threw because STRIPE_SECRET_KEY is not set,
+    // surface a clean 'stripe_not_configured' code so the route can return 503.
+    if (
+      err instanceof Error &&
+      (err.message.includes("STRIPE_SECRET_KEY") ||
+        err.message.includes("STRIPE_WEBHOOK_SECRET"))
+    ) {
+      const configErr = new Error("Stripe is not configured");
+      (configErr as NodeJS.ErrnoException).code = "stripe_not_configured";
+      throw configErr;
+    }
+    throw err;
   }
 }
 

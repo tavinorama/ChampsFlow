@@ -12,6 +12,7 @@
 
 import { useState, useRef, useEffect, useId } from "react";
 import { TrustIndexScorecard, THREE_SCORE_COLORS } from "../../../components/TrustIndexScorecard";
+import { useDirectCheckout } from "../../../lib/use-direct-checkout";
 
 // ---------------------------------------------------------------------------
 // Engine label map
@@ -1129,6 +1130,8 @@ function ResultsPanel({
 export function InvisibilityTestClient() {
   useClientStyles();
 
+  const { loading: checkoutLoading, error: checkoutError, startCheckout } = useDirectCheckout();
+
   // Form state
   const [brand, setBrand] = useState("");
   const [domain, setDomain] = useState("");
@@ -1314,9 +1317,20 @@ export function InvisibilityTestClient() {
           {alreadyUsed}
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)" }}>
-          <a href="/login?plan=growth&next=checkout&interval=year" style={{ ...primaryBtn(false), textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            Create your account →
-          </a>
+          <button
+            type="button"
+            disabled={checkoutLoading}
+            aria-busy={checkoutLoading}
+            onClick={() => startCheckout("growth", "year")}
+            style={{ ...primaryBtn(checkoutLoading), display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+          >
+            {checkoutLoading ? "Opening checkout…" : "Create your account →"}
+          </button>
+          {checkoutError && (
+            <p role="alert" style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-error)", fontFamily: "var(--font-family)", width: "100%" }}>
+              {checkoutError}
+            </p>
+          )}
           <a href={kitHref} style={{ ...outlinedBtn(), textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
             Get the Kit — $29
           </a>
