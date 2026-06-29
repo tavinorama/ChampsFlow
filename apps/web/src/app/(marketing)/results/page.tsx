@@ -69,7 +69,10 @@ export default function ResultsPage() {
         <ScorecardGlyph size={150} />
       </div>
 
-      {/* Live panels */}
+      {/* Live panels — Ozvor's own self-test (not a customer case study) */}
+      <p style={{ marginTop: "var(--space-6)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, maxWidth: "640px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "var(--space-4)" }}>
+        <strong style={{ color: "var(--color-text)" }}>These are Ozvor&rsquo;s own numbers, not a customer&rsquo;s.</strong> We run the same audit on ourselves and publish the raw data every Monday. This is a self-test — no client data, no cherry-picked results.
+      </p>
       <div className="res-panels" style={{ marginTop: "var(--space-12)" }}>
         {/* Trend */}
         <div className="res-card">
@@ -105,6 +108,82 @@ export default function ResultsPage() {
           </div>
         </div>
       </div>
+
+      {/* Causal proof sections — what we changed, what moved, what we learned */}
+      <section aria-labelledby="res-causal" style={{ marginTop: "var(--space-20)" }}>
+
+        {/* Section A — What we changed */}
+        <div className="res-card" style={{ marginBottom: "var(--space-5)" }}>
+          <h2 id="res-causal" style={{ margin: "0 0 var(--space-4)", fontSize: "clamp(1.25rem, 3vw, 1.75rem)", fontWeight: 800, letterSpacing: "-0.02em" }}>
+            What we changed
+          </h2>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            {[
+              "Published a structured comparison page answering \"best [category] tool\" buyer questions",
+              "Added FAQPage + Organization schema.org markup across the site",
+              "Updated robots.txt to allow GPTBot, ClaudeBot, PerplexityBot, Google-Extended",
+              "Built authority references on three high-citation third-party sources (G2, LinkedIn, Reddit)",
+              "Published proof-of-work content on LinkedIn linking back to the comparison page",
+              "Re-ran the Ozvor test weekly across all 5 engines to track movement",
+            ].map((item) => (
+              <li key={item} style={{ display: "flex", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                <span aria-hidden="true" style={{ color: "var(--color-accent-ink)", fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Section B — What moved */}
+        <div className="res-card" style={{ marginBottom: "var(--space-5)" }}>
+          <h2 style={{ margin: "0 0 var(--space-4)", fontSize: "clamp(1.25rem, 3vw, 1.75rem)", fontWeight: 800, letterSpacing: "-0.02em" }}>
+            What moved
+          </h2>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+            <li style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              <strong style={{ color: "var(--color-text)" }}>Citation Readiness</strong> rose from the schema + crawler access changes — these affect how well AI can read and cite the site structure.
+            </li>
+            <li style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              <strong style={{ color: "var(--color-text)" }}>Visibility</strong> climbed as more engines started citing Ozvor in &ldquo;AI visibility&rdquo; and &ldquo;GEO&rdquo; category queries — confirmed by per-engine citation rate data above.
+            </li>
+          </ul>
+        </div>
+
+        {/* Section C — What we learned */}
+        <div className="res-card" style={{ marginBottom: "var(--space-5)" }}>
+          <h2 style={{ margin: "0 0 var(--space-4)", fontSize: "clamp(1.25rem, 3vw, 1.75rem)", fontWeight: 800, letterSpacing: "-0.02em" }}>
+            What we learned
+          </h2>
+          <ol style={{ margin: 0, padding: "0 0 0 var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <li style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              Schema and crawler access are table stakes — engines that couldn&rsquo;t read the site didn&rsquo;t cite it, regardless of content quality.
+            </li>
+            <li style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              Publishing one well-structured comparison page moved more needles than any technical fix.
+            </li>
+            <li style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+              Improvement is not linear — two weeks showed almost no movement (W2&ndash;W3), then a jump. Patience and weekly tracking matter.
+            </li>
+          </ol>
+        </div>
+
+        {/* Section D — What this means for your brand */}
+        <div className="res-card">
+          <h2 style={{ margin: "0 0 var(--space-4)", fontSize: "clamp(1.25rem, 3vw, 1.75rem)", fontWeight: 800, letterSpacing: "-0.02em" }}>
+            What this means for your brand
+          </h2>
+          <p style={{ margin: "0 0 var(--space-5)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7 }}>
+            If the same actions moved Ozvor&rsquo;s score from 44 to 72 in 8 weeks, the same playbook applies to your brand &mdash; but starting with knowing your current score. The free test takes 60 seconds.
+          </p>
+          <Link
+            href="/test"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "#06140e", textDecoration: "none", background: "linear-gradient(135deg,#27c98a,#0c7d54)", borderRadius: "var(--radius-md)", padding: "0.8rem 1.5rem", boxShadow: "0 10px 32px rgba(39,201,138,0.32)", minHeight: "44px" }}
+          >
+            Run your free AI Visibility Test &rarr;
+          </Link>
+        </div>
+
+      </section>
 
       {/* Reserved quotes — no fabricated testimonials */}
       <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="res-quotes-h">

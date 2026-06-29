@@ -53,6 +53,8 @@ const PAGE_CSS = `
   .pr-table th, .pr-table td { padding:0.75rem 0.9rem; border-bottom:1px solid var(--color-border); text-align:left; }
   .pr-table thead th { font-family:var(--font-mono); font-size:0.6875rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--color-muted); font-weight:600; }
   .pr-us { color:var(--color-accent-ink); font-weight:600; }
+  .pr-fit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+  @media (max-width: 680px) { .pr-fit-grid { grid-template-columns: 1fr; } }
 `;
 
 export default function PricingPage() {
@@ -85,6 +87,46 @@ export default function PricingPage() {
 
       {/* Plan cards — annual default with an in-card Monthly toggle (client) */}
       <PricingPlans />
+
+      {/* "This is for you / not for you" — two-column fit guide */}
+      <section aria-labelledby="pr-fit-heading" style={{ marginTop: "var(--space-16)" }}>
+        <h2 id="pr-fit-heading" style={{ fontSize: "clamp(1.5rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-6)", textAlign: "center" }}>
+          Is this for you?
+        </h2>
+        <div className="pr-fit-grid">
+          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
+            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-accent-ink)" }}>This is for you</h3>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {[
+                "You want to know whether AI recommends you or a competitor",
+                "You're willing to publish useful proof — FAQs, comparisons, case-study content",
+                "You want a repeatable system to improve AI visibility over time",
+              ].map((item) => (
+                <li key={item} style={{ display: "flex", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                  <span aria-hidden="true" style={{ color: "var(--color-accent-ink)", fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
+            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-muted)" }}>Not for you</h3>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {[
+                "You expect guaranteed citations overnight",
+                "You want fake reviews, Reddit posts, or spammy link signals",
+                "You want fully autonomous publishing with no approval step",
+                "You won't publish or improve anything after the audit",
+              ].map((item) => (
+                <li key={item} style={{ display: "flex", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                  <span aria-hidden="true" style={{ fontWeight: 700, flexShrink: 0 }}>&#10005;</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
 
       {/* OrganicPosts done-for-you nudge — for Agency-context visitors who want
           the full managed engagement rather than a self-serve subscription. */}

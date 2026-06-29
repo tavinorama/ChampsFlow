@@ -1154,6 +1154,9 @@ export function InvisibilityTestClient() {
   const [testId, setTestId] = useState<string | null>(null);
   const [apiError, setApiError] = useState("");
 
+  // Collapsible "Add details" state
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   // Stable IDs for accessible label wiring
   const brandId = useId();
   const domainId = useId();
@@ -1166,6 +1169,7 @@ export function InvisibilityTestClient() {
   const countryId = useId();
   const emailId = useId();
   const emailErrorId = useId();
+  const detailsPanelId = useId();
 
   // Normalised domain (strip protocol, www, path) — sent to the audit so it can
   // crawl the site for the Performance vector. Required: the audit can't score
@@ -1360,22 +1364,12 @@ export function InvisibilityTestClient() {
       style={cardStyle}
       aria-label="AI Invisibility Test form"
     >
-      <Field
-        label="Your brand"
-        required
-        fieldId={brandId}
-      >
-        <input
-          id={brandId}
-          value={brand}
-          onChange={(e) => setBrand(e.target.value)}
-          placeholder="Acme CRM"
-          required
-          autoComplete="organization"
-          style={inputStyle}
-        />
-      </Field>
+      {/* Helper paragraph — reduces perceived friction */}
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
+        Takes ~60 seconds. Your website + email is enough to start.
+      </p>
 
+      {/* Primary fields — always visible */}
       <Field
         label="Your website"
         required
@@ -1400,59 +1394,19 @@ export function InvisibilityTestClient() {
       </Field>
 
       <Field
-        label="Competitors"
-        hint="optional — up to 3; we compare you head-to-head"
-        fieldId={competitorId}
+        label="Your brand"
+        required
+        fieldId={brandId}
       >
         <input
-          id={competitorId}
-          value={competitor}
-          onChange={(e) => setCompetitor(e.target.value)}
-          placeholder="A rival brand"
-          autoComplete="off"
+          id={brandId}
+          value={brand}
+          onChange={(e) => setBrand(e.target.value)}
+          placeholder="Acme CRM"
+          required
+          autoComplete="organization"
           style={inputStyle}
         />
-        {extraComp >= 1 && (
-          <input
-            id={competitor2Id}
-            value={competitor2}
-            onChange={(e) => setCompetitor2(e.target.value)}
-            placeholder="Another competitor"
-            autoComplete="off"
-            aria-label="Second competitor"
-            style={{ ...inputStyle, marginTop: "var(--space-2)" }}
-          />
-        )}
-        {extraComp >= 2 && (
-          <input
-            id={competitor3Id}
-            value={competitor3}
-            onChange={(e) => setCompetitor3(e.target.value)}
-            placeholder="A third competitor"
-            autoComplete="off"
-            aria-label="Third competitor"
-            style={{ ...inputStyle, marginTop: "var(--space-2)" }}
-          />
-        )}
-        {extraComp < 2 && (
-          <button
-            type="button"
-            onClick={() => setExtraComp((n) => Math.min(2, n + 1))}
-            style={{
-              marginTop: "var(--space-2)",
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              color: "var(--color-accent-ink, var(--color-primary))",
-              fontWeight: 600,
-              fontSize: "var(--font-size-body-sm)",
-              fontFamily: "var(--font-family)",
-            }}
-          >
-            + Add another competitor
-          </button>
-        )}
       </Field>
 
       <Field
@@ -1470,33 +1424,6 @@ export function InvisibilityTestClient() {
           autoComplete="off"
           style={inputStyle}
         />
-      </Field>
-
-      <Field label="Sector" hint="so we localise the buyer prompts" fieldId={sectorId}>
-        <select
-          id={sectorId}
-          value={sector}
-          onChange={(e) => setSector(e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">Select your sector</option>
-          {["Professional services", "Local services", "B2B SaaS", "E-commerce / DTC", "Agency", "Healthcare", "Other"].map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Country" hint="GDPR-safe routing for EU countries" fieldId={countryId}>
-        <select
-          id={countryId}
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-          style={inputStyle}
-        >
-          {["Brazil", "United States", "Portugal", "Germany", "United Kingdom", "Spain", "Other"].map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
       </Field>
 
       <Field
@@ -1521,6 +1448,119 @@ export function InvisibilityTestClient() {
           style={emailErrorMessage ? inputErrorStyle : inputStyle}
         />
       </Field>
+
+      {/* Collapsible "Add details" section — competitors, sector, country */}
+      <div>
+        <button
+          type="button"
+          aria-expanded={detailsOpen}
+          aria-controls={detailsPanelId}
+          onClick={() => setDetailsOpen((v) => !v)}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--color-accent-ink, var(--color-primary))",
+            fontWeight: 600,
+            fontSize: "var(--font-size-body-sm)",
+            fontFamily: "var(--font-family)",
+            padding: "var(--space-2) 0",
+            minHeight: "44px",
+          }}
+        >
+          {detailsOpen ? "Hide details ▲" : "Add details (optional) ▼"}
+        </button>
+        <div
+          id={detailsPanelId}
+          aria-hidden={!detailsOpen}
+          hidden={!detailsOpen}
+          style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", marginTop: "var(--space-2)" }}
+        >
+          <Field
+            label="Competitors"
+            hint="optional — up to 3; we compare you head-to-head"
+            fieldId={competitorId}
+          >
+            <input
+              id={competitorId}
+              value={competitor}
+              onChange={(e) => setCompetitor(e.target.value)}
+              placeholder="A rival brand"
+              autoComplete="off"
+              style={inputStyle}
+            />
+            {extraComp >= 1 && (
+              <input
+                id={competitor2Id}
+                value={competitor2}
+                onChange={(e) => setCompetitor2(e.target.value)}
+                placeholder="Another competitor"
+                autoComplete="off"
+                aria-label="Second competitor"
+                style={{ ...inputStyle, marginTop: "var(--space-2)" }}
+              />
+            )}
+            {extraComp >= 2 && (
+              <input
+                id={competitor3Id}
+                value={competitor3}
+                onChange={(e) => setCompetitor3(e.target.value)}
+                placeholder="A third competitor"
+                autoComplete="off"
+                aria-label="Third competitor"
+                style={{ ...inputStyle, marginTop: "var(--space-2)" }}
+              />
+            )}
+            {extraComp < 2 && (
+              <button
+                type="button"
+                onClick={() => setExtraComp((n) => Math.min(2, n + 1))}
+                style={{
+                  marginTop: "var(--space-2)",
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  color: "var(--color-accent-ink, var(--color-primary))",
+                  fontWeight: 600,
+                  fontSize: "var(--font-size-body-sm)",
+                  fontFamily: "var(--font-family)",
+                  minHeight: "44px",
+                }}
+              >
+                + Add another competitor
+              </button>
+            )}
+          </Field>
+
+          <Field label="Sector" hint="so we localise the buyer prompts" fieldId={sectorId}>
+            <select
+              id={sectorId}
+              value={sector}
+              onChange={(e) => setSector(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Select your sector</option>
+              {["Professional services", "Local services", "B2B SaaS", "E-commerce / DTC", "Agency", "Healthcare", "Other"].map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Country" hint="GDPR-safe routing for EU countries" fieldId={countryId}>
+            <select
+              id={countryId}
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              style={inputStyle}
+            >
+              {["Brazil", "United States", "Portugal", "Germany", "United Kingdom", "Spain", "Other"].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+      </div>
 
       <button
         type="submit"

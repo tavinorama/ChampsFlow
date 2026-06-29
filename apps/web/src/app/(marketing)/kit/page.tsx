@@ -48,6 +48,8 @@ const PAGE_CSS = `
   .kit-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-ink); font-weight: 600; }
   .kit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
   @media (max-width: 860px) { .kit-grid { grid-template-columns: 1fr; } }
+  .kit-fit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+  @media (max-width: 680px) { .kit-fit-grid { grid-template-columns: 1fr; } }
 `;
 
 export default function KitPage() {
@@ -59,11 +61,10 @@ export default function KitPage() {
       {/* Hero */}
       <span className="kit-eyebrow">Step 2 · $29 one-time</span>
       <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
-        The Get-Cited Kit.
+        Get your AI-visibility audit + 3 publish-ready fixes &mdash; $29.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: 0 }}>
-        The free test shows the gap. The Kit <strong style={{ color: "var(--color-text)" }}>closes it</strong> — know exactly
-        why you&rsquo;re invisible, and leave with content ready to publish. No subscription, no GEO degree.
+        The Get-Cited Kit: full audit + your Ozvor AI Visibility Score, your top-3 citation fixes, 3 ready-to-publish drafts, a plain-English GEO guide, and a 30-day re-test plan. No subscription, no guarantees &mdash; just the snapshot and the content to act on it.
       </p>
 
       {/* Three deliverable cards */}
@@ -82,6 +83,46 @@ export default function KitPage() {
           </div>
         ))}
       </div>
+
+      {/* "This is for you / not for you" — two-column fit guide */}
+      <section aria-labelledby="kit-fit-heading" style={{ marginTop: "var(--space-12)" }}>
+        <h2 id="kit-fit-heading" style={{ fontSize: "clamp(1.5rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-6)" }}>
+          Is this for you?
+        </h2>
+        <div className="kit-fit-grid">
+          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
+            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-accent-ink)" }}>This is for you</h3>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {[
+                "You want to know whether AI recommends you or a competitor",
+                "You’re willing to publish useful proof — FAQs, comparisons, case-study content",
+                "You want a repeatable system to improve AI visibility over time",
+              ].map((item) => (
+                <li key={item} style={{ display: "flex", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                  <span aria-hidden="true" style={{ color: "var(--color-accent-ink)", fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
+            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-muted)" }}>Not for you</h3>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {[
+                "You expect guaranteed citations overnight",
+                "You want fake reviews, Reddit posts, or spammy link signals",
+                "You want fully autonomous publishing with no approval step",
+                "You won’t publish or improve anything after the audit",
+              ].map((item) => (
+                <li key={item} style={{ display: "flex", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                  <span aria-hidden="true" style={{ fontWeight: 700, flexShrink: 0 }}>&#10005;</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
 
       {/* $29 price card + checkout (client widget — preserved) */}
       <div style={{ marginTop: "var(--space-12)" }}>
