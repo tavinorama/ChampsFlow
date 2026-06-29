@@ -211,9 +211,14 @@ export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
     }
 
     // -----------------------------------------------------------------------
-    // founder flag — optional boolean from body
+    // Founder discount. During the founding-member phase the advertised ANNUAL
+    // price IS the founder price (30% off — e.g. Growth $831/yr, Agency
+    // $2,091/yr), so every annual checkout must apply the coupon server-side.
+    // We do NOT rely on the client sending a flag (it didn't, which is why
+    // annual was being charged at full list). Monthly never gets the discount.
+    // (A future "first 100" cap can flip this back to list pricing.)
     // -----------------------------------------------------------------------
-    const founder = body.founder === true;
+    const founder = interval === "year";
 
     // -----------------------------------------------------------------------
     // Build URLs

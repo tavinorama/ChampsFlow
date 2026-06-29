@@ -78,7 +78,7 @@ const PLANS: Plan[] = [
 export function PricingPlans() {
   // Annual is the default (better value + unlocks the founder discount).
   const [interval, setInterval] = useState<Interval>("year");
-  const { loading, error, startCheckout } = useDirectCheckout();
+  const { loadingPlan, error, startCheckout } = useDirectCheckout();
 
   return (
     <div style={{ marginTop: "var(--space-10)" }}>
@@ -186,17 +186,22 @@ export function PricingPlans() {
                   {pl.cta}
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  disabled={loading}
-                  aria-busy={loading}
-                  aria-label={`${pl.cta} — ${pl.name} plan, ${isAnnual ? "annual" : "monthly"} billing`}
-                  onClick={() => startCheckout(pl.id as CheckoutPlan, interval)}
-                  className="pr-cta pr-cta-emerald"
-                  style={{ cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}
-                >
-                  {loading ? "Opening checkout…" : pl.cta}
-                </button>
+                (() => {
+                  const cardLoading = loadingPlan === pl.id;
+                  return (
+                    <button
+                      type="button"
+                      disabled={cardLoading}
+                      aria-busy={cardLoading}
+                      aria-label={`${pl.cta} — ${pl.name} plan, ${isAnnual ? "annual" : "monthly"} billing`}
+                      onClick={() => startCheckout(pl.id as CheckoutPlan, interval)}
+                      className="pr-cta pr-cta-emerald"
+                      style={{ cursor: cardLoading ? "not-allowed" : "pointer", opacity: cardLoading ? 0.7 : 1 }}
+                    >
+                      {cardLoading ? "Opening checkout…" : pl.cta}
+                    </button>
+                  );
+                })()
               )}
               <ul style={{ listStyle: "none", margin: "var(--space-5) 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 {pl.features.map((f) => (

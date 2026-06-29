@@ -44,7 +44,9 @@ export async function fetchCheckoutUrl(
 }
 
 export function useDirectCheckout() {
-  const [loading, setLoading] = useState(false);
+  // Track WHICH plan is checking out (not a shared boolean) so clicking one
+  // plan's button doesn't light up every other plan's button on the page.
+  const [loadingPlan, setLoadingPlan] = useState<CheckoutPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function startCheckout(
@@ -52,22 +54,26 @@ export function useDirectCheckout() {
     interval: CheckoutInterval = "year",
     email?: string
   ) {
-    setLoading(true);
+    // Guard against a double-click firing two checkout sessions.
+    if (loadingPlan !== null) return;
+    setLoadingPlan(plan);
     setError(null);
     try {
       const result = await fetchCheckoutUrl(plan, interval, email);
       if ("error" in result) {
         setError(result.error);
-        setLoading(false);
+        setLoadingPlan(null);
         return;
       }
-      // Redirect to Stripe — keep loading=true (browser navigates away)
+      // Redirect to Stripe — keep loadingPlan set (browser navigates away)
       window.location.href = result.url;
     } catch {
       setError("Checkout is temporarily unavailable. Please try again.");
-      setLoading(false);
+      setLoadingPlan(null);
     }
   }
 
-  return { loading, error, startCheckout };
+  // `loading` (boolean) is kept for single-button consumers (sticky bar, etc.);
+  // multi-plan surfaces should use `loadingPlan === <plan>` per button.
+  return { loadingPlan, loading: loadingPlan !== null, error, startCheckout };
 }
