@@ -196,7 +196,7 @@ function KitView({ d }: { d: Deliverable }) {
           title: "Growth Plan",
           why: "Your Kit is a one-time snapshot. But AI answers move every week — new competitors get cited, and content you publish today can lift your score in 30 days or quietly slip back. Growth re-runs your full audit weekly, alerts you the moment your score or citation share moves, and delivers fresh content briefs. The Kit was the first brick — Growth is the wall.",
           price: "$99/mo",
-          href: "/login?plan=growth&next=checkout&interval=year",
+          plan: "growth", interval: "year",
           accent: "emerald",
           ctaAriaLabel: "Start weekly monitoring with the Growth Plan — $99 per month",
         }}
@@ -205,7 +205,7 @@ function KitView({ d }: { d: Deliverable }) {
             title: "Agency Plan",
             why: "Same weekly monitoring across up to 25 brands, with white-label reports and a client approval workflow.",
             price: "$249/mo",
-            href: "/login?plan=agency&next=checkout&interval=year",
+            plan: "agency", interval: "year",
             accent: "ghost",
             ctaAriaLabel: "Start the Agency Plan — $249 per month",
           },

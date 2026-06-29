@@ -136,7 +136,7 @@ export default function KitPage() {
           title: "Growth Plan",
           why: "Your Kit is a one-time snapshot. Growth re-runs your full audit weekly, alerts you when your score or citation share moves, and hands you fresh content briefs. The Kit was the first brick — Growth is the wall.",
           price: "$99/mo",
-          href: "/login?plan=growth&next=checkout&interval=year",
+          plan: "growth", interval: "year",
           accent: "emerald",
           ctaAriaLabel: "Start the Growth Plan — $99 per month",
         }}
@@ -145,7 +145,7 @@ export default function KitPage() {
             title: "Agency Plan",
             why: "Monitor up to 25 brands, white-label reports, and a client approval workflow.",
             price: "$249/mo",
-            href: "/login?plan=agency&next=checkout&interval=year",
+            plan: "agency", interval: "year",
             accent: "ghost",
             ctaAriaLabel: "Start the Agency Plan — $249 per month",
           },
