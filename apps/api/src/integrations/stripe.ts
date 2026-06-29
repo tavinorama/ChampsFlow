@@ -83,6 +83,21 @@ function getStripeConfig() {
 // is the single source of truth the UI/copy and tests reference.
 export const FOUNDER_DISCOUNT_PERCENT = 30 as const;
 
+/**
+ * Founder-offer kill switch. The 30% annual founder discount is applied while
+ * this is active. To DISCONNECT the offer (e.g. once the first-100 cohort is
+ * full), set env FOUNDER_DISCOUNT_ACTIVE="false" on the API service — annual
+ * checkouts immediately revert to list price (no coupon), no deploy needed.
+ * Default: active (so removing the var doesn't silently kill the offer).
+ * (Belt-and-suspenders: you can also cap STRIPE_FOUNDER_COUPON_ID's
+ * max_redemptions in Stripe — the checkout code falls back to list price if
+ * Stripe rejects an exhausted coupon, so it never breaks checkout.)
+ */
+export function founderDiscountActive(): boolean {
+  const v = (process.env.FOUNDER_DISCOUNT_ACTIVE ?? "true").trim().toLowerCase();
+  return v !== "false" && v !== "0" && v !== "off" && v !== "no";
+}
+
 /** Billing interval for a subscription checkout. */
 export type BillingInterval = "month" | "year";
 
@@ -190,7 +205,7 @@ export async function createCheckoutSession(
   // The founder discount is ANNUAL-ONLY. It is applied only when the buyer is a
   // founder, the interval is yearly, AND a coupon is configured. On monthly
   // checkouts the founder flag is ignored — there is no monthly founder price.
-  const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId);
+  const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId) && founderDiscountActive();
 
   // Brazilian checkout offers Pix + boleto alongside card; elsewhere card only.
   // (Pix/boleto require the Stripe account to have them enabled + BRL pricing.)
@@ -542,7 +557,7 @@ export async function createDirectCheckoutSession(
           : priceIdAgency;
 
     // Founder discount is ANNUAL-ONLY — identical rule to the authed path.
-    const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId);
+    const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId) && founderDiscountActive();
 
     if (!priceId) {
       logger.error("stripe_direct_checkout_missing_price_id", {

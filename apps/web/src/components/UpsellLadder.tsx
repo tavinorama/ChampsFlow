@@ -15,6 +15,8 @@
  */
 
 import Link from "next/link";
+import { DirectCheckoutButton } from "./marketing/DirectCheckoutButton";
+import type { CheckoutPlan, CheckoutInterval } from "../lib/use-direct-checkout";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,14 @@ export interface UpsellItem {
    * where a navigation href is not appropriate.
    */
   onClick?: () => void;
+  /**
+   * Subscription plan for a DIRECT Stripe checkout. When set, the CTA goes
+   * straight to Stripe (no /login funnel) via DirectCheckoutButton — overrides
+   * href/onClick. Use for Growth/Agency upsells.
+   */
+  plan?: CheckoutPlan;
+  /** Billing interval for `plan` (default 'year'). */
+  interval?: CheckoutInterval;
   /**
    * Visual accent. "emerald" = gradient green CTA (self-serve plans).
    * "gold" = gradient amber CTA (OrganicPosts / done-for-you).
@@ -213,7 +223,14 @@ function PrimaryCard({ item }: { item: UpsellItem }) {
         </p>
       </div>
 
-      {item.onClick ? (
+      {item.plan ? (
+        <DirectCheckoutButton
+          plan={item.plan}
+          interval={item.interval ?? "year"}
+          label={`${item.title} — ${item.price}`}
+          style={ctaStyle(accent)}
+        />
+      ) : item.onClick ? (
         <button
           type="button"
           onClick={item.onClick}
@@ -279,7 +296,14 @@ function SecondaryCard({ item }: { item: UpsellItem }) {
           {item.why}
         </p>
       </div>
-      {item.onClick ? (
+      {item.plan ? (
+        <DirectCheckoutButton
+          plan={item.plan}
+          interval={item.interval ?? "year"}
+          label={`${item.title} →`}
+          style={secondaryCtaStyle(accent)}
+        />
+      ) : item.onClick ? (
         <button
           type="button"
           onClick={item.onClick}
