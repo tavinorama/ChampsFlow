@@ -221,7 +221,7 @@ function KitView({ d }: { d: Deliverable }) {
         marginTop="var(--space-8)"
       />
       <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "var(--space-3) 0 0 0" }}>
-        Founder annual: Growth $831/yr (~$69/mo), Agency $2,076/yr (~$173/mo) — 30% off, first 100 founders, annual
+        Founder annual: Growth $831/yr (~$69/mo), Agency $2,091/yr (~$174/mo) — 30% off, first 100 founders, annual
         only. Cancel anytime. No guaranteed citations — we track the movement and tell you what changed.
       </p>
 

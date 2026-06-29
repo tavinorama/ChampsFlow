@@ -121,7 +121,7 @@ export default function KitPage() {
       />
 
       <p style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}>
-        Founder annual: Growth $831/yr (~$69/mo), Agency $2,076/yr (~$173/mo) &mdash; 30% off, first 100 founders, annual only. No guaranteed citations.
+        Founder annual: Growth $831/yr (~$69/mo), Agency $2,091/yr (~$174/mo) &mdash; 30% off, first 100 founders, annual only. No guaranteed citations.
       </p>
     </main>
   );
