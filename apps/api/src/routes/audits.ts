@@ -31,7 +31,7 @@ import { requireNotRestricted } from "./billing";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
-import { generateContent, type ContentType } from "../../../../packages/llm/src/index";
+import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
 import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
@@ -1440,7 +1440,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     async (c) => {
       const auth = c.get("auth");
       const brandId = c.req.param("id");
-      let body: { content_type?: string; topic?: string; plan_task_id?: string; source_url?: string; instructions?: string; tone?: string; length?: string; };
+      let body: { content_type?: string; topic?: string; plan_task_id?: string; source_url?: string; instructions?: string; tone?: string; length?: string; provider?: string; };
       try {
         body = await c.req.json();
       } catch {
@@ -1551,10 +1551,15 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         if (compCount > 0) competitorPressureCount = compCount;
       }
 
-      // BYOK cost model: client-internal content generation runs on the CLIENT's
-      // own Anthropic key when connected (they pay their AI cost); falls back to
-      // the platform key otherwise. The free audit/test always uses platform.
-      const clientKey = await resolveProviderKey(db, auth.tenantId, "anthropic");
+      // BYOK cost model: content generation runs on the CLIENT's own key for the
+      // LLM THEY selected — no platform fallback (content is a client-key feature;
+      // audits run on the platform). The Content Studio dropdown sends `provider`;
+      // anything unrecognised defaults to Anthropic.
+      const CONTENT_PROVIDERS: readonly ContentProvider[] = ["anthropic", "openai", "gemini", "perplexity"];
+      const provider: ContentProvider = (CONTENT_PROVIDERS as readonly string[]).includes(body.provider ?? "")
+        ? (body.provider as ContentProvider)
+        : "anthropic";
+      const clientKey = await resolveProviderKey(db, auth.tenantId, provider);
       const draft = await generateContent(
         {
           contentType: ct as ContentType,
@@ -1576,7 +1581,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           missingSourceNames,
           competitorPressureCount,
         },
-        { apiKey: clientKey ?? undefined }
+        { apiKey: clientKey ?? undefined, provider }
       );
 
       // INTEGRITY: only a genuine LLM draft (generatedBy === "llm") may be stored
