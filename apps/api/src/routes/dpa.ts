@@ -198,7 +198,8 @@ export function requireDpaAcknowledged(db: PostgresClient) {
     // Fast lookup: read current_dpa_version from users table
     await db.setTenantId(auth.tenantId);
     const result = await db.query<{ current_dpa_version: string | null }>(
-      `SELECT current_dpa_version FROM users WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      // auth.userId = Supabase Auth UID → public.users.supabase_auth_uid (not id).
+      `SELECT current_dpa_version FROM users WHERE supabase_auth_uid = $1 AND deleted_at IS NULL LIMIT 1`,
       [auth.userId]
     );
 
@@ -347,7 +348,8 @@ export function registerDpaRoutes(app: Hono, db: PostgresClient): void {
 
     await db.setTenantId(auth.tenantId);
     const result = await db.query<{ current_dpa_version: string | null }>(
-      `SELECT current_dpa_version FROM users WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      // auth.userId = Supabase Auth UID → public.users.supabase_auth_uid (not id).
+      `SELECT current_dpa_version FROM users WHERE supabase_auth_uid = $1 AND deleted_at IS NULL LIMIT 1`,
       [auth.userId]
     );
 

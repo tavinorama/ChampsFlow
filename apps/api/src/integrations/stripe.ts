@@ -370,8 +370,12 @@ export async function createCheckoutSession(
       // method enabled in the Dashboard — card + Apple Pay + Google Pay + Link
       // (1-click). (Checkout has no automatic_payment_methods param; omission IS
       // the dynamic-payment-methods behaviour.)
-      // Pre-fill email to reduce checkout friction
-      customer_email: userEmail,
+      // Pre-fill email to reduce checkout friction — ONLY when we actually have
+      // one. An empty string makes Stripe reject the session ("Invalid email
+      // address"), which surfaced as "Unable to start checkout" for any user
+      // whose email couldn't be resolved (e.g. missing public.users row).
+      // Omitted → Stripe collects the email on the checkout page.
+      ...(userEmail ? { customer_email: userEmail } : {}),
       line_items: [
         {
           price: priceId,
@@ -437,7 +441,7 @@ export async function createCheckoutSession(
         const stripe = getStripe();
         const sessionRetry = await stripe.checkout.sessions.create({
           mode: "subscription",
-          customer_email: userEmail,
+          ...(userEmail ? { customer_email: userEmail } : {}),
           line_items: [{ price: priceId!, quantity: 1 }],
           success_url: successUrl,
           cancel_url: cancelUrl,

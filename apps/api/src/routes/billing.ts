@@ -456,8 +456,12 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       let userEmail = "";
       try {
         await db.setTenantId(auth.tenantId);
+        // auth.userId is the Supabase Auth UID (JWT sub), which maps to
+        // public.users.supabase_auth_uid — NOT public.users.id (a separate UUID).
+        // Querying by id always returned no row → empty email → Stripe rejected
+        // the session ("Invalid email address") → "Unable to start checkout".
         const { rows: userRows } = await db.query<{ email: string }>(
-          `SELECT email FROM users WHERE id = $1 LIMIT 1`,
+          `SELECT email FROM users WHERE supabase_auth_uid = $1 LIMIT 1`,
           [auth.userId]
         );
         userEmail = userRows[0]?.email ?? "";
@@ -518,7 +522,11 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           message: (err as Error).message,
         });
         return ctx.json(
-          { error: "checkout_failed", code: "CHECKOUT_ERROR" },
+          {
+            error: "checkout_failed",
+            code: "CHECKOUT_ERROR",
+            message: "We couldn't start checkout. Please try again — if it keeps happening, contact support.",
+          },
           500
         );
       }
