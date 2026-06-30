@@ -276,6 +276,23 @@ export async function processAuditJob(
       repeat,
     });
 
+    // INTEGRITY: if EVERY provider returned nothing (all keys out of
+    // credits/quota, all errored, or none permitted), we measured zero AI
+    // answers. Do NOT compute a score from no data — a 0 citation rate would
+    // read as "you're invisible" when the truth is "we couldn't run the audit".
+    // Mark the run failed so the UI honestly says so (and the user re-runs once
+    // credits are available) instead of persisting a misleading score.
+    if (result.responses.length === 0) {
+      logger.warn("audit_all_providers_failed", {
+        audit_id,
+        requested: requestedProviders.length,
+        failed: result.failedProviders.length,
+        blocked: result.blockedProviders.length,
+      });
+      await sql`UPDATE geo_audit SET status = 'failed' WHERE id = ${audit_id}`;
+      throw new Error("all_providers_failed");
+    }
+
     const providersUsed = Array.from(new Set(result.responses.map((r) => dbProvider(r.provider))));
 
     // Site crawl — measures Brand + Performance from the real website (if a domain
