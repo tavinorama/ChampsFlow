@@ -7,6 +7,7 @@
  *   verifyWebhookSignature  — HMAC-SHA256 signature verification for incoming webhooks
  *   mapStripeStatusToInternal — Stripe subscription status → our internal status
  *   mapPriceIdToPlanTier    — Stripe price ID → plan tier ('growth' | 'agency')
+ *   getFounderOfferStatus   — live redemption count from Stripe coupon (cached 60s in Redis)
  *
  * Architecture refs:
  *   docs/03-architecture.md §11 (Stripe sub-processor, PCI DSS L1, DPA required before EU launch)
@@ -27,7 +28,7 @@
  *   free:   $0/mo            — 1 brand, 1 competitor, 10-prompt snapshot audit, no monitoring
  *   growth: $99/mo or $831/yr — 1 brand, 10 competitors, 250 prompts, weekly monitoring
  *   agency: $249/mo or $2,091/yr — 25 brands, 10 competitors, 250 prompts, weekly monitoring
- *   Founder 30% discount is annual-only (STRIPE_FOUNDER_COUPON_ID).
+ *   Founder 30% discount is annual-only (STRIPE_FOUNDER_COUPON_ID). Capped at first 100.
  *
  * Sub-processor status:
  *   Stripe is an approved sub-processor in §11. DPA + SCCs required before EU launch (Gate 7 BLOCKER).
@@ -36,6 +37,7 @@
  */
 
 import Stripe from "stripe";
+import { Redis } from "@upstash/redis";
 import { logger } from "../../../../packages/shared/src/logger";
 
 // ---------------------------------------------------------------------------
@@ -100,6 +102,136 @@ export function founderDiscountActive(): boolean {
 
 /** Billing interval for a subscription checkout. */
 export type BillingInterval = "month" | "year";
+
+// ---------------------------------------------------------------------------
+// Lazy Redis singleton for founder-offer status caching
+// Same lazy-singleton pattern as checkout.ts to avoid holding a connection
+// open at import time; throws only if Upstash env vars are not set.
+// ---------------------------------------------------------------------------
+
+let _founderRedis: Redis | null = null;
+
+function getFounderRedis(): Redis {
+  if (_founderRedis) return _founderRedis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    throw new Error(
+      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required"
+    );
+  }
+  _founderRedis = new Redis({ url, token });
+  return _founderRedis;
+}
+
+// ---------------------------------------------------------------------------
+// FounderOfferStatus — live redemption counter from Stripe, cached 60s
+// ---------------------------------------------------------------------------
+
+/** Shape of the founder-offer liveness check. */
+export interface FounderOfferStatus {
+  /** Whether the offer is currently active and slots remain. */
+  active: boolean;
+  /** Slots still available (max(0, limit - redeemed)). */
+  remaining: number;
+  /** Total redemptions recorded by Stripe so far. */
+  redeemed: number;
+  /** Maximum allowed redemptions (FOUNDER_OFFER_LIMIT env var, default 100). */
+  limit: number;
+}
+
+const FOUNDER_STATUS_CACHE_KEY = "founder_offer_status";
+const FOUNDER_STATUS_CACHE_TTL_S = 60; // seconds
+
+/**
+ * Returns the live founder-offer status, sourced from the Stripe coupon's
+ * `times_redeemed` counter. The result is cached in Upstash Redis for 60s so
+ * this is safe to call on every page load.
+ *
+ * Fail-safe contract: NEVER throws. On any Stripe or Redis error, returns a
+ * conservative object that keeps the offer open (consistent with founderDiscountActive()
+ * and prevents checkout breakage). Logs a warn instead of re-throwing.
+ *
+ * Hard rules:
+ *   - No PII in any log statement (no email, no customer ID).
+ *   - Config from env only (FOUNDER_OFFER_LIMIT, STRIPE_FOUNDER_COUPON_ID).
+ */
+export async function getFounderOfferStatus(): Promise<FounderOfferStatus> {
+  const rawLimit = process.env.FOUNDER_OFFER_LIMIT;
+  const parsed = Number(rawLimit);
+  const limit = Number.isNaN(parsed) ? 100 : parsed;
+
+  // Fail-safe default — keeps offer open if anything goes wrong
+  const failSafe: FounderOfferStatus = {
+    active: founderDiscountActive(),
+    remaining: limit,
+    redeemed: 0,
+    limit,
+  };
+
+  // If Stripe env is not configured, we cannot reach the coupon — return fail-safe
+  let founderCouponId: string | undefined;
+  try {
+    const cfg = getStripeConfig();
+    founderCouponId = cfg.founderCouponId;
+  } catch {
+    // STRIPE_SECRET_KEY not set — no point querying Stripe
+    logger.warn("founder_offer_status_stripe_not_configured");
+    return failSafe;
+  }
+
+  if (!founderCouponId) {
+    // Coupon not configured — treat as fail-safe (keeps checkout working)
+    logger.warn("founder_offer_status_no_coupon_id");
+    return failSafe;
+  }
+
+  try {
+    // --- Check cache first ---
+    const redis = getFounderRedis();
+    const cached = await redis.get<string>(FOUNDER_STATUS_CACHE_KEY);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as FounderOfferStatus;
+      } catch {
+        // Corrupt cache entry — fall through to Stripe
+        logger.warn("founder_offer_status_cache_parse_error");
+      }
+    }
+
+    // --- Fetch live from Stripe ---
+    const stripe = getStripe();
+    const coupon = await stripe.coupons.retrieve(founderCouponId);
+    const redeemed = coupon.times_redeemed ?? 0;
+
+    const status: FounderOfferStatus = {
+      active: founderDiscountActive() && coupon.valid !== false && redeemed < limit,
+      remaining: Math.max(0, limit - redeemed),
+      redeemed,
+      limit,
+    };
+
+    // --- Write to cache (best-effort — do not fail if Redis set fails) ---
+    try {
+      await redis.set(FOUNDER_STATUS_CACHE_KEY, JSON.stringify(status), {
+        ex: FOUNDER_STATUS_CACHE_TTL_S,
+      });
+    } catch (cacheWriteErr) {
+      logger.warn("founder_offer_status_cache_write_error", {
+        error_code: (cacheWriteErr as NodeJS.ErrnoException).code ?? "unknown",
+      });
+    }
+
+    return status;
+  } catch (err) {
+    // Stripe call or Redis get failed — return fail-safe, log warn
+    logger.warn("founder_offer_status_fetch_error", {
+      error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
+      error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
+    });
+    return failSafe;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Stripe SDK client — lazy singleton
@@ -203,9 +335,11 @@ export async function createCheckoutSession(
         : priceIdAgency;
 
   // The founder discount is ANNUAL-ONLY. It is applied only when the buyer is a
-  // founder, the interval is yearly, AND a coupon is configured. On monthly
-  // checkouts the founder flag is ignored — there is no monthly founder price.
-  const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId) && founderDiscountActive();
+  // founder, the interval is yearly, AND a coupon is configured, AND the live
+  // redemption count is under the cap. getFounderOfferStatus() is fail-safe —
+  // it never throws; on any error it returns active=true (keeps offer open).
+  const founderStatus = await getFounderOfferStatus();
+  const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId) && founderStatus.active;
 
   // Brazilian checkout offers Pix + boleto alongside card; elsewhere card only.
   // (Pix/boleto require the Stripe account to have them enabled + BRL pricing.)
@@ -288,6 +422,57 @@ export async function createCheckoutSession(
 
     return { url: session.url };
   } catch (err) {
+    // Defense-in-depth: if Stripe rejects the coupon (exhausted / invalid) while
+    // we tried to apply the founder discount, retry once without it so checkout
+    // still completes at list price. The Redis cache will be stale for up to 60s;
+    // this handles the edge-case window.
+    if (
+      err instanceof Stripe.errors.StripeInvalidRequestError &&
+      applyFounderDiscount
+    ) {
+      logger.warn("stripe_checkout_coupon_fallback", {
+        plan_tier: targetPlanTier,
+      });
+      try {
+        const stripe = getStripe();
+        const sessionRetry = await stripe.checkout.sessions.create({
+          mode: "subscription",
+          customer_email: userEmail,
+          line_items: [{ price: priceId!, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: {
+            tenant_id: tenantId,
+            plan_tier: targetPlanTier,
+            billing_interval: interval,
+            founder_discount: "false",
+          },
+          discounts: undefined,
+          allow_promotion_codes: true,
+          subscription_data: {
+            metadata: {
+              tenant_id: tenantId,
+              plan_tier: targetPlanTier,
+              billing_interval: interval,
+            },
+          },
+        });
+        if (!sessionRetry.url) {
+          throw new Error("Stripe checkout session (retry) has no URL");
+        }
+        return { url: sessionRetry.url };
+      } catch (retryErr) {
+        // Retry also failed — fall through to normal error handling below
+        logger.error("stripe_checkout_coupon_fallback_failed", {
+          error_type:
+            retryErr instanceof Stripe.errors.StripeError
+              ? retryErr.type
+              : "unknown",
+          plan_tier: targetPlanTier,
+        });
+      }
+    }
+
     if (err instanceof Stripe.errors.StripeError) {
       const isRetryable =
         err.statusCode === undefined ||
@@ -557,7 +742,10 @@ export async function createDirectCheckoutSession(
           : priceIdAgency;
 
     // Founder discount is ANNUAL-ONLY — identical rule to the authed path.
-    const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId) && founderDiscountActive();
+    // Use live offer status (cached 60s) so the coupon stops applying once the
+    // first-100 cap is hit. getFounderOfferStatus() is fail-safe — never throws.
+    const founderStatus = await getFounderOfferStatus();
+    const applyFounderDiscount = founder && interval === "year" && Boolean(founderCouponId) && founderStatus.active;
 
     if (!priceId) {
       logger.error("stripe_direct_checkout_missing_price_id", {
@@ -626,6 +814,55 @@ export async function createDirectCheckoutSession(
 
       return { url: session.url };
     } catch (err) {
+      // Defense-in-depth: if Stripe rejects the coupon (exhausted / invalid) while
+      // we tried to apply the founder discount, retry once without it so checkout
+      // still completes at list price.
+      if (
+        err instanceof Stripe.errors.StripeInvalidRequestError &&
+        applyFounderDiscount
+      ) {
+        logger.warn("stripe_direct_checkout_coupon_fallback", {
+          plan_tier: plan,
+        });
+        try {
+          const stripe = getStripe();
+          const sessionRetry = await stripe.checkout.sessions.create({
+            mode: "subscription",
+            ...(email ? { customer_email: email } : {}),
+            line_items: [{ price: priceId, quantity: 1 }],
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            metadata: {
+              plan_tier: plan,
+              billing_interval: interval,
+              founder_discount: "false",
+              flow: "direct",
+            },
+            discounts: undefined,
+            allow_promotion_codes: true,
+            subscription_data: {
+              metadata: {
+                plan_tier: plan,
+                billing_interval: interval,
+                flow: "direct",
+              },
+            },
+          });
+          if (!sessionRetry.url) {
+            throw new Error("Stripe direct checkout session (retry) has no URL");
+          }
+          return { url: sessionRetry.url };
+        } catch (retryErr) {
+          logger.error("stripe_direct_checkout_coupon_fallback_failed", {
+            error_type:
+              retryErr instanceof Stripe.errors.StripeError
+                ? retryErr.type
+                : "unknown",
+            plan_tier: plan,
+          });
+        }
+      }
+
       if (err instanceof Stripe.errors.StripeError) {
         const isRetryable =
           err.statusCode === undefined ||

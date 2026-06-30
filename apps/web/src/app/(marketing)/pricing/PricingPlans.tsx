@@ -15,7 +15,7 @@
  * skipping the /login?plan=... funnel and going straight to Stripe Checkout.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useDirectCheckout, type CheckoutPlan } from "../../../lib/use-direct-checkout";
 
@@ -25,8 +25,9 @@ type Plan = {
   id: "free" | CheckoutPlan;
   name: string;
   monthly: string; // headline price when Monthly is selected
-  annualYear: string; // headline price when Annual is selected (founder /yr total)
-  annualPerMonth: string; // "≈ $69/mo" helper shown under the annual price
+  annualYear: string; // founder annual /yr total (while the offer is active)
+  annualYearList?: string; // LIST annual /yr total (shown once the founder offer ends)
+  annualPerMonth: string; // "≈ $69/mo" helper shown under the founder annual price
   sub: string;
   features: string[];
   cta: string;
@@ -53,6 +54,7 @@ const PLANS: Plan[] = [
     name: "Growth",
     monthly: "$99",
     annualYear: "$831",
+    annualYearList: "$1,188",
     annualPerMonth: "≈ $69/mo · 30% founder discount",
     sub: "For one brand you want cited.",
     features: ["Unlimited audits", "Weekly monitoring", "Up to 5 competitors", "GEO content plan + Content Studio", "CSV export", "Email support"],
@@ -66,6 +68,7 @@ const PLANS: Plan[] = [
     name: "Agency",
     monthly: "$249",
     annualYear: "$2,091",
+    annualYearList: "$2,988",
     annualPerMonth: "≈ $174/mo · 30% founder discount",
     sub: "For agencies & multi-brand teams.",
     features: ["Multi-client dashboard (up to 25 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual: website + 3 client landings"],
@@ -79,6 +82,27 @@ export function PricingPlans() {
   // Annual is the default (better value + unlocks the founder discount).
   const [interval, setInterval] = useState<Interval>("year");
   const { loadingPlan, error, startCheckout } = useDirectCheckout();
+
+  // Founder-offer status drives the displayed annual price: while active, show
+  // the 30%-off founder price; once the first-100 cohort is full it flips to
+  // list price automatically (same source the checkout uses). Optimistic-active
+  // until the fetch resolves so the page never flashes list→founder.
+  const [founderActive, setFounderActive] = useState(true);
+  const [founderRemaining, setFounderRemaining] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/founder-status")
+      .then((r) => r.json())
+      .then((d: { active?: boolean; remaining?: number }) => {
+        if (!live) return;
+        if (typeof d?.active === "boolean") setFounderActive(d.active);
+        if (typeof d?.remaining === "number") setFounderRemaining(d.remaining);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   return (
     <div style={{ marginTop: "var(--space-10)" }}>
@@ -97,7 +121,7 @@ export function PricingPlans() {
         }}
       >
         {([
-          { v: "year" as const, label: "Annual", note: "Save 30%" },
+          { v: "year" as const, label: "Annual", note: founderActive ? "Save 30%" : null },
           { v: "month" as const, label: "Monthly", note: null },
         ]).map((opt) => {
           const active = interval === opt.v;
@@ -149,7 +173,12 @@ export function PricingPlans() {
       <div className="pr-grid">
         {PLANS.map((pl) => {
           const isAnnual = interval === "year";
-          const priceMain = pl.id === "free" ? "$0" : isAnnual ? pl.annualYear : pl.monthly;
+          const priceMain =
+            pl.id === "free"
+              ? "$0"
+              : isAnnual
+                ? (founderActive ? pl.annualYear : (pl.annualYearList ?? pl.annualYear))
+                : pl.monthly;
           const per = pl.id === "free" ? "" : isAnnual ? "/yr" : "/mo";
           return (
             <div
@@ -174,7 +203,7 @@ export function PricingPlans() {
               </div>
               {/* Annual helper line — keeps the per-month framing + founder context */}
               <div style={{ marginTop: "var(--space-1)", minHeight: "18px", fontSize: "var(--font-size-caption)", color: "var(--color-accent-ink)", fontWeight: 600 }}>
-                {pl.paid && isAnnual ? pl.annualPerMonth : " "}
+                {pl.paid && isAnnual ? (founderActive ? pl.annualPerMonth : "billed annually") : " "}
               </div>
               <div style={{ marginTop: "var(--space-1)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", minHeight: "32px" }}>{pl.sub}</div>
               {pl.id === "free" ? (
