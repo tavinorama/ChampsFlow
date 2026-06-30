@@ -1900,6 +1900,10 @@ function ContentStudio({ brandId }: { brandId: string }) {
   const [regenBusy, setRegenBusy] = useState<string | null>(null);
   // Copy feedback: "copy-{id}" | "copymd-{id}" | "copyjsonld-{id}"
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Which LLM (the client's own key) generates the content. Content is BYOK:
+  // the client picks the model and pays for it. Audits always run on the platform.
+  const [provider, setProvider] = useState<string>("anthropic");
+  const [connectedKeys, setConnectedKeys] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -1909,6 +1913,24 @@ function ContentStudio({ brandId }: { brandId: string }) {
   }, [brandId]);
   useEffect(() => { void load(); }, [load]);
 
+  // Load which content-capable BYOK keys the client has connected, to drive the
+  // LLM dropdown + the "no key" hint. Defaults the selection to a connected one.
+  useEffect(() => {
+    let live = true;
+    apiFetch("/api/account/provider-keys")
+      .then((r) => (r.ok ? r.json() : { providers: [] }))
+      .then((d: { providers?: string[] }) => {
+        if (!live) return;
+        const content = (d.providers ?? []).filter((p) =>
+          ["anthropic", "openai", "gemini", "perplexity"].includes(p)
+        );
+        setConnectedKeys(content);
+        if (content.length > 0) setProvider((cur) => (content.includes(cur) ? cur : content[0]));
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   async function generate(e: React.FormEvent) {
     e.preventDefault();
     if (!topic.trim() || busy) return;
@@ -1916,7 +1938,7 @@ function ContentStudio({ brandId }: { brandId: string }) {
     try {
       const res = await apiFetch(`/api/brands/${brandId}/content`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content_type: type, topic: topic.trim(), tone, length }),
+        body: JSON.stringify({ content_type: type, topic: topic.trim(), tone, length, provider }),
       });
       if (res.ok) {
         setGenerateError(null);
@@ -2004,13 +2026,52 @@ function ContentStudio({ brandId }: { brandId: string }) {
       padding: "var(--space-6)", boxShadow: "var(--shadow-card)",
     }}>
       <h2 style={{ fontSize: "var(--font-size-h2)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>Content Studio</h2>
-      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-3) 0" }}>
         Draft citation-worthy content for the gaps in your plan. <strong>AI-generated drafts</strong> — you review,
         edit, and approve. Nothing publishes automatically.
       </p>
 
-      {/* Generate form — type, tone, length, topic */}
+      {/* Express BYOK notice — content runs on the client's own LLM key (their
+          choice + their cost); audits always run on the platform's keys. */}
+      <p style={{
+        fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6,
+        margin: "0 0 var(--space-3) 0", padding: "var(--space-3)",
+        backgroundColor: "var(--color-surface-muted)", border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+      }}>
+        Drafts are generated with <strong>your own API key</strong> for the LLM you pick — you choose the model and pay
+        the cost directly to the provider. Audits always run on Ozvor&rsquo;s keys, never yours.{" "}
+        {connectedKeys.length === 0 ? (
+          <span>You haven&rsquo;t connected any AI key yet — <a href="/account/integrations" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>add one</a> to generate content.</span>
+        ) : !connectedKeys.includes(provider) ? (
+          <span>No key connected for the selected LLM — <a href="/account/integrations" style={{ color: "var(--color-primary)", textDecoration: "underline" }}>add it</a> or pick a connected one.</span>
+        ) : (
+          <span style={{ color: "var(--color-success)" }}>✓ Using your connected key.</span>
+        )}
+      </p>
+
+      {/* Generate form — LLM, type, tone, length, topic */}
       <form onSubmit={generate} style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginBottom: "var(--space-4)" }}>
+        {/* LLM picker — the client's BYOK model for content generation */}
+        <select
+          aria-label="Generate with (your LLM key)"
+          value={provider}
+          onChange={(e) => setProvider(e.target.value)}
+          style={selectStyle}
+          title="Which of your connected LLMs writes the draft (uses your API key)"
+        >
+          {[
+            { id: "anthropic", label: "Claude (Anthropic)" },
+            { id: "openai", label: "ChatGPT (OpenAI)" },
+            { id: "gemini", label: "Gemini (Google)" },
+            { id: "perplexity", label: "Perplexity" },
+          ].map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}{connectedKeys.includes(m.id) ? "" : " — no key"}
+            </option>
+          ))}
+        </select>
+
         <select
           aria-label="Content type"
           value={type}

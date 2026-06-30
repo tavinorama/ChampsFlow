@@ -18,6 +18,19 @@ import { sanitizeUserPrompt } from "./prompt-sanitizer";
 
 export type ContentType = "blog" | "linkedin" | "faq";
 
+/** LLM providers that can WRITE content drafts. SERP is excluded — it's a search
+ *  API, not a generator. Content runs on the CLIENT's key for the provider they
+ *  pick (the BYOK cost model). */
+export type ContentProvider = "anthropic" | "openai" | "gemini" | "perplexity";
+
+/** Human-facing label per content provider (UI dropdown + transparency copy). */
+export const CONTENT_PROVIDER_LABELS: Record<ContentProvider, string> = {
+  anthropic: "Claude (Anthropic)",
+  openai: "ChatGPT (OpenAI)",
+  gemini: "Gemini (Google)",
+  perplexity: "Perplexity",
+};
+
 export interface ContentRequest {
   contentType: ContentType;
   brandName: string;
@@ -285,7 +298,91 @@ export function templateDraft(req: ContentRequest): Omit<ContentDraft, "keyUsed"
   return { title, body, schemaMarkup: articleSchema(req.brandName, title), generatedBy: "rules", rationale };
 }
 
-async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<ContentDraft, "keyUsed"> | null> {
+// ---- Provider-agnostic chat completion for content drafts ----
+// Dispatches the SAME prompt to whichever LLM the client chose, using the
+// client's BYOK key. Returns the draft text, or null on any failure (non-200 —
+// usually no credits/quota — timeout, or empty body). Never throws.
+async function chatComplete(
+  provider: ContentProvider,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+  try {
+    if (provider === "anthropic") {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-6",
+          max_tokens: maxTokens,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }],
+        }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+      return (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim() || null;
+    }
+    if (provider === "openai" || provider === "perplexity") {
+      // OpenAI + Perplexity share the OpenAI-compatible Chat Completions shape.
+      const url =
+        provider === "openai"
+          ? "https://api.openai.com/v1/chat/completions"
+          : "https://api.perplexity.ai/chat/completions";
+      const model =
+        provider === "openai"
+          ? process.env["OPENAI_MODEL"] ?? "gpt-4o"
+          : process.env["PERPLEXITY_MODEL"] ?? "sonar";
+      const res = await fetch(url, {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      return (data.choices?.[0]?.message?.content ?? "").trim() || null;
+    }
+    // gemini — Google Generative Language API (key in query string, system via systemInstruction)
+    const model = process.env["GEMINI_MODEL"] ?? "gemini-1.5-flash";
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          generationConfig: { maxOutputTokens: maxTokens },
+        }),
+      }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim() || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function llmDraft(req: ContentRequest, apiKey: string, provider: ContentProvider): Promise<Omit<ContentDraft, "keyUsed"> | null> {
   // Map length to word-count hint and max_tokens cap.
   const lengthHint =
     req.length === "short" ? "~300 words" :
@@ -378,78 +475,59 @@ async function llmDraft(req: ContentRequest, apiKey: string): Promise<Omit<Conte
   const userPrompt = userPromptParts.filter(Boolean).join(" ");
   const systemPrompt = buildSystemPrompt(req);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      signal: controller.signal,
-      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-6",
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-    const body = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-    if (!body) return null;
-    const firstLine = body.split("\n").find((l) => l.trim()) ?? req.topic;
-    const title = firstLine.replace(/^#+\s*/, "").slice(0, 120);
-    const schema = req.contentType === "blog" ? articleSchema(req.brandName, title)
-      : req.contentType === "faq" ? faqSchema(req.brandName, title, body.slice(0, 300)) : null;
+  const body = await chatComplete(provider, apiKey, systemPrompt, userPrompt, maxTokens);
+  if (!body) return null;
 
-    // Build rationale deterministically from audit inputs (not an extra LLM call).
-    const rationale = buildRationale(req);
+  const firstLine = body.split("\n").find((l) => l.trim()) ?? req.topic;
+  const title = firstLine.replace(/^#+\s*/, "").slice(0, 120);
+  const schema = req.contentType === "blog" ? articleSchema(req.brandName, title)
+    : req.contentType === "faq" ? faqSchema(req.brandName, title, body.slice(0, 300)) : null;
 
-    return { title, body, schemaMarkup: schema, generatedBy: "llm", rationale };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  // Build rationale deterministically from audit inputs (not an extra LLM call).
+  const rationale = buildRationale(req);
+
+  return { title, body, schemaMarkup: schema, generatedBy: "llm", rationale };
 }
 
 /**
  * Generate a content draft.
  *
- * BYOK cost model: pass `opts.apiKey` with the CLIENT's own provider key for
- * client-internal content (the client pays their AI cost). If omitted, falls
- * back to the platform key (process.env) — and if neither is set, returns a
- * graceful error draft (not a template). `keyUsed` reports which key paid.
+ * BYOK-only cost model: content runs on the CLIENT's own key for the LLM THEY
+ * choose (`opts.provider`, default "anthropic"). The client pays their own AI
+ * cost and picks their model. There is NO platform fallback here — content is a
+ * client-key feature. (Audits, scoring, and the action plan run on the platform
+ * and need no client key.)
  *
- * Key routing priority:
- *   1. opts.apiKey (client BYOK key)   → keyUsed: "client"
- *   2. ANTHROPIC_API_KEY env var        → keyUsed: "platform"
- *   3. No key at all                    → generatedBy: "error", keyUsed: "none"
+ * Routing:
+ *   1. opts.apiKey present (client BYOK key for opts.provider) → llmDraft on that provider
+ *   2. No key                                                  → generatedBy: "error", keyUsed: "none"
  *
  * Within the keyed path:
- *   - Sanitize user-supplied topic/instructions (GEO-SEC-2)
- *   - If sanitization passes → llmDraft()
- *     - llmDraft succeeds → LLM draft (generatedBy: "llm")
- *     - llmDraft fails (network/timeout/non-200) → template fallback (generatedBy: "rules")
- *   - If sanitization rejects (injection attempt) → template fallback (generatedBy: "rules")
+ *   - Sanitize user-supplied topic/instructions/tone (GEO-SEC-2)
+ *   - llmDraft succeeds → LLM draft (generatedBy: "llm", keyUsed: "client")
+ *   - llmDraft fails (no credits/quota, timeout, non-200) OR sanitizer rejects
+ *     → template fallback (generatedBy: "rules") — the route treats this as an
+ *       honest failure and stores nothing.
  */
 export async function generateContent(
   req: ContentRequest,
-  opts?: { apiKey?: string }
+  opts?: { apiKey?: string; provider?: ContentProvider }
 ): Promise<ContentDraft> {
-  const clientKey = opts?.apiKey;
-  const apiKey = clientKey ?? process.env["ANTHROPIC_API_KEY"];
+  const apiKey = opts?.apiKey;
+  const provider: ContentProvider = opts?.provider ?? "anthropic";
 
-  // No key at all → graceful error (not a template skeleton).
+  // No client key for the chosen provider → graceful, provider-specific error.
   if (!apiKey) {
+    const label = CONTENT_PROVIDER_LABELS[provider];
     return {
       title: "Connect your AI key to generate content",
       body: [
-        "Content generation requires an AI key.",
+        `Content generation runs on YOUR API key for the LLM you pick — here, ${label}.`,
         "",
-        "Go to Account → AI engines & keys and add your Anthropic API key.",
-        "Your key pays for content generation at cost — you control what is generated and what it costs.",
+        `Add your ${label} key under Account → AI engines & keys, then select it in the generator.`,
+        "Your key generates and pays for the content — you control the model and the cost.",
         "",
-        "The audit, scoring, and action plan work without an AI key. Content drafts and the AI Visibility Score details require one.",
+        "The audit, scoring, and action plan run on Ozvor and need no key from you.",
       ].join("\n"),
       schemaMarkup: null,
       generatedBy: "error",
@@ -478,9 +556,10 @@ export async function generateContent(
     }
     const draft = await llmDraft(
       { ...req, topic: s.sanitized, instructions: sanitizedInstructions, tone: sanitizedTone },
-      apiKey
+      apiKey,
+      provider
     );
-    if (draft) return { ...draft, keyUsed: clientKey ? "client" : "platform" };
+    if (draft) return { ...draft, keyUsed: "client" };
   }
 
   // Template fallback: key present but LLM failed (network, timeout, non-200)

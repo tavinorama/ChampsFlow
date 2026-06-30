@@ -187,8 +187,8 @@ export type { StrategyInputs, StrategyPlan, Recommendation, CalendarItem } from 
 export { generateStrategy, toCalendarTopic } from "./strategy-generator";
 
 // Content Studio — draft generation for blog/LinkedIn/FAQ (C4, GEO-A2).
-export type { ContentType, ContentRequest, ContentDraft } from "./content-studio";
-export { generateContent, templateDraft } from "./content-studio";
+export type { ContentType, ContentRequest, ContentDraft, ContentProvider } from "./content-studio";
+export { generateContent, templateDraft, CONTENT_PROVIDER_LABELS } from "./content-studio";
 
 // Sentiment — AI-vector brand perception classifier (removes last AI baseline).
 export type { SentimentResult, SentimentProbeInput } from "./sentiment";
