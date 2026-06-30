@@ -1579,10 +1579,26 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         { apiKey: clientKey ?? undefined }
       );
 
-      // If no API key is configured, return the graceful error without inserting
-      // a content_piece row (there's nothing to approve or publish).
-      if (draft.generatedBy === "error") {
-        return c.json({ ...draft, ai_generated: false, status: "error" }, 402);
+      // INTEGRITY: only a genuine LLM draft (generatedBy === "llm") may be stored
+      // or labelled as AI-generated. The two non-LLM outcomes must NEVER be
+      // presented as AI-authored content (that would claim authorship the AI did
+      // not produce):
+      //   - "error" → no AI key configured at all.
+      //   - "rules" → a key WAS present but the provider returned no draft. In
+      //     production this is almost always an API credit/quota issue (or a
+      //     timeout / a rejected prompt). We surface it honestly and store nothing
+      //     rather than badge a [PLACEHOLDER] skeleton as "AI-generated".
+      if (draft.generatedBy !== "llm") {
+        const noKey = draft.generatedBy === "error";
+        const msg = noKey
+          ? "Content generation needs an AI key. Add one in Account → AI engines & keys."
+          : "Content generation is temporarily unavailable — the AI provider returned no draft (most often an API credit/quota issue). Nothing was saved; try again once credits are available.";
+        // `body` is overridden so the UI (which surfaces data.body) shows the real
+        // reason, never the [PLACEHOLDER] skeleton from the rules template.
+        return c.json(
+          { ...draft, body: msg, ai_generated: false, status: "error", error: msg },
+          402
+        );
       }
 
       const id = randomUUID();
