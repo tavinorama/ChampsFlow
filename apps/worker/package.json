@@ -12,9 +12,12 @@
   "dependencies": {
     "@organic-posts/shared": "*",
     "@supabase/supabase-js": "^2.43.5",
+    "@upstash/redis": "^1.31.0",
     "bullmq": "^5.8.1",
     "ioredis": "^5.3.2",
-    "postgres": "^3.4.4"
+    "postgres": "^3.4.4",
+    "resend": "^3.4.0",
+    "stripe": "^16.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

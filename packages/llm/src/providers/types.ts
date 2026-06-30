@@ -170,3 +170,44 @@ export class ProviderError extends Error {
     this.name = "ProviderError";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Integrity guard — NEVER fabricate data in production
+// ---------------------------------------------------------------------------
+
+/**
+ * mockAllowed — whether keyless deterministic mock probe answers are permitted.
+ *
+ * HARD INTEGRITY RULE: a real audit must reflect what AI engines actually say.
+ * In production we NEVER synthesise a probe answer. If a provider's key is
+ * absent in production, the adapter throws a permanent ProviderError so the
+ * audit fails honestly (that provider is dropped, or the whole run errors)
+ * instead of returning a fabricated "brand cited #1" answer that would inflate
+ * the score with data no engine ever produced.
+ *
+ * Mock stays available ONLY for local/dev/test (NODE_ENV !== "production") and
+ * for an explicit, deliberate opt-in (GEO_ALLOW_MOCK=true) used by seeded demos
+ * — never on the customer-facing production stack.
+ */
+export function mockAllowed(): boolean {
+  return (
+    process.env["GEO_ALLOW_MOCK"] === "true" ||
+    process.env["NODE_ENV"] !== "production"
+  );
+}
+
+/**
+ * assertLiveOrThrow — call from an adapter's keyless branch BEFORE returning a
+ * mock. Throws a permanent ProviderError when mock is not allowed (production),
+ * so fabricated answers can never reach a customer audit.
+ */
+export function assertLiveOrThrow(provider: LLMProvider): void {
+  if (!mockAllowed()) {
+    throw new ProviderError(
+      provider,
+      "permanent",
+      undefined,
+      `${provider}: API key absent in production — refusing to fabricate a probe answer`
+    );
+  }
+}
