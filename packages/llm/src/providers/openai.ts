@@ -29,7 +29,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, assertLiveOrThrow } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,7 @@ export class OpenAIProbeAdapter implements ProviderAdapter {
 
     // Mock mode — no API key present
     if (!apiKey) {
+      assertLiveOrThrow("openai"); // INTEGRITY: never fabricate in production
       return mockResponse(query);
     }
 

@@ -23,7 +23,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, assertLiveOrThrow } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -79,8 +79,11 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
   async probe(query: ProbeQuery, _opts?: ProbeCallOptions): Promise<ProbeResponse> {
     const apiKey = process.env["ANTHROPIC_API_KEY"];
 
-    // Mock mode — no API key present (deterministic, keyless fallback)
+    // Mock mode — no API key present (deterministic, keyless fallback).
+    // INTEGRITY: never reaches production — assertLiveOrThrow() throws there so a
+    // missing key fails the audit honestly instead of fabricating a citation.
     if (!apiKey) {
+      assertLiveOrThrow("anthropic");
       return mockResponse(query);
     }
 
