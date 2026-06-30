@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { UpsellLadder } from "../../../components/UpsellLadder";
 import { PricingPlans } from "./PricingPlans";
+import { FounderBand } from "./FounderBand";
 
 export const metadata: Metadata = {
   title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
@@ -73,17 +74,9 @@ export default function PricingPage() {
         </p>
       </div>
 
-      {/* Founding-member band (emerald — self-serve discount; gold is reserved for OrganicPosts) */}
-      <div style={{ marginTop: "var(--space-10)", border: "1px solid rgba(39,201,138,0.4)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", background: "var(--color-surface)", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--space-4)" }}>
-        <div>
-          <span className="pr-eyebrow" style={{ color: "var(--color-accent-ink)" }}>Founding member offer · first 100</span>
-          <h2 style={{ margin: "var(--space-2) 0 var(--space-1)", fontSize: "var(--font-size-h2)", fontWeight: 800 }}>30% founder discount + a free 5-page website</h2>
-          <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, maxWidth: "560px" }}>
-            Applied only when you pay annually. No countdown, no fake scarcity — when the cohort fills, it fills.
-          </p>
-        </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>$69/mo · $174/mo</div>
-      </div>
+      {/* Founding-member band — shows only while the offer is live (auto-hides
+          when the first-100 cohort fills, via /api/founder-status). */}
+      <FounderBand />
 
       {/* Plan cards — annual default with an in-card Monthly toggle (client) */}
       <PricingPlans />

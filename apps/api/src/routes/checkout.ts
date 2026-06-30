@@ -23,7 +23,7 @@
 
 import { Hono } from "hono";
 import { Redis } from "@upstash/redis";
-import { createDirectCheckoutSession } from "../integrations/stripe";
+import { createDirectCheckoutSession, getFounderOfferStatus } from "../integrations/stripe";
 import type { BillingInterval } from "../integrations/stripe";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -211,14 +211,14 @@ export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
     }
 
     // -----------------------------------------------------------------------
-    // Founder discount. During the founding-member phase the advertised ANNUAL
-    // price IS the founder price (30% off — e.g. Growth $831/yr, Agency
-    // $2,091/yr), so every annual checkout must apply the coupon server-side.
-    // We do NOT rely on the client sending a flag (it didn't, which is why
-    // annual was being charged at full list). Monthly never gets the discount.
-    // (A future "first 100" cap can flip this back to list pricing.)
+    // Founder discount. Gate on the live offer status — once 100 slots are
+    // redeemed, founderStatus.active is false and the coupon is not applied.
+    // getFounderOfferStatus() is fail-safe (never throws; returns active=true
+    // on any error, preserving the offer during transient outages).
+    // Monthly never gets the discount regardless of offer status.
     // -----------------------------------------------------------------------
-    const founder = interval === "year";
+    const founderStatus = await getFounderOfferStatus();
+    const founder = founderStatus.active && interval === "year";
 
     // -----------------------------------------------------------------------
     // Build URLs
@@ -281,6 +281,42 @@ export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
         },
         500
       );
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/founder-status
+  // Public — no auth. Returns the live founder-offer availability so the
+  // marketing pages can display the correct price and urgency signal.
+  //
+  // Response 200:
+  //   { active: boolean, remaining: number, limit: number }
+  //
+  // Notes:
+  //   - `redeemed` is intentionally omitted (social-proof concern; remaining
+  //     is sufficient for urgency copy without revealing exact take-up).
+  //   - Always returns 200 — never 5xx. Fail-safe: { active: true, remaining: 100, limit: 100 }.
+  //   - Stripe cost is absorbed by the 60s Redis cache inside getFounderOfferStatus().
+  //   - No PII exposed. No auth required.
+  // -------------------------------------------------------------------------
+  app.get("/api/founder-status", async (c) => {
+    try {
+      const status = await getFounderOfferStatus();
+      return c.json(
+        {
+          active: status.active,
+          remaining: status.remaining,
+          limit: status.limit,
+        },
+        200
+      );
+    } catch (err) {
+      // getFounderOfferStatus() is documented as fail-safe (never throws),
+      // but defensively catch here too so this public endpoint never returns 5xx.
+      logger.warn("founder_status_route_unexpected_error", {
+        error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
+      });
+      return c.json({ active: true, remaining: 100, limit: 100 }, 200);
     }
   });
 }
