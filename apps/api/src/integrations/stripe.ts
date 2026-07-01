@@ -104,22 +104,22 @@ export function founderDiscountActive(): boolean {
 export type BillingInterval = "month" | "year";
 
 // ---------------------------------------------------------------------------
-// Lazy Redis singleton for founder-offer status caching
-// Same lazy-singleton pattern as checkout.ts to avoid holding a connection
-// open at import time; throws only if Upstash env vars are not set.
+// Lazy Redis singleton for founder-offer status caching (OPTIONAL).
+// The cache is a 60s optimisation, NOT a hard dependency. When Upstash isn't
+// configured (e.g. the deployment uses Railway Redis via REDIS_URL, not the
+// Upstash REST API), this returns null and getFounderOfferStatus() still reads
+// the live count from Stripe on every call — just without caching. Previously
+// this THREW, which aborted the whole status read and pinned the offer to the
+// fail-safe (always "active, 100 left"), silently disabling the auto-retire.
 // ---------------------------------------------------------------------------
 
 let _founderRedis: Redis | null = null;
 
-function getFounderRedis(): Redis {
+function tryGetFounderRedis(): Redis | null {
   if (_founderRedis) return _founderRedis;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required"
-    );
-  }
+  if (!url || !token) return null; // no Upstash → run cache-less, still live
   _founderRedis = new Redis({ url, token });
   return _founderRedis;
 }
@@ -186,32 +186,49 @@ export async function getFounderOfferStatus(): Promise<FounderOfferStatus> {
     return failSafe;
   }
 
-  try {
-    // --- Check cache first ---
-    const redis = getFounderRedis();
-    const cached = await redis.get<string>(FOUNDER_STATUS_CACHE_KEY);
-    if (cached) {
-      try {
-        return JSON.parse(cached) as FounderOfferStatus;
-      } catch {
-        // Corrupt cache entry — fall through to Stripe
-        logger.warn("founder_offer_status_cache_parse_error");
+  // --- Cache read (OPTIONAL — only if Upstash is configured) ---
+  const redis = tryGetFounderRedis();
+  if (redis) {
+    try {
+      const cached = await redis.get<string>(FOUNDER_STATUS_CACHE_KEY);
+      if (cached) {
+        try {
+          return JSON.parse(cached) as FounderOfferStatus;
+        } catch {
+          logger.warn("founder_offer_status_cache_parse_error");
+        }
       }
+    } catch (cacheReadErr) {
+      // Cache read failed — not fatal, fall through to the live Stripe read.
+      logger.warn("founder_offer_status_cache_read_error", {
+        error_code: (cacheReadErr as NodeJS.ErrnoException).code ?? "unknown",
+      });
     }
+  }
 
-    // --- Fetch live from Stripe ---
+  // --- Live read from Stripe (ALWAYS runs — this is what drives auto-retire) ---
+  let status: FounderOfferStatus;
+  try {
     const stripe = getStripe();
     const coupon = await stripe.coupons.retrieve(founderCouponId);
     const redeemed = coupon.times_redeemed ?? 0;
-
-    const status: FounderOfferStatus = {
+    status = {
       active: founderDiscountActive() && coupon.valid !== false && redeemed < limit,
       remaining: Math.max(0, limit - redeemed),
       redeemed,
       limit,
     };
+  } catch (err) {
+    // Only a Stripe failure lands here now (not a missing cache) → fail-safe.
+    logger.warn("founder_offer_status_fetch_error", {
+      error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
+      error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
+    });
+    return failSafe;
+  }
 
-    // --- Write to cache (best-effort — do not fail if Redis set fails) ---
+  // --- Cache write (best-effort, only if Upstash is configured) ---
+  if (redis) {
     try {
       await redis.set(FOUNDER_STATUS_CACHE_KEY, JSON.stringify(status), {
         ex: FOUNDER_STATUS_CACHE_TTL_S,
@@ -221,16 +238,9 @@ export async function getFounderOfferStatus(): Promise<FounderOfferStatus> {
         error_code: (cacheWriteErr as NodeJS.ErrnoException).code ?? "unknown",
       });
     }
-
-    return status;
-  } catch (err) {
-    // Stripe call or Redis get failed — return fail-safe, log warn
-    logger.warn("founder_offer_status_fetch_error", {
-      error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
-      error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
-    });
-    return failSafe;
   }
+
+  return status;
 }
 
 // ---------------------------------------------------------------------------
