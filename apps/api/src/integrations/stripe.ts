@@ -37,7 +37,7 @@
  */
 
 import Stripe from "stripe";
-import { Redis } from "@upstash/redis";
+import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
 import { logger } from "../../../../packages/shared/src/logger";
 
 // ---------------------------------------------------------------------------
@@ -113,15 +113,10 @@ export type BillingInterval = "month" | "year";
 // fail-safe (always "active, 100 left"), silently disabling the auto-retire.
 // ---------------------------------------------------------------------------
 
-let _founderRedis: Redis | null = null;
-
-function tryGetFounderRedis(): Redis | null {
-  if (_founderRedis) return _founderRedis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null; // no Upstash → run cache-less, still live
-  _founderRedis = new Redis({ url, token });
-  return _founderRedis;
+function tryGetFounderRedis(): SharedRedis | null {
+  // Railway Redis (REDIS_URL) via the shared ioredis client. Returns null when
+  // Redis isn't configured → the founder status runs cache-less but still live.
+  return tryGetSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

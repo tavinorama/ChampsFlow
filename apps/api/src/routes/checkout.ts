@@ -22,7 +22,7 @@
  */
 
 import { Hono } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { createDirectCheckoutSession, getFounderOfferStatus } from "../integrations/stripe";
 import type { BillingInterval } from "../integrations/stripe";
 import type { PostgresClient } from "./social-accounts";
@@ -62,44 +62,30 @@ function truncateIpForRateLimit(ip: string): string {
 // Lazy Redis singleton for checkout rate limiting
 // ---------------------------------------------------------------------------
 
-let _checkoutRedis: Redis | null = null;
-
-function getCheckoutRedis(): Redis {
-  if (_checkoutRedis) return _checkoutRedis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for checkout rate limiting"
-    );
-  }
-  _checkoutRedis = new Redis({ url, token });
-  return _checkoutRedis;
+function getCheckoutRedis(): SharedRedis {
+  // Railway Redis (REDIS_URL) via the shared ioredis client. Throws if unset —
+  // the caller wraps this in try/catch and fails open.
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------
-// Rate limit: 10 direct checkout attempts / hour / IP — sliding-window ZSET
+// Rate limit: 10 direct checkout attempts / hour / IP — fixed window
 // Key prefix: checkout_direct_rl:{truncatedIp}
 // ---------------------------------------------------------------------------
 
 const CHECKOUT_RATE_LIMIT = 10;
-const CHECKOUT_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour in ms
-const CHECKOUT_RATE_WINDOW_S = 3600;             // 1 hour in seconds (Redis EXPIRE)
+const CHECKOUT_RATE_WINDOW_S = 3600; // 1 hour in seconds (Redis EXPIRE)
 
 async function checkCheckoutRateLimit(ipTruncated: string): Promise<boolean> {
+  // Fixed-window limiter on Railway Redis: INCR the per-IP counter and set the
+  // TTL on the first hit of the window. ioredis-native; no ZSET/pipeline needed.
   const redis = getCheckoutRedis();
   const key = `checkout_direct_rl:${ipTruncated}`;
-  const now = Date.now();
-
-  const pipeline = redis.pipeline();
-  pipeline.zremrangebyscore(key, 0, now - CHECKOUT_RATE_WINDOW_MS);
-  pipeline.zadd(key, { score: now, member: String(now) + ":" + Math.random().toString(36).slice(2, 8) });
-  pipeline.zcard(key);
-  pipeline.expire(key, CHECKOUT_RATE_WINDOW_S);
-
-  const results = await pipeline.exec();
-  const count = results[2] as number;
-  return count <= CHECKOUT_RATE_LIMIT;
+  const current = await redis.incr(key);
+  if (current === 1) {
+    await redis.expire(key, CHECKOUT_RATE_WINDOW_S);
+  }
+  return current <= CHECKOUT_RATE_LIMIT;
 }
 
 // ---------------------------------------------------------------------------
