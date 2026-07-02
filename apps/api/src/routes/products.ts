@@ -19,7 +19,7 @@
 
 import { Hono } from "hono";
 import { randomUUID, randomBytes } from "node:crypto";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import {
   runInvisibilityTest,
   buildKitDeliverable,
@@ -67,19 +67,8 @@ function truncateIpForRateLimit(ip: string): string {
 // Lazy Redis singleton for /api/test rate limiting (distinct from billing _redis)
 // ---------------------------------------------------------------------------
 
-let _testRedis: Redis | null = null;
-
-function getTestRedis(): Redis {
-  if (_testRedis) return _testRedis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for test rate limiting"
-    );
-  }
-  _testRedis = new Redis({ url, token });
-  return _testRedis;
+function getTestRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

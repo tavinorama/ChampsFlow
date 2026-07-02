@@ -29,7 +29,7 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { createHash, randomBytes } from "node:crypto";
-import { Redis } from "@upstash/redis";
+import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import { runWithTenant } from "../db/tenant-context";
 import type { PostgresClient } from "./social-accounts";
@@ -70,13 +70,8 @@ function generateApiKey(): { plaintext: string; prefix: string; hash: string } {
 // Per-key rate limit — sliding window, best-effort (fail-open if no Redis infra)
 // ---------------------------------------------------------------------------
 
-let _apiRedis: Redis | null = null;
-function getApiRedis(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  if (!_apiRedis) _apiRedis = new Redis({ url, token });
-  return _apiRedis;
+function getApiRedis(): SharedRedis | null {
+  return tryGetSharedRedis();
 }
 
 const API_RATE_LIMIT = 120; // requests

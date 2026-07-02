@@ -5,7 +5,7 @@
  *  - Config validation (boot-time, exits on missing required vars)
  *  - Postgres client (postgres-js, wrapped into PostgresClient adapter)
  *  - Redis client (ioredis — for healthz probe; route-level rate limiting
- *    uses @upstash/redis initialized lazily in each route module)
+ *    uses the shared-redis client initialized lazily in each route module)
  *  - Hono app with security headers, CORS, structured logging, and routes
  *  - Tenant context middleware (sets app.current_tenant_id in Postgres session)
  *  - Health check endpoint (no auth)
@@ -79,8 +79,8 @@ const db = createPostgresClient(sql);
 
 // ---------------------------------------------------------------------------
 // Redis client (ioredis) — used for health probe.
-// Route-level rate limiting and OAuth state use @upstash/redis (lazy-init
-// in each route module) per the existing convention in routes/*.ts.
+// Route-level rate limiting and OAuth state use the shared-redis client
+// (lazy-init via getSharedRedis/tryGetSharedRedis in each route module).
 // ---------------------------------------------------------------------------
 
 const redis = new Redis(config.REDIS_URL, {

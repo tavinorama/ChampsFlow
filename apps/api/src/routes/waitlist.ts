@@ -32,7 +32,7 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -45,23 +45,11 @@ const RATE_LIMIT_REQUESTS = 5;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 // ---------------------------------------------------------------------------
-// Lazy Redis (same pattern as DSR + CCPA route modules)
+// Redis (shared Railway Redis)
 // ---------------------------------------------------------------------------
 
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for waitlist rate limiting"
-    );
-  }
-  if (!_redis) {
-    _redis = new Redis({ url, token });
-  }
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

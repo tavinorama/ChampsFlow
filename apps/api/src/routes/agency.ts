@@ -34,7 +34,7 @@
 
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import { Redis } from "@upstash/redis";
+import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -63,19 +63,12 @@ const DOMAIN_LABELS: Record<string, string> = {
 
 // ---------------------------------------------------------------------------
 // Rate limiting for the public branded report route
-// 60 requests / 10 minutes per IP (sliding-window ZSET, @upstash/redis).
-// Gracefully skips limiting when Upstash env vars are not configured (dev).
+// 60 requests / 10 minutes per IP (sliding-window ZSET, shared Redis).
+// Gracefully skips limiting when REDIS_URL is not configured (dev).
 // ---------------------------------------------------------------------------
 
-let _agencyRedis: Redis | null = null;
-
-function getAgencyRedis(): Redis | null {
-  if (_agencyRedis) return _agencyRedis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null; // dev/test mode — skip rate limiting
-  _agencyRedis = new Redis({ url, token });
-  return _agencyRedis;
+function getAgencyRedis(): SharedRedis | null {
+  return tryGetSharedRedis();
 }
 
 const SHARE_RATE_LIMIT = 60;

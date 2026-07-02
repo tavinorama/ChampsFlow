@@ -14,25 +14,15 @@
  */
 
 import { randomBytes } from "crypto";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { logger } from "../../../../packages/shared/src/logger";
 
 // ---------------------------------------------------------------------------
 // Redis client (lazy-initialized from env)
 // ---------------------------------------------------------------------------
-let _redis: Redis | null = null;
 
-function getRedis(): Redis {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set"
-    );
-  }
-  _redis = new Redis({ url, token });
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

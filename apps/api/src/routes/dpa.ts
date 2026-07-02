@@ -39,7 +39,7 @@
 
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -126,20 +126,11 @@ export function truncateIp(ip: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Lazy Upstash Redis client (same pattern as other route modules)
+// Redis client (shared Railway Redis)
 // ---------------------------------------------------------------------------
 
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for DPA rate limiting");
-  }
-  _redis = new Redis({ url, token });
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

@@ -33,7 +33,7 @@
  */
 
 import { Hono } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
 import { requireAuth, requireRole, requireNotProcessingRestricted } from "../auth/middleware";
@@ -79,20 +79,11 @@ function getPublishQueue(): Queue {
 }
 
 // ---------------------------------------------------------------------------
-// Upstash Redis — rate limiting
+// Redis — rate limiting (shared Railway Redis)
 // ---------------------------------------------------------------------------
 
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
-  }
-  _redis = new Redis({ url, token });
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------
