@@ -15,12 +15,27 @@ import { useDirectCheckout } from "../../lib/use-direct-checkout";
 export function StickyBuyBar() {
   const [dismissed, setDismissed] = useState(false);
   const { loading, error, startCheckout } = useDirectCheckout();
+  // Price claim follows the live founder-offer status so the bar never
+  // advertises the $69 founder rate after the first-100 cohort fills.
+  const [founderActive, setFounderActive] = useState(true);
 
   useEffect(() => {
     if (sessionStorage.getItem("stickyBarDismissed") === "1") {
       setDismissed(true);
     }
+    let live = true;
+    fetch("/api/founder-status")
+      .then((r) => r.json())
+      .then((d: { active?: boolean }) => {
+        if (live && typeof d?.active === "boolean") setFounderActive(d.active);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, []);
+
+  const fromPrice = founderActive ? "$69" : "$99";
 
   function dismiss() {
     sessionStorage.setItem("stickyBarDismissed", "1");
@@ -41,7 +56,7 @@ export function StickyBuyBar() {
             type="button"
             disabled={loading}
             aria-busy={loading}
-            aria-label={loading ? "Opening Stripe checkout..." : "Start Growth plan — from $69/mo annual"}
+            aria-label={loading ? "Opening Stripe checkout..." : `Start Growth plan — from ${fromPrice}/mo annual`}
             onClick={() => startCheckout("growth", "year")}
             style={{
               display: "inline-flex",
@@ -62,7 +77,7 @@ export function StickyBuyBar() {
               opacity: loading ? 0.7 : 1,
             }}
           >
-            {loading ? "Opening…" : "Start Growth · from $69/mo"}
+            {loading ? "Opening…" : `Start Growth · from ${fromPrice}/mo`}
           </button>
           <Link
             href="/test"
