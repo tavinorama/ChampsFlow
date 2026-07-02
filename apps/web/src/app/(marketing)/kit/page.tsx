@@ -13,6 +13,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { KitCheckoutForm } from "./KitCheckoutForm";
 import { UpsellLadder } from "../../../components/UpsellLadder";
+import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
 
 export const metadata: Metadata = {
   title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29) | Ozvor",
@@ -161,9 +162,10 @@ export default function KitPage() {
         marginTop="var(--space-12)"
       />
 
-      <p style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}>
-        Founder annual: Growth $831/yr (~$69/mo), Agency $2,091/yr (~$174/mo) &mdash; 30% off, first 100 founders, annual only. No guaranteed citations.
-      </p>
+      <FounderAnnualNote
+        suffix="No guaranteed citations."
+        style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}
+      />
     </main>
   );
 }

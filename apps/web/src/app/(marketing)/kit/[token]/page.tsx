@@ -11,6 +11,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { UpsellLadder } from "../../../../components/UpsellLadder";
+import { FounderAnnualNote } from "../../../../components/marketing/FounderAnnualNote";
 
 interface Fix { vector: string; gap: string; action: string; effort: string; impact: string; priority: number }
 interface Draft { contentType: string; title: string; body: string; schemaMarkup: string | null; generatedBy: string }
@@ -220,10 +221,10 @@ function KitView({ d }: { d: Deliverable }) {
         ]}
         marginTop="var(--space-8)"
       />
-      <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "var(--space-3) 0 0 0" }}>
-        Founder annual: Growth $831/yr (~$69/mo), Agency $2,091/yr (~$174/mo) — 30% off, first 100 founders, annual
-        only. Cancel anytime. No guaranteed citations — we track the movement and tell you what changed.
-      </p>
+      <FounderAnnualNote
+        suffix="Cancel anytime. No guaranteed citations — we track the movement and tell you what changed."
+        style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "var(--space-3) 0 0 0" }}
+      />
 
       {/* Branded footer */}
       <footer style={{ marginTop: "var(--space-8)", paddingTop: "var(--space-5)", borderTop: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
