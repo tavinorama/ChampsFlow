@@ -29,7 +29,7 @@
  */
 
 import { Hono } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { createHash, randomUUID } from "crypto";
 import { requireAuth, requireRole, requireSuperAdmin, requireNotProcessingRestricted } from "../auth/middleware";
 // requireSuperAdmin is used for GET /metrics — architecturally gated to platform admins only (§6.3)
@@ -80,19 +80,8 @@ const LLM_RATE_LIMIT = {
   regenerate: { max: 200, windowSeconds: 3600, keyPrefix: "ratelimit:llm:regen:" },
 };
 
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set"
-    );
-  }
-  _redis = new Redis({ url, token });
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 async function checkLLMRateLimit(

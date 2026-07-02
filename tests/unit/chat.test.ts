@@ -50,25 +50,30 @@ const redisState = {
   pipelineCalled: false,
 };
 
-vi.mock("@upstash/redis", () => {
-  class MockRedis {
-    pipeline() {
-      redisState.pipelineCalled = true;
-      if (redisState.throwOnPipeline) {
-        throw new Error("Redis connection failed");
-      }
-      const pipe = {
-        zremrangebyscore: () => pipe,
-        zadd: () => pipe,
-        zcard: () => pipe,
-        expire: () => pipe,
-        exec: () =>
-          Promise.resolve([0, 1, redisState.rateLimitCount, 1]),
-      };
-      return pipe;
-    }
+vi.mock("../../apps/api/src/shared-redis", () => {
+  function makeSharedRedis() {
+    return {
+      pipeline() {
+        redisState.pipelineCalled = true;
+        if (redisState.throwOnPipeline) {
+          throw new Error("Redis connection failed");
+        }
+        const pipe = {
+          zremrangebyscore: () => pipe,
+          zadd: () => pipe,
+          zcard: () => pipe,
+          expire: () => pipe,
+          exec: () =>
+            Promise.resolve([0, 1, redisState.rateLimitCount, 1]),
+        };
+        return pipe;
+      },
+    };
   }
-  return { Redis: MockRedis };
+  return {
+    getSharedRedis: () => makeSharedRedis(),
+    tryGetSharedRedis: () => makeSharedRedis(),
+  };
 });
 
 // Mock global fetch for Anthropic calls.
@@ -117,8 +122,7 @@ function anthropicOkResponse(text: string): Response {
 
 beforeEach(() => {
   // Reset env vars
-  process.env["UPSTASH_REDIS_REST_URL"] = "https://fake-redis.upstash.io";
-  process.env["UPSTASH_REDIS_REST_TOKEN"] = "fake-token";
+  process.env["REDIS_URL"] = "redis://fake-redis:6379";
   process.env["ANTHROPIC_API_KEY"] = "fake-anthropic-key";
   process.env["ANTHROPIC_MODEL"] = "claude-sonnet-4-5";
 

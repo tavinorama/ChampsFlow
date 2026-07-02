@@ -29,7 +29,7 @@
  */
 
 import { Hono } from "hono";
-import { Redis } from "@upstash/redis";
+import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import {
   googleOAuthConfigured,
@@ -51,19 +51,12 @@ import type { PostgresClient } from "./social-accounts";
 
 // ---------------------------------------------------------------------------
 // Rate limiting — Google connect endpoint
-// 10 req / 1 min per tenant (sliding-window ZSET via @upstash/redis).
-// Gracefully no-ops when Upstash env vars are absent (dev/test).
+// 10 req / 1 min per tenant (sliding-window ZSET via shared Redis).
+// Gracefully no-ops when REDIS_URL is absent (dev/test).
 // ---------------------------------------------------------------------------
 
-let _attributionRedis: Redis | null = null;
-
-function getAttributionRedis(): Redis | null {
-  if (_attributionRedis) return _attributionRedis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null; // dev/test mode — skip rate limiting
-  _attributionRedis = new Redis({ url, token });
-  return _attributionRedis;
+function getAttributionRedis(): SharedRedis | null {
+  return tryGetSharedRedis();
 }
 
 const CONNECT_RATE_LIMIT = 10;

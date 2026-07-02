@@ -42,7 +42,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { createHash, randomBytes } from "crypto";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth } from "../auth/middleware";
 import { requireSuperAdmin } from "../auth/middleware";
 import { truncateIp } from "./dpa";
@@ -69,22 +69,11 @@ const VALID_REQUEST_TYPES = [
 type DsrRequestType = (typeof VALID_REQUEST_TYPES)[number];
 
 // ---------------------------------------------------------------------------
-// Lazy Upstash Redis (same pattern as other route modules)
+// Redis (shared Railway Redis)
 // ---------------------------------------------------------------------------
 
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for DSR rate limiting"
-    );
-  }
-  _redis = new Redis({ url, token });
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

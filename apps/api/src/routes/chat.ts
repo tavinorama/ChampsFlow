@@ -27,7 +27,7 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { sanitizeUserPrompt } from "../../../../packages/llm/src/prompt-sanitizer";
 import { logger } from "../../../../packages/shared/src/logger";
 
@@ -181,23 +181,11 @@ function truncateIp(ip: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Lazy Redis client (same pattern as waitlist.ts / dpa.ts)
+// Redis client (shared Railway Redis)
 // ---------------------------------------------------------------------------
 
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required for chat rate limiting"
-    );
-  }
-  if (!_redis) {
-    _redis = new Redis({ url, token });
-  }
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

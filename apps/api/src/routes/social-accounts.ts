@@ -35,7 +35,7 @@
  */
 
 import { Hono } from "hono";
-import { Redis } from "@upstash/redis";
+import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole, requireNotProcessingRestricted } from "../auth/middleware";
 import { requireDpaAcknowledged } from "./dpa";
 import { requireNotRestricted } from "./billing";
@@ -82,19 +82,10 @@ import type { SocialAccountPublic } from "../../../../packages/shared/src/index"
 // For testability, the db is accepted as a dependency at registration time.
 
 // ---------------------------------------------------------------------------
-// Redis client for rate limiting
+// Redis client for rate limiting (shared Railway Redis)
 // ---------------------------------------------------------------------------
-let _redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set");
-  }
-  _redis = new Redis({ url, token });
-  return _redis;
+function getRedis(): SharedRedis {
+  return getSharedRedis();
 }
 
 // ---------------------------------------------------------------------------

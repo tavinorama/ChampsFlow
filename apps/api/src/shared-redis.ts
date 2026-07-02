@@ -14,10 +14,70 @@
  * instead (for optional caches like the founder-offer status).
  */
 
-import IORedis from "ioredis";
+import IORedis, { type ChainableCommander } from "ioredis";
+
+/**
+ * Upstash-compatible pipeline over an ioredis pipeline. Buffers commands and,
+ * on exec(), returns a FLAT array of results ([v0, v1, ...]) like Upstash —
+ * NOT ioredis' [[err, v], ...] — so the sliding-window rate-limiters that read
+ * `results[2]` keep working. Translates the Upstash zadd({score,member}) form
+ * to ioredis' positional zadd(key, score, member).
+ */
+export class SharedPipeline {
+  constructor(private readonly p: ChainableCommander) {}
+
+  zremrangebyscore(key: string, min: number | string, max: number | string): this {
+    this.p.zremrangebyscore(key, min, max);
+    return this;
+  }
+  zadd(key: string, entry: { score: number; member: string }): this {
+    this.p.zadd(key, entry.score, entry.member);
+    return this;
+  }
+  zcard(key: string): this {
+    this.p.zcard(key);
+    return this;
+  }
+  incr(key: string): this {
+    this.p.incr(key);
+    return this;
+  }
+  expire(key: string, seconds: number): this {
+    this.p.expire(key, seconds);
+    return this;
+  }
+  get(key: string): this {
+    this.p.get(key);
+    return this;
+  }
+  set(key: string, value: string): this {
+    this.p.set(key, value);
+    return this;
+  }
+
+  del(key: string): this {
+    this.p.del(key);
+    return this;
+  }
+
+  ttl(key: string): this {
+    this.p.ttl(key);
+    return this;
+  }
+
+  async exec(): Promise<unknown[]> {
+    const res = await this.p.exec(); // Array<[Error|null, unknown]> | null
+    if (!res) return [];
+    return res.map((pair) => pair[1]); // flatten to Upstash's [v, ...]
+  }
+}
 
 export class SharedRedis {
   constructor(private readonly client: IORedis) {}
+
+  pipeline(): SharedPipeline {
+    return new SharedPipeline(this.client.pipeline());
+  }
 
   async incr(key: string): Promise<number> {
     return this.client.incr(key);
