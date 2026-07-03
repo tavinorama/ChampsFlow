@@ -366,76 +366,141 @@ export function registerChatRoutes(app: Hono): void {
     }
 
     // -------------------------------------------------------------------------
-    // Anthropic API call
+    // Provider chain: Anthropic → Perplexity → canned offline.
+    //
+    // The bot originally hard-depended on Anthropic; with that key unfunded the
+    // site chat sat permanently "offline". Perplexity's chat API (funded, and
+    // OpenAI-compatible) is the fallback so the widget stays alive if Anthropic
+    // is missing, out of credits, erroring, or timing out. Same SYSTEM_PROMPT,
+    // same timeout, and the SAME scrubOutput() leak guard runs on whichever
+    // provider replied. Both helpers return null on any failure (never throw).
     // -------------------------------------------------------------------------
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      logger.warn("chat_anthropic_key_missing", {});
+    const rawReply =
+      (await tryAnthropicChat(messages)) ?? (await tryPerplexityChat(messages));
+
+    if (!rawReply) {
       return ctx.json({ reply: CANNED_OFFLINE }, 200);
     }
 
-    const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
-
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: ANTHROPIC_MAX_TOKENS,
-          system: SYSTEM_PROMPT,
-          messages,
-        }),
-      });
-
-      if (!res.ok) {
-        // Log status without exposing response body (may contain key info)
-        logger.error("chat_anthropic_error", {
-          status: res.status,
-        });
-        return ctx.json({ reply: CANNED_OFFLINE }, 200);
-      }
-
-      const data = (await res.json()) as {
-        content?: Array<{ type: string; text?: string }>;
-      };
-
-      const rawReply = (data.content ?? [])
-        .filter((b) => b.type === "text")
-        .map((b) => b.text ?? "")
-        .join("")
-        .trim();
-
-      if (!rawReply) {
-        logger.warn("chat_anthropic_empty_reply", {});
-        return ctx.json({ reply: CANNED_OFFLINE }, 200);
-      }
-
-      // Defense-in-depth: scrub output for obvious system-prompt leakage
-      const reply = scrubOutput(rawReply);
-      if (reply === null) {
-        logger.warn("chat_output_scrubbed", {});
-        return ctx.json({ reply: CANNED_REDIRECT }, 200);
-      }
-
-      return ctx.json({ reply }, 200);
-    } catch (err) {
-      const isAbort =
-        err instanceof Error && err.name === "AbortError";
-      logger.error("chat_anthropic_error", {
-        message: isAbort ? "timeout" : (err as Error).message,
-      });
-      return ctx.json({ reply: CANNED_OFFLINE }, 200);
-    } finally {
-      clearTimeout(timer);
+    // Defense-in-depth: scrub output for obvious system-prompt leakage
+    const reply = scrubOutput(rawReply);
+    if (reply === null) {
+      logger.warn("chat_output_scrubbed", {});
+      return ctx.json({ reply: CANNED_REDIRECT }, 200);
     }
+
+    return ctx.json({ reply }, 200);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Provider helpers — each returns the raw reply text, or null on ANY failure
+// (missing key, non-200, empty reply, timeout). Errors are logged status-only;
+// never the response body (may reference key material).
+// ---------------------------------------------------------------------------
+
+async function tryAnthropicChat(messages: ChatMessage[]): Promise<string | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    logger.warn("chat_anthropic_key_missing", {});
+    return null;
+  }
+  const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: ANTHROPIC_MAX_TOKENS,
+        system: SYSTEM_PROMPT,
+        messages,
+      }),
+    });
+    if (!res.ok) {
+      logger.error("chat_anthropic_error", { status: res.status });
+      return null;
+    }
+    const data = (await res.json()) as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    const rawReply = (data.content ?? [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("")
+      .trim();
+    if (!rawReply) {
+      logger.warn("chat_anthropic_empty_reply", {});
+      return null;
+    }
+    logger.info("chat_reply_served", { provider: "anthropic" });
+    return rawReply;
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    logger.error("chat_anthropic_error", {
+      message: isAbort ? "timeout" : (err as Error).message,
+    });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function tryPerplexityChat(messages: ChatMessage[]): Promise<string | null> {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) {
+    logger.warn("chat_perplexity_key_missing", {});
+    return null;
+  }
+  const model = process.env.PERPLEXITY_CHAT_MODEL ?? "sonar";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ANTHROPIC_TIMEOUT_MS);
+  try {
+    const res = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: ANTHROPIC_MAX_TOKENS,
+        messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+      }),
+    });
+    if (!res.ok) {
+      logger.error("chat_perplexity_error", { status: res.status });
+      return null;
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    // Perplexity is web-grounded and may append [1]-style citation markers —
+    // strip them; a sales chat answer should read clean, not like a paper.
+    const rawReply = (data.choices?.[0]?.message?.content ?? "")
+      .replace(/\[\d+\]/g, "")
+      .trim();
+    if (!rawReply) {
+      logger.warn("chat_perplexity_empty_reply", {});
+      return null;
+    }
+    logger.info("chat_reply_served", { provider: "perplexity" });
+    return rawReply;
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    logger.error("chat_perplexity_error", {
+      message: isAbort ? "timeout" : (err as Error).message,
+    });
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
