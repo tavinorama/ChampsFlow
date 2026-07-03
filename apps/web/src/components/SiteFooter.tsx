@@ -138,6 +138,7 @@ export function SiteFooter() {
               title="Product"
               links={[
                 ["How it works", "/how-it-works"],
+                ["For agencies", "/agencies"],
                 ["Tutorials", "/learn"],
                 ["Case study", "/results"],
                 ["Plans", "/pricing"],
