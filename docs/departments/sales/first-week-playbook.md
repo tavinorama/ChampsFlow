@@ -92,6 +92,13 @@ Score each inbound or outbound lead on five criteria. A score of 4–5 = priorit
 
 Named, verifiable watering holes. Do not contact members of these communities with unsolicited DMs — use them for content seeding, social listening, and building inbound pull.
 
+> **Update 2026-07-02 (live signal sweep — see [signal-shortlist.md](signal-shortlist.md)):** a real
+> Reddit scrape found the highest ICP density in **niche subreddits** not on the original list:
+> **r/aeo**, **r/AI_SearchOptimization**, **r/AISearchOptimizers**, **r/GenEngineOptimization**,
+> **r/Agentic_SEO**, **r/AIBranding**, **r/seogrowth**, **r/seodiscovery2026** — plus r/localseo and
+> r/ecommercemarketing for the SMB segment. Prioritize these; the shortlist has specific live
+> threads + engagement rules.
+
 ### Agency segment
 
 1. **Clutch SEO Firms directory** — clutch.co/seo-firms — browse + filter by budget and team size; agencies self-identify their services; leads have verified client reviews

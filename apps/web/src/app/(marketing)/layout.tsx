@@ -501,6 +501,7 @@ function PublicNavbar() {
         >
           {([
             ["How it works", "/how-it-works"],
+            ["For agencies", "/agencies"],
             ["Tutorials", "/learn"],
             ["Blog", "/blog"],
             ["Case study", "/results"],
