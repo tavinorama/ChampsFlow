@@ -483,10 +483,12 @@ async function tryPerplexityChat(messages: ChatMessage[]): Promise<string | null
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    // Perplexity is web-grounded and may append [1]-style citation markers —
-    // strip them; a sales chat answer should read clean, not like a paper.
+    // Perplexity is web-grounded and may append [1]-style citation markers, and
+    // it also echoes the system prompt's [facts] section labels as if they were
+    // sources (seen live) — strip both; a sales chat answer should read clean.
     const rawReply = (data.choices?.[0]?.message?.content ?? "")
       .replace(/\[\d+\]/g, "")
+      .replace(/\s*\[facts\]/gi, "")
       .trim();
     if (!rawReply) {
       logger.warn("chat_perplexity_empty_reply", {});
