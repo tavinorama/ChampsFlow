@@ -81,6 +81,14 @@ The platform is nearly ready. The operational sequence to launch and sell:
 - **P4** GEO-for-niche pages: e-commerce, SaaS, local services.
 - **P5** Legal/ROPA completion with company details (razão social + address).
 
+### Phase 2.5 — Channel & citation infrastructure (runs parallel with Phase 2)
+For a GEO company, channels are **citation infrastructure**, not just marketing: LLMs cite Reddit, review sites, and entity profiles heavily, so Ozvor's presence on them is the product applied to itself. Per-channel setup steps + paste-ready profile copy live in GitHub issues labeled `marketing`.
+
+- **Tier 1 — launch-blocking, free:** Google Search Console, Bing Webmaster Tools (+ IndexNow — ChatGPT search uses the Bing index), GA4, Reddit account (needs age/karma before posting), LinkedIn company page + founder profile, Google Business Profile (blocked on registered address).
+- **Tier 2 — first 2 weeks:** G2, Capterra, AlternativeTo, Crunchbase, Product Hunt, YouTube, X handle.
+- **Tier 3 — ad accounts only, NO spend:** Google Ads, Microsoft Ads, Reddit Ads, LinkedIn Ads. Created early so conversion tracking/billing approval doesn't queue Phase B; any actual spend is CRITICAL (founder always).
+- **Rules:** entity consistency everywhere (same name, logo, one-liner, URL); sign-ups with @ozvor.com addresses; credentials held by founder only; never "TrustIndex" on any new profile.
+
 ### Phase 3 — Feeding cadence
 - Dogfooding: public action cards from Ozvor's own audit.
 - 2 blog posts/week · 3 LinkedIn posts/week.
