@@ -1,0 +1,56 @@
+name: Claude task
+description: A task for Claude Code to implement (full-stack allowed; risk must be disclosed)
+title: "[task]: "
+labels: ["claude-ready"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What outcome do we want, in plain language. One capability per issue.
+      placeholder: e.g. Add a comparison page Ozvor vs Profound with honest feature table and CTA.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope and explicitly out of scope.
+    validations:
+      required: true
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      description: Per AGENTS.md §2 — set by the highest-risk surface the task will touch. Hermes may reclassify.
+      options:
+        - LOW — docs, UI copy, simple pages, tests
+        - MEDIUM — package/config, migrations, infra-as-code, test-mode integrations
+        - HIGH — auth, RLS, billing, email sending, domain/DNS, deploy config
+        - CRITICAL — production data, live Stripe, live DNS, paid APIs, destructive, secrets
+    validations:
+      required: true
+  - type: dropdown
+    id: live_actions
+    attributes:
+      label: Production/live actions required?
+      description: Will completing this task require any live/production/destructive/paid action?
+      options:
+        - "no"
+        - "yes — founder must approve each live action separately"
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: How we will verify it worked
+      description: Acceptance criteria — tests, preview checks, production probes.
+    validations:
+      required: true
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Guardrails
+      options:
+        - label: No .env files will be edited; no secrets printed or committed
+          required: true
