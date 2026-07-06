@@ -50,10 +50,10 @@ interface BillingPlanResponse {
   usage: {
     /** Number of active social accounts (legacy field still returned by API) */
     connected_accounts: number;
-    /** Maximum brands allowed on this plan */
-    max_brands: number;
-    /** Maximum competitors tracked per brand */
-    max_competitors: number;
+    /** Maximum brands allowed on this plan (null = unlimited, e.g. founder/super_admin) */
+    max_brands: number | null;
+    /** Maximum competitors tracked per brand (null = unlimited) */
+    max_competitors: number | null;
     /** Number of prompts run per audit */
     prompts_per_audit: number;
     /** Whether the plan includes weekly monitoring (vs monthly) */
