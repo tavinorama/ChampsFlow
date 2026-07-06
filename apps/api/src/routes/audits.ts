@@ -32,6 +32,7 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
+import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
 import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
@@ -1753,6 +1754,149 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     }
 
     return c.json({ brand_id: brandId, latest, trend: trend.rows, threeScores, executionProgress });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/brands/:id/audit-history — every completed audit, by date
+  // Founder requirement: audits are saved and presented per date so any two can
+  // be compared. Returns newest-first with the three vector scores + overall.
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id/audit-history", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+
+    const res = await db.query<{
+      id: string;
+      created_at: string;
+      triggered_by: string | null;
+      score_ai: number | null;
+      score_performance: number | null;
+      score_brand: number | null;
+      score_overall: number | null;
+    }>(
+      `SELECT a.id, a.created_at, a.triggered_by,
+              s.score_ai, s.score_performance, s.score_brand,
+              (s.provider_breakdown->>'overall')::int AS score_overall
+         FROM geo_audit a
+         JOIN geo_score s ON s.audit_id = a.id
+        WHERE a.brand_id = $1 AND a.status = 'complete'
+        ORDER BY a.created_at DESC
+        LIMIT 120`,
+      [brandId]
+    );
+    return c.json({ brand_id: brandId, audits: res.rows });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/brands/:id/audit-compare?from=<auditId>&to=<auditId>
+  // Point-by-point diff between two audits of the SAME brand: score deltas,
+  // citations gained/lost, position & mention-rate moves, prompts added/removed
+  // (never silently compared), competitor shifts, off-site presence flips,
+  // content-trait moves, providers added/removed. Diff logic is pure
+  // (lib/audit-diff.ts) — it only reports differences between real snapshots.
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id/audit-compare", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+    const fromId = c.req.query("from");
+    const toId = c.req.query("to");
+    if (!fromId || !toId) {
+      return c.json({ message: "Query params 'from' and 'to' (audit ids) are required." }, 400);
+    }
+    if (fromId === toId) {
+      return c.json({ message: "'from' and 'to' must be different audits." }, 400);
+    }
+
+    const loadSnapshot = async (auditId: string): Promise<AuditSnapshot | null> => {
+      const head = await db.query<{
+        created_at: string;
+        score_ai: number;
+        score_performance: number;
+        score_brand: number;
+        provider_breakdown: unknown;
+      }>(
+        `SELECT a.created_at, s.score_ai, s.score_performance, s.score_brand, s.provider_breakdown
+           FROM geo_audit a
+           JOIN geo_score s ON s.audit_id = a.id
+          WHERE a.id = $1 AND a.brand_id = $2 AND a.status = 'complete'`,
+        [auditId, brandId]
+      );
+      const h = head.rows[0];
+      if (!h) return null;
+
+      const bd = (typeof h.provider_breakdown === "string"
+        ? JSON.parse(h.provider_breakdown)
+        : h.provider_breakdown ?? {}) as Record<string, unknown>;
+
+      const probes = await db.query<{
+        provider: string;
+        query_text: string | null;
+        cited: boolean;
+        citation_rank: number | null;
+        mention_rate: string | null;
+      }>(
+        `SELECT provider, query_text, cited, citation_rank, mention_rate
+           FROM citation_check WHERE audit_id = $1`,
+        [auditId]
+      );
+
+      const comps = await db.query<{
+        competitor_name: string;
+        mention_count: number;
+        displacement_count: number;
+      }>(
+        `SELECT competitor_name, mention_count, displacement_count
+           FROM competitor_citation WHERE audit_id = $1`,
+        [auditId]
+      );
+
+      type OffsiteSrc = { label?: string; present?: boolean };
+      const offsiteSources = (((bd.offsite as { sources?: OffsiteSrc[] } | undefined)?.sources) ?? [])
+        .filter((s): s is { label: string; present: boolean } =>
+          typeof s.label === "string" && typeof s.present === "boolean");
+
+      return {
+        auditId,
+        createdAt: h.created_at,
+        scores: {
+          ai: h.score_ai,
+          performance: h.score_performance,
+          brand: h.score_brand,
+          overall: bd.overall != null ? Number(bd.overall) : null,
+        },
+        probes: probes.rows
+          .filter((p) => p.query_text != null)
+          .map((p) => ({
+            provider: p.provider,
+            queryText: p.query_text as string,
+            cited: p.cited,
+            rank: p.citation_rank,
+            mentionRate: p.mention_rate != null ? Number(p.mention_rate) : null,
+          })),
+        competitors: comps.rows.map((r) => ({
+          name: r.competitor_name,
+          mentions: r.mention_count,
+          displacement: r.displacement_count,
+        })),
+        offsiteSources,
+        contentTraits: ((bd.content as { traits?: Record<string, number> } | undefined)?.traits) ?? {},
+        providersUsed: Array.isArray(bd.providers) ? (bd.providers as string[]) : [],
+      };
+    };
+
+    const [fromSnap, toSnap] = await Promise.all([loadSnapshot(fromId), loadSnapshot(toId)]);
+    if (!fromSnap || !toSnap) {
+      return c.json({ message: "One or both audits were not found for this brand." }, 404);
+    }
+    // Always diff older → newer regardless of the order the caller passed.
+    const [older, newer] =
+      new Date(fromSnap.createdAt) <= new Date(toSnap.createdAt)
+        ? [fromSnap, toSnap]
+        : [toSnap, fromSnap];
+
+    return c.json(compareAudits(older, newer));
   });
 
   // -------------------------------------------------------------------------
