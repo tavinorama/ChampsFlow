@@ -504,6 +504,9 @@ export default function BrandDetailPage() {
         </section>
       )}
 
+      {/* Audit history by date + point-by-point comparison between two audits */}
+      <AuditHistoryCompare brandId={brandId} />
+
       {/* Three vectors — expandable with component breakdown */}
       <VectorPanel
         label="AI" weight="35%" hint="Are you cited in AI answers?"
@@ -3942,5 +3945,299 @@ function Spinner({ label }: { label: string }) {
       {label}
       <style>{`@keyframes tia-spin { to { transform: rotate(360deg); } }`}</style>
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Audit history by date + point-by-point comparison (founder req. 2026-07-03)
+// Every completed audit is listed by date; pick any two and see exactly what
+// changed: score deltas, citations gained/lost, position & mention-rate moves,
+// prompts added/removed (never force-compared), competitor shifts, off-site
+// flips, content-trait moves and providers added/removed. Data comes from the
+// pure diff endpoint — nothing is estimated client-side.
+// ---------------------------------------------------------------------------
+
+interface AuditHistoryEntry {
+  id: string; created_at: string; triggered_by: string | null;
+  score_ai: number | null; score_performance: number | null;
+  score_brand: number | null; score_overall: number | null;
+}
+
+interface ProbeChangeUI {
+  provider: string; queryText: string;
+  from: { cited: boolean; rank: number | null; mentionRate: number | null };
+  to: { cited: boolean; rank: number | null; mentionRate: number | null };
+}
+
+interface AuditDiffUI {
+  from: { auditId: string; createdAt: string };
+  to: { auditId: string; createdAt: string };
+  scores: Record<"ai" | "performance" | "brand" | "overall", { from: number | null; to: number | null; delta: number | null }>;
+  citations: {
+    gained: ProbeChangeUI[]; lost: ProbeChangeUI[];
+    positionChanged: ProbeChangeUI[]; rateChanged: ProbeChangeUI[];
+    promptsAdded: Array<{ provider: string; queryText: string }>;
+    promptsRemoved: Array<{ provider: string; queryText: string }>;
+    unchanged: number;
+  };
+  competitors: { changed: Array<{ name: string; from: { mentions: number; displacement: number } | null; to: { mentions: number; displacement: number } | null }> };
+  offsite: { gained: string[]; lost: string[] };
+  contentTraits: { changed: Array<{ trait: string; from: number | null; to: number | null; delta: number | null }> };
+  providers: { added: string[]; removed: string[] };
+}
+
+function fmtDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch { return iso; }
+}
+
+function DeltaChip({ delta }: { delta: number | null }) {
+  if (delta == null) return <span style={{ color: "var(--color-muted)" }}>—</span>;
+  const up = delta > 0; const flat = delta === 0;
+  return (
+    <span style={{
+      fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
+      color: flat ? "var(--color-muted)" : up ? "var(--color-success)" : "var(--color-error)",
+    }}>
+      {flat ? "±0" : `${up ? "▲ +" : "▼ "}${delta}`}
+    </span>
+  );
+}
+
+function AuditHistoryCompare({ brandId }: { brandId: string }) {
+  const [audits, setAudits] = useState<AuditHistoryEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [fromId, setFromId] = useState<string | null>(null);
+  const [toId, setToId] = useState<string | null>(null);
+  const [diff, setDiff] = useState<AuditDiffUI | null>(null);
+  const [comparing, setComparing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    apiFetch(`/api/brands/${brandId}/audit-history`)
+      .then((r) => (r.ok ? r.json() : { audits: [] }))
+      .then((d: { audits?: AuditHistoryEntry[] }) => {
+        if (!live) return;
+        const rows = d.audits ?? [];
+        setAudits(rows);
+        // Sensible defaults: previous vs latest.
+        if (rows.length >= 2) { setToId(rows[0].id); setFromId(rows[1].id); }
+        setLoaded(true);
+      })
+      .catch(() => { if (live) setLoaded(true); });
+    return () => { live = false; };
+  }, [brandId]);
+
+  const runCompare = useCallback(async () => {
+    if (!fromId || !toId || fromId === toId || comparing) return;
+    setComparing(true); setError(null); setDiff(null);
+    try {
+      const res = await apiFetch(`/api/brands/${brandId}/audit-compare?from=${fromId}&to=${toId}`);
+      if (!res.ok) { setError("Could not compare these audits. Try again."); return; }
+      setDiff((await res.json()) as AuditDiffUI);
+    } catch {
+      setError("Could not compare these audits. Try again.");
+    } finally { setComparing(false); }
+  }, [brandId, fromId, toId, comparing]);
+
+  if (!loaded || audits.length === 0) return null;
+
+  const card: React.CSSProperties = {
+    backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)",
+  };
+  const th: React.CSSProperties = {
+    textAlign: "left", padding: "0.5rem 0.75rem", fontFamily: "var(--font-mono)",
+    fontSize: "0.6875rem", letterSpacing: "0.08em", textTransform: "uppercase",
+    color: "var(--color-muted)", fontWeight: 600, borderBottom: "1px solid var(--color-border)",
+  };
+  const td: React.CSSProperties = {
+    padding: "0.5rem 0.75rem", fontSize: "var(--font-size-body-sm)",
+    borderBottom: "1px solid var(--color-border)", color: "var(--color-text)",
+  };
+  const probeLine = (c: ProbeChangeUI, note: string) => (
+    <li key={`${c.provider}|${c.queryText}`} style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+      <span style={{ color: "var(--color-text)" }}>&ldquo;{c.queryText}&rdquo;</span>
+      {" "}· <span style={{ fontFamily: "var(--font-mono)" }}>{c.provider}</span> · {note}
+    </li>
+  );
+
+  return (
+    <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="audit-history-heading">
+      <h2 id="audit-history-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-4) 0" }}>
+        Audit history &amp; comparison
+      </h2>
+      <div style={card}>
+        {/* History table by date, with From/To pickers */}
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: "640px", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>Date</th><th style={th}>Run</th>
+                <th style={th}>AI</th><th style={th}>Perf</th><th style={th}>Brand</th><th style={th}>Overall</th>
+                <th style={th}>From</th><th style={th}>To</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audits.map((a) => (
+                <tr key={a.id}>
+                  <td style={td}>{fmtDate(a.created_at)}</td>
+                  <td style={{ ...td, color: "var(--color-muted)" }}>{a.triggered_by ?? "—"}</td>
+                  <td style={td}>{a.score_ai ?? "—"}</td>
+                  <td style={td}>{a.score_performance ?? "—"}</td>
+                  <td style={td}>{a.score_brand ?? "—"}</td>
+                  <td style={td}>{a.score_overall ?? "—"}</td>
+                  <td style={td}>
+                    <input type="radio" name="audit-from" aria-label={`Compare from ${fmtDate(a.created_at)}`}
+                      checked={fromId === a.id} onChange={() => setFromId(a.id)} />
+                  </td>
+                  <td style={td}>
+                    <input type="radio" name="audit-to" aria-label={`Compare to ${fmtDate(a.created_at)}`}
+                      checked={toId === a.id} onChange={() => setToId(a.id)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {audits.length < 2 ? (
+          <p style={{ margin: "var(--space-4) 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+            Run a second audit to unlock the point-by-point comparison.
+          </p>
+        ) : (
+          <div style={{ marginTop: "var(--space-4)", display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
+            <button type="button" onClick={runCompare} disabled={!fromId || !toId || fromId === toId || comparing}
+              style={{
+                height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff",
+                border: "none", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)",
+                cursor: comparing || !fromId || !toId || fromId === toId ? "not-allowed" : "pointer",
+                opacity: comparing ? 0.7 : 1, fontFamily: "var(--font-family)",
+              }}>
+              {comparing ? "Comparing…" : "Compare selected audits"}
+            </button>
+            {fromId === toId && <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>Pick two different audits.</span>}
+            {error && <span role="alert" style={{ fontSize: "var(--font-size-caption)", color: "var(--color-error)" }}>{error}</span>}
+          </div>
+        )}
+
+        {/* Diff panel */}
+        {diff && (
+          <div style={{ marginTop: "var(--space-6)", borderTop: "1px solid var(--color-border)", paddingTop: "var(--space-5)" }}>
+            <p style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+              What changed from <strong style={{ color: "var(--color-text)" }}>{fmtDate(diff.from.createdAt)}</strong> to{" "}
+              <strong style={{ color: "var(--color-text)" }}>{fmtDate(diff.to.createdAt)}</strong>:
+            </p>
+
+            {/* Score deltas */}
+            <div style={{ display: "flex", gap: "var(--space-6)", flexWrap: "wrap", marginBottom: "var(--space-5)" }}>
+              {(["overall", "ai", "performance", "brand"] as const).map((k) => (
+                <div key={k}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-muted)" }}>{k}</div>
+                  <div style={{ fontSize: "var(--font-size-body)", fontWeight: 700 }}>
+                    {diff.scores[k].from ?? "—"} → {diff.scores[k].to ?? "—"} <DeltaChip delta={diff.scores[k].delta} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Citations point by point */}
+            <div style={{ display: "grid", gap: "var(--space-4)" }}>
+              <div>
+                <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700, color: "var(--color-success)" }}>
+                  Citations gained ({diff.citations.gained.length})
+                </h3>
+                {diff.citations.gained.length === 0
+                  ? <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>None in this period.</p>
+                  : <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>{diff.citations.gained.map((c) => probeLine(c, `now cited${c.to.rank ? ` at #${c.to.rank}` : ""}`))}</ul>}
+              </div>
+              <div>
+                <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700, color: "var(--color-error)" }}>
+                  Citations lost ({diff.citations.lost.length})
+                </h3>
+                {diff.citations.lost.length === 0
+                  ? <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>None in this period.</p>
+                  : <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>{diff.citations.lost.map((c) => probeLine(c, `was cited${c.from.rank ? ` at #${c.from.rank}` : ""}, now absent`))}</ul>}
+              </div>
+              {diff.citations.positionChanged.length > 0 && (
+                <div>
+                  <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700 }}>
+                    Position changes ({diff.citations.positionChanged.length})
+                  </h3>
+                  <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                    {diff.citations.positionChanged.map((c) => probeLine(c, `#${c.from.rank ?? "?"} → #${c.to.rank ?? "?"}`))}
+                  </ul>
+                </div>
+              )}
+              {diff.citations.rateChanged.length > 0 && (
+                <div>
+                  <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700 }}>
+                    Mention-rate changes ({diff.citations.rateChanged.length})
+                  </h3>
+                  <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                    {diff.citations.rateChanged.map((c) => probeLine(c, `${Math.round((c.from.mentionRate ?? 0) * 100)}% → ${Math.round((c.to.mentionRate ?? 0) * 100)}% of repeated probes`))}
+                  </ul>
+                </div>
+              )}
+              <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                {diff.citations.unchanged} prompt×engine pairs unchanged
+                {diff.citations.promptsAdded.length > 0 && ` · ${diff.citations.promptsAdded.length} new prompts in the newer audit (not compared)`}
+                {diff.citations.promptsRemoved.length > 0 && ` · ${diff.citations.promptsRemoved.length} prompts only in the older audit (not compared)`}.
+              </p>
+            </div>
+
+            {/* Competitors / offsite / traits / providers */}
+            {diff.competitors.changed.length > 0 && (
+              <div style={{ marginTop: "var(--space-5)" }}>
+                <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700 }}>Competitor shifts</h3>
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  {diff.competitors.changed.map((cc) => (
+                    <li key={cc.name} style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                      <span style={{ color: "var(--color-text)", fontWeight: 600 }}>{cc.name}</span>{" "}
+                      {cc.from === null ? "newly detected — " : cc.to === null ? "no longer detected — " : ""}
+                      mentions {cc.from?.mentions ?? 0} → {cc.to?.mentions ?? 0} · displacing you {cc.from?.displacement ?? 0} → {cc.to?.displacement ?? 0}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(diff.offsite.gained.length > 0 || diff.offsite.lost.length > 0) && (
+              <div style={{ marginTop: "var(--space-5)" }}>
+                <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700 }}>Off-site presence</h3>
+                <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+                  {diff.offsite.gained.length > 0 && <>Gained: <span style={{ color: "var(--color-success)", fontWeight: 600 }}>{diff.offsite.gained.join(", ")}</span>. </>}
+                  {diff.offsite.lost.length > 0 && <>Lost: <span style={{ color: "var(--color-error)", fontWeight: 600 }}>{diff.offsite.lost.join(", ")}</span>.</>}
+                </p>
+              </div>
+            )}
+            {diff.contentTraits.changed.length > 0 && (
+              <div style={{ marginTop: "var(--space-5)" }}>
+                <h3 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-body)", fontWeight: 700 }}>Content traits</h3>
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  {diff.contentTraits.changed.map((t) => (
+                    <li key={t.trait} style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
+                      <span style={{ color: "var(--color-text)" }}>{t.trait}</span>:{" "}
+                      {t.delta != null
+                        ? <>{Math.round((t.from ?? 0) * 100)} → {Math.round((t.to ?? 0) * 100)} <DeltaChip delta={Math.round((t.delta) * 100)} /></>
+                        : t.from == null ? "newly measured" : "no longer measured"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(diff.providers.added.length > 0 || diff.providers.removed.length > 0) && (
+              <p style={{ marginTop: "var(--space-5)", marginBottom: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                Engines measured changed between these audits
+                {diff.providers.added.length > 0 && ` · added: ${diff.providers.added.join(", ")}`}
+                {diff.providers.removed.length > 0 && ` · removed: ${diff.providers.removed.join(", ")}`}
+                {" "}— citation changes involving those engines reflect coverage, not performance.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
