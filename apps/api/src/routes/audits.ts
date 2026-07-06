@@ -246,7 +246,18 @@ function extractBlockedCrawlers(findings: string[]): string[] {
 // explicit COUNT vs limit at each create site; tenant_id filter is explicit so
 // it holds regardless of RLS runtime state.)
 // ---------------------------------------------------------------------------
-async function planLimitsFor(db: PostgresClient, tenantId: string) {
+async function planLimitsFor(db: PostgresClient, tenantId: string, isSuperAdmin = false) {
+  // Founder/super_admin accounts are never plan-limited: unlimited brands and
+  // competitors, plus the top tier's audit depth + weekly monitoring. The
+  // super_admin claim is set manually only (architecture §6.3) — this is a
+  // platform-operator bypass, not a self-service path.
+  if (isSuperAdmin) {
+    return {
+      ...(PLAN_LIMITS.agency ?? PLAN_LIMITS.free),
+      max_brands: Number.MAX_SAFE_INTEGER,
+      max_competitors: Number.MAX_SAFE_INTEGER,
+    };
+  }
   const res = await db.query<{ plan_tier: string | null }>(
     `SELECT plan_tier FROM tenants WHERE id = $1`,
     [tenantId]
@@ -361,8 +372,8 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
     await db.setTenantId(tenantId);
 
-    // Plan limit: max_brands per tenant.
-    const limits = await planLimitsFor(db, tenantId);
+    // Plan limit: max_brands per tenant (super_admin bypasses).
+    const limits = await planLimitsFor(db, tenantId, auth.isSuperAdmin);
     const brandCount = await db.query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM brands WHERE tenant_id = $1`,
       [tenantId]
@@ -439,8 +450,8 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const brandRes = await db.query<{ id: string }>(`SELECT id FROM brands WHERE id = $1`, [brandId]);
       if (!brandRes.rows[0]) return c.json({ message: "Brand not found." }, 404);
 
-      // Plan limit: max_competitors per brand.
-      const limits = await planLimitsFor(db, auth.tenantId);
+      // Plan limit: max_competitors per brand (super_admin bypasses).
+      const limits = await planLimitsFor(db, auth.tenantId, auth.isSuperAdmin);
       const compCount = await db.query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM competitor WHERE brand_id = $1`,
         [brandId]

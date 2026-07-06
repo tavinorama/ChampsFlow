@@ -31,6 +31,7 @@
 
 import { Hono } from "hono";
 import { requireAuth, requireSuperAdmin } from "../auth/middleware";
+import { tryGetSharedRedis } from "../shared-redis";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 
@@ -416,14 +417,33 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
 
     const mode = anyAiLive ? "live" : "demo";
 
-    logger.info("admin_system_health_fetched", { postgres: postgresStatus, mode });
+    // Real Redis health probe via the shared Railway-Redis client (the old
+    // hardcoded "unknown" predates shared-redis.ts). 2s timeout so a Redis
+    // outage can't hang the health endpoint.
+    let redisStatus: "up" | "down" | "not_configured" = "not_configured";
+    const sharedRedis = tryGetSharedRedis();
+    if (sharedRedis) {
+      try {
+        const pong = await Promise.race([
+          sharedRedis.ping(),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout")), 2000)),
+        ]);
+        redisStatus = pong === "PONG" ? "up" : "down";
+      } catch {
+        redisStatus = "down";
+      }
+    }
+    if (redisStatus !== "up") {
+      attentionFlags.push(`Redis is ${redisStatus === "down" ? "unreachable" : "not configured (REDIS_URL unset)"}`);
+    }
+
+    logger.info("admin_system_health_fetched", { postgres: postgresStatus, redis: redisStatus, mode });
 
     return c.json({
       engines,
       infrastructure: {
         postgres: postgresStatus,
-        // Redis client is not available in this handler scope — cannot ping.
-        redis: "unknown" as const,
+        redis: redisStatus,
       },
       envKeys,
       attentionFlags,

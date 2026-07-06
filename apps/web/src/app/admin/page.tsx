@@ -955,7 +955,7 @@ function SystemHealthTab({ health }: { health: SystemHealth | null; loading: boo
             { label: "Postgres", status: health.infrastructure.postgres },
             { label: "Redis", status: health.infrastructure.redis },
           ].map(({ label, status }) => {
-            const ok = status.toLowerCase() === "ok" || status.toLowerCase() === "connected";
+            const ok = ["ok", "connected", "up"].includes(status.toLowerCase());
             return (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                 <span
