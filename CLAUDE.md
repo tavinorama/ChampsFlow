@@ -16,7 +16,7 @@ This file is loaded into context for every Claude Code session in this project. 
 - **Sector**: general SaaS
 - **Home jurisdiction**: Brazil — LGPD applies (entity registered, CNPJ on file with founder; razão social + registered address still pending for legal pages/ROPA)
 - **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All compliance artifacts must address Brazil (LGPD) + EU + US.
-- **Domains**: **ozvor.com (primary)** · legacy TrustIndex/OrganicPosts domains to be 301-redirected to ozvor.com (not yet configured — founder action in Cloudflare; verified 2026-07-06: trustindexai.com still serves the old site)
+- **Domains**: **ozvor.com (primary)** · legacy domains 301-redirect to ozvor.com (verified live 2026-07-06: trustindexai.com + www, organicposts.ai + www → 301 https://ozvor.com; organicposts.com does not resolve and was never in use)
 - **Repository**: https://github.com/tavinorama/ChampsFlow
 - **Initialized**: 2026-05-01
 - **Pivot date**: 2026-05-29 (GEO platform pivot — Discovery re-opened)
