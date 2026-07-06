@@ -328,39 +328,40 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       );
 
       // GEO plan limits (single source of truth: PLAN_LIMITS in stripe.ts).
-      if (subRows.length === 0) {
-        // No billing row → free plan defaults
-        const free = PLAN_LIMITS.free;
-        return ctx.json({
-          plan: "free",
-          status: "active",
-          renewal_date: null,
-          cancel_at_period_end: false,
-          usage: {
-            connected_accounts: connectedAccounts,
-            max_brands: free.max_brands,
-            max_competitors: free.max_competitors,
-            prompts_per_audit: free.prompts_per_audit,
-            weekly_monitoring: free.weekly_monitoring,
-          },
-        });
-      }
+      //
+      // EFFECTIVE plan: a Stripe subscription when one exists; otherwise the
+      // tenant's denormalized plan_tier (covers manually granted plans — e.g.
+      // the founder account — which the app enforces but Stripe knows nothing
+      // about). Previously this endpoint read ONLY billing_subscriptions, so a
+      // manually granted tier still displayed as "Free 1/1" even though the
+      // limits were already lifted.
+      const tenantTierRes = await db.query<{ plan_tier: string | null }>(
+        `SELECT plan_tier FROM tenants WHERE id = $1`,
+        [auth.tenantId]
+      );
+      const tenantTier = (tenantTierRes.rows[0]?.plan_tier ?? "free") as PlanTier;
 
-      const sub = subRows[0];
-      const planTier = (sub.plan_tier as PlanTier) ?? "free";
-      const planLimits = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
+      const sub = subRows[0] ?? null;
+      const planTier = ((sub?.plan_tier as PlanTier | undefined) ?? tenantTier) ?? "free";
+      const base = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
+
+      // super_admin (platform operator) is never plan-limited: unlimited brands
+      // and competitors (null → UI renders "unlimited") + top-tier audit depth.
+      const unlimited = auth.isSuperAdmin === true;
+      const agency = PLAN_LIMITS.agency ?? base;
 
       return ctx.json({
-        plan: planTier,
-        status: sub.status ?? "active",
-        renewal_date: sub.current_period_end ?? null,
-        cancel_at_period_end: sub.cancel_at_period_end,
+        plan: unlimited && planTier === "free" ? "agency" : planTier,
+        status: sub?.status ?? "active",
+        renewal_date: sub?.current_period_end ?? null,
+        cancel_at_period_end: sub?.cancel_at_period_end ?? false,
+        unlimited,
         usage: {
           connected_accounts: connectedAccounts,
-          max_brands: planLimits.max_brands,
-          max_competitors: planLimits.max_competitors,
-          prompts_per_audit: planLimits.prompts_per_audit,
-          weekly_monitoring: planLimits.weekly_monitoring,
+          max_brands: unlimited ? null : base.max_brands,
+          max_competitors: unlimited ? null : base.max_competitors,
+          prompts_per_audit: unlimited ? agency.prompts_per_audit : base.prompts_per_audit,
+          weekly_monitoring: unlimited ? true : base.weekly_monitoring,
         },
       });
     } catch (err) {
