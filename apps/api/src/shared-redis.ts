@@ -75,6 +75,11 @@ export class SharedPipeline {
 export class SharedRedis {
   constructor(private readonly client: IORedis) {}
 
+  /** Health probe — resolves "PONG" when the Railway Redis is reachable. */
+  async ping(): Promise<string> {
+    return this.client.ping();
+  }
+
   pipeline(): SharedPipeline {
     return new SharedPipeline(this.client.pipeline());
   }
