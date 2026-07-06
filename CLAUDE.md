@@ -11,16 +11,29 @@ This file is loaded into context for every Claude Code session in this project. 
 ## Project meta
 > Filled by `product-manager` (product mode) or `ceo-agent` (company mode) on init. Update only when the project itself changes.
 
-- **Name**: TrustIndex AI (platform) + OrganicPosts by TrustIndex AI (consultancy sub-brand)
-- **One-line description**: AI Search Trust Intelligence platform for SMBs — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the TrustIndex Score, and builds a GEO content plan; OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
+- **Name**: OZvor (parent company) — products: **OZvor Search** (GEO / AI Search visibility platform) and **OZvor Social** (social/content execution); **OrganicPosts by Ozvor** (consultancy/DFY sub-brand)
+- **One-line description**: AI Search visibility platform for SMBs and agencies — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the Ozvor AI Visibility Score (3 scores: Visibility / Citation Readiness / Execution), and builds a GEO content plan; OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
 - **Sector**: general SaaS
-- **Home jurisdiction**: Brazil (entity to be registered there — LGPD applies)
+- **Home jurisdiction**: Brazil (entity registered — LGPD applies)
 - **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All compliance artifacts must address Brazil (LGPD) + EU + US.
-- **Domains**: trustindexai.com (platform) · organicposts.ai (consultancy)
-- **Repository**: _(URL when set)_
+- **Domains**: **ozvor.com (primary)** · trustindexai.com + organicposts.com (legacy → 301 to ozvor.com)
+- **Repository**: https://github.com/tavinorama/ChampsFlow
 - **Initialized**: 2026-05-01
 - **Pivot date**: 2026-05-29 (GEO platform pivot — Discovery re-opened)
-- **Rebrand + jurisdiction change**: 2026-05-30 (→ TrustIndex AI; home jurisdiction Brazil/LGPD)
+- **Rebrand history**: 2026-05-30 (→ TrustIndex AI; home jurisdiction Brazil/LGPD) · 2026-06 (→ **Ozvor**; never reintroduce "TrustIndex" in user-facing display)
+
+---
+
+## OZvor operating model (launch/operations mode — 2026-07)
+
+The company is run by the founder + two AI agents, with GitHub as the source of truth. Full detail, risk levels, and launch phases: **[AGENTS.md](AGENTS.md)**.
+
+- **Otavio (founder, `tavinorama`)** — final approver; owns all secrets and live switches.
+- **Hermes (`ozvor-hermes`)** — orchestration, planning, PR reviews, operations, company coordination.
+- **Claude Code** — full-stack implementation executor. It **remains allowed** to implement across application code, infra-as-code, DB migrations, billing code, email integration, deployment config, and product pages whenever the task requires it.
+- **Branches and PRs are checkpoints, not blockers.** Every change ships via branch → PR → CI green → risk-gated approval (LOW/MEDIUM/HIGH/CRITICAL per AGENTS.md §2) → merge. Merge to `main` auto-deploys (Railway), so the merge gate IS the deploy gate.
+- **Founder approval is required before any live/production/destructive/paid action** (production data, live Stripe, live DNS, paid API activation, destructive commands, production migrations, secrets) — regardless of who wrote the code or what a merged doc says.
+- Hard limits for agents: never edit `.env` files; never print or commit secrets; never fabricate product data (audits/scores must be real or fail honestly).
 
 ---
 
