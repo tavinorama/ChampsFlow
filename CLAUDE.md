@@ -14,9 +14,9 @@ This file is loaded into context for every Claude Code session in this project. 
 - **Name**: OZvor (parent company) — products: **OZvor Search** (GEO / AI Search visibility platform) and **OZvor Social** (social/content execution); **OrganicPosts by Ozvor** (consultancy/DFY sub-brand)
 - **One-line description**: AI Search visibility platform for SMBs and agencies — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the Ozvor AI Visibility Score (3 scores: Visibility / Citation Readiness / Execution), and builds a GEO content plan; OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
 - **Sector**: general SaaS
-- **Home jurisdiction**: Brazil (entity registered — LGPD applies)
+- **Home jurisdiction**: Brazil — LGPD applies (entity registered, CNPJ on file with founder; razão social + registered address still pending for legal pages/ROPA)
 - **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All compliance artifacts must address Brazil (LGPD) + EU + US.
-- **Domains**: **ozvor.com (primary)** · trustindexai.com + organicposts.com (legacy → 301 to ozvor.com)
+- **Domains**: **ozvor.com (primary)** · legacy TrustIndex/OrganicPosts domains to be 301-redirected to ozvor.com (not yet configured — founder action in Cloudflare; verified 2026-07-06: trustindexai.com still serves the old site)
 - **Repository**: https://github.com/tavinorama/ChampsFlow
 - **Initialized**: 2026-05-01
 - **Pivot date**: 2026-05-29 (GEO platform pivot — Discovery re-opened)
