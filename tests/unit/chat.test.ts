@@ -465,7 +465,7 @@ describe("POST /api/chat — Anthropic integration", () => {
 
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body["model"]).toBe("claude-sonnet-4-5");
-    expect(body["max_tokens"]).toBe(600);
+    expect(body["max_tokens"]).toBe(280);
     expect(typeof body["system"]).toBe("string");
   });
 
