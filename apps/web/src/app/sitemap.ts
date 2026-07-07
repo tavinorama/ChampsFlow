@@ -28,6 +28,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ["/organicposts", "monthly", 0.8],
     ["/results", "monthly", 0.4],
 
+    // Comparison pages (P2) — high buyer-intent
+    ["/vs", "monthly", 0.7],
+    ["/vs/profound", "monthly", 0.7],
+    ["/vs/peec", "monthly", 0.7],
+    ["/vs/otterly", "monthly", 0.7],
+    ["/vs/athenahq", "monthly", 0.7],
+    ["/vs/semrush-ai", "monthly", 0.6],
+    ["/vs/ahrefs-brand-radar", "monthly", 0.6],
+
     // Resources — the premium GEO content (high-value citation-worthy assets)
     ["/resources/what-is-geo-search", "monthly", 0.9],
     ["/resources/geo-visibility-guide", "monthly", 0.8],
