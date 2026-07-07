@@ -53,7 +53,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     // Blog — videos (placeholder slugs; update when real videos are published)
     ["/blog/watch/what-is-geo-and-why-it-matters", "monthly", 0.6],
-    ["/blog/watch/trustindex-ai-audit-walkthrough", "monthly", 0.6],
+    ["/blog/watch/ozvor-audit-walkthrough", "monthly", 0.6],
 
     // Legal / trust pages
     ["/privacy-policy", "yearly", 0.3],

@@ -61,6 +61,82 @@ function sha256(s: string): string {
 
 const LIVE_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "gemini", "perplexity", "serp"];
 
+
+/**
+ * Emergency-safe Kit assembly used when the live audit path fails inside a paid
+ * delivery request. It intentionally uses conservative baseline scores and
+ * template drafts rather than fabricating live probe results. This protects the
+ * buyer experience: a paid Kit should deliver an honest starter pack instead of
+ * a generic "Something went wrong" page when one provider/runner is unavailable.
+ */
+export function buildFallbackKitDeliverable(input: KitInput): KitDeliverable {
+  const { brand, category } = input;
+  const fromTest: KitFromTest | null = input.testSeed
+    ? {
+        status: input.testSeed.status,
+        brandEngineCount: input.testSeed.brandEngineCount,
+        competitorEngineCount: input.testSeed.competitorEngineCount,
+        totalEngines: input.testSeed.totalEngines,
+        verdict: input.testSeed.verdict,
+      }
+    : null;
+
+  const score = computeGeoScore({
+    brand: { entityCompleteness: 0.35, citationVolume: 0.1, eeaSignal: 0.25 },
+    performance: {
+      schemaCoverage: 0.2,
+      llmsTxtPresent: false,
+      aiCrawlerAccess: 0.5,
+      citationShareVsCompetitors: 0.1,
+      aioPresence: false,
+    },
+    ai: { citationRate: 0.1, avgPositionScore: 0, sentimentScore: 0.5 },
+  });
+
+  const plan = generateStrategy({
+    scores: score,
+    components: {
+      brand: { entityCompleteness: 0.35, citationVolume: 0.1, eeaSignal: 0.25 },
+      performance: {
+        schemaCoverage: 0.2,
+        llmsTxtPresent: false,
+        aiCrawlerAccess: 0.5,
+        citationShareVsCompetitors: 0.1,
+        aioPresence: false,
+      },
+      ai: { citationRate: 0.1, avgPositionScore: 0, sentimentScore: 0.5 },
+    },
+    offsiteSources: [],
+    contentTraits: {},
+    displacedByCompetitors: 0,
+  });
+  const topFixes = plan.recommendations.slice(0, 3);
+  const types: ContentType[] = ["blog", "linkedin", "faq"];
+  const drafts: Array<{ contentType: ContentType } & ContentDraft> = types.map((contentType, i) => {
+    const rec = topFixes[i] ?? topFixes[0];
+    const topic = rec?.action ?? `How ${brand} helps with ${category}`;
+    return { contentType, ...templateDraft({ contentType, brandName: brand, category, topic }), keyUsed: "none" as const };
+  });
+
+  return {
+    brand,
+    generatedAt: new Date().toISOString(),
+    live: false,
+    fromTest,
+    score,
+    topFixes,
+    drafts,
+    publishChecklist: [
+      "Start with robots.txt: allow GPTBot, ClaudeBot, PerplexityBot and Google-Extended so AI engines can read your site.",
+      "Publish the blog draft on your website and link it from your homepage or resources page.",
+      "Publish the LinkedIn draft from your company page and add concrete proof points before posting.",
+      "Add the FAQ draft to your site with the included schema.org markup.",
+      "Re-run your AI Visibility Test in ~30 days to measure movement.",
+    ],
+    meta: { probesTotal: 0, probesCited: 0, enginesUsed: [] },
+  };
+}
+
 function buildPrompts(brand: string, category: string): string[] {
   const cat = category.trim() || "solution";
   return [

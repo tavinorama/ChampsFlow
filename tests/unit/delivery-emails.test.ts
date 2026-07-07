@@ -118,10 +118,13 @@ describe("bonus delivery email", () => {
     expect(p.to).toBe("cust@example.com");
     expect(p.html).toContain("Welcome to Growth");
 
-    // The three bonus downloads.
-    expect(p.html).toContain("The-GEO-Visibility-Guide.pdf");
-    expect(p.html).toContain("5-High-Citation-Post-Templates.pdf");
-    expect(p.html).toContain("LLM-Citation-Tracker.xlsx");
+    // The four direct bonus downloads.
+    expect(p.html).toContain("https://ozvor.com/downloads/The-GEO-Visibility-Guide.pdf");
+    expect(p.html).toContain("https://ozvor.com/downloads/5-High-Citation-Post-Templates.pdf");
+    expect(p.html).toContain("https://ozvor.com/downloads/LLM-Citation-Tracker.xlsx");
+    expect(p.html).toContain("https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf");
+    expect(p.text).toContain("https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf");
+    expect(p.html).not.toContain("/resources/llm-citation-tracker");
 
     // First action + ladder top rung.
     expect(p.html).toContain("https://ozvor.com/dashboard");

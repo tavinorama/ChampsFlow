@@ -46,11 +46,16 @@ const BONUS_ASSETS = [
       "Fill-in-the-blank content structures engineered to get your business cited — a usable template on page one.",
   },
   {
-    label: "LLM Citation Tracker (.xlsx) + Methodology (PDF)",
+    label: "LLM Citation Tracker spreadsheet (.xlsx)",
     url: "https://ozvor.com/downloads/LLM-Citation-Tracker.xlsx",
-    resourcePage: "https://ozvor.com/resources/llm-citation-tracker",
     description:
-      "The spreadsheet plus a 10-minute weekly routine to track when AI names your brand versus your competitors.",
+      "The working spreadsheet for tracking when AI names your brand versus your competitors.",
+  },
+  {
+    label: "LLM Citation Tracker methodology (PDF)",
+    url: "https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf",
+    description:
+      "The 10-minute weekly routine and scoring method that explains how to use the spreadsheet.",
   },
 ] as const;
 
@@ -89,7 +94,7 @@ export async function sendBonusDeliveryEmail(
 
   // ----- Plain-text body -----
   const bonusLines = BONUS_ASSETS.map(
-    (b, i) => `${i + 1}. ${b.label}\n   ${b.url}\n   (More info: ${b.resourcePage})`
+    (b, i) => `${i + 1}. ${b.label}\n   ${b.url}`
   ).join("\n\n");
 
   const agencyPerkLine = isAgencyAnnual
@@ -137,9 +142,7 @@ export async function sendBonusDeliveryEmail(
     <td style="padding:14px 0;border-bottom:1px solid #d5dfd9;">
       <p style="margin:0 0 4px 0;font-weight:700;color:#17211c;font-size:15px;">${b.label}</p>
       <p style="margin:0 0 10px 0;font-size:13px;color:#5c6e65;line-height:1.5;">${b.description}</p>
-      <a href="${b.url}" style="${btnStyle}">Download</a>
-      &nbsp;
-      <a href="${b.resourcePage}" style="font-size:13px;${linkStyle}">Learn more</a>
+      <a href="${b.url}" style="${btnStyle}">Download directly</a>
     </td>
   </tr>`
   ).join("");

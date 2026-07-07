@@ -3,7 +3,7 @@
  * Mock mode (no keys, no domain) → deterministic, no network.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import { buildKitDeliverable } from "../../../packages/llm/src/kit-deliverable";
+import { buildFallbackKitDeliverable, buildKitDeliverable } from "../../../packages/llm/src/kit-deliverable";
 
 beforeEach(() => {
   delete process.env["ANTHROPIC_API_KEY"];
@@ -69,5 +69,17 @@ describe("buildKitDeliverable (mock mode, no domain)", () => {
       totalEngines: 4,
       verdict: seed.verdict,
     });
+  });
+});
+
+
+describe("buildFallbackKitDeliverable", () => {
+  it("returns an honest non-live Kit instead of throwing when live generation is unavailable", () => {
+    const k = buildFallbackKitDeliverable({ brand: "Ozvor", domain: "https://ozvor.com", category: "GEO platform", region: "US" });
+    expect(k.brand).toBe("Ozvor");
+    expect(k.live).toBe(false);
+    expect(k.meta.probesTotal).toBe(0);
+    expect(k.drafts.map((d) => d.contentType)).toEqual(["blog", "linkedin", "faq"]);
+    expect(JSON.stringify(k)).not.toMatch(/TrustIndex|trustindexai/i);
   });
 });

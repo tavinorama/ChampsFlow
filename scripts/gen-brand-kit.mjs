@@ -109,7 +109,7 @@ function stackedLockup(w, h, cx, cy, u, { tagline = true, pill = false, url = fa
   if (pill) {
     const pw = Math.round(u * 0.42), ph = Math.round(u * 0.075), py = cursor + Math.round(u * 0.06);
     svg += `<rect x="${cx - pw / 2}" y="${py}" width="${pw}" height="${ph}" rx="${ph / 2}" fill="${EMERALD}" fill-opacity="0.12" stroke="${EMERALD}" stroke-opacity="0.5"/>`;
-    svg += text(cx, py + ph * 0.7, "TrustIndex AI Score", { size: Math.round(u * 0.036), weight: 600, fill: "#5fdfa8", anchor: "middle", spacing: 0 });
+    svg += text(cx, py + ph * 0.7, "Ozvor AI Visibility Score", { size: Math.round(u * 0.036), weight: 600, fill: "#5fdfa8", anchor: "middle", spacing: 0 });
     cursor = py + ph;
   }
   if (url) {
@@ -230,7 +230,7 @@ const BRAND_GUIDE = `# Ozvor — Brand Kit
 _Ozvor · AI Search Trust Intelligence · ozvor.com_
 
 Use these assets across every channel. The system is **dark-first, confident, and
-technical-but-human**. Protected names that never change: **"TrustIndex AI Score"**
+technical-but-human**. Protected names that never change: **"Ozvor AI Visibility Score"**
 (the 3-vector score) and **"OrganicPosts by Ozvor"** (the done-with-you arm).
 
 ---
