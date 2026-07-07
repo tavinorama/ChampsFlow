@@ -145,6 +145,20 @@ export function requireApiKey(db: PostgresClient) {
       );
     }
 
+    // Scope gate (Hermes review, operator PR): the tenant-scoped public API
+    // requires the 'read' scope. Operator-only keys (Hermes agent) must NOT be
+    // able to read tenant data — they are limited to /api/v1/operator/*.
+    if (!key.scopes.includes("read")) {
+      return c.json(
+        {
+          error: "forbidden",
+          code: "READ_SCOPE_REQUIRED",
+          message: "This key does not grant tenant API access (missing 'read' scope).",
+        },
+        403
+      );
+    }
+
     const allowed = await checkApiRateLimit(key.id);
     if (!allowed) {
       return c.json(
@@ -571,30 +585,52 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ error: "internal_error", code: "NO_TENANT_FOR_ADMIN" }, 500);
     }
 
-    await db.query(
-      `UPDATE api_key SET revoked_at = NOW() WHERE revoked_at IS NULL AND 'operator' = ANY(scopes)`,
-      []
-    );
-
     const { plaintext, prefix, hash } = generateApiKey();
-    const ins = await db.query<{
-      id: string;
-      name: string;
-      prefix: string;
-      scopes: string[];
-      created_at: string;
-    }>(
-      `INSERT INTO api_key (tenant_id, name, prefix, key_hash, scopes, created_by)
-       VALUES ($1, $2, $3, $4, ARRAY['operator']::text[], $5)
-       RETURNING id, name, prefix, scopes, created_at`,
-      [auth.tenantId, "hermes-operator", prefix, hash, auth.userId]
-    );
 
-    logger.info("operator_key_created", { key_id: ins.rows[0]?.id });
+    // Atomic rotation (Hermes review): revoke-old + insert-new run in ONE
+    // transaction, serialized by an advisory xact-lock so concurrent mints
+    // cannot leave zero or two active operator keys. If the insert fails the
+    // revoke rolls back with it.
+    let inserted:
+      | { id: string; name: string; prefix: string; scopes: string[]; created_at: string }
+      | undefined;
+    try {
+      inserted = await db.transaction(async (tx) => {
+        await tx.query(`SELECT pg_advisory_xact_lock(hashtext('operator-key-rotation'))`, []);
+        await tx.query(
+          `UPDATE api_key SET revoked_at = NOW() WHERE revoked_at IS NULL AND 'operator' = ANY(scopes)`,
+          []
+        );
+        const ins = await tx.query<{
+          id: string;
+          name: string;
+          prefix: string;
+          scopes: string[];
+          created_at: string;
+        }>(
+          `INSERT INTO api_key (tenant_id, name, prefix, key_hash, scopes, created_by)
+           VALUES ($1, $2, $3, $4, ARRAY['operator']::text[], $5)
+           RETURNING id, name, prefix, scopes, created_at`,
+          [auth.tenantId, "hermes-operator", prefix, hash, auth.userId]
+        );
+        return ins.rows[0];
+      });
+    } catch (err) {
+      logger.error("operator_key_rotation_failed", { message: (err as Error).message });
+      return c.json(
+        { error: "internal_error", code: "OPERATOR_KEY_ROTATION_FAILED", message: "Rotation rolled back — the previous key (if any) is still active." },
+        500
+      );
+    }
+    if (!inserted) {
+      return c.json({ error: "internal_error", code: "OPERATOR_KEY_ROTATION_FAILED" }, 500);
+    }
+
+    logger.info("operator_key_created", { key_id: inserted.id });
 
     return c.json(
       {
-        ...ins.rows[0],
+        ...inserted,
         key: plaintext,
         endpoints: ["/api/v1/operator/system-health", "/api/v1/operator/audits/recent"],
         warning:

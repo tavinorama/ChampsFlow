@@ -32,7 +32,13 @@ function makeMockDb(
     sql: string,
     params?: unknown[]
   ) => Promise<{ rows: MockRow[] }>;
-  return { query, setTenantId: async () => {}, transaction: async () => undefined };
+  // transaction mirrors the real adapter: runs fn with a tx handle whose
+  // query() hits the same mock, so atomic paths (operator-key rotation) are
+  // exercised end to end.
+  const transaction = async <T,>(
+    fn: (tx: { query: typeof query }) => Promise<T>
+  ): Promise<T> => fn({ query });
+  return { query, setTenantId: async () => {}, transaction };
 }
 
 const TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -353,5 +359,30 @@ describe("operator API (requireOperatorKey)", () => {
       headers: { Authorization: "Bearer dev-bypass" },
     });
     expect(res.status).toBe(403);
+  });
+
+  // Hermes review finding (HIGH): an operator-only key must NOT reach the
+  // tenant-scoped public API. requireApiKey now demands the 'read' scope.
+  it("operator-only key gets 403 READ_SCOPE_REQUIRED on tenant endpoints", async () => {
+    const db = publicDb({ scopes: ["operator"] });
+    for (const path of ["/api/v1/me", "/api/v1/brands", `/api/v1/audits/${AUDIT_ID}`]) {
+      const res = await buildApp(db).request(path, {
+        headers: { Authorization: "Bearer ozk_live_operator" },
+      });
+      expect(res.status, path).toBe(403);
+      const body = (await res.json()) as { code: string };
+      expect(body.code, path).toBe("READ_SCOPE_REQUIRED");
+    }
+  });
+
+  it("read-scoped key still reaches the tenant API (no regression)", async () => {
+    const db = publicDb({
+      scopes: ["read"],
+      tableRows: (sql) => (sql.includes("FROM tenants") ? [{ plan_tier: "growth" }] : []),
+    });
+    const res = await buildApp(db).request("/api/v1/me", {
+      headers: { Authorization: "Bearer ozk_live_valid" },
+    });
+    expect(res.status).toBe(200);
   });
 });
