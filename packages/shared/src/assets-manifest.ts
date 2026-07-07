@@ -33,9 +33,9 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     category: "client-deliverable",
     format: "pdf",
     description:
-      "The $29 tripwire product (22p): full audit walkthrough, Ozvor AI Visibility Score, top-3 fixes, 3 draft posts, 30-day retest plan.",
+      "The $29 tripwire product: audit walkthrough, Ozvor AI Visibility Score, top-3 fixes, 3 ready-to-publish drafts, 30-day retest plan.",
     publicPath: "/downloads/The-Get-Cited-Kit.pdf",
-    repoPath: "docs/examples/sample-get-cited-kit.md",
+    repoPath: "docs/marketing/lead-magnets/get-cited-kit.md",
   },
   {
     id: "whitepaper-understanding-geo",
