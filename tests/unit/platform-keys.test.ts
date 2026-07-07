@@ -100,15 +100,33 @@ describe("applyPlatformKeyOverrides", () => {
     expect(process.env["SERP_API_KEY"]).toBe("env-serp");
   });
 
-  it("leaves env untouched when the fetch fails (table missing)", async () => {
+  it("tolerates ONLY undefined-table (42P01): env untouched, resolves 0", async () => {
     process.env["ANTHROPIC_API_KEY"] = "env-anthropic";
     __resetPlatformKeySnapshotForTests();
 
+    const tableMissing = Object.assign(
+      new Error('relation "platform_provider_key" does not exist'),
+      { code: "42P01" }
+    );
     const n = await applyPlatformKeyOverrides(async () => {
-      throw new Error('relation "platform_provider_key" does not exist');
+      throw tableMissing;
     });
 
     expect(n).toBe(0);
+    expect(process.env["ANTHROPIC_API_KEY"]).toBe("env-anthropic");
+  });
+
+  it("PROPAGATES real DB errors (permissions/connectivity) instead of masking them", async () => {
+    process.env["ANTHROPIC_API_KEY"] = "env-anthropic";
+    __resetPlatformKeySnapshotForTests();
+
+    const permissionDenied = Object.assign(new Error("permission denied"), { code: "42501" });
+    await expect(
+      applyPlatformKeyOverrides(async () => {
+        throw permissionDenied;
+      })
+    ).rejects.toThrow("permission denied");
+    // Env keys stay in effect either way.
     expect(process.env["ANTHROPIC_API_KEY"]).toBe("env-anthropic");
   });
 

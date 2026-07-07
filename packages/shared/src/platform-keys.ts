@@ -108,10 +108,21 @@ async function applyPlatformKeyOverridesInner(
   try {
     rows = await fetchRows();
   } catch (err) {
-    log?.("platform_keys_refresh_skipped", {
+    // Hermes review: only undefined-table (42P01 — deploy before migration)
+    // degrades silently to env keys. Every other DB error (permissions,
+    // connectivity, corruption) is logged at error level and PROPAGATED so
+    // callers decide: boot paths fall back to env keys visibly, the admin
+    // write path fails the request instead of claiming success.
+    const code = (err as { code?: string }).code;
+    if (code === "42P01") {
+      log?.("platform_keys_refresh_skipped", { reason: "table_missing" });
+      return 0;
+    }
+    log?.("platform_keys_refresh_failed", {
+      code: code ?? "unknown",
       message: (err as Error).message?.slice(0, 120) ?? "unknown",
     });
-    return 0;
+    throw err;
   }
 
   const overridden = new Set<PlatformKeyProvider>();

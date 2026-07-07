@@ -809,7 +809,22 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
              rotated_at    = NOW()`,
       [provider, encrypted, last4, auth?.userId ?? null]
     );
-    await refreshPlatformKeys(db);
+    try {
+      await refreshPlatformKeys(db);
+    } catch (err) {
+      // Hermes review: never claim success when the runtime did not apply the
+      // key. The row IS stored; the 60s interval will retry the apply.
+      logger.error("admin_platform_key_apply_failed", { provider });
+      return c.json(
+        {
+          error: "apply_failed",
+          code: "KEY_STORED_NOT_APPLIED",
+          message:
+            "The key was stored encrypted, but applying it to the running API failed. It will be retried automatically within 60s — check system health before relying on it.",
+        },
+        500
+      );
+    }
     logger.info("admin_platform_key_rotated", { provider, last4 });
     return c.json({
       ok: true,
@@ -825,7 +840,20 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ error: "invalid_input", message: "unknown provider" }, 400);
     }
     await db.query(`DELETE FROM platform_provider_key WHERE provider = $1`, [provider]);
-    await refreshPlatformKeys(db);
+    try {
+      await refreshPlatformKeys(db);
+    } catch (err) {
+      logger.error("admin_platform_key_revert_failed", { provider });
+      return c.json(
+        {
+          error: "apply_failed",
+          code: "OVERRIDE_REMOVED_NOT_REVERTED",
+          message:
+            "The override row was removed, but reverting the running API to the env key failed. It will be retried automatically within 60s.",
+        },
+        500
+      );
+    }
     logger.info("admin_platform_key_override_removed", { provider });
     return c.json({
       ok: true,

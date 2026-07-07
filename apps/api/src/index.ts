@@ -91,9 +91,15 @@ const platformKeysReady: Promise<number> = refreshPlatformKeys(db)
     if (n > 0) logger.info("platform_keys_applied", { count: n });
     return n;
   })
-  .catch(() => 0);
+  .catch((err: Error) => {
+    // Real DB error (42P01 is tolerated upstream): serve on env keys, loudly.
+    logger.error("platform_keys_boot_refresh_failed", { message: err.message?.slice(0, 120) });
+    return 0;
+  });
 setInterval(() => {
-  void refreshPlatformKeys(db);
+  refreshPlatformKeys(db).catch(() => {
+    // Failure already logged at error level inside the shared module.
+  });
 }, 60_000).unref();
 
 // ---------------------------------------------------------------------------
