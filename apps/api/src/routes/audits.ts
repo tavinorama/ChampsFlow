@@ -1957,6 +1957,74 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   // by design for the public report, so we scope strictly by token + expiry
   // and return only non-sensitive aggregate fields.
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // GET /api/showcase/geo — PUBLIC: Ozvor's own building-in-public numbers.
+  // Powers the /results live case study. Exposes ONLY our own brand's
+  // aggregates (score history + per-engine citation summary) — no tenant
+  // identifiers, no prompt text, no competitor names. Cached 5 minutes.
+  // Data integrity: if there is no real data, the endpoint 404s — the page
+  // renders an honest fallback; numbers are never invented.
+  // -------------------------------------------------------------------------
+  app.get("/api/showcase/geo", async (c) => {
+    const brandId =
+      process.env["SHOWCASE_BRAND_ID"] ?? "e74fcbc1-a988-4b5d-b054-87329dc881c0"; // Ozvor
+
+    const auditsRes = await db.query<{
+      id: string;
+      created_at: string;
+      score_ai: number | null;
+      score_performance: number | null;
+      score_brand: number | null;
+    }>(
+      `SELECT id, created_at, score_ai, score_performance, score_brand
+         FROM geo_audit
+        WHERE brand_id = $1 AND status = 'complete'
+        ORDER BY created_at ASC
+        LIMIT 24`,
+      [brandId]
+    );
+    if (auditsRes.rows.length === 0) {
+      return c.json({ message: "No published audits yet." }, 404);
+    }
+
+    const history = auditsRes.rows.map((a) => ({
+      date: a.created_at,
+      ai: a.score_ai,
+      performance: a.score_performance,
+      brand: a.score_brand,
+      overall:
+        a.score_ai != null && a.score_performance != null && a.score_brand != null
+          ? Math.round(a.score_brand * 0.3 + a.score_performance * 0.35 + a.score_ai * 0.35)
+          : null,
+    }));
+
+    const latest = auditsRes.rows[auditsRes.rows.length - 1]!;
+    const enginesRes = await db.query<{
+      provider: string;
+      probes: string;
+      cited: string;
+    }>(
+      `SELECT provider, COUNT(*) AS probes, COUNT(*) FILTER (WHERE cited) AS cited
+         FROM citation_check
+        WHERE audit_id = $1
+        GROUP BY provider
+        ORDER BY provider`,
+      [latest.id]
+    );
+
+    c.header("Cache-Control", "public, max-age=300, s-maxage=300");
+    return c.json({
+      brand: "Ozvor",
+      history,
+      latest_engines: enginesRes.rows.map((e) => ({
+        provider: e.provider,
+        probes: parseInt(e.probes, 10),
+        cited: parseInt(e.cited, 10),
+      })),
+      generated_at: latest.created_at,
+    });
+  });
+
   app.get("/api/reports/:report_token", async (c) => {
     const token = c.req.param("report_token");
 
