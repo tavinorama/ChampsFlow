@@ -1,5 +1,5 @@
 /**
- * ScorecardGlyph — compact 3-vector TrustIndex AI scorecard visual.
+ * ScorecardGlyph — compact 3-vector Ozvor AI Visibility Score visual.
  *
  * Three arcs (AI · Brand · Performance) arranged as concentric partial rings,
  * each filled to a different percentage with the emerald gradient.
