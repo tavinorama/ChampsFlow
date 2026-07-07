@@ -62,7 +62,12 @@ docs/07-deploy-review.md
 docs/compliance/model-cards/
 
 # Marketing / sales / support artifacts (generated per project)
-docs/marketing/
+# EXCEPTION: lead-magnet SOURCES are product source-of-truth (the paid PDFs in
+# apps/web/public/downloads are built from them) — they must live in git.
+# (`docs/marketing/*` instead of `docs/marketing/` so the re-include works —
+# git cannot re-include below an excluded directory.)
+docs/marketing/*
+!docs/marketing/lead-magnets/
 docs/sales/
 docs/support/
 
