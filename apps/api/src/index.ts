@@ -57,6 +57,7 @@ import { registerApiKeyRoutes } from "./routes/api-keys";
 import { registerAgencyRoutes } from "./routes/agency";
 import { registerAttributionRoutes } from "./routes/attribution";
 import { registerCheckoutRoutes } from "./routes/checkout";
+import { registerOperatorBusinessRoutes } from "./routes/operator";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
@@ -262,6 +263,7 @@ registerDraftRoutes(app, db);
 //   Public read-only (API-key-authed): GET /api/v1/{me,brands,brands/:id,
 //     brands/:id/audits,audits/:id}
 registerApiKeyRoutes(app, db);
+registerOperatorBusinessRoutes(app, db);
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
