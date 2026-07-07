@@ -49,10 +49,10 @@ const DELIVERABLES = [
     toc: true, breakSections: false,
   },
   {
-    in: "docs/examples/sample-get-cited-kit.md",
+    in: "docs/marketing/lead-magnets/get-cited-kit.md",
     out: "The-Get-Cited-Kit.pdf",
     title: "The Get-Cited Kit",
-    subtitle: "Your GEO starter playbook — sample deliverable",
+    subtitle: "Your 30-day plan to get named by ChatGPT, Claude, Perplexity & Gemini",
     kicker: "Ozvor · $29",
     toc: true, breakSections: true,
   },
