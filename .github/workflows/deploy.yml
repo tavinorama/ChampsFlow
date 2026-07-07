@@ -1,8 +1,12 @@
 name: Deploy
 
+# Manual-only until a real staging environment exists. Production deploys
+# happen via Railway's GitHub integration on merge to main; this workflow's
+# staging-migration step has no live staging target and failed on every main
+# push, leaving main permanently red (normalized-failure hazard — see the
+# 2026-06 worker incident). Re-enable the push trigger when staging is real.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 # Only one deploy at a time; cancel superseded runs
 concurrency:
