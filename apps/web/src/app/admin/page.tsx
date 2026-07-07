@@ -127,7 +127,7 @@ interface Opportunities {
   note: string;
 }
 
-type TabId = "system-health" | "analytics" | "clients" | "leads" | "revenue" | "pipeline" | "opportunities";
+type TabId = "system-health" | "analytics" | "clients" | "leads" | "revenue" | "pipeline" | "opportunities" | "assets";
 
 // ---------------------------------------------------------------------------
 // Helper — date formatting
@@ -1438,6 +1438,120 @@ function ProviderKeysPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// AssetsTab — the asset library: client deliverables, brand kit, GTM content.
+// Static manifest served by GET /api/admin/assets (same data Hermes reads via
+// the operator API). publicPath = live artifact; repoPath = editable source.
+// ---------------------------------------------------------------------------
+
+interface OzvorAssetRow {
+  id: string;
+  title: string;
+  category: "client-deliverable" | "brand" | "content-gtm";
+  format: string;
+  description: string;
+  publicPath?: string;
+  repoPath?: string;
+}
+
+const ASSET_CATEGORY_LABELS: Record<OzvorAssetRow["category"], string> = {
+  "client-deliverable": "Client deliverables",
+  brand: "Brand kit",
+  "content-gtm": "Content & GTM pack",
+};
+
+function AssetsTab(): React.ReactElement {
+  const [assets, setAssets] = useState<OzvorAssetRow[] | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/admin/assets");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { assets: OzvorAssetRow[] };
+        setAssets(data.assets);
+      } catch {
+        setError("Could not load the asset library.");
+      }
+    })();
+  }, []);
+
+  if (error) {
+    return <p role="alert" style={{ color: "var(--color-error)", fontSize: "var(--font-size-body-sm)" }}>{error}</p>;
+  }
+  if (!assets) {
+    return <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>Loading&hellip;</p>;
+  }
+
+  const categories: OzvorAssetRow["category"][] = ["client-deliverable", "brand", "content-gtm"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
+      <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", maxWidth: "68ch" }}>
+        Every deliverable, brand file and GTM document in one place. Download links serve the live
+        artifact; the source path is where it gets improved (edit → PR → regenerate). Hermes reads
+        this same library via the operator API.
+      </p>
+      {categories.map((cat) => (
+        <section key={cat} aria-label={ASSET_CATEGORY_LABELS[cat]}>
+          <h3 style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, margin: "0 0 var(--space-3) 0" }}>
+            {ASSET_CATEGORY_LABELS[cat]}
+          </h3>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            {assets.filter((a) => a.category === cat).map((a) => (
+              <li
+                key={a.id}
+                style={{
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "var(--space-3) var(--space-4)",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "baseline",
+                  gap: "var(--space-2) var(--space-4)",
+                }}
+              >
+                <div style={{ flex: "1 1 260px" }}>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+                    {a.title}{" "}
+                    <span style={{ fontWeight: 400, color: "var(--color-muted)", fontSize: "var(--font-size-caption)", textTransform: "uppercase" }}>
+                      {a.format}
+                    </span>
+                  </p>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                    {a.description}
+                  </p>
+                  {a.repoPath && (
+                    <p style={{ margin: "4px 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                      source: <code style={{ fontSize: "inherit" }}>{a.repoPath}</code>
+                    </p>
+                  )}
+                </div>
+                {a.publicPath && (
+                  <a
+                    href={a.publicPath}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: "var(--color-primary)",
+                      fontSize: "var(--font-size-body-sm)",
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Download ↗
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // AnalyticsTab
 // ---------------------------------------------------------------------------
 
@@ -1986,6 +2100,7 @@ export default function AdminPage() {
     { id: "revenue",       label: "Revenue" },
     { id: "pipeline",      label: "Pipeline" },
     { id: "opportunities", label: "Opportunities" },
+    { id: "assets",        label: "Assets" },
   ];
 
   return (
@@ -2170,6 +2285,25 @@ export default function AdminPage() {
             Loading&hellip;
           </p>
         )}
+
+        {/* ── Assets tab ── */}
+        <section
+          id="tabpanel-assets"
+          role="tabpanel"
+          aria-labelledby="tab-assets"
+          hidden={activeTab !== "assets"}
+        >
+          <h2
+            style={{
+              fontSize: "var(--font-size-h3)",
+              fontWeight: 700,
+              margin: "0 0 var(--space-4) 0",
+            }}
+          >
+            Assets
+          </h2>
+          {activeTab === "assets" && <AssetsTab />}
+        </section>
 
         {/* ── System Health tab ── */}
         <section
