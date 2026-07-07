@@ -1064,7 +1064,128 @@ function SystemHealthTab({ health }: { health: SystemHealth | null; loading: boo
           </ul>
         </div>
       </section>
+
+      {/* Hermes operator access — machine key for the operations agent */}
+      <HermesOperatorPanel />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HermesOperatorPanel — mint the read-only operator API key for the Hermes
+// agent (VPS). Rotation semantics: generating a new key revokes the previous
+// one. The plaintext is shown exactly once. Operator endpoints are PII-free
+// (engine liveness, infra status, audit outcomes — no customer data).
+// ---------------------------------------------------------------------------
+
+function HermesOperatorPanel() {
+  const [minted, setMinted] = useState<{ key: string; endpoints: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function mint() {
+    if (
+      !window.confirm(
+        "Generate a new Hermes operator key? The previous operator key (if any) will be revoked immediately."
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await apiFetch("/api/admin/operator-key", { method: "POST" });
+      const data = (await res.json()) as { key?: string; endpoints?: string[]; message?: string };
+      if (res.ok && data.key) {
+        setMinted({ key: data.key, endpoints: data.endpoints ?? [] });
+      } else {
+        setError(data.message ?? "Failed to generate the operator key.");
+      }
+    } catch {
+      setError("Network error — no key was generated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="hermes-operator-heading">
+      <h3
+        id="hermes-operator-heading"
+        style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, margin: "0 0 var(--space-2) 0" }}
+      >
+        Hermes operator access
+      </h3>
+      <p
+        style={{
+          margin: "0 0 var(--space-3) 0",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+        }}
+      >
+        Read-only machine key for the Hermes agent: engine liveness, infra status and audit
+        outcomes — no customer data, billing, or secrets. Generating a new key revokes the previous
+        one.
+      </p>
+      {error && (
+        <p role="alert" style={{ margin: "0 0 var(--space-3) 0", color: "var(--color-error)", fontSize: "var(--font-size-body-sm)" }}>
+          {error}
+        </p>
+      )}
+      {minted ? (
+        <div
+          style={{
+            border: "1px solid var(--color-success)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-4)",
+            backgroundColor: "var(--color-success-surface)",
+          }}
+        >
+          <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)", color: "var(--color-success)" }}>
+            Operator key generated — copy it NOW, it will not be shown again:
+          </p>
+          <code
+            style={{
+              display: "block",
+              padding: "var(--space-2) var(--space-3)",
+              backgroundColor: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              fontSize: "var(--font-size-body-sm)",
+              wordBreak: "break-all",
+              userSelect: "all",
+            }}
+          >
+            {minted.key}
+          </code>
+          <p style={{ margin: "var(--space-3) 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+            Paste it into the Hermes VPS config as{" "}
+            <code>Authorization: Bearer &lt;key&gt;</code>. Endpoints:{" "}
+            {minted.endpoints.join(" · ")}
+          </p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void mint()}
+          style={{
+            height: "38px",
+            padding: "0 var(--space-5)",
+            border: "none",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-primary)",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: "var(--font-size-body-sm)",
+            cursor: busy ? "not-allowed" : "pointer",
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy ? "Generating…" : "Generate Hermes operator key"}
+        </button>
+      )}
+    </section>
   );
 }
 
