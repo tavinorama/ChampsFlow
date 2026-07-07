@@ -737,16 +737,27 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
 
   app.get("/api/admin/provider-keys", requireAuth, requireSuperAdmin, async (c) => {
     let rows: { provider: string; key_last4: string; rotated_at: string }[] = [];
+    let tableMissing = false;
     try {
       const res = await db.query<{ provider: string; key_last4: string; rotated_at: string }>(
         `SELECT provider, key_last4, rotated_at FROM platform_provider_key`
       );
       rows = res.rows;
     } catch (err) {
-      // Table missing (migration not applied yet) → show env-only state.
-      logger.warn("admin_provider_keys_table_missing", {
-        message: (err as Error).message?.slice(0, 120),
-      });
+      // Hermes review: only the undefined-table error (42P01 — migration not
+      // applied yet) degrades to env-only status. Anything else (permissions,
+      // connectivity, corruption) is a real failure and must be visible.
+      const code = (err as { code?: string }).code;
+      if (code === "42P01") {
+        tableMissing = true;
+        logger.warn("admin_provider_keys_table_missing", {});
+      } else {
+        logger.error("admin_provider_keys_query_failed", {
+          code: code ?? "unknown",
+          message: (err as Error).message?.slice(0, 120),
+        });
+        return c.json({ error: "internal_error", code: "PROVIDER_KEYS_QUERY_FAILED" }, 500);
+      }
     }
     const byProvider = new Map(rows.map((r) => [r.provider, r]));
     const keys = PLATFORM_KEY_PROVIDERS.map((p) => {
@@ -759,7 +770,7 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         active_source: row ? "dashboard" : bootEnvHasKey(p) ? "railway_env" : "none",
       };
     });
-    return c.json({ keys });
+    return c.json({ keys, table_missing: tableMissing || undefined });
   });
 
   app.put("/api/admin/provider-keys/:provider", requireAuth, requireSuperAdmin, async (c) => {

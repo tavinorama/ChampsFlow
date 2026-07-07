@@ -77,13 +77,28 @@ export interface PlatformKeyRow {
   key_encrypted: Buffer | Uint8Array;
 }
 
+// Overlap guard (Hermes review): if a refresh is already running, callers
+// share its promise instead of starting a second concurrent pass.
+let inFlight: Promise<number> | null = null;
+
 /**
  * Fetches override rows (caller supplies the query — api and worker have
  * different pg clients), decrypts them, and applies them to process.env.
  * Providers without an override revert to their boot env value.
- * Returns the number of active overrides.
+ * Returns the number of active overrides. Concurrent calls coalesce.
  */
-export async function applyPlatformKeyOverrides(
+export function applyPlatformKeyOverrides(
+  fetchRows: () => Promise<PlatformKeyRow[]>,
+  log?: (event: string, meta: Record<string, unknown>) => void
+): Promise<number> {
+  if (inFlight) return inFlight;
+  inFlight = applyPlatformKeyOverridesInner(fetchRows, log).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function applyPlatformKeyOverridesInner(
   fetchRows: () => Promise<PlatformKeyRow[]>,
   log?: (event: string, meta: Record<string, unknown>) => void
 ): Promise<number> {

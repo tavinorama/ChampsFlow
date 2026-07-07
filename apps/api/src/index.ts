@@ -83,9 +83,15 @@ const db = createPostgresClient(sql);
 // at boot and refreshed every 60s. Railway env values remain the fallback and
 // a missing table (deploy before migration) is tolerated. lib/platform-keys.ts.
 // ---------------------------------------------------------------------------
-void refreshPlatformKeys(db).then((n) => {
-  if (n > 0) logger.info("platform_keys_applied", { count: n });
-});
+// The FIRST refresh gates serve() below (Hermes review): requests must never
+// race a pending key override. It fails open (env keys stay in effect) and is
+// a single SELECT, so it adds milliseconds to boot and can never block it.
+const platformKeysReady: Promise<number> = refreshPlatformKeys(db)
+  .then((n) => {
+    if (n > 0) logger.info("platform_keys_applied", { count: n });
+    return n;
+  })
+  .catch(() => 0);
 setInterval(() => {
   void refreshPlatformKeys(db);
 }, 60_000).unref();
@@ -381,18 +387,24 @@ app.notFound((c) => {
 
 const port = config.PORT;
 
-const server = serve(
-  {
-    fetch: app.fetch,
-    port,
-  },
-  () => {
-    logger.info("api_started", {
+// Serving starts only after the first platform-key refresh resolves (it never
+// rejects — env keys are the fallback). `server` is therefore briefly null;
+// the shutdown path guards for that window.
+let server: ReturnType<typeof serve> | null = null;
+void platformKeysReady.then(() => {
+  server = serve(
+    {
+      fetch: app.fetch,
       port,
-      env: config.NODE_ENV,
-    });
-  }
-);
+    },
+    () => {
+      logger.info("api_started", {
+        port,
+        env: config.NODE_ENV,
+      });
+    }
+  );
+});
 
 // Verify runtime RLS enforcement is actually wired before serving real traffic.
 // If the app role is missing/over-privileged/unassumable, RLS would be silently
@@ -424,8 +436,10 @@ async function shutdown(signal: string): Promise<void> {
   }, 10_000);
 
   try {
-    // Close the HTTP server (stops accepting new connections)
+    // Close the HTTP server (stops accepting new connections). May still be
+    // null if shutdown races the pre-serve platform-key refresh.
     await new Promise<void>((resolve, reject) => {
+      if (!server) return resolve();
       server.close((err) => {
         if (err) reject(err);
         else resolve();

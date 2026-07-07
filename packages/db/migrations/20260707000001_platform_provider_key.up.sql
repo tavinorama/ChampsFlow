@@ -32,4 +32,19 @@ CREATE TABLE IF NOT EXISTS platform_provider_key (
 
 ALTER TABLE platform_provider_key ENABLE ROW LEVEL SECURITY;
 ALTER TABLE platform_provider_key FORCE ROW LEVEL SECURITY;
--- Intentionally NO policies and NO grants: app_user has zero access.
+
+-- Access model (made EXPLICIT per Hermes review — do not rely on implicit
+-- owner/BYPASSRLS behavior under FORCE RLS):
+--   - `postgres` is the privileged runtime role for api/worker/admin paths.
+--     Verified on the production instance: rolbypassrls = true. The explicit
+--     policy below keeps this table working even on a deployment where the
+--     runtime role lacks BYPASSRLS (e.g. self-hosted).
+--   - `app_user` (tenant-scoped role) gets NO grants and NO policy: tenants
+--     can never read platform keys, even through an RLS-scoped query path.
+CREATE POLICY platform_service_only ON platform_provider_key
+  FOR ALL TO postgres
+  USING (true)
+  WITH CHECK (true);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON platform_provider_key TO postgres;
+-- Intentionally NO grants to app_user.

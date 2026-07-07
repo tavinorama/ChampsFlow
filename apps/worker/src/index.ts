@@ -104,9 +104,16 @@ const refreshPlatformKeys = (): Promise<number> =>
     },
     (event, meta) => logger.info(event, meta as Record<string, string>)
   );
-void refreshPlatformKeys().then((n) => {
-  if (n > 0) logger.info("platform_keys_applied", { count: n });
-});
+// The audit worker is the only provider-key consumer here, so it starts with
+// autorun:false and begins processing ONLY after the first refresh settles
+// (Hermes review: a job must never race a pending key override). The refresh
+// fails open (env keys), so `.finally()` guarantees the worker always starts.
+const platformKeysReady = refreshPlatformKeys()
+  .then((n) => {
+    if (n > 0) logger.info("platform_keys_applied", { count: n });
+    return n;
+  })
+  .catch(() => 0);
 setInterval(() => {
   void refreshPlatformKeys();
 }, 60_000).unref();
@@ -123,9 +130,14 @@ const auditWorker = new Worker(
   {
     connection,
     concurrency: 3,
-    autorun: true,
+    autorun: false, // started below, after the first platform-key refresh
   }
 );
+
+void platformKeysReady.finally(() => {
+  void auditWorker.run();
+  logger.info("audit_worker_started_after_key_refresh", {});
+});
 
 auditWorker.on("active", (job) => {
   logger.info("audit_job_started", { job_id: job.id, attempt: job.attemptsMade + 1 });
