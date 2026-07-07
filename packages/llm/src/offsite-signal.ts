@@ -80,7 +80,7 @@ async function serpCount(query: string, apiKey: string): Promise<number | null> 
         "content-type": "application/json",
         authorization: `Basic ${apiKey}`, // DataForSEO uses base64(login:password)
       },
-      body: JSON.stringify([{ keyword: query, language_code: "en", location_code: 2840 }]),
+      body: JSON.stringify([{ keyword: query, language_code: "en", location_code: 2840, depth: 10 }]),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {

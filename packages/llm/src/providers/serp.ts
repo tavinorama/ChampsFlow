@@ -104,7 +104,7 @@ export class SerpProbeAdapter implements ProviderAdapter {
         signal: controller.signal,
         headers: { "content-type": "application/json", authorization: `Basic ${apiKey}` },
         body: JSON.stringify([
-          { keyword: query.queryText, language_code: "en", location_code: region === "EU" ? 2826 : 2840 },
+          { keyword: query.queryText, language_code: "en", location_code: region === "EU" ? 2826 : 2840, depth: 10 },
         ]),
       });
       if (!res.ok) {
