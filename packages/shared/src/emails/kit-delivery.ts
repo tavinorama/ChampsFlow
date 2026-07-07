@@ -50,15 +50,25 @@ export async function sendKitDeliveryEmail(
     process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const kitUrl = `${KIT_BASE_URL}/${params.orderToken}`;
-  const subject = "Your Get-Cited Kit is ready — access it here";
+  const pricingUrl = "https://ozvor.com/pricing";
+  const subject = "Your Get-Cited Kit is ready — start with the 5-minute fix";
 
   // ----- Plain-text body -----
   const textBody = [
-    `Your $29 Get-Cited Kit for ${params.brand} is ready.`,
+    `Your Get-Cited Kit for ${params.brand} is ready.`,
     "",
-    "Click the link below to access your full audit, top-3 fixes, and 3 ready-to-publish content drafts:",
+    "It's a 30-day plan to get named by ChatGPT, Claude, Perplexity and Gemini — your audit, your top-3 prioritized fixes, three ready-to-publish drafts, and a week-by-week retest plan. Most of it fits in an afternoon.",
     "",
+    "Open your Kit:",
     kitUrl,
+    "",
+    "Do this first (5 minutes): open your robots.txt and confirm you are not blocking GPTBot, ClaudeBot, PerplexityBot or Google-Extended. If any are blocked, the engines can't read your site — Fix 1 in your Kit walks you through it.",
+    "",
+    "When you're ready to stop doing it by hand:",
+    "- Growth ($99/mo): weekly re-audits and alerts across all 5 engines, plus publish-ready drafts in your brand voice.",
+    "- Agency ($249/mo): the same, white-label, for up to 25 client brands.",
+    "- OrganicPosts by Ozvor: our team executes the whole plan for you.",
+    `See the plans: ${pricingUrl}`,
     "",
     "Questions? Reply to this email or write to hello@ozvor.com",
     "",
@@ -66,9 +76,10 @@ export async function sendKitDeliveryEmail(
     "https://ozvor.com",
   ].join("\n");
 
-  // ----- HTML body -----
+  // ----- HTML body (Ozvor dark-first identity, email-safe) -----
   const btnStyle =
-    "display:inline-block;padding:12px 24px;background:#1D4ED8;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;";
+    "display:inline-block;padding:13px 26px;background:#0c7d54;color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;";
+  const linkStyle = "color:#0c7d54;text-decoration:none;";
 
   const htmlBody = `<!DOCTYPE html>
 <html lang="en">
@@ -77,53 +88,75 @@ export async function sendKitDeliveryEmail(
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${subject}</title>
 </head>
-<body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111827;background:#ffffff;">
+<body style="font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;padding:0;color:#17211c;background:#ffffff;">
 
-  <!-- Header -->
-  <div style="margin-bottom:24px;">
-    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
+  <!-- Header band (dark-first Ozvor identity) -->
+  <div style="background:#0c1310;padding:22px 28px;border-radius:0 0 4px 4px;">
+    <p style="margin:0;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#34c388;">
       Ozvor
     </p>
-    <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
+  </div>
+
+  <div style="padding:28px;">
+    <h1 style="font-size:24px;font-weight:800;letter-spacing:-0.02em;margin:0 0 6px 0;color:#17211c;">
       Your Get-Cited Kit is ready
     </h1>
-    <p style="font-size:14px;color:#6B7280;margin:0;">
-      ${params.brand} &middot; $29 one-time
+    <p style="font-size:14px;color:#5c6e65;margin:0 0 24px 0;">
+      ${params.brand} &middot; a 30-day plan to get named by AI search
+    </p>
+
+    <p style="color:#3a473f;margin:0 0 24px 0;line-height:1.6;">
+      Everything inside is built to be <strong>done, not just read</strong>: your audit, your top-3
+      prioritized fixes, three ready-to-publish drafts, and a week-by-week retest plan.
+    </p>
+
+    <!-- CTA -->
+    <div style="text-align:center;margin:0 0 28px 0;">
+      <a href="${kitUrl}" style="${btnStyle}">Open your Kit</a>
+    </div>
+
+    <!-- Quick win -->
+    <div style="background:#eef6f1;border-left:3px solid #0c7d54;border-radius:0 8px 8px 0;padding:16px 18px;margin:0 0 28px 0;">
+      <p style="margin:0;font-size:14px;color:#17211c;line-height:1.6;">
+        <strong>Do this first (5 minutes):</strong> open your <code>robots.txt</code> and confirm
+        you're not blocking GPTBot, ClaudeBot, PerplexityBot or Google-Extended. If any are blocked,
+        the engines can't read your site — Fix 1 in your Kit walks you through it.
+      </p>
+    </div>
+
+    <!-- What's inside -->
+    <h2 style="font-size:15px;font-weight:700;color:#17211c;margin:0 0 12px 0;">What's inside</h2>
+    <ul style="margin:0 0 28px 0;padding-left:20px;color:#3a473f;font-size:14px;line-height:1.8;">
+      <li><strong>Your AI Visibility Audit</strong> — how ${params.brand} appears across ChatGPT, Claude, Perplexity &amp; Gemini, measured live</li>
+      <li><strong>Top-3 prioritized fixes</strong> — ordered by impact and effort, so you start where it moves the needle</li>
+      <li><strong>3 ready-to-publish drafts</strong> — with the schema markup AI engines read</li>
+      <li><strong>Your 30-day retest plan</strong> — what to change, when to re-measure, what "working" looks like</li>
+    </ul>
+
+    <!-- Ladder / next step -->
+    <div style="background:#f2f6f3;border:1px solid #d5dfd9;border-radius:10px;padding:20px;margin:0 0 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#17211c;margin:0 0 8px 0;">When you're ready to stop doing it by hand</h2>
+      <p style="margin:0 0 6px 0;font-size:14px;color:#3a473f;line-height:1.6;">
+        <strong>Growth &mdash; $99/mo:</strong> weekly re-audits and alerts across all 5 engines, plus publish-ready drafts in your brand voice.
+      </p>
+      <p style="margin:0 0 6px 0;font-size:14px;color:#3a473f;line-height:1.6;">
+        <strong>Agency &mdash; $249/mo:</strong> the same, white-label, for up to 25 client brands.
+      </p>
+      <p style="margin:0 0 12px 0;font-size:14px;color:#3a473f;line-height:1.6;">
+        <strong>OrganicPosts by Ozvor:</strong> our team executes the whole plan for you.
+      </p>
+      <a href="${pricingUrl}" style="${linkStyle}font-weight:600;font-size:14px;">See the plans &rarr;</a>
+    </div>
+
+    <!-- Footer -->
+    <hr style="border:none;border-top:1px solid #d5dfd9;margin:0 0 16px 0;" />
+    <p style="font-size:12px;color:#8a9a91;margin:0;">
+      Questions? Reply to this email or write to
+      <a href="mailto:hello@ozvor.com" style="${linkStyle}">hello@ozvor.com</a>
+      &nbsp;&middot;&nbsp;
+      <a href="https://ozvor.com" style="${linkStyle}">ozvor.com</a>
     </p>
   </div>
-
-  <p style="color:#374151;margin-bottom:24px;">
-    Your $29 Get-Cited Kit for <strong>${params.brand}</strong> is ready. Click below to access
-    your full audit, top-3 fixes, and 3 ready-to-publish content drafts.
-  </p>
-
-  <!-- CTA -->
-  <div style="text-align:center;margin-bottom:32px;">
-    <a href="${kitUrl}" style="${btnStyle}">
-      Access your Kit
-    </a>
-  </div>
-
-  <!-- What's inside -->
-  <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:20px;margin-bottom:28px;">
-    <h2 style="font-size:15px;font-weight:600;color:#0C4A6E;margin:0 0 12px 0;">
-      What's inside
-    </h2>
-    <ul style="margin:0;padding-left:20px;color:#0E7490;font-size:14px;line-height:1.8;">
-      <li><strong>Full AI Visibility Audit</strong> — how ${params.brand} appears across ChatGPT, Claude, Perplexity &amp; Gemini</li>
-      <li><strong>Top-3 fixes</strong> — the highest-impact changes to improve your AI citation rate</li>
-      <li><strong>3 ready-to-publish content drafts</strong> — citation-worthy posts you can use immediately</li>
-    </ul>
-  </div>
-
-  <!-- Footer -->
-  <hr style="border:none;border-top:1px solid #E5E7EB;margin-bottom:16px;" />
-  <p style="font-size:12px;color:#9CA3AF;margin:0;">
-    Questions? Reply to this email or write to
-    <a href="mailto:hello@ozvor.com" style="color:#2563EB;">hello@ozvor.com</a>
-    &nbsp;&middot;&nbsp;
-    <a href="https://ozvor.com" style="color:#2563EB;">ozvor.com</a>
-  </p>
 </body>
 </html>`;
 
