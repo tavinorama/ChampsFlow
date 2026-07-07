@@ -47,6 +47,13 @@ interface BillingPlanResponse {
   status: "active" | "past_due" | "canceled" | "incomplete" | "trialing";
   renewal_date: string | null;
   cancel_at_period_end: boolean;
+  /**
+   * False when the plan is granted directly (tenants.plan_tier with no Stripe
+   * subscription — e.g. the founder account). No Stripe customer exists, so
+   * the "Manage in Stripe" button is replaced by an explanatory note.
+   * Optional: older API builds don't return it (undefined → treat as true).
+   */
+  managed_by_stripe?: boolean;
   usage: {
     /** Number of active social accounts (legacy field still returned by API) */
     connected_accounts: number;
@@ -193,6 +200,34 @@ function UsageBar({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EntitlementRow — a plan allowance shown as a plain value (no progress bar).
+// For entitlements like "competitors per brand", a usage bar is misleading:
+// the value is what the plan grants, not something being consumed.
+// ---------------------------------------------------------------------------
+
+function EntitlementRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}): React.ReactElement {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+      <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+        {label}
+      </span>
+      <span
+        aria-label={`${label}: ${value}`}
+        style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -369,10 +404,14 @@ function BillingPageInner(): React.ReactElement {
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as { message?: string }).message ?? `HTTP ${res.status}`
-        );
+        const err = (await res.json().catch(() => ({}))) as {
+          code?: string;
+          message?: string;
+        };
+        // Prefer the machine-readable code — the human message ("No active
+        // subscription found…") never contains it, which used to route this
+        // case into the generic error toast.
+        throw new Error(err.code ?? err.message ?? `HTTP ${res.status}`);
       }
       const { url } = (await res.json()) as { url: string };
       // Full-page redirect to Stripe Customer Portal
@@ -383,7 +422,7 @@ function BillingPageInner(): React.ReactElement {
       if (errMsg.includes("NO_STRIPE_CUSTOMER") || errMsg.includes("no_subscription")) {
         showToast(
           "info",
-          "No active subscription found. Please choose a plan below."
+          "This account has no Stripe subscription to manage — the plan is granted directly."
         );
       } else {
         showToast(
@@ -697,7 +736,24 @@ function BillingPageInner(): React.ReactElement {
                     </p>
                   )}
 
-                  {/* Manage in Stripe button */}
+                  {/* Manage in Stripe — only when a Stripe subscription actually
+                      exists. Granted plans (no Stripe customer) get a note
+                      instead of a button that can only fail. */}
+                  {billingData.managed_by_stripe === false ? (
+                    <p
+                      style={{
+                        fontSize: "var(--font-size-body-sm)",
+                        color: "var(--color-muted)",
+                        margin: 0,
+                        padding: "var(--space-3) var(--space-4)",
+                        border: "1px dashed var(--color-border)",
+                        borderRadius: "var(--radius-md)",
+                      }}
+                    >
+                      This plan is granted directly to your account — there is no
+                      Stripe subscription to manage.
+                    </p>
+                  ) : (
                   <button
                     type="button"
                     onClick={() => void handleOpenPortal()}
@@ -730,6 +786,7 @@ function BillingPageInner(): React.ReactElement {
                   >
                     {isOpeningPortal ? "Redirecting to billing…" : "Manage in Stripe"}
                   </button>
+                  )}
                 </div>
               </section>
             )}
@@ -767,15 +824,20 @@ function BillingPageInner(): React.ReactElement {
                   used={1}
                   limit={billingData.usage.max_brands}
                 />
-                <UsageBar
+                {/* Entitlements, not consumption — plain values. Rendering these
+                    through UsageBar produced "null / unlimited" and a misleading
+                    full 250/250 warning bar. */}
+                <EntitlementRow
                   label="Competitors per brand"
-                  used={billingData.usage.max_competitors}
-                  limit={billingData.usage.max_competitors}
+                  value={
+                    billingData.usage.max_competitors === null
+                      ? "Unlimited"
+                      : `Up to ${billingData.usage.max_competitors}`
+                  }
                 />
-                <UsageBar
+                <EntitlementRow
                   label="Prompts per audit"
-                  used={billingData.usage.prompts_per_audit}
-                  limit={billingData.usage.prompts_per_audit}
+                  value={String(billingData.usage.prompts_per_audit)}
                 />
                 {/* Monitoring cadence — plain text row, no progress bar */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>

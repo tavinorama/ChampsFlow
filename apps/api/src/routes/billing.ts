@@ -356,6 +356,10 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         renewal_date: sub?.current_period_end ?? null,
         cancel_at_period_end: sub?.cancel_at_period_end ?? false,
         unlimited,
+        // False for manually granted plans (tenants.plan_tier with no Stripe
+        // subscription — e.g. the founder account): there is no Stripe customer,
+        // so the billing-portal button must not be offered.
+        managed_by_stripe: sub !== null,
         usage: {
           connected_accounts: connectedAccounts,
           max_brands: unlimited ? null : base.max_brands,
