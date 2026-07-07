@@ -79,7 +79,7 @@ export class GeminiProbeAdapter implements ProviderAdapter {
     }
 
     // ---- LIVE mode: Google Gemini generateContent (API-key path) ----
-    const model = process.env["GEMINI_MODEL"] ?? "gemini-1.5-flash";
+    const model = process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash";
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {
