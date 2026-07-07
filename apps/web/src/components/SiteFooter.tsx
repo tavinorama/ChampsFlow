@@ -113,23 +113,6 @@ export function SiteFooter() {
             >
               hello@ozvor.com
             </p>
-            {/* Associated domains — Ozvor also operates these; cold-outreach
-                inboxes on them redirect here. Listed so the relationship is
-                public + crawlable (helps domain reputation / brand trust). */}
-            <p
-              style={{
-                margin: "0.5rem 0 0",
-                fontFamily: "var(--font-mono)",
-                fontSize: "0.6875rem",
-                color: "var(--color-muted)",
-                lineHeight: 1.6,
-              }}
-            >
-              Ozvor also operates{" "}
-              <a href="https://trustindexai.com" rel="noopener" className="mk-footer-link" style={{ fontSize: "0.6875rem" }}>trustindexai.com</a>
-              {" "}&middot;{" "}
-              <a href="https://organicposts.com" rel="noopener" className="mk-footer-link" style={{ fontSize: "0.6875rem" }}>organicposts.com</a>
-            </p>
           </div>
 
           {/* Link columns */}

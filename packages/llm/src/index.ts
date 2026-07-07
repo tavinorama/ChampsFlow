@@ -212,7 +212,7 @@ export { runInvisibilityTest, buildTestPrompt } from "./invisibility-test";
 
 // "The Get-Cited Kit" — $29 one-time deliverable (audit + top-3 + 3 drafts).
 export type { KitDeliverable, KitInput } from "./kit-deliverable";
-export { buildKitDeliverable } from "./kit-deliverable";
+export { buildKitDeliverable, buildFallbackKitDeliverable } from "./kit-deliverable";
 
 // ---------------------------------------------------------------------------
 // OpenAI adapter — STUB (not activated for v1; compliance review required)

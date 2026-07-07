@@ -8,7 +8,7 @@
 //
 // Brand: dark canvas #0a0f0d, emerald accent #27c98a / ink #5fdfa8, monochrome
 // O-ring mark (same dasharray geometry as components/brand/Logo.tsx), Schibsted-
-// like sans fallback. Keeps the protected names "TrustIndex AI Score".
+// like sans fallback. Keeps the protected names "Ozvor AI Visibility Score".
 
 import sharp from "sharp";
 import { fileURLToPath } from "node:url";
@@ -72,7 +72,7 @@ const svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http
   <rect x="812" y="546" width="308" height="50" rx="25"
     fill="#27c98a" fill-opacity="0.10" stroke="#27c98a" stroke-opacity="0.5"/>
   <text x="966" y="578" font-family="${FONT}" font-size="26" font-weight="600"
-    text-anchor="middle" fill="#5fdfa8">TrustIndex AI Score</text>
+    text-anchor="middle" fill="#5fdfa8">Ozvor AI Visibility Score</text>
 </svg>`;
 
 await sharp(Buffer.from(svg)).png().toFile(OUT);

@@ -1,5 +1,5 @@
 /**
- * stripe-bootstrap.ts — create the TrustIndex AI catalog in YOUR Stripe account.
+ * stripe-bootstrap.ts — create the Ozvor catalog in YOUR Stripe account.
  *
  * Creates (idempotently) the Products, Prices (USD), and the founder coupon that
  * the app's checkout reads, then prints the exact env lines to paste.
@@ -10,7 +10,7 @@
  *   STRIPE_SECRET_KEY=sk_test_xxx npx tsx scripts/stripe-bootstrap.ts
  *
  * Re-running is safe: Prices are matched by lookup_key and the coupon by id;
- * Products are matched by metadata.trustindex_sku (Stripe Search has a brief
+ * Products are matched by metadata.ozvor_sku (Stripe Search has a brief
  * indexing lag, so two runs within ~1 min could create a duplicate Product —
  * not a problem for Prices, which never duplicate).
  */
@@ -39,17 +39,17 @@ const mode = key.startsWith("sk_live_") ? "LIVE" : "TEST";
 //   set env vars — otherwise checkout will charge the old $149 amount.
 //   DO NOT hardcode price IDs anywhere; always read from env at runtime.
 const CATALOG = {
-  growth: { name: "TrustIndex AI — Growth", desc: "Weekly AI-visibility monitoring + GEO content plan for 1 brand.", monthly: 9900, annual: 118800 },
-  agency: { name: "TrustIndex AI — Agency", desc: "Weekly monitoring + competitor tracking across up to 25 brands.", monthly: 24900, annual: 298800 },
+  growth: { name: "Ozvor — Growth", desc: "Weekly AI-visibility monitoring + GEO content plan for 1 brand.", monthly: 9900, annual: 118800 },
+  agency: { name: "Ozvor — Agency", desc: "Weekly monitoring + competitor tracking across up to 25 brands.", monthly: 24900, annual: 298800 },
   kit:    { name: "The Get-Cited Kit",      desc: "One-time AI Visibility audit + 3 ready-to-publish drafts + GEO guide.", once: 2900 },
 };
 
 async function findOrCreateProduct(sku: string, name: string, description: string): Promise<Stripe.Product> {
   try {
-    const found = await stripe.products.search({ query: `active:'true' AND metadata['trustindex_sku']:'${sku}'`, limit: 1 });
+    const found = await stripe.products.search({ query: `active:'true' AND metadata['ozvor_sku']:'${sku}'`, limit: 1 });
     if (found.data[0]) return found.data[0];
   } catch { /* search may be unavailable on brand-new accounts — fall through to create */ }
-  return stripe.products.create({ name, description, metadata: { trustindex_sku: sku } });
+  return stripe.products.create({ name, description, metadata: { ozvor_sku: sku } });
 }
 
 async function findOrCreatePrice(lookupKey: string, params: Stripe.PriceCreateParams): Promise<Stripe.Price> {
@@ -59,7 +59,7 @@ async function findOrCreatePrice(lookupKey: string, params: Stripe.PriceCreatePa
 }
 
 async function main(): Promise<void> {
-  console.log(`\n→ Bootstrapping TrustIndex AI catalog in Stripe [${mode} mode]…\n`);
+  console.log(`\n→ Bootstrapping Ozvor catalog in Stripe [${mode} mode]…\n`);
 
   const growth = await findOrCreateProduct("growth", CATALOG.growth.name, CATALOG.growth.desc);
   const agency = await findOrCreateProduct("agency", CATALOG.agency.name, CATALOG.agency.desc);

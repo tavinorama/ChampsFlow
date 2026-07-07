@@ -23,6 +23,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import {
   runInvisibilityTest,
   buildKitDeliverable,
+  buildFallbackKitDeliverable,
   type InvisibilityTestResult,
 } from "../../../../packages/llm/src/index";
 import { createKitCheckoutSession, isCheckoutSessionPaid } from "../integrations/stripe";
@@ -418,6 +419,9 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
 
     // Build the deliverable (audit + top-3 + 3 drafts + checklist).
+    // A paid buyer must not land on a dead-end page if a live provider/crawl path
+    // is unavailable. Fall back to an honest deterministic starter Kit rather than
+    // fabricating live probe results or returning a generic 502.
     let deliverable;
     try {
       deliverable = await buildKitDeliverable({
@@ -428,8 +432,14 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
         testSeed,
       });
     } catch (err) {
-      logger.error("kit_deliverable_failed", { message: (err as Error).message, kit_order_id: order.id });
-      return c.json({ message: "Could not generate your kit. Our team has been notified." }, 502);
+      logger.error("kit_deliverable_failed_fallback_used", { message: (err as Error).message, kit_order_id: order.id });
+      deliverable = buildFallbackKitDeliverable({
+        brand: order.brand,
+        domain: order.domain,
+        category: order.category,
+        region: order.region === "EU" ? "EU" : "US",
+        testSeed,
+      });
     }
 
     await db.query(
