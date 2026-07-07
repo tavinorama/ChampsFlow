@@ -95,7 +95,7 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
     // entry point and a "which brands are best" probe doesn't need a frontier
     // model. AUDIT_ANTHROPIC_MODEL overrides. (The chatbot and Content Studio
     // pick their models elsewhere — this only affects audit/free-test probes.)
-    const model = process.env["AUDIT_ANTHROPIC_MODEL"] ?? "claude-haiku-4-5";
+    const model = process.env["AUDIT_ANTHROPIC_MODEL"] ?? process.env["ANTHROPIC_MODEL"] ?? "claude-haiku-4-5";
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {

@@ -81,7 +81,7 @@ export class OpenAIProbeAdapter implements ProviderAdapter {
 
     // ---- LIVE mode: OpenAI Chat Completions API over HTTPS ----
     // Cheap tier by design for audit/free-test probes (AUDIT_OPENAI_MODEL overrides).
-    const model = process.env["AUDIT_OPENAI_MODEL"] ?? "gpt-4o-mini";
+    const model = process.env["AUDIT_OPENAI_MODEL"] ?? process.env["OPENAI_MODEL"] ?? "gpt-4o-mini";
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {
