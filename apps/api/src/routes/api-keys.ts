@@ -30,7 +30,7 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { createHash, randomBytes } from "node:crypto";
 import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
-import { requireAuth, requireRole } from "../auth/middleware";
+import { requireAuth, requireRole, requireSuperAdmin } from "../auth/middleware";
 import { runWithTenant } from "../db/tenant-context";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -145,6 +145,20 @@ export function requireApiKey(db: PostgresClient) {
       );
     }
 
+    // Scope gate (Hermes review, operator PR): the tenant-scoped public API
+    // requires the 'read' scope. Operator-only keys (Hermes agent) must NOT be
+    // able to read tenant data — they are limited to /api/v1/operator/*.
+    if (!key.scopes.includes("read")) {
+      return c.json(
+        {
+          error: "forbidden",
+          code: "READ_SCOPE_REQUIRED",
+          message: "This key does not grant tenant API access (missing 'read' scope).",
+        },
+        403
+      );
+    }
+
     const allowed = await checkApiRateLimit(key.id);
     if (!allowed) {
       return c.json(
@@ -165,6 +179,89 @@ export function requireApiKey(db: PostgresClient) {
     // Scope the rest of the request to the key's tenant → RLS as app_user.
     await runWithTenant(key.tenant_id, () => next());
   };
+}
+
+// ---------------------------------------------------------------------------
+// requireOperatorKey — authenticate the Hermes operator agent by API key.
+// Same hash lookup + rate limit as requireApiKey, but requires the 'operator'
+// scope and intentionally does NOT enter a tenant scope: operator endpoints
+// run unscoped and are restricted to PII-FREE platform aggregates (ids,
+// statuses, scores, liveness — never emails, brand names, or tenant names).
+// ---------------------------------------------------------------------------
+
+export function requireOperatorKey(db: PostgresClient) {
+  return async function operatorKeyGuard(c: Context, next: Next): Promise<Response | void> {
+    let presented = "";
+    const authHeader = c.req.header("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) presented = authHeader.slice(7).trim();
+    if (!presented) presented = (c.req.header("X-API-Key") ?? "").trim();
+
+    if (!presented || !presented.startsWith("ozk_")) {
+      return c.json(
+        { error: "unauthorized", code: "MISSING_API_KEY", message: "Provide an operator API key." },
+        401
+      );
+    }
+
+    const hash = sha256Hex(presented);
+    let key:
+      | { id: string; tenant_id: string; scopes: string[]; revoked_at: string | null }
+      | undefined;
+    try {
+      const { rows } = await db.query<{
+        id: string;
+        tenant_id: string;
+        scopes: string[];
+        revoked_at: string | null;
+      }>(`SELECT id, tenant_id, scopes, revoked_at FROM api_key WHERE key_hash = $1 LIMIT 1`, [hash]);
+      key = rows[0];
+    } catch (err) {
+      logger.error("api_key_lookup_failed", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "KEY_LOOKUP_FAILED" }, 500);
+    }
+
+    if (!key || key.revoked_at) {
+      return c.json(
+        { error: "unauthorized", code: "INVALID_API_KEY", message: "API key is invalid or revoked." },
+        401
+      );
+    }
+
+    if (!key.scopes.includes("operator")) {
+      return c.json(
+        {
+          error: "forbidden",
+          code: "OPERATOR_SCOPE_REQUIRED",
+          message: "This endpoint requires an operator-scoped key.",
+        },
+        403
+      );
+    }
+
+    const allowed = await checkApiRateLimit(key.id);
+    if (!allowed) {
+      return c.json(
+        {
+          error: "rate_limited",
+          code: "RATE_LIMITED",
+          message: `Rate limit exceeded (${API_RATE_LIMIT} requests/minute).`,
+        },
+        429
+      );
+    }
+
+    void db.query(`UPDATE api_key SET last_used_at = NOW() WHERE id = $1`, [key.id]).catch(() => {});
+    c.set("apiKey", { id: key.id, tenantId: key.tenant_id, scopes: key.scopes });
+
+    // No runWithTenant on purpose — see header comment.
+    await next();
+  };
+}
+
+/** Presence boolean only — never the value. */
+function envPresent(name: string): boolean {
+  const v = process.env[name];
+  return typeof v === "string" && v.trim().length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -409,5 +506,137 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
     const audit = res.rows[0];
     if (!audit) return c.json({ error: "not_found", code: "AUDIT_NOT_FOUND" }, 404);
     return c.json(withOverall(audit));
+  });
+
+  // =========================================================================
+  // 3) Operator API (Hermes agent) — read-only, PII-free, 'operator' scope.
+  //    Lets the operations agent monitor the platform (engine liveness, infra,
+  //    audit outcomes) without dashboard credentials and without any access to
+  //    customer data, billing, or secrets.
+  // =========================================================================
+  const operatorKey = requireOperatorKey(db);
+
+  // GET /api/v1/operator/system-health — engines + infra liveness
+  app.get("/api/v1/operator/system-health", operatorKey, async (c) => {
+    const engines = [
+      { engine: "anthropic", live: envPresent("ANTHROPIC_API_KEY") },
+      { engine: "openai", live: envPresent("OPENAI_API_KEY") },
+      { engine: "gemini", live: envPresent("GEMINI_API_KEY") },
+      { engine: "perplexity", live: envPresent("PERPLEXITY_API_KEY") },
+      { engine: "serp", live: envPresent("SERP_API_KEY") },
+    ];
+
+    let postgresStatus: "up" | "down" = "down";
+    try {
+      await db.query(`SELECT 1`, []);
+      postgresStatus = "up";
+    } catch {
+      // stays "down"
+    }
+
+    let redisStatus: "up" | "down" | "not_configured" = "not_configured";
+    try {
+      const redis = tryGetSharedRedis();
+      if (redis) {
+        await redis.ping();
+        redisStatus = "up";
+      }
+    } catch {
+      redisStatus = "down";
+    }
+
+    return c.json({
+      engines,
+      infrastructure: { postgres: postgresStatus, redis: redisStatus },
+      checked_at: new Date().toISOString(),
+    });
+  });
+
+  // GET /api/v1/operator/audits/recent — last 20 audits, PII-free
+  app.get("/api/v1/operator/audits/recent", operatorKey, async (c) => {
+    const { rows } = await db.query<{
+      id: string;
+      status: string;
+      score_brand: number | null;
+      score_performance: number | null;
+      score_ai: number | null;
+      created_at: string;
+    }>(
+      `SELECT id, status, score_brand, score_performance, score_ai, created_at
+         FROM geo_audit
+        ORDER BY created_at DESC
+        LIMIT 20`,
+      []
+    );
+    return c.json({
+      audits: rows.map(withOverall),
+      note: "PII-free by design: no tenant, brand, or user fields.",
+    });
+  });
+
+  // =========================================================================
+  // 4) Operator key minting — founder only (super_admin). Rotation semantics:
+  //    minting a new operator key revokes all previous operator keys, so at
+  //    most one is live. Plaintext returned ONCE.
+  // =========================================================================
+  app.post("/api/admin/operator-key", requireAuth, requireSuperAdmin, async (c) => {
+    const auth = c.get("auth");
+    if (!auth?.tenantId) {
+      return c.json({ error: "internal_error", code: "NO_TENANT_FOR_ADMIN" }, 500);
+    }
+
+    const { plaintext, prefix, hash } = generateApiKey();
+
+    // Atomic rotation (Hermes review): revoke-old + insert-new run in ONE
+    // transaction, serialized by an advisory xact-lock so concurrent mints
+    // cannot leave zero or two active operator keys. If the insert fails the
+    // revoke rolls back with it.
+    let inserted:
+      | { id: string; name: string; prefix: string; scopes: string[]; created_at: string }
+      | undefined;
+    try {
+      inserted = await db.transaction(async (tx) => {
+        await tx.query(`SELECT pg_advisory_xact_lock(hashtext('operator-key-rotation'))`, []);
+        await tx.query(
+          `UPDATE api_key SET revoked_at = NOW() WHERE revoked_at IS NULL AND 'operator' = ANY(scopes)`,
+          []
+        );
+        const ins = await tx.query<{
+          id: string;
+          name: string;
+          prefix: string;
+          scopes: string[];
+          created_at: string;
+        }>(
+          `INSERT INTO api_key (tenant_id, name, prefix, key_hash, scopes, created_by)
+           VALUES ($1, $2, $3, $4, ARRAY['operator']::text[], $5)
+           RETURNING id, name, prefix, scopes, created_at`,
+          [auth.tenantId, "hermes-operator", prefix, hash, auth.userId]
+        );
+        return ins.rows[0];
+      });
+    } catch (err) {
+      logger.error("operator_key_rotation_failed", { message: (err as Error).message });
+      return c.json(
+        { error: "internal_error", code: "OPERATOR_KEY_ROTATION_FAILED", message: "Rotation rolled back — the previous key (if any) is still active." },
+        500
+      );
+    }
+    if (!inserted) {
+      return c.json({ error: "internal_error", code: "OPERATOR_KEY_ROTATION_FAILED" }, 500);
+    }
+
+    logger.info("operator_key_created", { key_id: inserted.id });
+
+    return c.json(
+      {
+        ...inserted,
+        key: plaintext,
+        endpoints: ["/api/v1/operator/system-health", "/api/v1/operator/audits/recent"],
+        warning:
+          "Store this key in the Hermes VPS config now — it will not be shown again. Any previous operator key was just revoked.",
+      },
+      201
+    );
   });
 }
