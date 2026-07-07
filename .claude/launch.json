@@ -4,21 +4,51 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=apps/web"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=apps/web"
+      ],
       "port": 3000,
       "autoPort": false
     },
     {
       "name": "api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=apps/api"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=apps/api"
+      ],
       "port": 3001
     },
     {
       "name": "worker",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=apps/worker"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace=apps/worker"
+      ],
       "port": 0
+    },
+    {
+      "name": "web-oauth-flags",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "NEXT_PUBLIC_AUTH_GOOGLE=1",
+        "NEXT_PUBLIC_AUTH_MICROSOFT=1",
+        "NEXT_PUBLIC_AUTH_GITHUB=1",
+        "NEXT_PUBLIC_AUTH_LINKEDIN=1",
+        "NEXT_PUBLIC_SUPABASE_URL=https://wdeabrzpgshnouvnfvml.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=preview-placeholder-anon-key",
+        "npm",
+        "run",
+        "dev",
+        "--workspace=apps/web"
+      ],
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }
