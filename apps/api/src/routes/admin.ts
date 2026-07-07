@@ -43,6 +43,7 @@ import {
   validatePlatformKeyInput,
 } from "../../../../packages/shared/src/platform-keys";
 import { refreshPlatformKeys } from "../lib/platform-keys";
+import { OZVOR_ASSETS } from "../../../../packages/shared/src/assets-manifest";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -832,6 +833,14 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       last4,
       note: "Active in the API now; the worker picks it up within 60 seconds.",
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/assets — the asset library (deliverables, brand, GTM pack).
+  // Static manifest from packages/shared; the Assets tab renders it.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/assets", requireAuth, requireSuperAdmin, async (c) => {
+    return c.json({ assets: OZVOR_ASSETS });
   });
 
   app.delete("/api/admin/provider-keys/:provider", requireAuth, requireSuperAdmin, async (c) => {

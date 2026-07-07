@@ -34,6 +34,7 @@ import { requireAuth, requireRole, requireSuperAdmin } from "../auth/middleware"
 import { runWithTenant } from "../db/tenant-context";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { OZVOR_ASSETS } from "../../../../packages/shared/src/assets-manifest";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY_PREFIX = "ozk_live_";
@@ -549,6 +550,17 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       engines,
       infrastructure: { postgres: postgresStatus, redis: redisStatus },
       checked_at: new Date().toISOString(),
+    });
+  });
+
+  // GET /api/v1/operator/assets — the asset library manifest. No PII: public
+  // artifact paths + repo source paths, so the ops agent can use the assets
+  // (outreach attachments, channel setup) and improve them via the PR flow.
+  app.get("/api/v1/operator/assets", operatorKey, async (c) => {
+    return c.json({
+      assets: OZVOR_ASSETS,
+      base_url: "https://ozvor.com",
+      note: "publicPath is relative to base_url; repoPath is the editable source in tavinorama/ChampsFlow.",
     });
   });
 
