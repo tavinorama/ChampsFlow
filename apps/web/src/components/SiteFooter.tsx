@@ -139,6 +139,7 @@ export function SiteFooter() {
               links={[
                 ["How it works", "/how-it-works"],
                 ["For agencies", "/agencies"],
+                ["Compare", "/vs"],
                 ["Tutorials", "/learn"],
                 ["Case study", "/results"],
                 ["Plans", "/pricing"],
