@@ -38,6 +38,7 @@ import {
   withRlsContext,
   assertWorkerAppDbRoleSafe,
 } from "./db/rls-client";
+import { applyPlatformKeyOverrides } from "../../../packages/shared/src/platform-keys";
 
 // ---------------------------------------------------------------------------
 // Redis connection (ioredis — required by BullMQ)
@@ -87,6 +88,42 @@ function getAuditSql(): import("postgres").Sql {
   return _auditSql;
 }
 
+// ---------------------------------------------------------------------------
+// Platform provider-key overrides (admin-rotated) — same mechanism as the api:
+// injected into process.env at boot + every 60s, env stays the fallback and a
+// missing table is tolerated. Uses the raw (privileged, unscoped) client —
+// platform_provider_key has RLS with no policies, so app_user can never read it.
+// Note: this makes the audit sql client eager at boot (was lazy) — acceptable,
+// the worker needs it for the first audit job anyway.
+// ---------------------------------------------------------------------------
+const refreshPlatformKeys = (): Promise<number> =>
+  applyPlatformKeyOverrides(
+    async () => {
+      const rows = await getAuditSql()`SELECT provider, key_encrypted FROM platform_provider_key`;
+      return rows as unknown as { provider: string; key_encrypted: Buffer | Uint8Array }[];
+    },
+    (event, meta) => logger.info(event, meta as Record<string, string>)
+  );
+// The audit worker is the only provider-key consumer here, so it starts with
+// autorun:false and begins processing ONLY after the first refresh settles
+// (Hermes review: a job must never race a pending key override). The refresh
+// fails open (env keys), so `.finally()` guarantees the worker always starts.
+const platformKeysReady = refreshPlatformKeys()
+  .then((n) => {
+    if (n > 0) logger.info("platform_keys_applied", { count: n });
+    return n;
+  })
+  .catch((err: Error) => {
+    // Real DB error (42P01 is tolerated upstream): run on env keys, loudly.
+    logger.error("platform_keys_boot_refresh_failed", { message: err.message?.slice(0, 120) });
+    return 0;
+  });
+setInterval(() => {
+  refreshPlatformKeys().catch(() => {
+    // Failure already logged at error level inside the shared module.
+  });
+}, 60_000).unref();
+
 const auditWorker = new Worker(
   "geo-audit",
   async (job) => {
@@ -99,9 +136,14 @@ const auditWorker = new Worker(
   {
     connection,
     concurrency: 3,
-    autorun: true,
+    autorun: false, // started below, after the first platform-key refresh
   }
 );
+
+void platformKeysReady.finally(() => {
+  void auditWorker.run();
+  logger.info("audit_worker_started_after_key_refresh", {});
+});
 
 auditWorker.on("active", (job) => {
   logger.info("audit_job_started", { job_id: job.id, attempt: job.attemptsMade + 1 });
