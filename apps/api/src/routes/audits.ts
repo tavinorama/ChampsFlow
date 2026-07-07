@@ -880,6 +880,47 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const brand = brandRes.rows[0];
       if (!brand) return c.json({ message: "Brand not found." }, 404);
 
+      // Cost-abuse guards (Hermes ops report, 2026-07-07): this trigger had no
+      // guard, so repeated clicks enqueued unlimited ~$0.21 audits.
+      // 1) One audit at a time per brand — a second click returns the running one.
+      const inFlight = await db.query<{ id: string }>(
+        `SELECT id FROM geo_audit WHERE brand_id = $1 AND status IN ('pending', 'running') LIMIT 1`,
+        [brandId]
+      );
+      if (inFlight.rows[0]) {
+        return c.json(
+          {
+            message:
+              "An audit for this brand is already running. Wait for it to finish before starting another.",
+            code: "AUDIT_ALREADY_RUNNING",
+            audit_id: inFlight.rows[0].id,
+          },
+          409
+        );
+      }
+
+      // 2) Tenant-wide daily cap — generous (20/24h ≈ $4 of provider cost at the
+      // cheap probe tier) but bounds abuse. DB-based: no Redis dependency, and
+      // it cannot fail open.
+      const AUDITS_PER_DAY_CAP = 20;
+      const daily = await db.query<{ count: string }>(
+        `SELECT COUNT(*) AS count
+           FROM geo_audit
+          WHERE tenant_id = $1
+            AND created_at >= NOW() - INTERVAL '24 hours'`,
+        [tenantId]
+      );
+      if (parseInt(daily.rows[0]?.count ?? "0", 10) >= AUDITS_PER_DAY_CAP) {
+        logger.warn("audit_daily_cap_hit", { tenantId });
+        return c.json(
+          {
+            message: `Daily audit limit reached (${AUDITS_PER_DAY_CAP} per 24h). Try again later.`,
+            code: "AUDIT_DAILY_LIMIT",
+          },
+          429
+        );
+      }
+
       // Create the audit row in 'pending' state.
       const auditId = randomUUID();
       await db.query(
