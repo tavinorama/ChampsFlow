@@ -356,7 +356,7 @@ async function chatComplete(
       return (data.choices?.[0]?.message?.content ?? "").trim() || null;
     }
     // gemini — Google Generative Language API (key in query string, system via systemInstruction)
-    const model = process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash";
+    const model = process.env["GEMINI_MODEL"] ?? "gemini-1.5-flash";
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
       {

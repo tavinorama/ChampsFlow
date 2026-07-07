@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { AnthropicProbeAdapter } from "../../../packages/llm/src/providers/anthropic";
+import { measureOffsiteSignal } from "../../../packages/llm/src/offsite-signal";
 import { OpenAIProbeAdapter } from "../../../packages/llm/src/providers/openai";
 import { GeminiProbeAdapter } from "../../../packages/llm/src/providers/gemini";
 import { PerplexityProbeAdapter } from "../../../packages/llm/src/providers/perplexity";
@@ -142,5 +143,16 @@ describe("DataForSEO depth", () => {
     await new SerpProbeAdapter().probe(QUERY);
     const body = captured[0]?.body as Array<{ depth?: number }>;
     expect(body?.[0]?.depth).toBe(10);
+  });
+
+  it("measureOffsiteSignal sends depth 10 on EVERY source lookup", async () => {
+    process.env["SERP_API_KEY"] = "dGVzdDp0ZXN0";
+    await measureOffsiteSignal("Ozvor");
+    // One live SERP call per offsite source; none are skipped without profile URLs.
+    expect(captured.length).toBeGreaterThanOrEqual(2);
+    for (const call of captured) {
+      const body = call.body as Array<{ depth?: number }>;
+      expect(body?.[0]?.depth, call.url).toBe(10);
+    }
   });
 });
