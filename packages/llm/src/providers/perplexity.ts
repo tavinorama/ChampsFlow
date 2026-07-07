@@ -90,7 +90,10 @@ export class PerplexityProbeAdapter implements ProviderAdapter {
     // ---- LIVE mode: Perplexity Chat Completions (online model) ----
     // Perplexity returns real web citations in `citations` — the most valuable
     // source signal we get. EU users are blocked upstream by the routing gate.
-    const model = process.env["PERPLEXITY_MODEL"] ?? "sonar";
+    // "sonar" is already Perplexity's cheapest search model; AUDIT_PERPLEXITY_MODEL
+    // exists for consistency with the other audit-probe adapters.
+    const model =
+      process.env["AUDIT_PERPLEXITY_MODEL"] ?? process.env["PERPLEXITY_MODEL"] ?? "sonar";
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 25_000);
     try {

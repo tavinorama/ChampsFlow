@@ -79,7 +79,11 @@ export class GeminiProbeAdapter implements ProviderAdapter {
     }
 
     // ---- LIVE mode: Google Gemini generateContent (API-key path) ----
-    const model = process.env["GEMINI_MODEL"] ?? "gemini-1.5-flash";
+    // Cheap tier by design for audit/free-test probes; AUDIT_GEMINI_MODEL overrides,
+    // then GEMINI_MODEL (shared with Content Studio). Default is flash-lite —
+    // NOTE: 1.5 models are retired for new projects (HTTP 404 seen in prod).
+    const model =
+      process.env["AUDIT_GEMINI_MODEL"] ?? process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite";
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {
