@@ -61,15 +61,14 @@ docs/07-deploy-review.md
 # Compliance artifacts (generated per project)
 docs/compliance/model-cards/
 
-# Marketing / sales / support artifacts (generated per project)
-# EXCEPTION: lead-magnet SOURCES are product source-of-truth (the paid PDFs in
-# apps/web/public/downloads are built from them) — they must live in git.
-# (`docs/marketing/*` instead of `docs/marketing/` so the re-include works —
-# git cannot re-include below an excluded directory.)
-docs/marketing/*
-!docs/marketing/lead-magnets/
-docs/sales/
-docs/support/
+# Marketing / sales / support — PRODUCT & GTM SOURCES (policy, 2026-07):
+# These are source-of-truth IP — GEO research packs, the sales playbook, landing
+# copy, content calendar, value ladder, SEO/keyword research, and the lead-magnet
+# sources the paid PDFs in apps/web/public/downloads are built from. They MUST
+# live in git so the founder's laptop is not the only copy. Do NOT re-ignore
+# docs/marketing, docs/sales, or docs/support. If a genuinely ephemeral,
+# regenerable artifact ever lands under here, add a narrow, commented exception
+# for that specific path — never blanket-ignore the directories again.
 
 # Learning docs (institutional knowledge — MUST be committed, never ignored)
 # docs/learning/ is intentionally NOT listed here so it is always tracked by git
