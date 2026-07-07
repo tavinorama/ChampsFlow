@@ -13,6 +13,16 @@
 
 export type AssetCategory = "client-deliverable" | "brand" | "content-gtm";
 
+/**
+ * How a customer receives this asset. Keeps the Assets tab honest about the
+ * delivery wiring (Stripe webhook -> Resend email), which is the single source
+ * of truth in apps/api/src/routes/billing.ts.
+ */
+export type DeliveryChannel =
+  | "kit-email" // sendKitDeliveryEmail after the $29 Get-Cited Kit purchase
+  | "bonus-email" // sendBonusDeliveryEmail on Growth/Agency subscription
+  | "internal"; // ops/brand asset — not auto-sent to customers
+
 export interface OzvorAsset {
   id: string;
   title: string;
@@ -23,6 +33,10 @@ export interface OzvorAsset {
   publicPath?: string;
   /** Source in the ChampsFlow repo — edit + regenerate via PR. */
   repoPath?: string;
+  /** How the customer receives it (delivery wiring). */
+  deliveredVia: DeliveryChannel;
+  /** Human label of which purchase/plan triggers delivery. */
+  deliveredOn: string;
 }
 
 export const OZVOR_ASSETS: OzvorAsset[] = [
@@ -36,24 +50,30 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
       "The $29 tripwire product: audit walkthrough, Ozvor AI Visibility Score, top-3 fixes, 3 ready-to-publish drafts, 30-day retest plan.",
     publicPath: "/downloads/The-Get-Cited-Kit.pdf",
     repoPath: "docs/marketing/lead-magnets/get-cited-kit.md",
+    deliveredVia: "kit-email",
+    deliveredOn: "Get-Cited Kit purchase ($29)",
   },
   {
     id: "whitepaper-understanding-geo",
     title: "Understanding GEO Search (whitepaper)",
     category: "client-deliverable",
     format: "pdf",
-    description: "18p research-grounded whitepaper — Kit bonus and outreach attachment.",
+    description: "Research-grounded explainer of how AI answer engines choose who to cite — Kit Part 2 bonus and outreach attachment.",
     publicPath: "/downloads/Understanding-GEO-Search.pdf",
     repoPath: "docs/marketing/lead-magnets/whitepaper-understanding-geo.md",
+    deliveredVia: "kit-email",
+    deliveredOn: "Get-Cited Kit — Part 2 bonus",
   },
   {
     id: "geo-visibility-guide",
     title: "The GEO Visibility Guide",
     category: "client-deliverable",
     format: "pdf",
-    description: "30p practical guide to getting cited by AI search — premium lead magnet.",
+    description: "Action-first guide to getting cited by AI search — opens with a 10-minute check. Growth/Agency welcome bonus.",
     publicPath: "/downloads/The-GEO-Visibility-Guide.pdf",
     repoPath: "docs/marketing/lead-magnets/geo-visibility-guide.md",
+    deliveredVia: "bonus-email",
+    deliveredOn: "Growth / Agency welcome",
   },
   {
     id: "citation-post-templates",
@@ -63,6 +83,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     description: "Fill-in templates for the content formats LLMs cite most.",
     publicPath: "/downloads/5-High-Citation-Post-Templates.pdf",
     repoPath: "docs/marketing/lead-magnets/5-high-citation-post-templates.md",
+    deliveredVia: "bonus-email",
+    deliveredOn: "Growth / Agency welcome",
   },
   {
     id: "llm-citation-tracker",
@@ -72,6 +94,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     description: "Working spreadsheet for tracking citations across engines over time.",
     publicPath: "/downloads/LLM-Citation-Tracker.xlsx",
     repoPath: "scripts/build-deliverables.mjs",
+    deliveredVia: "bonus-email",
+    deliveredOn: "Growth / Agency welcome",
   },
   {
     id: "llm-citation-tracker-methodology",
@@ -81,6 +105,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     description: "Companion methodology for the tracker spreadsheet.",
     publicPath: "/downloads/LLM-Citation-Tracker-Methodology.pdf",
     repoPath: "docs/marketing/lead-magnets/llm-citation-tracker.md",
+    deliveredVia: "bonus-email",
+    deliveredOn: "Growth / Agency welcome",
   },
 
   // ── Brand kit ──────────────────────────────────────────────────────────────
@@ -92,6 +118,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     description: "Logos, social banners and profile images — the entity-consistency pack for every channel signup.",
     publicPath: "/downloads/Ozvor-Brand-Kit.zip",
     repoPath: "scripts/gen-brand-kit.mjs",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / channel setup",
   },
   {
     id: "logo",
@@ -100,6 +128,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "png",
     description: "Primary logo mark.",
     publicPath: "/logo.png",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / brand",
   },
 
   // ── GTM / content pack (repo-only — Hermes reads via GitHub Contents) ─────
@@ -110,6 +140,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "markdown",
     description: "Launch-week posts, including the honesty play built on Ozvor's real score.",
     repoPath: "docs/departments/marketing/linkedin-launch-posts.md",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / marketing",
   },
   {
     id: "marketing-strategy",
@@ -118,6 +150,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "markdown",
     description: "Positioning, channels and cadence.",
     repoPath: "docs/departments/marketing/strategy.md",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / marketing",
   },
   {
     id: "battlecards",
@@ -126,6 +160,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "markdown",
     description: "Profound, Peec, Otterly, AthenaHQ — objection handling and win angles.",
     repoPath: "docs/departments/sales/battlecards.md",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / sales",
   },
   {
     id: "first-week-playbook",
@@ -134,6 +170,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "markdown",
     description: "Day-by-day founder-led sales motions for launch week.",
     repoPath: "docs/departments/sales/first-week-playbook.md",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / sales",
   },
   {
     id: "icp-website-audit",
@@ -142,6 +180,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "markdown",
     description: "Who we sell to and how the site maps to them.",
     repoPath: "docs/departments/sales/icp-website-audit.md",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / sales",
   },
   {
     id: "signal-shortlist",
@@ -150,6 +190,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "markdown",
     description: "Real Reddit threads for ToS-safe Tier-1 replies, with niche watering holes.",
     repoPath: "docs/departments/sales/signal-shortlist.md",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / sales",
   },
   {
     id: "nurture-emails",
@@ -158,6 +200,8 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "directory",
     description: "Free→Kit and Kit→DFY sequences the platform sends automatically.",
     repoPath: "packages/shared/src/emails",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / lifecycle",
   },
   {
     id: "blog-posts",
@@ -166,5 +210,7 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "directory",
     description: "Published, sourced posts — the citation-bait content engine.",
     repoPath: "apps/web/src/app/(marketing)/blog",
+    deliveredVia: "internal",
+    deliveredOn: "Ops / content",
   },
 ];
