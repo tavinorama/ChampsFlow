@@ -183,13 +183,20 @@ export function requireApiKey(db: PostgresClient) {
 
 // ---------------------------------------------------------------------------
 // requireOperatorKey — authenticate the Hermes operator agent by API key.
-// Same hash lookup + rate limit as requireApiKey, but requires the 'operator'
-// scope and intentionally does NOT enter a tenant scope: operator endpoints
-// run unscoped and are restricted to PII-FREE platform aggregates (ids,
-// statuses, scores, liveness — never emails, brand names, or tenant names).
+// Same hash lookup + rate limit as requireApiKey, but requires the listed
+// scopes and intentionally does NOT enter a tenant scope.
+//
+// Scope tiers (founder-defined):
+//  - ["operator"]             → PII-free monitoring (system health, audit outcomes)
+//  - ["operator","business"]  → business operations: revenue analytics, leads,
+//    kit orders, opportunities, pipeline management, nurture enrollment.
+//    Includes lead contact data (emails) — authorized by the founder as data
+//    controller; the Hermes VPS acts as processor (ROPA entry lands in P5).
+//    NEVER reachable at any scope: key material/secrets, Stripe money movement,
+//    client BYOK keys, OAuth tokens, destructive operations.
 // ---------------------------------------------------------------------------
 
-export function requireOperatorKey(db: PostgresClient) {
+export function requireOperatorKey(db: PostgresClient, requiredScopes: string[] = ["operator"]) {
   return async function operatorKeyGuard(c: Context, next: Next): Promise<Response | void> {
     let presented = "";
     const authHeader = c.req.header("Authorization");
@@ -227,12 +234,13 @@ export function requireOperatorKey(db: PostgresClient) {
       );
     }
 
-    if (!key.scopes.includes("operator")) {
+    const missingScope = requiredScopes.find((s) => !key.scopes.includes(s));
+    if (missingScope) {
       return c.json(
         {
           error: "forbidden",
-          code: "OPERATOR_SCOPE_REQUIRED",
-          message: "This endpoint requires an operator-scoped key.",
+          code: `${missingScope.toUpperCase()}_SCOPE_REQUIRED`,
+          message: `This endpoint requires the '${missingScope}' scope. Regenerate the operator key in /admin to pick up new scopes.`,
         },
         403
       );
@@ -609,7 +617,7 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
           created_at: string;
         }>(
           `INSERT INTO api_key (tenant_id, name, prefix, key_hash, scopes, created_by)
-           VALUES ($1, $2, $3, $4, ARRAY['operator']::text[], $5)
+           VALUES ($1, $2, $3, $4, ARRAY['operator','business']::text[], $5)
            RETURNING id, name, prefix, scopes, created_at`,
           [auth.tenantId, "hermes-operator", prefix, hash, auth.userId]
         );
@@ -632,7 +640,16 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       {
         ...inserted,
         key: plaintext,
-        endpoints: ["/api/v1/operator/system-health", "/api/v1/operator/audits/recent"],
+        endpoints: [
+          "/api/v1/operator/system-health",
+          "/api/v1/operator/audits/recent",
+          "/api/v1/operator/analytics",
+          "/api/v1/operator/leads",
+          "/api/v1/operator/kit-orders",
+          "/api/v1/operator/opportunities",
+          "/api/v1/operator/engagements (GET, PATCH :id)",
+          "/api/v1/operator/nurture/enroll (POST)",
+        ],
         warning:
           "Store this key in the Hermes VPS config now — it will not be shown again. Any previous operator key was just revoked.",
       },
