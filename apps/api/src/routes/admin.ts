@@ -34,6 +34,15 @@ import { requireAuth, requireSuperAdmin } from "../auth/middleware";
 import { tryGetSharedRedis } from "../shared-redis";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { encryptToken } from "../../../../packages/shared/src/crypto";
+import {
+  PLATFORM_KEY_PROVIDERS,
+  PLATFORM_KEY_ENV_VAR,
+  bootEnvHasKey,
+  isPlatformKeyProvider,
+  validatePlatformKeyInput,
+} from "../../../../packages/shared/src/platform-keys";
+import { refreshPlatformKeys } from "../lib/platform-keys";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -715,6 +724,102 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       kitBuyersWithoutSub,
       hotDfyLeads,
       note: "Best-effort joins on email. Leads with no email are excluded.",
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Platform provider keys — founder-rotatable, WRITE-ONLY.
+  // GET returns presence metadata (last4/rotated_at) — never a key value.
+  // PUT stores a new key (AES-256-GCM, platform_provider_key) and applies it
+  // to the running api immediately; the worker refreshes within 60s.
+  // DELETE removes the override → env fallback restored on next refresh.
+  // -------------------------------------------------------------------------
+
+  app.get("/api/admin/provider-keys", requireAuth, requireSuperAdmin, async (c) => {
+    let rows: { provider: string; key_last4: string; rotated_at: string }[] = [];
+    try {
+      const res = await db.query<{ provider: string; key_last4: string; rotated_at: string }>(
+        `SELECT provider, key_last4, rotated_at FROM platform_provider_key`
+      );
+      rows = res.rows;
+    } catch (err) {
+      // Table missing (migration not applied yet) → show env-only state.
+      logger.warn("admin_provider_keys_table_missing", {
+        message: (err as Error).message?.slice(0, 120),
+      });
+    }
+    const byProvider = new Map(rows.map((r) => [r.provider, r]));
+    const keys = PLATFORM_KEY_PROVIDERS.map((p) => {
+      const row = byProvider.get(p);
+      return {
+        provider: p,
+        env_var: PLATFORM_KEY_ENV_VAR[p],
+        env_configured: bootEnvHasKey(p),
+        override: row ? { last4: row.key_last4, rotated_at: row.rotated_at } : null,
+        active_source: row ? "dashboard" : bootEnvHasKey(p) ? "railway_env" : "none",
+      };
+    });
+    return c.json({ keys });
+  });
+
+  app.put("/api/admin/provider-keys/:provider", requireAuth, requireSuperAdmin, async (c) => {
+    const provider = c.req.param("provider") ?? "";
+    let body: { key?: unknown };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body", message: "Invalid JSON body." }, 400);
+    }
+    const key = typeof body.key === "string" ? body.key.trim() : "";
+    const validationError = validatePlatformKeyInput(provider, key);
+    if (validationError) {
+      return c.json({ error: "invalid_input", message: validationError }, 400);
+    }
+    let encrypted: Buffer;
+    try {
+      encrypted = encryptToken(key).encrypted;
+    } catch {
+      // OAUTH_TOKEN_KEY missing/misconfigured — surface clearly, log no detail.
+      logger.error("admin_provider_key_encrypt_unavailable", { provider });
+      return c.json(
+        { error: "encryption_unavailable", message: "Encryption key not configured on the server." },
+        500
+      );
+    }
+    const auth = c.get("auth") as { userId?: string } | undefined;
+    const last4 = key.slice(-4);
+    await db.query(
+      `INSERT INTO platform_provider_key (provider, key_encrypted, key_last4, rotated_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (provider) DO UPDATE
+         SET key_encrypted = EXCLUDED.key_encrypted,
+             key_last4     = EXCLUDED.key_last4,
+             rotated_by    = EXCLUDED.rotated_by,
+             rotated_at    = NOW()`,
+      [provider, encrypted, last4, auth?.userId ?? null]
+    );
+    await refreshPlatformKeys(db);
+    logger.info("admin_platform_key_rotated", { provider, last4 });
+    return c.json({
+      ok: true,
+      provider,
+      last4,
+      note: "Active in the API now; the worker picks it up within 60 seconds.",
+    });
+  });
+
+  app.delete("/api/admin/provider-keys/:provider", requireAuth, requireSuperAdmin, async (c) => {
+    const provider = c.req.param("provider") ?? "";
+    if (!isPlatformKeyProvider(provider)) {
+      return c.json({ error: "invalid_input", message: "unknown provider" }, 400);
+    }
+    await db.query(`DELETE FROM platform_provider_key WHERE provider = $1`, [provider]);
+    await refreshPlatformKeys(db);
+    logger.info("admin_platform_key_override_removed", { provider });
+    return c.json({
+      ok: true,
+      provider,
+      note: "Override removed — reverted to the Railway env key (worker within 60s).",
     });
   });
 }

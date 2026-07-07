@@ -1067,6 +1067,9 @@ function SystemHealthTab({ health }: { health: SystemHealth | null; loading: boo
 
       {/* Hermes operator access — machine key for the operations agent */}
       <HermesOperatorPanel />
+
+      {/* Platform provider keys — founder rotation (write-only) */}
+      <ProviderKeysPanel />
     </div>
   );
 }
@@ -1184,6 +1187,251 @@ function HermesOperatorPanel() {
         >
           {busy ? "Generating…" : "Generate Hermes operator key"}
         </button>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ProviderKeysPanel — rotate platform LLM/API keys without touching Railway.
+// Write-only by design: the UI shows source + last4 only; a stored key value
+// is never displayed again. Paste a new key → active in the API immediately,
+// worker within 60s. Removing an override reverts to the Railway env key.
+// ---------------------------------------------------------------------------
+
+interface ProviderKeyStatus {
+  provider: string;
+  env_var: string;
+  env_configured: boolean;
+  override: { last4: string; rotated_at: string } | null;
+  active_source: "dashboard" | "railway_env" | "none";
+}
+
+const PROVIDER_KEY_LABELS: Record<string, string> = {
+  anthropic: "Anthropic (Claude)",
+  openai: "OpenAI (GPT)",
+  gemini: "Google (Gemini)",
+  perplexity: "Perplexity",
+  serp: "DataForSEO (AI Overview)",
+};
+
+function ProviderKeysPanel() {
+  const [keys, setKeys] = useState<ProviderKeyStatus[] | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/admin/provider-keys");
+      if (res.ok) {
+        const data = (await res.json()) as { keys: ProviderKeyStatus[] };
+        setKeys(data.keys);
+      }
+    } catch {
+      // keep previous state
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function replaceKey(provider: string) {
+    const draft = (drafts[provider] ?? "").trim();
+    if (!draft) return;
+    setBusy(provider);
+    setMessage("");
+    try {
+      const res = await apiFetch(`/api/admin/provider-keys/${provider}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: draft }),
+      });
+      const data = (await res.json()) as { message?: string; note?: string; last4?: string };
+      if (res.ok) {
+        setDrafts((d) => ({ ...d, [provider]: "" }));
+        setMessage(`${PROVIDER_KEY_LABELS[provider] ?? provider}: key replaced (…${data.last4}). ${data.note ?? ""}`);
+        await load();
+      } else {
+        setMessage(`${PROVIDER_KEY_LABELS[provider] ?? provider}: ${data.message ?? "replace failed"}`);
+      }
+    } catch {
+      setMessage("Network error — key NOT replaced.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeOverride(provider: string) {
+    setBusy(provider);
+    setMessage("");
+    try {
+      const res = await apiFetch(`/api/admin/provider-keys/${provider}`, { method: "DELETE" });
+      const data = (await res.json()) as { note?: string; message?: string };
+      setMessage(
+        res.ok
+          ? `${PROVIDER_KEY_LABELS[provider] ?? provider}: ${data.note ?? "override removed"}`
+          : `${PROVIDER_KEY_LABELS[provider] ?? provider}: ${data.message ?? "remove failed"}`
+      );
+      await load();
+    } catch {
+      setMessage("Network error — nothing changed.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const sourceBadge = (k: ProviderKeyStatus) => {
+    const map = {
+      dashboard: { label: "Dashboard override", color: "var(--color-primary)" },
+      railway_env: { label: "Railway env", color: "var(--color-success)" },
+      none: { label: "Not configured", color: "var(--color-error)" },
+    } as const;
+    const s = map[k.active_source];
+    return (
+      <span
+        style={{
+          fontSize: "var(--font-size-caption)",
+          fontWeight: 700,
+          color: s.color,
+          border: `1px solid ${s.color}`,
+          borderRadius: "var(--radius-pill)",
+          padding: "1px var(--space-2)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {s.label}
+      </span>
+    );
+  };
+
+  return (
+    <section aria-labelledby="provider-keys-heading">
+      <h3
+        id="provider-keys-heading"
+        style={{
+          fontSize: "var(--font-size-h4)",
+          fontWeight: 700,
+          margin: "0 0 var(--space-2) 0",
+        }}
+      >
+        Provider keys
+      </h3>
+      <p
+        style={{
+          margin: "0 0 var(--space-4) 0",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+        }}
+      >
+        Rotate a platform key without touching Railway. Keys are write-only: paste a new one and it
+        goes live in the API immediately (worker within 60s). Stored values are never shown again.
+      </p>
+      {message && (
+        <p
+          role="status"
+          aria-live="polite"
+          style={{
+            margin: "0 0 var(--space-3) 0",
+            fontSize: "var(--font-size-body-sm)",
+            color: "var(--color-text)",
+            fontWeight: 600,
+          }}
+        >
+          {message}
+        </p>
+      )}
+      {!keys ? (
+        <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>Loading…</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          {keys.map((k) => (
+            <li
+              key={k.provider}
+              style={{
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                padding: "var(--space-3) var(--space-4)",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "var(--space-3)",
+              }}
+            >
+              <div style={{ minWidth: "200px", flex: "1 1 200px" }}>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+                  {PROVIDER_KEY_LABELS[k.provider] ?? k.provider}
+                </p>
+                <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                  {sourceBadge(k)}{" "}
+                  {k.override
+                    ? `…${k.override.last4} · rotated ${new Date(k.override.rotated_at).toLocaleDateString()}`
+                    : k.env_configured
+                      ? `from ${k.env_var}`
+                      : "no key anywhere"}
+                </p>
+              </div>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="Paste new key"
+                aria-label={`New key for ${PROVIDER_KEY_LABELS[k.provider] ?? k.provider}`}
+                value={drafts[k.provider] ?? ""}
+                onChange={(e) => setDrafts((d) => ({ ...d, [k.provider]: e.target.value }))}
+                style={{
+                  flex: "2 1 240px",
+                  height: "36px",
+                  padding: "0 var(--space-3)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "var(--color-surface)",
+                  color: "var(--color-text)",
+                  fontFamily: "var(--font-family)",
+                  fontSize: "var(--font-size-body-sm)",
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy !== null || !(drafts[k.provider] ?? "").trim()}
+                onClick={() => void replaceKey(k.provider)}
+                style={{
+                  height: "36px",
+                  padding: "0 var(--space-4)",
+                  border: "none",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "var(--color-primary)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "var(--font-size-body-sm)",
+                  cursor: busy !== null ? "not-allowed" : "pointer",
+                  opacity: busy !== null || !(drafts[k.provider] ?? "").trim() ? 0.5 : 1,
+                }}
+              >
+                {busy === k.provider ? "Saving…" : "Replace"}
+              </button>
+              {k.override && (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void removeOverride(k.provider)}
+                  style={{
+                    height: "36px",
+                    padding: "0 var(--space-3)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-md)",
+                    backgroundColor: "transparent",
+                    color: "var(--color-muted)",
+                    fontSize: "var(--font-size-body-sm)",
+                    cursor: busy !== null ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Remove override
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );

@@ -38,6 +38,7 @@ import {
   withRlsContext,
   assertWorkerAppDbRoleSafe,
 } from "./db/rls-client";
+import { applyPlatformKeyOverrides } from "../../../packages/shared/src/platform-keys";
 
 // ---------------------------------------------------------------------------
 // Redis connection (ioredis — required by BullMQ)
@@ -86,6 +87,29 @@ function getAuditSql(): import("postgres").Sql {
   _auditSql = createWorkerDb();
   return _auditSql;
 }
+
+// ---------------------------------------------------------------------------
+// Platform provider-key overrides (admin-rotated) — same mechanism as the api:
+// injected into process.env at boot + every 60s, env stays the fallback and a
+// missing table is tolerated. Uses the raw (privileged, unscoped) client —
+// platform_provider_key has RLS with no policies, so app_user can never read it.
+// Note: this makes the audit sql client eager at boot (was lazy) — acceptable,
+// the worker needs it for the first audit job anyway.
+// ---------------------------------------------------------------------------
+const refreshPlatformKeys = (): Promise<number> =>
+  applyPlatformKeyOverrides(
+    async () => {
+      const rows = await getAuditSql()`SELECT provider, key_encrypted FROM platform_provider_key`;
+      return rows as unknown as { provider: string; key_encrypted: Buffer | Uint8Array }[];
+    },
+    (event, meta) => logger.info(event, meta as Record<string, string>)
+  );
+void refreshPlatformKeys().then((n) => {
+  if (n > 0) logger.info("platform_keys_applied", { count: n });
+});
+setInterval(() => {
+  void refreshPlatformKeys();
+}, 60_000).unref();
 
 const auditWorker = new Worker(
   "geo-audit",

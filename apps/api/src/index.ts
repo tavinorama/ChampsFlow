@@ -57,6 +57,7 @@ import { registerApiKeyRoutes } from "./routes/api-keys";
 import { registerAgencyRoutes } from "./routes/agency";
 import { registerAttributionRoutes } from "./routes/attribution";
 import { registerCheckoutRoutes } from "./routes/checkout";
+import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -76,6 +77,18 @@ const sql = postgres(config.DATABASE_URL, {
 });
 
 const db = createPostgresClient(sql);
+
+// ---------------------------------------------------------------------------
+// Platform provider-key overrides (admin-rotated) — injected into process.env
+// at boot and refreshed every 60s. Railway env values remain the fallback and
+// a missing table (deploy before migration) is tolerated. lib/platform-keys.ts.
+// ---------------------------------------------------------------------------
+void refreshPlatformKeys(db).then((n) => {
+  if (n > 0) logger.info("platform_keys_applied", { count: n });
+});
+setInterval(() => {
+  void refreshPlatformKeys(db);
+}, 60_000).unref();
 
 // ---------------------------------------------------------------------------
 // Redis client (ioredis) — used for health probe.
