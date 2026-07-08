@@ -65,7 +65,7 @@ export default function KitPage() {
         Get your AI-visibility audit + 3 publish-ready fixes &mdash; $29.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: 0 }}>
-        The Get-Cited Kit: full audit + your Ozvor AI Visibility Score, your top-3 citation fixes, 3 ready-to-publish drafts, a plain-English GEO guide, and a 30-day re-test plan. No subscription, no guarantees &mdash; just the snapshot and the content to act on it.
+        The Get-Cited Kit: full audit + your Ozvor AI Visibility Score, your top-3 citation fixes, 3 ready-to-publish drafts, a plain-English GEO guide, and a 30-day re-test plan. No subscription. We guarantee the deliverable &mdash; if your 3 drafts aren&rsquo;t publish-ready in ~10 minutes, we refund the $29 &mdash; never AI outcomes.
       </p>
 
       {/* Three deliverable cards */}
