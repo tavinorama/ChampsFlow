@@ -149,6 +149,78 @@ async function claimPendingSubscription(
   }
 }
 
+// ---------------------------------------------------------------------------
+// claimFreeTests / claimKitOrders — funnel continuity (#166)
+// ---------------------------------------------------------------------------
+// On first login, attach the visitor's pre-account free tests (lead_capture)
+// and $29 Kit purchases (kit_order) to the new tenant, matched on the
+// Supabase-verified email. Rows are retained + stamped (claimed_at,
+// claimed_by_tenant_id) so their prior test/purchase is recoverable in-account.
+//
+// SECURITY: verifiedEmail MUST come from the validated Supabase JWT (see
+// pendingEmailMatches note). email columns are CITEXT (case-insensitive); we
+// still normalize (lower+trim) for consistency. Best-effort: a failure NEVER
+// blocks account creation. Idempotent: WHERE claimed_at IS NULL, so re-running
+// bootstrap re-claims nothing already claimed.
+// Exported for unit testing.
+// ---------------------------------------------------------------------------
+export async function claimFreeTests(
+  db: PostgresClient,
+  tenantId: string,
+  verifiedEmail: string
+): Promise<number> {
+  if (!verifiedEmail) return 0;
+  const normalizedEmail = verifiedEmail.toLowerCase().trim();
+  try {
+    const { rows } = await db.query<{ id: string }>(
+      `UPDATE lead_capture
+          SET claimed_at = NOW(), claimed_by_tenant_id = $1
+        WHERE email = $2 AND claimed_at IS NULL
+        RETURNING id`,
+      [tenantId, normalizedEmail]
+    );
+    if (rows.length > 0) {
+      logger.info("free_tests_claimed", { tenant_id: tenantId, count: rows.length });
+    }
+    return rows.length;
+  } catch (err) {
+    logger.error("free_tests_claim_failed", {
+      tenant_id: tenantId,
+      message: (err as Error).message,
+      // NOTE: email intentionally NOT logged — hard rule (PII)
+    });
+    return 0;
+  }
+}
+
+export async function claimKitOrders(
+  db: PostgresClient,
+  tenantId: string,
+  verifiedEmail: string
+): Promise<number> {
+  if (!verifiedEmail) return 0;
+  const normalizedEmail = verifiedEmail.toLowerCase().trim();
+  try {
+    const { rows } = await db.query<{ id: string }>(
+      `UPDATE kit_order
+          SET claimed_at = NOW(), claimed_by_tenant_id = $1
+        WHERE email = $2 AND claimed_at IS NULL
+        RETURNING id`,
+      [tenantId, normalizedEmail]
+    );
+    if (rows.length > 0) {
+      logger.info("kit_orders_claimed", { tenant_id: tenantId, count: rows.length });
+    }
+    return rows.length;
+  } catch (err) {
+    logger.error("kit_orders_claim_failed", {
+      tenant_id: tenantId,
+      message: (err as Error).message,
+    });
+    return 0;
+  }
+}
+
 function tenantNameFromEmail(email: string | undefined): string {
   if (!email) return "My workspace";
   const domain = email.split("@")[1];
@@ -229,6 +301,13 @@ export function registerOnboardingRoutes(app: Hono, db: PostgresClient): void {
     // has verified email ownership via magic link. Safe to use as lookup key.
     // Best-effort: claim failure must not block account creation.
     await claimPendingSubscription(db, tenantId, session.email ?? "");
+
+    // Funnel continuity (#166): recover the visitor's pre-account free tests +
+    // Kit purchases by the same verified email. Best-effort; never blocks signup.
+    // One hook covers magic-link AND all OAuth providers (Google/GitHub/LinkedIn),
+    // since they all land here with a Supabase-verified session.email.
+    await claimFreeTests(db, tenantId, session.email ?? "");
+    await claimKitOrders(db, tenantId, session.email ?? "");
 
     // Push the claim into Supabase so future JWTs carry tenant_id + owner role.
     const metaSet = await setSupabaseAppMetadata(session.uid, tenantId);
