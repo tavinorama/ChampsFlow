@@ -142,6 +142,11 @@ export default function OrganicPostsPage() {
           <Link href="/pricing" className="op-cta-ghost">Compare plans</Link>
         </div>
       </section>
+      <p style={{ maxWidth: 720, margin: "var(--space-8) auto 0", padding: "0 var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center", lineHeight: 1.6 }}>
+        AI answers are non-deterministic and vary by engine, phrasing, and day. Ozvor&rsquo;s scores and
+        recommendations are evidence-based, directional estimates &mdash; not a guarantee of citation,
+        ranking, traffic, or revenue.
+      </p>
     </main>
   );
 }

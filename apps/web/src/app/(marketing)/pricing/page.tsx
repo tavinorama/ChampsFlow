@@ -178,6 +178,11 @@ export default function PricingPage() {
           ✓ yes · ~ partial · ✗ no · ? not disclosed. <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", textDecoration: "none", fontWeight: 600 }}>How we measure →</Link>
         </p>
       </section>
+      <p style={{ maxWidth: 720, margin: "var(--space-8) auto 0", padding: "0 var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center", lineHeight: 1.6 }}>
+        AI answers are non-deterministic and vary by engine, phrasing, and day. Ozvor&rsquo;s scores and
+        recommendations are evidence-based, directional estimates &mdash; not a guarantee of citation,
+        ranking, traffic, or revenue.
+      </p>
     </main>
   );
 }
