@@ -48,6 +48,7 @@ import { requireSuperAdmin } from "../auth/middleware";
 import { truncateIp } from "./dpa";
 import type { PostgresClient, TxClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { sendResendEmail } from "../../../../packages/shared/src/emails/resend-send";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -820,24 +821,27 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
     try {
       const resendApiKey = process.env.RESEND_API_KEY;
       if (resendApiKey) {
-        const { Resend } = await import("resend");
-        const resend = new Resend(resendApiKey);
-        await resend.emails.send({
+        const alertText = [
+          `New lost-email DSR escalation received.`,
+          ``,
+          `DSR Request ID: ${requestId}`,
+          `Account ID provided: ${account_id.trim()}`,
+          `Contact method: ${contact_method.trim()}`,
+          `Explanation: ${explanation.trim()}`,
+          ``,
+          `SLA: Manual verification within 5 business days.`,
+          ``,
+          `Action required: verify identity manually, then use POST /api/dsr/${requestId}/fulfill`,
+        ].join("\n");
+        await sendResendEmail({
           from: process.env.EMAIL_FROM ?? "noreply@ozvor.com",
           to: opsEmail,
           subject: `[DSR Escalation] Lost-email request — Account ID: ${account_id.trim()}`,
-          text: [
-            `New lost-email DSR escalation received.`,
-            ``,
-            `DSR Request ID: ${requestId}`,
-            `Account ID provided: ${account_id.trim()}`,
-            `Contact method: ${contact_method.trim()}`,
-            `Explanation: ${explanation.trim()}`,
-            ``,
-            `SLA: Manual verification within 5 business days.`,
-            ``,
-            `Action required: verify identity manually, then use POST /api/dsr/${requestId}/fulfill`,
-          ].join("\n"),
+          text: alertText,
+          html: `<pre>${alertText
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")}</pre>`,
         });
       }
     } catch (err) {
