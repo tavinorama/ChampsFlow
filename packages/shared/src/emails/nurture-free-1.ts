@@ -17,6 +17,8 @@
 
 const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
+import { sendResendEmail } from "./resend-send";
+
 export interface NurtureEmailParams {
   /** Recipient email address. */
   to: string;
@@ -149,10 +151,8 @@ export async function sendNurtureFree1Email(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

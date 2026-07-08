@@ -19,6 +19,8 @@
  * Parameters for the DSR OTP email.
  * DO NOT add: name, account details, or any PII beyond the recipient address.
  */
+import { sendResendEmail } from "./resend-send";
+
 export interface DsrOtpEmailParams {
   /** Recipient email address. */
   to: string;
@@ -43,8 +45,6 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
   const fromAddress = process.env.EMAIL_FROM ?? "noreply@ozvor.com";
   const expiryMinutes = params.expiryMinutes ?? 10;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
   const subject = "Verify your data request";
 
@@ -94,7 +94,7 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
 </body>
 </html>`;
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

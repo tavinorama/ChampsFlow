@@ -15,6 +15,8 @@
  *   - No raw account data, OAuth tokens, or sensitive PII in email body
  */
 
+import { sendResendEmail } from "./resend-send";
+
 export interface DsrCompletedEmailParams {
   /** Recipient email address. */
   to: string;
@@ -102,10 +104,8 @@ export async function sendDsrCompletedEmail(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

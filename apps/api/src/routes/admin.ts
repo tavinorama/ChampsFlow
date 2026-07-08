@@ -291,10 +291,11 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       if (!order.email || !order.brand) {
         return c.json({ error: "missing_recipient", code: "KIT_ORDER_NO_EMAIL" }, 422);
       }
-      await sendKitDeliveryEmail({ to: order.email, brand: order.brand, orderToken: order.order_token });
+      const result = await sendKitDeliveryEmail({ to: order.email, brand: order.brand, orderToken: order.order_token });
       // Recipient email intentionally NOT logged — hard rule (PII).
-      logger.info("admin_kit_email_resent", { kit_order_id: id });
-      return c.json({ ok: true });
+      logger.info("admin_kit_email_resent", { kit_order_id: id, message_id: result.id });
+      // Return the Resend message id + timestamp so the admin UI can confirm the send.
+      return c.json({ ok: true, id: result.id, sentAt: new Date().toISOString() });
     } catch (err) {
       logger.error("admin_kit_email_resend_failed", { kit_order_id: id, message: (err as Error).message });
       return c.json({ error: "resend_failed", code: "KIT_EMAIL_RESEND_FAILED", message: (err as Error).message }, 502);
