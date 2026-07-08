@@ -12,21 +12,7 @@ import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { UpsellLadder } from "../../../../components/UpsellLadder";
 import { FounderAnnualNote } from "../../../../components/marketing/FounderAnnualNote";
-
-interface Fix { vector: string; gap: string; action: string; effort: string; impact: string; priority: number }
-interface Draft { contentType: string; title: string; body: string; schemaMarkup: string | null; generatedBy: string }
-interface FromTest { status: string; brandEngineCount: number; competitorEngineCount: number; totalEngines: number; verdict: string }
-interface Deliverable {
-  brand: string;
-  generatedAt?: string;
-  live: boolean;
-  fromTest?: FromTest | null;
-  score: { brand: number; performance: number; ai: number; overall: number };
-  topFixes: Fix[];
-  drafts: Draft[];
-  publishChecklist: string[];
-  meta: { probesTotal: number; probesCited: number; enginesUsed: string[] };
-}
+import { normalizeDeliverable, type Deliverable } from "./deliverable-normalize";
 
 export default function KitDeliveryPage() {
   const params = useParams();
@@ -41,10 +27,13 @@ export default function KitDeliveryPage() {
       const statusRes = await fetch(`/api/kit/${token}`);
       if (statusRes.ok) {
         const s = await statusRes.json();
-        if (s.status === "delivered" && s.deliverable) {
-          setDeliverable(s.deliverable);
-          setState("ready");
-          return;
+        if (s.status === "delivered") {
+          const parsed = normalizeDeliverable(s.deliverable);
+          if (parsed) {
+            setDeliverable(parsed);
+            setState("ready");
+            return;
+          }
         }
       }
       // 2. Try to deliver (verify payment via session_id or dev_unlock).
@@ -54,8 +43,13 @@ export default function KitDeliveryPage() {
       if (search.get("dev_unlock") === "1") qs.set("dev_unlock", "1");
       const res = await fetch(`/api/kit/${token}/deliver?${qs.toString()}`, { method: "POST" });
       if (res.ok) {
-        setDeliverable((await res.json()).deliverable);
-        setState("ready");
+        const parsed = normalizeDeliverable((await res.json()).deliverable);
+        if (parsed) {
+          setDeliverable(parsed);
+          setState("ready");
+        } else {
+          setState("error");
+        }
       } else if (res.status === 402) {
         setState("unpaid");
       } else {
