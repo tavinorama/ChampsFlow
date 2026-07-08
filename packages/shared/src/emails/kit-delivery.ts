@@ -17,6 +17,8 @@
  *   - No full PII beyond recipient email address sent to Resend
  */
 
+import { sendResendEmail, type ResendSendResult } from "./resend-send";
+
 export interface KitDeliveryEmailParams {
   /** Recipient email address (the buyer). */
   to: string;
@@ -38,7 +40,7 @@ const KIT_BASE_URL = `${process.env["WEB_ORIGIN"] ?? "https://ozvor.com"}/kit`;
  */
 export async function sendKitDeliveryEmail(
   params: KitDeliveryEmailParams
-): Promise<void> {
+): Promise<ResendSendResult> {
   const resendApiKey = process.env.RESEND_API_KEY;
   if (!resendApiKey) {
     throw new Error(
@@ -160,10 +162,8 @@ export async function sendKitDeliveryEmail(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  return sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

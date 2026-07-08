@@ -17,6 +17,8 @@
  *   - No tracking pixels; no external asset references in HTML
  */
 
+import { sendResendEmail } from "./resend-send";
+
 export interface BonusDeliveryEmailParams {
   /** Recipient email address (the new paying customer). */
   to: string;
@@ -251,10 +253,8 @@ export async function sendBonusDeliveryEmail(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

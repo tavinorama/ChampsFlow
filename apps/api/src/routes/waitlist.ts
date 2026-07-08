@@ -36,6 +36,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { sendResendEmail } from "../../../../packages/shared/src/emails/resend-send";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -136,9 +137,7 @@ async function sendConfirmationEmail(email: string): Promise<void> {
   ].join("\n");
 
   try {
-    const { Resend } = await import("resend");
-    const resend = new Resend(resendApiKey);
-    await resend.emails.send({
+    await sendResendEmail({
       from: fromAddress,
       to: email,
       subject: "You're on the Organic Posts waitlist",

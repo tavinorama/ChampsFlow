@@ -13,19 +13,17 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// Capture every Resend send() payload.
+// The modules POST to the Resend REST API via fetch now (no SDK). Stub fetch
+// and capture each request body.
 const sent: Array<Record<string, unknown>> = [];
 
-vi.mock("resend", () => ({
-  Resend: class {
-    emails = {
-      send: async (payload: Record<string, unknown>) => {
-        sent.push(payload);
-        return { id: "test" };
-      },
-    };
-  },
-}));
+vi.stubGlobal(
+  "fetch",
+  vi.fn(async (_url: string, init: { body: string }) => {
+    sent.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ id: "test" }), { status: 200 });
+  })
+);
 
 import { sendKitDeliveryEmail } from "../../packages/shared/src/emails/kit-delivery";
 import { sendBonusDeliveryEmail } from "../../packages/shared/src/emails/bonus-delivery";

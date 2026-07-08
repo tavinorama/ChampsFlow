@@ -12,6 +12,8 @@
  *   - No raw account data, tokens, or sensitive PII in email body
  */
 
+import { sendResendEmail } from "./resend-send";
+
 export type DsrRequestType =
   | "access"
   | "correction"
@@ -96,10 +98,8 @@ export async function sendDsrConfirmedEmail(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

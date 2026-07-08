@@ -17,6 +17,8 @@
  *   - If RESEND_API_KEY missing, throw so caller can log a structured warning
  */
 
+import { sendResendEmail } from "./resend-send";
+
 export interface FreeTestResultEmailParams {
   /** Recipient email */
   to: string;
@@ -312,10 +314,8 @@ export async function sendFreeTestResultEmail(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,

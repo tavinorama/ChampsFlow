@@ -19,6 +19,8 @@
  *   - Never claims an export/download is available
  */
 
+import { sendResendEmail } from "./resend-send";
+
 export interface DsrNoDataEmailParams {
   /** Recipient email address (the verified requester). */
   to: string;
@@ -89,10 +91,8 @@ export async function sendDsrNoDataEmail(
 </body>
 </html>`;
 
-  const { Resend } = await import("resend");
-  const resend = new Resend(resendApiKey);
 
-  await resend.emails.send({
+  await sendResendEmail({
     from: fromAddress,
     to: params.to,
     subject,
