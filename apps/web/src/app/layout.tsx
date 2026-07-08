@@ -26,6 +26,7 @@ import { Schibsted_Grotesk, JetBrains_Mono } from "next/font/google";
 import "../styles/tokens.css";
 import { DpaGate } from "../components/DpaGate";
 import { AppTopBar } from "../components/AppTopBar";
+import { AppSidebar } from "../components/AppSidebar";
 import { SiteFooter } from "../components/SiteFooter";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 import { CookieConsent } from "../components/CookieConsent";
@@ -208,14 +209,19 @@ export default async function RootLayout({
           // 2. Authenticated app routes: full chrome incl. the Back button.
           <>
             <CaliforniaBanner country={country} />
-            <AppTopBar />
-            <DpaGate>{children}</DpaGate>
-            <SiteFooter />
-            {/* Clear the fixed mobile BottomNav so it never covers the footer. */}
-            <div
-              aria-hidden="true"
-              style={{ height: "calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px))" }}
-            />
+            <div className="app-shell">
+              <AppSidebar />
+              <div className="app-shell__content">
+                <AppTopBar />
+                <DpaGate>{children}</DpaGate>
+                <SiteFooter />
+                {/* Clear the fixed mobile BottomNav so it never covers the footer. */}
+                <div
+                  aria-hidden="true"
+                  style={{ height: "calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px))" }}
+                />
+              </div>
+            </div>
           </>
         ) : (
           // 3. Other public routes (legal, login, shared report): footer only —

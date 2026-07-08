@@ -34,6 +34,12 @@ const STEPS: { n: string; dur: string; title: string; desc: string }[] = [
   { n: "6", dur: "5:00", title: "Publish & monitor", desc: "Approve drafts with draft-and-confirm, then watch your score move every week." },
 ];
 
+const VIDEO_FORMATS = [
+  { title: "Landing page explainer", dur: "0:52", desc: "A short product story: AI recommends the competitor, Ozvor finds the gap, then shows the fix." },
+  { title: "Product tutorial", dur: "3:30", desc: "Screen-led walkthroughs for audit setup, score reading, competitor benchmark and the fix queue." },
+  { title: "Proof clip", dur: "0:20", desc: "Social-ready score movement clips for LinkedIn, case studies and sales follow-ups." },
+];
+
 const PAGE_CSS = `
   .lrn-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-ink); font-weight: 600; }
   .lrn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
@@ -49,6 +55,10 @@ const PAGE_CSS = `
   .lrn-play { width: 46px; height: 46px; border-radius: var(--radius-pill); background: linear-gradient(135deg,#27c98a,#0c7d54); color:#06140e; display:grid; place-items:center; font-size: 18px; }
   .lrn-dur { position:absolute; right:8px; bottom:8px; font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-text); background: rgba(0,0,0,0.45); padding: 2px 7px; border-radius: var(--radius-sm); }
   .lrn-guide { color: var(--color-accent-ink); font-weight: 600; text-decoration: none; font-size: var(--font-size-body-sm); }
+  .lrn-video-builder { display:grid; grid-template-columns: 0.95fr 1.05fr; gap: var(--space-5); align-items: stretch; }
+  .lrn-video-frame { position:relative; aspect-ratio:16/10; border-radius:var(--radius-lg); border:1px solid rgba(39,201,138,0.28); background:radial-gradient(80% 70% at 25% 10%, rgba(95,223,168,0.22), transparent 60%), var(--color-surface-muted); overflow:hidden; }
+  .lrn-video-frame::after { content:""; position:absolute; inset:auto 0 0; height:38%; background:linear-gradient(180deg, transparent, rgba(0,0,0,0.42)); }
+  @media (max-width: 860px) { .lrn-video-builder { grid-template-columns: 1fr; } }
   .lrn-cta-primary { display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:#06140e; text-decoration:none; background:linear-gradient(135deg,#27c98a,#0c7d54); border-radius:var(--radius-md); padding:0.8rem 1.5rem; box-shadow:0 10px 32px rgba(39,201,138,0.32); }
 `;
 
@@ -63,8 +73,57 @@ export default function LearnPage() {
         Learn Ozvor in one short path.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "640px", margin: 0 }}>
-        Six steps from sign-up to a moving Ozvor AI Visibility Score. Watch the video or read the guide — whatever fits how you work.
+        Six steps from sign-up to a moving Ozvor AI Visibility Score. Watch the video or read the guide — whatever fits how you work. New: create landing-page explainers and tutorial videos directly from the same audit/fix workflow.
       </p>
+
+      {/* Video creation studio */}
+      <section className="lrn-video-builder" style={{ marginTop: "var(--space-12)", background: "var(--color-surface)", border: "1px solid rgba(39,201,138,0.24)", borderRadius: "var(--radius-xl)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
+        <div>
+          <span className="lrn-eyebrow">Video studio</span>
+          <h2 style={{ margin: "var(--space-3) 0 var(--space-3)", fontSize: "clamp(1.55rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.08 }}>
+            Create the landing video and every tutorial from one approved script.
+          </h2>
+          <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.65 }}>
+            The Tutorials hub now frames video as a product workflow: pick a format, use the audit context, generate a script/storyboard, then keep publishing under draft-and-confirm.
+          </p>
+          <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap", marginTop: "var(--space-5)" }}>
+            <Link href="/test" className="lrn-cta-primary">Create from audit →</Link>
+            <Link href="/pricing" className="lrn-guide" style={{ display: "inline-flex", alignItems: "center", padding: "0.8rem 0" }}>See plans</Link>
+          </div>
+        </div>
+        <div className="lrn-video-frame" aria-label="Video creation storyboard preview">
+          <div style={{ position: "absolute", inset: 18, zIndex: 1, display: "grid", gridTemplateRows: "auto 1fr auto", gap: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-mono)", fontSize: "0.7rem", color: "var(--color-muted)" }}>
+              <span>STORYBOARD · LANDING EXPLAINER</span><span>Draft</span>
+            </div>
+            <div style={{ display: "grid", placeItems: "center", textAlign: "center" }}>
+              <span className="lrn-play" aria-hidden="true">▶</span>
+              <strong style={{ display: "block", marginTop: 14, fontSize: "1.35rem", letterSpacing: "-0.02em" }}>AI recommends them. Ozvor makes you citable.</strong>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+              {['Prompt','Gap','Fix','Score'].map((label) => (
+                <span key={label} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", padding: "7px 4px", textAlign: "center", color: "var(--color-muted)", fontFamily: "var(--font-mono)", fontSize: "0.64rem", background: "rgba(0,0,0,0.24)" }}>{label}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Video formats */}
+      <section style={{ marginTop: "var(--space-8)" }}>
+        <div className="lrn-grid">
+          {VIDEO_FORMATS.map((v) => (
+            <article key={v.title} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)", boxShadow: "var(--shadow-card)" }}>
+              <div className="lrn-thumb" style={{ marginBottom: "var(--space-3)" }}>
+                <span className="lrn-play" aria-hidden="true">▶</span>
+                <span className="lrn-dur">{v.dur}</span>
+              </div>
+              <h2 style={{ margin: "0 0 var(--space-2)", fontSize: "var(--font-size-h3)", fontWeight: 800 }}>{v.title}</h2>
+              <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.6, fontSize: "var(--font-size-body-sm)" }}>{v.desc}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       {/* 6-step grid */}
       <div className="lrn-grid" style={{ marginTop: "var(--space-12)" }}>
