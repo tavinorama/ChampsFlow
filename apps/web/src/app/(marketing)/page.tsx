@@ -441,7 +441,61 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SECTION 5: THE LADDER ────────────────────────────────────── */}
+      {/* ── SECTION 5: WATCH OZVOR IN ACTION ─────────────────────────── */}
+      <section style={{padding:'80px 32px',borderTop:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:1080,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>See it in action</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:640,fontSize:'clamp(28px,4.2vw,44px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.06,color:'var(--color-text)'}}>
+              Watch Ozvor find your AI visibility gap.
+            </h2>
+            <p style={{margin:'16px auto 0',maxWidth:560,fontSize:16.5,color:'var(--color-muted)'}}>
+              A 90-second product walkthrough. See the full flow: audit &rarr; score &rarr; competitors &rarr; fixes &rarr; publish.
+            </p>
+          </div>
+          <div style={{
+            margin:'40px auto 0',maxWidth:880,
+            borderRadius:18,border:'1px solid var(--color-border)',
+            overflow:'hidden',background:'var(--color-surface)',
+            boxShadow:'0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            {/* Video player area — embed actual screen recording here */}
+            <div style={{
+              position:'relative',aspectRatio:'16/9',
+              background:'radial-gradient(80% 70% at 50% 40%, rgba(39,201,138,0.10), transparent 60%), var(--color-surface-muted)',
+              display:'grid',placeItems:'center',overflow:'hidden',
+            }}>
+              {/* Placeholder with play button — replace <video> src with real recording */}
+              <video
+                controls
+                preload="metadata"
+                playsInline
+                poster="/videos/thumbnails/product-demo-poster.svg"
+                style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}
+              >
+                <source src="/videos/product-demo.mp4" type="video/mp4" />
+              </video>
+            </div>
+            {/* Caption row */}
+            <div style={{
+              padding:'16px 24px',
+              display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,
+              borderTop:'1px solid var(--color-border)',
+              fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:'var(--color-muted)',
+            }}>
+              <span style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:'#27c98a'}} aria-hidden="true"/>
+                Ozvor product demo &middot; 1:30
+              </span>
+              <Link href="/learn" style={{color:'var(--color-accent-ink)',fontWeight:600,textDecoration:'none'}}>
+                Watch more tutorials &rarr;
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 6: THE LADDER ────────────────────────────────────── */}
       <section style={{
         position:'relative',
         padding:'84px 32px 90px',
