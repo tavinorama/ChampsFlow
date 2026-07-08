@@ -3,27 +3,29 @@
 > Owner: `legal-privacy-officer` · GDPR Art. 30 · LGPD Art. 37 · Living document
 > Originally populated at Gate 3→4 (2026-05-02) from architecture §4 + §11 + PRD §7.
 > Updated 2026-06-09: entity changed to TrustIndex AI Ltda (Brazil); LGPD Art. 37 framing added; GEO platform processing activities added; prior social-scheduling activities archived.
+> Updated 2026-07-08: entity identity CORRECTED — controller trades as Ozvor, a Brazilian MEI (Microempreendedor Individual), CNPJ 67.609.444/0001-08 (the holder's civil name is not reproduced here at the controller's instruction; the CNPJ is the unique public identifier); registered office Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD. This corrects the 2026-06-09 entry, which incorrectly stated the entity type as Sociedade Limitada (Ltda) and left CNPJ/address as pending/TBC. See `docs/compliance/regulatory-map.md` (2026-05-30 Brazil home-jurisdiction section) for the jurisdiction/entity-change record; the P5 legal-gate verdict for this identity correction is pending and will be logged in `docs/compliance/gate-log.md`.
 > Update on every material change in processing, sub-processor list, or retention policy.
 
 ---
 
 ## Controller / Processor Info
 
-- **Legal entity name**: **TrustIndex AI Ltda** (Brazil — Sociedade Limitada; CNPJ pending incorporation). Replaces the prior "Organic Posts, Lda (Portugal)" entry (superseded 2026-05-30 per regulatory-map.md rebrand/jurisdiction change entry).
-- **Address**: Brazil (registered office TBC at CNPJ registration).
-- **LGPD establishment**: TrustIndex AI Ltda is established in Brazil. LGPD applies in full as the controller (controlador) is Brazil-domiciled. Regulator: **ANPD (Autoridade Nacional de Proteção de Dados)**.
-- **EU extraterritorial scope (GDPR Art. 3(2))**: TrustIndex AI offers services to EU data subjects. As a non-EU-established controller, **GDPR Art. 27 EU representative must be appointed** before EU users are onboarded. This appointment is a Gate 7 hard stop. The appointed representative's name and contact details must be added to this ROPA and the Privacy Policy at appointment.
+- **Legal entity name (Razão Social)**: on file with the Receita Federal under CNPJ **67.609.444/0001-08** — the holder's civil name is not reproduced in this document at the controller's instruction; the CNPJ is the unique public identifier of record. Operating as a Brazilian **MEI (Microempreendedor Individual)**. Trade name (nome fantasia): **Ozvor**. This corrects and supersedes the prior "TrustIndex AI Ltda (Sociedade Limitada; CNPJ pending incorporation)" entry (2026-06-09) — the confirmed registration is an MEI, not a Ltda. That entry was itself a correction of the still-earlier "Organic Posts, Lda (Portugal)" entry (superseded 2026-05-30 per regulatory-map.md rebrand/jurisdiction change entry, preserved there as history).
+- **Registered office (sede)**: Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil. Replaces the prior "TBC" placeholder.
+- **Entity-type note (MEI)**: As a Microempreendedor Individual, the controller is a natural person operating as an individual entrepreneur under CNPJ 67.609.444/0001-08, without a separate legal personality distinct from the founder (unlike a Ltda). This does not change any GDPR/LGPD/CCPA obligation already documented in this ROPA — a natural-person-operated business is still a "controller" / "controlador" / "business" under GDPR Art. 4(7), LGPD Art. 5(VI), and CCPA § 1798.140(d) respectively. Corporate-structure and liability implications of the MEI form are a tax/corporate matter for the founder and external (Brazilian) counsel, not a data-protection classification change.
+- **LGPD establishment**: Ozvor (the MEI, CNPJ 67.609.444/0001-08) is established in Brazil. LGPD applies in full as the controller (controlador) is Brazil-domiciled. Regulator: **ANPD (Autoridade Nacional de Proteção de Dados)**.
+- **EU extraterritorial scope (GDPR Art. 3(2))**: Ozvor offers services to EU data subjects. As a non-EU-established controller, **GDPR Art. 27 EU representative must be appointed** before EU users are onboarded. This appointment is a Gate 7 hard stop, unchanged by the entity-type correction. The appointed representative's name and contact details must be added to this ROPA and the Privacy Policy at appointment.
 - **US scope**: CCPA/CPRA (CA), TDPSA (TX), VCDPA (VA), and other applicable state laws based on consumer residency and thresholds.
 - **DPO contact**: Not mandatory at this scale under GDPR (no large-scale systematic monitoring, no Art. 9 processing; non-EU controller, so DPO is not mandated under Art. 37 at current scale). Reassess at Series A or if >250 employees.
-- **Encarregado de Dados (LGPD Art. 41)**: Required before BR launch. Appointment pending. Contact to be published in Privacy Policy. Can be the same person as the GDPR/privacy contact. **This is a Gate 7 hard stop.**
+- **Encarregado de Dados (LGPD Art. 41)**: Required before BR launch. Appointment pending. Contact to be published in Privacy Policy. Can be the same natural person as the GDPR/privacy contact — note LGPD Art. 41 requires the Encarregado to be a natural person in any case, which aligns naturally with the MEI structure. **This is a Gate 7 hard stop.**
 - **EU representative (GDPR Art. 27)**: Required before EU launch. **Not yet appointed.** To be named here when appointed. **This is a Gate 7 hard stop.**
-- **Joint controllers**: Not applicable in v1. TrustIndex AI is sole controller for its own account/operations data. It acts as operador/processor for SMB customer-directed processing.
+- **Joint controllers**: Not applicable in v1. Ozvor (the MEI) is sole controller for its own account/operations data. It acts as operador/processor for SMB customer-directed processing.
 
 ---
 
 ## Processing Activities — GEO Platform (Live, 2026-06-09)
 
-> The table below reflects TrustIndex AI GEO platform processing activities. Prior social-scheduling product (Organic Posts v1) activities are archived in the section below.
+> The table below reflects Ozvor's GEO platform processing activities. Prior social-scheduling product (Organic Posts v1) activities are archived in the section below.
 
 | # | Activity | Purpose | Lawful basis GDPR (Art. 6) | Lawful basis LGPD (Art. 7) | Data subjects | Personal data | Sub-processors | Third-country transfer | Mechanism | Retention |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -38,7 +40,7 @@
 | G9 | Strategy plan generation | Contract performance — AI-assisted prioritised GEO action plan | Art. 6(1)(b) — contract | Art. 7(V) — contract | B2B customers | Plan tasks (text recommendations; no personal data); customer accept/reject per task | Supabase (DB); Anthropic (rule engine + LLM assist) | Same as G1 + G3 | Same as G1 + G3 | Plan and tasks: account life + 30-day grace |
 | G10 | BYOK provider key storage | Contract performance — store customer-supplied LLM API keys encrypted | Art. 6(1)(b) — contract | Art. 7(V) — contract | B2B customers (key owners) | Encrypted key blob (AES-256-GCM); provider name; presence-only API | Supabase (DB) | Same as G1 | Same as G1 | Until key rotation or account deletion |
 | G11 | Billing and subscription management | Contract performance | Art. 6(1)(b) — contract | Art. 7(V) — contract | B2B customers | Name, email, Stripe customer ID, subscription tier, billing region (EU/US/BR); no raw card data in app DB | Stripe (US-hosted) | Yes — Stripe US | SCCs + Stripe DPF certified; LGPD: GEO-D3 (specific consent pending) | Account life; Stripe governs card data |
-| G12 | Transactional email delivery | Contract performance + legal obligation | Art. 6(1)(b) + (c) | Art. 7(V) + (II) | All users | Email address, notification content | Resend (EU infrastructure) | EU: none (EU infra). US/BR: verify Resend infra at Gate 7. | DPA available | Per Resend retention policy; TrustIndex AI does not store email content beyond trigger |
+| G12 | Transactional email delivery | Contract performance + legal obligation | Art. 6(1)(b) + (c) | Art. 7(V) + (II) | All users | Email address, notification content | Resend (EU infrastructure) | EU: none (EU infra). US/BR: verify Resend infra at Gate 7. | DPA available | Per Resend retention policy; Ozvor does not store email content beyond trigger |
 | G13 | Data subject rights (DSR) handling | Legal obligation — GDPR Art. 15–22; LGPD Art. 18; CCPA § 1798.100 et seq.; US state laws | Art. 6(1)(c) — legal obligation | Art. 7(II) — legal obligation | All users | DSR request record (email, request type, identity verification status); full personal data scope for access/portability fulfillment | Supabase (DB), Resend (acknowledgment and fulfillment delivery) | Same as G1 | Same as G1 | DSR record: closed_at + 30 days, then deleted. Fulfillment package delivered before deletion. |
 | G14 | Security monitoring and audit logging | Legal obligation (GDPR Art. 32; LGPD Art. 46) + legitimate interests | Art. 6(1)(c) + (f) | Art. 7(II) + (IX) | All users | Hashed user/tenant IDs in operational logs; IP address and event type in audit log (account creation, audit run, content approval, DSR events, billing events, admin actions) | Supabase (DB) | Same as G1 | Same as G1 | Audit log: 3 years. Operational logs: 90 days hot, 1 year archive. |
 | G15 | Scheduled/weekly audit monitoring | Contract performance — automated weekly GEO re-audit for monitoring-enabled brands | Art. 6(1)(b) — contract | Art. 7(V) — contract | B2B customers | Brand domain; audit results (same as G3/G7); triggered_by = 'cron' flag | Same as G3 + Upstash (Redis, BullMQ scheduled job) | Same as G3 | Same as G3 | Audit records: 12 months rolling; superseded by newer audit |
@@ -118,7 +120,8 @@
 ## Approval
 
 - Author: legal-privacy-officer agent
-- Gate: 3→4 (original 2026-05-02); updated at Gate 3→4 DPIA + LGPD ratification (2026-06-09)
+- Gate: 3→4 (original 2026-05-02); updated at Gate 3→4 DPIA + LGPD ratification (2026-06-09); entity-identity correction (2026-07-08)
 - Jurisdictions: Brazil (LGPD Art. 37 records), EU (GDPR Art. 30), US (CCPA/CPRA informing data inventory)
 - Reviewed by (human): _____ (required before EU/BR launch)
+- Update log: 2026-07-08 — entity identity corrected (MEI confirmed in place of the prior Ltda reference; CNPJ 67.609.444/0001-08 and registered office populated; "TrustIndex AI" active references replaced with "Ozvor"). Razão social kept as the on-file civil name under CNPJ 67.609.444/0001-08 (not reproduced, at the controller's instruction); the public identity is the trade name Ozvor. P5 legal-gate verdict pending. Historical Archived section (Organic Posts, Lda) preserved unedited per append-only convention.
 - Next review: annual (2027-06) or on material change in processing, sub-processor list, applicable law, or entity identity
