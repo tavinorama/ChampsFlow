@@ -1451,7 +1451,18 @@ interface OzvorAssetRow {
   description: string;
   publicPath?: string;
   repoPath?: string;
+  deliveredVia?: "kit-email" | "bonus-email" | "internal";
+  deliveredOn?: string;
 }
+
+const DELIVERY_LABELS: Record<
+  NonNullable<OzvorAssetRow["deliveredVia"]>,
+  { text: string; bg: string; fg: string }
+> = {
+  "kit-email": { text: "Kit email", bg: "var(--color-badge-ai-bg)", fg: "var(--color-badge-ai-text)" },
+  "bonus-email": { text: "Growth/Agency email", bg: "var(--color-accent-soft, #dcf0e6)", fg: "var(--color-accent-ink, #0c7d54)" },
+  internal: { text: "Internal / ops", bg: "var(--color-surface-muted)", fg: "var(--color-muted)" },
+};
 
 const ASSET_CATEGORY_LABELS: Record<OzvorAssetRow["category"], string> = {
   "client-deliverable": "Client deliverables",
@@ -1521,6 +1532,27 @@ function AssetsTab(): React.ReactElement {
                   <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
                     {a.description}
                   </p>
+                  {a.deliveredVia && (
+                    <p style={{ margin: "6px 0 0 0", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          fontSize: "var(--font-size-caption)",
+                          fontWeight: 700,
+                          padding: "1px 8px",
+                          borderRadius: "999px",
+                          backgroundColor: DELIVERY_LABELS[a.deliveredVia].bg,
+                          color: DELIVERY_LABELS[a.deliveredVia].fg,
+                        }}
+                      >
+                        {DELIVERY_LABELS[a.deliveredVia].text}
+                      </span>
+                      {a.deliveredOn && (
+                        <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                          {a.deliveredOn}
+                        </span>
+                      )}
+                    </p>
+                  )}
                   {a.repoPath && (
                     <p style={{ margin: "4px 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
                       source: <code style={{ fontSize: "inherit" }}>{a.repoPath}</code>
