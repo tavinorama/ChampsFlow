@@ -17,7 +17,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { ResourceMarkdown } from "../../../../components/ResourceMarkdown";
-import { PrintButton } from "./PrintButton";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 
 export const metadata: Metadata = {
@@ -618,7 +617,6 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
           >
             ↓ Download PDF (18 pages)
           </a>
-          <PrintButton />
         </div>
       </header>
 
