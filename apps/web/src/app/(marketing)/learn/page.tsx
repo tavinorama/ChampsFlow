@@ -137,18 +137,15 @@ export default function LearnPage() {
       <div className="lrn-grid" style={{ marginTop: "var(--space-12)" }}>
         {VIDEOS.map((v) => (
           <article key={v.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-            <div className="lrn-thumb" onClick={() => {
-              const audio = document.getElementById(`audio-${v.id}`) as HTMLAudioElement;
-              if (audio) { audio.currentTime = 0; audio.play(); }
-            }}>
+            <div className="lrn-thumb">
               <span className="lrn-play" aria-hidden="true">▶</span>
               <span className="lrn-dur">{v.dur}</span>
-              {v.audioSrc && (
-                <audio id={`audio-${v.id}`} preload="none" style={{ display: 'none' }}>
-                  <source src={v.audioSrc} type="audio/mpeg" />
-                </audio>
-              )}
             </div>
+            {v.audioSrc && (
+              <audio controls preload="none" style={{ width: "100%" }}>
+                <source src={v.audioSrc} type="audio/mpeg" />
+              </audio>
+            )}
             <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)" }}>
               <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-text)" }}>{v.title}</h2>
             </div>
