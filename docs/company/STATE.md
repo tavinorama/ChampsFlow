@@ -3,56 +3,69 @@
 > Single source of truth for CEO agent. Read first every session. Updated by ceo-agent after every VP dispatch.
 
 ## TL;DR
-Organic Posts is a pre-launch AI-native SaaS helping SMBs post consistently on social media without hiring a marketer. Mid-Phase 5 MVP build (Engineering active), zero public presence (Marketing activating 2026-05-03 for pre-launch demand), Legal operational for compliance gates. Sales/CX/Finance deferred until post-revenue. Two Q2 2026 OKRs: ship MVP in 60 days, build pre-launch demand (landing + 100 waitlist + 3 content pieces).
+OZvor (ozvor.com) is a **LAUNCHED, live-in-production** AI-native SaaS. Flagship **Ozvor Search** audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), computes the Ozvor AI Visibility Score (split into 3 scores), benchmarks competitors, and builds a GEO content plan; **Ozvor Social** and **OrganicPosts by Ozvor** (done-for-you consultancy) complete the family. Verified live 2026-07-08: web on ozvor.com, API `/healthz` ok (postgres+redis), `/api/system/capabilities` = mode=live (real audits, not mock), pricing live (Free $0 · Growth $99/mo · Agency $249/mo, paid tiers eligible for a 30% founder discount via FOUNDER30 · OrganicPosts = book-a-call), self-serve Stripe checkout. Run by founder **Otavio** (final approver, owns secrets/live switches) + **Hermes** (ops/orchestration) + **Claude Code** (implementation); GitHub = source of truth, merge-to-main = deploy (Railway). Q3 2026 OKRs (PROPOSED) center on first paid revenue, citation-infrastructure channels, and closing launch-blocking compliance gaps. Home jurisdiction **Brazil (LGPD)**; customers EU (GDPR) + US (CCPA/CPRA, FTC). See [operating-cadence.md](operating-cadence.md) for the proactive-but-gated ops model (issue #146).
 
 ## Company meta
-- **Name**: Organic Posts (working title — needs founder confirmation)
-- **One-liner**: AI-powered draft-and-confirm social media posting for small businesses
-- **Mission**: Help small businesses post consistently on social media without hiring a marketer
-- **Stage**: pre-launch, mid-MVP build
-- **Jurisdictions**: EU + US
-- **Sector**: SMB SaaS / social media automation
-- **Stack**: Next.js + Hono + Supabase + Railway; default LLM Anthropic Claude Sonnet
-- **v1 platforms**: LinkedIn + Instagram
-- **Founded**: 2026-05-01 (product), 2026-05-03 (company structure)
+> Authoritative source for company meta is [CLAUDE.md](../../CLAUDE.md). Values below reflect it as of 2026-07-08.
+- **Name**: OZvor (parent) — products: **Ozvor Search** (live GEO / AI-search visibility platform), **Ozvor Social** (social/content execution), **OrganicPosts by Ozvor** (done-for-you consultancy sub-brand)
+- **One-liner**: AI Search visibility platform for SMBs and agencies — audits AI-search presence (ChatGPT/Claude/Perplexity/Gemini/Google AI Overview), computes the Ozvor AI Visibility Score (3 scores: Visibility / Citation Readiness / Execution), benchmarks competitors, and builds a GEO content plan
+- **Mission**: Make every SMB and agency measurably visible and correctly cited across AI search
+- **Stage**: **LAUNCHED — live in production** (verified 2026-07-08: web + API healthy, audits mode=live, self-serve Stripe checkout live)
+- **Pricing (live)**: Free $0 · Growth $99/mo · Agency $249/mo (paid tiers eligible for 30% founder discount via FOUNDER30) · OrganicPosts = book-a-call
+- **Home jurisdiction**: **Brazil — LGPD** (entity registered; CNPJ on file with founder; **razão social + registered address PENDING** — blocks legal pages/ROPA)
+- **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC)
+- **Sector**: general SaaS (GEO / AI-search visibility)
+- **Domains**: **ozvor.com** (primary); legacy domains 301-redirect to ozvor.com
+- **Stack**: Next.js + Hono + Supabase + Railway (BullMQ/Redis worker); multi-LLM audit engine
+- **Operating model**: founder **Otavio** (`tavinorama`, final approver, owns secrets/live switches) + **Hermes** (`ozvor-hermes`, VPS + Telegram; orchestration/planning/PR reviews/ops/coordination) + **Claude Code** (full-stack implementation). GitHub = source of truth; every change branch → PR → CI green → risk-gated approval (LOW/MEDIUM/HIGH/CRITICAL) → merge; merge to `main` auto-deploys (Railway), so the merge gate is the deploy gate. See [AGENTS.md](../../AGENTS.md).
+- **Timeline**: initialized 2026-05-01 · GEO pivot 2026-05-29 · rebrand to Ozvor 2026-06 · launched (live) 2026-07
 
 ## Current quarter OKRs
 _Updated by CEO on init and quarterly. PROPOSED — awaiting founder confirmation._
 
-### Q2 2026
+### Q3 2026
 
-#### Objective 1: Ship MVP in 60 days (target 2026-07-02)
-- KR1.1: 3 beta users actively posting via Organic Posts — Owner: vp-engineering — Target: 3 — Current: 0
-- KR1.2: Capabilities C2, C3, C5, C6 shipped through Phase 7 — Owner: vp-engineering — Target: 4 caps — Current: 0
-- KR1.3: Production deploy live with monitoring — Owner: vp-engineering — Target: 1 — Current: 0
+#### Objective 1: Turn the live launch into first paid revenue
+- KR1.1: Founder payment smoke test — 1 real Growth-annual purchase with FOUNDER30 proving checkout → Stripe webhook → deliverable delivery end-to-end — Owner: vp-engineering (founder-gated, CRITICAL) — Target: 1 verified — Current: 0 (pending founder crivo)
+- KR1.2: First self-serve paid customers (Growth/Agency) — Owner: vp-sales + vp-marketing — Target: PROPOSED (e.g. 5) — Current: unknown — needs instrumentation
+- KR1.3: OrganicPosts book-a-call pipeline — Owner: vp-sales — Target: PROPOSED (e.g. 5 booked calls) — Current: unknown — needs instrumentation
 
-#### Objective 2: Build pre-launch demand
-- KR2.1: Landing page live — Owner: vp-marketing — Target: 1 by 2026-05-17 — Current: 0
-- KR2.2: Waitlist signups — Owner: vp-marketing — Target: 100 — Current: 0
-- KR2.3: Content pieces published — Owner: vp-marketing — Target: 3 — Current: 0
+#### Objective 2: Stand up citation infrastructure (channels = the product applied to itself)
+- KR2.1: Tier-1 channels live — GSC, Bing Webmaster+IndexNow, GA4, Reddit, LinkedIn company+founder (issues #115–#119); Google Business Profile blocked on registered address — Owner: vp-marketing — Target: 5 of 6 live — Current: 0
+- KR2.2: Analytics instrumentation live (GA4 + attribution) so customer count / MRR / traffic stop reading "unknown" — Owner: vp-engineering + vp-marketing — Target: instrumented — Current: not instrumented
+- KR2.3: Dogfooding + feeding cadence started (public action cards from Ozvor's own audit; 2 blog/week + 3 LinkedIn/week per AGENTS.md Phase 3) — Owner: vp-marketing — Target: cadence live — Current: 0
+
+#### Objective 3: Close launch-blocking compliance & ops gaps
+- KR3.1: Capture razão social + registered address → complete legal pages + ROPA/DPIA (LGPD + GDPR + CCPA/CPRA) — Owner: vp-legal (founder input required) — Target: complete — Current: blocked on founder input
+- KR3.2: Regenerate Hermes operator key in /admin + Hermes review of open PRs #147 (/healthz) & #148 (CI Smoke gate) — Owner: vp-engineering + Hermes (founder-gated key) — Target: done — Current: pending
+- KR3.3: Adopt proactive-but-gated Hermes operating model (issue #146) — operating-cadence + autonomy matrix — Owner: CEO/Hermes — Target: adopted — Current: drafted (docs/company/operating-cadence.md)
 
 ## Department status
 | Department | VP Agent | Status | Top KR | Last updated |
 |---|---|---|---|---|
-| Engineering | vp-engineering | ACTIVE (mid-Phase 5; C4+C1 shipped) | KR1.2 (4 caps remaining) | 2026-05-03 |
-| Marketing | vp-marketing | ACTIVATING (pre-launch brief dispatched) | KR2.1 (landing page in 14 days) | 2026-05-03 |
-| Sales | vp-sales | DEFERRED (until post-revenue) | — | 2026-05-03 |
-| CX | vp-cx | DEFERRED (until first beta user) | — | 2026-05-03 |
-| Finance | vp-finance | DEFERRED (until post-revenue) | — | 2026-05-03 |
-| Legal | vp-legal | OPERATIONAL (compliance gates passed; on-call for marketing legal copy) | — | 2026-05-03 |
+| Engineering | vp-engineering | ACTIVE (product live; shipped deliverables revamp #141, delivery-wiring/Assets tab #142, delivery/branding fix #144; open PRs #147 /healthz, #148 CI Smoke gate) | KR1.1 / KR3.2 | 2026-07-08 |
+| Marketing | vp-marketing | ACTIVATING (citation-infra Tier-1 channels #115–#119; dogfooding cadence not yet started) | KR2.1 | 2026-07-08 |
+| Sales | vp-sales | STANDING UP (self-serve checkout live; OrganicPosts book-a-call live; outbound Phase 4 not started) | KR1.2 / KR1.3 | 2026-07-08 |
+| CX | vp-cx | STANDBY (support inboxes + KB pending; no confirmed paying customers yet) | — | 2026-07-08 |
+| Finance | vp-finance | STANDBY (Stripe live; revenue analytics via Hermes operator API once first sale lands) | — | 2026-07-08 |
+| Legal | vp-legal | BLOCKED-PARTIAL (legal pages + ROPA/DPIA blocked on razão social + registered address; entity now Brazil/LGPD) | KR3.1 | 2026-07-08 |
 
 ## Cross-department dependencies
 _Active dependencies that require CEO coordination._
-- **Marketing → Legal**: Terms / Privacy Policy / Cookie copy needed for landing page footer. DPA copy already in `docs/04-ux.md` (reference, do not duplicate).
-- **Marketing → Engineering**: Waitlist signup form needs a captured-email destination (Supabase table or third-party). Decision pending — flagged to founder.
-- **Engineering → Marketing**: Brand voice + visual identity needed for in-product copy and any post-MVP UI polish. Non-blocking.
+- **Legal → all (BLOCKING)**: razão social + registered address (founder-held) is required to complete legal pages, ROPA/DPIA, and the Google Business Profile channel. Founder input required.
+- **Engineering → Finance + Sales**: analytics instrumentation (GA4 + attribution) must ship before customer count / MRR / conversion stop reading "unknown — needs instrumentation".
+- **Marketing → Engineering**: Tier-1 channel verification (GSC, Bing/IndexNow, GA4) may need meta tags, DNS records, or sitemap wiring on ozvor.com — route through vp-engineering.
+- **Sales → CX + Marketing**: case studies / dogfooding action cards need a real Ozvor audit result (CX supplies customer story, Marketing writes the content) — route through both VPs, never direct to specialists.
+- **Engineering/Ops → Founder (GATED)**: the payment smoke test (live Stripe purchase) is CRITICAL and founder-only; regenerating the Hermes operator key touches admin/secrets and is founder-gated.
 
 ## Open risks (company level)
 _Material risks affecting more than one department._
-- **R1**: Brand name "Organic Posts" not validated for trademark/domain availability (EU + US). Owner: vp-legal once activated; founder decision needed first.
-- **R2**: No public face / founder voice yet — affects content authenticity. Owner: founder.
-- **R3**: Beta acquisition channel undefined. Owner: founder + vp-marketing.
-- **R4**: 60-day MVP timeline aggressive given 4 capabilities + 2 phases remain. Owner: vp-engineering to validate next dispatch.
+- **R1 — Unproven paid path**: checkout → webhook → deliverable delivery has not been exercised by a real purchase (only `capabilities=live` confirmed). First paid sale could fail silently. Owner: vp-engineering + founder. Mitigation: founder payment smoke test (KR1.1).
+- **R2 — Compliance gap**: legal pages + ROPA/DPIA incomplete pending razão social + registered address → LGPD/GDPR/CCPA exposure as EU/US customer data scales. Owner: vp-legal + founder (KR3.1).
+- **R3 — No instrumented metrics**: customer count, MRR, and traffic are all "unknown — needs instrumentation"; OKRs cannot be managed by data until GA4/attribution ship. Owner: vp-engineering + vp-marketing (KR2.2).
+- **R4 — No live citation infrastructure**: none of GSC/Bing/GA4/Reddit/LinkedIn is live yet; for a GEO company these channels are the product applied to itself, and delay compounds. Owner: vp-marketing (KR2.1).
+- **R5 — Degraded ops automation**: Hermes operator key needs regeneration in /admin; open PRs #147/#148 await Hermes review. Owner: founder + Hermes (KR3.2).
+- **R6 — Audit integrity (residual)**: a prior worker deploy fabricated ~89 mock scores; an integrity guard now forbids mock in production and mode=live is verified (2026-07-08). Residual risk only if build/deps regress. Owner: vp-engineering.
 
 ## Decisions log (append-only)
 _Date | CEO decision | Affected departments | Rationale_
@@ -68,4 +81,5 @@ _Date | CEO decision | Affected departments | Rationale_
 - **2026-05-11** | GDPR Art. 27 EU representative requirement: **REMOVED** | Legal, Finance | Direct consequence of Portugal Lda decision. Entity is EU-resident, Art. 27 only applies to non-EU controllers. Saves ~€100-500/month VeraSafe/DataRep contract. Privacy Policy must be updated to remove EU rep section and replace with PT registered office. |
 - **2026-05-11** | Stripe SCC module determination: **SIMPLIFIED** | Legal | Portugal Lda is established in EU. Stripe (Ireland) → Organic Posts (Portugal) is intra-EU controller-to-processor under GDPR Art. 28 — no cross-border SCC module determination needed. Removes prior external counsel dependency. |
 - **2026-05-11** | Propagate PT Lda + Art. 27 removal across legal/compliance docs | Legal, Marketing | vp-legal dispatched to update ToS, Privacy Policy, DPA template, Sub-processors page, regulatory-map, ROPA, DPIA, gate-log, legal STATE, and unblock marketing STATE landing-page dependency. Substantive disclosures unchanged — entity-identity + governing-law + EU-rep-removal only. Carry-forward: registered office + Portuguese VAT to be added post-Empresa-Online incorporation (this week). |
-- **2026-05-11** | Lda governance: sole shareholder (founder, 100%), capital social €1.000 | Legal, Finance | Founder confirmed sole shareholder structure. Spouse not a sócia. Standard share split of 100/0 — €1.000 capital social. Path: Empresa na Hora presencial (in-person at Loja do Cidadão) since CMD not yet active — faster than activating CMD + Empresa Online. Empresa na Hora completes same-day with NIPC + Certidão Permanente. |
+- **2026-05-11** | Lda governance: sole shareholder (founder, 100%), capital social €1.000 | Legal, Finance | Founder confirmed sole shareholder structure. Spouse not a sócia. Standard share split of 100/0 — €1.000 capital social. Path: Empresa na Hora presencial (in-person at Loja do Cidadão) since CMD not yet active — faster than activating CMD + Empresa Online. Empresa na Hora completes same-day with NIPC + Certidão Permanente.
+- **2026-07-08** | STATE refreshed to Ozvor launch reality; entity corrected to Brazil/LGPD | All | (a) Rewrote the living sections (TL;DR, Company meta, Q3 2026 OKRs [PROPOSED], department status, cross-department dependencies, open risks) to reflect that the product is **LAUNCHED / live in production** on ozvor.com — verified 2026-07-08: web serving, API `/healthz` ok (postgres+redis), `/api/system/capabilities` mode=live (real audits, not mock), pricing live (Free $0 · Growth $99/mo · Agency $249/mo + FOUNDER30 30% · OrganicPosts book-a-call), self-serve Stripe checkout. The prior STATE described a pre-launch "Organic Posts" social-posting MVP and is superseded. (b) **Correction**: home jurisdiction is **Brazil (LGPD)** — entity registered, CNPJ on file with founder (per CLAUDE.md, authoritative for company meta). For go-forward purposes this supersedes the stale 2026-05-11 "Portugal Lda" / Portuguese-governing-law / GDPR Art. 27-removal / intra-EU-SCC decisions; those historical entries are retained (append-only log) but no longer describe the operating entity. razão social + registered address remain PENDING with the founder and block legal-page/ROPA completion. (c) Per issue #146, added `docs/company/operating-cadence.md` encoding a proactive-but-gated Hermes operating model grounded in AGENTS.md risk levels and design-autonomous-engine.md §0/§4.5. No live/production/paid action taken — documentation only. |
