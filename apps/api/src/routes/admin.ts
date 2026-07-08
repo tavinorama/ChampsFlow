@@ -34,6 +34,7 @@ import { requireAuth, requireSuperAdmin } from "../auth/middleware";
 import { tryGetSharedRedis } from "../shared-redis";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { encryptToken } from "../../../../packages/shared/src/crypto";
 import {
   PLATFORM_KEY_PROVIDERS,
@@ -256,6 +257,47 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     } catch (err) {
       logger.error("admin_kit_orders_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "KIT_ORDERS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/admin/kit-orders/:id/resend-email — re-send the Kit delivery
+  // email for a paid/delivered order (support: spam folder, typo, or a past
+  // send failure). Reuses the exact Resend path the webhook uses. Super-admin.
+  // -------------------------------------------------------------------------
+  app.post("/api/admin/kit-orders/:id/resend-email", requireAuth, requireSuperAdmin, async (c) => {
+    const id = c.req.param("id");
+    try {
+      const { rows } = await db.query<{
+        email: string;
+        brand: string;
+        order_token: string;
+        status: string;
+      }>(
+        `SELECT email, brand, order_token, status FROM kit_order WHERE id = $1`,
+        [id]
+      );
+      const order = rows[0];
+      if (!order) {
+        return c.json({ error: "not_found", code: "KIT_ORDER_NOT_FOUND" }, 404);
+      }
+      // Only re-send for orders that actually paid — never email an unpaid order.
+      if (order.status !== "paid" && order.status !== "delivered") {
+        return c.json(
+          { error: "not_paid", code: "KIT_ORDER_NOT_PAID", message: "Only paid or delivered orders can be re-sent." },
+          409
+        );
+      }
+      if (!order.email || !order.brand) {
+        return c.json({ error: "missing_recipient", code: "KIT_ORDER_NO_EMAIL" }, 422);
+      }
+      await sendKitDeliveryEmail({ to: order.email, brand: order.brand, orderToken: order.order_token });
+      // Recipient email intentionally NOT logged — hard rule (PII).
+      logger.info("admin_kit_email_resent", { kit_order_id: id });
+      return c.json({ ok: true });
+    } catch (err) {
+      logger.error("admin_kit_email_resend_failed", { kit_order_id: id, message: (err as Error).message });
+      return c.json({ error: "resend_failed", code: "KIT_EMAIL_RESEND_FAILED", message: (err as Error).message }, 502);
     }
   });
 
