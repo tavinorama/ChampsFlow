@@ -1,8 +1,38 @@
 name: E2E Tests
 
+# Full Playwright E2E is ADVISORY — it is NOT a per-PR merge-latency gate
+# (issue #143). It has a known CI-runner SSR stall that does not reproduce in
+# dev / `next start` / Docker / Railway, so making every small PR wait ~20 min
+# for a usually-cancelled job added latency without safety. The fast required
+# signal is the "Smoke" job in ci.yml; full E2E now runs only:
+#   - on demand           (workflow_dispatch)
+#   - nightly             (scheduled regression sweep)
+#   - on PRs that touch high-risk UI / auth / billing / admin surfaces (paths)
+# Keep "Playwright E2E" OUT of branch-protection required checks (it stays
+# continue-on-error/advisory). See AGENTS.md § CI & review gates for when Hermes
+# may approve despite this job being cancelled/stalled.
 on:
+  workflow_dispatch: {}
+  schedule:
+    # 06:00 UTC nightly full regression sweep (advisory).
+    - cron: "0 6 * * *"
   pull_request:
     branches: [main]
+    # Only auto-run on PRs that change high-risk surfaces where a full browser
+    # pass earns its latency. Everything else relies on the fast Smoke gate.
+    paths:
+      - "apps/web/src/middleware.ts"
+      - "apps/web/src/app/**/login/**"
+      - "apps/web/src/app/**/account/**"
+      - "apps/web/src/app/**/admin/**"
+      - "apps/web/src/app/**/kit/**"
+      - "apps/web/src/app/api/**"
+      - "apps/api/src/routes/billing.ts"
+      - "apps/api/src/routes/checkout.ts"
+      - "apps/api/src/auth/**"
+      - "tests/e2e/**"
+      - "playwright.config.ts"
+      - ".github/workflows/e2e.yml"
 
 # Only run E2E on PRs targeting main (not on every push to feature branches)
 concurrency:
