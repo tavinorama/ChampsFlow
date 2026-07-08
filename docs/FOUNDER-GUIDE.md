@@ -138,7 +138,7 @@ exige taxa com confiança, não cara-ou-coroa). Nunca prometa "100% de precisão
 | Deploy passo a passo | `docs/GO-LIVE-RUNBOOK.md` |
 | Como tudo funciona por dentro | `docs/system-transparency.md` + página `/how-it-works` |
 | Estado do projeto (sempre atual) | `docs/STATE.md` |
-| Estratégia de marca | `docs/brand-strategy.md` |
+| Marca (Ozvor) | meta em `CLAUDE.md` + brand kit `scripts/gen-brand-kit.mjs` → `Ozvor-Brand-Kit.zip` |
 | Compliance | `docs/compliance/` |
 
 **Resumo de uma linha:** o software está pronto e funcionando de ponta a ponta;
