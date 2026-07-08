@@ -57,6 +57,7 @@ import { registerApiKeyRoutes } from "./routes/api-keys";
 import { registerAgencyRoutes } from "./routes/agency";
 import { registerAttributionRoutes } from "./routes/attribution";
 import { registerCheckoutRoutes } from "./routes/checkout";
+import { registerDownloadRoutes } from "./routes/downloads";
 import { registerOperatorBusinessRoutes } from "./routes/operator";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
@@ -258,6 +259,8 @@ app.get("/healthz", async (c) => {
 
 registerSocialAccountRoutes(app, db);
 registerDraftRoutes(app, db);
+// Gated asset delivery: GET /api/download (public route, signed-token gated).
+registerDownloadRoutes(app);
 // D2: Public API + API keys
 //   Management (JWT, tenant-scoped): GET/POST/DELETE /api/account/api-keys
 //   Public read-only (API-key-authed): GET /api/v1/{me,brands,brands/:id,

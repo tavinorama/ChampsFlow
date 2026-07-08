@@ -11,6 +11,8 @@
  * editing binaries in place.
  */
 
+import { signedDownloadUrl, type GatedAssetId } from "./download-token";
+
 export type AssetCategory = "client-deliverable" | "brand" | "content-gtm";
 
 /**
@@ -29,8 +31,20 @@ export interface OzvorAsset {
   category: AssetCategory;
   format: "pdf" | "xlsx" | "zip" | "png" | "markdown" | "directory";
   description: string;
-  /** Path on ozvor.com — downloadable artifact (omit when repo-only). */
+  /**
+   * Path on ozvor.com — downloadable artifact (omit when repo-only). For GATED
+   * assets this is NOT a static file: it is resolved at request time to a
+   * signed, expiring /api/download URL (see resolveAssetDownloads). The raw
+   * manifest leaves publicPath undefined for gated assets so no dead/public link
+   * ever leaks.
+   */
   publicPath?: string;
+  /**
+   * Gated asset id (customer-only). When set, the file is served only via a
+   * signed token — never as a free public file. resolveAssetDownloads() mints
+   * the signed publicPath for the admin/operator surfaces.
+   */
+  gated?: GatedAssetId;
   /** Source in the ChampsFlow repo — edit + regenerate via PR. */
   repoPath?: string;
   /** How the customer receives it (delivery wiring). */
@@ -48,7 +62,7 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     format: "pdf",
     description:
       "The $29 tripwire product: audit walkthrough, Ozvor AI Visibility Score, top-3 fixes, 3 ready-to-publish drafts, 30-day retest plan.",
-    publicPath: "/downloads/The-Get-Cited-Kit.pdf",
+    gated: "get-cited-kit",
     repoPath: "docs/marketing/lead-magnets/get-cited-kit.md",
     deliveredVia: "kit-email",
     deliveredOn: "Get-Cited Kit purchase ($29)",
@@ -70,7 +84,7 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     category: "client-deliverable",
     format: "pdf",
     description: "Action-first guide to getting cited by AI search — opens with a 10-minute check. Growth/Agency welcome bonus.",
-    publicPath: "/downloads/The-GEO-Visibility-Guide.pdf",
+    gated: "geo-guide",
     repoPath: "docs/marketing/lead-magnets/geo-visibility-guide.md",
     deliveredVia: "bonus-email",
     deliveredOn: "Growth / Agency welcome",
@@ -81,7 +95,7 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     category: "client-deliverable",
     format: "pdf",
     description: "Fill-in templates for the content formats LLMs cite most.",
-    publicPath: "/downloads/5-High-Citation-Post-Templates.pdf",
+    gated: "citation-templates",
     repoPath: "docs/marketing/lead-magnets/5-high-citation-post-templates.md",
     deliveredVia: "bonus-email",
     deliveredOn: "Growth / Agency welcome",
@@ -92,7 +106,7 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     category: "client-deliverable",
     format: "xlsx",
     description: "Working spreadsheet for tracking citations across engines over time.",
-    publicPath: "/downloads/LLM-Citation-Tracker.xlsx",
+    gated: "citation-tracker",
     repoPath: "scripts/build-deliverables.mjs",
     deliveredVia: "bonus-email",
     deliveredOn: "Growth / Agency welcome",
@@ -103,7 +117,7 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     category: "client-deliverable",
     format: "pdf",
     description: "Companion methodology for the tracker spreadsheet.",
-    publicPath: "/downloads/LLM-Citation-Tracker-Methodology.pdf",
+    gated: "citation-tracker-methodology",
     repoPath: "docs/marketing/lead-magnets/llm-citation-tracker.md",
     deliveredVia: "bonus-email",
     deliveredOn: "Growth / Agency welcome",
@@ -214,3 +228,23 @@ export const OZVOR_ASSETS: OzvorAsset[] = [
     deliveredOn: "Ops / content",
   },
 ];
+
+/**
+ * Resolve the manifest for the admin/operator surfaces: gated assets get a
+ * freshly-signed, expiring /api/download URL as their publicPath so the founder
+ * (and Hermes, via the operator API) can still fetch them — without ever
+ * exposing a plain public URL. Public (non-gated) assets are returned unchanged.
+ *
+ * Runs server-side only (needs OAUTH_TOKEN_KEY). If signing fails for any asset,
+ * that asset is returned without a publicPath rather than crashing the list.
+ */
+export function resolveAssetDownloads(origin = ""): OzvorAsset[] {
+  return OZVOR_ASSETS.map((a) => {
+    if (!a.gated) return a;
+    try {
+      return { ...a, publicPath: signedDownloadUrl(a.gated, origin) };
+    } catch {
+      return a;
+    }
+  });
+}

@@ -18,6 +18,7 @@
  */
 
 import { sendResendEmail } from "./resend-send";
+import { signedDownloadUrl, type GatedAssetId } from "../download-token";
 
 export interface BonusDeliveryEmailParams {
   /** Recipient email address (the new paying customer). */
@@ -32,34 +33,40 @@ const DASHBOARD_URL = "https://ozvor.com/dashboard";
 const AGENCIES_URL = "https://ozvor.com/agencies";
 const ORGANICPOSTS_URL = "https://ozvor.com/organicposts";
 
-const BONUS_ASSETS = [
+// Each bonus is a GATED asset (customer-only). The download link is minted at
+// send time as a signed, expiring token (signedDownloadUrl) — these files are
+// no longer freely downloadable from a public URL, so the link works only from
+// this email and cannot be shared as a plain public URL.
+const BONUS_ASSETS: ReadonlyArray<{
+  label: string;
+  asset: GatedAssetId;
+  description: string;
+}> = [
   {
     label: "The GEO Visibility Guide (PDF)",
-    url: "https://ozvor.com/downloads/The-GEO-Visibility-Guide.pdf",
-    resourcePage: "https://ozvor.com/resources/geo-visibility-guide",
+    asset: "geo-guide",
     description:
       "Your practical playbook for getting named by ChatGPT, Claude, Perplexity and Google AI Overviews — starts with a 10-minute check you can run today.",
   },
   {
     label: "5 High-Citation Post Templates (PDF)",
-    url: "https://ozvor.com/downloads/5-High-Citation-Post-Templates.pdf",
-    resourcePage: "https://ozvor.com/resources/5-high-citation-post-templates",
+    asset: "citation-templates",
     description:
       "Fill-in-the-blank content structures engineered to get your business cited — a usable template on page one.",
   },
   {
     label: "LLM Citation Tracker spreadsheet (.xlsx)",
-    url: "https://ozvor.com/downloads/LLM-Citation-Tracker.xlsx",
+    asset: "citation-tracker",
     description:
       "The working spreadsheet for tracking when AI names your brand versus your competitors.",
   },
   {
     label: "LLM Citation Tracker methodology (PDF)",
-    url: "https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf",
+    asset: "citation-tracker-methodology",
     description:
       "The 10-minute weekly routine and scoring method that explains how to use the spreadsheet.",
   },
-] as const;
+];
 
 /**
  * Send the bonus delivery welcome email via Resend.
@@ -80,6 +87,13 @@ export async function sendBonusDeliveryEmail(
   const fromAddress =
     process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
+  // Web origin fronts /api/download (Next.js rewrites /api/* → Hono API), so a
+  // signed link on the web domain reaches the gated download route.
+  const webOrigin = process.env.WEB_ORIGIN ?? "https://ozvor.com";
+  // Mint one signed, expiring URL per gated bonus (default TTL: 1 year).
+  const bonusHref = (asset: GatedAssetId): string =>
+    signedDownloadUrl(asset, webOrigin);
+
   const planLabel =
     params.plan === "agency" ? "Agency" : "Growth";
   const isAgency = params.plan === "agency";
@@ -96,7 +110,7 @@ export async function sendBonusDeliveryEmail(
 
   // ----- Plain-text body -----
   const bonusLines = BONUS_ASSETS.map(
-    (b, i) => `${i + 1}. ${b.label}\n   ${b.url}`
+    (b, i) => `${i + 1}. ${b.label}\n   ${bonusHref(b.asset)}`
   ).join("\n\n");
 
   const agencyPerkLine = isAgencyAnnual
@@ -144,7 +158,7 @@ export async function sendBonusDeliveryEmail(
     <td style="padding:14px 0;border-bottom:1px solid #d5dfd9;">
       <p style="margin:0 0 4px 0;font-weight:700;color:#17211c;font-size:15px;">${b.label}</p>
       <p style="margin:0 0 10px 0;font-size:13px;color:#5c6e65;line-height:1.5;">${b.description}</p>
-      <a href="${b.url}" style="${btnStyle}">Download directly</a>
+      <a href="${bonusHref(b.asset)}" style="${btnStyle}">Download directly</a>
     </td>
   </tr>`
   ).join("");

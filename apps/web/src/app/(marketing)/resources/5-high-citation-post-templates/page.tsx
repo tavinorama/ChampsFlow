@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title:
     "5 High-Citation LinkedIn Post Templates — Backed by Princeton GEO Research | Ozvor",
   description:
-    "Fill-in-the-blank LinkedIn post templates derived from the peer-reviewed Princeton GEO study (KDD 2024). Each maps to a proven citation tactic: +41% quotations, +33% statistics, +28% cited sources. Free PDF download.",
+    "Fill-in-the-blank LinkedIn post templates derived from the peer-reviewed Princeton GEO study (KDD 2024). Each maps to a proven citation tactic: +41% quotations, +33% statistics, +28% cited sources. Included with every Ozvor Growth and Agency plan.",
   alternates: {
     canonical:
       "https://ozvor.com/resources/5-high-citation-post-templates",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title:
       "5 High-Citation Post Templates (Princeton GEO Research) | Ozvor",
     description:
-      "Each template maps to a proven Princeton GEO tactic. Before/after examples in real SMB verticals. Free PDF download — included with Growth plan.",
+      "Each template maps to a proven Princeton GEO tactic. Before/after examples in real SMB verticals. Included with every Ozvor Growth and Agency plan.",
     url: "https://ozvor.com/resources/5-high-citation-post-templates",
     siteName: "Ozvor",
     type: "article",
@@ -303,10 +303,9 @@ export default function PostTemplatesPage() {
               marginBottom: "var(--space-4)",
             }}
           >
-            <a
-              href="/downloads/5-High-Citation-Post-Templates.pdf"
-              download
-              aria-label="Download the 5 High-Citation Post Templates PDF (14 pages)"
+            <Link
+              href="/pricing"
+              aria-label="Get the 5 High-Citation Post Templates with a Growth or Agency plan"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -321,8 +320,8 @@ export default function PostTemplatesPage() {
                 fontFamily: "var(--font-family)",
               }}
             >
-              ↓ Download the full template pack (PDF)
-            </a>
+              Get the full template pack with Growth →
+            </Link>
           </div>
 
           <p
@@ -331,8 +330,8 @@ export default function PostTemplatesPage() {
               color: "var(--color-muted)",
             }}
           >
-            Free to download. Included with the Growth plan ($99/mo). No signup
-            required.
+            Included with every Growth ($99/mo) and Agency plan — yours to
+            download the moment you subscribe.
           </p>
         </header>
 
@@ -857,10 +856,9 @@ export default function PostTemplatesPage() {
             <li>A 3-item pre-publish checklist</li>
           </ul>
           <br />
-          <a
-            href="/downloads/5-High-Citation-Post-Templates.pdf"
-            download
-            aria-label="Download the full 5 High-Citation Post Templates PDF pack (14 pages)"
+          <Link
+            href="/pricing"
+            aria-label="Get the full 5 High-Citation Post Templates pack with a Growth or Agency plan"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -875,8 +873,8 @@ export default function PostTemplatesPage() {
               fontFamily: "var(--font-family)",
             }}
           >
-            ↓ Download the full template pack (PDF, 14pp)
-          </a>
+            Get the full template pack with Growth or Agency →
+          </Link>
         </div>
 
         {/* Soft CTA nudge — free test */}

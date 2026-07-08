@@ -18,13 +18,13 @@ export const metadata: Metadata = {
   title:
     "LLM Citation Tracker — Monitor When ChatGPT, Claude & Perplexity Name Your Business | Ozvor",
   description:
-    "A free spreadsheet template and methodology for tracking when AI answer engines cite your business. 10 minutes a week, no tools required. Download the .xlsx template and the 7-page methodology PDF.",
+    "A spreadsheet template and methodology for tracking when AI answer engines cite your business. 10 minutes a week, no tools required. The .xlsx template and 7-page methodology are included with every Ozvor Growth and Agency plan.",
   alternates: {
     canonical: "https://ozvor.com/resources/llm-citation-tracker",
   },
   openGraph: {
     title:
-      "LLM Citation Tracker — Free spreadsheet to monitor your AI search visibility | Ozvor",
+      "LLM Citation Tracker — the spreadsheet to monitor your AI search visibility | Ozvor",
     description:
       "Track when ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview name your business. 10 minutes a week. Free .xlsx template and methodology PDF.",
     url: "https://ozvor.com/resources/llm-citation-tracker",
@@ -232,10 +232,9 @@ export default function LlmCitationTrackerPage() {
               marginBottom: "var(--space-4)",
             }}
           >
-            <a
-              href="/downloads/LLM-Citation-Tracker.xlsx"
-              download
-              aria-label="Download the LLM Citation Tracker spreadsheet (.xlsx)"
+            <Link
+              href="/pricing"
+              aria-label="Get the LLM Citation Tracker spreadsheet with a Growth or Agency plan"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -250,12 +249,11 @@ export default function LlmCitationTrackerPage() {
                 fontFamily: "var(--font-family)",
               }}
             >
-              ↓ Download the spreadsheet (.xlsx)
-            </a>
-            <a
-              href="/downloads/LLM-Citation-Tracker-Methodology.pdf"
-              download
-              aria-label="Download the LLM Citation Tracker methodology PDF (7 pages)"
+              Get the tracker with Growth or Agency →
+            </Link>
+            <Link
+              href="/kit"
+              aria-label="Start with the $29 Get-Cited Kit"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -271,8 +269,8 @@ export default function LlmCitationTrackerPage() {
                 fontFamily: "var(--font-family)",
               }}
             >
-              ↓ Download the methodology (PDF, 7pp)
-            </a>
+              Or start with the $29 Kit →
+            </Link>
           </div>
 
           <p
@@ -281,8 +279,8 @@ export default function LlmCitationTrackerPage() {
               color: "var(--color-muted)",
             }}
           >
-            Free to download. Included with Growth ($99/mo) and Agency ($249/mo)
-            plans.
+            The spreadsheet and methodology are included with every Growth
+            ($99/mo) and Agency ($249/mo) plan.
           </p>
         </header>
 
@@ -910,10 +908,9 @@ export default function LlmCitationTrackerPage() {
             >
               See plans &amp; pricing →
             </Link>
-            <a
-              href="/downloads/LLM-Citation-Tracker.xlsx"
-              download
-              aria-label="Download the LLM Citation Tracker spreadsheet (.xlsx)"
+            <Link
+              href="/kit"
+              aria-label="Start with the $29 Get-Cited Kit"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -928,8 +925,8 @@ export default function LlmCitationTrackerPage() {
                 textDecoration: "none",
               }}
             >
-              ↓ Just download the spreadsheet (.xlsx)
-            </a>
+              Or start with the $29 Kit →
+            </Link>
           </div>
         </section>
 

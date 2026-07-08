@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title:
     "The GEO Visibility Guide — How Small Businesses Get Cited by ChatGPT in 2026 | Ozvor",
   description:
-    "A free 30-page guide on Generative Engine Optimization for small businesses: how AI engines decide who to cite, the 5 traits of citation-worthy content, a 4-week posting calendar, local & industry playbooks, and a 90-day GEO roadmap. Free with the Growth plan.",
+    "A 30-page guide on Generative Engine Optimization for small businesses: how AI engines decide who to cite, the 5 traits of citation-worthy content, a 4-week posting calendar, local & industry playbooks, and a 90-day GEO roadmap. Included with every Ozvor Growth and Agency plan.",
   alternates: {
     canonical: "https://ozvor.com/resources/geo-visibility-guide",
   },
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     title:
       "The GEO Visibility Guide — 30 pages on getting cited by ChatGPT, Claude & Perplexity | Ozvor",
     description:
-      "The complete small-business guide to Generative Engine Optimization: peer-reviewed science, concrete posting cadences, local playbooks, and a 90-day roadmap. Free PDF download.",
+      "The complete small-business guide to Generative Engine Optimization: peer-reviewed science, concrete posting cadences, local playbooks, and a 90-day roadmap. Included with every Ozvor Growth and Agency plan.",
     url: "https://ozvor.com/resources/geo-visibility-guide",
     siteName: "Ozvor",
     type: "article",
@@ -262,10 +262,9 @@ export default function GeoVisibilityGuidePage() {
               marginBottom: "var(--space-5)",
             }}
           >
-            <a
-              href="/downloads/The-GEO-Visibility-Guide.pdf"
-              download
-              aria-label="Download The GEO Visibility Guide PDF, 30 pages, free"
+            <Link
+              href="/pricing"
+              aria-label="Get The GEO Visibility Guide with a Growth or Agency plan"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -280,8 +279,8 @@ export default function GeoVisibilityGuidePage() {
                 fontFamily: "var(--font-family)",
               }}
             >
-              ↓ Download the 30-page guide (PDF)
-            </a>
+              Get the 30-page guide with Growth →
+            </Link>
           </div>
 
           <p
@@ -290,8 +289,8 @@ export default function GeoVisibilityGuidePage() {
               color: "var(--color-muted)",
             }}
           >
-            Free to download. Included with the Growth plan ($99/mo). No signup
-            required.
+            Included with every Growth ($99/mo) and Agency plan — yours to
+            download the moment you subscribe.
           </p>
         </header>
 
@@ -543,16 +542,15 @@ export default function GeoVisibilityGuidePage() {
             This is why &ldquo;we&rsquo;re ranking great!&rdquo; has become a
             dangerous thing to believe. Your SEO scoreboard can show a win while
             the actual game is being played — and lost — one layer above it.
-            Download the full guide for the complete picture, the 5 citation
-            traits proven by peer-reviewed research, and a week-by-week plan to
-            fix it.
+            The full guide — the complete picture, the 5 citation traits proven
+            by peer-reviewed research, and a week-by-week plan to fix it — is
+            included with every Growth and Agency plan.
           </p>
 
-          {/* Mid-content download repeat */}
-          <a
-            href="/downloads/The-GEO-Visibility-Guide.pdf"
-            download
-            aria-label="Download the full 30-page GEO Visibility Guide PDF"
+          {/* Mid-content plan CTA */}
+          <Link
+            href="/pricing"
+            aria-label="Get the full 30-page GEO Visibility Guide with a Growth or Agency plan"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -567,8 +565,8 @@ export default function GeoVisibilityGuidePage() {
               fontFamily: "var(--font-family)",
             }}
           >
-            ↓ Download for the rest — free PDF, 30 pages
-          </a>
+            Get the full guide with Growth or Agency →
+          </Link>
         </section>
 
         {/* Who it is for */}
@@ -693,10 +691,9 @@ export default function GeoVisibilityGuidePage() {
             >
               See Growth &amp; Agency plans →
             </Link>
-            <a
-              href="/downloads/The-GEO-Visibility-Guide.pdf"
-              download
-              aria-label="Download The GEO Visibility Guide PDF (30 pages)"
+            <Link
+              href="/kit"
+              aria-label="Start with the Get-Cited Kit for a one-time $29"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -711,8 +708,8 @@ export default function GeoVisibilityGuidePage() {
                 textDecoration: "none",
               }}
             >
-              ↓ Just download the guide (PDF, 30pp)
-            </a>
+              Or get the $29 Get-Cited Kit →
+            </Link>
           </div>
         </section>
 
