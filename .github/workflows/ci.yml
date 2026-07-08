@@ -268,3 +268,30 @@ jobs:
           name: bias-baseline-report
           path: tests/ai/bias-baseline-report.md
           retention-days: 90
+
+  # --------------------------------------------------------------------------
+  # Job 6: Fast smoke gate  (issue #143)
+  #   The quick REQUIRED signal that replaces long Playwright E2E as the per-PR
+  #   merge-latency gate. Boots the real Hono route layer in-process (app.request)
+  #   and asserts routing + auth middleware are wired — no build, no browser, no
+  #   DB, no service containers. Target: green in ~1 minute (npm ci + vitest).
+  #   Full browser E2E is advisory (manual/nightly/path-filtered) — see e2e.yml.
+  # --------------------------------------------------------------------------
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fast in-process boot + route-wiring smoke
+        run: npx vitest run tests/smoke

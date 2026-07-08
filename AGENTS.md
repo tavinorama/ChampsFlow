@@ -63,6 +63,20 @@ Founder intent (Telegram/chat)
 - Reviews happen **in the PR** (comments + approval), so the decision history is permanent.
 - Live/production/destructive/paid actions documented inside any PR still require their own founder approval when executed — merging a doc or code that *prepares* an action is not approval to *run* it.
 
+### CI checks & E2E policy (issue #143)
+
+The **required** merge gate on every PR is six fast checks:
+**Build · Unit & Integration Tests · Lint & Type Check · Security Checks · Compliance Tests · Smoke.**
+"Smoke" boots the Hono route layer in-process (routing + auth wired) in ~1 min — it is the fast required signal.
+
+Full **Playwright E2E is advisory, not a merge gate.** It has a known CI-runner SSR stall that does not reproduce in `next start` / Docker / Railway, so it is `continue-on-error` and must **not** be a branch-protection required check. It now runs only on demand (`workflow_dispatch`), nightly, or on PRs that touch high-risk UI/auth/billing/admin paths (see `.github/workflows/e2e.yml`).
+
+**Hermes may approve/merge despite "Playwright E2E" being cancelled/stalled** when all of:
+- the six required checks are green, and
+- the PR is LOW/MEDIUM risk and does **not** change auth, billing, checkout, admin, or the middleware/CSP.
+
+For HIGH/CRITICAL or auth/billing/checkout/admin changes, run full E2E first (`workflow_dispatch` on the branch, or rely on the path-filtered auto-run) and confirm it passes before approving.
+
 ---
 
 ## 4. Launch execution phases
