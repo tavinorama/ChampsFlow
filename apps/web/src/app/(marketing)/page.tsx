@@ -345,6 +345,44 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── SECTION 2: WATCH OZVOR IN ACTION ─────────────────────────── */}
+      <section style={{padding:'76px 32px',borderTop:'1px solid var(--color-border)'}}>
+        <div style={{maxWidth:1080,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>See it in action</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:640,fontSize:'clamp(28px,4.2vw,44px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.06,color:'var(--color-text)'}}>
+              See exactly how Ozvor finds your AI-visibility gap.
+            </h2>
+            <p style={{margin:'16px auto 0',maxWidth:560,fontSize:16.5,color:'var(--color-muted)'}}>
+              Step-by-step walkthroughs of the full flow &mdash; audit &rarr; score &rarr; competitors &rarr; fixes &rarr; publish &mdash; plus a live test you can run on your own brand in 60 seconds.
+            </p>
+          </div>
+          <div style={{
+            margin:'40px auto 0',maxWidth:760,
+            display:'flex',gap:16,flexWrap:'wrap',justifyContent:'center',
+          }}>
+            <Link href="/learn" style={{
+              flex:'1 1 300px',display:'block',textDecoration:'none',
+              borderRadius:16,border:'1px solid var(--color-border)',
+              background:'var(--color-surface)',padding:'24px',boxShadow:'var(--shadow-card)',
+            }}>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Tutorials</div>
+              <div style={{margin:'8px 0 4px',fontSize:19,fontWeight:800,color:'var(--color-text)'}}>Read the step-by-step walkthroughs &rarr;</div>
+              <div style={{fontSize:14.5,color:'var(--color-muted)',lineHeight:1.5}}>Every stage of the flow, with the real screens &mdash; how to run a test, read your score, benchmark competitors, and use the Kit.</div>
+            </Link>
+            <Link href="/test" style={{
+              flex:'1 1 300px',display:'block',textDecoration:'none',
+              borderRadius:16,border:'1px solid var(--color-primary)',
+              background:'var(--color-surface)',padding:'24px',boxShadow:'var(--shadow-card)',
+            }}>
+              <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Live demo</div>
+              <div style={{margin:'8px 0 4px',fontSize:19,fontWeight:800,color:'var(--color-text)'}}>Run it on your own brand &rarr;</div>
+              <div style={{fontSize:14.5,color:'var(--color-muted)',lineHeight:1.5}}>The fastest way to see Ozvor work: a real audit of your brand across all five AI engines, free, in about 60 seconds.</div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* ── SECTION 2: ENGINES STRIP ─────────────────────────────────── */}
       <section style={{padding:'44px 32px',borderTop:'1px solid var(--color-border)',borderBottom:'1px solid var(--color-border)'}}>
         <div style={{maxWidth:1080,margin:'0 auto',textAlign:'center'}}>

@@ -91,6 +91,9 @@ const DASHBOARD_STYLES = `
     .db-stats-row {
       grid-template-columns: 1fr !important;
     }
+    section[aria-labelledby="workflow-heading"] {
+      grid-template-columns: 1fr !important;
+    }
   }
   @media (max-width: 480px) {
     .db-account-grid {
@@ -685,6 +688,135 @@ export default function DashboardPage() {
             weekly monitoring active
           </span>
         </div>
+      )}
+
+      {/* ── ACTION OPERATING SYSTEM — RankLayer-inspired workflow ─────── */}
+      {!loading && (
+        <section
+          aria-labelledby="workflow-heading"
+          className="db-rise"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.05fr) minmax(280px, 0.95fr)",
+            gap: "var(--space-5)",
+            marginBottom: "var(--space-8)",
+          }}
+        >
+          <div
+            style={{
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-xl)",
+              padding: "var(--space-6)",
+              boxShadow: "var(--shadow-card)",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.6875rem",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase" as const,
+                color: "var(--color-accent-ink)",
+                marginBottom: "var(--space-2)",
+              }}
+            >
+              Action loop
+            </div>
+            <h2
+              id="workflow-heading"
+              style={{
+                margin: "0 0 var(--space-4)",
+                fontSize: "var(--font-size-h2)",
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Audit → Fix → Approve → Measure
+            </h2>
+            <div style={{ display: "grid", gap: "var(--space-3)" }}>
+              {[
+                ["01", "Audit", "Run AI buyer prompts across the engines your customers use."],
+                ["02", "Find gaps", "See competitors AI recommends, the prompt families they win, and the sources that support them."],
+                ["03", "Generate fixes", "Turn every gap into a comparison page, LinkedIn proof post, FAQ/schema fix, or OrganicPosts task."],
+                ["04", "Approve & measure", "Draft-and-confirm protects the brand while the weekly score shows whether the work moved trust."],
+              ].map(([n, title, desc]) => (
+                <div
+                  key={n}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "40px minmax(0,1fr)",
+                    gap: "var(--space-3)",
+                    alignItems: "start",
+                    padding: "var(--space-3)",
+                    borderRadius: "var(--radius-md)",
+                    background: "var(--color-surface-muted)",
+                    border: "1px solid var(--color-border)",
+                  }}
+                >
+                  <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-accent-ink)", fontWeight: 700 }}>{n}</span>
+                  <span>
+                    <strong style={{ display: "block", color: "var(--color-text)" }}>{title}</strong>
+                    <span style={{ display: "block", marginTop: 3, color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.5 }}>{desc}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "linear-gradient(180deg, rgba(39,201,138,0.09), rgba(14,23,20,0.94))",
+              border: "1px solid rgba(39,201,138,0.24)",
+              borderRadius: "var(--radius-xl)",
+              padding: "var(--space-6)",
+              boxShadow: "var(--shadow-card)",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.6875rem",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase" as const,
+                color: "var(--color-accent-ink)",
+                marginBottom: "var(--space-2)",
+              }}
+            >
+              Fix queue preview
+            </div>
+            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 800 }}>
+              How gaps become fixes
+            </h3>
+            <div style={{ display: "grid", gap: "var(--space-3)" }}>
+              {[
+                ["Comparison page", "Close a competitor-displacement gap with a page AI engines can cite."],
+                ["LinkedIn proof post", "Turn customer proof into a source AI can cite."],
+                ["FAQ schema", "Make your strongest buying answers machine-readable."],
+              ].map(([title, desc]) => (
+                <div key={title} style={{ padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "rgba(0,0,0,0.18)", border: "1px solid var(--color-border)" }}>
+                  <strong>{title}</strong>
+                  <p style={{ margin: "4px 0 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.45 }}>{desc}</p>
+                </div>
+              ))}
+            </div>
+            <a
+              href="/drafts"
+              style={{
+                display: "inline-flex",
+                marginTop: "var(--space-4)",
+                color: "#06140e",
+                background: "linear-gradient(135deg,#27c98a,#0c7d54)",
+                borderRadius: "var(--radius-md)",
+                padding: "10px 16px",
+                textDecoration: "none",
+                fontWeight: 800,
+              }}
+            >
+              Open fix queue →
+            </a>
+          </div>
+        </section>
       )}
 
       {/* ── BRANDS SECTION ─────────────────────────────────────────────── */}
