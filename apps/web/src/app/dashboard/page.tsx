@@ -786,19 +786,16 @@ export default function DashboardPage() {
               Fix queue preview
             </div>
             <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 800 }}>
-              This week’s highest-impact fixes
+              How gaps become fixes
             </h3>
             <div style={{ display: "grid", gap: "var(--space-3)" }}>
               {[
-                ["Comparison page", "vs the competitor AI cites 6/10 times", "+9 est. score"],
-                ["LinkedIn proof post", "turn customer proof into a source AI can cite", "+4 est. score"],
-                ["FAQ schema", "make your strongest buying answers machine-readable", "+3 est. score"],
-              ].map(([title, desc, gain]) => (
+                ["Comparison page", "Close a competitor-displacement gap with a page AI engines can cite."],
+                ["LinkedIn proof post", "Turn customer proof into a source AI can cite."],
+                ["FAQ schema", "Make your strongest buying answers machine-readable."],
+              ].map(([title, desc]) => (
                 <div key={title} style={{ padding: "var(--space-3)", borderRadius: "var(--radius-md)", background: "rgba(0,0,0,0.18)", border: "1px solid var(--color-border)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", alignItems: "baseline" }}>
-                    <strong>{title}</strong>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.68rem", color: "var(--color-gold-ink)" }}>{gain}</span>
-                  </div>
+                  <strong>{title}</strong>
                   <p style={{ margin: "4px 0 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.45 }}>{desc}</p>
                 </div>
               ))}

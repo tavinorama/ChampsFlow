@@ -2,15 +2,13 @@
  * /learn — "Tutorials" hub (Ozvor mockup §11).
  *
  * Product education (how to USE the platform), kept SEPARATE from the Blog
- * (which is GEO acquisition). Each card pairs an Ozvor-produced tutorial video
- * (screen recording + voiceover) with a written-guide link.
+ * (which is GEO acquisition).
  *
- * v2 changes:
- *  - Removed "Video Studio" / client-facing video creation feature.
- *  - All videos are Ozvor-produced: screen recordings with voiceover showing
- *    the actual product, teaching customers how to use it.
- *  - Six how-to tutorials covering the full customer journey.
- *  - Product demo section linking back to the landing page.
+ * v3 (honesty pass): removed the placeholder video thumbnails / play buttons /
+ * audio players and the missing product-demo.mp4. Tutorials are written,
+ * step-by-step how-tos of the REAL product, each linking to the actual feature
+ * page. Video walkthroughs will be added later and slotted in per tutorial — we
+ * do not ship a fake player or invented numbers.
  * Server component, SSR, real <a href>.
  */
 
@@ -20,11 +18,11 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Tutorials — Learn to use Ozvor",
   description:
-    "Watch Ozvor-produced tutorials: how to run your Free AI Visibility Test, read your score, benchmark competitors, use the Get-Cited Kit, generate content, and monitor weekly progress.",
+    "Step-by-step guides to using Ozvor: run your Free AI Visibility Test, read your score, benchmark competitors, use the Get-Cited Kit, generate content, and monitor weekly progress.",
   alternates: { canonical: "https://ozvor.com/learn" },
   openGraph: {
     title: "Tutorials — Learn to use Ozvor",
-    description: "Step-by-step video tutorials showing how to use Ozvor: from your first audit to a moving AI Visibility Score.",
+    description: "Written, step-by-step how-tos for Ozvor: from your first audit to a moving AI Visibility Score.",
     url: "https://ozvor.com/learn",
     siteName: "Ozvor",
     type: "website",
@@ -32,62 +30,91 @@ export const metadata: Metadata = {
   },
 };
 
-type Video = {
+type Tutorial = {
   id: string;
   title: string;
-  dur: string;
   desc: string;
-  audioSrc: string;
+  steps: string[];
+  cta: string;
   guideHref: string;
 };
 
-const VIDEOS: Video[] = [
+const TUTORIALS: Tutorial[] = [
   {
     id: "free-test",
-    title: "How to run your Free AI Visibility Test",
-    dur: "3:00",
-    desc: "Run a brand audit across all five AI engines in 60 seconds. See your Ozvor AI Visibility Score, competitor benchmarks, and recommended fixes.",
-    audioSrc: "/videos/audio/02-free-test-tutorial.mp3",
+    title: "Run your Free AI Visibility Test",
+    desc: "A real audit of your brand across all five AI engines — no card, about 60 seconds.",
+    steps: [
+      "Enter your website, brand, category, and a competitor.",
+      "Add your email — your results are saved to it so you can pick up where you left off.",
+      "Click Run. Ozvor queries ChatGPT, Claude, Perplexity, Gemini and Google AI Overview live.",
+      "Read your Ozvor AI Visibility Score, the exact buyer prompt asked, and which engines cited you vs your competitor.",
+    ],
+    cta: "Run the free test →",
     guideHref: "/test",
   },
   {
     id: "read-score",
-    title: "How to read your AI Visibility Score",
-    dur: "2:00",
-    desc: "Understand the gauge and three sub-scores: AI citation rate, Performance factors, and Brand authority. Learn what a good score looks like.",
-    audioSrc: "/videos/audio/03-score-tutorial.mp3",
+    title: "Read your AI Visibility Score",
+    desc: "Understand the overall score and the three sub-scores behind it.",
+    steps: [
+      "The headline score (0–100) is how likely AI engines are to name you for buyer questions.",
+      "Visibility / AI: your citation rate, position, and sentiment across engines.",
+      "Citation Readiness / Performance: schema, crawlability, and AI-crawler access on your site.",
+      "Execution / Brand: your authority on the sources AI leans on. Every number is labelled measured or baseline — never guessed.",
+    ],
+    cta: "See how it works →",
     guideHref: "/how-it-works",
   },
   {
     id: "benchmark",
-    title: "How to benchmark competitors",
-    dur: "2:00",
-    desc: "See which competitors AI recommends instead of you, why they win, and what content gaps you need to close to overtake them.",
-    audioSrc: "/videos/audio/04-competitor-benchmark.mp3",
+    title: "Benchmark your competitors",
+    desc: "See exactly where AI recommends someone else instead of you.",
+    steps: [
+      "Add up to three competitors to your brand.",
+      "Per engine, see whether AI cited you, a competitor, or neither — and at what position.",
+      "The gap is where they win: that is what the recommended fixes target first.",
+    ],
+    cta: "See our methodology →",
     guideHref: "/how-we-measure",
   },
   {
     id: "kit",
-    title: "How to use the Get-Cited Kit",
-    dur: "2:00",
-    desc: "The Kit includes your full report, top 3 prioritized fixes, and 3 publish-ready content drafts — yours to keep forever.",
-    audioSrc: "/videos/audio/05-kit-tutorial.mp3",
+    title: "Use the Get-Cited Kit",
+    desc: "Turn one audit into publish-ready content you keep forever.",
+    steps: [
+      "Get the $29 Kit (or upgrade straight from your free-test results).",
+      "You get the full audit, your top-3 prioritized fixes, and 3 publish-ready drafts (blog, LinkedIn, FAQ — with schema).",
+      "Download the Kit PDF and the companion guide from your Kit page.",
+      "Publish the drafts, then re-test in 30 days to see the movement.",
+    ],
+    cta: "Get the Kit — $29 →",
     guideHref: "/kit",
   },
   {
     id: "content-plan",
-    title: "How to generate content with the platform",
-    dur: "2:30",
-    desc: "Turn every fix into a draft: blog posts, FAQ schemas, LinkedIn posts. Approve and publish — never auto-published without your OK.",
-    audioSrc: "",
+    title: "Generate content with the platform",
+    desc: "On Growth, every gap becomes a draft you approve — never auto-published.",
+    steps: [
+      "Each recommended fix turns into a draft: a comparison page, LinkedIn proof post, or FAQ/schema update.",
+      "Review the draft and replace any [PLACEHOLDER] with your real facts — we never invent numbers.",
+      "Approve it. Nothing publishes without your OK.",
+      "Schedule or publish, then let the weekly re-audit show whether it moved your score.",
+    ],
+    cta: "See the plans →",
     guideHref: "/pricing",
   },
   {
     id: "weekly-monitor",
-    title: "How to monitor your weekly progress",
-    dur: "2:00",
-    desc: "Every Monday, the platform recalculates your score. Watch trends, see if your fixes are working, and plan the next week.",
-    audioSrc: "",
+    title: "Monitor your weekly progress",
+    desc: "AI answers move every week — Growth keeps score so you don't have to.",
+    steps: [
+      "Growth re-runs your full audit every week automatically.",
+      "Watch your score trend and citation-share change over time.",
+      "Get alerted when your score or a competitor's position moves.",
+      "Pull the next week's work from the Fix queue and repeat.",
+    ],
+    cta: "See the plans →",
     guideHref: "/pricing",
   },
 ];
@@ -97,26 +124,10 @@ const PAGE_CSS = `
   .lrn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
   @media (max-width: 920px) { .lrn-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 600px) { .lrn-grid { grid-template-columns: 1fr; } }
-  .lrn-thumb {
-    position: relative; aspect-ratio: 16 / 9; border-radius: var(--radius-md);
-    background-color: var(--color-surface-muted);
-    background-image: repeating-linear-gradient(135deg, rgba(180,214,198,0.05) 0 10px, transparent 10px 20px);
-    display: grid; place-items: center; overflow: hidden;
-    border: 1px solid var(--color-border);
-    cursor: pointer;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .lrn-thumb:hover { border-color: var(--color-accent-ink); box-shadow: 0 0 0 2px rgba(39,201,138,0.2); }
-  .lrn-play { width: 46px; height: 46px; border-radius: var(--radius-pill); background: linear-gradient(135deg,#27c98a,#0c7d54); color:#06140e; display:grid; place-items:center; font-size: 18px; }
-  .lrn-dur { position:absolute; right:8px; bottom:8px; font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-text); background: rgba(0,0,0,0.45); padding: 2px 7px; border-radius: var(--radius-sm); }
+  .lrn-step { display: flex; gap: var(--space-2); font-size: var(--font-size-body-sm); color: var(--color-muted); line-height: 1.5; }
+  .lrn-step-n { flex: 0 0 auto; width: 20px; height: 20px; border-radius: var(--radius-pill); background: rgba(39,201,138,0.14); color: var(--color-accent-ink); font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; display: grid; place-items: center; margin-top: 1px; }
   .lrn-guide { color: var(--color-accent-ink); font-weight: 600; text-decoration: none; font-size: var(--font-size-body-sm); }
   .lrn-cta-primary { display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:#06140e; text-decoration:none; background:linear-gradient(135deg,#27c98a,#0c7d54); border-radius:var(--radius-md); padding:0.8rem 1.5rem; box-shadow:0 10px 32px rgba(39,201,138,0.32); }
-  .lrn-demo-preview {
-    position:relative; aspect-ratio:16/9; border-radius:var(--radius-lg); overflow:hidden;
-    background:radial-gradient(80% 70% at 50% 40%, rgba(39,201,138,0.10), transparent 60%), var(--color-surface-muted);
-    border:1px solid var(--color-border);
-    display:grid; place-items:center;
-  }
 `;
 
 export default function LearnPage() {
@@ -127,60 +138,30 @@ export default function LearnPage() {
       {/* Hero */}
       <span className="lrn-eyebrow">Tutorials</span>
       <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
-        Watch and learn Ozvor.
+        Learn Ozvor, step by step.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "640px", margin: 0 }}>
-        Step-by-step tutorials showing the actual product — how to run your first audit, read your score, benchmark competitors, generate content, and track your progress every week.
+        Plain, written how-tos for the real product — run your first audit, read your score, benchmark competitors, generate content, and track progress every week. Video walkthroughs are on the way.
       </p>
 
       {/* Tutorial grid */}
       <div className="lrn-grid" style={{ marginTop: "var(--space-12)" }}>
-        {VIDEOS.map((v) => (
-          <article key={v.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-4)", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-            <div className="lrn-thumb">
-              <span className="lrn-play" aria-hidden="true">▶</span>
-              <span className="lrn-dur">{v.dur}</span>
-            </div>
-            {v.audioSrc && (
-              <audio controls preload="none" style={{ width: "100%" }}>
-                <source src={v.audioSrc} type="audio/mpeg" />
-              </audio>
-            )}
-            <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)" }}>
-              <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-text)" }}>{v.title}</h2>
-            </div>
-            <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.6, fontSize: "var(--font-size-body-sm)", flex: 1 }}>{v.desc}</p>
-            <Link href={v.guideHref} className="lrn-guide">Try it now →</Link>
+        {TUTORIALS.map((t) => (
+          <article key={t.id} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-5)", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-text)" }}>{t.title}</h2>
+            <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.6, fontSize: "var(--font-size-body-sm)" }}>{t.desc}</p>
+            <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)", flex: 1 }}>
+              {t.steps.map((s, i) => (
+                <li key={i} className="lrn-step">
+                  <span className="lrn-step-n" aria-hidden="true">{i + 1}</span>
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ol>
+            <Link href={t.guideHref} className="lrn-guide">{t.cta}</Link>
           </article>
         ))}
       </div>
-
-      {/* Product demo highlight section */}
-      <section style={{
-        marginTop: "var(--space-16)",
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-lg)",
-        padding: "var(--space-6)",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "var(--space-6)",
-        alignItems: "center",
-      }}>
-        <div style={{ flex: "1 1 360px" }}>
-          <span className="lrn-eyebrow">Product demo</span>
-          <h2 style={{ margin: "var(--space-3) 0 var(--space-3)", fontSize: "clamp(1.3rem, 3vw, 1.75rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-            See Ozvor in 90 seconds.
-          </h2>
-          <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.65, fontSize: "var(--font-size-body-sm)" }}>
-            Watch the full product walkthrough on the landing page: from AI audit to score to competitors to fixes. Then come back here for the detailed how-tos.
-          </p>
-          <Link href="/" className="lrn-guide" style={{ display: "inline-block", marginTop: "var(--space-4)" }}>Watch the demo →</Link>
-        </div>
-        <div className="lrn-demo-preview" style={{ flex: "0 0 320px" }}>
-          <span className="lrn-play" aria-hidden="true">▶</span>
-        </div>
-      </section>
 
       {/* Tutorials ↔ Blog cross-link */}
       <section style={{ marginTop: "var(--space-16)", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", display: "flex", flexWrap: "wrap", gap: "var(--space-4)", alignItems: "center", justifyContent: "space-between" }}>

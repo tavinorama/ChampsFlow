@@ -1,23 +1,23 @@
 import Link from "next/link";
 
+// Example fix TYPES that map to real GEO tactics. This is an illustrative
+// pattern page (see copy below) — no per-item score is asserted, because a real
+// impact number only exists once it's computed against a real audit.
 const FIXES = [
   {
     title: "Comparison page",
     status: "Draft ready",
     desc: "Answer the competitor displacement gap with a page AI engines can cite.",
-    impact: "+9 est. score",
   },
   {
     title: "LinkedIn proof post",
     status: "Needs approval",
     desc: "Turn proof, case data and founder expertise into a citable authority signal.",
-    impact: "+4 est. score",
   },
   {
     title: "FAQ schema update",
     status: "Recommended",
     desc: "Make high-intent buying answers machine-readable for Google AI and LLM crawlers.",
-    impact: "+3 est. score",
   },
 ];
 
@@ -96,7 +96,6 @@ export default function DraftsPage() {
               <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-muted)", lineHeight: 1.55 }}>{fix.desc}</p>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "var(--color-gold-ink)", fontFamily: "var(--font-mono)", fontSize: "0.75rem", marginBottom: "var(--space-2)" }}>{fix.impact}</div>
               <Link href="/schedule" style={{ color: "#06140e", background: "linear-gradient(135deg,#27c98a,#0c7d54)", padding: "10px 14px", borderRadius: "var(--radius-md)", textDecoration: "none", fontWeight: 800 }}>Schedule →</Link>
             </div>
           </article>
