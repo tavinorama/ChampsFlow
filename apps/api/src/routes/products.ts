@@ -443,8 +443,12 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
 
     await db.query(
+      // `deliverable` is a jsonb column: pass the object and let postgres.js
+      // serialize it. JSON.stringify() here double-encodes it (stores a JSON
+      // *string* inside jsonb), so the /kit page reads a string instead of an
+      // object and renders blank. (Found by the first live Kit purchase.)
       `UPDATE kit_order SET status='delivered', deliverable=$2, delivered_at=NOW() WHERE id=$1`,
-      [order.id, JSON.stringify(deliverable)]
+      [order.id, deliverable]
     );
     logger.info("kit_delivered", { kit_order_id: order.id });
     return c.json({ status: "delivered", deliverable });
