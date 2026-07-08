@@ -44,7 +44,7 @@ export default function TermsOfServicePage() {
       </LegalSection>
 
       <LegalSection n="4" title="Plans, billing and refunds">
-        <p>Paid plans (e.g. Growth, Agency) are billed in advance on a recurring basis via our payment processor (Stripe) until cancelled. One-time products (e.g. the $29 Get-Cited Kit) are charged once. Prices are shown at checkout and may change prospectively. Paid subscription plans include a 30-day money-back guarantee as described at purchase. You can cancel at any time; cancellation takes effect at the end of the current billing period. Taxes may apply based on your location.</p>
+        <p>Paid plans (e.g. Growth, Agency) are billed in advance on a recurring basis via our payment processor (Stripe) until cancelled. One-time products (e.g. the $29 Get-Cited Kit) are charged once. Prices are shown at checkout and may change prospectively. Paid subscription plans include a 30-day money-back guarantee as described at purchase. The one-time Get-Cited Kit includes a deliverable guarantee: if the three content drafts included in the Kit are not publish-ready, we will refund the $29 on request. Both guarantees cover the deliverable only, not any AI-search outcome (see &ldquo;No guarantee of results&rdquo; above). You can cancel at any time; cancellation takes effect at the end of the current billing period. Taxes may apply based on your location.</p>
       </LegalSection>
 
       <LegalSection n="5" title="Acceptable use">
