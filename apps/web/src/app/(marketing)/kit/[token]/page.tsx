@@ -28,6 +28,27 @@ interface Deliverable {
   meta: { probesTotal: number; probesCited: number; enginesUsed: string[] };
 }
 
+/**
+ * Accept a deliverable that is either a proper object OR a (legacy) JSON string —
+ * some early rows were stored double-encoded in the jsonb column. Parse strings
+ * and validate the shape, so a malformed payload shows the graceful error card
+ * instead of throwing a client-side exception (white screen).
+ */
+function normalizeDeliverable(raw: unknown): Deliverable | null {
+  let d: unknown = raw;
+  if (typeof d === "string") {
+    try {
+      d = JSON.parse(d);
+    } catch {
+      return null;
+    }
+  }
+  if (d && typeof d === "object" && (d as { score?: unknown }).score) {
+    return d as Deliverable;
+  }
+  return null;
+}
+
 export default function KitDeliveryPage() {
   const params = useParams();
   const search = useSearchParams();
@@ -41,10 +62,13 @@ export default function KitDeliveryPage() {
       const statusRes = await fetch(`/api/kit/${token}`);
       if (statusRes.ok) {
         const s = await statusRes.json();
-        if (s.status === "delivered" && s.deliverable) {
-          setDeliverable(s.deliverable);
-          setState("ready");
-          return;
+        if (s.status === "delivered") {
+          const parsed = normalizeDeliverable(s.deliverable);
+          if (parsed) {
+            setDeliverable(parsed);
+            setState("ready");
+            return;
+          }
         }
       }
       // 2. Try to deliver (verify payment via session_id or dev_unlock).
@@ -54,8 +78,13 @@ export default function KitDeliveryPage() {
       if (search.get("dev_unlock") === "1") qs.set("dev_unlock", "1");
       const res = await fetch(`/api/kit/${token}/deliver?${qs.toString()}`, { method: "POST" });
       if (res.ok) {
-        setDeliverable((await res.json()).deliverable);
-        setState("ready");
+        const parsed = normalizeDeliverable((await res.json()).deliverable);
+        if (parsed) {
+          setDeliverable(parsed);
+          setState("ready");
+        } else {
+          setState("error");
+        }
       } else if (res.status === 402) {
         setState("unpaid");
       } else {
