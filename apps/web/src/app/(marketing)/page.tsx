@@ -157,14 +157,10 @@ export default function LandingPage() {
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes ti-pulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
         @keyframes ti-rise { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes ti-scan { 0% { transform: translateY(-100%); opacity:0; } 12%,88% { opacity:1; } 100% { transform: translateY(340%); opacity:0; } }
         .ti-rise { animation: ti-rise .7s cubic-bezier(.2,.7,.2,1) both; }
-        .ti-video-grid { display:grid; grid-template-columns:1.05fr .95fr; gap:24px; align-items:stretch; }
-        .ti-video-scan { animation: ti-scan 4.8s ease-in-out infinite; }
         @media (max-width:860px) {
           .ti-grid3 { grid-template-columns:1fr !important; }
           .ti-dash { grid-template-columns:1fr !important; }
-          .ti-video-grid { grid-template-columns:1fr !important; }
           .ti-shift { grid-template-columns:1fr !important; }
           .ti-shift-arrow { justify-self:center !important; transform:rotate(90deg); }
         }
@@ -349,56 +345,52 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── SECTION 2: VIDEO CREATION ────────────────────────────────── */}
+      {/* ── SECTION 2: WATCH OZVOR IN ACTION ─────────────────────────── */}
       <section style={{padding:'76px 32px',borderTop:'1px solid var(--color-border)'}}>
-        <div className="ti-video-grid" style={{maxWidth:1080,margin:'0 auto'}}>
-          <div>
-            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>Video creation</div>
-            <h2 style={{margin:'14px 0 0',maxWidth:620,fontSize:'clamp(30px,4.6vw,48px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.04,color:'var(--color-text)'}}>
-              Turn every AI visibility fix into landing-page and tutorial videos.
+        <div style={{maxWidth:1080,margin:'0 auto'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--color-accent-ink)'}}>See it in action</div>
+            <h2 style={{margin:'14px auto 0',maxWidth:640,fontSize:'clamp(28px,4.2vw,44px)',fontWeight:800,letterSpacing:'-0.03em',lineHeight:1.06,color:'var(--color-text)'}}>
+              Watch Ozvor find your AI visibility gap.
             </h2>
-            <p style={{margin:'18px 0 0',maxWidth:620,fontSize:17,lineHeight:1.6,color:'var(--color-muted)'}}>
-              Ozvor should not stop at text drafts. The same audit that finds a competitor gap can create a short explainer for the landing page, a product walkthrough for Tutorials, and proof clips for LinkedIn — all kept in draft-and-confirm.
+            <p style={{margin:'16px auto 0',maxWidth:560,fontSize:16.5,color:'var(--color-muted)'}}>
+              A 90-second product walkthrough. See the full flow: audit &rarr; score &rarr; competitors &rarr; fixes &rarr; publish.
             </p>
-            <div style={{display:'grid',gap:12,marginTop:26}}>
-              {[
-                ['Landing explainer','Generate a 45–60s hero video that shows AI recommending a competitor, Ozvor finding the gap, and the score moving.'],
-                ['Tutorial walkthroughs','Create step-by-step videos for audit, competitor benchmark, fix queue, approval calendar and weekly report.'],
-                ['Proof clips','Convert score movement and customer wins into short social videos that support GEO authority.'],
-              ].map(([title,desc])=>(
-                <div key={title} style={{display:'grid',gridTemplateColumns:'28px minmax(0,1fr)',gap:12,padding:14,borderRadius:14,border:'1px solid var(--color-border)',background:'var(--color-surface)'}}>
-                  <span style={{display:'grid',placeItems:'center',width:28,height:28,borderRadius:'50%',background:'rgba(39,201,138,0.12)',color:'var(--color-accent-ink)',fontWeight:800}}>▶</span>
-                  <span><strong style={{display:'block',color:'var(--color-text)'}}>{title}</strong><span style={{display:'block',marginTop:4,color:'var(--color-muted)',fontSize:14,lineHeight:1.5}}>{desc}</span></span>
-                </div>
-              ))}
-            </div>
-            <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:28}}>
-              <Link href="/learn" style={{display:'inline-flex',alignItems:'center',background:'linear-gradient(135deg,#27c98a,#0c7d54)',color:'#06140e',fontWeight:800,padding:'13px 20px',borderRadius:12,textDecoration:'none'}}>See tutorial videos →</Link>
-              <Link href="/test" style={{display:'inline-flex',alignItems:'center',border:'1px solid var(--color-border)',background:'var(--color-surface-muted)',color:'var(--color-text)',fontWeight:700,padding:'13px 20px',borderRadius:12,textDecoration:'none'}}>Create from an audit</Link>
-            </div>
           </div>
-
-          <div style={{borderRadius:18,border:'1px solid rgba(39,201,138,0.28)',background:'linear-gradient(180deg,rgba(39,201,138,0.10),var(--color-surface))',boxShadow:'0 34px 90px rgba(0,0,0,0.42)',overflow:'hidden'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'13px 16px',borderBottom:'1px solid var(--color-border)',background:'var(--color-surface-muted)'}}>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:'var(--color-muted)'}}>ozvor.video/studio</span>
-              <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-accent-ink)'}}>Draft only</span>
+          <div style={{
+            margin:'40px auto 0',maxWidth:880,
+            borderRadius:18,border:'1px solid var(--color-border)',
+            overflow:'hidden',background:'var(--color-surface)',
+            boxShadow:'0 24px 80px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{
+              position:'relative',aspectRatio:'16/9',
+              background:'radial-gradient(80% 70% at 50% 40%, rgba(39,201,138,0.10), transparent 60%), var(--color-surface-muted)',
+              display:'grid',placeItems:'center',overflow:'hidden',
+            }}>
+              <video
+                controls
+                preload="metadata"
+                playsInline
+                poster="/videos/thumbnails/product-demo-poster.svg"
+                style={{width:'100%',height:'100%',objectFit:'contain',display:'block'}}
+              >
+                <source src="/videos/product-demo.mp4" type="video/mp4" />
+              </video>
             </div>
-            <div style={{position:'relative',aspectRatio:'16/10',padding:22,overflow:'hidden'}}>
-              <div className="ti-video-scan" aria-hidden="true" style={{position:'absolute',left:0,right:0,top:0,height:90,background:'linear-gradient(180deg,transparent,rgba(39,201,138,0.18),transparent)'}} />
-              <div style={{position:'relative',height:'100%',display:'grid',gridTemplateRows:'1fr auto',gap:16}}>
-                <div style={{borderRadius:16,border:'1px solid var(--color-border)',background:'radial-gradient(90% 70% at 20% 10%,rgba(95,223,168,0.22),rgba(0,0,0,0.12)), var(--color-surface-muted)',padding:20,display:'flex',flexDirection:'column',justifyContent:'space-between'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',gap:10,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--color-muted)'}}><span>SCENE 02</span><span>0:18 / 0:52</span></div>
-                  <div>
-                    <div style={{fontSize:28,fontWeight:900,letterSpacing:'-0.03em',lineHeight:1.05,color:'var(--color-text)'}}>AI recommends your competitor.</div>
-                    <div style={{marginTop:10,color:'var(--color-muted)',fontSize:14,lineHeight:1.45}}>Ozvor finds the source gap and creates the fix.</div>
-                  </div>
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
-                  {['Prompt','Gap','Fix','Score'].map((label,i)=>(
-                    <div key={label} style={{height:42,borderRadius:10,border:'1px solid var(--color-border)',background:i===2?'rgba(39,201,138,0.16)':'rgba(255,255,255,0.04)',display:'grid',placeItems:'center',fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:i===2?'var(--color-accent-ink)':'var(--color-muted)'}}>{label}</div>
-                  ))}
-                </div>
-              </div>
+            <div style={{
+              padding:'16px 24px',
+              display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,
+              borderTop:'1px solid var(--color-border)',
+              fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:'var(--color-muted)',
+            }}>
+              <span style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:'#27c98a'}} aria-hidden="true"/>
+                Ozvor product demo &middot; 1:30
+              </span>
+              <Link href="/learn" style={{color:'var(--color-accent-ink)',fontWeight:600,textDecoration:'none'}}>
+                Watch more tutorials &rarr;
+              </Link>
             </div>
           </div>
         </div>
