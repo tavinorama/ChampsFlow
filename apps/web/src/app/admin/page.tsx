@@ -1891,6 +1891,7 @@ export default function AdminPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [kitOrders, setKitOrders] = useState<KitOrder[]>([]);
+  const [resendState, setResendState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunities | null>(null);
 
@@ -2579,13 +2580,14 @@ export default function AdminPage() {
                 <th scope="col" style={TH_STYLE}>Stripe Session</th>
                 <th scope="col" style={TH_STYLE}>Paid At</th>
                 <th scope="col" style={TH_STYLE}>Delivered At</th>
+                <th scope="col" style={TH_STYLE}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {kitOrders.length === 0 && !loadingTab ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     style={{
                       ...TD_STYLE,
                       color: "var(--color-muted)",
@@ -2635,6 +2637,41 @@ export default function AdminPage() {
                       }}
                     >
                       {fmtShortDate(o.delivered_at)}
+                    </td>
+                    <td style={TD_STYLE}>
+                      {o.status === "paid" || o.status === "delivered" ? (
+                        <button
+                          type="button"
+                          disabled={resendState[o.id] === "sending"}
+                          onClick={() => {
+                            setResendState((s) => ({ ...s, [o.id]: "sending" }));
+                            apiFetch(`/api/admin/kit-orders/${o.id}/resend-email`, { method: "POST" })
+                              .then((r) => setResendState((s) => ({ ...s, [o.id]: r.ok ? "sent" : "error" })))
+                              .catch(() => setResendState((s) => ({ ...s, [o.id]: "error" })));
+                          }}
+                          style={{
+                            padding: "4px 10px",
+                            fontSize: "var(--font-size-caption)",
+                            fontWeight: 600,
+                            borderRadius: "var(--radius-sm)",
+                            border: "1px solid var(--color-border)",
+                            background: "var(--color-surface)",
+                            color: "var(--color-text)",
+                            cursor: resendState[o.id] === "sending" ? "default" : "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {resendState[o.id] === "sending"
+                            ? "Sending…"
+                            : resendState[o.id] === "sent"
+                              ? "Sent ✓"
+                              : resendState[o.id] === "error"
+                                ? "Failed — retry"
+                                : "Resend email"}
+                        </button>
+                      ) : (
+                        <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))
