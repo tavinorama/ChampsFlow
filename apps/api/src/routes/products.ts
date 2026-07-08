@@ -32,12 +32,40 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { enrollNurture } from "./nurture";
 import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/free-test-result";
+import { signedDownloadUrl } from "../../../../packages/shared/src/download-token";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function webOrigin(): string {
   return process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "http://localhost:3000";
+}
+
+/**
+ * Downloadable files surfaced on a paid Kit page. The Kit PDF is GATED — served
+ * only via a signed, expiring /api/download token so it cannot be shared as a
+ * plain public URL. The companion whitepaper ("Understanding GEO Search") is the
+ * intentionally-free Part 2 and stays a static public file.
+ */
+interface KitDownload {
+  label: string;
+  description: string;
+  url: string;
+}
+function kitDownloads(): KitDownload[] {
+  const origin = webOrigin();
+  return [
+    {
+      label: "The Get-Cited Kit (PDF)",
+      description: "Your complete Kit — the full playbook to download and keep.",
+      url: signedDownloadUrl("get-cited-kit", origin),
+    },
+    {
+      label: "Understanding GEO Search (PDF)",
+      description: "Part 2 — the companion whitepaper on how AI search decides who gets cited.",
+      url: `${origin}/downloads/Understanding-GEO-Search.pdf`,
+    },
+  ];
 }
 
 function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
@@ -361,6 +389,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       brand: row.brand,
       status: row.status,
       deliverable: row.status === "delivered" ? row.deliverable : null,
+      downloads: row.status === "delivered" ? kitDownloads() : null,
     });
   });
 
@@ -384,7 +413,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     // Already delivered → return stored deliverable (idempotent).
     if (order.status === "delivered" && order.deliverable) {
-      return c.json({ status: "delivered", deliverable: order.deliverable });
+      return c.json({ status: "delivered", deliverable: order.deliverable, downloads: kitDownloads() });
     }
 
     // Verify payment: paid status already set, OR a paid Stripe session, OR a
@@ -451,6 +480,6 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       [order.id, deliverable]
     );
     logger.info("kit_delivered", { kit_order_id: order.id });
-    return c.json({ status: "delivered", deliverable });
+    return c.json({ status: "delivered", deliverable, downloads: kitDownloads() });
   });
 }

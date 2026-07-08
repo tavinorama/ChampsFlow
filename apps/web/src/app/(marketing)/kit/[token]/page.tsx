@@ -14,12 +14,30 @@ import { UpsellLadder } from "../../../../components/UpsellLadder";
 import { FounderAnnualNote } from "../../../../components/marketing/FounderAnnualNote";
 import { normalizeDeliverable, type Deliverable } from "./deliverable-normalize";
 
+/** A downloadable file surfaced with the delivered Kit (from the API). */
+interface KitDownload {
+  label: string;
+  description: string;
+  url: string;
+}
+function normalizeDownloads(raw: unknown): KitDownload[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (d): d is KitDownload =>
+      !!d &&
+      typeof d === "object" &&
+      typeof (d as KitDownload).label === "string" &&
+      typeof (d as KitDownload).url === "string"
+  );
+}
+
 export default function KitDeliveryPage() {
   const params = useParams();
   const search = useSearchParams();
   const token = String(params?.token ?? "");
   const [state, setState] = useState<"loading" | "ready" | "unpaid" | "error">("loading");
   const [deliverable, setDeliverable] = useState<Deliverable | null>(null);
+  const [downloads, setDownloads] = useState<KitDownload[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -31,6 +49,7 @@ export default function KitDeliveryPage() {
           const parsed = normalizeDeliverable(s.deliverable);
           if (parsed) {
             setDeliverable(parsed);
+            setDownloads(normalizeDownloads(s.downloads));
             setState("ready");
             return;
           }
@@ -43,9 +62,11 @@ export default function KitDeliveryPage() {
       if (search.get("dev_unlock") === "1") qs.set("dev_unlock", "1");
       const res = await fetch(`/api/kit/${token}/deliver?${qs.toString()}`, { method: "POST" });
       if (res.ok) {
-        const parsed = normalizeDeliverable((await res.json()).deliverable);
+        const body = await res.json();
+        const parsed = normalizeDeliverable(body.deliverable);
         if (parsed) {
           setDeliverable(parsed);
+          setDownloads(normalizeDownloads(body.downloads));
           setState("ready");
         } else {
           setState("error");
@@ -77,12 +98,12 @@ export default function KitDeliveryPage() {
           <p style={{ color: "var(--color-muted)" }}>We couldn&rsquo;t generate your kit. Please contact support — your purchase is safe.</p>
         </div>
       )}
-      {state === "ready" && deliverable && <KitView d={deliverable} />}
+      {state === "ready" && deliverable && <KitView d={deliverable} downloads={downloads} />}
     </main>
   );
 }
 
-function KitView({ d }: { d: Deliverable }) {
+function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] }) {
   const generatedLabel = d.generatedAt
     ? new Date(d.generatedAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
     : null;
@@ -100,6 +121,30 @@ function KitView({ d }: { d: Deliverable }) {
       <h1 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 var(--space-3) 0" }}>
         Your Get-Cited Kit for {d.brand}
       </h1>
+
+      {/* Downloads — the Kit PDF (customer-only) + companion whitepaper.
+          Links carry a signed, expiring token; they are not public URLs. */}
+      {downloads.length > 0 && (
+        <div style={{ ...card, borderLeft: "4px solid var(--color-success)" }}>
+          <h3 style={h2}>Download your Kit</h3>
+          <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
+            Yours to keep. These links are private to your purchase — download them anytime from this page.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            {downloads.map((dl, i) => (
+              <div key={i} style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", padding: "var(--space-3) 0", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>{dl.label}</div>
+                  <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.5 }}>{dl.description}</div>
+                </div>
+                <a href={dl.url} style={{ display: "inline-flex", alignItems: "center", height: "40px", padding: "0 var(--space-4)", backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", textDecoration: "none", whiteSpace: "nowrap" }}>
+                  Download ↓
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Part 1 — the audit (continuity with the free test) */}
       <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>

@@ -38,6 +38,8 @@ COPY --from=builder --chown=hono:nodejs /app/apps/api/package.json ./package.jso
 COPY --from=builder --chown=hono:nodejs /app/apps/api/dist ./dist
 COPY --from=builder --chown=hono:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=hono:nodejs /app/packages ./packages
+# Gated download assets (served only via /api/download with a signed token).
+COPY --from=builder --chown=hono:nodejs /app/apps/api/assets ./assets
 
 USER hono
 EXPOSE 3001

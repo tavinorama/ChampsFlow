@@ -44,7 +44,7 @@ import {
   validatePlatformKeyInput,
 } from "../../../../packages/shared/src/platform-keys";
 import { refreshPlatformKeys } from "../lib/platform-keys";
-import { OZVOR_ASSETS } from "../../../../packages/shared/src/assets-manifest";
+import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -883,7 +883,10 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
   // Static manifest from packages/shared; the Assets tab renders it.
   // -------------------------------------------------------------------------
   app.get("/api/admin/assets", requireAuth, requireSuperAdmin, async (c) => {
-    return c.json({ assets: OZVOR_ASSETS });
+    // Gated assets resolve to freshly-signed /api/download URLs so the founder
+    // can download them from the Assets tab without any public link existing.
+    const origin = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
+    return c.json({ assets: resolveAssetDownloads(origin) });
   });
 
   app.delete("/api/admin/provider-keys/:provider", requireAuth, requireSuperAdmin, async (c) => {

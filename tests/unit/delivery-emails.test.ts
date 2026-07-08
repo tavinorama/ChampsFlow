@@ -36,10 +36,14 @@ beforeEach(() => {
     RESEND_API_KEY: process.env["RESEND_API_KEY"],
     EMAIL_FROM: process.env["EMAIL_FROM"],
     WEB_ORIGIN: process.env["WEB_ORIGIN"],
+    OAUTH_TOKEN_KEY: process.env["OAUTH_TOKEN_KEY"],
   };
   process.env["RESEND_API_KEY"] = "re_test_key";
   process.env["EMAIL_FROM"] = "Ozvor <hello@ozvor.com>";
   delete process.env["WEB_ORIGIN"];
+  // Bonus assets are now gated: the email mints signed /api/download links,
+  // which requires the signing key (64-hex = 32 bytes).
+  process.env["OAUTH_TOKEN_KEY"] = "a".repeat(64);
 });
 
 afterEach(() => {
@@ -116,12 +120,17 @@ describe("bonus delivery email", () => {
     expect(p.to).toBe("cust@example.com");
     expect(p.html).toContain("Welcome to Growth");
 
-    // The four direct bonus downloads.
-    expect(p.html).toContain("https://ozvor.com/downloads/The-GEO-Visibility-Guide.pdf");
-    expect(p.html).toContain("https://ozvor.com/downloads/5-High-Citation-Post-Templates.pdf");
-    expect(p.html).toContain("https://ozvor.com/downloads/LLM-Citation-Tracker.xlsx");
-    expect(p.html).toContain("https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf");
-    expect(p.text).toContain("https://ozvor.com/downloads/LLM-Citation-Tracker-Methodology.pdf");
+    // The four bonus downloads are GATED: signed, expiring /api/download links —
+    // NOT the old freely-shareable /downloads/*.pdf public URLs.
+    expect(p.html).toContain("https://ozvor.com/api/download?asset=geo-guide");
+    expect(p.html).toContain("https://ozvor.com/api/download?asset=citation-templates");
+    expect(p.html).toContain("https://ozvor.com/api/download?asset=citation-tracker&");
+    expect(p.html).toContain("https://ozvor.com/api/download?asset=citation-tracker-methodology");
+    expect(p.text).toContain("https://ozvor.com/api/download?asset=citation-tracker-methodology");
+    // Each signed link carries an expiry + signature.
+    expect(p.html).toMatch(/asset=geo-guide&exp=\d+&sig=[A-Za-z0-9_-]+/);
+    // The old public-file URLs must be gone (that was the leak we closed).
+    expect(p.html).not.toContain("/downloads/The-GEO-Visibility-Guide.pdf");
     expect(p.html).not.toContain("/resources/llm-citation-tracker");
 
     // First action + ladder top rung.
