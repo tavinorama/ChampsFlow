@@ -12,42 +12,7 @@ import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { UpsellLadder } from "../../../../components/UpsellLadder";
 import { FounderAnnualNote } from "../../../../components/marketing/FounderAnnualNote";
-
-interface Fix { vector: string; gap: string; action: string; effort: string; impact: string; priority: number }
-interface Draft { contentType: string; title: string; body: string; schemaMarkup: string | null; generatedBy: string }
-interface FromTest { status: string; brandEngineCount: number; competitorEngineCount: number; totalEngines: number; verdict: string }
-interface Deliverable {
-  brand: string;
-  generatedAt?: string;
-  live: boolean;
-  fromTest?: FromTest | null;
-  score: { brand: number; performance: number; ai: number; overall: number };
-  topFixes: Fix[];
-  drafts: Draft[];
-  publishChecklist: string[];
-  meta: { probesTotal: number; probesCited: number; enginesUsed: string[] };
-}
-
-/**
- * Accept a deliverable that is either a proper object OR a (legacy) JSON string —
- * some early rows were stored double-encoded in the jsonb column. Parse strings
- * and validate the shape, so a malformed payload shows the graceful error card
- * instead of throwing a client-side exception (white screen).
- */
-function normalizeDeliverable(raw: unknown): Deliverable | null {
-  let d: unknown = raw;
-  if (typeof d === "string") {
-    try {
-      d = JSON.parse(d);
-    } catch {
-      return null;
-    }
-  }
-  if (d && typeof d === "object" && (d as { score?: unknown }).score) {
-    return d as Deliverable;
-  }
-  return null;
-}
+import { normalizeDeliverable, type Deliverable } from "./deliverable-normalize";
 
 export default function KitDeliveryPage() {
   const params = useParams();
