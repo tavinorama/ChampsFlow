@@ -183,6 +183,16 @@
   display: none;
 }
 
+/* BottomNav is the MOBILE navigation; the left sidebar replaces it on desktop.
+   Without this it stayed fixed on desktop too — a redundant bottom bar on the
+   pages that self-render it (Calendar, Settings). Mobile-only, mirroring the
+   sidebar being desktop-only. (Inline display:flex → needs !important.) */
+@media (min-width: 960px) {
+  .app-bottom-nav {
+    display: none !important;
+  }
+}
+
 @media (min-width: 960px) {
   .app-shell {
     display: grid;

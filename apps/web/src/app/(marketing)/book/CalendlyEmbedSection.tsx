@@ -89,9 +89,13 @@ export function CalendlyEmbedSection({ calendlyUrl }: CalendlyEmbedSectionProps)
           data-url={calendlyUrl}
           aria-label="Calendly booking widget — select a date and time to book your GEO strategy call"
           style={{
+            width: "100%",
             minWidth: "320px",
-            minHeight: "700px",
-            /* Calendly widget auto-sizes but needs a min-height to initialise. */
+            /* The full booking flow (calendar → time slots → details form) is
+               tall; 700px clipped it. Generous min-height shows it in full even
+               before Calendly's auto-resize script fires; no fixed height, so it
+               can still grow if the widget reports a taller size. */
+            minHeight: "1100px",
           }}
         />
       </div>
