@@ -236,10 +236,16 @@ const MARKETING_STYLES = `
     padding: 0.5rem 1.1rem;
     min-height: var(--min-tap-target);
     white-space: nowrap;
-    box-shadow: 0 10px 32px rgba(39,201,138,0.32);
-    transition: filter 0.15s, transform 0.15s;
+    /* Soft, integrated shadow (not a floating glow) so it belongs to the flat,
+       blurred navbar while staying the single highlighted action. */
+    box-shadow: 0 1px 3px rgba(6,20,14,0.30), 0 0 0 1px rgba(39,201,138,0.18);
+    transition: filter 0.15s, transform 0.15s, box-shadow 0.15s;
   }
-  .mk-cta-primary:hover { filter: brightness(1.06); transform: translateY(-1px); }
+  .mk-cta-primary:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(39,201,138,0.28);
+  }
 
   /* ── Toggle button hover ──────────────────────────────────────────── */
   .mk-theme-toggle:hover {
@@ -247,24 +253,23 @@ const MARKETING_STYLES = `
     border-color: var(--color-text) !important;
   }
 
-  /* ── Sign-in link hover ───────────────────────────────────────────── */
+  /* ── Log in — a quiet secondary text link (returning users), NOT a button.
+        Keeps the header clean so the Free-test CTA is the single highlight.
+        Same visual language as the center nav links (.mk-navlink). ───────── */
   .mk-signin {
     font-size: 0.875rem;
     font-weight: 600;
     font-family: var(--font-family);
-    color: var(--color-primary);
+    color: var(--color-muted);
     text-decoration: none;
-    padding: 0.5rem 1.25rem;
-    border-radius: var(--radius-md);
-    border: 1.5px solid var(--color-primary);
-    min-height: var(--min-tap-target);
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
     display: inline-flex;
     align-items: center;
-    transition: background 0.15s, color 0.15s;
+    transition: color 0.15s;
   }
   .mk-signin:hover {
-    background: var(--color-primary);
-    color: #fff;
+    color: var(--color-text);
   }
 
   /* ── Badge pill ──────────────────────────────────────────────────── */
@@ -528,7 +533,7 @@ function PublicNavbar() {
           ))}
         </div>
 
-        {/* Right: theme toggle + Sign in (ghost) + Free AI test (emerald gradient) */}
+        {/* Right: theme toggle + Log in (quiet text link) + Free AI test (the one highlighted CTA) */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
           <ThemeToggle />
           <Link
