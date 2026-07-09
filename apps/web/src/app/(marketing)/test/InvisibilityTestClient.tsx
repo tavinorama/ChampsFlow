@@ -1401,17 +1401,6 @@ export function InvisibilityTestClient() {
         Takes ~60 seconds. Your website + email is enough to start.
       </p>
 
-      {/* Optional social sign-in — a verified identity links this test to the
-          visitor's account later (no retyping their email). */}
-      <SocialAuthButtons
-        caption="Sign in so your results are saved to your account — optional, one click:"
-        onBeforeRedirect={() =>
-          saveFormDraft(FREE_TEST_DRAFT_KEY, {
-            brand, domain, competitor, competitor2, competitor3, category, sector, country, email,
-          })
-        }
-      />
-
       {/* Primary fields — always visible */}
       <Field
         label="Your website"
@@ -1468,6 +1457,17 @@ export function InvisibilityTestClient() {
           style={inputStyle}
         />
       </Field>
+
+      {/* One-click email — right next to the field it fills. A verified
+          identity also links this test to the visitor's account later. */}
+      <SocialAuthButtons
+        caption="Fill your email in one click — or just type it below:"
+        onBeforeRedirect={() =>
+          saveFormDraft(FREE_TEST_DRAFT_KEY, {
+            brand, domain, competitor, competitor2, competitor3, category, sector, country, email,
+          })
+        }
+      />
 
       <Field
         label="Your email"
@@ -1613,6 +1613,21 @@ export function InvisibilityTestClient() {
       >
         Run my free test
       </button>
+      {/* Guidance when disabled — tell the user exactly what's still needed
+          (e.g. after OAuth prefills the email but website/brand/category are
+          blank) instead of leaving the button silently greyed out. */}
+      {!canSubmit && (
+        <p aria-live="polite" style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "var(--space-2) 0 0", textAlign: "center" }}>
+          {(() => {
+            const missing: string[] = [];
+            if (!isValidDomain(cleanDomain)) missing.push("website");
+            if (!brand.trim()) missing.push("brand");
+            if (!category.trim()) missing.push("category");
+            if (!email.trim() || !isValidEmail(email)) missing.push("email");
+            return `Add your ${missing.join(", ")} to run the test.`;
+          })()}
+        </p>
+      )}
     </form>
   );
 }
