@@ -39,7 +39,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Intelligence",
     items: [
       { href: "/brands", label: "Competitors", description: "Who AI recommends instead", icon: "◇" },
-      { href: "/brands", label: "Citation sources", description: "Reddit, LinkedIn, G2 and more", icon: "↗" },
+      { href: "/sources", label: "Citation sources", description: "The domains AI cites for you", icon: "↗" },
       { href: "/test", label: "AI visibility test", description: "Run or relaunch an audit", icon: "✦" },
     ],
   },
