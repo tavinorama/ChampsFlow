@@ -200,9 +200,10 @@
     flex-direction: column;
     height: 100vh;
     padding: var(--space-5) var(--space-4);
-    background: linear-gradient(180deg, rgba(14,23,20,0.98), rgba(6,20,14,0.98));
+    /* Follows the page theme (surface is a subtle elevation above --color-bg in
+       both dark and light), integrated but slightly highlighted via the border. */
+    background: var(--color-surface);
     border-right: 1px solid var(--color-border);
-    box-shadow: 20px 0 60px rgba(0,0,0,0.24);
     overflow-y: auto;
     z-index: 60;
   }
@@ -283,7 +284,7 @@
   .app-sidebar__item:hover {
     transform: translateX(2px);
     border-color: rgba(39,201,138,0.18);
-    background: rgba(255,255,255,0.03);
+    background: var(--color-surface-muted);
     color: var(--color-text);
   }
 
@@ -306,7 +307,7 @@
     height: 34px;
     border: 1px solid var(--color-border);
     border-radius: 10px;
-    background: rgba(255,255,255,0.03);
+    background: var(--color-bg);
     color: var(--color-accent-ink);
     font-family: var(--font-mono);
     font-weight: 700;
@@ -353,7 +354,7 @@
     padding: var(--space-4);
     border: 1px solid rgba(39,201,138,0.22);
     border-radius: var(--radius-lg);
-    background: radial-gradient(100% 100% at 0% 0%, rgba(39,201,138,0.12), rgba(255,255,255,0.02));
+    background: linear-gradient(135deg, rgba(39,201,138,0.12), transparent);
   }
 
   .app-sidebar__brief-title {
