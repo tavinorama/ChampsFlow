@@ -38,7 +38,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { PlatformTile } from "../../../components/PlatformTile";
-import { BottomNav } from "../../../components/BottomNav";
 
 // ---------------------------------------------------------------------------
 // Attribution types
@@ -1445,7 +1444,6 @@ export default function ConnectionsPage() {
         />
       </main>
 
-      <BottomNav />
 
       {/* Skeleton pulse animation */}
       <style>{`

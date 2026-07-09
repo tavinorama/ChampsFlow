@@ -14,7 +14,6 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "../../../lib/supabase-browser";
-import { BottomNav } from "../../../components/BottomNav";
 
 interface Tool {
   id: string;
@@ -360,7 +359,6 @@ export default function SystemStatusPage() {
 
       </main>
 
-      <BottomNav />
 
       <style>{`
         a:focus-visible,

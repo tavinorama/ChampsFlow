@@ -49,6 +49,19 @@
       ],
       "port": 3000,
       "autoPort": false
+    },
+    {
+      "name": "web-calendly",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "NEXT_PUBLIC_CALENDLY_URL=https://calendly.com/hello-ozvor/20-minute-ozvor",
+        "npm",
+        "run",
+        "dev",
+        "--workspace=apps/web"
+      ],
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }

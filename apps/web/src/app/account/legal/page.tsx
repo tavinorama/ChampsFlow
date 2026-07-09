@@ -20,7 +20,6 @@
  */
 
 import { useState, useEffect } from "react";
-import { BottomNav } from "../../../components/BottomNav";
 
 interface AckRecord {
   id: string;
@@ -285,7 +284,6 @@ export default function AccountLegalPage() {
         )}
       </section>
 
-      <BottomNav />
     </div>
   );
 }

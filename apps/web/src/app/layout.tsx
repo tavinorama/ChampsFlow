@@ -27,6 +27,7 @@ import "../styles/tokens.css";
 import { DpaGate } from "../components/DpaGate";
 import { AppTopBar } from "../components/AppTopBar";
 import { AppSidebar } from "../components/AppSidebar";
+import { BottomNav } from "../components/BottomNav";
 import { SiteFooter } from "../components/SiteFooter";
 import { AppLegalStrip } from "../components/AppLegalStrip";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
@@ -116,6 +117,7 @@ const AUTHED_APP_PREFIXES = [
   "/landing-pages",
   "/sources",
   "/competitors",
+  "/agency",
 ];
 
 function isMarketingPath(pathname: string): boolean {
@@ -229,6 +231,11 @@ export default async function RootLayout({
                 />
               </div>
             </div>
+            {/* Single mobile bottom nav for EVERY authed route — desktop-hidden
+                via .app-bottom-nav (≥960px). Rendered once here so individual
+                pages no longer self-render it (which duplicated the bar and, on
+                the pre-shell pages, overlapped the legal strip). */}
+            <BottomNav />
           </>
         ) : (
           // 3. Other public routes (legal, login, shared report): footer only —

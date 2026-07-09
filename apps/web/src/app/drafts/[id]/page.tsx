@@ -36,7 +36,6 @@ import { useRouter, useParams } from "next/navigation";
 import { AIBadge } from "../../../components/AIBadge";
 import { ReportDraftModal } from "../../../components/ReportDraftModal";
 import { ScheduleModal } from "../../../components/ScheduleModal";
-import { BottomNav } from "../../../components/BottomNav";
 
 interface DraftData {
   id: string;
@@ -825,7 +824,6 @@ export default function DraftReviewPage() {
         onClose={() => setShowScheduleModal(false)}
       />
 
-      <BottomNav />
 
       <style>{`
         @keyframes spin {

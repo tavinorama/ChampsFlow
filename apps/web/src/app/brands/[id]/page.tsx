@@ -381,10 +381,17 @@ export default function BrandDetailPage() {
       <div className="bd-shell">
         {/* ── Sidebar nav ───────────────────────────────────────────── */}
         <nav className="bd-nav" aria-label="Brand dashboard sections">
-          <a href="/dashboard" className="bd-back" style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600 }}>
-            ← Dashboard
+          {/* Visual chain: this submenu is a CHILD of "Brands". Show the parent
+              link, the connected brand as a highlighted parent node, then the
+              sections indented under a tree spine (the dependency chain). */}
+          <a href="/brands" className="bd-back" style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600 }}>
+            ← Brands
           </a>
-          <div className="bd-brandname">{brandName ?? "Your brand"}</div>
+          <div className="bd-navgroup-label">Connected brand</div>
+          <div className="bd-brandnode">
+            <span className="bd-brand-dot" aria-hidden="true" />
+            <span className="bd-brandname">{brandName ?? "Your brand"}</span>
+          </div>
           <div className="bd-navlist" role="tablist" aria-orientation="vertical">
             {DASH_NAV.map((item) => (
               <button
@@ -633,10 +640,17 @@ const DASH_NAV: { id: DashSection; label: string }[] = [
 
 const DASH_STYLES = `
   .bd-shell { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-8); align-items: start; }
-  .bd-nav { position: sticky; top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); }
-  .bd-back { display: inline-block; margin-bottom: var(--space-2); }
-  .bd-brandname { font-size: var(--font-size-body); font-weight: 800; color: var(--color-text); letter-spacing: -0.01em; margin-bottom: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bd-navlist { display: flex; flex-direction: column; gap: 2px; }
+  .bd-nav { position: sticky; top: var(--space-4); display: flex; flex-direction: column; gap: 6px; }
+  .bd-back { display: inline-block; margin-bottom: var(--space-1); }
+  /* Mono group label — mirrors the main sidebar's .app-sidebar__group-label. */
+  .bd-navgroup-label { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted); margin: 0 0 2px 2px; }
+  /* Parent node: the brand this submenu is "connected" to — highlighted + a live
+     dot, so the chain reads Brands → [this brand] → sections. */
+  .bd-brandnode { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid rgba(39,201,138,0.28); border-radius: var(--radius-md); background: linear-gradient(135deg, rgba(39,201,138,0.10), transparent); }
+  .bd-brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 10px rgba(39,201,138,0.7); flex-shrink: 0; }
+  .bd-brandname { font-size: var(--font-size-body-sm); font-weight: 800; color: var(--color-text); letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Sections indented under a spine = the visual dependency chain to the brand. */
+  .bd-navlist { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0 5px; padding-left: 12px; border-left: 1.5px solid var(--color-border); }
   /* Matches the main app sidebar (.app-sidebar__item): same emerald active
      treatment (gradient + inset bar), same hover, same typography. */
   .bd-navitem { text-align: left; background: transparent; border: 1px solid transparent; cursor: pointer; font-family: var(--font-family); font-size: 0.92rem; font-weight: 700; color: var(--color-muted); padding: 10px 12px; border-radius: var(--radius-md); min-height: var(--min-tap-target); transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease; }
@@ -647,9 +661,10 @@ const DASH_STYLES = `
   @media (max-width: 900px) {
     .bd-shell { grid-template-columns: 1fr; gap: var(--space-5); }
     .bd-nav { position: static; }
-    .bd-navlist { flex-direction: row; overflow-x: auto; gap: var(--space-1); padding-bottom: var(--space-1); -webkit-overflow-scrolling: touch; }
+    /* Horizontal tab row on mobile — drop the vertical spine/indent. */
+    .bd-navlist { flex-direction: row; overflow-x: auto; gap: var(--space-1); margin: 0; padding: 0 0 var(--space-1) 0; border-left: none; -webkit-overflow-scrolling: touch; }
     .bd-navitem { white-space: nowrap; flex: 0 0 auto; }
-    .bd-brandname { display: none; }
+    .bd-navgroup-label, .bd-brandnode { display: none; }
   }
 `;
 
