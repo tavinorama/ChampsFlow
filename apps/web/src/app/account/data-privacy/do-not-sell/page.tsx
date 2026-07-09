@@ -18,7 +18,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { BottomNav } from "../../../../components/BottomNav";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "rate_limited";
 
@@ -138,7 +137,6 @@ export default function AuthDoNotSellPage() {
             </Link>
           </div>
         </div>
-        <BottomNav />
       </div>
     );
   }
@@ -161,7 +159,6 @@ export default function AuthDoNotSellPage() {
             </p>
           </div>
         </div>
-        <BottomNav />
       </div>
     );
   }
@@ -304,7 +301,6 @@ export default function AuthDoNotSellPage() {
         </form>
       </div>
 
-      <BottomNav />
     </div>
   );
 }

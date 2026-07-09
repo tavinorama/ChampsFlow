@@ -34,7 +34,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { BottomNav } from "../../../components/BottomNav";
 
 type LoadState = "loading" | "loaded" | "error";
 
@@ -518,7 +517,6 @@ export default function DataPrivacyPage() {
         </p>
       </section>
 
-      <BottomNav />
     </div>
   );
 }

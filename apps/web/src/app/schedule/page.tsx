@@ -21,7 +21,6 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { BottomNav } from "../../components/BottomNav";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,8 +196,9 @@ export default function SchedulePage() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-surface-muted)",
+        // Sits INSIDE the app shell (which owns the top bar, background and
+        // bottom-nav). No own 100dvh/muted panel — that double-painted a nested
+        // screen. Just a plain column wrapper for the heading + content.
         fontFamily: "var(--font-family)",
         display: "flex",
         flexDirection: "column",
@@ -231,30 +231,31 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Page heading — a normal in-content title (the app shell already
+          provides the top bar), aligned to the content column. "Calendar"
+          matches the sidebar label. */}
       <header
         style={{
-          height: "48px",
-          display: "flex",
-          alignItems: "center",
-          paddingInline: "var(--margin-page-mobile)",
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
-          flexShrink: 0,
+          width: "100%",
+          maxWidth: "600px",
+          margin: "0 auto",
+          padding: "var(--space-8) var(--margin-page-mobile) 0",
         }}
       >
         <h1
           style={{
-            flex: 1,
-            textAlign: "center",
-            fontSize: "var(--font-size-h3)",
-            fontWeight: "var(--font-weight-semibold)",
+            fontSize: "var(--font-size-h1)",
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
             color: "var(--color-text)",
             margin: 0,
           }}
         >
-          Schedule
+          Calendar
         </h1>
+        <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6 }}>
+          Your content publishing schedule, grouped by date.
+        </p>
       </header>
 
       {/* Main content */}
@@ -705,7 +706,6 @@ export default function SchedulePage() {
         )}
       </main>
 
-      <BottomNav />
 
       <style>{`
         button:focus-visible,

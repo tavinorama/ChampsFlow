@@ -24,7 +24,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { BottomNav } from "../../../../components/BottomNav";
 
 type DsrRequestType =
   | "access"
@@ -671,7 +670,6 @@ export default function AuthDsrRequestPage() {
         </div>
       )}
 
-      <BottomNav />
     </div>
   );
 }

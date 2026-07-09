@@ -23,7 +23,6 @@
 
 import { useState, useRef, useId } from "react";
 import { useRouter } from "next/navigation";
-import { BottomNav } from "../../components/BottomNav";
 
 const MAX_TOPIC_LENGTH = 4000; // backend cap (S-5/CC-3)
 const MIN_TOPIC_LENGTH = 10;   // PRD AC: minimum 10 chars
@@ -444,7 +443,6 @@ export default function CreatePage() {
         </p>
       </main>
 
-      <BottomNav />
 
       <style>{`
         @keyframes shimmer {

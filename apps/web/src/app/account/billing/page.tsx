@@ -35,7 +35,6 @@ import {
   type PlanTier,
   type BillingInterval,
 } from "../../../components/PlanCard";
-import { BottomNav } from "../../../components/BottomNav";
 import { apiFetch } from "../../../lib/supabase-browser";
 
 // ---------------------------------------------------------------------------
@@ -1123,7 +1122,6 @@ function BillingPageInner(): React.ReactElement {
       </div>
 
       {/* Bottom navigation */}
-      <BottomNav />
 
       {/* Pulse animation for skeleton loading */}
       <style>{`
