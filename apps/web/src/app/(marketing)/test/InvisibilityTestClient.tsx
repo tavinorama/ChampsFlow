@@ -14,7 +14,7 @@ import { useState, useRef, useEffect, useId } from "react";
 import { TrustIndexScorecard, THREE_SCORE_COLORS } from "../../../components/TrustIndexScorecard";
 import { useDirectCheckout } from "../../../lib/use-direct-checkout";
 import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
-import { getSupabase, isSupabaseConfigured } from "../../../lib/supabase-browser";
+import { useVerifiedEmail } from "../../../lib/use-verified-email";
 import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
 
 const FREE_TEST_DRAFT_KEY = "free-test";
@@ -1195,16 +1195,12 @@ export function InvisibilityTestClient() {
       if (draft.country) setCountry(draft.country);
       if (draft.email) setEmail(draft.email);
     }
-    if (isSupabaseConfigured()) {
-      void getSupabase()
-        .auth.getSession()
-        .then(({ data }) => {
-          const e = data.session?.user?.email;
-          if (e) setEmail((prev) => prev || e);
-        })
-        .catch(() => {});
-    }
   }, []);
+
+  // Prefill the email from a Supabase-verified session — immediately if already
+  // signed in, and (crucially) once the post-OAuth code exchange completes, so
+  // "Continue with Google/GitHub/LinkedIn" actually fills the box.
+  useVerifiedEmail((e) => setEmail((prev) => prev || e));
 
   // Normalised domain (strip protocol, www, path) — sent to the audit so it can
   // crawl the site for the Performance vector. Required: the audit can't score
