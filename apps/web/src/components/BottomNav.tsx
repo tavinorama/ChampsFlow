@@ -159,6 +159,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Main navigation"
+      className="app-bottom-nav"
       style={{
         position: "fixed",
         bottom: 0,
