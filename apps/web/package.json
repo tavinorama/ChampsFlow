@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@organic-posts/shared": "*",
+    "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.43.5",
     "clsx": "^2.1.1",
     "geist": "^1.3.0",

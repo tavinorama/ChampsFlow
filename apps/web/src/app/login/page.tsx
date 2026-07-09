@@ -141,9 +141,12 @@ export default function LoginPage() {
     setStatus("sending");
     setMessage("");
     try {
+      // Route the magic-link through the server-side /auth/callback so the code
+      // is exchanged for a cookie session (no token in the URL).
+      const target = buildRedirectTarget(plan, nextParam, interval);
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}${buildRedirectTarget(plan, nextParam, interval)}`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(target)}`
           : undefined;
       const { error } = await getSupabase().auth.signInWithOtp({
         email: email.trim(),
@@ -165,9 +168,12 @@ export default function LoginPage() {
     setOAuthError("");
     setOAuthLoading(provider);
     try {
+      // Route OAuth through the server-side /auth/callback (PKCE code exchange →
+      // cookie session; no access_token left in the URL).
+      const target = buildRedirectTarget(plan, nextParam, interval);
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}${buildRedirectTarget(plan, nextParam, interval)}`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(target)}`
           : undefined;
       const { error } = await getSupabase().auth.signInWithOAuth({
         provider,
