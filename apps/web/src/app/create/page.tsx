@@ -285,20 +285,26 @@ export default function CreatePage() {
               // Focus style via CSS :focus-visible in globals
             }}
           />
-          <div
-            id={`${topicId}-counter`}
-            aria-live="polite"
-            aria-atomic="true"
-            style={{
-              fontSize: "var(--font-size-caption)",
-              color: charsUsed > MAX_TOPIC_LENGTH * 0.9
-                ? "var(--color-error)"
-                : "var(--color-muted)",
-              textAlign: "right",
-              marginTop: "var(--space-1)",
-            }}
-          >
-            {charsUsed} / {MAX_TOPIC_LENGTH}
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", marginTop: "var(--space-1)" }}>
+            {/* Explain WHY the Generate button is disabled (min 10 chars) so the
+                user isn't left guessing (T8). */}
+            <span aria-live="polite" style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+              {topic.trim().length > 0 && topic.trim().length < 10
+                ? `Enter at least 10 characters (${10 - topic.trim().length} more) to generate.`
+                : ""}
+            </span>
+            <span
+              id={`${topicId}-counter`}
+              aria-live="polite"
+              aria-atomic="true"
+              style={{
+                fontSize: "var(--font-size-caption)",
+                color: charsUsed > MAX_TOPIC_LENGTH * 0.9 ? "var(--color-error)" : "var(--color-muted)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {charsUsed} / {MAX_TOPIC_LENGTH}
+            </span>
           </div>
         </div>
 

@@ -218,17 +218,17 @@ export default function BrandsPage() {
 
         <Field id={nameId} label="Brand name" required>
           <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} required
-            placeholder="Acme CRM" style={inputStyle} />
+            maxLength={120} placeholder="Acme CRM" style={inputStyle} />
         </Field>
 
         <Field id={domainId} label="Website domain" hint="optional">
           <input id={domainId} value={domain} onChange={(e) => setDomain(e.target.value)}
-            placeholder="acme.com" style={inputStyle} />
+            maxLength={253} placeholder="acme.com" style={inputStyle} />
         </Field>
 
         <Field id={categoryId} label="Category" hint="e.g. CRM, accounting, law firm">
           <input id={categoryId} value={category} onChange={(e) => setCategory(e.target.value)}
-            placeholder="CRM" style={inputStyle} />
+            maxLength={80} placeholder="CRM" style={inputStyle} />
         </Field>
 
         <Field id={regionId} label="Data region" hint="drives AI-provider data routing">

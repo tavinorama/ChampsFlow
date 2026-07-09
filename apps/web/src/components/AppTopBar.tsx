@@ -48,7 +48,16 @@ export function AppTopBar() {
     >
       <button
         type="button"
-        onClick={() => router.back()}
+        onClick={() => {
+          // On a deep-link / fresh tab / post-OAuth-redirect entry there's no
+          // in-app history — router.back() would leave the app (or do nothing).
+          // Fall back to the dashboard in that case.
+          if (typeof window !== "undefined" && window.history.length <= 1) {
+            router.push("/dashboard");
+          } else {
+            router.back();
+          }
+        }}
         aria-label="Go back"
         style={{
           display: "inline-flex",
