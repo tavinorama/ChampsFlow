@@ -14,6 +14,7 @@
 
 import { useState, useEffect } from "react";
 import { apiFetch } from "../../../lib/supabase-browser";
+import { SocialConnectPanel } from "../../../components/SocialConnectPanel";
 
 interface Tool {
   id: string; label: string; powers: string; key: string;
@@ -46,10 +47,6 @@ export default function IntegrationsPage() {
         .flatMap((s) => s.tools)
         .filter((t, i, arr) => arr.findIndex((x) => x.label === t.label) === i)
     : [];
-  const publishTools: Tool[] = cap
-    ? cap.stages.filter((s) => s.id === "publish").flatMap((s) => s.tools)
-    : [];
-
   return (
     <main style={{
       maxWidth: "780px", margin: "0 auto",
@@ -79,18 +76,8 @@ export default function IntegrationsPage() {
         </>
       )}
 
-      {/* Publishing channels (OAuth) */}
-      {publishTools.length > 0 && (
-        <>
-          <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-3) 0" }}>Publishing channels</h2>
-          <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", margin: "0 0 var(--space-3) 0" }}>
-            Connect via secure OAuth on the <a href="/account/connections" style={{ color: "var(--color-primary)" }}>Connections</a> page. We store encrypted tokens — never your password.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-            {publishTools.map((t) => <ProviderRow key={t.label} tool={t} byok={false} oauth />)}
-          </div>
-        </>
-      )}
+      {/* Publishing channels — connect directly here (OAuth popup), no bounce. */}
+      <SocialConnectPanel />
 
       {/* MCP / tools — roadmap */}
       <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "var(--space-8) 0 var(--space-3) 0" }}>Tool connectors (MCP)</h2>
@@ -128,7 +115,7 @@ export default function IntegrationsPage() {
   );
 }
 
-function ProviderRow({ tool, byok, oauth }: { tool: Tool; byok: boolean; oauth?: boolean }) {
+function ProviderRow({ tool, byok }: { tool: Tool; byok: boolean }) {
   const [open, setOpen] = useState(false);
   const [keyVal, setKeyVal] = useState("");
   const [saving, setSaving] = useState(false);
@@ -193,11 +180,6 @@ function ProviderRow({ tool, byok, oauth }: { tool: Tool; byok: boolean; oauth?:
         </div>
       )}
 
-      {oauth && !tool.connected && (
-        <a href="/account/connections" style={{ ...linkBtn, display: "inline-block", marginTop: "var(--space-3)" }}>
-          Connect via OAuth →
-        </a>
-      )}
     </div>
   );
 }
