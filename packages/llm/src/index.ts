@@ -172,7 +172,8 @@ export type { SiteCrawlResult } from "./site-crawl";
 export { crawlSite } from "./site-crawl";
 
 // Competitor detection — "who AI recommends instead of you".
-export { detectCompetitors } from "./competitor-detect";
+export { detectCompetitors, tallyCompetitors } from "./competitor-detect";
+export type { CompetitorProbe, CompetitorTally } from "./competitor-detect";
 
 // Off-site signal — presence on the high-authority sources AI cites most.
 export type { OffsiteSignalResult, OffsitePresence } from "./offsite-signal";

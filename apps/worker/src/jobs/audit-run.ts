@@ -28,7 +28,8 @@ import {
   computeGeoScore,
   parseCitation,
   crawlSite,
-  detectCompetitors,
+  tallyCompetitors,
+  type CompetitorProbe,
   measureOffsiteSignal,
   analyzeContentGeo,
   analyzeSentiment,
@@ -331,8 +332,11 @@ export async function processAuditJob(
       { name: string }[]
     >`SELECT name FROM competitor WHERE brand_id = ${brand_id}`;
     const competitorNames = competitorRows.map((r) => r.name);
-    // Tally per competitor: total mentions + displacement (client absent that probe).
-    const compTally = new Map<string, { mentions: number; displacement: number }>();
+    // Collect per-probe competitor inputs (engine + answer text + whether the
+    // client was absent). tallyCompetitors() folds these into the benchmark with
+    // a per-engine split after the loop — one pure, unit-tested function so the
+    // "who AI recommends instead of you, and on which engine" data is verifiable.
+    const competitorProbes: CompetitorProbe[] = [];
 
     // Persist citation_check rows + ai_generation_log (append-only). Aggregate only.
     // citedCount uses the mention RATE (fractional in live repeat mode) so the AI
@@ -361,14 +365,11 @@ export async function processAuditJob(
       // Competitor benchmark: which competitors appeared in THIS probe answer,
       // and was the client absent here (displacement)?
       if (competitorNames.length > 0) {
-        const seen = detectCompetitors(resp.rawText ?? "", competitorNames);
-        const clientAbsent = !mentioned;
-        for (const cName of seen) {
-          const t = compTally.get(cName) ?? { mentions: 0, displacement: 0 };
-          t.mentions += 1;
-          if (clientAbsent) t.displacement += 1;
-          compTally.set(cName, t);
-        }
+        competitorProbes.push({
+          provider: dbProvider(resp.provider),
+          text: resp.rawText ?? "",
+          clientAbsent: !mentioned,
+        });
       }
 
       // citation_check stores the buyer prompt + cited sources as audit evidence
@@ -396,17 +397,18 @@ export async function processAuditJob(
     }
 
     // Persist the competitor benchmark + build a ranked list for the breakdown.
-    const competitorBenchmark: Array<{ name: string; mentions: number; displacement: number }> = [];
-    for (const [name, t] of compTally) {
+    // Fold the per-probe inputs into the ranked benchmark (aggregate + per-engine
+    // split). Already sorted most-displacing first by the helper.
+    const competitorBenchmark = tallyCompetitors(competitorProbes, competitorNames);
+    for (const c of competitorBenchmark) {
+      // The table stores only the aggregate (unchanged schema); the per-engine
+      // providers[] lives in the breakdown JSON below.
       await sql`
         INSERT INTO competitor_citation
           (tenant_id, audit_id, competitor_name, mention_count, displacement_count, recorded_at)
-        VALUES (${tenant_id}, ${audit_id}, ${name}, ${t.mentions}, ${t.displacement}, NOW())
+        VALUES (${tenant_id}, ${audit_id}, ${c.name}, ${c.mentions}, ${c.displacement}, NOW())
       `;
-      competitorBenchmark.push({ name, mentions: t.mentions, displacement: t.displacement });
     }
-    // Rank by displacement (most "stealing your absence"), then mentions.
-    competitorBenchmark.sort((a, b) => b.displacement - a.displacement || b.mentions - a.mentions);
 
     // Derive AI sub-score inputs from probe aggregates.
     const totalProbes = result.responses.length || 1;
