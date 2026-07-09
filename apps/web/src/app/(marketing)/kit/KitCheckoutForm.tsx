@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from "react";
 import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
-import { getSupabase, isSupabaseConfigured } from "../../../lib/supabase-browser";
+import { useVerifiedEmail } from "../../../lib/use-verified-email";
 import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
 
 const DRAFT_KEY = "kit";
@@ -59,19 +59,12 @@ export function KitCheckoutForm() {
       if (draft.region && p.get("region") !== "EU") setRegion(draft.region);
       if (draft.email) setEmail(draft.email);
     }
-
-    // If the visitor signed in with social, prefill the verified email so they
-    // don't retype it (and #166 links this Kit to their account by that email).
-    if (isSupabaseConfigured()) {
-      void getSupabase()
-        .auth.getSession()
-        .then(({ data }) => {
-          const e = data.session?.user?.email;
-          if (e) setEmail((prev) => prev || e);
-        })
-        .catch(() => {});
-    }
   }, []);
+
+  // Prefill the verified email — immediately if signed in, and once the
+  // post-OAuth code exchange completes (so social sign-in fills the box, and
+  // #166 links this Kit to their account by that email).
+  useVerifiedEmail((e) => setEmail((prev) => prev || e));
 
   async function checkout(e: React.FormEvent) {
     e.preventDefault();
