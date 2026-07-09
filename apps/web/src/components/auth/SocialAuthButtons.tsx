@@ -87,7 +87,9 @@ export function SocialAuthButtons({
       onBeforeRedirect?.();
       const target =
         redirectPath ?? window.location.pathname + window.location.search;
-      const redirectTo = `${window.location.origin}${target}`;
+      // Route through the server-side /auth/callback (PKCE → cookie session),
+      // which then returns the visitor to `target` (e.g. back to /test).
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(target)}`;
       const { error: err } = await getSupabase().auth.signInWithOAuth({
         provider,
         options: {

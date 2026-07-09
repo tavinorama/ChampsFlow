@@ -12,7 +12,8 @@
  * the request and resolve tenant_id from the JWT app_metadata claim.
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import { type SupabaseClient } from "@supabase/supabase-js";
 
 let _client: SupabaseClient | null = null;
 
@@ -25,13 +26,10 @@ export function getSupabase(): SupabaseClient {
       "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY."
     );
   }
-  _client = createClient(url, anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true, // completes the magic-link redirect
-    },
-  });
+  // createBrowserClient stores the session in cookies (readable by middleware +
+  // server components), NOT localStorage. getSession()/onAuthStateChange/
+  // signInWithOAuth all still work exactly as before.
+  _client = createBrowserClient(url, anonKey);
   return _client;
 }
 

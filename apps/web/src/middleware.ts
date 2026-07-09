@@ -20,8 +20,10 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { isAuthedAppPath } from "./lib/routes";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   // Edge-runtime-safe nonce (no Node Buffer available here).
   const nonce = btoa(crypto.randomUUID());
 
@@ -55,9 +57,54 @@ export function middleware(request: NextRequest) {
   // Next.js reads the nonce from the CSP on the *request* headers.
   requestHeaders.set("Content-Security-Policy", csp);
 
-  const response = NextResponse.next({
+  // --- Auth gate (SSR cookie sessions) --------------------------------------
+  // Redirect a logged-OUT visitor off authenticated app pages to /login. The
+  // decision is based on the PRESENCE of a Supabase auth cookie only, so a
+  // Supabase outage can never lock out a user who genuinely has a session
+  // (fail-open). The API still does the real RS256 JWT verification.
+  const path = request.nextUrl.pathname;
+  const hasSession = request.cookies
+    .getAll()
+    .some((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"));
+
+  if (!hasSession && isAuthedAppPath(path)) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/login";
+    redirectUrl.searchParams.set("next", path);
+    const redirect = NextResponse.redirect(redirectUrl);
+    redirect.headers.set("Content-Security-Policy", csp);
+    return redirect;
+  }
+
+  let response = NextResponse.next({
     request: { headers: requestHeaders },
   });
+
+  // Refresh the Supabase session cookie when one exists (skips the network call
+  // for anonymous public traffic). getUser() rotates the token via setAll below.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (hasSession && supabaseUrl && supabaseAnonKey) {
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request: { headers: requestHeaders } });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    });
+    try {
+      await supabase.auth.getUser();
+    } catch {
+      // Fail open — never block a request on a Supabase hiccup.
+    }
+  }
 
   // The browser enforces the CSP from the *response* headers.
   response.headers.set("Content-Security-Policy", csp);
