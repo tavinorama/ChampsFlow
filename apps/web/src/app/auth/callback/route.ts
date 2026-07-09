@@ -19,8 +19,24 @@ function safeNext(next: string | null): string {
   return "/dashboard";
 }
 
+/**
+ * The PUBLIC origin. Behind Railway's proxy, `new URL(request.url).origin` is
+ * the internal container URL (e.g. http://0.0.0.0:8080), so redirects built from
+ * it are unreachable by the browser. Derive it from the forwarded headers the
+ * proxy sets, falling back to nextUrl.origin (which Next resolves) then WEB_ORIGIN.
+ */
+function publicOrigin(request: NextRequest): string {
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  const proto = request.headers.get("x-forwarded-proto") ?? "https";
+  if (host) return `${proto}://${host}`;
+  const fromNext = request.nextUrl.origin;
+  if (fromNext && !fromNext.includes("0.0.0.0") && !fromNext.includes("localhost")) return fromNext;
+  return process.env.NEXT_PUBLIC_SITE_URL ?? "https://ozvor.com";
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const { searchParams, origin } = new URL(request.url);
+  const searchParams = request.nextUrl.searchParams;
+  const origin = publicOrigin(request);
   const code = searchParams.get("code");
   const next = safeNext(searchParams.get("next"));
   const errorParam = searchParams.get("error") ?? searchParams.get("error_description");
