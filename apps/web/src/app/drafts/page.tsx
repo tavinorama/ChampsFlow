@@ -6,13 +6,13 @@
  * The real, audit-driven action plan: every gap Ozvor finds becomes a plan_task
  * (gap → action, with impact/effort/priority + evidence). Data is 100% real,
  * generated from the latest audit (GET /api/brands/:id/plan → tasks), the same
- * source as the brand-page Action Cards. You can accept a fix or mark it done
- * (PATCH /api/plan-tasks/:id), and hand each one to the calendar.
+ * source as the brand-page Action Cards. You can accept a fix, mark it done, or
+ * SCHEDULE it to a date (PATCH /api/plan-tasks/:id) — the queue then flags
+ * due-soon / overdue fixes in-app (no reminder emails; Batch D/2).
  * (Replaces the earlier hardcoded placeholder queue.)
  */
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { apiFetch, ensureProvisioned } from "../../lib/supabase-browser";
 
 interface Brand { id: string; name: string; latest_score?: number | null }
@@ -29,6 +29,23 @@ interface PlanTask {
   evidence: string | null;
   metric: string | null;
   owner: string | null;
+  due_date: string | null; // ISO-8601 or null — in-app scheduling
+}
+
+/** Due-status badge from a scheduled date (in-app only, no emails). */
+function dueMeta(due: string | null): { label: string; color: string } | null {
+  if (!due) return null;
+  const d = new Date(due);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dueDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((dueDay.getTime() - startOfToday.getTime()) / 86_400_000);
+  const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (days < 0) return { label: `Overdue · ${dateStr}`, color: "var(--color-error)" };
+  if (days === 0) return { label: "Due today", color: "var(--color-error)" };
+  if (days <= 3) return { label: `Due in ${days}d · ${dateStr}`, color: "#e6a93f" };
+  return { label: `Due ${dateStr}`, color: "var(--color-muted)" };
 }
 
 const LEVEL_COLOR: Record<string, string> = {
@@ -84,6 +101,21 @@ export default function FixQueuePage() {
     } catch { /* keep prior state */ } finally { setBusyId(null); }
   }
 
+  async function setDueDate(id: string, due_date: string | null) {
+    setBusyId(id);
+    // Optimistic — reflect immediately, roll back on failure.
+    const prevTasks = tasks;
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, due_date } : t)));
+    try {
+      const res = await apiFetch(`/api/plan-tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ due_date }),
+      });
+      if (!res.ok) setTasks(prevTasks);
+    } catch { setTasks(prevTasks); } finally { setBusyId(null); }
+  }
+
   // Open items first (proposed/accepted), done/rejected last.
   const ordered = [...tasks].sort((a, b) => {
     const rank = (s: string) => (s === "done" || s === "rejected" ? 1 : 0);
@@ -123,6 +155,14 @@ export default function FixQueuePage() {
                       <Badge label={`${t.impact} impact`} color={levelColor(t.impact)} />
                       <Badge label={`${t.effort} effort`} color={levelColor(t.effort)} />
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-muted)" }}>{STATUS_LABEL[t.status] ?? t.status}</span>
+                      {!closed && (() => {
+                        const due = dueMeta(t.due_date);
+                        return due ? (
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.6rem", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, color: due.color }}>
+                            ◷ {due.label}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 800 }}>{t.action}</h2>
                     <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-muted)", lineHeight: 1.55, fontSize: "var(--font-size-body-sm)" }}>
@@ -137,7 +177,26 @@ export default function FixQueuePage() {
                     {t.status === "proposed" && (
                       <button onClick={() => setStatus(t.id, "accepted")} disabled={busyId === t.id} style={ghostBtn}>Accept</button>
                     )}
-                    <Link href="/schedule" style={{ ...primaryBtn, textAlign: "center" }}>Schedule →</Link>
+                    {!closed && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.56rem", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-muted)" }}>
+                          Schedule fix
+                        </span>
+                        <input
+                          type="date"
+                          value={t.due_date ? t.due_date.slice(0, 10) : ""}
+                          disabled={busyId === t.id}
+                          onChange={(e) => setDueDate(t.id, e.target.value ? new Date(e.target.value).toISOString() : null)}
+                          aria-label={`Set a due date for: ${t.action}`}
+                          style={dateInput}
+                        />
+                        {t.due_date && (
+                          <button onClick={() => setDueDate(t.id, null)} disabled={busyId === t.id} style={clearBtn}>
+                            Clear date
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </article>
@@ -175,8 +234,12 @@ const ghostBtn: React.CSSProperties = {
   border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", fontWeight: 700,
   fontSize: "var(--font-size-caption)", cursor: "pointer", whiteSpace: "nowrap",
 };
-const primaryBtn: React.CSSProperties = {
-  height: "38px", display: "inline-flex", alignItems: "center", justifyContent: "center",
-  padding: "0 var(--space-4)", color: "#06140e", background: "linear-gradient(135deg,#27c98a,#0c7d54)",
-  borderRadius: "var(--radius-md)", textDecoration: "none", fontWeight: 800, fontSize: "var(--font-size-caption)",
+const dateInput: React.CSSProperties = {
+  height: "38px", padding: "0 var(--space-3)", background: "var(--color-surface-muted)",
+  color: "var(--color-text)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+  fontSize: "var(--font-size-caption)", fontFamily: "var(--font-family)", colorScheme: "light dark",
+};
+const clearBtn: React.CSSProperties = {
+  background: "none", border: "none", padding: 0, color: "var(--color-muted)",
+  fontSize: "var(--font-size-caption)", cursor: "pointer", textAlign: "left",
 };

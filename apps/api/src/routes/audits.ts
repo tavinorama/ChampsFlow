@@ -1428,15 +1428,33 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const plan = planRes.rows[0];
     if (!plan) return c.json({ plan: null, tasks: [] });
 
-    const taskRes = await db.query<{
+    type TaskRow = {
       id: string; vector: string; gap: string; action: string;
       effort: string; impact: string; priority: number; status: string;
       evidence: string | null; metric: string | null; owner: string;
-    }>(
-      `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner
-         FROM plan_task WHERE plan_id = $1 ORDER BY priority DESC`,
-      [plan.id]
-    );
+      due_date: string | null;
+    };
+    // due_date (Batch D/2 scheduling) is added by a migration. If this environment
+    // hasn't applied it yet, degrade gracefully rather than 500 the whole plan —
+    // same defensive pattern used elsewhere (e.g. tracked_models). Scheduling just
+    // won't appear until the migration lands.
+    let taskRows: TaskRow[];
+    try {
+      const r = await db.query<TaskRow>(
+        `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner, due_date
+           FROM plan_task WHERE plan_id = $1 ORDER BY priority DESC`,
+        [plan.id]
+      );
+      taskRows = r.rows;
+    } catch {
+      const r = await db.query<Omit<TaskRow, "due_date">>(
+        `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner
+           FROM plan_task WHERE plan_id = $1 ORDER BY priority DESC`,
+        [plan.id]
+      );
+      taskRows = r.rows.map((t) => ({ ...t, due_date: null }));
+    }
+    const taskRes = { rows: taskRows };
 
     // calendar may come back as a JSON string (jsonb stored from a stringified
     // value) or already-parsed — normalise to an array either way.
@@ -1451,7 +1469,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   });
 
   // -------------------------------------------------------------------------
-  // PATCH /api/plan-tasks/:id — accept / reject / mark done a recommendation
+  // PATCH /api/plan-tasks/:id — update status and/or schedule (due_date).
+  //   { status?: 'proposed'|'accepted'|'rejected'|'done',
+  //     due_date?: ISO-8601 string | null }
+  // At least one field is required. due_date is in-app scheduling only — no
+  // reminder emails are sent (Batch D/2).
   // -------------------------------------------------------------------------
   app.patch(
     "/api/plan-tasks/:id",
@@ -1460,25 +1482,54 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     async (c) => {
       const auth = c.get("auth");
       const taskId = c.req.param("id");
-      let body: { status?: string };
+      let body: { status?: string; due_date?: string | null };
       try {
         body = await c.req.json();
       } catch {
         return c.json({ message: "Invalid JSON body." }, 400);
       }
-      const status = body.status ?? "";
-      if (!["proposed", "accepted", "rejected", "done"].includes(status)) {
-        return c.json({ message: "status must be proposed|accepted|rejected|done." }, 400);
+
+      // Build the SET clause from whichever fields were supplied. Column names
+      // are hard-coded (never from input); only values are parameterized.
+      const sets: string[] = [];
+      const params: unknown[] = [taskId, auth.tenantId];
+
+      if (body.status !== undefined) {
+        if (!["proposed", "accepted", "rejected", "done"].includes(body.status)) {
+          return c.json({ message: "status must be proposed|accepted|rejected|done." }, 400);
+        }
+        params.push(body.status);
+        sets.push(`status = $${params.length}`);
       }
+
+      if (body.due_date !== undefined) {
+        let due: string | null = null;
+        if (body.due_date !== null) {
+          const d = new Date(body.due_date);
+          if (Number.isNaN(d.getTime())) {
+            return c.json({ message: "due_date must be an ISO-8601 date or null." }, 400);
+          }
+          due = d.toISOString();
+        }
+        params.push(due);
+        sets.push(`due_date = $${params.length}`);
+      }
+
+      if (sets.length === 0) {
+        return c.json({ message: "Provide status and/or due_date." }, 400);
+      }
+
       await db.setTenantId(auth.tenantId);
-      const result = await db.query<{ id: string }>(
-        `UPDATE plan_task SET status = $2 WHERE id = $1 AND tenant_id = $3 RETURNING id`,
-        [taskId, status, auth.tenantId]
+      const result = await db.query<{ id: string; status: string; due_date: string | null }>(
+        `UPDATE plan_task SET ${sets.join(", ")}
+           WHERE id = $1 AND tenant_id = $2
+           RETURNING id, status, due_date`,
+        params
       );
       if (result.rows.length === 0) {
         return c.json({ message: "Task not found." }, 404);
       }
-      return c.json({ id: taskId, status });
+      return c.json(result.rows[0]);
     }
   );
 
