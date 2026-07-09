@@ -114,6 +114,7 @@ const AUTHED_APP_PREFIXES = [
   "/schedule",
   "/marketing",
   "/landing-pages",
+  "/sources",
 ];
 
 function isMarketingPath(pathname: string): boolean {
