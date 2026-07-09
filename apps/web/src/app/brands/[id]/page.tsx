@@ -604,10 +604,11 @@ export default function BrandDetailPage() {
       )}
 
       {/* ── Settings section — brand basics + account links ─────────── */}
-      {section === "settings" && (<>
-        <SettingsCard brandName={brandName} />
+      {/* "Profiles" tab — brand-scoped public profile URLs. Global account
+          settings live in the main sidebar → Settings, not duplicated here. */}
+      {section === "settings" && (
         <PublicProfilesCard brandId={brandId} />
-      </>)}
+      )}
         </div>{/* /bd-main */}
       </div>{/* /bd-shell */}
     </main>
@@ -627,7 +628,7 @@ const DASH_NAV: { id: DashSection; label: string }[] = [
   { id: "models", label: "Models" },
   { id: "prompts", label: "Prompts" },
   { id: "attribution", label: "Attribution" },
-  { id: "settings", label: "Settings" },
+  { id: "settings", label: "Profiles" },
 ];
 
 const DASH_STYLES = `
@@ -636,9 +637,11 @@ const DASH_STYLES = `
   .bd-back { display: inline-block; margin-bottom: var(--space-2); }
   .bd-brandname { font-size: var(--font-size-body); font-weight: 800; color: var(--color-text); letter-spacing: -0.01em; margin-bottom: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bd-navlist { display: flex; flex-direction: column; gap: 2px; }
-  .bd-navitem { text-align: left; background: transparent; border: none; cursor: pointer; font-family: var(--font-family); font-size: var(--font-size-body-sm); font-weight: 600; color: var(--color-muted); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); min-height: var(--min-tap-target); transition: background 0.12s, color 0.12s; }
-  .bd-navitem:hover { background: var(--color-surface-muted); color: var(--color-text); }
-  .bd-navitem--active { background: var(--color-badge-ai-bg); color: var(--color-primary); }
+  /* Matches the main app sidebar (.app-sidebar__item): same emerald active
+     treatment (gradient + inset bar), same hover, same typography. */
+  .bd-navitem { text-align: left; background: transparent; border: 1px solid transparent; cursor: pointer; font-family: var(--font-family); font-size: 0.92rem; font-weight: 700; color: var(--color-muted); padding: 10px 12px; border-radius: var(--radius-md); min-height: var(--min-tap-target); transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease; }
+  .bd-navitem:hover { background: var(--color-surface-muted); border-color: rgba(39,201,138,0.18); color: var(--color-text); transform: translateX(2px); }
+  .bd-navitem--active { border-color: rgba(39,201,138,0.34); background: linear-gradient(135deg, rgba(39,201,138,0.16), rgba(39,201,138,0.05)); color: var(--color-text); box-shadow: inset 3px 0 0 var(--color-primary); }
   .bd-navitem:focus-visible { outline: var(--focus-outline-width) solid var(--color-focus-outline); outline-offset: 2px; }
   .bd-main { min-width: 0; }
   @media (max-width: 900px) {
@@ -1196,24 +1199,6 @@ function AttributionPanel({
   );
 }
 
-function SettingsCard({ brandName }: { brandName: string | undefined }) {
-  return (
-    <section style={{ marginBottom: "var(--space-8)" }} aria-labelledby="settings-heading">
-      <h2 id="settings-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-4) 0" }}>
-        Settings
-      </h2>
-      <div style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-        <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-          Brand: <strong style={{ color: "var(--color-text)" }}>{brandName ?? "—"}</strong>. Choose which AI engines and how often we track in the <strong>Models</strong> tab.
-        </p>
-        <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}>
-          <a href="/account/billing" style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>Manage plan &amp; billing →</a>
-          <a href="/account" style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>Account settings →</a>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Public profiles settings card — per-brand profile URL management
