@@ -28,6 +28,7 @@ import { DpaGate } from "../components/DpaGate";
 import { AppTopBar } from "../components/AppTopBar";
 import { AppSidebar } from "../components/AppSidebar";
 import { SiteFooter } from "../components/SiteFooter";
+import { AppLegalStrip } from "../components/AppLegalStrip";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 import { CookieConsent } from "../components/CookieConsent";
 
@@ -111,6 +112,8 @@ const AUTHED_APP_PREFIXES = [
   "/create",
   "/drafts",
   "/schedule",
+  "/marketing",
+  "/landing-pages",
 ];
 
 function isMarketingPath(pathname: string): boolean {
@@ -214,7 +217,9 @@ export default async function RootLayout({
               <div className="app-shell__content">
                 <AppTopBar />
                 <DpaGate>{children}</DpaGate>
-                <SiteFooter />
+                {/* App pages get a minimal legal strip, not the marketing footer
+                    menu (removed per founder). CCPA Do-Not-Sell link retained. */}
+                <AppLegalStrip />
                 {/* Clear the fixed mobile BottomNav so it never covers the footer. */}
                 <div
                   aria-hidden="true"

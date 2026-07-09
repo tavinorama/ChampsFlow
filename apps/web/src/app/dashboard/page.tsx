@@ -117,16 +117,6 @@ function useDashboardStyles() {
 // Account areas surfaced on the dashboard main page (separate from brand info).
 // ---------------------------------------------------------------------------
 
-const ACCOUNT_LINKS: Array<{ href: string; title: string; desc: string; icon: string }> = [
-  { href: "/account/billing",       title: "Billing & plan",    desc: "Subscription, invoices, plan limits.",    icon: "💳" },
-  { href: "/account/integrations",  title: "AI engines & keys", desc: "Connect your own provider keys.",          icon: "🔌" },
-  { href: "/account/api-keys",      title: "API keys",          desc: "Pull your scores into your own tools.",    icon: "🗝️" },
-  { href: "/account/connections",   title: "Connections",       desc: "Publishing channels via secure OAuth.",    icon: "🔗" },
-  { href: "/account/data-privacy",  title: "Data & privacy",    desc: "Export, delete, control your data.",       icon: "🔒" },
-  { href: "/account/system-status", title: "System status",     desc: "Live status of the audit engines.",        icon: "📡" },
-  { href: "/account/legal",         title: "Legal",             desc: "Terms, privacy, DPA, sub-processors.",    icon: "§" },
-];
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -974,7 +964,7 @@ export default function DashboardPage() {
               color: "var(--color-text)",
             }}
           >
-            Account &amp; settings
+            Your plan
           </h2>
           {accountEmail && (
             <span
@@ -1067,51 +1057,50 @@ export default function DashboardPage() {
           </a>
         </div>
 
-        {/* Account area cards */}
+        {/* Everything else (keys, API, connections, privacy, legal, system
+            status) lives in Settings — one link, not a duplicated card grid. */}
+        <a href="/account" className="db-account-link" style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", width: "auto" }}>
+          <span aria-hidden="true" style={{ fontSize: "1rem" }}>⚙</span>
+          <span style={{ fontWeight: 700, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+            Account &amp; settings
+          </span>
+          <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>&mdash; billing, keys, connections, privacy &rarr;</span>
+        </a>
+      </section>
+
+      {/* ── DONE-FOR-YOU (OrganicPosts) — upsell card, not a nav tab ──────── */}
+      <section aria-labelledby="dfy-heading" style={{ marginTop: "var(--space-8)" }}>
         <div
-          className="db-account-grid"
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "var(--space-3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "var(--space-4)",
+            flexWrap: "wrap",
+            padding: "var(--space-5) var(--space-6)",
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-card)",
           }}
         >
-          {ACCOUNT_LINKS.map((s) => (
-            <a
-              key={s.href}
-              href={s.href}
-              className="db-account-link"
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-2)",
-                  marginBottom: "var(--space-1)",
-                }}
-              >
-                <span aria-hidden="true" style={{ fontSize: "1rem" }}>{s.icon}</span>
-                <span
-                  style={{
-                    fontWeight: 700,
-                    fontSize: "var(--font-size-body-sm)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  {s.title}
-                </span>
-              </div>
-              <div
-                style={{
-                  fontSize: "var(--font-size-caption)",
-                  color: "var(--color-muted)",
-                  lineHeight: 1.45,
-                }}
-              >
-                {s.desc}
-              </div>
-            </a>
-          ))}
+          <div style={{ maxWidth: "620px" }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.6875rem", letterSpacing: "0.12em", textTransform: "uppercase" as const, color: "var(--color-accent-ink)", marginBottom: "var(--space-1)" }}>
+              Done for you
+            </div>
+            <h2 id="dfy-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-1)", color: "var(--color-text)" }}>
+              Rather have a team run your GEO?
+            </h2>
+            <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.55, margin: 0 }}>
+              OrganicPosts by Ozvor executes the whole plan for you — content, cadence, and monitoring.
+            </p>
+          </div>
+          <a
+            href="/organicposts"
+            style={{ display: "inline-flex", alignItems: "center", height: "44px", padding: "0 var(--space-5)", background: "transparent", color: "var(--color-primary)", border: "1.5px solid var(--color-primary)", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", textDecoration: "none", whiteSpace: "nowrap" }}
+          >
+            Explore OrganicPosts &rarr;
+          </a>
         </div>
       </section>
     </main>

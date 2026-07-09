@@ -48,7 +48,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/drafts", label: "Fix queue", description: "Recommended fixes and drafts", icon: "✓", badge: "New" },
       { href: "/schedule", label: "Calendar", description: "Draft, approve, publish, measure", icon: "□" },
-      { href: "/organicposts", label: "OrganicPosts", description: "Managed GEO execution", icon: "◆" },
+    ],
+  },
+  {
+    label: "Studio",
+    items: [
+      { href: "/marketing", label: "Marketing", description: "Campaigns from your audit data", icon: "◈", badge: "Soon" },
+      { href: "/landing-pages", label: "Landing pages", description: "GEO pages AI can cite", icon: "▦", badge: "Soon" },
     ],
   },
   {
