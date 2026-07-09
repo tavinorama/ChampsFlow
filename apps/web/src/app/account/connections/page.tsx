@@ -1235,8 +1235,9 @@ export default function ConnectionsPage() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-surface-muted)",
+        // Lives inside the app shell (topbar + background + bottom nav already
+        // provided). No own 100dvh/muted panel or sticky header bar — those
+        // double-painted a nested screen on top of the shell.
         paddingBottom: "calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px))",
         fontFamily: "var(--font-family)",
       }}
@@ -1255,45 +1256,43 @@ export default function ConnectionsPage() {
           }
         />
       )}
-      {/* Page header */}
+      {/* Page heading — a normal in-content title (the app shell owns the top
+          bar), aligned to the content column. "Advanced connections" matches
+          the Settings hub label. */}
       <header
         style={{
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
-          padding: "0 var(--margin-page-mobile)",
-          height: "48px",
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-3)",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
+          width: "100%",
+          maxWidth: "480px",
+          margin: "0 auto",
+          padding: "var(--space-8) var(--margin-page-mobile) 0",
         }}
       >
         <a
           href="/account"
-          aria-label="Back to Account"
+          aria-label="Back to Settings"
           style={{
             color: "var(--color-primary)",
             textDecoration: "none",
             fontSize: "var(--font-size-body-sm)",
-            minHeight: "var(--min-tap-target)",
-            display: "flex",
-            alignItems: "center",
+            fontWeight: 600,
           }}
         >
-          &#8592; Back
+          &#8592; Settings
         </a>
         <h1
           style={{
-            fontSize: "var(--font-size-h3)",
-            fontWeight: "var(--font-weight-semibold)",
+            fontSize: "var(--font-size-h1)",
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
             color: "var(--color-text)",
-            margin: 0,
+            margin: "var(--space-3) 0 0",
           }}
         >
-          Connected Platforms
+          Advanced connections
         </h1>
+        <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6 }}>
+          Facebook Page selection and Google Analytics / Search Console attribution.
+        </p>
       </header>
 
       {/* Toast notification */}

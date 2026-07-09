@@ -306,7 +306,7 @@ export default function AuthDoNotSellPage() {
 }
 
 // Styles
-const PAGE_STYLE: React.CSSProperties = { minHeight: "100vh" };
+const PAGE_STYLE: React.CSSProperties = {}; // inside the app shell — no own 100vh panel
 const CONTENT_STYLE: React.CSSProperties = { maxWidth: "480px", margin: "0 auto", padding: "var(--space-6) var(--space-4) 80px var(--space-4)" };
 const H1_STYLE: React.CSSProperties = { fontSize: "var(--font-size-h1)", fontWeight: "var(--font-weight-bold)", color: "var(--color-text)", marginTop: 0, marginBottom: "var(--space-4)" };
 const BODY_STYLE: React.CSSProperties = { fontSize: "var(--font-size-body)", color: "var(--color-text)", lineHeight: "var(--line-height-body)", marginBottom: "var(--space-4)" };
