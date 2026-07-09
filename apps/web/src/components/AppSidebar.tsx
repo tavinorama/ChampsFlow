@@ -39,7 +39,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Intelligence",
     items: [
       { href: "/brands", label: "Competitors", description: "Who AI recommends instead", icon: "◇" },
-      { href: "/brands", label: "Citation sources", description: "Reddit, LinkedIn, G2 and more", icon: "↗" },
+      { href: "/sources", label: "Citation sources", description: "The domains AI cites for you", icon: "↗" },
       { href: "/test", label: "AI visibility test", description: "Run or relaunch an audit", icon: "✦" },
     ],
   },
@@ -48,7 +48,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/drafts", label: "Fix queue", description: "Recommended fixes and drafts", icon: "✓", badge: "New" },
       { href: "/schedule", label: "Calendar", description: "Draft, approve, publish, measure", icon: "□" },
-      { href: "/organicposts", label: "OrganicPosts", description: "Managed GEO execution", icon: "◆" },
+    ],
+  },
+  {
+    label: "Studio",
+    items: [
+      { href: "/marketing", label: "Marketing", description: "Campaigns from your audit data", icon: "◈", badge: "Soon" },
+      { href: "/landing-pages", label: "Landing pages", description: "GEO pages AI can cite", icon: "▦", badge: "Soon" },
     ],
   },
   {

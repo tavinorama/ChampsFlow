@@ -8,6 +8,11 @@
  */
 
 import { useState, useEffect } from "react";
+import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
+import { getSupabase, isSupabaseConfigured } from "../../../lib/supabase-browser";
+import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
+
+const DRAFT_KEY = "kit";
 
 const STACK: [string, string][] = [
   ["Part 1 — Full AI Visibility Audit", "Your free test, completed: all engines, all your buyer prompts, your Ozvor AI Visibility Score + deep breakdown."],
@@ -40,6 +45,32 @@ export function KitCheckoutForm() {
     const c = p.get("category");
     if (c) setCategory(c);
     if (p.get("region") === "EU") setRegion("EU");
+
+    // Restore a draft saved before an OAuth redirect (social sign-in mid-form),
+    // so nothing the buyer typed is lost. URL params above win over the draft.
+    const draft = loadFormDraft<{
+      testId?: string; brand?: string; domain?: string; category?: string; region?: "US" | "EU"; email?: string;
+    }>(DRAFT_KEY);
+    if (draft) {
+      if (draft.testId && !t) setTestId(draft.testId);
+      if (draft.brand && !b) setBrand(draft.brand);
+      if (draft.domain) setDomain(draft.domain);
+      if (draft.category && !c) setCategory(draft.category);
+      if (draft.region && p.get("region") !== "EU") setRegion(draft.region);
+      if (draft.email) setEmail(draft.email);
+    }
+
+    // If the visitor signed in with social, prefill the verified email so they
+    // don't retype it (and #166 links this Kit to their account by that email).
+    if (isSupabaseConfigured()) {
+      void getSupabase()
+        .auth.getSession()
+        .then(({ data }) => {
+          const e = data.session?.user?.email;
+          if (e) setEmail((prev) => prev || e);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   async function checkout(e: React.FormEvent) {
@@ -62,6 +93,7 @@ export function KitCheckoutForm() {
       });
       const data = await res.json();
       if (res.ok && data.url) {
+        clearFormDraft(DRAFT_KEY);
         window.location.href = data.url; // Stripe checkout OR dev-unlock delivery URL
       } else {
         setError(data.message ?? "Checkout is not available right now.");
@@ -101,6 +133,12 @@ export function KitCheckoutForm() {
 
       {/* Checkout form */}
       <form onSubmit={checkout} style={cardStyle}>
+        <SocialAuthButtons
+          caption="Sign in so your Kit is saved to your account — one click:"
+          onBeforeRedirect={() =>
+            saveFormDraft(DRAFT_KEY, { testId, brand, domain, category, region, email })
+          }
+        />
         <Field label="Your brand" required>
           <input
             value={brand}

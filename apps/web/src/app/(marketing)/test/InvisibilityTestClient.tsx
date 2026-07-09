@@ -13,6 +13,11 @@
 import { useState, useRef, useEffect, useId } from "react";
 import { TrustIndexScorecard, THREE_SCORE_COLORS } from "../../../components/TrustIndexScorecard";
 import { useDirectCheckout } from "../../../lib/use-direct-checkout";
+import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
+import { getSupabase, isSupabaseConfigured } from "../../../lib/supabase-browser";
+import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
+
+const FREE_TEST_DRAFT_KEY = "free-test";
 
 // ---------------------------------------------------------------------------
 // Engine label map
@@ -1171,6 +1176,36 @@ export function InvisibilityTestClient() {
   const emailErrorId = useId();
   const detailsPanelId = useId();
 
+  // Restore a draft saved before an OAuth redirect (social sign-in mid-form) and
+  // prefill the verified email from a Supabase session, so "Continue with
+  // Google/GitHub/LinkedIn" removes friction instead of wiping the form.
+  useEffect(() => {
+    const draft = loadFormDraft<{
+      brand?: string; domain?: string; competitor?: string; competitor2?: string;
+      competitor3?: string; category?: string; sector?: string; country?: string; email?: string;
+    }>(FREE_TEST_DRAFT_KEY);
+    if (draft) {
+      if (draft.brand) setBrand(draft.brand);
+      if (draft.domain) setDomain(draft.domain);
+      if (draft.competitor) setCompetitor(draft.competitor);
+      if (draft.competitor2) setCompetitor2(draft.competitor2);
+      if (draft.competitor3) setCompetitor3(draft.competitor3);
+      if (draft.category) setCategory(draft.category);
+      if (draft.sector) setSector(draft.sector);
+      if (draft.country) setCountry(draft.country);
+      if (draft.email) setEmail(draft.email);
+    }
+    if (isSupabaseConfigured()) {
+      void getSupabase()
+        .auth.getSession()
+        .then(({ data }) => {
+          const e = data.session?.user?.email;
+          if (e) setEmail((prev) => prev || e);
+        })
+        .catch(() => {});
+    }
+  }, []);
+
   // Normalised domain (strip protocol, www, path) — sent to the audit so it can
   // crawl the site for the Performance vector. Required: the audit can't score
   // site signals (schema, crawlability) without the brand's website.
@@ -1262,6 +1297,7 @@ export function InvisibilityTestClient() {
         } else {
           setResult(data.result);
           setTestId(data.testId ?? null);
+          clearFormDraft(FREE_TEST_DRAFT_KEY);
         }
       }
     } catch {
@@ -1368,6 +1404,17 @@ export function InvisibilityTestClient() {
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
         Takes ~60 seconds. Your website + email is enough to start.
       </p>
+
+      {/* Optional social sign-in — a verified identity links this test to the
+          visitor's account later (no retyping their email). */}
+      <SocialAuthButtons
+        caption="Sign in so your results are saved to your account — optional, one click:"
+        onBeforeRedirect={() =>
+          saveFormDraft(FREE_TEST_DRAFT_KEY, {
+            brand, domain, competitor, competitor2, competitor3, category, sector, country, email,
+          })
+        }
+      />
 
       {/* Primary fields — always visible */}
       <Field
