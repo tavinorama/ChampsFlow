@@ -193,8 +193,7 @@ export default function DraftReviewPage() {
     return (
       <div
         style={{
-          minHeight: "100dvh",
-          backgroundColor: "var(--color-surface-muted)",
+          minHeight: "50vh",
           fontFamily: "var(--font-family)",
           display: "flex",
           alignItems: "center",
@@ -212,8 +211,7 @@ export default function DraftReviewPage() {
     return (
       <div
         style={{
-          minHeight: "100dvh",
-          backgroundColor: "var(--color-surface-muted)",
+          minHeight: "50vh",
           fontFamily: "var(--font-family)",
           display: "flex",
           flexDirection: "column",
@@ -241,8 +239,7 @@ export default function DraftReviewPage() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-surface-muted)",
+        // Inside the app shell — no own 100dvh/muted panel or top-bar header.
         fontFamily: "var(--font-family)",
         display: "flex",
         flexDirection: "column",
@@ -275,15 +272,13 @@ export default function DraftReviewPage() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header — normal in-content row (app shell owns the top bar). */}
       <header
         style={{
           height: "48px",
           display: "flex",
           alignItems: "center",
           paddingInline: "var(--margin-page-mobile)",
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
           flexShrink: 0,
         }}
       >

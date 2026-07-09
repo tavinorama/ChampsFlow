@@ -65,25 +65,19 @@ export default function SystemStatusPage() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-surface-muted)",
+        // Inside the app shell — no own 100dvh/muted panel or sticky top bar.
         paddingBottom: "calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px))",
         fontFamily: "var(--font-family)",
       }}
     >
-      {/* Page header */}
+      {/* Page header — normal in-content row (app shell owns the top bar). */}
       <header
         style={{
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
           padding: "0 var(--space-4)",
           height: "48px",
           display: "flex",
           alignItems: "center",
           gap: "var(--space-3)",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
         }}
       >
         <a

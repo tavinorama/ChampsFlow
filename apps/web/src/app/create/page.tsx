@@ -113,22 +113,19 @@ export default function CreatePage() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-surface-muted)",
+        // Inside the app shell — no own 100dvh/muted panel or top-bar header.
         fontFamily: "var(--font-family)",
         display: "flex",
         flexDirection: "column",
       }}
     >
-      {/* Header */}
+      {/* Header — normal in-content row (app shell owns the top bar). */}
       <header
         style={{
           height: "48px",
           display: "flex",
           alignItems: "center",
           paddingInline: "var(--margin-page-mobile)",
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
         }}
       >
         <a

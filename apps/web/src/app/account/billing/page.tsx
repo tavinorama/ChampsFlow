@@ -456,24 +456,18 @@ function BillingPageInner(): React.ReactElement {
     <main
       aria-labelledby="billing-page-heading"
       style={{
-        minHeight: "100dvh",
-        backgroundColor: "var(--color-surface-muted)",
+        // Inside the app shell — no own 100dvh/muted panel or sticky top bar.
         paddingBottom: "calc(80px + 56px)", // 80px content padding + 56px BottomNav height
         fontFamily: "var(--font-family)",
       }}
     >
-      {/* Page header */}
+      {/* Page header — normal in-content row (app shell owns the top bar). */}
       <header
         style={{
           height: "48px",
           display: "flex",
           alignItems: "center",
           padding: "0 var(--space-4)",
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
         }}
       >
         <button
@@ -1148,8 +1142,6 @@ export default function BillingPage(): React.ReactElement {
           aria-label="Loading billing page"
           aria-busy="true"
           style={{
-            minHeight: "100dvh",
-            backgroundColor: "var(--color-surface-muted)",
             fontFamily: "var(--font-family)",
           }}
         >

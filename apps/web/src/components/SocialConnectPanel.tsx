@@ -1,213 +1,90 @@
 "use client";
 
 /**
- * SocialConnectPanel — one-click publishing-platform linking, embedded on the
- * "AI engines, keys & connections" hub (/account/integrations).
+ * SocialConnectPanel — "Connect your publishing platforms" on the AI-engines
+ * hub (/account/integrations).
  *
- * Lets the customer connect LinkedIn / Instagram / Facebook right where they
- * manage their AI engines — no bounce to a separate page to *start* the OAuth.
- * This is the growth surface: the more channels a customer links, the stickier
- * the account and the more "approved fix → publish" value Ozvor can deliver.
+ * LAUNCH STATE: publishing-platform OAuth (LinkedIn / Instagram / Facebook) is
+ * not yet wired in production — the OAuth apps + client credentials aren't
+ * configured — so we show a "Coming soon" teaser instead of Connect buttons that
+ * would fail. This is a deliberate launch decision (roadmap: "Publishing
+ * platform OAuth (v-next)").
  *
- * It reuses the shipped <PlatformTile> (connect + disconnect + confirm dialog)
- * and mirrors the exact OAuth-initiation flow from /account/connections
- * (POST connect → popup → poll for close → reload). The advanced flows that
- * need more room — Facebook Page selection and the Google Analytics / Search
- * Console attribution connectors — stay on the full /account/connections page,
- * linked at the bottom. Keeping that page as the source of truth for the deep
- * flow means this panel never has to duplicate the fragile callback machinery.
+ * To RE-ENABLE the live one-click connect: flip PUBLISHING_ENABLED to true after
+ * the OAuth apps are configured. The full connect flow (popup → poll → reload,
+ * disconnect, Facebook Page selection) already ships on /account/connections and
+ * can be surfaced here again via <PlatformTile> + the /api/social-accounts
+ * endpoints.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { PlatformTile } from "./PlatformTile";
+const PUBLISHING_ENABLED = false;
 
-type Platform = "linkedin" | "instagram" | "facebook";
-
-type ConnectedAccount = {
-  id: string;
-  platform: Platform;
-  platformUserId: string;
-  connectedAt: string;
-  expiresAt: string | null;
-  revokedAt: string | null;
-};
-
-type FetchState =
-  | { status: "loading" }
-  | { status: "ok"; accounts: ConnectedAccount[] }
-  | { status: "error"; message: string };
-
-const PLATFORMS: Platform[] = ["linkedin", "instagram", "facebook"];
-
-// Mirrors /account/connections: cookie-authenticated, same relative API paths.
-async function fetchAccounts(): Promise<ConnectedAccount[]> {
-  const response = await fetch("/api/social-accounts", { credentials: "include" });
-  if (!response.ok) throw new Error("Failed to load connected accounts");
-  const body = (await response.json()) as { data?: { accounts?: ConnectedAccount[] } };
-  return body.data?.accounts ?? [];
-}
-
-async function initiateOAuth(
-  platform: Platform,
-  popupRef: React.MutableRefObject<Window | null>
-): Promise<void> {
-  const response = await fetch(`/api/social-accounts/connect/${platform}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-  });
-  if (!response.ok) {
-    const body = (await response.json()) as { error?: { message?: string } };
-    throw new Error(body.error?.message ?? `Failed to initiate ${platform} OAuth`);
-  }
-  const data = (await response.json()) as { data?: { authorizationUrl?: string } };
-  const authorizationUrl = data.data?.authorizationUrl;
-  if (!authorizationUrl) throw new Error("No authorization URL returned");
-
-  const popup = window.open(
-    authorizationUrl,
-    `oauth_${platform}`,
-    "width=600,height=700,scrollbars=yes,resizable=yes"
-  );
-  if (!popup) {
-    // Popup blocked — full-page redirect fallback (returns to /account/connections).
-    window.location.href = authorizationUrl;
-    return;
-  }
-  popupRef.current = popup;
-}
-
-async function disconnectAccount(accountId: string): Promise<void> {
-  const response = await fetch(`/api/social-accounts/${accountId}`, {
-    method: "DELETE",
-    credentials: "include",
-  });
-  if (!response.ok) {
-    const body = (await response.json()) as { error?: { message?: string } };
-    throw new Error(body.error?.message ?? "Failed to disconnect account");
-  }
-}
+const PLATFORMS = [
+  { key: "linkedin", label: "LinkedIn" },
+  { key: "instagram", label: "Instagram" },
+  { key: "facebook", label: "Facebook Page" },
+];
 
 export function SocialConnectPanel() {
-  const [fetchState, setFetchState] = useState<FetchState>({ status: "loading" });
-  const popupRef = useRef<Window | null>(null);
-
-  const loadAccounts = useCallback(async () => {
-    try {
-      const accounts = await fetchAccounts();
-      setFetchState({ status: "ok", accounts });
-    } catch (err) {
-      setFetchState({ status: "error", message: (err as Error).message ?? "Failed to load accounts" });
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadAccounts();
-  }, [loadAccounts]);
-
-  // When the OAuth popup closes, refresh connected accounts so the tile flips
-  // to "Connected" without a manual reload.
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (popupRef.current && popupRef.current.closed) {
-        popupRef.current = null;
-        void loadAccounts();
-      }
-    }, 500);
-    return () => clearInterval(interval);
-  }, [loadAccounts]);
-
-  async function handleConnect(platform: Platform) {
-    // Errors surface inline in PlatformTile (it catches + shows "Connection failed").
-    await initiateOAuth(platform, popupRef);
-  }
-
-  async function handleDisconnect(accountId: string, _platform: Platform) {
-    await disconnectAccount(accountId);
-    await loadAccounts();
-  }
-
-  function getAccount(platform: Platform): ConnectedAccount | null {
-    if (fetchState.status !== "ok") return null;
-    return fetchState.accounts.find((a) => a.platform === platform && a.revokedAt === null) ?? null;
-  }
-
-  const connectedCount =
-    fetchState.status === "ok" ? fetchState.accounts.filter((a) => a.revokedAt === null).length : 0;
-
   return (
     <section aria-labelledby="connect-platforms-heading" style={{ marginBottom: "var(--space-8)" }}>
-      <h2
-        id="connect-platforms-heading"
-        style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: "0 0 var(--space-2) 0" }}
-      >
-        Connect your publishing platforms
-      </h2>
-      <p
-        style={{
-          fontSize: "var(--font-size-body-sm)",
-          color: "var(--color-muted)",
-          lineHeight: 1.6,
-          margin: "0 0 var(--space-4) 0",
-        }}
-      >
-        Link the channels where your brand should show up. Once connected, Ozvor turns
-        approved fixes into ready-to-publish drafts — one place to manage every platform.
-        We store encrypted tokens, never your password.
-        {connectedCount > 0 && (
-          <>
-            {" "}
-            <strong style={{ color: "var(--color-success)" }}>
-              {connectedCount} connected.
-            </strong>
-          </>
-        )}
-      </p>
-
-      {fetchState.status === "error" && (
-        <p
-          role="alert"
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap", margin: "0 0 var(--space-2)" }}>
+        <h2 id="connect-platforms-heading" style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: 0 }}>
+          Connect your publishing platforms
+        </h2>
+        <span
           style={{
-            fontSize: "var(--font-size-body-sm)",
-            color: "var(--color-error)",
-            margin: "0 0 var(--space-3) 0",
+            fontFamily: "var(--font-mono)",
+            fontSize: "0.58rem",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            padding: "2px 8px",
+            borderRadius: "var(--radius-pill)",
+            background: "rgba(230,169,63,0.13)",
+            color: "var(--color-gold-ink)",
           }}
         >
-          Could not load your connections. Refresh the page to try again.
-        </p>
-      )}
+          Coming soon
+        </span>
+      </div>
+
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4)" }}>
+        Soon you&rsquo;ll link LinkedIn, Instagram and Facebook here and Ozvor will turn
+        approved fixes into ready-to-publish drafts — and publish them for you, one
+        place to manage every channel. We&rsquo;re finishing the secure OAuth setup.
+      </p>
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
           gap: "var(--space-3)",
         }}
       >
         {PLATFORMS.map((p) => (
-          <PlatformTile
-            key={p}
-            platform={p}
-            account={getAccount(p)}
-            onConnect={handleConnect}
-            onDisconnect={handleDisconnect}
-          />
+          <div
+            key={p.key}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "var(--space-2)",
+              padding: "var(--space-4)",
+              border: "1px dashed var(--color-border)",
+              borderRadius: "var(--radius-lg)",
+              background: "var(--color-surface)",
+              color: "var(--color-muted)",
+            }}
+          >
+            <span style={{ fontWeight: 700, color: "var(--color-text)" }}>{p.label}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-caption)" }}>Soon</span>
+          </div>
         ))}
       </div>
 
-      <p
-        style={{
-          fontSize: "var(--font-size-caption)",
-          color: "var(--color-muted)",
-          lineHeight: 1.6,
-          margin: "var(--space-3) 0 0 0",
-        }}
-      >
-        Need Facebook Page selection, or Google Analytics / Search Console attribution?{" "}
-        <a href="/account/connections" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
-          Open advanced connections →
-        </a>
-      </p>
+      {/* When PUBLISHING_ENABLED flips true, replace the teaser above with the
+          live <PlatformTile> grid (see /account/connections for the flow). */}
+      {PUBLISHING_ENABLED && null}
     </section>
   );
 }
