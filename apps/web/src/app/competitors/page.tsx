@@ -7,17 +7,20 @@
  *  - Head-to-head from the latest audit breakdown: how often AI cited each
  *    competitor (mentions) and where they displaced you (displacement =
  *    prompts where AI cited them and not you) vs your own citation count.
+ *  - Per-engine split: for each competitor, which AI engines cite them and
+ *    where they displaced you (from the audit's real per-provider tally).
  *  - Evolution: your Ozvor AI Visibility Score over time, from the real
  *    per-audit score history (weekly re-audits accumulate this).
- * Nothing invented; competitor position/sentiment + per-engine split come later
- * (Batch D) and are called out honestly rather than faked.
+ * Nothing invented; per-competitor time-series + sentiment come later and are
+ * called out honestly rather than faked.
  */
 
 import { useEffect, useState, useCallback } from "react";
 import { apiFetch, ensureProvisioned } from "../../lib/supabase-browser";
 
 interface Brand { id: string; name: string; latest_score?: number | null }
-interface Competitor { name: string; mentions: number; displacement: number }
+interface ProviderStat { provider: string; mentions: number; displacement: number }
+interface Competitor { name: string; mentions: number; displacement: number; providers?: ProviderStat[] }
 interface Evidence { cited: boolean }
 interface TrendPoint { recorded_at: string; score_overall: number | null }
 
@@ -106,14 +109,54 @@ function HeadToHead({ brandName, brandCited, competitors }: { brandName: string;
         <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-4)" }}>Head-to-head — who AI cites</h2>
         <Row name={`${brandName} (you)`} value={brandCited} max={maxMentions} color="var(--color-primary)" isYou />
         {competitors.map((c) => (
-          <Row key={c.name} name={c.name} value={c.mentions || 0} max={maxMentions} color="var(--color-muted)"
-               tag={c.displacement > 0 ? `displaced you in ${c.displacement}` : undefined} />
+          <div key={c.name}>
+            <Row name={c.name} value={c.mentions || 0} max={maxMentions} color="var(--color-muted)"
+                 tag={c.displacement > 0 ? `displaced you in ${c.displacement}` : undefined} />
+            {c.providers && c.providers.length > 0 && <EngineChips providers={c.providers} />}
+          </div>
         ))}
         <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginTop: "var(--space-4)", lineHeight: 1.6 }}>
           Bars = number of audited prompts where AI cited each brand. “Displaced you” = prompts where AI cited them and not you — your fastest wins.
+          Chips under each competitor show <strong>which AI engines</strong> cite them; a red chip means they displaced you on that engine.
         </p>
       </section>
     </>
+  );
+}
+
+// Canonical DB provider id → the engine name customers know it by.
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini",
+  google: "Gemini", perplexity: "Perplexity", serp: "Google AIO",
+};
+function providerLabel(p: string): string {
+  return PROVIDER_LABELS[p] ?? p.charAt(0).toUpperCase() + p.slice(1);
+}
+
+function EngineChips({ providers }: { providers: ProviderStat[] }) {
+  const sorted = [...providers].sort((a, b) => b.displacement - a.displacement || b.mentions - a.mentions);
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", padding: "0 0 var(--space-3)" }}>
+      {sorted.map((p) => {
+        const displaced = p.displacement > 0;
+        return (
+          <span
+            key={p.provider}
+            title={`${providerLabel(p.provider)}: cited them in ${p.mentions} prompt${p.mentions === 1 ? "" : "s"}${displaced ? `, ${p.displacement} without you` : ""}`}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              fontSize: "var(--font-size-caption)", fontFamily: "var(--font-mono)",
+              padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap",
+              background: displaced ? "rgba(240,88,78,0.10)" : "var(--color-surface-muted)",
+              color: displaced ? "var(--color-error)" : "var(--color-muted)",
+              border: `1px solid ${displaced ? "rgba(240,88,78,0.30)" : "var(--color-border)"}`,
+            }}
+          >
+            {displaced && "⚠ "}{providerLabel(p.provider)} {p.mentions}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -159,7 +202,7 @@ function Evolution({ trend }: { trend: TrendPoint[] }) {
         ))}
       </svg>
       <p style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginTop: "var(--space-2)", lineHeight: 1.6 }}>
-        Each point is a real re-audit. Per-competitor trend lines + a per-engine “why they’re cited, not you” view are coming next.
+        Each point is a real re-audit. Per-competitor trend lines and sentiment are coming next.
       </p>
     </section>
   );
