@@ -9,6 +9,8 @@
 
 **Updated 2026-06-09 (legal-privacy-officer ratification).** TrustIndex AI (GEO platform, Brazil Ltda) is a general SaaS product with adtech-adjacent and data-broker-adjacent classifications. It processes personal data of EU and US B2B customers and their staff. Home jurisdiction is Brazil; LGPD applies in full. GDPR applies extraterritorially (Art. 3(2)) because services are offered to EU data subjects. CCPA/CPRA applies proactively from launch; TDPSA applies from launch (no revenue threshold). EU AI Act Art. 50 transparency obligations apply to all AI-generated content and GEO audit outputs. FTC §5 creates parallel US disclosure obligations. The highest-risk items for the GEO platform are: (1) EU Art. 27 representative not yet appointed (Gate 7 hard stop); (2) LGPD international transfer basis for BR→US sub-processor flows not yet documented (GEO-D3); (3) Perplexity DPA/SCC unconfirmed — EU users excluded by GEO-A3 routing gate; (4) multi-provider DPA chain (OpenAI EU path, Gemini EU path) requires Gate 7 confirmation. No HIPAA, GLBA, COPPA exposure identified. Reddit commercial data license required before Reddit monitoring feature is built.
 
+> **2026-07-09 update**: the entity identity is now CONFIRMED as a Brazilian MEI (CNPJ 67.609.444/0001-08; registered office populated) — see the dated correction entry at the bottom of this document. This supersedes the "Ltda" / "Portugal Lda" / pending-CNPJ language that appears in the historical entries below (those entries are preserved unedited per the append-only convention; do not treat them as current).
+
 ---
 
 ## Sectoral classification
@@ -127,7 +129,7 @@ Entity confirmed as Portugal Lda. GDPR Art. 27 representative no longer required
 - **Stripe transfer mechanism**: Intra-EU Stripe (Ireland) → Organic Posts (Portugal) processing falls under GDPR Art. 28; cross-border SCC module determination no longer required for the EU billing path. SCCs + DPF still apply where the Stripe US infrastructure is in the path.
 - **All other obligations** (GDPR Arts. 5–34, EU AI Act Art. 50, CCPA/CPRA, US state laws, FTC §5, CAN-SPAM, Colorado AI Act determination): **unchanged**.
 
-Carry-forward: registered office address and Portuguese VAT number to be added to ToS, Privacy Policy, DPA, and ROPA at incorporation completion (founder action via Empresa Online — expected this week).
+Carry-forward: registered office address and Portuguese VAT number to be added to ToS, Privacy Policy, DPA, and ROPA at incorporation completion (founder action via Empresa Online — expected this week). **[Superseded 2026-07-09 — see correction entry below: entity is MEI, CNPJ/office populated]**
 
 ---
 
@@ -233,7 +235,7 @@ The pivot adds four new LLM API providers to the transfer chain, each requiring 
 
 ### Home jurisdiction — Brazil
 
-- **Entity**: Brazilian **Sociedade Limitada (Ltda)** (or EI/MEI as an interim form), identified by **CNPJ**. Replaces the planned Portugal Lda. Registered office + CNPJ to be added to ToS, Privacy Policy, DPA, and ROPA at incorporation.
+- **Entity**: Brazilian **Sociedade Limitada (Ltda)** (or EI/MEI as an interim form), identified by **CNPJ**. Replaces the planned Portugal Lda. Registered office + CNPJ to be added to ToS, Privacy Policy, DPA, and ROPA at incorporation. **[Superseded 2026-07-09 — see correction entry below: entity is MEI, CNPJ/office populated]**
 - **Governing law (ToS/Privacy/DPA)**: Brazilian law (Código Civil; Marco Civil da Internet, Lei 12.965/2014; LGPD). Competent forum to be set in ToS (typically the comarca of the company's seat) with consumer-law carve-outs (CDC) for BR consumers.
 - **GDPR Art. 27 (EU representative)**: **RE-INSTATED and REQUIRED.** The controller is now established **outside** the EU. Because TrustIndex AI offers services to EU data subjects (GDPR Art. 3(2) extraterritorial scope), an **EU Article 27 representative must be appointed** before onboarding EU users. (This reverses the 2026-05-11 removal, which assumed an EU-established entity.)
 - **CCPA/CPRA**: Unchanged — applies based on California consumers + thresholds, regardless of HQ. A US service-of-process / agent posture should be reviewed if US enterprise customers require it.
@@ -305,3 +307,29 @@ The 2026-05-30 entry was drafted by the orchestrator pending council sign-off. T
 The 2026-05-30 entry is **RATIFIED** as substantially correct. Clarifications and the ANPD breach notification timeline addition have been incorporated into dpia.md (Section B) and ropa.md as incremental updates. The three new conditions from the DPIA (GEO-D1, GEO-D2, GEO-D3) address the remaining open items. No re-architecture is required. The Brazil/LGPD entry is formally signed off by legal-privacy-officer as of 2026-06-09.
 
 **Signed**: legal-privacy-officer — 2026-06-09
+
+---
+
+## 2026-07-09 — Entity identity correction: confirmed Brazilian MEI (supersedes Ltda / Portugal Lda references) — legal-privacy-officer
+
+**Correction, not a re-architecture.** This entry formally corrects the entity-identity carry-forward notes left open in the 2026-05-11 and 2026-05-30 entries above (marked inline with `[Superseded 2026-07-09 ...]` where they occur). Those historical entries are preserved unedited per the append-only convention; this entry is the authoritative current statement of entity identity and supersedes them going forward.
+
+**Confirmed entity identity:**
+- **Trade name (nome fantasia)**: **Ozvor**
+- **Entity type**: Brazilian **MEI (Microempreendedor Individual)** — a natural person operating as an individual entrepreneur. This is **not** a Sociedade Limitada (Ltda) and **not** a Portugal Lda, correcting both the 2026-05-11 "Portugal Lda" entry (already itself superseded by the 2026-05-30 jurisdiction change) and the 2026-05-30 "Sociedade Limitada (Ltda) ... or EI/MEI as an interim form" entry, which left the entity type undetermined. The confirmed and final registration is an MEI.
+- **CNPJ**: **67.609.444/0001-08** — the unique public identifier of record. This closes the "CNPJ to be added ... at incorporation" carry-forward from the 2026-05-30 entry.
+- **Registered office (sede)**: Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil. This closes the "registered office address ... to be added" carry-forward from both the 2026-05-11 entry (which referenced a Portuguese registered office and Portuguese VAT number — not applicable, see below) and the 2026-05-30 entry.
+- **Regulator**: ANPD (Autoridade Nacional de Proteção de Dados) — unchanged from the 2026-05-30 / 2026-06-09 entries.
+- **Portuguese VAT number**: **N/A.** The 2026-05-11 carry-forward note referencing a "Portuguese VAT number to be added" is obsolete — home jurisdiction is Brazil (not Portugal), confirmed since the 2026-05-30 rebrand/jurisdiction-change entry. No Portuguese VAT registration applies to this entity.
+- **Civil name (razão social)**: Per the controller's instruction, the holder's civil name is **not reproduced** in any compliance document, including this one. The CNPJ (67.609.444/0001-08) is the unique public identifier of record, and "Ozvor" is the trade name displayed to data subjects and used across all legal pages and compliance artifacts.
+
+**Propagation status — now POPULATED and CONSISTENT across:**
+- `docs/compliance/ropa.md` — Controller / Processor Info section (updated 2026-07-08)
+- `docs/compliance/dpia.md` — Section 1-GEO, Controller / Processor Identity (corrected 2026-07-09, same date as this entry)
+- Live web legal pages: `apps/web/src/app/privacy-policy/page.tsx`, `apps/web/src/app/terms-of-service/page.tsx`, `apps/web/src/app/legal/dpa/page.tsx`
+
+**Effect on prior regulatory determinations**: None. The entity-type correction (Ltda → MEI) does not change any GDPR, LGPD, CCPA/CPRA, EU AI Act, or FTC §5 determination already on record in this document — a natural-person-operated business remains a "controller" / "controlador" / "business" under GDPR Art. 4(7), LGPD Art. 5(VI), and CCPA § 1798.140(d) respectively (see ropa.md Entity-type note for the fuller reasoning, mirrored here for completeness). The GDPR Art. 27 EU representative requirement, the LGPD Encarregado (Art. 41) appointment requirement, and the GEO-D1/D2/D3 DPIA conditions are all unaffected by this correction and remain open Gate 7 items as previously logged.
+
+**Verdict**: This correction is RATIFIED. No further council review is required for the identity correction itself; it is a factual/administrative correction, not a scope or risk change. The corresponding gate-log verdict is recorded in `docs/compliance/gate-log.md` (2026-07-09 entry).
+
+**Signed**: legal-privacy-officer — 2026-07-09
