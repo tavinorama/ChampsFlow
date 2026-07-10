@@ -125,6 +125,24 @@ function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string })?.code === "23505";
 }
 
+// ---------------------------------------------------------------------------
+// containsPlaceholder — publish guard (Hermes review requirement, #208 PR-5).
+// Generated FAQ answers that couldn't be grounded in real input facts are
+// written verbatim as `[PLACEHOLDER: ...]` (packages/llm/src/landing-generate.ts
+// faqFromGap) rather than fabricated — same audit-integrity rule as GEO-A2.
+// A page (or a whole site) must never go live carrying one of those markers.
+// Pure/exported for unit testing.
+// ---------------------------------------------------------------------------
+const PLACEHOLDER_MARKER = "[PLACEHOLDER:";
+
+export function containsPlaceholder(sections: unknown): boolean {
+  try {
+    return JSON.stringify(sections ?? []).includes(PLACEHOLDER_MARKER);
+  } catch {
+    return false;
+  }
+}
+
 async function siteOwnedByTenant(
   db: PostgresClient,
   tenantId: string,
@@ -375,6 +393,27 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       if (!current.rows[0]) return c.json({ message: "Site not found." }, 404);
       if (current.rows[0].status === "suspended") {
         return c.json({ message: "This site is suspended. Contact support.", code: "SITE_SUSPENDED" }, 403);
+      }
+
+      // Publish guard: none of this site's pages may still carry a generator
+      // placeholder marker. Draft saves are unaffected.
+      if (body.status === "published") {
+        const pagesRes = await db.query<{ title: string; slug: string; sections: unknown }>(
+          `SELECT title, slug, sections FROM landing_pages WHERE site_id = $1 AND tenant_id = $2`,
+          [siteId, auth.tenantId]
+        );
+        const offending = pagesRes.rows.filter((p) => containsPlaceholder(p.sections));
+        if (offending.length > 0) {
+          return c.json(
+            {
+              code: "PLACEHOLDER_CONTENT",
+              message: `These pages still have placeholder content: ${offending
+                .map((p) => p.title || (p.slug || "Home"))
+                .join(", ")}. Fill them in before publishing.`,
+            },
+            422
+          );
+        }
       }
 
       const res = await db.query<{ id: string }>(
@@ -658,6 +697,22 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       if (!row) return c.json({ message: "Page not found." }, 404);
       if (body.slug !== undefined && body.slug.trim() === "" && row.slug !== "") {
         return c.json({ message: "Only the home page can use the root slug." }, 400);
+      }
+
+      // Publish guard: this page may not still carry a generator placeholder
+      // marker — check whatever sections it WOULD have after this PATCH
+      // (the incoming body if it updates sections, else the current row).
+      if (body.status === "published") {
+        const sectionsToCheck = body.sections !== undefined ? body.sections : row.sections;
+        if (containsPlaceholder(sectionsToCheck)) {
+          return c.json(
+            {
+              code: "PLACEHOLDER_CONTENT",
+              message: "This page still has placeholder content. Fill in the highlighted section(s) before publishing.",
+            },
+            422
+          );
+        }
       }
 
       // Snapshot the PREVIOUS content when content actually changes.
