@@ -84,10 +84,13 @@ export default function CookiePolicyPage() {
 
       <LegalSection n="2" title="Cookies we use at launch">
         <p>
-          Ozvor currently deploys <strong>only strictly necessary
-          cookies</strong>. No analytics cookies, no marketing cookies, and no
-          third-party tracking pixels are active. The table below lists every
-          cookie set by the Service today.
+          By default Ozvor deploys <strong>only strictly necessary
+          cookies</strong>. The single exception is <strong>Google Analytics
+          4</strong>, which loads <strong>only if you opt in</strong> to
+          analytics via the consent banner — decline (or simply don&apos;t
+          answer) and no analytics cookie is ever set. No marketing cookies
+          and no advertising pixels are active. The table below lists every
+          cookie the Service can set today.
         </p>
 
         <div style={{ overflowX: "auto", marginTop: "var(--space-3)" }}>
@@ -209,17 +212,21 @@ export default function CookiePolicyPage() {
                   <strong>Analytics / performance</strong>
                 </td>
                 <td style={cell}>
-                  Collects aggregate data on how visitors use the site
-                  (page views, session duration, referrer). No analytics
-                  cookies are deployed. Future analytics tools will be
-                  cookieless-first.
+                  <strong>Google Analytics 4</strong> (Google LLC) — aggregate
+                  usage data (page views, session duration, referrer). Cookies:
+                  <code> _ga</code>, <code>_ga_*</code> (persist up to 13
+                  months). Loaded <strong>only after you opt in</strong> via
+                  the consent banner — declining (or never answering) means
+                  nothing loads and no analytics cookies are set. Ad-related
+                  signals are permanently disabled (Consent Mode: ad_storage
+                  denied).
                 </td>
                 <td style={cell}>
-                  <span style={statusBadge(false)}>Not in use</span>
+                  <span style={statusBadge(true)}>Consent-gated</span>
                 </td>
                 <td style={cell}>
-                  Depends on tool — cookieless tools may not require consent;
-                  cookie-based tools require opt-in (EU/BR) or opt-out (US)
+                  Opt-in required (EU/BR); opt-out honored (US). Withdraw any
+                  time via “Cookie preferences” in the footer.
                 </td>
               </tr>
               <tr>
