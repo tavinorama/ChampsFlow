@@ -23,6 +23,7 @@ import { useState, useEffect, useCallback } from "react";
 import { apiFetch, ensureProvisioned, getSupabase } from "../../lib/supabase-browser";
 import { TrustIndexScorecard, type ThreeScores } from "../../components/TrustIndexScorecard";
 import { ScoreTrend } from "../../components/ScoreTrend";
+import { ClaimedHistoryCard } from "../../components/ClaimedHistoryCard";
 
 // ---------------------------------------------------------------------------
 // Page-scoped styles injected once (keyframes + responsive overrides)
@@ -1069,6 +1070,9 @@ export default function DashboardPage() {
       </section>
 
       {/* ── DONE-FOR-YOU (OrganicPosts) — upsell card, not a nav tab ──────── */}
+      {/* Recovered pre-account history (#218) — renders only when there is any. */}
+      <ClaimedHistoryCard />
+
       <section aria-labelledby="dfy-heading" style={{ marginTop: "var(--space-8)" }}>
         <div
           style={{

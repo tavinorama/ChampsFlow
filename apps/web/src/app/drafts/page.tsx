@@ -30,6 +30,7 @@ interface PlanTask {
   metric: string | null;
   owner: string | null;
   due_date: string | null; // ISO-8601 or null — in-app scheduling
+  landing_site_id: string | null; // set when an Ozvor Pages generation run consumed/can apply this fix (#208 PR-7)
 }
 
 /** Due-status badge from a scheduled date (in-app only, no emails). */
@@ -169,6 +170,14 @@ export default function FixQueuePage() {
                       <strong style={{ color: "var(--color-text)" }}>Gap:</strong> {t.gap}
                     </p>
                     {t.evidence && <p style={{ margin: "var(--space-1) 0 0", color: "var(--color-muted)", lineHeight: 1.5, fontSize: "var(--font-size-caption)" }}>{t.evidence}</p>}
+                    {t.landing_site_id && (
+                      <a
+                        href={`/landing-pages/${t.landing_site_id}`}
+                        style={{ display: "inline-block", marginTop: "var(--space-2)", color: "var(--color-primary)", fontWeight: 700, fontSize: "var(--font-size-caption)", textDecoration: "none" }}
+                      >
+                        Apply via site rebuild →
+                      </a>
+                    )}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", alignItems: "stretch" }}>
                     {t.status !== "done" && (

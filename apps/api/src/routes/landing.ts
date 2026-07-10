@@ -257,6 +257,40 @@ async function siteOwnedByTenant(
 }
 
 // ---------------------------------------------------------------------------
+// writeLandingAuditLog — append-only publish/unpublish trail (PR-6 addition,
+// #208 issue). Same pattern as agency.ts' writeAuditLog / billing.ts'
+// writeBillingAuditLog. Never blocks the caller's response — logs and
+// swallows on failure. No PII in metadata (site/page ids only).
+// ---------------------------------------------------------------------------
+
+async function writeLandingAuditLog(
+  db: PostgresClient,
+  eventType:
+    | "landing_site_published"
+    | "landing_site_unpublished"
+    | "landing_page_published"
+    | "landing_page_unpublished",
+  actorUserId: string,
+  tenantId: string,
+  targetEntity: "landing_site" | "landing_page",
+  targetId: string
+): Promise<void> {
+  try {
+    await db.query(
+      `INSERT INTO audit_log
+         (id, tenant_id, actor_user_id, event_type, target_entity, target_id, metadata, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, '{}'::jsonb, NOW())`,
+      [tenantId, actorUserId, eventType, targetEntity, targetId]
+    );
+  } catch (err) {
+    logger.error("landing_audit_log_write_failed", {
+      event_type: eventType,
+      message: (err as Error).message?.slice(0, 160),
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Generator job queue (BullMQ) — same Redis connection convention as
 // audits.ts' getAuditQueue / schedules.ts.
 // ---------------------------------------------------------------------------
@@ -336,16 +370,24 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       created_at: string;
       updated_at: string;
       page_count: string;
+      open_fixes: string;
     }>(
       `SELECT s.id, s.slug, s.status, s.business, s.created_at, s.updated_at,
-              (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count
+              (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count,
+              (SELECT COUNT(*) FROM plan_task pt
+                 JOIN strategy_plan sp ON sp.id = pt.plan_id
+                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted')) AS open_fixes
          FROM landing_sites s
         WHERE s.tenant_id = $1
         ORDER BY s.created_at DESC`,
       [auth.tenantId]
     );
     return c.json({
-      sites: res.rows.map((r) => ({ ...r, page_count: parseInt(r.page_count, 10) })),
+      sites: res.rows.map((r) => ({
+        ...r,
+        page_count: parseInt(r.page_count, 10),
+        open_fixes: parseInt(r.open_fixes, 10),
+      })),
     });
   });
 
@@ -440,24 +482,37 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
 
   // -------------------------------------------------------------------------
   // GET /api/landing/sites/:id — site + pages
+  //
+  // open_fixes (#208 PR-7 — the audit → rebuild loop): the count of this
+  // site's linked brand's plan_task rows still 'proposed'/'accepted' — i.e.
+  // fixes that the NEXT generate/regenerate will apply and close. 0 when the
+  // site has no brand_id link.
   // -------------------------------------------------------------------------
   app.get("/api/landing/sites/:id", requireAuth, async (c) => {
     const auth = c.get("auth");
     const siteId = c.req.param("id") ?? "";
     await db.setTenantId(auth.tenantId);
-    const site = await db.query<Record<string, unknown>>(
-      `SELECT id, brand_id, slug, status, business, theme, review_themes, created_at, updated_at
-         FROM landing_sites WHERE id = $1 AND tenant_id = $2`,
+    const site = await db.query<Record<string, unknown> & { open_fixes: string }>(
+      `SELECT s.id, s.brand_id, s.slug, s.status, s.business, s.theme, s.review_themes,
+              s.created_at, s.updated_at,
+              (SELECT COUNT(*) FROM plan_task pt
+                 JOIN strategy_plan sp ON sp.id = pt.plan_id
+                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted')) AS open_fixes
+         FROM landing_sites s WHERE s.id = $1 AND s.tenant_id = $2`,
       [siteId, auth.tenantId]
     );
-    if (!site.rows[0]) return c.json({ message: "Site not found." }, 404);
+    const siteRow = site.rows[0];
+    if (!siteRow) return c.json({ message: "Site not found." }, 404);
     const pages = await db.query<Record<string, unknown>>(
       `SELECT id, page_type, slug, title, status, ai_readiness, published_at, created_at, updated_at
          FROM landing_pages WHERE site_id = $1 AND tenant_id = $2
         ORDER BY (slug = '') DESC, created_at ASC`,
       [siteId, auth.tenantId]
     );
-    return c.json({ site: site.rows[0], pages: pages.rows });
+    return c.json({
+      site: { ...siteRow, open_fixes: parseInt(siteRow.open_fixes, 10) },
+      pages: pages.rows,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -534,6 +589,31 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         ]
       );
       if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
+
+      // Publish/unpublish audit trail — only on an actual transition, not
+      // every business/theme edit. Never blocks the response.
+      if (body.status !== undefined && body.status !== current.rows[0].status) {
+        if (body.status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_site_published",
+            auth.userId,
+            auth.tenantId,
+            "landing_site",
+            siteId
+          );
+        } else if (current.rows[0].status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_site_unpublished",
+            auth.userId,
+            auth.tenantId,
+            "landing_site",
+            siteId
+          );
+        }
+      }
+
       return c.json({ ok: true });
     }
   );
@@ -865,8 +945,9 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         sections: unknown;
         seo: unknown;
         page_type: string;
+        status: string;
       }>(
-        `SELECT slug, sections, seo, page_type FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
+        `SELECT slug, sections, seo, page_type, status FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
         [pageId, auth.tenantId]
       );
       const row = current.rows[0];
@@ -937,6 +1018,31 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         }
         throw err;
       }
+
+      // Publish/unpublish audit trail — only on an actual transition, not
+      // every content edit. Never blocks the response.
+      if (body.status !== undefined && body.status !== row.status) {
+        if (body.status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_page_published",
+            auth.userId,
+            auth.tenantId,
+            "landing_page",
+            pageId ?? ""
+          );
+        } else if (row.status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_page_unpublished",
+            auth.userId,
+            auth.tenantId,
+            "landing_page",
+            pageId ?? ""
+          );
+        }
+      }
+
       return c.json({ ok: true });
     }
   );

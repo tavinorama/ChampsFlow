@@ -282,3 +282,192 @@ describe("GET /api/landing/sites/:id/leads", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// open_fixes — the audit → rebuild loop state (#208 PR-7). GET routes only
+// (no BullMQ/queue path involved), so no bullmq/ioredis mocking is needed —
+// same DEV_AUTH_BYPASS + mock-PostgresClient pattern as
+// tests/unit/cost-control.test.ts, adapted for landing.ts's two GET routes.
+// ---------------------------------------------------------------------------
+
+const TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+const BRAND_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+const SITE_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+
+const originalEnv = process.env;
+beforeEach(() => {
+  process.env = {
+    ...originalEnv,
+    NODE_ENV: "test",
+    DEV_AUTH_BYPASS: "1",
+    DEV_TENANT_ID: TENANT_ID,
+    DEV_USER_ID: USER_ID,
+  };
+});
+
+interface MockRow {
+  [key: string]: unknown;
+}
+type RouteQueryHandler = (sql: string, params?: unknown[]) => MockRow[] | null;
+
+function makeRouteDb(handler: RouteQueryHandler) {
+  const queries: string[] = [];
+  const params: unknown[][] = [];
+  const query = async (sql: string, p?: unknown[]) => {
+    queries.push(sql);
+    params.push(p ?? []);
+    const result = handler(sql, p);
+    return { rows: result ?? [] };
+  };
+  return {
+    query,
+    setTenantId: async () => {},
+    transaction: async () => undefined,
+    _queries: queries,
+    _params: params,
+  };
+}
+
+function landingApp(db: ReturnType<typeof makeRouteDb>): Hono {
+  const app = new Hono();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  registerLandingRoutes(app, db as any);
+  return app;
+}
+
+describe("GET /api/landing/sites/:id — open_fixes (#208 PR-7)", () => {
+  it("returns the count of proposed/accepted plan_task rows for the site's linked brand", async () => {
+    const db = makeRouteDb((sql) => {
+      if (sql.includes("FROM landing_sites s WHERE")) {
+        return [
+          {
+            id: SITE_ID,
+            brand_id: BRAND_ID,
+            slug: "joes-plumbing",
+            status: "draft",
+            business: {},
+            theme: {},
+            review_themes: [],
+            created_at: "2026-07-01T00:00:00Z",
+            updated_at: "2026-07-01T00:00:00Z",
+            open_fixes: "3",
+          },
+        ];
+      }
+      if (sql.includes("FROM landing_pages WHERE site_id")) return [];
+      return [];
+    });
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { site: { open_fixes: number } };
+    expect(body.site.open_fixes).toBe(3);
+  });
+
+  it("returns 0 when the site has no linked brand", async () => {
+    const db = makeRouteDb((sql) => {
+      if (sql.includes("FROM landing_sites s WHERE")) {
+        return [
+          {
+            id: SITE_ID,
+            brand_id: null,
+            slug: "joes-plumbing",
+            status: "draft",
+            business: {},
+            theme: {},
+            review_themes: [],
+            created_at: "2026-07-01T00:00:00Z",
+            updated_at: "2026-07-01T00:00:00Z",
+            open_fixes: "0",
+          },
+        ];
+      }
+      if (sql.includes("FROM landing_pages WHERE site_id")) return [];
+      return [];
+    });
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { site: { open_fixes: number } };
+    expect(body.site.open_fixes).toBe(0);
+  });
+
+  it("the open_fixes subquery joins plan_task through strategy_plan, filtered to proposed/accepted", async () => {
+    let capturedSql = "";
+    const db = makeRouteDb((sql) => {
+      if (sql.includes("FROM landing_sites s WHERE")) {
+        capturedSql = sql;
+        return [
+          {
+            id: SITE_ID,
+            brand_id: BRAND_ID,
+            slug: "x",
+            status: "draft",
+            business: {},
+            theme: {},
+            review_themes: [],
+            created_at: "now",
+            updated_at: "now",
+            open_fixes: "1",
+          },
+        ];
+      }
+      return [];
+    });
+    await landingApp(db).request(`/api/landing/sites/${SITE_ID}`, { headers: { Authorization: "Bearer dev" } });
+    expect(capturedSql).toContain("FROM plan_task pt");
+    expect(capturedSql).toContain("JOIN strategy_plan sp ON sp.id = pt.plan_id");
+    expect(capturedSql).toContain("pt.status IN ('proposed', 'accepted')");
+  });
+
+  it("404s when the site isn't found (never queries open_fixes for a nonexistent site)", async () => {
+    const db = makeRouteDb(() => []);
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/landing/sites — open_fixes per site (#208 PR-7)", () => {
+  it("includes open_fixes alongside page_count for every listed site, one round trip", async () => {
+    const db = makeRouteDb((sql) => {
+      if (sql.includes("FROM landing_sites s") && sql.includes("ORDER BY s.created_at DESC")) {
+        return [
+          {
+            id: SITE_ID,
+            slug: "a",
+            status: "draft",
+            business: {},
+            created_at: "now",
+            updated_at: "now",
+            page_count: "5",
+            open_fixes: "2",
+          },
+          {
+            id: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+            slug: "b",
+            status: "published",
+            business: {},
+            created_at: "now",
+            updated_at: "now",
+            page_count: "5",
+            open_fixes: "0",
+          },
+        ];
+      }
+      return [];
+    });
+    const res = await landingApp(db).request("/api/landing/sites", { headers: { Authorization: "Bearer dev" } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { sites: Array<{ open_fixes: number }> };
+    expect(body.sites).toHaveLength(2);
+    expect(body.sites[0]?.open_fixes).toBe(2);
+    expect(body.sites[1]?.open_fixes).toBe(0);
+    // Exactly one query issued for the whole list — no N+1.
+    expect(db._queries.filter((q) => q.includes("FROM landing_sites"))).toHaveLength(1);
+  });
+});

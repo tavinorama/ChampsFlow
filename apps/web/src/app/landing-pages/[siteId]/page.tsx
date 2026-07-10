@@ -52,6 +52,8 @@ interface Site {
   review_themes: string[];
   created_at: string;
   updated_at: string;
+  /** Open audit-plan fixes ready to apply on the next generate/regenerate (#208 PR-7). */
+  open_fixes: number;
 }
 
 interface PageListItem {
@@ -606,6 +608,24 @@ export default function LandingSiteDetailPage() {
           Builds (or rebuilds) the 5-page bundle from this site&rsquo;s business facts and authorized testimonials.
           Existing pages are versioned before being overwritten — nothing is lost.
         </p>
+        {site.open_fixes > 0 && (
+          <div
+            role="status"
+            style={{
+              display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)",
+              padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-4)",
+              backgroundColor: "var(--color-badge-ai-bg)", border: "1px solid var(--color-accent-ink)",
+              borderRadius: "var(--radius-md)",
+            }}
+          >
+            <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+              <strong>{site.open_fixes}</strong> audit fix{site.open_fixes === 1 ? "" : "es"} ready — regenerating will apply them.
+            </span>
+            <a href="/drafts" style={{ color: "var(--color-accent-ink)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", textDecoration: "none", whiteSpace: "nowrap" }}>
+              View fixes →
+            </a>
+          </div>
+        )}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-4)" }}>
           <button
             type="button" onClick={handleGenerate} disabled={generateState !== "idle"}
