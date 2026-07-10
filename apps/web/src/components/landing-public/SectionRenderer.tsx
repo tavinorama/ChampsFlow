@@ -7,7 +7,14 @@
  * integrity rule, postmortem PR#90). Unknown section types are skipped
  * silently (mapSectionToRenderModel returns null for them).
  *
- * No Google Maps embed/API anywhere — map_nap renders as plain address text.
+ * map_nap renders a real Google Maps Embed iframe (Maps Embed API — free,
+ * unlimited, no Places quota) ABOVE the plain-text address when the site
+ * carries a `place_id` (#208 PR-9) AND the browser-restricted embed key is
+ * configured; the plain-text address always stays underneath as the SEO-
+ * friendly fallback and for sites/keys without an embed. The embed key is
+ * NEXT_PUBLIC_* by design (referrer-locked to ozvor.com/* server-side in the
+ * Google Cloud console — the lock IS the security control, not secrecy).
+ * The server-only GOOGLE_PLACES_API_KEY is NEVER referenced here.
  */
 
 import type { CSSProperties } from "react";
@@ -139,13 +146,48 @@ function Services({ model, theme }: { model: Extract<SectionRenderModel, { kind:
   );
 }
 
-/** No Google Maps embed/API — plain, semantic address text only. */
-function MapNap({ model, theme }: { model: Extract<SectionRenderModel, { kind: "map_nap" }>; theme: Required<LandingTheme> }) {
+// Browser-restricted, referrer-locked public key — safe to inline (see file
+// header). Server-only GOOGLE_PLACES_API_KEY is a DIFFERENT env var, never
+// read from apps/web (grep-tested — tests/unit/google-places.test.ts).
+const MAPS_EMBED_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY;
+
+function MapNap({
+  model,
+  theme,
+  placeId,
+}: {
+  model: Extract<SectionRenderModel, { kind: "map_nap" }>;
+  theme: Required<LandingTheme>;
+  placeId?: string | null;
+}) {
+  const embedSrc =
+    placeId && MAPS_EMBED_KEY
+      ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(MAPS_EMBED_KEY)}&q=place_id:${encodeURIComponent(placeId)}`
+      : null;
+
   return (
     <section aria-labelledby="section-business-info" style={sectionStyle}>
       <h2 id="section-business-info" style={headingStyle(theme.text)}>
         {model.name || "Business information"}
       </h2>
+      {embedSrc && (
+        <div
+          style={{
+            marginBottom: "1.25rem",
+            borderRadius: "10px",
+            overflow: "hidden",
+            border: `1px solid ${theme.border}`,
+          }}
+        >
+          <iframe
+            src={embedSrc}
+            title={`Map showing the location of ${model.name || "this business"}`}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            style={{ width: "100%", height: "280px", border: 0, display: "block" }}
+          />
+        </div>
+      )}
       <address style={{ fontStyle: "normal", color: theme.text, lineHeight: 1.7 }}>
         {model.address && <div>{model.address}</div>}
         {model.phone && (
@@ -390,9 +432,12 @@ export interface SectionRendererProps {
   sections: unknown;
   siteSlug: string;
   theme?: unknown;
+  /** Google Place ID (#208 PR-9) — when present + the embed key is
+   *  configured, map_nap renders a real embedded map above the address. */
+  placeId?: string | null;
 }
 
-export function SectionRenderer({ sections, siteSlug, theme }: SectionRendererProps) {
+export function SectionRenderer({ sections, siteSlug, theme, placeId }: SectionRendererProps) {
   const resolvedTheme = resolveTheme(theme);
   const models = mapSectionsToRenderModels(sections);
 
@@ -405,7 +450,7 @@ export function SectionRenderer({ sections, siteSlug, theme }: SectionRendererPr
           case "services":
             return <Services key={i} model={model} theme={resolvedTheme} />;
           case "map_nap":
-            return <MapNap key={i} model={model} theme={resolvedTheme} />;
+            return <MapNap key={i} model={model} theme={resolvedTheme} placeId={placeId} />;
           case "cta":
             return <Cta key={i} model={model} theme={resolvedTheme} />;
           case "proof":
