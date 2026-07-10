@@ -313,11 +313,11 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 
 ### Controller / Processor Identity
 
-- **Controller name**: TrustIndex AI Ltda (Brazil — Sociedade Limitada, CNPJ pending incorporation; formerly referred to as "TrustIndex AI"). Home jurisdiction: Brazil. LGPD Art. 5(VI) controller (controlador).
-- **EU extraterritorial scope**: TrustIndex AI processes personal data of EU data subjects by offering services to them (GDPR Art. 3(2)(a)). As a non-EU-established controller, **GDPR Art. 27 EU representative must be appointed before EU users are onboarded** (reversal of the 2026-05-11 Portugal Lda entry).
+- **Controller name**: Ozvor — Brazilian **MEI (Microempreendedor Individual)**, CNPJ **67.609.444/0001-08**, registered office Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil. Regulator: **ANPD**. Home jurisdiction: Brazil. LGPD Art. 5(VI) controller (controlador). *(Corrects the prior entry in this section, which read: "TrustIndex AI Ltda (Brazil — Sociedade Limitada, CNPJ pending incorporation; formerly referred to as 'TrustIndex AI')." That entry incorrectly stated the entity type as a Sociedade Limitada and left the CNPJ/registered office as pending. This correction — 2026-07-09 — aligns the DPIA with the confirmed entity identity already recorded in `docs/compliance/ropa.md` (updated 2026-07-08) and the live legal pages (`apps/web/src/app/privacy-policy/page.tsx`, `terms-of-service/page.tsx`, `legal/dpa/page.tsx`). The holder's civil name (razão social) is not reproduced in this document at the controller's instruction; the CNPJ is the unique public identifier of record and "Ozvor" is the trade name displayed to data subjects.)*
+- **EU extraterritorial scope**: Ozvor processes personal data of EU data subjects by offering services to them (GDPR Art. 3(2)(a)). As a non-EU-established controller, **GDPR Art. 27 EU representative must be appointed before EU users are onboarded** (reversal of the 2026-05-11 Portugal Lda entry).
 - **US scope**: FTC §5, CCPA/CPRA, TDPSA and other state laws apply based on customer jurisdiction and thresholds (see regulatory-map.md).
 - **LGPD scope**: Controller is Brazil-established and processes data of Brazilian data subjects. LGPD applies in full.
-- **Controller / operador split (LGPD Art. 5(VI)–(VII))**: TrustIndex AI is controlador for its own account, billing, and audit data. It acts as operador for customer-directed audit processing where the subscribing SMB determines the brand(s) to audit. DPAs must reference both LGPD Art. 39 and GDPR Art. 28.
+- **Controller / operador split (LGPD Art. 5(VI)–(VII))**: Ozvor is controlador for its own account, billing, and audit data. It acts as operador for customer-directed audit processing where the subscribing SMB determines the brand(s) to audit. DPAs must reference both LGPD Art. 39 and GDPR Art. 28.
 
 ### Processing Purposes (GEO Platform)
 
@@ -637,3 +637,4 @@ High-risk processing confirmed under GDPR Art. 35(1), EDPB Guidelines 4/2019 tri
 - Jurisdictions covered: Brazil (LGPD RIPD), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5 — informing risk assessment)
 - Reviewed by (human): _____ (required before EU/BR launch)
 - Next mandatory review trigger: new LLM provider activation, new geographic market, >50% change in data volume/categories, or annual cycle (2027-06)
+- **Update log**: 2026-07-09 — Controller / Processor Identity block (Section 1-GEO) corrected by legal-privacy-officer to align with the confirmed entity identity in `docs/compliance/ropa.md` (2026-07-08) and the live legal pages: Ozvor, Brazilian MEI, CNPJ 67.609.444/0001-08, registered office Rua José Borges Abrantes nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD. This supersedes the prior "TrustIndex AI Ltda / CNPJ pending incorporation" statement in this section. No other DPIA content was changed. See gate-log.md 2026-07-09 entry for the ratifying verdict.
