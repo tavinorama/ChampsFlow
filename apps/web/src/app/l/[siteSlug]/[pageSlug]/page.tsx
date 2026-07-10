@@ -16,7 +16,7 @@ import { PublicLandingChrome, type PublicNavItem } from "../../../../components/
 import { SectionRenderer } from "../../../../components/landing-public/SectionRenderer";
 import { LeadForm } from "../../../../components/landing-public/LeadForm";
 import { PageViewBeacon } from "../../../../components/landing-public/PageViewBeacon";
-import { buildFaqJsonLd, buildBreadcrumbJsonLd } from "../../../../components/landing-public/json-ld";
+import { buildFaqJsonLd, buildBreadcrumbJsonLd, safeJsonLd } from "../../../../components/landing-public/json-ld";
 import { SITE_URL } from "../../../../lib/site";
 
 export const revalidate = 300;
@@ -121,13 +121,13 @@ export default async function PublicLandingSubPage({
         <script
           nonce={nonce}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }}
         />
       )}
       <script
         nonce={nonce}
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }}
       />
       <PageViewBeacon siteSlug={siteSlug} pageSlug={pageSlug} />
       <SectionRenderer sections={data.page.sections} siteSlug={siteSlug} theme={data.site.theme} />

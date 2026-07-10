@@ -15,6 +15,7 @@ import {
   mapSectionsToRenderModels,
   type SectionRenderModel,
 } from "./section-render-model";
+import { safeHref } from "./json-ld";
 
 // ---------------------------------------------------------------------------
 // Theme — a small neutral palette, overridable from landing_sites.theme.
@@ -156,9 +157,14 @@ function MapNap({ model, theme }: { model: Extract<SectionRenderModel, { kind: "
         )}
         {model.website && (
           <div>
-            <a href={model.website} style={{ color: theme.primary, textDecoration: "none" }}>
-              {model.website.replace(/^https?:\/\//, "")}
-            </a>
+            {/* Stored URL → allowlisted scheme only (Hermes, #216); else plain text. */}
+            {safeHref(model.website) ? (
+              <a href={safeHref(model.website)!} style={{ color: theme.primary, textDecoration: "none" }}>
+                {model.website.replace(/^https?:\/\//, "")}
+              </a>
+            ) : (
+              <span style={{ color: theme.muted }}>{model.website}</span>
+            )}
           </div>
         )}
       </address>

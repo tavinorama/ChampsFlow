@@ -8,6 +8,8 @@ import {
   buildLocalBusinessJsonLd,
   buildFaqJsonLd,
   buildBreadcrumbJsonLd,
+  safeJsonLd,
+  safeHref,
 } from "../../apps/web/src/components/landing-public/json-ld";
 
 describe("buildLocalBusinessJsonLd", () => {
@@ -127,5 +129,79 @@ describe("buildBreadcrumbJsonLd", () => {
       { "@type": "ListItem", position: 1, name: "Acme Plumbing", item: "https://ozvor.com/l/acme-plumbing" },
       { "@type": "ListItem", position: 2, name: "faq", item: "https://ozvor.com/l/acme-plumbing/faq" },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// safeJsonLd — HTML-script-safe serialization (Hermes review requirement, #216)
+// ---------------------------------------------------------------------------
+
+describe("safeJsonLd — script-breakout escaping", () => {
+  const MALICIOUS = '</script><script>alert(1)</script>';
+
+  it("a stored </script><script> payload never appears raw in the output", () => {
+    const jsonLd = buildLocalBusinessJsonLd("acme", { name: `Acme ${MALICIOUS} Plumbing` });
+    const out = safeJsonLd(jsonLd);
+    expect(out).not.toContain("</script");
+    expect(out).not.toContain("<script");
+    expect(out).toContain("\\u003c"); // < escaped
+    expect(out).toContain("\\u003e"); // > escaped
+  });
+
+  it("escapes the payload inside FAQ questions/answers too", () => {
+    const jsonLd = buildFaqJsonLd([
+      { type: "faq", items: [{ q: `Why ${MALICIOUS}?`, a: `Because ${MALICIOUS}.` }] },
+    ]);
+    const out = safeJsonLd(jsonLd);
+    expect(out).not.toContain("</script");
+    expect(out).not.toContain("<script");
+  });
+
+  it("escaping is lossless — JSON.parse round-trips to the original value", () => {
+    const original = {
+      name: `A ${MALICIOUS} & B > C < D`,
+      line: "u2028:\u2028 u2029:\u2029",
+    };
+    expect(JSON.parse(safeJsonLd(original))).toEqual(original);
+  });
+
+  it("escapes ampersands (no raw & in output)", () => {
+    expect(safeJsonLd({ name: "Bar & Grill" })).not.toContain("&");
+    expect(safeJsonLd({ name: "Bar & Grill" })).toContain("\\u0026");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// safeHref — allowlisted schemes for stored URLs in <a href> (Hermes, #216)
+// ---------------------------------------------------------------------------
+
+describe("safeHref — stored-URL scheme allowlist", () => {
+  it("allows https and http", () => {
+    expect(safeHref("https://acme.com/x")).toBe("https://acme.com/x");
+    expect(safeHref("http://acme.com")).toBe("http://acme.com/");
+  });
+
+  it("prefixes https:// on bare domains", () => {
+    expect(safeHref("acme.com")).toBe("https://acme.com/");
+    expect(safeHref("www.acme.com/contato")).toBe("https://www.acme.com/contato");
+  });
+
+  it("rejects javascript:, data:, vbscript: and friends", () => {
+    expect(safeHref("javascript:alert(1)")).toBeNull();
+    expect(safeHref("data:text/html,<script>alert(1)</script>")).toBeNull();
+    expect(safeHref("vbscript:msgbox(1)")).toBeNull();
+    expect(safeHref("JAVASCRIPT:alert(1)")).toBeNull();
+  });
+
+  it("upgrades protocol-relative //host to https", () => {
+    expect(safeHref("//evil.example/x")).toBe("https://evil.example/x");
+  });
+
+  it("rejects non-strings, empties and schemeless non-domains", () => {
+    expect(safeHref(undefined)).toBeNull();
+    expect(safeHref(null)).toBeNull();
+    expect(safeHref("")).toBeNull();
+    expect(safeHref("not a url")).toBeNull();
+    expect(safeHref("localhost")).toBeNull(); // no dot — not a public site
   });
 });

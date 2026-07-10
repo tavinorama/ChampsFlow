@@ -19,7 +19,7 @@ import { PublicLandingChrome, type PublicNavItem } from "../../../components/lan
 import { SectionRenderer } from "../../../components/landing-public/SectionRenderer";
 import { LeadForm } from "../../../components/landing-public/LeadForm";
 import { PageViewBeacon } from "../../../components/landing-public/PageViewBeacon";
-import { buildLocalBusinessJsonLd, buildFaqJsonLd } from "../../../components/landing-public/json-ld";
+import { buildLocalBusinessJsonLd, buildFaqJsonLd, safeJsonLd } from "../../../components/landing-public/json-ld";
 import { SITE_URL } from "../../../lib/site";
 
 export const revalidate = 300;
@@ -124,14 +124,14 @@ export default async function PublicLandingSiteHomePage({
         <script
           nonce={nonce}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(localBusinessJsonLd) }}
         />
       )}
       {faqJsonLd && (
         <script
           nonce={nonce}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }}
         />
       )}
       <PageViewBeacon siteSlug={siteSlug} />
