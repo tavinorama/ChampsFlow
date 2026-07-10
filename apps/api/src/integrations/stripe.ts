@@ -556,6 +556,55 @@ export async function createKitCheckoutSession(
   return { url: session.url };
 }
 
+// ---------------------------------------------------------------------------
+// createPagesCheckoutSession — one-time payment for "Ozvor Pages — 5-page
+// website" ($99). Issue #208 PR-2.
+//
+// Mode "payment" (not subscription). Uses STRIPE_PRICE_ID_PAGES (live price
+// price_1TrRnOJd5OWcDDzU35opwEAP, product prod_UrA7pxoSdiegPy — created
+// 2026-07-09 with founder approval). Metadata carries the pages_order_id so
+// the webhook can mark the order paid and credit tenants.extra_landing_sites.
+// ---------------------------------------------------------------------------
+export async function createPagesCheckoutSession(
+  pagesOrderId: string,
+  buyerEmail: string,
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ url: string }> {
+  const priceId = process.env["STRIPE_PRICE_ID_PAGES"];
+  if (!priceId) {
+    const err = new Error("STRIPE_PRICE_ID_PAGES is not configured");
+    (err as NodeJS.ErrnoException).code = "missing_price_id";
+    throw err;
+  }
+
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    // Low-friction: omit payment_method_types → Stripe Checkout shows all
+    // Dashboard-enabled methods (card + Apple Pay + Google Pay + Link 1-click).
+    customer_email: buyerEmail,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    allow_promotion_codes: true,
+    // Opaque references for reconciliation — no PII, no card data.
+    metadata: { pages_order_id: pagesOrderId, product: "ozvor_pages_site" },
+    payment_intent_data: {
+      metadata: { pages_order_id: pagesOrderId, product: "ozvor_pages_site" },
+    },
+  });
+  if (!session.url) {
+    logger.error("stripe_pages_checkout_no_url", { session_id: session.id });
+    throw new Error("Stripe pages checkout session created but URL is null");
+  }
+  logger.info("stripe_pages_checkout_created", {
+    session_id: session.id,
+    pages_order_id: pagesOrderId,
+  });
+  return { url: session.url };
+}
+
 /**
  * Retrieve a Checkout Session and report whether it is paid. Used by the Kit
  * delivery page to verify payment without relying solely on the webhook.

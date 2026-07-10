@@ -221,6 +221,47 @@ export async function claimKitOrders(
   }
 }
 
+// ---------------------------------------------------------------------------
+// claimPagesOrders — Ozvor Pages $99 credits (#208 PR-2)
+// ---------------------------------------------------------------------------
+// On first login, grant the landing-site credits from paid-but-unclaimed
+// pages_order rows matching the Supabase-verified email: each claimed order
+// adds +1 to tenants.extra_landing_sites. Same security/best-effort/idempotency
+// contract as claimKitOrders above (status transition 'paid' → 'credited'
+// guards double-crediting). Exported for unit testing.
+// ---------------------------------------------------------------------------
+export async function claimPagesOrders(
+  db: PostgresClient,
+  tenantId: string,
+  verifiedEmail: string
+): Promise<number> {
+  if (!verifiedEmail) return 0;
+  const normalizedEmail = verifiedEmail.toLowerCase().trim();
+  try {
+    const { rows } = await db.query<{ id: string }>(
+      `UPDATE pages_order
+          SET status = 'credited', credited_tenant_id = $1, credited_at = NOW()
+        WHERE email = $2 AND status = 'paid'
+        RETURNING id`,
+      [tenantId, normalizedEmail]
+    );
+    if (rows.length > 0) {
+      await db.query(
+        `UPDATE tenants SET extra_landing_sites = extra_landing_sites + $2 WHERE id = $1`,
+        [tenantId, rows.length]
+      );
+      logger.info("pages_orders_claimed", { tenant_id: tenantId, count: rows.length });
+    }
+    return rows.length;
+  } catch (err) {
+    logger.error("pages_orders_claim_failed", {
+      tenant_id: tenantId,
+      message: (err as Error).message,
+    });
+    return 0;
+  }
+}
+
 function tenantNameFromEmail(email: string | undefined): string {
   if (!email) return "My workspace";
   const domain = email.split("@")[1];
@@ -308,6 +349,7 @@ export function registerOnboardingRoutes(app: Hono, db: PostgresClient): void {
     // since they all land here with a Supabase-verified session.email.
     await claimFreeTests(db, tenantId, session.email ?? "");
     await claimKitOrders(db, tenantId, session.email ?? "");
+    await claimPagesOrders(db, tenantId, session.email ?? "");
 
     // Push the claim into Supabase so future JWTs carry tenant_id + owner role.
     const metaSet = await setSupabaseAppMetadata(session.uid, tenantId);

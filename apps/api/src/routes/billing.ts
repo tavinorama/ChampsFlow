@@ -59,6 +59,7 @@ import {
 } from "../integrations/stripe";
 import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
+import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
 import Stripe from "stripe";
 
@@ -900,6 +901,114 @@ async function handleCheckoutSessionCompleted(
       kit_order_id,
       event_id: eventId,
     });
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ozvor Pages branch (mode='payment', product='ozvor_pages_site') — #208 PR-2
+  // $99 one-time website purchase. Mark the pages_order paid, then credit
+  // tenants.extra_landing_sites for the tenant matching the buyer email; if no
+  // account exists yet, leave status='paid' — the bootstrap claim on first
+  // login grants the credit (onboarding.ts claimPagesOrders, #166 pattern).
+  // ---------------------------------------------------------------------------
+  if (
+    session.mode === "payment" &&
+    session.metadata?.product === "ozvor_pages_site"
+  ) {
+    const pages_order_id = session.metadata?.pages_order_id;
+    if (!pages_order_id) {
+      logger.warn("stripe_pages_checkout_completed_missing_metadata", {
+        session_id: session.id,
+        event_id: eventId,
+      });
+      return;
+    }
+
+    // Mark paid (idempotent: only transitions out of 'pending'; the Redis
+    // event-id guard upstream already dedupes webhook replays).
+    const { rows: orderRows } = await db.query<{ email: string }>(
+      `UPDATE pages_order
+       SET status = 'paid', stripe_session_id = $2, paid_at = NOW()
+       WHERE id = $1 AND status = 'pending'
+       RETURNING email`,
+      [pages_order_id, session.id]
+    );
+
+    // Resolve the buyer email (order row is authoritative; Stripe as fallback
+    // for replays where the row already left 'pending').
+    let buyerEmail = orderRows[0]?.email ?? "";
+    if (!buyerEmail) {
+      const { rows: existing } = await db.query<{ email: string; status: string }>(
+        `SELECT email, status FROM pages_order WHERE id = $1`,
+        [pages_order_id]
+      );
+      if (!existing[0] || existing[0].status === "credited") {
+        // Unknown order or already fully processed — nothing to do.
+        logger.info("stripe_pages_checkout_completed_noop", {
+          pages_order_id,
+          event_id: eventId,
+        });
+        return;
+      }
+      buyerEmail = existing[0].email;
+    }
+
+    // Credit immediately when the email already maps to a user/tenant.
+    const normalizedEmail = buyerEmail.toLowerCase().trim();
+    const { rows: userRows } = await db.query<{ tenant_id: string }>(
+      `SELECT u.tenant_id FROM users u WHERE lower(u.email) = $1 LIMIT 1`,
+      [normalizedEmail]
+    );
+    const buyerTenantId = userRows[0]?.tenant_id ?? null;
+
+    if (buyerTenantId) {
+      // Guard the credit on the status transition so a concurrent/replayed
+      // event can never double-credit.
+      const { rows: credited } = await db.query<{ id: string }>(
+        `UPDATE pages_order
+         SET status = 'credited', credited_tenant_id = $2, credited_at = NOW()
+         WHERE id = $1 AND status = 'paid'
+         RETURNING id`,
+        [pages_order_id, buyerTenantId]
+      );
+      if (credited[0]) {
+        await db.query(
+          `UPDATE tenants SET extra_landing_sites = extra_landing_sites + 1 WHERE id = $1`,
+          [buyerTenantId]
+        );
+        await writeBillingAuditLog(db, {
+          tenantId: buyerTenantId,
+          eventType: "pages_order_credited",
+          planTier: null,
+          stripeEventId: eventId,
+        });
+        logger.info("pages_order_credited", {
+          pages_order_id,
+          tenant_id: buyerTenantId,
+          event_id: eventId,
+        });
+      }
+    } else {
+      logger.info("pages_order_paid_awaiting_claim", {
+        pages_order_id,
+        event_id: eventId,
+        // NOTE: email intentionally NOT logged — hard rule (PII)
+      });
+    }
+
+    // Best-effort purchase email (log-in-to-build instructions). Never blocks
+    // the webhook 200.
+    try {
+      await sendPagesPurchaseEmail({ to: buyerEmail });
+      logger.info("pages_purchase_email_sent", { pages_order_id, event_id: eventId });
+    } catch (err) {
+      logger.warn("pages_purchase_email_failed", {
+        pages_order_id,
+        event_id: eventId,
+        message: (err as Error).message,
+      });
+    }
+
     return;
   }
 
