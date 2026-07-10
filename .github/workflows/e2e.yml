@@ -74,9 +74,12 @@ jobs:
     # workflow (and the PR's merge state) green even when this job is flaky in
     # the runner; the report is still uploaded for inspection. The 8-min cap was
     # too tight to even finish setup (npm ci + build + 2 browser installs), which
-    # guaranteed a cancel — raised so the suite can actually complete.
+    # guaranteed a cancel — raised so the suite can actually complete. Raised
+    # again 2026-07-10 (20 → 35): the Ozvor Pages PR series added Playwright
+    # specs and EVERY run that day (main included) hit the 20-min guillotine
+    # mid-suite, reading as "cancelled" and blocking the #216 security gate.
     continue-on-error: true
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     services:
       postgres:
