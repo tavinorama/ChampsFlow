@@ -215,6 +215,32 @@ export { runInvisibilityTest, buildTestPrompt } from "./invisibility-test";
 export type { KitDeliverable, KitInput } from "./kit-deliverable";
 export { buildKitDeliverable, buildFallbackKitDeliverable } from "./kit-deliverable";
 
+// Content GEO scoring primitives, exported for reuse (Ozvor Pages generator, #208).
+export type { ContentTraitFlags } from "./content-geo";
+export { scorePage, computeContentScoreFromTraits } from "./content-geo";
+
+// Ozvor Pages — 5-page website bundle generator (#208 PR-4).
+export type {
+  LandingBusinessInput,
+  LandingTestimonialInput,
+  LandingFaqInput,
+  LandingCrawlSummary,
+  LandingGenerateInput,
+  LandingGenerateOptions,
+  LandingSectionType,
+  LandingSection,
+  LandingPageSeo,
+  LandingBundlePageType,
+  LandingBundlePage,
+  LandingBundle,
+} from "./landing-generate";
+export {
+  buildLandingBundle,
+  deriveReviewThemes,
+  landingSlugify,
+  renderSectionsForScoring,
+} from "./landing-generate";
+
 // ---------------------------------------------------------------------------
 // OpenAI adapter — STUB (not activated for v1; compliance review required)
 // ---------------------------------------------------------------------------

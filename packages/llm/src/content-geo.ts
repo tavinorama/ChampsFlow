@@ -78,9 +78,21 @@ function parseSitemap(xml: string, base: string): string[] {
   return urls;
 }
 
-function scorePage(html: string): {
-  statistics: boolean; quotations: boolean; sourcedClaims: boolean; answerShaped: boolean; depth: boolean;
-} {
+export interface ContentTraitFlags {
+  statistics: boolean;
+  quotations: boolean;
+  sourcedClaims: boolean;
+  answerShaped: boolean;
+  depth: boolean;
+}
+
+/**
+ * Score a single HTML page against the Princeton/KDD 2024 citation-worthiness
+ * traits. Exported so other capabilities (Ozvor Pages generator, #208 PR-4)
+ * can score their own generated content with the SAME primitives the audit
+ * uses — one shared measurement, not a reinvention per feature.
+ */
+export function scorePage(html: string): ContentTraitFlags {
   const text = toText(html);
   const lower = text.toLowerCase();
   // Statistics: %, numbers with units, "X%", "1,234", "$X", "Nx"
@@ -96,6 +108,28 @@ function scorePage(html: string): {
   const listCount = (html.match(/<(ul|ol)[\s>]/gi) ?? []).length;
   const depth = headingCount >= 3 && (listCount >= 1 || text.length > 2000);
   return { statistics, quotations, sourcedClaims, answerShaped, depth };
+}
+
+/**
+ * Weighted citation-worthiness score from trait coverage (0-1 fractions, or
+ * booleans coerced to 0/1 for a single page). Exported so callers scoring one
+ * generated page (rather than crawling N live pages) can reuse the SAME
+ * weights the audit uses instead of duplicating the formula.
+ */
+export function computeContentScoreFromTraits(traits: {
+  statistics: number;
+  quotations: number;
+  sourcedClaims: number;
+  answerShaped: number;
+  depth: number;
+}): number {
+  return (
+    traits.statistics * 0.28 +
+    traits.sourcedClaims * 0.26 +
+    traits.answerShaped * 0.22 +
+    traits.quotations * 0.12 +
+    traits.depth * 0.12
+  );
 }
 
 /**
@@ -150,12 +184,7 @@ export async function analyzeContentGeo(domain: string | null | undefined): Prom
     depth: tallies.depth / n,
   };
   // Weighted per GEO research: stats + sourced claims matter most for citation.
-  const contentScore =
-    traits.statistics * 0.28 +
-    traits.sourcedClaims * 0.26 +
-    traits.answerShaped * 0.22 +
-    traits.quotations * 0.12 +
-    traits.depth * 0.12;
+  const contentScore = computeContentScoreFromTraits(traits);
 
   findings.push(`Analyzed ${n} page${n === 1 ? "" : "s"} for citation-worthiness.`);
   const gap = (label: string, v: number) => v < 0.5 ? `Weak: ${label} (${Math.round(v * 100)}% of pages).` : null;

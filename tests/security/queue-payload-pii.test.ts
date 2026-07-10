@@ -79,7 +79,9 @@ describe("BullMQ queue payloads — IDs + region only (GEO-SEC-3)", () => {
   });
 
   it("every payload field is an opaque id, region, or job reference", () => {
-    const ALLOWED = /^(audit_id|tenant_id|brand_id|region|publish_job_id)$/;
+    // site_id/job_kind: landing-generate queue (#208 PR-4) — IDs + a 2-value
+    // enum only, same convention as the geo-audit payload.
+    const ALLOWED = /^(audit_id|tenant_id|brand_id|region|publish_job_id|site_id|job_kind)$/;
     const violations: string[] = [];
     for (const { file, payload } of allPayloads) {
       // Extract object keys (identifier followed by ':').
