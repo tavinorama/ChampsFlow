@@ -1456,7 +1456,7 @@ export function LandingV2() {
                 </button>
               </div>
               <p style={{ margin: "10px 2px 0", fontSize: 12, color: "#9fb0a4", fontFamily: "var(--font-mono)" }}>
-                Publish the first page in ~10 minutes — AI starts citing you.
+                Publish the first page in ~10 minutes. Become quotable.
               </p>
             </div>
 
