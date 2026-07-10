@@ -674,26 +674,35 @@ export function CookieConsent() {
     setTimeout(() => setLiveMsg(msg), 10);
   }, []);
 
+  // Consent-gated integrations (e.g. Ga4Analytics) subscribe to this event so
+  // an acceptance takes effect immediately — no reload required.
+  const emitConsentChanged = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("ti:consent-changed"));
+  }, []);
+
   const handleAcceptAll = useCallback(() => {
     const record = buildAcceptAllRecord(jurisdiction);
     writeConsent(record);
     setMode("hidden");
     announce("Cookie preferences saved: all cookies accepted.");
-  }, [jurisdiction, announce]);
+    emitConsentChanged();
+  }, [jurisdiction, announce, emitConsentChanged]);
 
   const handleRejectAll = useCallback(() => {
     const record = buildRejectRecord(jurisdiction);
     writeConsent(record);
     setMode("hidden");
     announce("Cookie preferences saved: essential cookies only.");
-  }, [jurisdiction, announce]);
+    emitConsentChanged();
+  }, [jurisdiction, announce, emitConsentChanged]);
 
   const handleSaveCustom = useCallback(() => {
     const record = buildCustomRecord(jurisdiction, analyticsOn, marketingOn);
     writeConsent(record);
     setMode("hidden");
     announce("Cookie preferences saved.");
-  }, [jurisdiction, analyticsOn, marketingOn, announce]);
+    emitConsentChanged();
+  }, [jurisdiction, analyticsOn, marketingOn, announce, emitConsentChanged]);
 
   const handleCustomize = useCallback(() => {
     setMode("customize");
