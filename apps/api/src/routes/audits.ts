@@ -246,6 +246,15 @@ function extractBlockedCrawlers(findings: string[]): string[] {
 // explicit COUNT vs limit at each create site; tenant_id filter is explicit so
 // it holds regardless of RLS runtime state.)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// auditWindowDays — maps PLAN_LIMITS.manual_audit_interval to a day count for
+// the per-brand manual-audit guard (cost control, issue #217). Pure/exported
+// for unit testing.
+// ---------------------------------------------------------------------------
+export function auditWindowDays(interval: "week" | "day"): number {
+  return interval === "day" ? 1 : 7;
+}
+
 async function planLimitsFor(db: PostgresClient, tenantId: string, isSuperAdmin = false) {
   // Founder/super_admin accounts are never plan-limited: unlimited brands and
   // competitors, plus the top tier's audit depth + weekly monitoring. The
@@ -899,26 +908,69 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         );
       }
 
-      // 2) Tenant-wide daily cap — generous (20/24h ≈ $4 of provider cost at the
-      // cheap probe tier) but bounds abuse. DB-based: no Redis dependency, and
-      // it cannot fail open.
-      const AUDITS_PER_DAY_CAP = 20;
-      const daily = await db.query<{ count: string }>(
-        `SELECT COUNT(*) AS count
-           FROM geo_audit
-          WHERE tenant_id = $1
-            AND created_at >= NOW() - INTERVAL '24 hours'`,
-        [tenantId]
-      );
-      if (parseInt(daily.rows[0]?.count ?? "0", 10) >= AUDITS_PER_DAY_CAP) {
-        logger.warn("audit_daily_cap_hit", { tenantId });
-        return c.json(
-          {
-            message: `Daily audit limit reached (${AUDITS_PER_DAY_CAP} per 24h). Try again later.`,
-            code: "AUDIT_DAILY_LIMIT",
-          },
-          429
+      // 2) + 3) Cost-control quotas by plan (issue #217; replaces the old flat
+      // 20/24h tenant cap — Agency's 25 brands at 1/day each would starve
+      // under that). super_admin (platform operator) bypasses both — existing
+      // convention (see planLimitsFor). Scheduled monitoring is EXCLUDED from
+      // both counts (triggered_by <> 'cron') — weekly/daily cron audits must
+      // keep running regardless of how many manual audits a tenant has used.
+      if (!auth.isSuperAdmin) {
+        const limits = await planLimitsFor(db, tenantId, false);
+
+        // 2) Per-brand manual-audit window: 1 per brand per week (free/growth)
+        // or 1 per brand per day (agency). Honest 429: tells the caller WHEN
+        // it unlocks (the blocking audit's created_at + the window).
+        const windowDays = auditWindowDays(limits.manual_audit_interval);
+        const brandWindow = await db.query<{ created_at: string }>(
+          `SELECT created_at
+             FROM geo_audit
+            WHERE brand_id = $1
+              AND tenant_id = $2
+              AND triggered_by <> 'cron'
+              AND created_at > NOW() - ($3::int * INTERVAL '1 day')
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [brandId, tenantId, windowDays]
         );
+        const lastManual = brandWindow.rows[0];
+        if (lastManual) {
+          const nextAllowedAt = new Date(
+            new Date(lastManual.created_at).getTime() + windowDays * 24 * 60 * 60 * 1000
+          );
+          logger.warn("audit_weekly_limit_hit", { tenantId, brandId, windowDays });
+          return c.json(
+            {
+              message: `You've already run a manual audit for this brand ${
+                windowDays === 1 ? "in the last 24h" : "this week"
+              }. Next manual audit unlocks ${nextAllowedAt.toISOString()}. (Scheduled monitoring is unaffected.)`,
+              code: "AUDIT_WEEKLY_LIMIT",
+              next_allowed_at: nextAllowedAt.toISOString(),
+            },
+            429
+          );
+        }
+
+        // 3) Tenant-wide 24h backstop across ALL brands — bounds abuse via
+        // brand delete+recreate (which resets the per-brand window above).
+        const backstop = limits.audit_backstop_24h;
+        const daily = await db.query<{ count: string }>(
+          `SELECT COUNT(*) AS count
+             FROM geo_audit
+            WHERE tenant_id = $1
+              AND triggered_by <> 'cron'
+              AND created_at >= NOW() - INTERVAL '24 hours'`,
+          [tenantId]
+        );
+        if (parseInt(daily.rows[0]?.count ?? "0", 10) >= backstop) {
+          logger.warn("audit_backstop_cap_hit", { tenantId, backstop });
+          return c.json(
+            {
+              message: `Daily audit limit reached (${backstop} per 24h) for your plan. Try again later. (Scheduled monitoring is unaffected.)`,
+              code: "AUDIT_DAILY_LIMIT",
+            },
+            429
+          );
+        }
       }
 
       // Create the audit row in 'pending' state.

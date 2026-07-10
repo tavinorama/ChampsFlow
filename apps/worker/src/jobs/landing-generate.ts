@@ -17,9 +17,16 @@
  *      logged; it never fails the generation.
  *   5. Load the linked brand's OPEN plan_task rows (status proposed/accepted)
  *      as audit gaps — the audit → rebuild loop (#208).
- *   6. Resolve the client's own BYOK provider key (never a platform key —
- *      content generation is a client-key feature, same as content-studio).
- *      No key configured → mock mode; this is never a failure.
+ *   6. Resolve the PLATFORM Anthropic key (founder decision, issue #217:
+ *      Ozvor Pages generation is platform-funded, NOT customer BYOK — quality
+ *      and marginal cost both favor Ozvor controlling the model/key/prompt).
+ *      Same env-injection mechanism the audit engine relies on
+ *      (packages/shared/src/platform-keys.ts refreshes process.env.
+ *      ANTHROPIC_API_KEY at boot + on an interval). No key configured → mock
+ *      mode; this is never a failure. Customer BYOK (`provider_keys`) is
+ *      intentionally NEVER read here — it stays reserved for Content Studio /
+ *      customer-initiated content generation (routes/system.ts:
+ *      resolveProviderKey), a different cost model.
  *   7. buildLandingBundle() — pure, packages/llm/src/landing-generate.ts.
  *   8. Write results: existing page (by page_type+slug, home always exists
  *      from PR-3) → snapshot to landing_page_versions (saved_by='generator',
@@ -31,6 +38,10 @@
  *      migration 20260710000003 — hashes only, no raw section text).
  *  11. Mark consumed plan_task rows landing_site_id = site_id (status is left
  *      untouched — closing the loop is PR-7's job).
+ *  12. Record estimated platform spend in `api_spend` (op='pages_generate',
+ *      issue #217) for real LLM runs only — same visibility-only ledger +
+ *      try/catch pattern as audit-run.ts's post-completion spend record.
+ *      Mock-mode runs cost nothing and are not recorded.
  *
  * Hard rules: parameterized SQL only; ai_generation_log INSERT-only; no raw
  * PII in logs; never fabricate — buildLandingBundle's mock mode only
@@ -51,7 +62,6 @@ import {
   type LandingBusinessInput,
 } from "../../../../packages/llm/src/index";
 import { guardedFetch, assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
-import { decryptToken } from "../../../../packages/shared/src/crypto";
 import { logger } from "../../../../packages/shared/src/logger";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { computeLandingAllowance } from "../../../api/src/routes/landing";
@@ -227,38 +237,22 @@ async function buildCrawlSummary(
 }
 
 // ---------------------------------------------------------------------------
-// Client BYOK key resolution — same priority + decrypt pattern as
-// apps/api/src/routes/system.ts:resolveProviderKey, adapted for the worker's
-// raw postgres-js client (already RLS-scoped by withRlsContext at the caller).
-// SERP is excluded — it is a search API, not a content generator (same
-// exclusion content-studio.ts's ContentProvider makes).
+// Platform key resolution (issue #217) — Ozvor Pages generation is
+// PLATFORM-funded, never customer BYOK. process.env.ANTHROPIC_API_KEY is the
+// founder's live platform key, kept current by
+// packages/shared/src/platform-keys.ts's applyPlatformKeyOverrides (called
+// at worker boot + on a refresh interval — see apps/worker/src/index.ts).
+// This is the SAME mechanism the audit engine relies on for its own platform
+// probe calls; landing-generate never queries `provider_keys` (customer
+// BYOK), which stays reserved for Content Studio / customer-initiated
+// content generation (apps/api/src/routes/system.ts:resolveProviderKey).
+// No key configured → mock mode; this is never a failure.
 // ---------------------------------------------------------------------------
 
-const KEY_PROVIDER_PRIORITY: ContentProvider[] = ["anthropic", "openai", "gemini", "perplexity"];
-
-async function resolveClientProviderKey(
-  sql: postgres.Sql,
-  tenantId: string
-): Promise<{ provider: ContentProvider; apiKey: string } | null> {
-  try {
-    const rows = await sql<{ provider: string; key_encrypted: Buffer | Uint8Array }[]>`
-      SELECT provider, key_encrypted FROM provider_keys WHERE tenant_id = ${tenantId}
-    `;
-    const byProvider = new Map(rows.map((r) => [r.provider, r.key_encrypted]));
-    for (const provider of KEY_PROVIDER_PRIORITY) {
-      const blob = byProvider.get(provider);
-      if (!blob) continue;
-      try {
-        const apiKey = decryptToken(Buffer.isBuffer(blob) ? blob : Buffer.from(blob));
-        return { provider, apiKey };
-      } catch {
-        continue; // corrupt/old-key-version blob — try the next provider
-      }
-    }
-    return null;
-  } catch {
-    return null; // provider_keys unreadable for any reason — fall back to mock mode
-  }
+export function resolvePlatformAnthropicKey(): { provider: ContentProvider; apiKey: string } | null {
+  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  if (!apiKey || !apiKey.trim()) return null;
+  return { provider: "anthropic", apiKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -350,9 +344,9 @@ export async function processLandingGenerateJob(
       }
     }
 
-    // 6. Client's own BYOK key — never a platform key (content is client-key,
-    //    same cost model as content-studio.ts). Absent → mock mode, not a failure.
-    const clientKey = await resolveClientProviderKey(sql, tenant_id);
+    // 6. Platform Anthropic key (issue #217) — never customer BYOK for Ozvor
+    //    Pages generation. Absent → mock mode, not a failure.
+    const platformKey = resolvePlatformAnthropicKey();
 
     // 7. Build the bundle (pure — packages/llm/src/landing-generate.ts).
     const bundle = await buildLandingBundle(
@@ -363,7 +357,9 @@ export async function processLandingGenerateJob(
         crawlSummary,
         auditGaps,
       },
-      clientKey ? { mode: "llm", apiKey: clientKey.apiKey, provider: clientKey.provider } : { mode: "mock" }
+      platformKey
+        ? { mode: "llm", apiKey: platformKey.apiKey, provider: platformKey.provider }
+        : { mode: "mock" }
     );
 
     // 8. Load existing pages + the tenant's page allowance (never exceed the cap).
@@ -391,10 +387,10 @@ export async function processLandingGenerateJob(
       }
     }
 
-    const logProvider = bundle.mode === "llm" && clientKey ? dbProvider(clientKey.provider) : "internal";
+    const logProvider = bundle.mode === "llm" && platformKey ? dbProvider(platformKey.provider) : "internal";
     const modelVersion =
-      bundle.mode === "llm" && clientKey
-        ? process.env[`${clientKey.provider.toUpperCase()}_MODEL`] ?? clientKey.provider
+      bundle.mode === "llm" && platformKey
+        ? process.env[`${platformKey.provider.toUpperCase()}_MODEL`] ?? platformKey.provider
         : "mock-template-v1";
 
     let pagesWritten = 0;
@@ -487,6 +483,19 @@ export async function processLandingGenerateJob(
     // 9. Link consumed plan_task rows to this site (status untouched — PR-7 closes the loop).
     for (const taskId of consumedTaskIds) {
       await sql`UPDATE plan_task SET landing_site_id = ${site_id} WHERE id = ${taskId}`;
+    }
+
+    // 10. Record estimated platform spend (issue #217) — visibility only, same
+    // ledger + try/catch pattern as audit-run.ts's post-completion spend
+    // record. Only real LLM runs cost anything against the platform key;
+    // mock-mode runs are free and are not recorded.
+    if (bundle.mode === "llm") {
+      try {
+        const landingGenerateCostCents = Number(process.env["LANDING_GENERATE_COST_CENTS"] ?? 15);
+        await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('pages_generate', ${landingGenerateCostCents})`;
+      } catch (err) {
+        logger.warn("landing_generate_spend_record_failed", { message: (err as Error).message });
+      }
     }
 
     logger.info("landing_generate_completed", {

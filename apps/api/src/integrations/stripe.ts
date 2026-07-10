@@ -282,14 +282,40 @@ export const PLAN_LIMITS: Record<
     max_landing_sites: number;
     /** 5-page deliverable (home + 4) plus one spare slot for a campaign page. */
     max_pages_per_site: number;
+    /** Cost-control (#217): how often a MANUAL (non-cron) audit may be
+     * re-triggered per brand. 'week' = once every 7 days, 'day' = once every
+     * 24h. Scheduled monitoring (triggered_by='cron') is NEVER subject to
+     * this — it has its own weekly/daily cadence, unchanged. */
+    manual_audit_interval: "week" | "day";
+    /** Cost-control (#217): tenant-wide backstop on manual audits in a
+     * rolling 24h window (across ALL brands) — bounds brand-delete-and-recreate
+     * abuse of the per-brand window above. super_admin bypasses this. */
+    audit_backstop_24h: number;
+    /** Cost-control (#217): Ozvor Pages REgenerations per site per calendar
+     * month (UTC). Free is 0 here — free tenants regenerate against a
+     * LIFETIME quota (2 per $99-credit site) enforced separately in
+     * routes/landing.ts, not this monthly figure. */
+    pages_regens_per_site_month: number;
   }
 > = {
   // Free is a deliberate TASTE, not a usable tier: 1 brand, 1 competitor, a
   // shallow 10-prompt audit, no monitoring. Enough to see your standing once —
   // upgrade to Growth for real depth + weekly tracking.
-  free: { max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false, max_landing_sites: 0, max_pages_per_site: 6 },
-  growth: { max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true, max_landing_sites: 1, max_pages_per_site: 6 },
-  agency: { max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true, max_landing_sites: 25, max_pages_per_site: 6 },
+  free: {
+    max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false,
+    max_landing_sites: 0, max_pages_per_site: 6,
+    manual_audit_interval: "week", audit_backstop_24h: 3, pages_regens_per_site_month: 0,
+  },
+  growth: {
+    max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
+    max_landing_sites: 1, max_pages_per_site: 6,
+    manual_audit_interval: "week", audit_backstop_24h: 5, pages_regens_per_site_month: 5,
+  },
+  agency: {
+    max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
+    max_landing_sites: 25, max_pages_per_site: 6,
+    manual_audit_interval: "day", audit_backstop_24h: 30, pages_regens_per_site_month: 5,
+  },
 };
 
 // ---------------------------------------------------------------------------

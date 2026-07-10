@@ -51,7 +51,9 @@ WHERE nspname = 'public'
     'landing_page_versions',
     'landing_testimonials',
     'landing_leads',
-    'landing_events'
+    'landing_events',
+    -- Cost-control quotas (20260710000004_usage_counters, issue #217)
+    'usage_counters'
   )
   AND NOT relrowsecurity;
 
