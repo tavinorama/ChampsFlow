@@ -1375,3 +1375,45 @@ No Critical findings. No secret literals in source code or bundles. No PII in lo
 **Next action**: APPROVED_WITH_CONDITIONS. Conditions F-1 (git-tracked .env.local) and F-2 (missing tenant filter) are High priority and must be resolved before Gate 7 sign-off. Conditions F-3 through F-5 are Medium and required at Gate 7. Conditions F-6 through F-8 are Low, addressed as part of Gate 7 deploy hardening. Pipeline may remain at Gate 7 preparation. `devops-engineer` and `backend-coder` receive this entry as their Gate 7 input. `security-compliance-officer` returns at Gate 7 for pre-launch sign-off.
 
 **Signed**: security-compliance-officer — 2026-06-27
+
+---
+
+## Entity-identity correction — 2026-07-09 — legal-privacy-officer
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+**Entry type**: Operational compliance-hygiene verdict (ratifies a factual/administrative correction, not a scope or risk change). Requested and reviewed outside the normal phase-gate sequence, at the current point in the product lifecycle (post Gate 6→7 / pre Gate 7 go-live).
+
+**Inputs reviewed**:
+- `docs/compliance/ropa.md` (Controller / Processor Info section, updated 2026-07-08 — the source of truth for this correction)
+- `docs/compliance/dpia.md` (Section 1-GEO, Controller / Processor Identity — corrected by this same-dated action)
+- `docs/compliance/regulatory-map.md` (2026-05-11 and 2026-05-30 entity carry-forward notes; 2026-07-09 correction entry appended by this same-dated action)
+- Live web legal pages: `apps/web/src/app/privacy-policy/page.tsx`, `apps/web/src/app/terms-of-service/page.tsx`, `apps/web/src/app/legal/dpa/page.tsx` (confirmed already consistent with the corrected identity — no product/web-app files were modified as part of this compliance-hygiene pass)
+
+**Scope of this verdict**: Ratifies the correction of the controller's entity identity across the compliance artifact set, closing the discrepancy between (a) `ropa.md`, which had already been corrected on 2026-07-08, and (b) `dpia.md` and `regulatory-map.md`, which still carried stale "TrustIndex AI Ltda (Sociedade Limitada, CNPJ pending)" / "Portugal Lda" / "registered office and Portuguese VAT number to be added" language.
+
+**Confirmed entity identity** (unchanged from ropa.md 2026-07-08; now consistent everywhere):
+- Trade name (nome fantasia): **Ozvor**
+- Entity type: Brazilian **MEI (Microempreendedor Individual)** — a natural person operating as an individual entrepreneur. Not a Sociedade Limitada (Ltda); not a Portugal Lda.
+- **CNPJ 67.609.444/0001-08** — the unique public identifier of record.
+- Registered office (sede): Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil.
+- Regulator: **ANPD**.
+- The holder's civil name (razão social) is **not reproduced** in any compliance document or legal page, per the controller's instruction. The CNPJ is the public identifier of record; "Ozvor" is the trade name displayed to data subjects.
+
+**Conditions / Blockers**:
+1. [INFO] No blocking conditions. This is a factual correction that does not alter any prior GDPR, LGPD, CCPA/CPRA, EU AI Act, or FTC §5 determination on record — a natural-person-operated business remains a "controller" / "controlador" / "business" under GDPR Art. 4(7), LGPD Art. 5(VI), and CCPA § 1798.140(d) respectively, as already reasoned in ropa.md's Entity-type note.
+2. [CARRIED — unchanged] GDPR Art. 27 EU representative appointment remains a Gate 7 hard stop (unaffected by this correction).
+3. [CARRIED — unchanged] LGPD Art. 41 Encarregado de Dados appointment remains a Gate 7 hard stop (unaffected by this correction).
+4. [CARRIED — unchanged] GEO-D1 (provider transfer-mechanism confirmations), GEO-D2 (citation_check.sources review — engineering closed), and GEO-D3 (LGPD BR→US transfer basis) remain open per the 2026-06-09 DPIA verdict, unaffected by this correction.
+
+**Consistency confirmation**: The entity identity (Ozvor / Brazilian MEI / CNPJ 67.609.444/0001-08 / registered office Rua José Borges Abrantes nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil / regulator ANPD) is now CONSISTENT across `docs/compliance/ropa.md`, `docs/compliance/dpia.md`, `docs/compliance/regulatory-map.md`, and the live web legal pages (`privacy-policy`, `terms-of-service`, `legal/dpa`). The civil name (razão social) is intentionally not reproduced in any of these documents, per the controller's instruction; the CNPJ is treated as the public identifier of record throughout.
+
+**Artifacts updated**:
+- `docs/compliance/dpia.md` — Section 1-GEO Controller/Processor Identity block corrected; Approval section update-log entry appended. No other DPIA content changed.
+- `docs/compliance/regulatory-map.md` — 2026-07-09 dated correction entry appended (append-only); inline `[Superseded 2026-07-09 ...]` markers added next to the two stale carry-forward lines (2026-05-11 Portuguese VAT/registered-office note; 2026-05-30 Ltda/EI-MEI entity-type note) without deleting their original text; TL;DR note appended.
+- `docs/compliance/gate-log.md` — this entry (appended)
+- `docs/compliance/ropa.md` — not modified by this action (already corrected 2026-07-08; this verdict ratifies that prior correction and closes the "P5 legal-gate verdict... pending" note in its Approval section)
+
+**Next action**: No pipeline phase change. This closes the "P5 legal-gate verdict for this identity correction is pending" note referenced in `docs/compliance/ropa.md`'s Approval/Update-log section (2026-07-08 entry). Gate 7 hard stops (EU Art. 27 representative, LGPD Encarregado appointment) and open DPIA conditions (GEO-D1, GEO-D2, GEO-D3) remain tracked and unaffected.
+
+**Signed**: legal-privacy-officer — 2026-07-09
