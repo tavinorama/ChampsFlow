@@ -1485,6 +1485,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       effort: string; impact: string; priority: number; status: string;
       evidence: string | null; metric: string | null; owner: string;
       due_date: string | null;
+      // landing_site_id (#208 PR-7): when set, this card was consumed by (or
+      // is ready to be applied by) an Ozvor Pages generation run — the Fix
+      // Queue deep-links to that site's rebuild instead of leaving the card
+      // as a dead end.
+      landing_site_id: string | null;
     };
     // due_date (Batch D/2 scheduling) is added by a migration. If this environment
     // hasn't applied it yet, degrade gracefully rather than 500 the whole plan —
@@ -1493,18 +1498,19 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     let taskRows: TaskRow[];
     try {
       const r = await db.query<TaskRow>(
-        `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner, due_date
+        `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner,
+                due_date, landing_site_id
            FROM plan_task WHERE plan_id = $1 ORDER BY priority DESC`,
         [plan.id]
       );
       taskRows = r.rows;
     } catch {
-      const r = await db.query<Omit<TaskRow, "due_date">>(
+      const r = await db.query<Omit<TaskRow, "due_date" | "landing_site_id">>(
         `SELECT id, vector, gap, action, effort, impact, priority, status, evidence, metric, owner
            FROM plan_task WHERE plan_id = $1 ORDER BY priority DESC`,
         [plan.id]
       );
-      taskRows = r.rows.map((t) => ({ ...t, due_date: null }));
+      taskRows = r.rows.map((t) => ({ ...t, due_date: null, landing_site_id: null }));
     }
     const taskRes = { rows: taskRows };
 

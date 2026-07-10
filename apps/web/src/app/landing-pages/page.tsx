@@ -41,6 +41,8 @@ interface SiteListItem {
   created_at: string;
   updated_at: string;
   page_count: number;
+  /** Open audit-plan fixes ready to apply on the next generate/regenerate (#208 PR-7). */
+  open_fixes: number;
 }
 
 type LoadState = "loading" | "loaded" | "error";
@@ -389,16 +391,29 @@ export default function LandingPagesHubPage() {
                             {site.page_count} page{site.page_count === 1 ? "" : "s"} · updated {formatDate(site.updated_at)}
                           </div>
                         </div>
-                        <span
-                          role="status"
-                          aria-label={`Status: ${STATUS_LABEL[site.status] ?? site.status}`}
-                          style={{
-                            flexShrink: 0, display: "inline-block", padding: "2px 10px", borderRadius: "var(--radius-pill)",
-                            fontSize: "var(--font-size-caption)", fontWeight: 600, color: colors.text, backgroundColor: colors.bg,
-                          }}
-                        >
-                          {STATUS_LABEL[site.status] ?? site.status}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--space-2)", flexShrink: 0 }}>
+                          <span
+                            role="status"
+                            aria-label={`Status: ${STATUS_LABEL[site.status] ?? site.status}`}
+                            style={{
+                              display: "inline-block", padding: "2px 10px", borderRadius: "var(--radius-pill)",
+                              fontSize: "var(--font-size-caption)", fontWeight: 600, color: colors.text, backgroundColor: colors.bg,
+                            }}
+                          >
+                            {STATUS_LABEL[site.status] ?? site.status}
+                          </span>
+                          {site.open_fixes > 0 && (
+                            <span
+                              style={{
+                                display: "inline-block", padding: "2px 10px", borderRadius: "var(--radius-pill)",
+                                fontSize: "var(--font-size-caption)", fontWeight: 600,
+                                color: "var(--color-accent-ink)", backgroundColor: "var(--color-badge-ai-bg)", whiteSpace: "nowrap",
+                              }}
+                            >
+                              {site.open_fixes} fix{site.open_fixes === 1 ? "" : "es"} ready
+                            </span>
+                          )}
+                        </div>
                       </a>
                     </li>
                   );
