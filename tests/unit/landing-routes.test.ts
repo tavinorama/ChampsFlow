@@ -8,7 +8,8 @@
  * /l/[slug] namespace (reserved words, shape) and the deterministic slugify.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
+import { Hono } from "hono";
 import {
   computeLandingAllowance,
   validateSiteSlug,
@@ -16,6 +17,7 @@ import {
   RESERVED_SITE_SLUGS,
   PAGE_TYPES,
   containsPlaceholder,
+  registerLandingRoutes,
 } from "../../apps/api/src/routes/landing";
 
 describe("computeLandingAllowance — the plan/credit access matrix", () => {
@@ -135,5 +137,148 @@ describe("containsPlaceholder — the publish guard (#208 PR-5)", () => {
     circular.self = circular;
     expect(() => containsPlaceholder([circular])).not.toThrow();
     expect(containsPlaceholder([circular])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/landing/sites/:id/leads (#208 PR-8) — the tenant's read-only view
+// of end-customer form submissions. Uses the DEV_AUTH_BYPASS pattern
+// (tests/unit/agency.test.ts) with an in-memory mock of PostgresClient.
+// ---------------------------------------------------------------------------
+
+describe("GET /api/landing/sites/:id/leads", () => {
+  const TENANT_ID = "11111111-1111-1111-1111-111111111111";
+  const SITE_ID = "22222222-2222-2222-2222-222222222222";
+  const OTHER_SITE_ID = "33333333-3333-3333-3333-333333333333";
+
+  interface MockRow {
+    [key: string]: unknown;
+  }
+
+  function makeMockDb(
+    queryImpl?: (sql: string, params?: unknown[]) => Promise<{ rows: MockRow[] }>
+  ) {
+    const query = async (sql: string, params?: unknown[]) =>
+      queryImpl ? queryImpl(sql, params) : { rows: [] as MockRow[] };
+    return {
+      query,
+      setTenantId: async () => {},
+      transaction: async () => undefined,
+    };
+  }
+
+  function buildApp(db: ReturnType<typeof makeMockDb>): Hono {
+    const app = new Hono();
+    registerLandingRoutes(app, db as never);
+    return app;
+  }
+
+  const originalEnv = process.env;
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "test",
+      DEV_AUTH_BYPASS: "1",
+      DEV_TENANT_ID: TENANT_ID,
+    };
+  });
+
+  it("returns 404 when the site does not belong to this tenant (ownership check)", async () => {
+    const db = makeMockDb(async (sql) => {
+      if (sql.includes("FROM landing_sites")) return { rows: [] }; // siteOwnedByTenant → not found
+      return { rows: [] };
+    });
+    const app = buildApp(db);
+    const res = await app.request(`/api/landing/sites/${OTHER_SITE_ID}/leads`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.message).toMatch(/not found/i);
+  });
+
+  it("returns leads scoped to the site, newest first, with the expected row shape", async () => {
+    const leadRows = [
+      {
+        id: "aaaaaaaa-0000-0000-0000-000000000001",
+        name: "Jane Doe",
+        email: "jane@example.com",
+        phone: "555-0100",
+        message: "Interested in a quote.",
+        consent: true,
+        created_at: "2026-07-10T12:00:00Z",
+      },
+      {
+        id: "aaaaaaaa-0000-0000-0000-000000000002",
+        name: "",
+        email: "anon@example.com",
+        phone: "",
+        message: "",
+        consent: false,
+        created_at: "2026-07-09T09:00:00Z",
+      },
+    ];
+    const db = makeMockDb(async (sql) => {
+      if (sql.includes("FROM landing_sites")) return { rows: [{ id: SITE_ID }] };
+      if (sql.includes("FROM landing_leads")) return { rows: leadRows };
+      return { rows: [] };
+    });
+    const app = buildApp(db);
+    const res = await app.request(`/api/landing/sites/${SITE_ID}/leads`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.leads).toHaveLength(2);
+    expect(body.leads[0]).toEqual(leadRows[0]);
+    expect(body.leads[0]).not.toHaveProperty("ip_trunc");
+    expect(body.leads[0]).not.toHaveProperty("user_agent");
+    expect(body.leads[0]).not.toHaveProperty("tenant_id");
+  });
+
+  it("returns an empty array when the site has no leads", async () => {
+    const db = makeMockDb(async (sql) => {
+      if (sql.includes("FROM landing_sites")) return { rows: [{ id: SITE_ID }] };
+      if (sql.includes("FROM landing_leads")) return { rows: [] };
+      return { rows: [] };
+    });
+    const app = buildApp(db);
+    const res = await app.request(`/api/landing/sites/${SITE_ID}/leads`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.leads).toEqual([]);
+  });
+
+  it("queries with a LIMIT 200 and ORDER BY created_at DESC (limit shape)", async () => {
+    let capturedSql = "";
+    const db = makeMockDb(async (sql) => {
+      if (sql.includes("FROM landing_sites")) return { rows: [{ id: SITE_ID }] };
+      if (sql.includes("FROM landing_leads")) {
+        capturedSql = sql;
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+    const app = buildApp(db);
+    await app.request(`/api/landing/sites/${SITE_ID}/leads`, {
+      headers: { Authorization: "Bearer dev" },
+    });
+    expect(capturedSql).toMatch(/ORDER BY created_at DESC/i);
+    expect(capturedSql).toMatch(/LIMIT 200/i);
+  });
+
+  it("returns 401 when no auth header (production mode — no bypass)", async () => {
+    const savedBypass = process.env.DEV_AUTH_BYPASS;
+    process.env.DEV_AUTH_BYPASS = "";
+    try {
+      const db = makeMockDb();
+      const app = buildApp(db);
+      const res = await app.request(`/api/landing/sites/${SITE_ID}/leads`);
+      expect(res.status).toBe(401);
+    } finally {
+      process.env.DEV_AUTH_BYPASS = savedBypass;
+    }
   });
 });

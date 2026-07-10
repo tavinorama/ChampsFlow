@@ -125,6 +125,7 @@ export function SiteFooter() {
                 ["Compare", "/vs"],
                 ["Tutorials", "/learn"],
                 ["Case study", "/results"],
+                ["Ozvor Pages", "/local-pages"],
                 ["Plans", "/pricing"],
               ]}
             />
