@@ -44,7 +44,14 @@ WHERE nspname = 'public'
     -- Checkout-first onboarding (20260627000007_pending_subscription)
     -- NOTE: this table has no tenant_id; RLS is enabled with a permissive
     -- "service_all" policy (intentional — pre-tenant by design).
-    'pending_subscription'
+    'pending_subscription',
+    -- Ozvor Pages (20260710000001_ozvor_pages_schema)
+    'landing_sites',
+    'landing_pages',
+    'landing_page_versions',
+    'landing_testimonials',
+    'landing_leads',
+    'landing_events'
   )
   AND NOT relrowsecurity;
 
