@@ -257,6 +257,40 @@ async function siteOwnedByTenant(
 }
 
 // ---------------------------------------------------------------------------
+// writeLandingAuditLog — append-only publish/unpublish trail (PR-6 addition,
+// #208 issue). Same pattern as agency.ts' writeAuditLog / billing.ts'
+// writeBillingAuditLog. Never blocks the caller's response — logs and
+// swallows on failure. No PII in metadata (site/page ids only).
+// ---------------------------------------------------------------------------
+
+async function writeLandingAuditLog(
+  db: PostgresClient,
+  eventType:
+    | "landing_site_published"
+    | "landing_site_unpublished"
+    | "landing_page_published"
+    | "landing_page_unpublished",
+  actorUserId: string,
+  tenantId: string,
+  targetEntity: "landing_site" | "landing_page",
+  targetId: string
+): Promise<void> {
+  try {
+    await db.query(
+      `INSERT INTO audit_log
+         (id, tenant_id, actor_user_id, event_type, target_entity, target_id, metadata, created_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, '{}'::jsonb, NOW())`,
+      [tenantId, actorUserId, eventType, targetEntity, targetId]
+    );
+  } catch (err) {
+    logger.error("landing_audit_log_write_failed", {
+      event_type: eventType,
+      message: (err as Error).message?.slice(0, 160),
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Generator job queue (BullMQ) — same Redis connection convention as
 // audits.ts' getAuditQueue / schedules.ts.
 // ---------------------------------------------------------------------------
@@ -534,6 +568,31 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         ]
       );
       if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
+
+      // Publish/unpublish audit trail — only on an actual transition, not
+      // every business/theme edit. Never blocks the response.
+      if (body.status !== undefined && body.status !== current.rows[0].status) {
+        if (body.status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_site_published",
+            auth.userId,
+            auth.tenantId,
+            "landing_site",
+            siteId
+          );
+        } else if (current.rows[0].status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_site_unpublished",
+            auth.userId,
+            auth.tenantId,
+            "landing_site",
+            siteId
+          );
+        }
+      }
+
       return c.json({ ok: true });
     }
   );
@@ -865,8 +924,9 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         sections: unknown;
         seo: unknown;
         page_type: string;
+        status: string;
       }>(
-        `SELECT slug, sections, seo, page_type FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
+        `SELECT slug, sections, seo, page_type, status FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
         [pageId, auth.tenantId]
       );
       const row = current.rows[0];
@@ -937,6 +997,31 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         }
         throw err;
       }
+
+      // Publish/unpublish audit trail — only on an actual transition, not
+      // every content edit. Never blocks the response.
+      if (body.status !== undefined && body.status !== row.status) {
+        if (body.status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_page_published",
+            auth.userId,
+            auth.tenantId,
+            "landing_page",
+            pageId ?? ""
+          );
+        } else if (row.status === "published") {
+          void writeLandingAuditLog(
+            db,
+            "landing_page_unpublished",
+            auth.userId,
+            auth.tenantId,
+            "landing_page",
+            pageId ?? ""
+          );
+        }
+      }
+
       return c.json({ ok: true });
     }
   );
