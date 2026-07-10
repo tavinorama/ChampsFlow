@@ -67,7 +67,9 @@
  */
 
 /** Bump this string when the cookie policy changes materially. */
-export const CONSENT_VERSION = "2026-06-25-v1";
+// v2 (2026-07-10): Google Analytics 4 introduced (consent-gated) — material
+// change, so everyone who consented under v1 is re-prompted (GDPR Art. 7).
+export const CONSENT_VERSION = "2026-07-10-v2";
 
 /** Cookie name + localStorage key used for the consent record. */
 export const CONSENT_STORAGE_KEY = "ti_cookie_consent";

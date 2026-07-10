@@ -34,14 +34,18 @@ export async function middleware(request: NextRequest) {
     // strict-dynamic.
     // js.stripe.com (Stripe) + assets.calendly.com (Calendly widget.js) are
     // host-allowlist fallbacks for browsers that ignore 'strict-dynamic'.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://assets.calendly.com`,
+    // www.googletagmanager.com (GA4 gtag.js, consent-gated in Ga4Analytics) is
+    // a host-allowlist fallback like the others below.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com`,
     // Next.js injects inline <style> for CSS-in-JS; 'unsafe-inline' for styles
     // is low-risk (styles can't exfiltrate data) and required. Calendly also
     // injects its own inline styles for the embed.
     "style-src 'self' 'unsafe-inline' https://assets.calendly.com",
-    "img-src 'self' data: https://media.licdn.com https://pbs.twimg.com https://instagram.com https://cdninstagram.com https://images.unsplash.com https://*.calendly.com",
+    // *.google-analytics.com / *.googletagmanager.com: GA4 collect pixels.
+    "img-src 'self' data: https://media.licdn.com https://pbs.twimg.com https://instagram.com https://cdninstagram.com https://images.unsplash.com https://*.calendly.com https://*.google-analytics.com https://*.googletagmanager.com",
     "font-src 'self' https://assets.calendly.com",
-    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://r.stripe.com https://calendly.com https://*.calendly.com",
+    // GA4 sends hits to regionalized *.google-analytics.com / *.analytics.google.com.
+    "connect-src 'self' https://*.supabase.co https://api.stripe.com https://r.stripe.com https://calendly.com https://*.calendly.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
     // Calendly renders its booking UI in an iframe from calendly.com.
     "frame-src https://js.stripe.com https://hooks.stripe.com https://calendly.com",
     "object-src 'none'",
