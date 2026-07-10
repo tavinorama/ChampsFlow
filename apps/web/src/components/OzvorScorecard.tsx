@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TrustIndexScorecard — reusable presentational component
+ * OzvorScorecard — reusable presentational component
  *
  * Mirrors the landing hero's audit-screen mockup (AppMockupSVG) with real
  * DOM/CSS so the authenticated product matches what we sell on the landing page.
@@ -51,7 +51,7 @@ export interface ScorecardCompetitor {
   displacement: number;
 }
 
-export interface TrustIndexScorecardProps {
+export interface OzvorScorecardProps {
   overall: number | null;
   /** NEW: the three primary scores */
   threeScores?: ThreeScores;
@@ -578,7 +578,7 @@ function CompetitorCard({ competitors }: { competitors: ScorecardCompetitor[] })
 // Main export
 // ---------------------------------------------------------------------------
 
-export function TrustIndexScorecard({
+export function OzvorScorecard({
   overall,
   threeScores,
   vectors,
@@ -586,7 +586,7 @@ export function TrustIndexScorecard({
   probeSummary,
   brandName,
   compact = false,
-}: TrustIndexScorecardProps) {
+}: OzvorScorecardProps) {
   useScorecardStyles();
 
   const hasCompetitors =

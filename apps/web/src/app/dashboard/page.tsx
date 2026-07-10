@@ -10,7 +10,7 @@
  * Toggle: POST /api/brands/:id/monitoring { enabled }.
  *
  * Featured brand: the brand with the most recent audit is featured at the top
- * with a compact TrustIndexScorecard, fetching its breakdown from the same
+ * with a compact OzvorScorecard, fetching its breakdown from the same
  * /api/brands/:id/score + /api/audits/:id/breakdown endpoints the brand
  * detail page uses. Gracefully degrades to the summary tiles on failure.
  *
@@ -21,7 +21,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { apiFetch, ensureProvisioned, getSupabase } from "../../lib/supabase-browser";
-import { TrustIndexScorecard, type ThreeScores } from "../../components/TrustIndexScorecard";
+import { OzvorScorecard, type ThreeScores } from "../../components/OzvorScorecard";
 import { ScoreTrend } from "../../components/ScoreTrend";
 import { ClaimedHistoryCard } from "../../components/ClaimedHistoryCard";
 
@@ -562,7 +562,7 @@ export default function DashboardPage() {
             Featured brand · Latest audit
           </div>
 
-          <TrustIndexScorecard
+          <OzvorScorecard
             compact
             overall={featured.overall}
             threeScores={featured.threeScores ?? undefined}
