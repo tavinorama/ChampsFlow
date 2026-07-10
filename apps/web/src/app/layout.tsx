@@ -32,6 +32,7 @@ import { SiteFooter } from "../components/SiteFooter";
 import { AppLegalStrip } from "../components/AppLegalStrip";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 import { CookieConsent } from "../components/CookieConsent";
+import { Ga4Analytics } from "../components/Ga4Analytics";
 
 const schibsted = Schibsted_Grotesk({
   subsets: ["latin"],
@@ -250,6 +251,9 @@ export default async function RootLayout({
             Self-gates on first visit + listens for the footer "Cookie
             preferences" re-open trigger. */}
         <CookieConsent />
+        {/* GA4 — HARD consent gate: renders nothing and loads nothing unless
+            NEXT_PUBLIC_GA4_ID is set AND the user opted in to analytics. */}
+        <Ga4Analytics />
       </body>
     </html>
   );
