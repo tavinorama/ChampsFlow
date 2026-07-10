@@ -388,6 +388,57 @@ export default function LandingPagesHubPage() {
                           ? "Filled from Google Maps — check and edit anything below before creating your site."
                           : "We'll pre-fill the fields below from your Google Maps listing. Everything stays editable.")}
                     </p>
+                    {/* SMB owners often don't know where the Maps share link
+                        lives — teach it inline (founder request, #208 PR-9). */}
+                    <details style={{ marginTop: "var(--space-2)" }}>
+                      <summary
+                        style={{
+                          cursor: "pointer",
+                          fontSize: "var(--font-size-caption)",
+                          color: "var(--color-primary)",
+                          fontWeight: 600,
+                          minHeight: "var(--min-tap-target, 44px)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        Where do I find my Google Maps link?
+                      </summary>
+                      <ol
+                        style={{
+                          margin: "var(--space-2) 0 0 0",
+                          paddingLeft: "var(--space-5)",
+                          fontSize: "var(--font-size-caption)",
+                          color: "var(--color-muted)",
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        <li>
+                          Open <strong>Google Maps</strong> (the app, or google.com/maps in your
+                          browser).
+                        </li>
+                        <li>
+                          Search for <strong>your business name</strong> and open its listing.
+                        </li>
+                        <li>
+                          Tap/click <strong>Share</strong> (the arrow icon — on desktop it&apos;s
+                          in the left panel under your business name).
+                        </li>
+                        <li>
+                          Choose <strong>Copy link</strong> and paste it in the field above.
+                        </li>
+                      </ol>
+                      <p
+                        style={{
+                          margin: "var(--space-2) 0 0 0",
+                          fontSize: "var(--font-size-caption)",
+                          color: "var(--color-muted)",
+                        }}
+                      >
+                        Don&apos;t have a Google Maps listing? No problem — just fill in the
+                        fields below by hand.
+                      </p>
+                    </details>
                   </Field>
                 )}
 
