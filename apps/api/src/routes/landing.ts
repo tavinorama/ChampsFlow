@@ -620,9 +620,53 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         return c.json({ message: "This site is suspended. Contact support.", code: "SITE_SUSPENDED" }, 403);
       }
 
+      const jobKind: "generate" | "regenerate" =
+        (body.job_kind as "generate" | "regenerate" | undefined) ??
+        (parseInt(site.page_count, 10) > 1 ? "regenerate" : "generate");
+
+      const queue = getLandingGenerateQueue();
+      const jobId = `landing-generate:${siteId}`;
+
+      // Duplicate/in-flight check FIRST (Hermes review, #221): a double-click,
+      // refresh, or frontend retry while a run is in flight must 409 WITHOUT
+      // touching the regeneration quota — the quota charges ACCEPTED runs,
+      // never rejected duplicates.
+      try {
+        const existing = await queue.getJob(jobId);
+        if (existing) {
+          const state = await existing.getState();
+          if (state === "waiting" || state === "active" || state === "delayed") {
+            return c.json(
+              {
+                message: "A generation run for this site is already in progress. Wait for it to finish.",
+                code: "GENERATE_ALREADY_RUNNING",
+                job_id: jobId,
+              },
+              409
+            );
+          }
+          // Previous run settled (completed/failed) — clear it so the stable
+          // jobId can be reused for this fresh run.
+          await existing.remove().catch(() => {
+            // Best-effort — BullMQ add() below will still surface any real conflict.
+          });
+        }
+      } catch (err) {
+        logger.error("landing_generate_enqueue_failed", {
+          tenantId: auth.tenantId,
+          siteId,
+          message: (err as Error).message?.slice(0, 160),
+        });
+        return c.json({ message: "Could not start the generator. Please try again." }, 503);
+      }
+
       // Pages regeneration quota (issue #217). INITIAL generation (no page of
       // this site carries generated content yet) is always free — no counter
       // touched. A REGENERATION is quota-checked; super_admin bypasses.
+      // (A concurrent request slipping between the in-flight check above and
+      // add() below dedupes on the stable jobId — worst case one spare charge
+      // for a genuinely simultaneous double-submit, never for plain retries.)
+      let chargedPeriodStart: string | null = null;
       const contentRes = await db.query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM landing_pages
           WHERE site_id = $1 AND tenant_id = $2 AND sections <> '[]'::jsonb`,
@@ -661,41 +705,29 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
             429
           );
         }
+        chargedPeriodStart = periodStart;
       }
 
-      const jobKind: "generate" | "regenerate" =
-        (body.job_kind as "generate" | "regenerate" | undefined) ??
-        (parseInt(site.page_count, 10) > 1 ? "regenerate" : "generate");
-
-      const queue = getLandingGenerateQueue();
-      const jobId = `landing-generate:${siteId}`;
-
       try {
-        const existing = await queue.getJob(jobId);
-        if (existing) {
-          const state = await existing.getState();
-          if (state === "waiting" || state === "active" || state === "delayed") {
-            return c.json(
-              {
-                message: "A generation run for this site is already in progress. Wait for it to finish.",
-                code: "GENERATE_ALREADY_RUNNING",
-                job_id: jobId,
-              },
-              409
-            );
-          }
-          // Previous run settled (completed/failed) — clear it so the stable
-          // jobId can be reused for this fresh run.
-          await existing.remove().catch(() => {
-            // Best-effort — BullMQ add() below will still surface any real conflict.
-          });
-        }
         await queue.add(
           "generate",
           { tenant_id: auth.tenantId, site_id: siteId, job_kind: jobKind },
           { jobId }
         );
       } catch (err) {
+        // The job never entered the queue — refund the charge (Hermes, #221):
+        // an enqueue failure is not a generation run.
+        if (chargedPeriodStart) {
+          await decrementUsageCounter(
+            db,
+            auth.tenantId,
+            PAGES_REGEN_FEATURE,
+            siteId,
+            chargedPeriodStart
+          ).catch(() => {
+            // Best-effort refund — never mask the 503 below.
+          });
+        }
         logger.error("landing_generate_enqueue_failed", {
           tenantId: auth.tenantId,
           siteId,

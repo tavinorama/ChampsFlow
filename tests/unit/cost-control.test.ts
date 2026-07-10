@@ -27,10 +27,38 @@
  * below returns its response strictly before that point.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
+
+// ---------------------------------------------------------------------------
+// BullMQ/ioredis mocks (Hermes review, #221): the generate route now checks
+// the queue for an in-flight job BEFORE charging quota, so route tests must
+// cross the queue layer. Mocking it also lets us test the full happy path and
+// the enqueue-failure refund without a live Redis.
+// ---------------------------------------------------------------------------
+const { queueMock } = vi.hoisted(() => ({
+  queueMock: {
+    getJob: vi.fn<() => Promise<unknown>>(async () => null),
+    add: vi.fn(async () => ({})),
+  },
+}));
+vi.mock("bullmq", () => ({
+  // Constructible (a `new`-ed function returning an object yields that object).
+  Queue: function Queue() {
+    return queueMock;
+  },
+  Worker: class MockWorker {},
+}));
+vi.mock("ioredis", () => ({
+  // A real class — `new IORedis(...)` must work (arrow fns aren't constructible).
+  default: class MockIORedis {
+    on(): void {
+      /* no-op */
+    }
+  },
+}));
 import { PLAN_LIMITS, type PlanTier } from "../../apps/api/src/integrations/stripe";
 import { registerAuditRoutes, auditWindowDays } from "../../apps/api/src/routes/audits";
 import {
@@ -498,6 +526,13 @@ describe("POST /api/brands/:id/audit — cost-control guard (#217)", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/landing/sites/:id/generate — pages regen quota guard (#217)", () => {
+  beforeEach(() => {
+    queueMock.getJob.mockReset();
+    queueMock.getJob.mockResolvedValue(null);
+    queueMock.add.mockReset();
+    queueMock.add.mockResolvedValue({});
+  });
+
   function landingApp(db: ReturnType<typeof makeRouteDb>): Hono {
     const app = new Hono();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -573,9 +608,89 @@ describe("POST /api/landing/sites/:id/generate — pages regen quota guard (#217
     expect(periodStartUsed).toMatch(/^\d{4}-\d{2}-01$/);
   });
 
-  // NOTE: an ALLOWED (within-quota) request proceeds past this guard to the
-  // BullMQ enqueue step, which needs a live Redis — not exercised here (see
-  // "an ALLOWED attempt ... never triggers a refund decrement" in the
-  // incrementUsageCounter/decrementUsageCounter suite above for that
-  // no-refund-on-success contract, tested at the primitive level instead).
+  // -------------------------------------------------------------------------
+  // Hermes review requirements (#221): duplicates never charge quota;
+  // enqueue failure after a charge refunds; the happy path enqueues once.
+  // -------------------------------------------------------------------------
+
+  it("duplicate in-flight job: 409 GENERATE_ALREADY_RUNNING WITHOUT touching usage_counters", async () => {
+    queueMock.getJob.mockResolvedValue({ getState: async () => "active" });
+    const db = makeRouteDb(
+      defaultHandler({ planTier: "growth", contentPageCount: 5, incrementReturns: 1 })
+    );
+    const app = landingApp(db);
+    const res = await app.request(`/api/landing/sites/${SITE_ID}/generate`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("GENERATE_ALREADY_RUNNING");
+    // The quota ledger was never touched — no increment, no refund.
+    expect(db._queries.some((q) => q.includes("usage_counters"))).toBe(false);
+    expect(queueMock.add).not.toHaveBeenCalled();
+  });
+
+  it.each(["waiting", "delayed"] as const)(
+    "duplicate %s job also 409s without charging quota",
+    async (state) => {
+      queueMock.getJob.mockResolvedValue({ getState: async () => state });
+      const db = makeRouteDb(
+        defaultHandler({ planTier: "growth", contentPageCount: 5, incrementReturns: 1 })
+      );
+      const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}/generate`, {
+        method: "POST",
+        headers: { Authorization: "Bearer dev", "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(409);
+      expect(db._queries.some((q) => q.includes("usage_counters"))).toBe(false);
+    }
+  );
+
+  it("queue.add failure AFTER the quota charge refunds the increment (503, decrement issued)", async () => {
+    queueMock.add.mockRejectedValue(new Error("redis exploded"));
+    const db = makeRouteDb(
+      defaultHandler({ planTier: "growth", contentPageCount: 5, incrementReturns: 1 })
+    );
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}/generate`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(503);
+    const incrementIdx = db._queries.findIndex((q) => q.includes("INSERT INTO usage_counters"));
+    const decrementIdx = db._queries.findIndex((q) => q.includes("UPDATE usage_counters"));
+    expect(incrementIdx).toBeGreaterThanOrEqual(0); // charge happened (within quota)
+    expect(decrementIdx).toBeGreaterThan(incrementIdx); // ...and was refunded
+  });
+
+  it("happy path: within-quota regeneration charges once, enqueues once, no refund (202)", async () => {
+    const db = makeRouteDb(
+      defaultHandler({ planTier: "growth", contentPageCount: 5, incrementReturns: 1 })
+    );
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}/generate`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(202);
+    expect((await res.json()).queued).toBe(true);
+    expect(queueMock.add).toHaveBeenCalledTimes(1);
+    expect(db._queries.some((q) => q.includes("INSERT INTO usage_counters"))).toBe(true);
+    expect(db._queries.some((q) => q.includes("UPDATE usage_counters"))).toBe(false); // no refund
+  });
+
+  it("initial generation (no content yet): enqueues WITHOUT ever touching the quota ledger", async () => {
+    const db = makeRouteDb(
+      defaultHandler({ planTier: "free", contentPageCount: 0, incrementReturns: 1 })
+    );
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}/generate`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(202);
+    expect(db._queries.some((q) => q.includes("usage_counters"))).toBe(false);
+  });
 });
