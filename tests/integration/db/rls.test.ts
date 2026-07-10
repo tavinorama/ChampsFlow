@@ -209,6 +209,14 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
               (NULL, 'null@rls.test', 'access', FALSE, 'received', NOW(), NOW())`,
       [TENANT_A]
     );
+
+    // Ozvor Pages fixtures (20260710000001): one landing site per tenant.
+    await sql.unsafe(
+      `INSERT INTO landing_sites (id, tenant_id, slug)
+       VALUES (gen_random_uuid(), $1, 'rls-test-site-a'),
+              (gen_random_uuid(), $2, 'rls-test-site-b')`,
+      [TENANT_A, TENANT_B]
+    );
   });
 
   afterAll(async () => {
@@ -216,6 +224,7 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     await sql.unsafe(
       `DELETE FROM dsr_requests WHERE requester_email IN ('a@rls.test', 'null@rls.test')`
     );
+    await sql.unsafe(`DELETE FROM landing_sites WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await sql.unsafe(`DELETE FROM brands WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await sql.unsafe(`DELETE FROM tenants WHERE id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await sql.end({ timeout: 5 });
@@ -291,7 +300,45 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     ).rejects.toThrow();
   });
 
-  it("check-rls metadata: all 23 tenant-scoped tables have RLS enabled", async () => {
+  // -------------------------------------------------------------------------
+  // Ozvor Pages (20260710000001) — cross-tenant isolation on landing_sites
+  // -------------------------------------------------------------------------
+
+  it("RLS scopes an UNFILTERED SELECT on landing_sites to the current tenant", async () => {
+    const rows = await asTenant(TENANT_A, (tx) =>
+      tx.unsafe(`SELECT tenant_id, slug FROM landing_sites`)
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tenant_id).toBe(TENANT_A);
+    expect(rows[0].slug).toBe("rls-test-site-a");
+  });
+
+  it("tenant A cannot UPDATE tenant B's landing_sites (0 rows affected)", async () => {
+    const res = await asTenant(TENANT_A, (tx) =>
+      tx.unsafe(`UPDATE landing_sites SET status = 'suspended' WHERE tenant_id = $1`, [TENANT_B])
+    );
+    expect(res.count).toBe(0);
+    const check = await sql.unsafe(`SELECT status FROM landing_sites WHERE tenant_id = $1`, [
+      TENANT_B,
+    ]);
+    expect(check[0].status).toBe("draft");
+  });
+
+  it("tenant A cannot INSERT a landing_site claiming tenant B's tenant_id", async () => {
+    // The tenant_isolation USING clause also gates writes (no separate WITH
+    // CHECK): an insert whose row would not be visible to the current tenant
+    // must be rejected.
+    await expect(
+      asTenant(TENANT_A, (tx) =>
+        tx.unsafe(
+          `INSERT INTO landing_sites (tenant_id, slug) VALUES ($1, 'rls-test-hijack')`,
+          [TENANT_B]
+        )
+      )
+    ).rejects.toThrow();
+  });
+
+  it("check-rls metadata: all 29 tenant-scoped tables have RLS enabled", async () => {
     const rows = await sql.unsafe(`
       SELECT relname FROM pg_class
       JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
@@ -303,7 +350,9 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
           'dpa_acknowledgments','ccpa_requests','billing_subscriptions',
           'brands','geo_audit','geo_score','citation_check','ai_generation_log',
           'provider_keys','competitor','competitor_citation','strategy_plan',
-          'plan_task','content_piece'
+          'plan_task','content_piece',
+          'landing_sites','landing_pages','landing_page_versions',
+          'landing_testimonials','landing_leads','landing_events'
         )
         AND NOT relrowsecurity
     `);
