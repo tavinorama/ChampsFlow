@@ -276,14 +276,20 @@ export const PLAN_LIMITS: Record<
     max_competitors: number;
     prompts_per_audit: number;
     weekly_monitoring: boolean;
+    /** Ozvor Pages (#208): base site allowance per tier. One-time $99 credits
+     * (tenants.extra_landing_sites) ADD to this — a free tenant with a
+     * purchased credit gets exactly the sites they paid for. */
+    max_landing_sites: number;
+    /** 5-page deliverable (home + 4) plus one spare slot for a campaign page. */
+    max_pages_per_site: number;
   }
 > = {
   // Free is a deliberate TASTE, not a usable tier: 1 brand, 1 competitor, a
   // shallow 10-prompt audit, no monitoring. Enough to see your standing once —
   // upgrade to Growth for real depth + weekly tracking.
-  free: { max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false },
-  growth: { max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true },
-  agency: { max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true },
+  free: { max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false, max_landing_sites: 0, max_pages_per_site: 6 },
+  growth: { max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true, max_landing_sites: 1, max_pages_per_site: 6 },
+  agency: { max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true, max_landing_sites: 25, max_pages_per_site: 6 },
 };
 
 // ---------------------------------------------------------------------------
