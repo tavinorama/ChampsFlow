@@ -32,6 +32,7 @@ import {
   isCheckoutSessionPaid,
 } from "../integrations/stripe";
 import { truncateIp } from "./dpa";
+import { requireAuth } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { enrollNurture } from "./nurture";
@@ -253,6 +254,33 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       testId = leadId;
     } catch (err) {
       logger.warn("lead_capture_insert_failed", { message: (err as Error).message });
+    }
+
+    // Claim immediately when the visitor ALREADY has an account (#218): the
+    // bootstrap claim (#166) only runs at first login, so a test run after
+    // signup would otherwise stay orphaned forever. Best-effort + idempotent
+    // (claimed_at IS NULL); email is never logged.
+    if (testId && email) {
+      try {
+        const { rows: ownerRows } = await db.query<{ tenant_id: string }>(
+          `SELECT u.tenant_id FROM users u WHERE lower(u.email) = $1 LIMIT 1`,
+          [email.toLowerCase().trim()]
+        );
+        const visitorTenantId = ownerRows[0]?.tenant_id ?? null;
+        if (visitorTenantId) {
+          await db.query(
+            `UPDATE lead_capture SET claimed_at = NOW(), claimed_by_tenant_id = $2
+             WHERE id = $1 AND claimed_at IS NULL`,
+            [testId, visitorTenantId]
+          );
+          logger.info("lead_capture_claimed_at_capture", {
+            test_id: testId,
+            tenant_id: visitorTenantId,
+          });
+        }
+      } catch (err) {
+        logger.warn("lead_capture_immediate_claim_failed", { message: (err as Error).message });
+      }
     }
 
     // Best-effort immediate result email (transactional — no consent required;
@@ -534,5 +562,49 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     );
     logger.info("kit_delivered", { kit_order_id: order.id });
     return c.json({ status: "delivered", deliverable, downloads: kitDownloads() });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/account/claimed-history — the READ side of identity continuity
+  // (#166 wrote claims; nothing ever surfaced them — #218). Returns the
+  // tenant's recovered pre-account history: free tests (lead_capture) and Kit
+  // purchases (kit_order) claimed to this tenant by verified email. The Kit's
+  // order_token is the buyer's own delivery handle (same one their email
+  // links to), so returning it to the OWNING tenant is safe.
+  // -------------------------------------------------------------------------
+  app.get("/api/account/claimed-history", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+
+    const tests = await db.query<{
+      id: string;
+      brand: string;
+      created_at: string;
+      verdict: string | null;
+    }>(
+      `SELECT id, brand, created_at, result->>'verdict' AS verdict
+         FROM lead_capture
+        WHERE claimed_by_tenant_id = $1
+        ORDER BY created_at DESC
+        LIMIT 10`,
+      [auth.tenantId]
+    );
+
+    const kits = await db.query<{
+      id: string;
+      brand: string;
+      status: string;
+      order_token: string;
+      created_at: string;
+    }>(
+      `SELECT id, brand, status, order_token, created_at
+         FROM kit_order
+        WHERE claimed_by_tenant_id = $1 AND status IN ('paid', 'delivered')
+        ORDER BY created_at DESC
+        LIMIT 10`,
+      [auth.tenantId]
+    );
+
+    return c.json({ tests: tests.rows, kits: kits.rows });
   });
 }
