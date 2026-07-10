@@ -48,6 +48,7 @@ import { registerProductRoutes } from "./routes/products";
 import { registerNurtureRoutes } from "./routes/nurture";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerAuditRoutes } from "./routes/audits";
+import { registerLandingRoutes } from "./routes/landing";
 import { registerPromptRoutes } from "./routes/prompts";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
@@ -271,6 +272,9 @@ registerOperatorBusinessRoutes(app, db);
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
 registerAuditRoutes(app, db);
+// Ozvor Pages (#208): sites/pages/versions/testimonials CRUD (auth, tenant-scoped,
+// plan+credit entitlement). Public /l/[slug] rendering is a later PR.
+registerLandingRoutes(app, db);
 // C8: Prompt Library — GET/POST/DELETE /api/brands/:id/prompts
 registerPromptRoutes(app, db);
 // OrganicPosts done-for-you handoff: POST/GET /api/engagements (auth, tenant-scoped)

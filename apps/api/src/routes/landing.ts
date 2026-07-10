@@ -1,0 +1,744 @@
+/**
+ * landing.ts — Ozvor Pages: sites, pages, versions, testimonials (issue #208, PR-3)
+ *
+ * Authenticated CRUD for the 5-page website builder. Public rendering of
+ * published pages (`/l/[slug]`) is PR-6 — nothing here is public.
+ *
+ * Entitlement model (founder decisions in #208):
+ *   allowance = PLAN_LIMITS[plan_tier].max_landing_sites            (free 0 / growth 1 / agency 25)
+ *             + tenants.extra_landing_sites                          ($99 one-time credits, PR-2)
+ *   Every write re-checks the plan SERVER-SIDE — the dashboard UI is a
+ *   storefront, the API is the bouncer. A standalone buyer stays plan_tier
+ *   'free' with a credit; paid features beyond the builder keep 403ing.
+ *
+ * Access rules:
+ *   - all routes requireAuth (tenant from JWT app_metadata only)
+ *   - writes requireRole(['owner','editor']); site DELETE is owner-only
+ *   - viewers can read everything, mutate nothing (role middleware)
+ *   - RLS backstop: db.setTenantId + explicit tenant_id filters (audits.ts pattern)
+ *
+ * Versioning: PATCHing a page's sections/seo snapshots the PREVIOUS state to
+ * landing_page_versions (saved_by 'user'), capped at VERSION_CAP with pruning.
+ * Restore snapshots current state first, so a restore is itself undoable.
+ */
+
+import { Hono } from "hono";
+import { randomUUID } from "node:crypto";
+import { requireAuth, requireRole } from "../auth/middleware";
+import type { PostgresClient } from "./social-accounts";
+import { logger } from "../../../../packages/shared/src/logger";
+import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
+
+const VERSION_CAP = 20;
+
+export const PAGE_TYPES = new Set([
+  "home",
+  "service_city",
+  "service",
+  "area",
+  "faq",
+  "proof",
+  "campaign",
+]);
+
+// Slugs that would shadow real routes or confuse users if a site claimed them.
+export const RESERVED_SITE_SLUGS = new Set([
+  "admin", "api", "app", "assets", "blog", "dashboard", "kit", "l", "legal",
+  "login", "ozvor", "pricing", "privacy", "results", "static", "terms",
+  "test", "www",
+]);
+
+const SITE_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
+const PAGE_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+
+// ---------------------------------------------------------------------------
+// slugify — deterministic, ASCII-only, matches the DB CHECK constraints.
+// Exported for unit testing.
+// ---------------------------------------------------------------------------
+export function slugify(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip diacritics
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64)
+    .replace(/^-|-$/g, "");
+}
+
+// ---------------------------------------------------------------------------
+// validateSiteSlug — shape + reserved words. Returns an error message or null.
+// Exported for unit testing.
+// ---------------------------------------------------------------------------
+export function validateSiteSlug(slug: string): string | null {
+  // Reserved first — "api" or "l" should say "reserved", not "bad shape".
+  if (RESERVED_SITE_SLUGS.has(slug)) {
+    return "That slug is reserved. Pick another.";
+  }
+  if (!SITE_SLUG_RE.test(slug)) {
+    return "Slug must be 3–64 chars: lowercase letters, digits and hyphens (no leading/trailing hyphen).";
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// landingAllowanceFor — plan base + purchased credits ( #208 entitlement).
+// Exported for unit testing (pure math is computeLandingAllowance below).
+// ---------------------------------------------------------------------------
+export function computeLandingAllowance(
+  planTier: PlanTier,
+  extraSites: number
+): { maxSites: number; maxPagesPerSite: number } {
+  const limits = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
+  return {
+    maxSites: limits.max_landing_sites + Math.max(0, extraSites),
+    maxPagesPerSite: limits.max_pages_per_site,
+  };
+}
+
+async function landingAllowanceFor(
+  db: PostgresClient,
+  tenantId: string,
+  isSuperAdmin: boolean
+): Promise<{ maxSites: number; maxPagesPerSite: number }> {
+  if (isSuperAdmin) {
+    // Platform-operator bypass (same rationale as planLimitsFor in audits.ts).
+    return { maxSites: Number.MAX_SAFE_INTEGER, maxPagesPerSite: Number.MAX_SAFE_INTEGER };
+  }
+  const res = await db.query<{ plan_tier: string | null; extra_landing_sites: number | null }>(
+    `SELECT plan_tier, extra_landing_sites FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  const tier = (res.rows[0]?.plan_tier ?? "free") as PlanTier;
+  return computeLandingAllowance(tier, res.rows[0]?.extra_landing_sites ?? 0);
+}
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+function isUniqueViolation(err: unknown): boolean {
+  return (err as { code?: string })?.code === "23505";
+}
+
+async function siteOwnedByTenant(
+  db: PostgresClient,
+  tenantId: string,
+  siteId: string
+): Promise<boolean> {
+  const res = await db.query<{ id: string }>(
+    `SELECT id FROM landing_sites WHERE id = $1 AND tenant_id = $2`,
+    [siteId, tenantId]
+  );
+  return !!res.rows[0];
+}
+
+export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
+  // -------------------------------------------------------------------------
+  // GET /api/landing/allowance — what can this tenant build? (drives the UI)
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/allowance", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const allowance = await landingAllowanceFor(db, auth.tenantId, auth.isSuperAdmin);
+    const count = await db.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM landing_sites WHERE tenant_id = $1`,
+      [auth.tenantId]
+    );
+    const used = parseInt(count.rows[0]?.count ?? "0", 10);
+    return c.json({
+      max_sites: allowance.maxSites >= Number.MAX_SAFE_INTEGER ? null : allowance.maxSites,
+      max_pages_per_site:
+        allowance.maxPagesPerSite >= Number.MAX_SAFE_INTEGER ? null : allowance.maxPagesPerSite,
+      sites_used: used,
+      can_create: used < allowance.maxSites,
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/landing/sites — list this tenant's sites
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/sites", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const res = await db.query<{
+      id: string;
+      slug: string;
+      status: string;
+      business: unknown;
+      created_at: string;
+      updated_at: string;
+      page_count: string;
+    }>(
+      `SELECT s.id, s.slug, s.status, s.business, s.created_at, s.updated_at,
+              (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count
+         FROM landing_sites s
+        WHERE s.tenant_id = $1
+        ORDER BY s.created_at DESC`,
+      [auth.tenantId]
+    );
+    return c.json({
+      sites: res.rows.map((r) => ({ ...r, page_count: parseInt(r.page_count, 10) })),
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/landing/sites — create a site (+ its home page)
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/landing/sites",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      let body: {
+        name?: string;
+        slug?: string;
+        business?: Record<string, unknown>;
+        theme?: Record<string, unknown>;
+        brand_id?: string;
+      };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      const name = (body.name ?? "").trim();
+      if (!name) return c.json({ message: "Business name is required." }, 400);
+
+      const slug = (body.slug ?? "").trim() || slugify(name);
+      const slugError = validateSiteSlug(slug);
+      if (slugError) return c.json({ message: slugError, code: "INVALID_SLUG" }, 400);
+
+      await db.setTenantId(auth.tenantId);
+
+      // Entitlement: plan base + purchased credits (super_admin bypasses).
+      const allowance = await landingAllowanceFor(db, auth.tenantId, auth.isSuperAdmin);
+      const count = await db.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM landing_sites WHERE tenant_id = $1`,
+        [auth.tenantId]
+      );
+      if (parseInt(count.rows[0]?.count ?? "0", 10) >= allowance.maxSites) {
+        return c.json(
+          {
+            message:
+              allowance.maxSites === 0
+                ? "Your plan does not include the website builder. Subscribe to Growth or buy a site to unlock it."
+                : `Your plan allows ${allowance.maxSites} site(s). Upgrade or buy an extra site to add more.`,
+            code: "PLAN_LIMIT_LANDING_SITES",
+          },
+          403
+        );
+      }
+
+      // Optional brand link (flywheel: audit gaps feed the generator, PR-4/7).
+      let brandId: string | null = null;
+      if (body.brand_id) {
+        const brand = await db.query<{ id: string }>(
+          `SELECT id FROM brands WHERE id = $1 AND tenant_id = $2`,
+          [body.brand_id, auth.tenantId]
+        );
+        if (!brand.rows[0]) return c.json({ message: "brand_id not found." }, 400);
+        brandId = brand.rows[0].id;
+      }
+
+      const business = { name, ...(body.business ?? {}) };
+      const siteId = randomUUID();
+      try {
+        await db.query(
+          `INSERT INTO landing_sites (id, tenant_id, brand_id, slug, status, business, theme, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'draft', $5, $6, NOW(), NOW())`,
+          [siteId, auth.tenantId, brandId, slug, JSON.stringify(business), JSON.stringify(body.theme ?? {})]
+        );
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          return c.json({ message: "That slug is already taken. Pick another.", code: "SLUG_TAKEN" }, 409);
+        }
+        throw err;
+      }
+
+      // Every site starts with its home page (slug '' = site root).
+      const homePageId = randomUUID();
+      await db.query(
+        `INSERT INTO landing_pages (id, tenant_id, site_id, page_type, slug, title, created_at, updated_at)
+         VALUES ($1, $2, $3, 'home', '', $4, NOW(), NOW())`,
+        [homePageId, auth.tenantId, siteId, name]
+      );
+
+      logger.info("landing_site_created", { tenant_id: auth.tenantId, site_id: siteId });
+      return c.json({ id: siteId, slug, status: "draft", home_page_id: homePageId }, 201);
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // GET /api/landing/sites/:id — site + pages
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/sites/:id", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const siteId = c.req.param("id") ?? "";
+    await db.setTenantId(auth.tenantId);
+    const site = await db.query<Record<string, unknown>>(
+      `SELECT id, brand_id, slug, status, business, theme, review_themes, created_at, updated_at
+         FROM landing_sites WHERE id = $1 AND tenant_id = $2`,
+      [siteId, auth.tenantId]
+    );
+    if (!site.rows[0]) return c.json({ message: "Site not found." }, 404);
+    const pages = await db.query<Record<string, unknown>>(
+      `SELECT id, page_type, slug, title, status, ai_readiness, published_at, created_at, updated_at
+         FROM landing_pages WHERE site_id = $1 AND tenant_id = $2
+        ORDER BY (slug = '') DESC, created_at ASC`,
+      [siteId, auth.tenantId]
+    );
+    return c.json({ site: site.rows[0], pages: pages.rows });
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/landing/sites/:id — business/theme/status
+  // -------------------------------------------------------------------------
+  app.patch(
+    "/api/landing/sites/:id",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const siteId = c.req.param("id") ?? "";
+      let body: {
+        business?: Record<string, unknown>;
+        theme?: Record<string, unknown>;
+        status?: string;
+      };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      // 'suspended' is the admin abuse kill-switch — not settable by tenants.
+      if (body.status !== undefined && !["draft", "published"].includes(body.status)) {
+        return c.json({ message: "status must be 'draft' or 'published'." }, 400);
+      }
+
+      await db.setTenantId(auth.tenantId);
+      const current = await db.query<{ status: string }>(
+        `SELECT status FROM landing_sites WHERE id = $1 AND tenant_id = $2`,
+        [siteId, auth.tenantId]
+      );
+      if (!current.rows[0]) return c.json({ message: "Site not found." }, 404);
+      if (current.rows[0].status === "suspended") {
+        return c.json({ message: "This site is suspended. Contact support.", code: "SITE_SUSPENDED" }, 403);
+      }
+
+      const res = await db.query<{ id: string }>(
+        `UPDATE landing_sites
+            SET business = COALESCE($3, business),
+                theme    = COALESCE($4, theme),
+                status   = COALESCE($5, status),
+                updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2
+          RETURNING id`,
+        [
+          siteId,
+          auth.tenantId,
+          body.business ? JSON.stringify(body.business) : null,
+          body.theme ? JSON.stringify(body.theme) : null,
+          body.status ?? null,
+        ]
+      );
+      if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
+      return c.json({ ok: true });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // DELETE /api/landing/sites/:id — owner only (destructive: cascades pages)
+  // -------------------------------------------------------------------------
+  app.delete(
+    "/api/landing/sites/:id",
+    requireAuth,
+    requireRole(["owner"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const siteId = c.req.param("id") ?? "";
+      await db.setTenantId(auth.tenantId);
+      const res = await db.query<{ id: string }>(
+        `DELETE FROM landing_sites WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+        [siteId, auth.tenantId]
+      );
+      if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
+      logger.info("landing_site_deleted", { tenant_id: auth.tenantId, site_id: siteId });
+      return c.json({ ok: true });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /api/landing/sites/:id/pages — add a page (cap: max_pages_per_site)
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/landing/sites/:id/pages",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const siteId = c.req.param("id") ?? "";
+      let body: { page_type?: string; title?: string; slug?: string };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      const pageType = (body.page_type ?? "").trim();
+      if (!PAGE_TYPES.has(pageType)) {
+        return c.json({ message: `page_type must be one of: ${[...PAGE_TYPES].join(", ")}.` }, 400);
+      }
+      const title = (body.title ?? "").trim();
+      const slug = (body.slug ?? "").trim() || slugify(title || pageType);
+      if (!PAGE_SLUG_RE.test(slug)) {
+        return c.json({ message: "Invalid page slug.", code: "INVALID_SLUG" }, 400);
+      }
+
+      await db.setTenantId(auth.tenantId);
+      if (!(await siteOwnedByTenant(db, auth.tenantId, siteId))) {
+        return c.json({ message: "Site not found." }, 404);
+      }
+
+      const allowance = await landingAllowanceFor(db, auth.tenantId, auth.isSuperAdmin);
+      const count = await db.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM landing_pages WHERE site_id = $1 AND tenant_id = $2`,
+        [siteId, auth.tenantId]
+      );
+      if (parseInt(count.rows[0]?.count ?? "0", 10) >= allowance.maxPagesPerSite) {
+        return c.json(
+          {
+            message: `This site has reached its ${allowance.maxPagesPerSite}-page limit.`,
+            code: "PLAN_LIMIT_LANDING_PAGES",
+          },
+          403
+        );
+      }
+
+      const pageId = randomUUID();
+      try {
+        await db.query(
+          `INSERT INTO landing_pages (id, tenant_id, site_id, page_type, slug, title, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+          [pageId, auth.tenantId, siteId, pageType, slug, title]
+        );
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          return c.json({ message: "A page with that slug already exists on this site.", code: "SLUG_TAKEN" }, 409);
+        }
+        throw err;
+      }
+      return c.json({ id: pageId, page_type: pageType, slug, title }, 201);
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // GET /api/landing/pages/:pageId — full page (sections + seo)
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/pages/:pageId", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const pageId = c.req.param("pageId");
+    await db.setTenantId(auth.tenantId);
+    const res = await db.query<Record<string, unknown>>(
+      `SELECT id, site_id, page_type, slug, title, sections, seo, ai_readiness,
+              status, published_at, created_at, updated_at
+         FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
+      [pageId, auth.tenantId]
+    );
+    if (!res.rows[0]) return c.json({ message: "Page not found." }, 404);
+    return c.json({ page: res.rows[0] });
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/landing/pages/:pageId — edit (snapshots previous version)
+  // -------------------------------------------------------------------------
+  app.patch(
+    "/api/landing/pages/:pageId",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const pageId = c.req.param("pageId");
+      let body: {
+        title?: string;
+        slug?: string;
+        sections?: unknown[];
+        seo?: Record<string, unknown>;
+        status?: string;
+      };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      if (body.status !== undefined && !["draft", "published"].includes(body.status)) {
+        return c.json({ message: "status must be 'draft' or 'published'." }, 400);
+      }
+      if (body.sections !== undefined && !Array.isArray(body.sections)) {
+        return c.json({ message: "sections must be an array." }, 400);
+      }
+      if (body.slug !== undefined) {
+        const s = body.slug.trim();
+        // '' stays valid only for the home page — checked against the row below.
+        if (s !== "" && !PAGE_SLUG_RE.test(s)) {
+          return c.json({ message: "Invalid page slug.", code: "INVALID_SLUG" }, 400);
+        }
+      }
+
+      await db.setTenantId(auth.tenantId);
+      const current = await db.query<{
+        slug: string;
+        sections: unknown;
+        seo: unknown;
+        page_type: string;
+      }>(
+        `SELECT slug, sections, seo, page_type FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
+        [pageId, auth.tenantId]
+      );
+      const row = current.rows[0];
+      if (!row) return c.json({ message: "Page not found." }, 404);
+      if (body.slug !== undefined && body.slug.trim() === "" && row.slug !== "") {
+        return c.json({ message: "Only the home page can use the root slug." }, 400);
+      }
+
+      // Snapshot the PREVIOUS content when content actually changes.
+      const contentChanged = body.sections !== undefined || body.seo !== undefined;
+      if (contentChanged) {
+        await db.query(
+          `INSERT INTO landing_page_versions (id, tenant_id, page_id, version, sections, seo, saved_by, created_at)
+           VALUES ($1, $2, $3,
+                   COALESCE((SELECT MAX(version) FROM landing_page_versions WHERE page_id = $3), 0) + 1,
+                   $4, $5, 'user', NOW())`,
+          [randomUUID(), auth.tenantId, pageId, JSON.stringify(row.sections ?? []), JSON.stringify(row.seo ?? {})]
+        );
+        // Prune beyond the cap (oldest first).
+        await db.query(
+          `DELETE FROM landing_page_versions
+            WHERE page_id = $1
+              AND version <= (SELECT MAX(version) FROM landing_page_versions WHERE page_id = $1) - $2`,
+          [pageId, VERSION_CAP]
+        );
+      }
+
+      try {
+        await db.query(
+          `UPDATE landing_pages
+              SET title    = COALESCE($3, title),
+                  slug     = COALESCE($4, slug),
+                  sections = COALESCE($5, sections),
+                  seo      = COALESCE($6, seo),
+                  status   = COALESCE($7, status),
+                  published_at = CASE WHEN $7 = 'published' THEN NOW() ELSE published_at END,
+                  updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2`,
+          [
+            pageId,
+            auth.tenantId,
+            body.title !== undefined ? body.title.trim() : null,
+            body.slug !== undefined ? body.slug.trim() : null,
+            body.sections !== undefined ? JSON.stringify(body.sections) : null,
+            body.seo !== undefined ? JSON.stringify(body.seo) : null,
+            body.status ?? null,
+          ]
+        );
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          return c.json({ message: "A page with that slug already exists on this site.", code: "SLUG_TAKEN" }, 409);
+        }
+        throw err;
+      }
+      return c.json({ ok: true });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // DELETE /api/landing/pages/:pageId — home page is not deletable
+  // -------------------------------------------------------------------------
+  app.delete(
+    "/api/landing/pages/:pageId",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const pageId = c.req.param("pageId");
+      await db.setTenantId(auth.tenantId);
+      const res = await db.query<{ id: string; slug: string }>(
+        `SELECT id, slug FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
+        [pageId, auth.tenantId]
+      );
+      if (!res.rows[0]) return c.json({ message: "Page not found." }, 404);
+      if (res.rows[0].slug === "") {
+        return c.json({ message: "The home page cannot be deleted." }, 400);
+      }
+      await db.query(`DELETE FROM landing_pages WHERE id = $1 AND tenant_id = $2`, [
+        pageId,
+        auth.tenantId,
+      ]);
+      return c.json({ ok: true });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // GET /api/landing/pages/:pageId/versions — history (newest first)
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/pages/:pageId/versions", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const pageId = c.req.param("pageId");
+    await db.setTenantId(auth.tenantId);
+    const res = await db.query<Record<string, unknown>>(
+      `SELECT version, saved_by, created_at
+         FROM landing_page_versions
+        WHERE page_id = $1 AND tenant_id = $2
+        ORDER BY version DESC`,
+      [pageId, auth.tenantId]
+    );
+    return c.json({ versions: res.rows });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/landing/pages/:pageId/versions/:version/restore
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/landing/pages/:pageId/versions/:version/restore",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const pageId = c.req.param("pageId");
+      const version = parseInt(c.req.param("version") ?? "", 10);
+      if (!Number.isInteger(version) || version < 1) {
+        return c.json({ message: "Invalid version." }, 400);
+      }
+
+      await db.setTenantId(auth.tenantId);
+      const snap = await db.query<{ sections: unknown; seo: unknown }>(
+        `SELECT sections, seo FROM landing_page_versions
+          WHERE page_id = $1 AND tenant_id = $2 AND version = $3`,
+        [pageId, auth.tenantId, version]
+      );
+      if (!snap.rows[0]) return c.json({ message: "Version not found." }, 404);
+
+      const current = await db.query<{ sections: unknown; seo: unknown }>(
+        `SELECT sections, seo FROM landing_pages WHERE id = $1 AND tenant_id = $2`,
+        [pageId, auth.tenantId]
+      );
+      if (!current.rows[0]) return c.json({ message: "Page not found." }, 404);
+
+      // Snapshot current first — a restore must itself be undoable.
+      await db.query(
+        `INSERT INTO landing_page_versions (id, tenant_id, page_id, version, sections, seo, saved_by, created_at)
+         VALUES ($1, $2, $3,
+                 COALESCE((SELECT MAX(version) FROM landing_page_versions WHERE page_id = $3), 0) + 1,
+                 $4, $5, 'user', NOW())`,
+        [
+          randomUUID(),
+          auth.tenantId,
+          pageId,
+          JSON.stringify(current.rows[0].sections ?? []),
+          JSON.stringify(current.rows[0].seo ?? {}),
+        ]
+      );
+      await db.query(
+        `UPDATE landing_pages SET sections = $3, seo = $4, updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2`,
+        [
+          pageId,
+          auth.tenantId,
+          JSON.stringify(snap.rows[0].sections ?? []),
+          JSON.stringify(snap.rows[0].seo ?? {}),
+        ]
+      );
+      return c.json({ ok: true, restored_version: version });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // Testimonials — client-owned reviews with rights attestation
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/sites/:id/testimonials", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const siteId = c.req.param("id") ?? "";
+    await db.setTenantId(auth.tenantId);
+    if (!(await siteOwnedByTenant(db, auth.tenantId, siteId))) {
+      return c.json({ message: "Site not found." }, 404);
+    }
+    const res = await db.query<Record<string, unknown>>(
+      `SELECT id, author, body, rating, source, authorized, created_at
+         FROM landing_testimonials WHERE site_id = $1 AND tenant_id = $2
+        ORDER BY created_at DESC`,
+      [siteId, auth.tenantId]
+    );
+    return c.json({ testimonials: res.rows });
+  });
+
+  app.post(
+    "/api/landing/sites/:id/testimonials",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const siteId = c.req.param("id") ?? "";
+      let payload: {
+        author?: string;
+        body?: string;
+        rating?: number;
+        authorized?: boolean;
+      };
+      try {
+        payload = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+      const text = (payload.body ?? "").trim();
+      if (!text) return c.json({ message: "Testimonial body is required." }, 400);
+      if (
+        payload.rating !== undefined &&
+        (!Number.isInteger(payload.rating) || payload.rating < 1 || payload.rating > 5)
+      ) {
+        return c.json({ message: "rating must be an integer 1–5." }, 400);
+      }
+
+      await db.setTenantId(auth.tenantId);
+      if (!(await siteOwnedByTenant(db, auth.tenantId, siteId))) {
+        return c.json({ message: "Site not found." }, 404);
+      }
+      const id = randomUUID();
+      await db.query(
+        `INSERT INTO landing_testimonials (id, tenant_id, site_id, author, body, rating, source, authorized, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'manual', $7, NOW())`,
+        [
+          id,
+          auth.tenantId,
+          siteId,
+          (payload.author ?? "").trim(),
+          text,
+          payload.rating ?? null,
+          payload.authorized === true,
+        ]
+      );
+      return c.json({ id }, 201);
+    }
+  );
+
+  app.delete(
+    "/api/landing/testimonials/:id",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const id = c.req.param("id");
+      await db.setTenantId(auth.tenantId);
+      const res = await db.query<{ id: string }>(
+        `DELETE FROM landing_testimonials WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+        [id, auth.tenantId]
+      );
+      if (!res.rows[0]) return c.json({ message: "Testimonial not found." }, 404);
+      return c.json({ ok: true });
+    }
+  );
+}
