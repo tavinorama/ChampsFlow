@@ -54,7 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Studio",
     items: [
       { href: "/marketing", label: "Marketing", description: "Campaigns from your audit data", icon: "◈", badge: "Soon" },
-      { href: "/landing-pages", label: "Landing pages", description: "GEO pages AI can cite", icon: "▦", badge: "Soon" },
+      { href: "/landing-pages", label: "Landing pages", description: "GEO pages AI can cite", icon: "▦" },
     ],
   },
   {

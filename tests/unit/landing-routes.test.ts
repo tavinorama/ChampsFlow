@@ -15,6 +15,7 @@ import {
   slugify,
   RESERVED_SITE_SLUGS,
   PAGE_TYPES,
+  containsPlaceholder,
 } from "../../apps/api/src/routes/landing";
 
 describe("computeLandingAllowance — the plan/credit access matrix", () => {
@@ -91,5 +92,48 @@ describe("PAGE_TYPES — the 5-page bundle vocabulary", () => {
       expect(PAGE_TYPES.has(t)).toBe(true);
     }
     expect(PAGE_TYPES.has("anything_else")).toBe(false);
+  });
+});
+
+describe("containsPlaceholder — the publish guard (#208 PR-5)", () => {
+  it("detects the generator's exact marker (packages/llm/src/landing-generate.ts faqFromGap)", () => {
+    const sections = [
+      { type: "hero", headline: "Acme Plumbing" },
+      {
+        type: "faq",
+        items: [
+          {
+            q: "Do you offer 24/7 emergency service?",
+            a: "Acme Plumbing answers this in Austin: [PLACEHOLDER: 2–3 sentences with your specific answer]. Call 555-0100 for details.",
+          },
+        ],
+      },
+    ];
+    expect(containsPlaceholder(sections)).toBe(true);
+  });
+
+  it("is false for fully-written sections", () => {
+    const sections = [
+      { type: "hero", headline: "Acme Plumbing", subheadline: "Serving Austin" },
+      { type: "cta", heading: "Ready to talk?", phone: "555-0100" },
+    ];
+    expect(containsPlaceholder(sections)).toBe(false);
+  });
+
+  it("handles empty/undefined/null input without throwing", () => {
+    expect(containsPlaceholder(undefined)).toBe(false);
+    expect(containsPlaceholder(null)).toBe(false);
+    expect(containsPlaceholder([])).toBe(false);
+  });
+
+  it("does not false-positive on unrelated mentions of the word placeholder", () => {
+    expect(containsPlaceholder([{ type: "text", body: "This is a placeholder-free page." }])).toBe(false);
+  });
+
+  it("handles a circular value defensively (never throws)", () => {
+    const circular: Record<string, unknown> = { type: "text" };
+    circular.self = circular;
+    expect(() => containsPlaceholder([circular])).not.toThrow();
+    expect(containsPlaceholder([circular])).toBe(false);
   });
 });
