@@ -26,7 +26,11 @@ import {
   buildFallbackKitDeliverable,
   type InvisibilityTestResult,
 } from "../../../../packages/llm/src/index";
-import { createKitCheckoutSession, isCheckoutSessionPaid } from "../integrations/stripe";
+import {
+  createKitCheckoutSession,
+  createPagesCheckoutSession,
+  isCheckoutSessionPaid,
+} from "../integrations/stripe";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -372,6 +376,55 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ token, url: `/kit/${token}?dev_unlock=1`, dev: true });
     }
     return c.json({ message: "Checkout is not configured." }, 503);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/pages/checkout — Ozvor Pages $99 one-time purchase (#208 PR-2)
+  //
+  // Public (pre-account, like the Kit): creates a pages_order + Stripe one-time
+  // checkout. Fulfillment happens in the billing webhook (credit the tenant
+  // matching the buyer email, or leave 'paid' for the bootstrap claim on first
+  // login — onboarding.ts). No dev unlock: there is nothing to deliver without
+  // the webhook credit, so absent Stripe config this is simply unavailable.
+  // -------------------------------------------------------------------------
+  app.post("/api/pages/checkout", async (c) => {
+    let body: { email?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ message: "Invalid JSON body." }, 400);
+    }
+    const email = (body.email ?? "").trim();
+    if (!email || !EMAIL_RE.test(email)) {
+      return c.json({ message: "A valid email is required." }, 400);
+    }
+
+    const stripeConfigured =
+      !!process.env["STRIPE_SECRET_KEY"] && !!process.env["STRIPE_PRICE_ID_PAGES"];
+    if (!stripeConfigured) {
+      return c.json({ message: "Checkout is not configured." }, 503);
+    }
+
+    const id = randomUUID();
+    await db.query(
+      `INSERT INTO pages_order (id, email, status, created_at)
+       VALUES ($1, $2, 'pending', NOW())`,
+      [id, email]
+    );
+
+    const origin = webOrigin();
+    try {
+      const { url } = await createPagesCheckoutSession(
+        id,
+        email,
+        `${origin}/welcome?flow=pages&session_id={CHECKOUT_SESSION_ID}`,
+        `${origin}/pricing?pages_canceled=1`
+      );
+      return c.json({ url });
+    } catch (err) {
+      logger.error("pages_checkout_failed", { message: (err as Error).message });
+      return c.json({ message: "Checkout is not available right now." }, 502);
+    }
   });
 
   // -------------------------------------------------------------------------
