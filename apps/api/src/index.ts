@@ -49,6 +49,7 @@ import { registerNurtureRoutes } from "./routes/nurture";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerAuditRoutes } from "./routes/audits";
 import { registerLandingRoutes } from "./routes/landing";
+import { registerLandingPublicRoutes } from "./routes/landing-public";
 import { registerPromptRoutes } from "./routes/prompts";
 import { registerEngagementRoutes } from "./routes/engagements";
 import { registerSystemRoutes } from "./routes/system";
@@ -273,8 +274,13 @@ registerOperatorBusinessRoutes(app, db);
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
 registerAuditRoutes(app, db);
 // Ozvor Pages (#208): sites/pages/versions/testimonials CRUD (auth, tenant-scoped,
-// plan+credit entitlement). Public /l/[slug] rendering is a later PR.
+// plan+credit entitlement).
 registerLandingRoutes(app, db);
+// Ozvor Pages public surface (#208 PR-6): GET /api/public/landing/:siteSlug[/:pageSlug]
+// (public, no auth), POST .../lead + .../event (public, rate-limited),
+// GET /api/public/landing-sitemap (public), POST /api/landing/admin/sites/:id/(un)suspend
+// (requireSuperAdmin abuse kill-switch).
+registerLandingPublicRoutes(app, db);
 // C8: Prompt Library — GET/POST/DELETE /api/brands/:id/prompts
 registerPromptRoutes(app, db);
 // OrganicPosts done-for-you handoff: POST/GET /api/engagements (auth, tenant-scoped)
