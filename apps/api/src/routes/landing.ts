@@ -143,6 +143,107 @@ export function containsPlaceholder(sections: unknown): boolean {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Pages regeneration quota (issue #217) — usage_counters-backed. INITIAL
+// generation (a site with no generated content yet) is always free; a
+// REGENERATION is quota-checked: free tenants regenerate against a LIFETIME
+// credit (the $99 site), growth/agency against a per-site MONTHLY quota from
+// PLAN_LIMITS. Exported for unit testing.
+// ---------------------------------------------------------------------------
+
+/** Feature key for the usage_counters ledger (Ozvor Pages regenerations). */
+export const PAGES_REGEN_FEATURE = "pages_regeneration";
+
+/** Sentinel period_start for LIFETIME quotas (free tier's $99-credit site). */
+export const LIFETIME_PERIOD_START = "1970-01-01";
+
+/** Free tenants regenerate against a lifetime credit, not a monthly quota —
+ * PLAN_LIMITS.free.pages_regens_per_site_month is deliberately 0/unused; the
+ * free-tier allowance is this constant instead (founder decision, #217). */
+const FREE_LIFETIME_PAGES_REGEN_QUOTA = 2;
+
+export function pagesRegenQuotaFor(
+  planTier: PlanTier
+): { scope: "lifetime" | "monthly"; quota: number } {
+  if (planTier === "free") {
+    return { scope: "lifetime", quota: FREE_LIFETIME_PAGES_REGEN_QUOTA };
+  }
+  const limits = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
+  return { scope: "monthly", quota: limits.pages_regens_per_site_month };
+}
+
+/**
+ * Pure gate: should this /generate call be checked against the regeneration
+ * quota at all? `contentPageCount` is the number of this site's pages that
+ * already carry generated content (sections <> '[]') — 0 means this is the
+ * FREE initial generation. super_admin always bypasses. Exported so the
+ * decision is unit-testable without a DB or Redis.
+ */
+export function shouldEnforcePagesRegenQuota(
+  contentPageCount: number,
+  isSuperAdmin: boolean
+): boolean {
+  const isInitialGeneration = contentPageCount === 0;
+  return !isInitialGeneration && !isSuperAdmin;
+}
+
+/**
+ * DATE-shaped bucket key for usage_counters.period_start. `monthly` uses the
+ * UTC calendar month (documented in the 429 message: "resets on the 1st,
+ * UTC" — the DB column is DATE, no per-tenant timezone). `now` is injectable
+ * for tests.
+ */
+export function pagesRegenPeriodStart(
+  scope: "lifetime" | "monthly",
+  now: Date = new Date()
+): string {
+  if (scope === "lifetime") return LIFETIME_PERIOD_START;
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
+
+/**
+ * Atomically increments a usage_counters row and returns the NEW count —
+ * INSERT ... ON CONFLICT DO UPDATE, no read-then-write race (issue #217).
+ */
+export async function incrementUsageCounter(
+  db: PostgresClient,
+  tenantId: string,
+  feature: string,
+  subjectId: string,
+  periodStart: string
+): Promise<number> {
+  const res = await db.query<{ count: number }>(
+    `INSERT INTO usage_counters (tenant_id, feature, subject_id, period_start, count)
+     VALUES ($1, $2, $3, $4, 1)
+     ON CONFLICT (tenant_id, feature, subject_id, period_start)
+     DO UPDATE SET count = usage_counters.count + 1
+     RETURNING count`,
+    [tenantId, feature, subjectId, periodStart]
+  );
+  return Number(res.rows[0]?.count ?? 0);
+}
+
+/**
+ * Refunds a single unit — called when incrementUsageCounter's RETURNING count
+ * exceeds quota, so a DENIED attempt never burns the tenant's allowance.
+ */
+export async function decrementUsageCounter(
+  db: PostgresClient,
+  tenantId: string,
+  feature: string,
+  subjectId: string,
+  periodStart: string
+): Promise<void> {
+  await db.query(
+    `UPDATE usage_counters
+        SET count = count - 1
+      WHERE tenant_id = $1 AND feature = $2 AND subject_id = $3 AND period_start = $4`,
+    [tenantId, feature, subjectId, periodStart]
+  );
+}
+
 async function siteOwnedByTenant(
   db: PostgresClient,
   tenantId: string,
@@ -517,6 +618,49 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       if (!site) return c.json({ message: "Site not found." }, 404);
       if (site.status === "suspended") {
         return c.json({ message: "This site is suspended. Contact support.", code: "SITE_SUSPENDED" }, 403);
+      }
+
+      // Pages regeneration quota (issue #217). INITIAL generation (no page of
+      // this site carries generated content yet) is always free — no counter
+      // touched. A REGENERATION is quota-checked; super_admin bypasses.
+      const contentRes = await db.query<{ count: string }>(
+        `SELECT COUNT(*) AS count FROM landing_pages
+          WHERE site_id = $1 AND tenant_id = $2 AND sections <> '[]'::jsonb`,
+        [siteId, auth.tenantId]
+      );
+      const contentPageCount = parseInt(contentRes.rows[0]?.count ?? "0", 10);
+
+      if (shouldEnforcePagesRegenQuota(contentPageCount, auth.isSuperAdmin)) {
+        const tenantRes = await db.query<{ plan_tier: string | null }>(
+          `SELECT plan_tier FROM tenants WHERE id = $1`,
+          [auth.tenantId]
+        );
+        const planTier = (tenantRes.rows[0]?.plan_tier ?? "free") as PlanTier;
+        const { scope, quota } = pagesRegenQuotaFor(planTier);
+        const periodStart = pagesRegenPeriodStart(scope);
+
+        const count = await incrementUsageCounter(
+          db,
+          auth.tenantId,
+          PAGES_REGEN_FEATURE,
+          siteId,
+          periodStart
+        );
+        if (count > quota) {
+          // Denied — decrement back so this attempt doesn't burn quota.
+          await decrementUsageCounter(db, auth.tenantId, PAGES_REGEN_FEATURE, siteId, periodStart);
+          logger.warn("pages_regen_limit_hit", { tenantId: auth.tenantId, siteId, quota, scope });
+          return c.json(
+            {
+              message:
+                scope === "lifetime"
+                  ? `This site has used its ${quota} included regenerations. Additional regenerations aren't available on the Free plan yet.`
+                  : `This site has reached its regeneration limit (${quota} per month) for your plan. Resets on the 1st, UTC.`,
+              code: "PAGES_REGEN_LIMIT",
+            },
+            429
+          );
+        }
       }
 
       const jobKind: "generate" | "regenerate" =

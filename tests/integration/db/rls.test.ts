@@ -217,6 +217,15 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
               (gen_random_uuid(), $2, 'rls-test-site-b')`,
       [TENANT_A, TENANT_B]
     );
+
+    // Cost-control quota fixtures (20260710000004): one usage_counters row
+    // per tenant (issue #217).
+    await sql.unsafe(
+      `INSERT INTO usage_counters (tenant_id, feature, subject_id, period_start, count)
+       VALUES ($1, 'pages_regeneration', gen_random_uuid(), '1970-01-01', 1),
+              ($2, 'pages_regeneration', gen_random_uuid(), '1970-01-01', 1)`,
+      [TENANT_A, TENANT_B]
+    );
   });
 
   afterAll(async () => {
@@ -224,6 +233,7 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     await sql.unsafe(
       `DELETE FROM dsr_requests WHERE requester_email IN ('a@rls.test', 'null@rls.test')`
     );
+    await sql.unsafe(`DELETE FROM usage_counters WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await sql.unsafe(`DELETE FROM landing_sites WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await sql.unsafe(`DELETE FROM brands WHERE tenant_id IN ($1, $2)`, [TENANT_A, TENANT_B]);
     await sql.unsafe(`DELETE FROM tenants WHERE id IN ($1, $2)`, [TENANT_A, TENANT_B]);
@@ -338,7 +348,7 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     ).rejects.toThrow();
   });
 
-  it("check-rls metadata: all 29 tenant-scoped tables have RLS enabled", async () => {
+  it("check-rls metadata: all 30 tenant-scoped tables have RLS enabled", async () => {
     const rows = await sql.unsafe(`
       SELECT relname FROM pg_class
       JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
@@ -352,10 +362,48 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
           'provider_keys','competitor','competitor_citation','strategy_plan',
           'plan_task','content_piece',
           'landing_sites','landing_pages','landing_page_versions',
-          'landing_testimonials','landing_leads','landing_events'
+          'landing_testimonials','landing_leads','landing_events',
+          'usage_counters'
         )
         AND NOT relrowsecurity
     `);
     expect(rows).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Cost-control quotas (20260710000004) — cross-tenant isolation on
+  // usage_counters (issue #217).
+  // -------------------------------------------------------------------------
+
+  it("RLS scopes an UNFILTERED SELECT on usage_counters to the current tenant", async () => {
+    const rows = await asTenant(TENANT_A, (tx) =>
+      tx.unsafe(`SELECT tenant_id, feature, count FROM usage_counters`)
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tenant_id).toBe(TENANT_A);
+    expect(rows[0].feature).toBe("pages_regeneration");
+  });
+
+  it("tenant A cannot UPDATE tenant B's usage_counters (0 rows affected)", async () => {
+    const res = await asTenant(TENANT_A, (tx) =>
+      tx.unsafe(`UPDATE usage_counters SET count = 99 WHERE tenant_id = $1`, [TENANT_B])
+    );
+    expect(res.count).toBe(0);
+    const check = await sql.unsafe(`SELECT count FROM usage_counters WHERE tenant_id = $1`, [
+      TENANT_B,
+    ]);
+    expect(check[0].count).toBe(1);
+  });
+
+  it("tenant A cannot INSERT a usage_counters row claiming tenant B's tenant_id", async () => {
+    await expect(
+      asTenant(TENANT_A, (tx) =>
+        tx.unsafe(
+          `INSERT INTO usage_counters (tenant_id, feature, subject_id, period_start, count)
+           VALUES ($1, 'pages_regeneration', gen_random_uuid(), '1970-01-01', 1)`,
+          [TENANT_B]
+        )
+      )
+    ).rejects.toThrow();
   });
 });
