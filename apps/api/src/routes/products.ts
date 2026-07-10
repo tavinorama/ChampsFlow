@@ -255,6 +255,33 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       logger.warn("lead_capture_insert_failed", { message: (err as Error).message });
     }
 
+    // Claim immediately when the visitor ALREADY has an account (#218): the
+    // bootstrap claim (#166) only runs at first login, so a test run after
+    // signup would otherwise stay orphaned forever. Best-effort + idempotent
+    // (claimed_at IS NULL); email is never logged.
+    if (testId && email) {
+      try {
+        const { rows: ownerRows } = await db.query<{ tenant_id: string }>(
+          `SELECT u.tenant_id FROM users u WHERE lower(u.email) = $1 LIMIT 1`,
+          [email.toLowerCase().trim()]
+        );
+        const visitorTenantId = ownerRows[0]?.tenant_id ?? null;
+        if (visitorTenantId) {
+          await db.query(
+            `UPDATE lead_capture SET claimed_at = NOW(), claimed_by_tenant_id = $2
+             WHERE id = $1 AND claimed_at IS NULL`,
+            [testId, visitorTenantId]
+          );
+          logger.info("lead_capture_claimed_at_capture", {
+            test_id: testId,
+            tenant_id: visitorTenantId,
+          });
+        }
+      } catch (err) {
+        logger.warn("lead_capture_immediate_claim_failed", { message: (err as Error).message });
+      }
+    }
+
     // Best-effort immediate result email (transactional — no consent required;
     // this delivers back the result the user just requested).
     // NEVER blocks the response or returns 500 due to email failure.

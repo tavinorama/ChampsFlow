@@ -837,6 +837,48 @@ async function handleCheckoutSessionCompleted(
       [kit_order_id, session.id]
     );
 
+    // Claim immediately when the buyer ALREADY has an account (#218): the
+    // bootstrap claim (#166) only runs at first login, so a purchase made
+    // after signup would otherwise stay orphaned forever. Same event-driven
+    // pattern as the pages_order credit path below. Best-effort + idempotent.
+    try {
+      const buyerEmail = (
+        kitRow?.email ??
+        session.customer_details?.email ??
+        session.customer_email ??
+        ""
+      ).toLowerCase().trim();
+      if (buyerEmail) {
+        const { rows: ownerRows } = await db.query<{ tenant_id: string }>(
+          `SELECT u.tenant_id FROM users u WHERE lower(u.email) = $1 LIMIT 1`,
+          [buyerEmail]
+        );
+        const buyerTenantId = ownerRows[0]?.tenant_id ?? null;
+        if (buyerTenantId) {
+          const { rows: claimed } = await db.query<{ id: string }>(
+            `UPDATE kit_order SET claimed_at = NOW(), claimed_by_tenant_id = $2
+             WHERE id = $1 AND claimed_at IS NULL
+             RETURNING id`,
+            [kit_order_id, buyerTenantId]
+          );
+          if (claimed[0]) {
+            logger.info("kit_order_claimed_at_webhook", {
+              kit_order_id,
+              tenant_id: buyerTenantId,
+              event_id: eventId,
+              // NOTE: email intentionally NOT logged — hard rule (PII)
+            });
+          }
+        }
+      }
+    } catch (claimErr) {
+      logger.warn("kit_order_webhook_claim_failed", {
+        kit_order_id,
+        event_id: eventId,
+        message: (claimErr as Error).message,
+      });
+    }
+
     // Best-effort delivery email.
     const customerEmail =
       session.customer_details?.email ?? session.customer_email ?? null;
