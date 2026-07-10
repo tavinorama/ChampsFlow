@@ -1,4 +1,6 @@
-# TrustIndex AI — Product Overview (canonical reference)
+# Ozvor — Product Overview (canonical reference)
+
+> *Atualizado 2026-07-10 (issue #213): marca TrustIndex AI → **Ozvor**; score "TrustIndex Score" → **"Ozvor AI Visibility Score"** (regra do fundador 2026-06-27).*
 
 > Owned by product-manager · Criado 2026-06-13
 > **Todos os números deste doc foram verificados contra o código** (workflow de
@@ -9,7 +11,7 @@
 
 ## 1. O que é
 Plataforma SaaS de **AI Search Trust Intelligence** para SMBs. Pergunta de verdade
-ao ChatGPT/Claude/Perplexity/Gemini/Google AI Overview, calcula o **TrustIndex
+ao ChatGPT/Claude/Perplexity/Gemini/Google AI Overview, calcula o **Ozvor AI Visibility
 Score** (0–100), mostra as provas, compara com concorrentes e entrega plano +
 conteúdo pronto para a marca ser citada. **OrganicPosts** é o braço de consultoria.
 Home: Brasil (LGPD). Clientes: EU (GDPR) + EUA (CCPA/FTC).
@@ -31,7 +33,7 @@ passo real do mesmo processo (detalhe em `docs/marketing/value-ladder.md`).
 
 ---
 
-## 3. O TrustIndex Score — 3 vetores (fórmulas verificadas)
+## 3. O Ozvor AI Visibility Score — 3 vetores (fórmulas verificadas)
 
 **Overall = Brand×0.30 + Performance×0.35 + AI×0.35** (cada sub-score 0–100).
 
@@ -130,7 +132,7 @@ POST /api/brands/:id/audit → enfileira no Redis (payload só IDs+região)
 ### As 6 etapas (expostas em `/api/system/capabilities` → `/how-it-works`)
 1. **AI Visibility Audit** — sondagem multi-motor
 2. **Authority & Perception Analysis** — sentiment + Reddit + off-site + entity
-3. **TrustIndex Score** — os 3 vetores, com measured-vs-baseline
+3. **Ozvor AI Visibility Score** — os 3 vetores, com measured-vs-baseline
 4. **GEO Content Plan** — plano priorizado + calendário
 5. **Organic Publishing (OrganicPosts)** — drafts + publicação (humano aprova)
 6. **Weekly Monitor (flywheel)** — re-auditoria semanal + tracking

@@ -1,4 +1,6 @@
-# TrustIndex AI — Product Catalog (source of truth)
+# Ozvor — Product Catalog (source of truth)
+
+> *Updated 2026-07-10 (issue #213): brand TrustIndex AI → **Ozvor**; score name → **"Ozvor AI Visibility Score"**.*
 
 > Platform-agnostic spec. Use this to create the SKUs in **any** payment tool
 > (Stripe, Lemon Squeezy, Polar). Currency: **USD**. Only the "Platform SKU /
@@ -9,7 +11,7 @@
 | Product | Price | Billing | What the buyer gets | Code |
 |---|---|---|---|---|
 | **The AI Invisibility Test** | $0 (free) | — | 1 buyer prompt across 4 AI engines → shows if the brand is cited. Lead magnet (~2¢/run on platform key). | `packages/llm/invisibility-test.ts`, `/test` |
-| **The Get-Cited Kit** | **$29** | one-time | TrustIndex Score (3 vectors) + top fixes + content drafts + publish checklist. No subscription. | `packages/llm/kit-deliverable.ts`, `/kit` |
+| **The Get-Cited Kit** | **$29** | one-time | Ozvor AI Visibility Score (3 vectors) + top fixes + content drafts + publish checklist. No subscription. | `packages/llm/kit-deliverable.ts`, `/kit` |
 
 ## B. Subscription tiers (the SaaS)
 
@@ -27,7 +29,7 @@
 
 | Product | Price | What it is |
 |---|---|---|
-| **OrganicPosts by TrustIndex AI** | custom / consultative (no public price) | DFY GEO execution: Audit → Map → Create → Publish → Monitor (website, LinkedIn, Google Business Profile, newsletter). CTA "Build my GEO content plan". | `/organicposts` |
+| **OrganicPosts by Ozvor** | custom / consultative (no public price) | DFY GEO execution: Audit → Map → Create → Publish → Monitor (website, LinkedIn, Google Business Profile, newsletter). CTA "Build my GEO content plan". | `/organicposts` |
 
 ## D. Free content lead magnets (bundled in Growth, drive signups)
 - GEO Visibility Guide · LLM Citation Tracker · 5 High-Citation Post Templates (`/resources/*`).

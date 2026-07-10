@@ -1,167 +1,83 @@
-# Privacy Policy — Organic Posts
+# Privacy Policy — Ozvor
 
-**Effective date**: 2026-05-17
-**Version**: 0.1-pre-launch
-**Last updated**: 2026-05-04
+**Live page**: https://ozvor.com/privacy-policy (source of record: `apps/web/src/app/privacy-policy/page.tsx`)
+**Last updated (live)**: 13 June 2026
+**Internal mirror refreshed**: 2026-07-10 (issue #213 — entity/brand refresh)
+**Status**: LIVE. Counsel review required before paid EU/BR launch. Grounded in `docs/compliance/ropa.md` + `regulatory-map.md`.
+
+> This file is the internal markdown mirror of the live Privacy Policy. The live page is the operative customer-facing text; keep this mirror in sync when the page changes. The prior pre-launch draft (2026-05-17, "Organic Posts, Lda / Portugal" — superseded) is preserved in git history.
 
 ---
 
 ## TL;DR (≤150 words)
 
-Organic Posts collects email, name, OAuth tokens, social content drafts, and usage telemetry to operate its AI-assisted social posting service. For EU users: lawful basis is contract (Art. 6(1)(b)) for core service data and legal obligation (Art. 6(1)(c)) for compliance records. Retention matches the ROPA: account life plus a 30-day grace period for most data, 3 years for compliance records. Sub-processors include Anthropic, Supabase, Railway, Resend, Stripe, and Plausible Analytics. Anthropic operates under Zero Data Retention — your content is not used to train AI models. EU-to-third-country transfers use SCCs or the EU-US Data Privacy Framework. EU users have full GDPR Art. 15–22 rights; California residents have CCPA/CPRA rights including the right to opt out of sale (we do not sell data). DSR requests: privacy@organicposts.ai or /account/data-privacy.
+**Ozvor** — trade name of a Brazilian MEI, **CNPJ 67.609.444/0001-08**, registered office Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brazil — is the controller for account data; for customer-directed processing see the DPA. Data is minimised by design: audit prompts are synthetic (no personal data; competitor names never sent to AI providers). Collected: account email/role, brand/domain data, audit evidence, billing identifiers (no card data), encrypted BYOK keys, lead-capture emails. Sub-processors: Supabase, Anthropic, OpenAI, Google (Gemini), Perplexity (US only), DataForSEO/SerpAPI, Stripe, Resend, Railway, Cloudflare. Transfers rely on EU-hosted paths, SCCs, and/or DPF. Retention: citation evidence 90 days; scores 12 months; account data life + 30 days. Rights under LGPD, GDPR, and CCPA/CPRA via /legal/dsr-request or **dpo@ozvor.com**; complaints to ANPD, EU supervisory authorities, or the CPPA. We do not sell personal information.
 
 ---
 
-## 1. Controller Identity
+**Intro.** This Policy explains how Ozvor (home jurisdiction Brazil) collects, uses, shares, and protects personal data, and your rights under the LGPD (Brazil), GDPR (EU/EEA & UK), and CCPA/CPRA (California) and other US state laws. Ozvor is the data controller for account data; for data you process about your own customers via the Service, see our Data Processing Agreement.
 
-**Organic Posts, Lda — Portugal (registration TBD)**, trading as Organic Posts
-Website: organicposts.ai
-Privacy contact: privacy@organicposts.ai
+## 1. Who is responsible (controller)
 
-As Organic Posts, Lda is established in Portugal (EU), no Article 27 representative is appointed under GDPR — direct contact via privacy@organicposts.ai.
+Ozvor is the controller of personal data described here. Ozvor is the trade name of a Brazilian individual micro-entrepreneur (MEI), registered under CNPJ 67.609.444/0001-08, with registered office at Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brazil. Privacy contact: dpo@ozvor.com. An EU representative (GDPR Art. 27) and a Brazilian Encarregado (LGPD DPO) are appointed before serving EU and Brazilian markets respectively.
 
-**Data Protection Officer:** Not mandatory at current scale (no large-scale systematic monitoring, no special category data). Will be reassessed at Series A or if headcount exceeds 250.
+## 2. What we collect and why
 
----
+We minimise personal data. By design, our audit prompts are synthetic category questions plus your own brand name — they contain no personal data, and competitor names are never sent to AI providers.
 
-## 2. Scope of This Policy
+| Data | Purpose | Lawful basis (GDPR / LGPD) |
+|---|---|---|
+| Account: email, role, Supabase user ID | Create your account, passwordless login | Contract (Art. 6(1)(b) / Art. 7(V)) |
+| Brand profile: brand name, domain, settings | Run audits and monitoring | Contract |
+| Audit evidence: synthetic prompts, citation flags, source URLs | Compute your Ozvor AI Visibility Score | Contract |
+| Off-site signals (public sources) | Measure brand authority | Legitimate interests (Art. 6(1)(f) / Art. 7(IX)) |
+| Billing: name, email, Stripe ID, region (no card data stored by us) | Process payments | Contract |
+| BYOK API keys (encrypted, AES-256-GCM) | Run audits with your own provider keys | Contract |
+| Lead capture: email + test result (Invisibility Test) | Send your scorecard and follow up | Consent / legitimate interests |
+| Transactional email, support, DSR records | Operate the Service, meet legal duties | Contract / legal obligation |
 
-This Policy applies to:
-- Visitors to organicposts.ai (including the pre-launch waitlist page)
-- Users of the Organic Posts application (post-launch)
-- EU and US data subjects in all 50 states
+## 3. AI processing and transparency
 
-During the pre-launch (waitlist) period, only waitlist data is collected. See the Waitlist Privacy Notice for a shorter standalone version.
+Audits send synthetic prompts to AI providers under no-training terms per provider API agreements; for EU users, we minimise transfers and disclose all sub-processors (see §4), Perplexity is excluded until transfer safeguards are confirmed, and EU-region inference is on our roadmap. AI-generated content is always labelled as AI-generated (EU AI Act Art. 50) and requires your human review before any use. We do not use your data to train AI models, and our providers are contractually restricted from doing so on your content.
 
----
+## 4. Who we share with (sub-processors)
 
-## 3. Data We Collect and Why
+We share data only with vetted processors acting on our instructions:
 
-| Category | Examples | Lawful basis (EU) | US basis | Retention |
-|---|---|---|---|---|
-| Account identity | Name, email, password hash | Art. 6(1)(b) — contract | Necessary for service | Account life + 30 days |
-| Authentication tokens | Session JWTs, Supabase Auth UID | Art. 6(1)(b) — contract | Necessary for service | Session expiry / account life |
-| OAuth social tokens | LinkedIn/Instagram access + refresh tokens (AES-256-GCM encrypted) | Art. 6(1)(b) — contract | Necessary for service | Until revoked or account deletion |
-| Social content | Topic inputs, AI-generated drafts, approved posts | Art. 6(1)(b) — contract | Necessary for service | Account life + 30 days |
-| Usage telemetry | Page views, feature interactions (no PII — Plausible Analytics) | Art. 6(1)(f) — legitimate interest | Disclosed purpose | Plausible retention (rolling 2 years) |
-| Billing data | Name, email, Stripe customer ID (card data is Stripe-hosted) | Art. 6(1)(b) — contract | Necessary for service | Account life; card data per Stripe policy |
-| Compliance records | DPA acknowledgment, CCPA opt-out flag, DSR logs | Art. 6(1)(c) — legal obligation | Legal compliance | 3 years minimum |
-| Audit logs | Hashed user/tenant ID, event type, IP address | Art. 6(1)(c) + 6(1)(f) | Legal compliance / security | 3 years (audit); 90 days hot / 1 year archive (operational) |
-| Transactional email | Email address, notification content | Art. 6(1)(b) + 6(1)(c) | Necessary for service | Per Resend retention policy |
+- **Supabase** — authentication + database (EU region for EU users)
+- **Anthropic, OpenAI, Google (Gemini)** — AI audit inference (EU-hosted paths for EU users)
+- **Perplexity** — AI inference (US users only; EU excluded pending safeguards)
+- **DataForSEO / SerpAPI** — public off-site & AI-Overview signals
+- **Stripe** — payment processing (PCI-compliant; we never store card data)
+- **Resend** — transactional email delivery
+- **Railway / Cloudflare** — hosting and network/CDN
 
-We do not collect special category data (Art. 9 GDPR), biometric data, or data from children under 16.
+We do not sell your personal information. A current sub-processor list is available at [ozvor.com/legal/sub-processors](https://ozvor.com/legal/sub-processors).
 
----
+## 5. International transfers
 
-## 4. AI Features and Data Use
+Where data leaves the EEA/UK or Brazil, we rely on appropriate safeguards: EU-hosted inference paths (no transfer), Standard Contractual Clauses, and/or Data Privacy Framework certification for US providers. For Brazilian users, the LGPD international-transfer basis is documented before onboarding natural persons.
 
-The AI drafting feature is powered by **Anthropic Claude Sonnet**, accessed via:
-- AWS Bedrock, eu-central-1 region — for EU-based tenants
-- Anthropic direct API, us-east-1 region — for US-based tenants
+## 6. Retention
 
-**Zero Data Retention (ZDR):** Anthropic operates under a ZDR agreement with Organic Posts. Your topic inputs and generated drafts are not stored by Anthropic and are not used to train any AI model.
+We keep data only as long as needed: audit citation evidence is purged after 90 days; AI generation logs (hashes only) are kept 3 years; score history rolls 12 months; account, brand, plan, and draft data are kept for your account's life plus a 30-day grace period; DSR records 30 days after closure. Encrypted BYOK keys are kept until rotation or account deletion.
 
-**EU AI Act Article 50 disclosure:** AI-generated content is labeled as such within the application. The post draft review screen displays a visible AI disclosure badge on every draft.
+## 7. Your rights
 
-**No automated decision-making:** The service does not make automated decisions with legal or similarly significant effects. Every post requires explicit human approval before it is scheduled or published (draft-and-confirm model). GDPR Art. 22 does not apply.
+Subject to your jurisdiction, you can request access, correction, deletion, portability, restriction, and objection, and (CCPA/CPRA) to know, delete, correct, and opt out of "sale"/"sharing" and limit sensitive-data use. We do not sell or share personal information for cross-context behavioural advertising. Exercise rights at /legal/dsr-request, opt out at /legal/do-not-sell (Do Not Sell or Share), or email dpo@ozvor.com. You may also lodge a complaint with the ANPD (Brazil), your EU supervisory authority, or the California Privacy Protection Agency.
 
-**California SB-942:** The AI feature uses a generative AI system. Users may request information about the AI system's training data and capabilities by contacting privacy@organicposts.ai or via the link provided in the application.
+## 8. Security
 
----
+We use multi-tenant isolation (row-level security), encryption in transit and at rest, AES-256-GCM encryption for stored API keys, append-only audit logs, and least-privilege access. No method is perfectly secure, but we maintain controls appropriate to the risk.
 
-## 5. Sub-processors
+## 9. Children
 
-We use the following sub-processors that may process personal data on our behalf. Full details including transfer mechanisms are on our [Sub-processors page](organicposts.ai/sub-processors).
+The Service is for businesses and not directed to children. We do not knowingly collect data from anyone under the age of majority in their jurisdiction.
 
-| Sub-processor | Purpose | Region | Transfer mechanism |
-|---|---|---|---|
-| Anthropic | AI inference (ZDR — no retention) | EU (Bedrock eu-central-1) / US | ZDR; DPF certified; SCCs available |
-| Supabase | Database + authentication | eu-central-1 (EU users); us-east-1 (US users) | EU project = no transfer; US project = domestic |
-| Railway | Application hosting | [CONFIRM: EU region for EU users] | SCCs if non-EU hosting |
-| Resend | Transactional email | EU infrastructure for EU users | SCCs |
-| Stripe | Payment processing | US-hosted | SCCs + DPF certified |
-| Plausible Analytics | Privacy-friendly analytics (no PII, no cookies) | EU-hosted | No personal data transferred |
+## 10. Changes and contact
 
-We will update this page when sub-processors are added, removed, or materially changed.
+We will post updates on the live page and, for material changes, notify you. Privacy contact: dpo@ozvor.com.
 
 ---
 
-## 6. International Data Transfers (EU)
-
-For EU data subjects, personal data is primarily processed within the EU (Supabase eu-central-1, Anthropic via Bedrock eu-central-1, Plausible EU-hosted). Where transfers to the US occur (Stripe, Anthropic as fallback):
-- We rely on Standard Contractual Clauses (SCCs) adopted by the European Commission
-- Where available, we also rely on EU-US Data Privacy Framework (DPF) certification
-- Transfer impact assessments have been conducted as part of our DPIA (on file)
-
----
-
-## 7. Your Rights
-
-### EU / EEA / UK Data Subjects (GDPR / UK GDPR)
-You have the right to:
-- **Access** (Art. 15) — receive a copy of your personal data
-- **Rectification** (Art. 16) — correct inaccurate data
-- **Erasure** (Art. 17) — request deletion ("right to be forgotten")
-- **Restriction** (Art. 18) — restrict processing in specified circumstances
-- **Portability** (Art. 20) — receive your data in a machine-readable format
-- **Object** (Art. 21) — object to processing based on legitimate interests
-- **Lodge a complaint** — with your national supervisory authority (e.g., the Irish DPC if we are Ireland-registered, or your local SA)
-
-Response deadline: 30 days from receipt of a verifiable request.
-
-### California Residents (CCPA/CPRA)
-You have the right to:
-- **Know** what personal information we collect, use, or share
-- **Delete** your personal information (with exceptions)
-- **Correct** inaccurate personal information
-- **Opt out of Sale or Sharing** — we do not sell or share personal information for cross-context behavioral advertising. The "Do Not Sell or Share My Personal Information" link is available in the application footer and Privacy Settings.
-- **Limit Use of Sensitive PI** — we do not collect sensitive personal information as defined by CPRA beyond what is strictly necessary to provide the service.
-- **Non-discrimination** — we will not discriminate against you for exercising these rights
-
-Response deadline: 45 days from receipt of a verifiable request (one 45-day extension possible).
-
-### Other US State Rights
-We honor equivalent rights for residents of Virginia (VCDPA), Colorado (CPA), Connecticut (CTDPA), Texas (TDPSA), and other states with comprehensive privacy laws in effect. Contact privacy@organicposts.ai.
-
-### How to Submit a Request
-- In-app: Account > Data & Privacy (/account/data-privacy)
-- Email: privacy@organicposts.ai
-- We will verify your identity before processing any request. Identity verification does not require unnecessary data collection.
-
----
-
-## 8. Cookies and Tracking
-
-We use **Plausible Analytics** — a privacy-first analytics tool that does not use cookies, does not fingerprint browsers, and does not collect or store any personally identifiable information. No cookie consent banner is required for Plausible under the ePrivacy Directive.
-
-If we add additional analytics or advertising tools in the future (e.g., Google Analytics 4), this policy will be updated, a cookie banner will be implemented, and consent will be obtained before those tools activate. See our Cookie Policy for full details.
-
----
-
-## 9. Children's Privacy
-
-The service is not directed to individuals under 16. We do not knowingly collect personal data from anyone under 16. If we become aware that we have collected data from a minor, we will delete it promptly. Contact privacy@organicposts.ai if you believe we have collected data from a minor.
-
----
-
-## 10. Security
-
-We implement appropriate technical and organizational measures including: AES-256 encryption at rest, TLS in transit, RBAC with least-privilege, session JWT rotation, IP-rate limiting on auth endpoints, and audit logging of sensitive actions. See our threat model (internal) for full details.
-
----
-
-## 11. Changes to This Policy
-
-We will notify users of material changes via email and in-app notification at least 30 days before the change takes effect. The effective date at the top of this document will be updated. Continued use after the effective date constitutes acceptance.
-
----
-
-## 12. Contact
-
-Privacy inquiries: privacy@organicposts.ai (email forwarding to be configured via Cloudflare; founder operational task this week)
-Postal address: Organic Posts, Lda — registered office in Portugal (to be confirmed at incorporation)
-EU Representative: Not applicable — controller is established in Portugal (EU).
-
----
-
-_This document is a pre-launch draft. It must be reviewed by qualified legal counsel before the service goes live. It does not constitute legal advice._
+_This mirror reflects operator-authored live copy. It does not constitute legal advice._

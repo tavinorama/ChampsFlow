@@ -1,4 +1,6 @@
-# Threat Model — Organic Posts
+# Threat Model — Ozvor (GEO platform; formerly "Organic Posts" / "TrustIndex AI")
+
+> **Entity/brand note (2026-07-10, issue #213):** the operating entity/brand is **Ozvor** (ozvor.com; Brazilian MEI, CNPJ 67.609.444/0001-08 — see `docs/compliance/ropa.md`). "Organic Posts" sections below are the preserved v1 analysis; the live threat model is the GEO section (TB-8+).
 
 > Owner: `security-compliance-officer`
 > Created: Gate 3→4 — 2026-05-02
@@ -392,13 +394,13 @@ Phase 6 QA delivered strong security test coverage across the threat model. All 
 
 ## GEO Platform Pivot — Threat Model Update — Gate 3→4 — 2026-06-10
 
-> Scope: TrustIndex AI GEO platform (pivot 2026-05-29). Prior social-scheduling STRIDE analysis above is preserved. This section adds GEO-specific trust boundaries and updates the TL;DR. Methodology: STRIDE per trust boundary; risk = Likelihood × Impact.
+> Scope: Ozvor GEO platform (pivot 2026-05-29; analysed pre-rebrand under the "TrustIndex AI" name). Prior social-scheduling STRIDE analysis above is preserved. This section adds GEO-specific trust boundaries and updates the TL;DR. Methodology: STRIDE per trust boundary; risk = Likelihood × Impact.
 
 ---
 
 ### TL;DR (updated 2026-06-10 — supersedes 2026-05-02 TL;DR above)
 
-TrustIndex AI GEO platform is a multi-tenant SaaS (Railway EU-west + US-east) with eleven material trust boundaries. The original seven from the social-scheduling product are preserved above (TB-1 through TB-7); four new boundaries are added for the GEO platform (TB-8 through TB-11). The highest NEW residual risk is **SSRF via the site crawler** (TB-10): user-supplied brand domains flow from `POST /api/brands` through `brands.domain` into `crawlSite()` and `analyzeContentGeo()` in the worker without IP-range validation — a BLOCK condition (GEO-SEC-1) for the site-crawl capability. Other GEO platform controls verify well: DEV_AUTH_BYPASS is hard-gated (`NODE_ENV !== production`); Stripe webhook signature is verified before any side-effects; `citation_check.sources` strips query-strings and fragments at persistence; BYOK keys return presence-only; `ai_generation_log` is append-only at the Postgres privilege level. Encryption at rest (AES-256 DB-level + AES-256-GCM BYOK field-level), in transit (TLS 1.2+), secrets management (Railway runtime-only), and multi-tenant RLS (FORCE ROW LEVEL SECURITY) are all correctly specified for the GEO pivot. Overall residual risk: LOW to MEDIUM for all GEO capabilities except the site-crawl slice (BLOCKED until GEO-SEC-1 + GEO-SEC-4 fixed).
+The Ozvor GEO platform is a multi-tenant SaaS (Railway EU-west + US-east) with eleven material trust boundaries. The original seven from the social-scheduling product are preserved above (TB-1 through TB-7); four new boundaries are added for the GEO platform (TB-8 through TB-11). The highest NEW residual risk is **SSRF via the site crawler** (TB-10): user-supplied brand domains flow from `POST /api/brands` through `brands.domain` into `crawlSite()` and `analyzeContentGeo()` in the worker without IP-range validation — a BLOCK condition (GEO-SEC-1) for the site-crawl capability. Other GEO platform controls verify well: DEV_AUTH_BYPASS is hard-gated (`NODE_ENV !== production`); Stripe webhook signature is verified before any side-effects; `citation_check.sources` strips query-strings and fragments at persistence; BYOK keys return presence-only; `ai_generation_log` is append-only at the Postgres privilege level. Encryption at rest (AES-256 DB-level + AES-256-GCM BYOK field-level), in transit (TLS 1.2+), secrets management (Railway runtime-only), and multi-tenant RLS (FORCE ROW LEVEL SECURITY) are all correctly specified for the GEO pivot. Overall residual risk: LOW to MEDIUM for all GEO capabilities except the site-crawl slice (BLOCKED until GEO-SEC-1 + GEO-SEC-4 fixed).
 
 ---
 
@@ -430,7 +432,7 @@ TrustIndex AI GEO platform is a multi-tenant SaaS (Railway EU-west + US-east) wi
 | **10.1** | **SSRF via user-supplied brand domain — internal IP ranges, cloud metadata, container names** | **T / I** | **Med** | **Critical** | **NONE currently.** `normalizeUrl()` in `site-crawl.ts:47` and `content-geo.ts:38` strips the scheme and prepends `https://` but performs no hostname validation. `brand.domain` flows from user input (`POST /api/brands:125`) → DB → worker with zero IP-range checks. Cloud metadata endpoints (`169.254.169.254` AWS IMDSv1/v2, GCP `metadata.google.internal`), RFC 1918 ranges, and container-network hostnames (`redis`, `postgres`) are all reachable. | **CRITICAL — BLOCK for site-crawl capability (GEO-SEC-1)** |
 | **10.2** | **Open redirect assist via `redirect: "follow"` — DNS rebinding** | **T / I** | **Low** | **High** | `redirect: "follow"` in `site-crawl.ts:57` and `content-geo.ts:47` with native Node 20 default (20 hops). A malicious domain could redirect to a private IP after passing any string-only blocklist. | **High — companion to 10.1 (GEO-SEC-4). Fix alongside GEO-SEC-1.** |
 | 10.3 | Malicious website serves oversized response, exhausting worker memory | D | Low | Med | 512 KB body cap (`site-crawl.ts:63`, `content-geo.ts:53`) + 8 s timeout AbortController | Low — caps are in place |
-| 10.4 | Crawler user-agent impersonation: site serves benign content to `TrustIndexAI-Crawler/1.0` and hostile content to real browsers | T / R | Low | Low | Crawler only extracts structured data (JSON-LD, robots.txt directives, meta tags); no code execution; cloaking cannot cause data exfiltration | Low |
+| 10.4 | Crawler user-agent impersonation: site serves benign content to the audit crawler UA (`OzvorBot-Crawler/1.0`, see `packages/llm/src/site-crawl.ts`; analysed pre-rebrand as `TrustIndexAI-Crawler/1.0`) and hostile content to real browsers | T / R | Low | Low | Crawler only extracts structured data (JSON-LD, robots.txt directives, meta tags); no code execution; cloaking cannot cause data exfiltration | Low |
 | 10.5 | Repudiation: brand owner disputes the crawl measured their site | R | Low | Med | Crawl result tied to `audit_id` in `ai_generation_log`; `brand.domain` stored at audit time; timestamp + model version chain | Low |
 
 ---

@@ -1,5 +1,7 @@
 # Organic Posts — Pre-Launch Marketing Strategy
 
+> **[HISTORICAL — SUPERSEDED, marked 2026-07-10 (issue #213).]** This strategy describes the archived pre-pivot "Organic Posts" social-scheduling product and the organicposts.ai domain plan. The product pivoted to GEO (2026-05-29), rebranded to **Ozvor** (2026-06), and is live on **ozvor.com**; the entity is **Ozvor — Brazilian MEI, CNPJ 67.609.444/0001-08** (see `docs/compliance/ropa.md`). Preserved unedited as a historical record — do not reuse the positioning, entity, or domain claims below.
+
 > Owned by vp-marketing. Written 2026-05-01. Word cap 2500. Hard rule: no claims about capabilities not in PRD; no fake testimonials; no urgency language without a real deadline.
 
 ---

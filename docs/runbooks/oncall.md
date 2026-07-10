@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-Organic Posts v1 has a single on-call rotation (founder). Alerts route to `ops@organicposts.ai` via Grafana. PagerDuty is optional in v1.1 when the engineering team grows.
+Ozvor has a single on-call rotation (founder). Alerts route to the founder ops mailbox `founder@ozvor.com` via Grafana (Cloudflare Email Routing per `docs/runbooks/email-setup-cloudflare.md`; a dedicated `ops@ozvor.com` route may be added there). PagerDuty is optional later when the engineering team grows. *(Updated 2026-07-10, issue #213 — was `ops@organicposts.ai`.)*
 
 ## Rotation
 
@@ -15,7 +15,7 @@ Organic Posts v1 has a single on-call rotation (founder). Alerts route to `ops@o
 
 ## Alert Sources
 
-- Grafana Cloud alerting: email to `ops@organicposts.ai`
+- Grafana Cloud alerting: email to `founder@ozvor.com` (or `ops@ozvor.com` once routed)
 - Railway service crash notifications: email to the Railway account owner
 
 ## First Steps on Any Alert
