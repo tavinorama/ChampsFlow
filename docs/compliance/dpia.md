@@ -10,7 +10,7 @@
 
 **Updated 2026-06-09 — GEO Platform (TrustIndex AI, Brazil Ltda) supersedes prior social-scheduling DPIA below.**
 
-TrustIndex AI (Brazil Ltda) is a GEO audit platform for SMBs. Jurisdictions: Brazil (LGPD RIPD, Section 10), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5). Data processed: customer account email, BYOK provider keys (AES-256-GCM), per-audit citation evidence (synthetic probe prompts, no personal data by design, purged 90 days), brand/domain data, Stripe billing identifiers. Data subjects: B2B customers and staff emails. High-risk processing confirmed on three GDPR Art. 35(3) triggers: (a) systematic large-scale processing of publicly available data; (b) innovative technology (multi-LLM audit mechanism); (c) cross-border transfers to multiple LLM providers. After mitigations — synthetic-only probe prompts (GEO-A2), EU/Perplexity routing gate (GEO-A3), AES-256-GCM BYOK key storage, forced RLS multi-tenant Postgres, append-only ai_generation_log (GEO-A6), GDPR Art. 27 EU representative required before EU user onboarding — residual risk is **LOW to MEDIUM**. Three open conditions remain: GEO-D1 (LLM provider EU routing confirmations), GEO-D2 (citation_check.sources incidental personal data review), GEO-D3 (LGPD international transfer basis). No GDPR Art. 36 or ANPD consultation required. Next mandatory review: before new LLM provider activation or EU/BR paid launch.
+Ozvor (Brazilian MEI, CNPJ 67.609.444/0001-08; formerly referred to in this document as "TrustIndex AI (Brazil Ltda)" — see Section 1-GEO correction) is a GEO audit platform for SMBs. Jurisdictions: Brazil (LGPD RIPD, Section 10), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5). Data processed: customer account email, BYOK provider keys (AES-256-GCM), per-audit citation evidence (synthetic probe prompts, no personal data by design, purged 90 days), brand/domain data, Stripe billing identifiers. Data subjects: B2B customers and staff emails. High-risk processing confirmed on three GDPR Art. 35(3) triggers: (a) systematic large-scale processing of publicly available data; (b) innovative technology (multi-LLM audit mechanism); (c) cross-border transfers to multiple LLM providers. After mitigations — synthetic-only probe prompts (GEO-A2), EU/Perplexity routing gate (GEO-A3), AES-256-GCM BYOK key storage, forced RLS multi-tenant Postgres, append-only ai_generation_log (GEO-A6), GDPR Art. 27 EU representative required before EU user onboarding — residual risk is **LOW to MEDIUM**. Three open conditions remain: GEO-D1 (LLM provider EU routing confirmations), GEO-D2 (citation_check.sources incidental personal data review), GEO-D3 (LGPD international transfer basis). No GDPR Art. 36 or ANPD consultation required. Next mandatory review: before new LLM provider activation or EU/BR paid launch.
 
 ---
 
@@ -305,6 +305,8 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 
 ## SECTION B — LIVE DPIA: TrustIndex AI (GEO Platform, Brazil Ltda) — 2026-06-09
 
+> **[Entity naming in this heading superseded]** — the confirmed controller is **Ozvor, Brazilian MEI, CNPJ 67.609.444/0001-08** (Section 1-GEO correction, 2026-07-09; ropa.md 2026-07-08). Heading preserved as dated history.
+
 > This section supersedes Section A for all current processing operations. Produced at Gate 3→4 (DPIA gate) for the GEO platform as mandated by the Gate 0→1 pivot re-run verdict (2026-05-18, condition 4).
 
 ---
@@ -571,7 +573,7 @@ The GEO platform processes publicly available personal data about third parties 
 
 **Art. 14(5)(b) exemption analysis**: The exemption from Art. 14 notification applies when "the provision of such information proves impossible or involves a disproportionate effort" because the personal data is obtained from a source that "must remain confidential subject to an obligation of professional secrecy" — this limb does not apply here — or where "the data was obtained from a publicly available source." The GDPR text at Art. 14(5)(b) covers the "publicly available" case for written notices, but EDPB guidance (Opinion 6/2018, para. 38) clarifies that the exemption does not excuse indefinite retention or use of public data beyond the original public purpose.
 
-**Assessment for TrustIndex AI**:
+**Assessment for Ozvor (the controller)**:
 1. Individual LLM probe query returns that mention a named executive or founder of a competitor brand: these are transient query results; citation_check stores source URLs and presence/position metadata, not the named individual's data. The name does not reach the persistent data layer except potentially in citation_check.sources. Condition GEO-D2 addresses this.
 2. Off-site signal measurement (Reddit, Wikipedia, LinkedIn, G2, Trustpilot, Crunchbase, YouTube): stores per-source aggregate score only; no individual profiles or names stored. Art. 14 Art. 14(5)(b) exemption applies to this aggregate signal processing.
 3. SERP query results for brand presence: individual author names or titles in SERP snippets may appear in raw query results but are not persisted in the data model; offsiteScore is computed and stored without underlying personal data. Minimisation is effective.
@@ -637,4 +639,5 @@ High-risk processing confirmed under GDPR Art. 35(1), EDPB Guidelines 4/2019 tri
 - Jurisdictions covered: Brazil (LGPD RIPD), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5 — informing risk assessment)
 - Reviewed by (human): _____ (required before EU/BR launch)
 - Next mandatory review trigger: new LLM provider activation, new geographic market, >50% change in data volume/categories, or annual cycle (2027-06)
+- **Update log**: 2026-07-10 — brand/entity naming alignment in the live Section B (TL;DR sentence, Art. 14 assessment heading) and a superseded-marker under the Section B heading, per issue #213. Substantive DPIA content unchanged; the controlling identity statement remains the Section 1-GEO block (2026-07-09).
 - **Update log**: 2026-07-09 — Controller / Processor Identity block (Section 1-GEO) corrected by legal-privacy-officer to align with the confirmed entity identity in `docs/compliance/ropa.md` (2026-07-08) and the live legal pages: Ozvor, Brazilian MEI, CNPJ 67.609.444/0001-08, registered office Rua José Borges Abrantes nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD. This supersedes the prior "TrustIndex AI Ltda / CNPJ pending incorporation" statement in this section. No other DPIA content was changed. See gate-log.md 2026-07-09 entry for the ratifying verdict.

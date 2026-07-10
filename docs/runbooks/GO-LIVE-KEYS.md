@@ -1,6 +1,6 @@
 # Ozvor — GO-LIVE ULTIMATE (tudo que falta, atualizado)
 
-> Marca: plataforma **Ozvor** (ozvor.com). O score mantém o nome **"TrustIndex AI Score"**; a consultoria é **"OrganicPosts by Ozvor"**.
+> Marca: plataforma **Ozvor** (ozvor.com). O score chama-se **"Ozvor AI Visibility Score"** (regra do fundador 2026-06-27 — nunca reintroduzir "TrustIndex" em display; a nota anterior "o score mantém TrustIndex AI Score" está SUPERSEDIDA); a consultoria é **"OrganicPosts by Ozvor"**.
 
 _Atualizado: 2026-06-26. Este é o documento único e completo: o que JÁ está feito, e exatamente o que VOCÊ precisa fazer para o produto ficar 100% funcional e vendendo._
 
@@ -126,7 +126,7 @@ NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 3. Assinar um plano (ou aplicar o cupom founder).
 4. **Ligar o monitoramento semanal** da marca → registra a auditoria recorrente (segunda 06:00 UTC).
 5. Rodar 1 auditoria manual = seu **baseline**. O gráfico de evolução do score é o seu print/vídeo semanal.
-6. (Opcional, D2) **API pública:** crie uma chave em **/account/api-keys** e puxe seus TrustIndex AI Scores via `GET https://ozvor.com/api/v1/brands` (header `Authorization: Bearer ozk_live_…`). Read-only, 120 req/min. Rate-limit por chave usa Upstash — se `UPSTASH_*` não estiver setado, ele libera (fail-open).
+6. (Opcional, D2) **API pública:** crie uma chave em **/account/api-keys** e puxe seus Ozvor AI Visibility Scores via `GET https://ozvor.com/api/v1/brands` (header `Authorization: Bearer ozk_live_…`). Read-only, 120 req/min. Rate-limit por chave usa Upstash — se `UPSTASH_*` não estiver setado, ele libera (fail-open).
 
 ---
 

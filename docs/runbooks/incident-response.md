@@ -34,7 +34,7 @@
 ### SEV-1 Initial Notice
 
 ```
-Subject: Organic Posts — Service Disruption [DATE TIME UTC]
+Subject: Ozvor — Service Disruption [DATE TIME UTC]
 
 We are experiencing a service disruption affecting [describe impact: e.g., "all users — unable to log in"].
 Start time: [UTC timestamp]
@@ -45,7 +45,7 @@ Next update: within 60 minutes.
 ### SEV-1 Update
 
 ```
-Subject: Organic Posts — Service Update [DATE TIME UTC]
+Subject: Ozvor — Service Update [DATE TIME UTC]
 
 Update on the service disruption that began at [start time UTC]:
 Current status: [investigating / identified root cause / mitigating / resolved]
@@ -57,7 +57,7 @@ Next update: [time]
 ### SEV-1 Resolution
 
 ```
-Subject: Organic Posts — Service Restored [DATE TIME UTC]
+Subject: Ozvor — Service Restored [DATE TIME UTC]
 
 The service disruption has been resolved.
 Start time: [UTC] / End time: [UTC]

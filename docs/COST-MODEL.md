@@ -1,4 +1,4 @@
-# TrustIndex AI — Platform API Cost Forecast
+# Ozvor — Platform API Cost Forecast
 
 > What YOUR (platform) API keys pay for, per the BYOK boundary in
 > `docs/CLIENT-JOURNEY-AND-OPERATIONS.md`. Prices are **2026 approximate**
