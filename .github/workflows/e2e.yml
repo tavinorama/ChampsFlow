@@ -75,11 +75,14 @@ jobs:
     # the runner; the report is still uploaded for inspection. The 8-min cap was
     # too tight to even finish setup (npm ci + build + 2 browser installs), which
     # guaranteed a cancel — raised so the suite can actually complete. Raised
-    # again 2026-07-10 (20 → 35): the Ozvor Pages PR series added Playwright
-    # specs and EVERY run that day (main included) hit the 20-min guillotine
-    # mid-suite, reading as "cancelled" and blocking the #216 security gate.
+    # again 2026-07-10: run 29092622434 PROVED the chromium-only suite passes
+    # (15/15 green in 33.2m) but the 35-min cap killed the job while the
+    # summary was flushing. Budget is now sized to MEASURED reality: ~36 min
+    # chromium-only (PR gate) and ~70 min for the nightly full matrix
+    # (chromium + webkit), each in serial workers=1 because of the documented
+    # runner SSR slowness (~2 min/test — tracked separately for a real fix).
     continue-on-error: true
-    timeout-minutes: 35
+    timeout-minutes: 75
 
     services:
       postgres:
