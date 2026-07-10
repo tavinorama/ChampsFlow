@@ -1,6 +1,8 @@
 # Ozvor Rebrand + Redesign — Ultimate Pre-Build Report
 
 > **Status:** ANALYSIS ONLY — no code changed yet (per the founder's instruction: full report before any modification). Captured 2026-06-26 from `Redesign do site OrganicPosts.zip` (Claude Design export).
+>
+> **[Superseded in part — 2026-07-10 (issue #213):]** this report's instruction to *keep* the metric name "TrustIndex AI Score" was **overridden by the founder on 2026-06-27** — the score is now the **"Ozvor AI Visibility Score"** (split into 3 scores: Visibility / Citation Readiness / Execution), and "TrustIndex" must never be reintroduced in user-facing display. Current entity state: see `docs/compliance/ropa.md`. Preserved unedited below as a dated historical analysis.
 
 ---
 

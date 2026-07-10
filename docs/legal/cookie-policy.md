@@ -1,90 +1,73 @@
-# Cookie Policy — Organic Posts
+# Cookie Policy — Ozvor
 
-**Effective date**: 2026-05-17
-**Version**: 0.1
+**Live page**: https://ozvor.com/legal/cookies (source of record: `apps/web/src/app/legal/cookies/page.tsx`)
+**Last updated (live)**: 24 June 2026
+**Internal mirror refreshed**: 2026-07-10 (issue #213 — entity/brand refresh)
+
+> This file is the internal markdown mirror of the live Cookie Policy. The live page is the operative customer-facing text; keep this mirror in sync when the page changes. The prior pre-launch draft (2026-05-17, "Organic Posts" / Plausible-only — superseded) is preserved in git history. Note: the analytics posture changed from the old draft — Plausible was replaced by **consent-gated Google Analytics 4** (opt-in banner; ad_storage denied).
 
 ---
 
 ## TL;DR (≤100 words)
 
-Organic Posts does not use tracking or advertising cookies. The only analytics tool deployed at launch is Plausible Analytics, which is cookieless and collects no personally identifiable information. No consent banner is required under the ePrivacy Directive. Strictly necessary cookies (session management) are used. If marketing or advertising tools using cookies are added in the future, this policy will be updated, a full consent management platform will be deployed, and no tracking cookies will activate without prior consent.
+Ozvor deploys **only strictly necessary cookies** by default (Supabase auth session) plus a localStorage theme preference. The single exception is **Google Analytics 4**, which loads **only if you opt in** via the consent banner — decline (or don't answer) and no analytics cookie is ever set; ad-related signals are permanently disabled (Consent Mode: ad_storage denied). No marketing cookies or advertising pixels are active. Jurisdictions: LGPD (Brazil, home jurisdiction), GDPR/ePrivacy (EU/EEA), CCPA/CPRA (California). Contact: **dpo@ozvor.com**.
 
 ---
 
-## 1. What Are Cookies
+**Intro.** This Cookie Policy explains what cookies and similar technologies Ozvor places on your device, why we use them, and how you can control them. It should be read alongside our Privacy Policy. Home jurisdiction: Brazil (LGPD); we also comply with the GDPR / ePrivacy Directive (EU/EEA) and CCPA/CPRA (California, US).
 
-Cookies are small text files placed on your device when you visit a website. They serve different purposes: some are essential to make the site work; others track your behavior for analytics or advertising.
+## 1. What are cookies?
 
----
+Cookies are small text files stored on your device when you visit a website. They allow the site to recognise your device across page loads and sessions. We also use **localStorage** (a browser storage mechanism) for lightweight UI preferences such as your colour-scheme choice. Neither mechanism identifies you to third parties; they are scoped to our domain only.
 
-## 2. Cookies We Use
+## 2. Cookies we use at launch
 
-### 2.1 Strictly Necessary Cookies
+By default Ozvor deploys **only strictly necessary cookies**. The single exception is **Google Analytics 4**, which loads **only if you opt in** to analytics via the consent banner — decline (or simply don't answer) and no analytics cookie is ever set. No marketing cookies and no advertising pixels are active.
 
-These cookies are required for the application to function. They do not require consent under the ePrivacy Directive or CCPA.
-
-| Cookie name | Purpose | Provider | Expiry |
+| Cookie / key | Purpose | First- or third-party | Retention |
 |---|---|---|---|
-| `sb-auth-token` | Supabase authentication session | Supabase / Organic Posts | Session (7-day refresh rotation) |
-| `sb-refresh-token` | Supabase session refresh | Supabase / Organic Posts | 7 days |
+| `sb-[project]-auth-token` | Supabase authentication session token. Set only after login; verifies identity across page loads. | First-party (ozvor.com) | Session; refreshed on activity (7-day rotation) |
+| `sb-[project]-refresh-token` | Supabase session refresh token; silently renews the session. | First-party (ozvor.com) | 7 days; rotated on use |
+| `localStorage: theme` | Light/dark colour-scheme preference. Not a cookie; never transmitted to our servers. | First-party (ozvor.com) | Persistent until cleared or changed |
 
-These cookies are set only after you log in. They do not track you across other websites.
+The Supabase auth cookies do not track you across websites. They are scoped strictly to ozvor.com and contain only an encrypted session identifier — no personal data in the cookie payload itself.
 
-### 2.2 Analytics — No Cookies
+## 3. Cookie categories — status at launch
 
-We use **Plausible Analytics** (plausible.io) for website and application usage metrics.
+| Category | Description | In use at launch | Consent required? |
+|---|---|---|---|
+| **Strictly necessary** | Authentication session cookies that allow you to stay logged in. | Yes | No — exempt under ePrivacy Directive, LGPD, and CCPA (necessary for service delivery) |
+| **Functional / preferences** | Non-essential user choices. Only localStorage theme preference used today (non-cookie; no server transmission). | Not in use (cookie) | Would require consent if cookies were used |
+| **Analytics / performance** | **Google Analytics 4** (Google LLC) — aggregate usage data (page views, session duration, referrer). Cookies: `_ga`, `_ga_*` (persist up to 13 months). Loaded **only after opt-in** via the consent banner. Ad-related signals permanently disabled (Consent Mode: ad_storage denied). | Consent-gated | Opt-in required (EU/BR); opt-out honored (US). Withdraw any time via "Cookie preferences" in the footer. |
+| **Marketing / advertising** | Cross-site tracking for advertising/retargeting (e.g., Meta Pixel, Google Ads, LinkedIn Insight Tag). None deployed. | Not in use | Explicit opt-in consent (EU/BR); "Do Not Sell or Share" opt-out (California) |
 
-Plausible does not set any cookies. It does not collect or store personal data. It does not fingerprint browsers. It operates entirely without persistent identifiers. Aggregate metrics (page views, bounce rate, referrer) are collected using a privacy-preserving method that does not identify individual users.
+## 4. Legal basis for cookies
 
-Because Plausible is cookieless and collects no personal data, no consent banner or opt-out mechanism is required for this tool under the ePrivacy Directive or CCPA.
+**Brazil (LGPD):** Strictly necessary cookies are processed on the basis of contract performance (Art. 7, V LGPD) — they are required to provide the authenticated service you requested. No consent is required for these cookies.
 
-### 2.3 Advertising and Tracking Cookies — Not In Use
+**EU/EEA (GDPR + ePrivacy Directive):** Strictly necessary cookies fall within the "essential technical purpose" exception to the ePrivacy consent requirement, processed under contract performance (Art. 6(1)(b) GDPR). Any non-essential cookie category requires prior, freely given, specific and informed consent (opt-in) from EU users before being set.
 
-At launch, we do not deploy:
-- Google Analytics (GA4) or any Google advertising tags
-- Meta Pixel or any Meta advertising tags
-- LinkedIn Insight Tag
-- Any third-party retargeting or behavioral advertising scripts
+**California (CCPA/CPRA):** Strictly necessary cookies are exempt from the "sale"/"sharing" restrictions because they are used solely to provide the requested service. No marketing cookies are in use, so no "Do Not Sell or Share" opt-out is triggered by cookies. If marketing cookies are introduced, a compliant opt-out mechanism will be provided.
 
-If any of these tools are added in the future, we will:
-1. Update this Cookie Policy before deployment
-2. Implement a consent management platform (CMP) compliant with ePrivacy Directive and IAB TCF v2.x
-3. Obtain explicit opt-in consent from EU/UK users before any non-essential cookies are set
-4. Provide a clear opt-out for US users, including California CCPA "Do Not Sell or Share" coverage
+## 5. Third-party cookies
 
----
+At launch, no third-party advertising, social, or embedded widgets set cookies on ozvor.com. The Supabase auth cookies are first-party. GA4 cookies (first-party, `_ga*`) are set only after analytics opt-in. Future integrations introducing third-party cookies will be disclosed in a policy update, with consent obtained before those cookies are set.
 
-## 3. Cookie Categories Summary
+## 6. Your choices and controls
 
-| Category | In use at launch | Consent required |
-|---|---|---|
-| Strictly necessary | Yes | No |
-| Performance / analytics (cookieless Plausible) | Yes | No — no cookies or PII |
-| Functional preferences | No | Would require consent |
-| Advertising / tracking | No | Would require prior opt-in (EU) |
+- **Strictly necessary cookies** cannot be disabled without breaking the authenticated application.
+- **Analytics (GA4)**: opt in/out and withdraw at any time via "Cookie preferences" in the footer.
+- **Browser controls**: delete or block cookies via browser settings (Chrome, Firefox, Safari, Edge guidance linked on the live page; see also allaboutcookies.org). Deleting auth cookies logs you out.
+- **Do Not Track (DNT)**: honoured as a best-effort measure; no behavioural tracking is deployed that would be affected by it.
 
----
+## 7. Changes to this policy
 
-## 4. Your Choices
+The Cookie Policy is updated before adding any new cookie category or analytics tool. Material changes — such as new marketing or analytics cookies — are notified via in-app notification and by email to registered users at least 14 days before the change takes effect. The "Last updated" date on the live page reflects the most recent revision.
 
-**Strictly necessary cookies:** Cannot be disabled without breaking the application. If you do not wish these cookies to be set, do not use the logged-in application.
+## 8. Contact
 
-**Plausible Analytics:** Because Plausible is cookieless, there is no cookie to opt out of. If you wish to prevent Plausible from recording your visit, you may use a browser with an ad-blocker or uBlock Origin (Plausible respects the "Do Not Track" header as a best-effort measure).
-
-**Browser settings:** You can control or delete cookies via your browser settings. Instructions are available at allaboutcookies.org.
+Questions or data rights: dpo@ozvor.com · [Data Subject Request](https://ozvor.com/legal/dsr-request) · [Privacy Policy](https://ozvor.com/privacy-policy).
 
 ---
 
-## 5. Changes to This Policy
-
-We will update this policy before adding any new cookies or analytics tools. Material changes will be notified via in-app notification and email (for registered users) with at least 14 days' notice.
-
----
-
-## 6. Contact
-
-Cookie or tracking queries: privacy@organicposts.ai
-
----
-
-_This document is a pre-launch draft. It does not constitute legal advice._
+_This mirror reflects operator-authored live copy. It does not constitute legal advice._

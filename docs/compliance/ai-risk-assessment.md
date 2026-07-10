@@ -1,4 +1,6 @@
-# AI Risk Assessment — Organic Posts
+# AI Risk Assessment — Ozvor (GEO platform; formerly "Organic Posts" / "TrustIndex AI")
+
+> **Entity/brand note (2026-07-10, issue #213):** the operating entity is **Ozvor — Brazilian MEI, CNPJ 67.609.444/0001-08** (see `docs/compliance/ropa.md`, 2026-07-08). "Organic Posts" references in the archived v1 sections below are historical (pre-pivot product under the abandoned Portugal-entity plan) and are preserved unedited per the append-only convention — do not treat them as current.
 
 > Owner: `ai-ethics-reviewer` · Created Gate 2→3 (2026-05-02) · Update at Gate 3→4 and Gate 6→7
 > Living document — append sections; never rewrite historical entries.
@@ -568,7 +570,7 @@ GEO-5 (Sentiment classification): Classifies text about the client's brand. Does
 | Education | FERPA; state student privacy | None | No student data. |
 | Health | HIPAA; FDA SaMD | None | No health data or diagnostic function. |
 | Consumer-facing (general) | FTC §5; 16 CFR Part 255; CO AI Act | ELEVATED — see ethics risks below | FTC disclosure obligation for AI-drafted community content (Reddit, LinkedIn). Draft-and-confirm + AC-C5-4 FTC disclosure step address the primary exposure. External counsel confirmation required before Reddit module is built. |
-| California AI transparency | CA SB-942 | Active — confirm per provider at Gate 3→4 | SB-942 applies to large AI providers. Organic Posts' deployer obligation: verify each provider (OpenAI, Anthropic, Google) publishes provenance documentation; link to their SB-942 disclosures in the product AI Transparency Notice. Anthropic already confirmed (archived Gate 3→4). Others: open for Gate 3→4 re-run. |
+| California AI transparency | CA SB-942 | Active — confirm per provider at Gate 3→4 | SB-942 applies to large AI providers. Ozvor's deployer obligation: verify each provider (OpenAI, Anthropic, Google) publishes provenance documentation; link to their SB-942 disclosures in the product AI Transparency Notice. Anthropic already confirmed (archived Gate 3→4). Others: open for Gate 3→4 re-run. |
 | Illinois AI Video Interview Act | IAIVEA | None | Platform does not conduct employment interviews. |
 | NYC Local Law 144 | AEDT bias audit | None | Not an automated employment decision tool. |
 

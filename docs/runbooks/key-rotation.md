@@ -27,10 +27,10 @@ The `current` field tells the encryption function which version to use for new e
 
 ### Step 3 — Deploy the Updated Secret
 
-Update the `OAUTH_TOKEN_KEY` Railway secret in all environments:
-- `organicposts-eu-prod` api and worker services
-- `organicposts-us-prod` api and worker services
-- `organicposts-staging` api and worker services
+Update the `OAUTH_TOKEN_KEY` Railway secret in all environments — current infrastructure is the Railway project `trustindex-ai` (legacy project slug; brand is Ozvor) with `api`, `worker`, and `web` services (see `docs/runbooks/GO-LIVE-KEYS.md`):
+- `api` and `worker` services (production)
+- any staging environment, if configured
+*(Updated 2026-07-10, issue #213 — the former `organicposts-eu-prod` / `organicposts-us-prod` / `organicposts-staging` environment names were from the archived v1 architecture and were never provisioned.)*
 
 Redeploy api and worker services after updating the secret.
 

@@ -1,155 +1,72 @@
-# Terms of Service — Organic Posts
+# Terms of Service — Ozvor
 
-**Effective date**: 2026-05-17
-**Document version**: 0.1-pre-launch
-**Status**: Pre-launch (waitlist mode). The Organic Posts platform is not yet live. These Terms govern waitlist communications only until the service launch date.
+**Live page**: https://ozvor.com/terms-of-service (source of record: `apps/web/src/app/terms-of-service/page.tsx`)
+**Last updated (live)**: 13 June 2026
+**Internal mirror refreshed**: 2026-07-10 (issue #213 — entity/brand refresh)
+**Status**: LIVE. Counsel review required before paid EU/BR launch (see docs/GO-LIVE-RUNBOOK.md Phase 6).
+
+> This file is the internal markdown mirror of the live Terms of Service. The live page is the operative customer-facing text; keep this mirror in sync when the page changes. The prior pre-launch draft (2026-05-17, "Organic Posts, Lda" / Portuguese law — superseded) is preserved in git history.
 
 ---
 
 ## TL;DR (≤150 words)
 
-Organic Posts is an AI-assisted social media drafting and scheduling tool for small businesses. These Terms cover both the current waitlist period (no live service yet) and the post-launch SaaS subscription. Users own the content they create; Organic Posts owns the underlying model infrastructure via its Anthropic license. The AI drafts posts but a human must approve every post before it publishes — no fully automated publishing. Users must comply with the platform terms of LinkedIn and Instagram and must own rights to any content they upload. Liability is capped at fees paid in the prior 12 months. Governing law is Portuguese law; competent court is the Tribunal Cível de Lisboa, without prejudice to mandatory consumer rights under the consumer's country of residence. This document must be reviewed by qualified legal counsel before the service goes live.
+The Service (the Ozvor platform + the OrganicPosts service) is operated by **Ozvor**, the trade name of a Brazilian individual micro-entrepreneur (MEI), **CNPJ 67.609.444/0001-08**, home jurisdiction Brazil. Ozvor audits how AI answer engines reference a brand, computes the Ozvor AI Visibility Score, benchmarks competitors, and produces GEO content plans and drafts — with **no guarantee of AI-search outcomes** (AI systems are non-deterministic). Paid plans bill via Stripe with a 30-day money-back guarantee; the $29 Get-Cited Kit has a deliverable guarantee. Users keep ownership of their brand data and generated outputs; AI drafts must be human-reviewed before publishing. Liability is capped at fees paid in the prior 12 months. **Governing law: Brazil**, without prejudice to mandatory consumer rights (including CDC). Contact: hello@ozvor.com · privacy: dpo@ozvor.com.
 
 ---
 
-## 1. Parties and Scope
+**Intro.** These Terms govern your access to and use of the Ozvor platform and the OrganicPosts service (together, the "Service"), operated by Ozvor (a company being incorporated in Brazil). By creating an account or using the Service, you agree to these Terms.
 
-**1.1** These Terms of Service ("Terms") are between Organic Posts, Lda — a Sociedade por Quotas registered in Portugal (registration number and registered office to be confirmed at incorporation) ("Organic Posts", "we", "us") and the individual or entity accepting them ("you", "User").
+## 1. Who we are
 
-**1.2** During the pre-launch period (prior to the date the Organic Posts platform becomes publicly available), these Terms apply only to waitlist registration and related communications. No SaaS service is provided in this period.
+The Service is operated by **Ozvor** ("we", "us"), the trade name of a Brazilian individual micro-entrepreneur (MEI), CNPJ 67.609.444/0001-08, home jurisdiction Brazil. Ozvor is an AI-search visibility (Generative Engine Optimization, "GEO") platform; **OrganicPosts by Ozvor** is our optional done-for-you content service. We are not affiliated with, and are a different company from, "Trustindex.io" (an online-review widget provider).
 
-**1.3** Upon platform launch, these Terms apply to your use of the Organic Posts web application accessible at organicposts.ai, including all AI drafting, scheduling, and publishing features.
+## 2. What the Service does
 
----
+The Service audits how AI answer engines (e.g. ChatGPT, Claude, Perplexity, Gemini, Google AI Overview) reference a brand, computes a Ozvor AI Visibility Score, benchmarks competitor mentions, and produces a GEO content plan and draft content. Audits query third-party AI providers and analyse publicly available web sources.
 
-## 2. Service Description
+**No guarantee of results.** AI systems are non-deterministic and outside our control. Scores, benchmarks and recommendations are evidence-based estimates, not guarantees of citation, ranking, traffic, or revenue. We do not promise any specific AI-search outcome.
 
-Organic Posts provides an AI-assisted draft-and-confirm workflow for social media posts on LinkedIn and Instagram (v1). The service uses Anthropic Claude Sonnet to generate draft posts from user-supplied topic inputs. Every draft requires explicit human approval before it is scheduled or published. No post is published automatically without a human confirmation step.
+## 3. Accounts
 
----
+You must provide accurate information and are responsible for activity under your account. Authentication is passwordless (email magic-link). You must be authorised to act for any brand you add, and at least the age of majority in your jurisdiction.
 
-## 3. Waitlist Period
+## 4. Plans, billing and refunds
 
-**3.1** By joining the waitlist, you provide your email address and, optionally, your name. We will use this information to notify you when the service launches and, with your separate consent, to send pre-launch marketing communications.
+Paid plans (e.g. Growth, Agency) are billed in advance on a recurring basis via our payment processor (Stripe) until cancelled. One-time products (e.g. the $29 Get-Cited Kit) are charged once. Prices are shown at checkout and may change prospectively. Paid subscription plans include a 30-day money-back guarantee as described at purchase. The one-time Get-Cited Kit includes a deliverable guarantee: if the three content drafts included in the Kit are not publish-ready, we will refund the $29 on request. Both guarantees cover the deliverable only, not any AI-search outcome (see "No guarantee of results" above). You can cancel at any time; cancellation takes effect at the end of the current billing period. Taxes may apply based on your location.
 
-**3.2** Joining the waitlist does not create a subscription, guarantee access, or create any contractual obligation on either party beyond the communications described in 3.1.
+## 5. Acceptable use
 
-**3.3** These Terms will be updated to a full SaaS version at or before launch. We will notify waitlist members of the updated Terms before the service becomes available.
+You agree not to: (a) use the Service to violate any law or third-party right; (b) submit a domain or brand you are not authorised to analyse; (c) attempt to bypass security, rate limits, or access other tenants' data; (d) resell or white-label the platform except under an Agency plan that permits it; or (e) use the Service to generate deceptive, infringing, or unlawful content. Generated drafts are **AI-assisted suggestions** that you must review and approve before publishing; you are responsible for what you publish.
 
----
+## 6. Your content and data
 
-## 4. Account and Eligibility
+You retain ownership of the brand information, domains, and content you provide. You grant us a limited licence to process it to operate the Service (run audits, compute scores, generate drafts). Our handling of personal data is described in our [Privacy Policy](https://ozvor.com/privacy-policy) and, for business customers, our [Data Processing Agreement](https://ozvor.com/legal/dpa).
 
-**4.1** You must be at least 16 years old to use the service. We do not knowingly collect data from individuals under 16.
+## 7. Intellectual property
 
-**4.2** You are responsible for maintaining the confidentiality of your account credentials and for all activity under your account.
+The Service, including the Ozvor AI Visibility Score methodology, software, and brand, is owned by us and protected by law. These Terms grant you a non-exclusive, non-transferable right to use the Service per your plan. Outputs we generate for you (drafts, plans, reports) are yours to use once delivered.
 
-**4.3** Business accounts (workspaces) may have multiple users (Owner, Editor, Viewer roles). The account Owner accepts these Terms on behalf of the workspace and is responsible for ensuring all workspace members comply.
+## 8. Third-party providers
 
----
+The Service relies on third-party providers (AI providers, search-data providers, hosting, payments, email). Their availability and behaviour are outside our control, and your use may be subject to their terms. We are not liable for third-party acts or outages.
 
-## 5. User Obligations and Acceptable Use
+## 9. Disclaimers and limitation of liability
 
-**5.1 Content ownership.** You represent and warrant that you own or have all rights, licenses, and permissions necessary for any content you upload, submit, or instruct us to publish. You must not submit content to which you do not hold the rights.
+The Service is provided "as is" and "as available", without warranties of any kind to the extent permitted by law. We do not warrant that the Service will be uninterrupted, error-free, or that any AI-search outcome will be achieved. To the maximum extent permitted by law, our aggregate liability arising from the Service is limited to the amount you paid us in the 12 months before the claim. Nothing limits liability that cannot be limited by law (including, where applicable, under the Brazilian Consumer Protection Code/CDC and consumer law in your jurisdiction).
 
-**5.2 Platform Terms compliance.** You must not use Organic Posts to violate the Terms of Service of LinkedIn, Instagram, or any other connected platform. This includes (without limitation) spamming, bulk inauthentic engagement, posting content that violates those platforms' community standards, or using the service for coordinated inauthentic behavior.
+## 10. Suspension and termination
 
-**5.3 No spam.** You must not use the service to send unsolicited commercial messages or to build or operate any spam operation.
+You may stop using the Service and delete your account at any time. We may suspend or terminate access for breach of these Terms, non-payment, or to comply with law. On termination, your data is handled per the Privacy Policy retention schedule.
 
-**5.4 No illegal content.** You must not submit or instruct the service to publish content that is unlawful, defamatory, fraudulent, or that infringes third-party intellectual property rights.
+## 11. Changes to these Terms
 
-**5.5** We reserve the right to suspend accounts that violate these obligations, with or without prior notice, depending on the severity of the violation.
+We may update these Terms; material changes will be notified by email or in-app before they take effect. Continued use after the effective date constitutes acceptance.
 
----
+## 12. Governing law and contact
 
-## 6. AI-Generated Content — Ownership and Responsibility
-
-**6.1 You own the output.** Content drafts generated by the AI feature belong to you once you approve and publish them, subject to your compliance with these Terms and any applicable platform terms.
-
-**6.2 We own the infrastructure rights.** Organic Posts licenses the underlying AI model (Anthropic Claude Sonnet) and operates the infrastructure that generates drafts. You receive output rights; you do not receive any rights to the model, the API, or the underlying technology.
-
-**6.3 You are responsible for approved content.** By approving a draft for publication, you take editorial responsibility for the content. Organic Posts is not liable for claims arising from content you approved and published.
-
-**6.4 AI transparency.** The AI drafting feature is powered by Anthropic Claude Sonnet with Zero Data Retention (ZDR) enabled — Anthropic does not retain your prompts or drafts for training. Drafts are clearly labeled as AI-generated within the application in compliance with EU AI Act Article 50.
-
-**6.5 No automated decision-making.** The service does not make automated decisions with legal or similarly significant effects on you. All content publication requires human confirmation.
+These Terms are governed by the laws of Brazil, without prejudice to mandatory consumer-protection rights you may have in your country of residence. Questions: hello@ozvor.com. For privacy matters: dpo@ozvor.com.
 
 ---
 
-## 7. Subscriptions and Payment (Post-launch)
-
-**7.1** Subscription terms, pricing, and billing cycles will be specified in the Order Form or pricing page applicable at launch.
-
-**7.2** Payments are processed by Stripe. Card data is handled entirely by Stripe and is not stored on Organic Posts servers.
-
-**7.3** Subscriptions auto-renew unless cancelled before the renewal date. Cancellation takes effect at the end of the current billing period.
-
----
-
-## 8. Intellectual Property
-
-**8.1** Organic Posts and its licensors own all rights to the platform, including software, design, trademarks, and documentation.
-
-**8.2** You retain ownership of your business data, content you upload, and AI-generated outputs you approve and publish.
-
-**8.3** You grant Organic Posts a limited, non-exclusive license to process your content solely to provide the service (generate drafts, schedule posts, deliver notifications). We do not use your content to train AI models.
-
----
-
-## 9. Privacy and Data
-
-Your use of the service is governed by our Privacy Policy at organicposts.ai/privacy. EU business users are also subject to our Data Processing Agreement, presented at onboarding. For the waitlist period, see our Waitlist Privacy Notice at organicposts.ai/waitlist-privacy.
-
----
-
-## 10. Disclaimers
-
-**10.1** The service is provided "as is" and "as available." We make no warranty that the service will be uninterrupted, error-free, or that AI-generated drafts will be accurate, suitable for your business, or compliant with any particular platform's standards.
-
-**10.2** We do not guarantee that posts published through our platform will not be flagged, removed, or penalized by LinkedIn, Instagram, or other connected platforms.
-
----
-
-## 11. Limitation of Liability
-
-**11.1** To the maximum extent permitted by applicable law, Organic Posts' total liability to you for any claims arising under or related to these Terms shall not exceed the greater of (a) the fees you paid to Organic Posts in the 12 months preceding the claim, or (b) USD 100.
-
-**11.2** In no event shall Organic Posts be liable for indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or business opportunities, even if advised of the possibility of such damages.
-
-**11.3** Nothing in these Terms limits liability for fraud, gross negligence, willful misconduct, or liability that cannot be limited under applicable law.
-
----
-
-## 12. Term and Termination
-
-**12.1** These Terms are effective on the date you accept them and continue until terminated.
-
-**12.2** You may stop using the service at any time. To delete your account and associated data, use the Account > Data & Privacy settings page or contact privacy@organicposts.ai.
-
-**12.3** We may terminate or suspend your account for material breach of these Terms, non-payment, or where required by law, with reasonable notice except in cases of serious violation.
-
-**12.4** On termination, your right to access the service ends. Data deletion follows the retention periods in the Privacy Policy.
-
----
-
-## 13. Governing Law and Dispute Resolution
-
-These Terms are governed by Portuguese law. The competent court is the Tribunal Cível de Lisboa, without prejudice to any mandatory consumer protection rights consumers may have under their country of residence.
-
----
-
-## 14. General
-
-**14.1 Entire agreement.** These Terms, together with the Privacy Policy and any applicable DPA, constitute the entire agreement between you and Organic Posts regarding the service.
-
-**14.2 Modifications.** We may update these Terms. We will provide at least 30 days' notice of material changes via email and in-app notification. Continued use after the effective date constitutes acceptance.
-
-**14.3 Severability.** If any provision is found unenforceable, the remainder continues in full force.
-
-**14.4 Waiver.** Failure to enforce any provision is not a waiver of the right to enforce it in the future.
-
-**14.5 Assignment.** You may not assign your rights under these Terms without our written consent. We may assign in connection with a merger, acquisition, or sale of assets.
-
----
-
-_This document is a pre-launch draft prepared by the VP Legal agent. It must be reviewed by qualified legal counsel licensed in the governing jurisdiction before the service goes live. It does not constitute legal advice._
+_This mirror reflects operator-authored live copy. It must be reviewed by qualified legal counsel licensed in Brazil (and advised for EU/US exposure) before paid EU/BR launch. It does not constitute legal advice._

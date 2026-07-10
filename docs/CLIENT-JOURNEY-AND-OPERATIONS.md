@@ -1,4 +1,6 @@
-# TrustIndex AI — Client Journey, BYOK Cost Model & Operations
+# Ozvor — Client Journey, BYOK Cost Model & Operations
+
+> *Updated 2026-07-10 (issue #213): brand TrustIndex AI → **Ozvor**; score name → **"Ozvor AI Visibility Score"**; DSR ops email → dpo@ozvor.com.*
 
 > Verified against code (3-investigator audit, 2026-06-13). Clearly marks
 > **BUILT** vs **INTENDED (not yet wired)** so it doubles as the spec for the
@@ -13,7 +15,7 @@
 ### Intended model (what the founder wants — the right margin model)
 | Phase | What happens | Whose API key pays |
 |---|---|---|
-| **BEGIN** — acquisition | Free **AI Invisibility Test** + first **TrustIndex Score audit** ("does the brand appear in AI?") | **YOUR (platform) key** — it's the free wedge / loss-leader |
+| **BEGIN** — acquisition | Free **AI Invisibility Test** + first **Ozvor AI Visibility Score audit** ("does the brand appear in AI?") | **YOUR (platform) key** — it's the free wedge / loss-leader |
 | **MIDDLE** — paid monitoring | Weekly re-audits, competitor/off-site tracking | Platform key within plan limits **→** client key above a threshold |
 | **END** — client-internal | **Content generation** (blog/LinkedIn/FAQ), the client's deep/ongoing work | **CLIENT'S OWN key (BYOK)** — they pay their AI costs |
 
@@ -50,7 +52,7 @@ SIGN UP  (/login — passwordless Supabase magic-link)
      dev-bypass. Self-service signup does NOT work until provisioning is built.
 
 AUTHENTICATED APP (after the user has a tenant_id + role)
-  └─ /dashboard      — all their brands + latest TrustIndex Score + weekly-monitoring toggle
+  └─ /dashboard      — all their brands + latest Ozvor AI Visibility Score + weekly-monitoring toggle
   └─ /brands         — add a brand, run an audit
   └─ /brands/[id]    — ⭐ the score + 3-vector breakdown + evidence + competitors
                         + Reddit + entity + GEO plan + Content Studio (drafts)
@@ -80,7 +82,7 @@ There is **no admin panel**. You operate through external consoles + 2 UI-less e
 | Onboard a client / set their tenant / role | **Supabase Auth console** — edit the user's `app_metadata`: `{ tenant_id, app_role, super_admin }` (read-only in code; "set manually only") |
 | Change/comp/suspend a plan | **Stripe dashboard** (or the client's Stripe Billing Portal) → webhook syncs `tenants.plan_tier`. Cancel/past-due past grace = de-facto suspend (`requireActiveSubscription`) |
 | Make yourself super-admin | Set `app_metadata.super_admin=true` by hand in Supabase |
-| Fulfill a privacy request (DSR) | `POST /api/dsr/:id/fulfill` (super_admin) — **via curl/Bearer**, no UI. You learn the id from the ops email to `privacy@trustindexai.com` |
+| Fulfill a privacy request (DSR) | `POST /api/dsr/:id/fulfill` (super_admin) — **via curl/Bearer**, no UI. You learn the id from the ops email to `dpo@ozvor.com` |
 | See system status | `GET /api/system/capabilities` (which engines are live/demo) |
 | Metrics | `GET /metrics` (Prometheus, super_admin) |
 | Toggle a brand's weekly monitoring | client self-service (`PUT /api/brands/:id/monitoring`) |

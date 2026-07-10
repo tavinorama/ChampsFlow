@@ -1,5 +1,7 @@
 # Waitlist Privacy Notice — Organic Posts
 
+> **[ARCHIVED — HISTORICAL DOCUMENT, 2026-07-10 (issue #213).]** This notice covered the pre-launch waitlist of the archived "Organic Posts" v1 product under the former Portugal-entity plan. The product launched on **ozvor.com** and no waitlist page exists on the live site. The entity, brand, domain, and contact references below (Organic Posts / organicposts.ai / privacy@organicposts.ai) are superseded — see current entity state in `docs/compliance/ropa.md` (Ozvor, Brazilian MEI, CNPJ 67.609.444/0001-08; contact dpo@ozvor.com). Preserved unedited below as a historical record. Any residual waitlist personal data is subject to the deletion commitment in "How long we keep it" (launch + 30 days).
+
 **Effective date**: 2026-05-17
 **Version**: 0.1
 
