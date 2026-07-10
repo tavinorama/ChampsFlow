@@ -1,4 +1,6 @@
-# TrustIndex AI — System Transparency (how everything works)
+# Ozvor — System Transparency (how everything works)
+
+> *Updated 2026-07-10 (issue #213): brand refreshed TrustIndex AI → Ozvor; "TrustIndex Score" → "Ozvor AI Visibility Score" (founder rule 2026-06-27 — never reintroduce "TrustIndex" in user-facing display).*
 
 > Single source of truth for explaining the product to customers — used to
 > generate in-app explainers and the public /how-it-works page. Every step,
@@ -8,7 +10,7 @@
 
 ## TL;DR
 
-TrustIndex AI runs a 5-stage loop: **Audit → Score → Plan → Publish → Monitor.**
+Ozvor runs a 5-stage loop: **Audit → Score → Plan → Publish → Monitor.**
 Each stage names the exact engines/data it uses, the keys/connections it needs,
 and what is "measured" (live data) vs "baseline" (placeholder pending a
 connection). Customers connect their own accounts and (optionally) their own
@@ -37,7 +39,7 @@ name, domain, category, region, and competitor names you provide.
 **Region routing:** EU brands exclude Perplexity (and any provider without a
 confirmed EU transfer mechanism) — see the routing gate in §4.
 
-### Stage 2 — Score (TrustIndex Score)
+### Stage 2 — Score (Ozvor AI Visibility Score)
 **What it does:** Computes a 0–100 score from three weighted vectors.
 
 | Vector | Weight | Inputs (measured today) | Inputs (baseline — pending connection) |
@@ -46,7 +48,7 @@ confirmed EU transfer mechanism) — see the routing gate in §4.
 | Performance | 35% | citation share-of-voice vs competitors, Google AI Overview presence, **schema.org coverage (standard SEO hygiene), AI-crawler access, multi-page content citation-worthiness** | — fully measured when the domain is reachable. llms.txt is shown for reference only — Google's 2026 guide states it is not required, so it does not affect the score. |
 | Brand | 30% | citation volume across engines, **off-site authority (7 sources AI cites most) + Reddit deep-dive (threads/subreddits/perception on the #1 cited source) + knowledge-graph entity consistency (Wikidata/Wikipedia, public key-free APIs) + on-site E-E-A-T (live crawl)** | — fully measured when the entity resolves; on-site falls back gracefully if the domain is unreachable |
 
-**Site crawl:** when a brand has a website domain, TrustIndex AI fetches the
+**Site crawl:** when a brand has a website domain, Ozvor fetches the
 homepage + robots.txt + llms.txt (8s timeout, 512KB cap, no JS execution, public
 pages only) and measures schema.org coverage, llms.txt presence, AI-crawler
 access, brand-identity signals, and E-E-A-T signals. If the domain is absent or
@@ -85,7 +87,7 @@ commercial-purpose disclosure step before it can be posted.
 
 ### Stage 5 — Monitor (weekly flywheel)
 **What it does:** Re-runs the audit weekly (Mondays 06:00 UTC), tracks your
-TrustIndex Score over time, flags new competitor mentions, lost citations, and
+Ozvor AI Visibility Score over time, flags new competitor mentions, lost citations, and
 answer drift. This is why it's a subscription — AI answers change constantly.
 
 ---

@@ -1367,4 +1367,41 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ ok: true });
     }
   );
+
+  // -------------------------------------------------------------------------
+  // GET /api/landing/sites/:id/leads — end-customer form submissions (#208 PR-8)
+  //
+  // landing_leads is PII (Ozvor acts as PROCESSOR for the tenant's end
+  // customers — see the schema migration comment). Rows are inserted by the
+  // public /l/[slug] form route (PR-6, privileged role); this route is the
+  // tenant's read-only view of their own leads. No role restriction beyond
+  // requireAuth — viewers may read leads same as testimonials, mutate nothing.
+  // RLS backstop: db.setTenantId + explicit tenant_id filter (file convention).
+  // Never logged — PII must not appear in structured logs (house rule).
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/sites/:id/leads", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const siteId = c.req.param("id") ?? "";
+    await db.setTenantId(auth.tenantId);
+    if (!(await siteOwnedByTenant(db, auth.tenantId, siteId))) {
+      return c.json({ message: "Site not found." }, 404);
+    }
+    const res = await db.query<{
+      id: string;
+      name: string;
+      email: string;
+      phone: string;
+      message: string;
+      consent: boolean;
+      created_at: string;
+    }>(
+      `SELECT id, name, email, phone, message, consent, created_at
+         FROM landing_leads
+        WHERE site_id = $1 AND tenant_id = $2
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [siteId, auth.tenantId]
+    );
+    return c.json({ leads: res.rows });
+  });
 }

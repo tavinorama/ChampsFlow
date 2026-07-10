@@ -578,9 +578,17 @@ export default function LandingSiteDetailPage() {
           {SITE_STATUS_LABEL[site.status] ?? site.status}
         </span>
       </div>
-      <p style={{ color: "var(--color-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-6) 0" }}>
-        ozvor.com/l/{site.slug}
-      </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "var(--space-3)", margin: "0 0 var(--space-6) 0" }}>
+        <p style={{ color: "var(--color-muted)", fontFamily: "var(--font-mono)", fontSize: "var(--font-size-body-sm)", margin: 0 }}>
+          ozvor.com/l/{site.slug}
+        </p>
+        <a
+          href={`/landing-pages/${siteId}/leads`}
+          style={{ color: "var(--color-primary)", fontWeight: 600, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}
+        >
+          View leads →
+        </a>
+      </div>
 
       {site.status === "suspended" && (
         <div role="alert" style={{ ...alertStyle, marginBottom: "var(--space-6)" }}>

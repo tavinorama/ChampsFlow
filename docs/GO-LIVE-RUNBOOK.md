@@ -5,8 +5,10 @@
 > 🤖 are already built/automated. Verified: all migrations apply cleanly via
 > `packages/db/scripts/migrate.js`; web/api/worker Docker images build & run.
 >
-> Brand note: the platform is **Ozvor** (ozvor.com). The 3-vector score keeps its
-> name **"TrustIndex AI Score"**, and the consultancy arm is **"OrganicPosts by Ozvor"**.
+> Brand note: the platform is **Ozvor** (ozvor.com). The 3-vector score is the
+> **"Ozvor AI Visibility Score"** (founder rule 2026-06-27 — never reintroduce
+> "TrustIndex" in user-facing display; the earlier "keeps TrustIndex AI Score"
+> note is superseded), and the consultancy arm is **"OrganicPosts by Ozvor"**.
 
 ---
 
@@ -98,7 +100,7 @@ Legend: 🔑 = **secret** (founder pastes — never commit/echo) · ⚙️ = **n
 
 - `ozvor.com` → web service (CNAME to Railway domain), proxied. Add the custom
   domain on the Railway **web** service first, then point the CNAME at it.
-- `organicposts.ai` → web service too (the /organicposts page) or a separate deploy later.
+- `organicposts.ai` → legacy 301 redirect to `https://ozvor.com` (verified live 2026-07-06, together with `trustindexai.com`; the /organicposts page lives on ozvor.com — no separate deploy).
 - SSL: Cloudflare "Full (strict)". Email routing for `hello@`, `support@`, `dpo@`.
 - After DNS resolves, set `NEXT_PUBLIC_SITE_URL=https://ozvor.com` (web) and
   `WEB_ORIGIN=https://ozvor.com` (api) — without these, OG/canonical URLs and CORS

@@ -3,13 +3,13 @@
 > Single source of truth. The `product-manager` agent reads this first every turn and updates it after every dispatched agent completes.
 
 ## Project meta
-- **Name**: TrustIndex AI (platform) + OrganicPosts by TrustIndex AI (consultancy sub-brand)
+- **Name**: Ozvor (platform) + OrganicPosts by Ozvor (consultancy sub-brand) *(updated 2026-07-10, issue #213 — was "TrustIndex AI"; rebrand to Ozvor 2026-06; never reintroduce "TrustIndex" in user-facing display)*
 - **Initialized**: 2026-05-01
-- **Pivot date**: 2026-05-29 (GEO platform) · **Rebrand + jurisdiction change**: 2026-05-30
-- **Home jurisdiction**: Brazil (Ltda, LGPD). **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All three must be addressed in compliance artifacts.
-- **Domains**: trustindexai.com (platform) · organicposts.ai (consultancy)
+- **Pivot date**: 2026-05-29 (GEO platform) · **Rebrand + jurisdiction change**: 2026-05-30 · **Rebrand to Ozvor**: 2026-06
+- **Home jurisdiction**: Brazil (**MEI**, CNPJ 67.609.444/0001-08, LGPD — confirmed; see `docs/compliance/ropa.md` 2026-07-08). **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All three must be addressed in compliance artifacts.
+- **Domains**: **ozvor.com (primary)** · legacy 301s: trustindexai.com, organicposts.ai (verified 2026-07-06)
 - **Sector**: general SaaS
-- **One-line description**: AI Search Trust Intelligence for SMBs — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the TrustIndex Score, builds a GEO content plan, monitors over time. OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
+- **One-line description**: AI Search visibility platform for SMBs and agencies — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the **Ozvor AI Visibility Score**, builds a GEO content plan, monitors over time. OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
 - **Pivot summary**: FROM social media content generation/scheduling TO a full GEO (Generative Engine Optimization) / AI-visibility subscription platform. Carries over existing assets (landing page, waitlist, legal pages, Docker, auth, design system). All Phase 1–6 artifacts are SUPERSEDED and must be re-run from Phase 1. Prior code assets are carry-over building blocks only.
 - **Tech stack snapshot (carry-over)**: Next.js 14 (App Router) + Hono API + Supabase (Postgres + Auth, eu-central-1 for EU) + Upstash Redis + Anthropic Claude Sonnet via Bedrock eu-central-1 (EU) / direct API (US) + Stripe + Railway (hosting) + Resend (email). New additions TBD in Phase 3 re-run (SerpAPI/DataForSEO for SERP/AIO capture; Perplexity API; Gemini API; GPT-4o; Wikidata/Crunchbase APIs).
 

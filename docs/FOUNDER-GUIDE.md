@@ -1,4 +1,6 @@
-# Guia do Fundador — TrustIndex AI
+# Guia do Fundador — Ozvor
+
+> *Atualizado 2026-07-10 (issue #213): marca TrustIndex AI → **Ozvor** (ozvor.com); trustindexai.com é hoje só 301 legado. CNPJ da Fase B já existe: 67.609.444/0001-08 (MEI).*
 
 > Escrito para ser lido sem conhecimento técnico. Última atualização: 2026-06-09.
 > Complementos técnicos: `docs/GO-LIVE-RUNBOOK.md` (deploy passo a passo),
@@ -8,12 +10,12 @@
 
 ## 1. O que é o produto (em uma frase)
 
-**TrustIndex AI é um "score de crédito" de como as IAs enxergam uma marca.**
+**Ozvor é um "score de crédito" de como as IAs enxergam uma marca.**
 O sistema pergunta de verdade ao ChatGPT, Claude, Perplexity e Gemini sobre o
 setor do cliente, mede se a marca aparece nas respostas, dá uma nota de 0 a 100,
 mostra as provas, e entrega um plano para subir a nota.
 
-**OrganicPosts by TrustIndex AI** é o braço de consultoria que executa o plano
+**OrganicPosts by Ozvor** é o braço de consultoria que executa o plano
 para quem não quer fazer sozinho.
 
 ### O modelo de negócio (ciclo sem fim)
@@ -46,7 +48,7 @@ exige taxa com confiança, não cara-ou-coroa). Nunca prometa "100% de precisão
 ## 3. A jornada do cliente
 
 ```
-1. Cai na landing (trustindexai.com) — "Veja como a IA enxerga sua marca"
+1. Cai na landing (ozvor.com) — "Veja como a IA enxerga sua marca"
 2. Cadastra com e-mail (link mágico — sem senha)
 3. Adiciona a marca: nome + site + setor (3 campos, 1 botão)
 4. Roda a auditoria (~30s)
@@ -74,7 +76,7 @@ exige taxa com confiança, não cara-ou-coroa). Nunca prometa "100% de precisão
       `DATABASE_URL="<string do Supabase>" npm run db:migrate`
 - [ ] **Railway** — subir web + api + worker + Redis; colar as chaves
       (⚠️ 3 variáveis do web são BUILD ARGS — ver runbook Fase 3)
-- [ ] **Cloudflare** — apontar trustindexai.com, SSL Full (strict),
+- [ ] **Cloudflare** — apontar ozvor.com, SSL Full (strict),
       e-mails hello@ / support@ / dpo@
 - [ ] Smoke test: login → criar marca → rodar auditoria → ver citações reais
       (`/api/system/capabilities` deve dizer `"mode": "live"`)
@@ -82,7 +84,7 @@ exige taxa com confiança, não cara-ou-coroa). Nunca prometa "100% de precisão
 **→ Aqui você já oferece auditorias grátis aos 10 testadores.**
 
 ### Fase B — Para COBRAR (paralelo, burocracia)
-- [ ] Empresa no Brasil (CNPJ) — pré-requisito do Stripe BRL/Pix
+- [x] Empresa no Brasil (CNPJ) — **FEITO**: Ozvor, MEI, CNPJ 67.609.444/0001-08 (ver `docs/compliance/ropa.md`)
 - [ ] Stripe: produtos/preços (Growth €99, Agency €149), Pix + boleto,
       webhook, Stripe Tax
 - [ ] Chaves opcionais para auditoria mais rica: OpenAI, Perplexity, Gemini,

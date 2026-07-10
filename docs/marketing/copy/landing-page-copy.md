@@ -1,4 +1,5 @@
 # Landing Page Copy — Organic Posts
+> [Superseded — historical draft under the pre-rebrand "Organic Posts" name; the live site (ozvor.com) is the current copy. See current entity state in ropa.md. Marked 2026-07-10, issue #213.]
 **Owner**: content-writer | **Date**: 2026-05-11 | **Status**: Draft — pending founder review and VP Marketing approval before publish
 **Word count**: ~1,100
 
