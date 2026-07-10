@@ -102,10 +102,10 @@ function isValidEmail(v: string): boolean {
 // ---------------------------------------------------------------------------
 
 const PLAN_LABEL: Record<Recommendation["plan"], string> = {
-  kit: "Get the Kit — $29 →",
-  growth: "Start Growth Plan →",
-  agency: "Start Agency Plan →",
-  call: "Book a free 20-min call →",
+  kit: "Get my Kit — $29 →",
+  growth: "Start my Growth Plan →",
+  agency: "Start my Agency Plan →",
+  call: "Book my free 20-min call →",
 };
 
 // ---------------------------------------------------------------------------
@@ -336,7 +336,7 @@ function LoadingPanel({ brand, domain }: { brand: string; domain: string | null 
     <div
       role="status"
       aria-live="polite"
-      aria-label="Running AI visibility test"
+      aria-label="Running your AI Invisibility Test"
       style={{
         ...cardStyle,
         alignItems: "center",
@@ -356,7 +356,7 @@ function LoadingPanel({ brand, domain }: { brand: string; domain: string | null 
             lineHeight: 1.5,
           }}
         >
-          Asking ChatGPT, Claude, Perplexity &amp; Gemini about{" "}
+          We&rsquo;re asking ChatGPT, Claude, Perplexity &amp; Gemini about{" "}
           <strong>{displayBrand}</strong>&hellip;
         </p>
         {domain && (
@@ -368,7 +368,7 @@ function LoadingPanel({ brand, domain }: { brand: string; domain: string | null 
               lineHeight: 1.5,
             }}
           >
-            Scanning <strong>{domain}</strong> for AI signals&hellip;
+            Checking <strong>{domain}</strong> to see how AI reads it&hellip;
           </p>
         )}
         <p
@@ -379,7 +379,7 @@ function LoadingPanel({ brand, domain }: { brand: string; domain: string | null 
             lineHeight: 1.6,
           }}
         >
-          This takes ~20&ndash;40 seconds &mdash; we run real API calls across 4 engines.
+          This takes 20 to 40 seconds. We check 4 real AI engines.
         </p>
       </div>
     </div>
@@ -460,7 +460,7 @@ function EngineBreakdown({
       {/* Desktop table */}
       <table
         className="ti-test-engine-table"
-        aria-label="AI engine citation breakdown"
+        aria-label="How each AI engine answered"
       >
         <caption
           style={{
@@ -472,7 +472,7 @@ function EngineBreakdown({
             captionSide: "top",
           }}
         >
-          Per-engine breakdown
+          How each AI engine answered
         </caption>
         <thead>
           <tr>
@@ -546,7 +546,7 @@ function EngineBreakdown({
       </table>
 
       {/* Mobile stacked cards */}
-      <div className="ti-test-engine-cards" aria-label="AI engine citation breakdown">
+      <div className="ti-test-engine-cards" aria-label="How each AI engine answered">
         {engines.map((e) => (
           <div
             key={e.engine}
@@ -652,7 +652,7 @@ function EngineBreakdown({
           color: "var(--color-muted)",
         }}
       >
-        Cited on <strong>{brandEngineCount} of {totalEngines}</strong> engines.
+        AI named you on <strong>{brandEngineCount} of {totalEngines}</strong> engines.
       </p>
     </div>
   );
@@ -671,7 +671,7 @@ function VectorNotes({ breakdown }: { breakdown: ScoreBreakdown }) {
   return (
     <div
       style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}
-      aria-label="Score vector notes"
+      aria-label="Score details"
     >
       {notes.map(({ label, note }) => (
         <div
@@ -757,7 +757,7 @@ function KitHeroCta({ kitHref }: { kitHref: string }) {
               fontFamily: "var(--font-mono)",
             }}
           >
-            Natural next step · one-time $29
+            One-time payment · $29
           </p>
           <h3
             style={{
@@ -778,13 +778,14 @@ function KitHeroCta({ kitHref }: { kitHref: string }) {
               lineHeight: 1.6,
             }}
           >
-            Your free test shows the gap. The Kit closes it: a full audit across all 5 engines,
-            your top 3 citation fixes, and 3 ready-to-publish drafts (blog, LinkedIn, FAQ) — no subscription required.
+            Your test found the gap. The Kit closes it. We check all 5 AI engines. We give you
+            your top 3 fixes. Then we write 3 posts for you — blog, LinkedIn, FAQ. Copy, paste,
+            publish. No subscription.
           </p>
         </div>
         <a
           href={kitHref}
-          aria-label="Get the Get-Cited Kit — $29 one-time payment"
+          aria-label="Get my Get-Cited Kit — $29, one-time"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -804,7 +805,7 @@ function KitHeroCta({ kitHref }: { kitHref: string }) {
             fontFamily: "var(--font-family)",
           }}
         >
-          Get the Kit — $29
+          Get my Kit — $29 →
         </a>
         <p
           style={{
@@ -847,7 +848,7 @@ function RecommendationCards({
           color: "var(--color-text)",
         }}
       >
-        Also worth considering
+        Want more help?
       </h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {secondary.map((rec) => {
@@ -979,7 +980,7 @@ function ResultsPanel({
             color: "var(--color-muted)",
           }}
         >
-          We asked the AI engines:
+          Here&rsquo;s what we asked:
         </p>
         <blockquote
           style={{
@@ -1003,9 +1004,9 @@ function ResultsPanel({
             color: "var(--color-muted)",
           }}
         >
-          <strong>{result.enginesLive} of {result.totalEngines}</strong> engines responded live.
+          <strong>{result.enginesLive} of {result.totalEngines}</strong> engines were live.
           {!result.live && (
-            <span> (demo data &mdash; live engines activate once provider keys are connected)</span>
+            <span> (this is demo data &mdash; it turns real once we connect live AI engines)</span>
           )}
         </p>
       </div>
@@ -1028,13 +1029,13 @@ function ResultsPanel({
           <span aria-hidden="true" style={{ fontSize: "1.25rem", lineHeight: 1 }}>⚠️</span>
           <div>
             <strong style={{ display: "block", marginBottom: "var(--space-1)", color: "var(--color-text)" }}>
-              Preview mode — this isn&rsquo;t your real score yet
+              Preview mode. This isn&rsquo;t your real score yet.
             </strong>
             <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-              No live AI engines are connected, so the <strong>Visibility</strong> number below is
-              sample data — not a measurement of how ChatGPT, Claude, Perplexity, Gemini &amp; Google AI
-              actually answer about your brand. Citation Readiness (from your live site crawl) is real.
-              Connect provider keys to unlock your real Ozvor AI Visibility Score.
+              No AI engines are connected yet, so the <strong>Visibility</strong> number below is
+              just a sample. It&rsquo;s not real ChatGPT, Claude, Perplexity, Gemini, or Google AI
+              data. Citation Readiness is real — it comes from scanning your live site. Connect live
+              AI engines to see your real Ozvor AI Visibility Score.
             </span>
           </div>
         </div>
@@ -1065,7 +1066,7 @@ function ResultsPanel({
             paddingTop: "var(--space-3)",
           }}
         >
-          Execution unlocks in-platform &mdash; track fixes as you complete them.
+          Execution unlocks once you&rsquo;re in the platform. Track your fixes as you go.
         </p>
       </div>
 
@@ -1121,8 +1122,8 @@ function ResultsPanel({
           lineHeight: 1.6,
         }}
       >
-        Results are evidence-based estimates. AI answers are non-deterministic &mdash; this is a
-        directional snapshot, not a guarantee of citation.
+        These results are our best estimate, based on real evidence. AI doesn&rsquo;t give the same
+        answer every time, so this is a snapshot — not a promise you&rsquo;ll get cited.
       </p>
     </div>
   );
@@ -1288,7 +1289,7 @@ export function InvisibilityTestClient() {
         if (data.alreadyUsed) {
           setAlreadyUsed(
             data.message ??
-              "This email already used its free test. Create your account or get the Get-Cited Kit."
+              "This email already ran its free test. Create your account, or get the Kit."
           );
         } else {
           setResult(data.result);
@@ -1360,7 +1361,7 @@ export function InvisibilityTestClient() {
             onClick={() => startCheckout("growth", "year")}
             style={{ ...primaryBtn(checkoutLoading), display: "inline-flex", alignItems: "center", justifyContent: "center" }}
           >
-            {checkoutLoading ? "Opening checkout…" : "Create your account →"}
+            {checkoutLoading ? "Opening checkout…" : "Create my account →"}
           </button>
           {checkoutError && (
             <p role="alert" style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-error)", fontFamily: "var(--font-family)", width: "100%" }}>
@@ -1368,7 +1369,7 @@ export function InvisibilityTestClient() {
             </p>
           )}
           <a href={kitHref} style={{ ...outlinedBtn(), textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            Get the Kit — $29
+            Get my Kit — $29 →
           </a>
         </div>
       </div>
@@ -1398,14 +1399,14 @@ export function InvisibilityTestClient() {
     >
       {/* Helper paragraph — reduces perceived friction */}
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
-        Takes ~60 seconds. Your website + email is enough to start.
+        Takes about 60 seconds. Just your website and email to start.
       </p>
 
       {/* Primary fields — always visible */}
       <Field
         label="Your website"
         required
-        hint="we scan it for AI signals — schema, crawlability, structure"
+        hint="we check how easy your site is for AI to read"
         fieldId={domainId}
         errorId={domainErrorId}
         errorMessage={domainErrorMessage}
@@ -1461,7 +1462,7 @@ export function InvisibilityTestClient() {
       {/* One-click email — right next to the field it fills. A verified
           identity also links this test to the visitor's account later. */}
       <SocialAuthButtons
-        caption="Fill your email in one click — or just type it below:"
+        caption="Fill your email with one click. Or type it below:"
         onBeforeRedirect={() =>
           saveFormDraft(FREE_TEST_DRAFT_KEY, {
             brand, domain, competitor, competitor2, competitor3, category, sector, country, email,
@@ -1472,7 +1473,7 @@ export function InvisibilityTestClient() {
       <Field
         label="Your email"
         required
-        hint="We'll email your full snapshot — a copy you can share."
+        hint="We'll email you the full results. Share them with anyone."
         fieldId={emailId}
         errorId={emailErrorId}
         errorMessage={emailErrorMessage}
@@ -1521,14 +1522,14 @@ export function InvisibilityTestClient() {
         >
           <Field
             label="Competitors"
-            hint="optional — up to 3; we compare you head-to-head"
+            hint="optional — up to 3, we compare you against them"
             fieldId={competitorId}
           >
             <input
               id={competitorId}
               value={competitor}
               onChange={(e) => setCompetitor(e.target.value)}
-              placeholder="A rival brand"
+              placeholder="A competitor"
               autoComplete="off"
               style={inputStyle}
             />
@@ -1576,7 +1577,7 @@ export function InvisibilityTestClient() {
             )}
           </Field>
 
-          <Field label="Sector" hint="so we localise the buyer prompts" fieldId={sectorId}>
+          <Field label="Sector" hint="helps us ask AI the right questions for your industry" fieldId={sectorId}>
             <select
               id={sectorId}
               value={sector}
@@ -1590,7 +1591,7 @@ export function InvisibilityTestClient() {
             </select>
           </Field>
 
-          <Field label="Country" hint="GDPR-safe routing for EU countries" fieldId={countryId}>
+          <Field label="Country" hint="for EU countries, we follow GDPR rules" fieldId={countryId}>
             <select
               id={countryId}
               value={country}
@@ -1611,7 +1612,7 @@ export function InvisibilityTestClient() {
         style={primaryBtn(!canSubmit)}
         aria-disabled={!canSubmit}
       >
-        Run my free test
+        Run my test →
       </button>
       {/* Guidance when disabled — tell the user exactly what's still needed
           (e.g. after OAuth prefills the email but website/brand/category are
