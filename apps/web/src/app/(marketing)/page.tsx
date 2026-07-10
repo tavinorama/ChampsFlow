@@ -16,12 +16,58 @@
  *  10. FAQ (details/summary, first item open)
  *  11. Final CTA
  *
- * Static rendering: no dynamic data. Server Component — no "use client".
+ * Server Component — no "use client". Mostly static; the ONE dynamic bit is
+ * the "Building in public" band (section 9), which renders Ozvor's own live
+ * audit numbers from GET /api/showcase/geo (same source as /results) with
+ * 10-minute ISR — so the public score is never a stale hardcoded claim. If
+ * the API is unavailable the band renders honestly without numbers.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StickyBuyBar } from "../../components/marketing/StickyBuyBar";
+
+export const revalidate = 600;
+
+// ---------------------------------------------------------------------------
+// Building-in-public live stats (same source as /results — no invented numbers)
+// ---------------------------------------------------------------------------
+
+interface ShowcaseAudit {
+  date: string;
+  overall: number | null;
+}
+
+async function fetchBuildInPublicStats(): Promise<
+  { current: number; improvement: number; weeksTracked: number } | null
+> {
+  const base =
+    process.env.INTERNAL_API_URL ?? "https://api-production-2052.up.railway.app";
+  try {
+    const res = await fetch(`${base}/api/showcase/geo`, {
+      next: { revalidate: 600 },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { history: ShowcaseAudit[] };
+    const scored = (data.history ?? []).filter(
+      (h): h is ShowcaseAudit & { overall: number } => h.overall != null
+    );
+    if (scored.length === 0) return null;
+    const first = scored[0]!;
+    const latest = scored[scored.length - 1]!;
+    const weeksTracked = Math.max(
+      1,
+      Math.round((Date.now() - new Date(first.date).getTime()) / (7 * 24 * 3600 * 1000))
+    );
+    return {
+      current: latest.overall,
+      improvement: latest.overall - first.overall,
+      weeksTracked,
+    };
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -141,7 +187,8 @@ const faqJsonLd = {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const bip = await fetchBuildInPublicStats();
   return (
     <>
       <script
@@ -785,18 +832,25 @@ export default function LandingPage() {
           <p style={{margin:'16px auto 0',maxWidth:560,fontSize:16,lineHeight:1.55,color:'var(--color-muted)'}}>
             The best way to prove a GEO platform works is to dog-food it publicly. We publish our own audit scores across all five engines weekly — no spin, no cherry-picked snapshots. As we ship improvements, you watch the numbers move.
           </p>
-          <div style={{display:'flex',gap:16,justifyContent:'center',flexWrap:'wrap',marginTop:28}}>
-            {[
-              {label:'Current Ozvor AI Visibility Score',val:'72'},
-              {label:'Weeks since launch',val:'8'},
-              {label:'Score improvement',val:'+28'},
-            ].map(l=>(
-              <div key={l.label} style={{minWidth:150,padding:'18px 22px',borderRadius:13,border:'1px solid var(--color-border)',background:'var(--color-surface-muted)'}}>
-                <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>{l.label}</div>
-                <div style={{marginTop:8,fontSize:26,fontWeight:800,color:'var(--color-accent-ink)',fontFamily:"'JetBrains Mono',monospace"}}>{l.val}</div>
-              </div>
-            ))}
-          </div>
+          {bip && (
+            <div style={{display:'flex',gap:16,justifyContent:'center',flexWrap:'wrap',marginTop:28}}>
+              {[
+                {label:'Current Ozvor AI Visibility Score',val:String(bip.current)},
+                {label:'Weeks tracked in public',val:String(bip.weeksTracked)},
+                {label:'Score change since day one',val:`${bip.improvement >= 0 ? '+' : ''}${bip.improvement}`},
+              ].map(l=>(
+                <div key={l.label} style={{minWidth:150,padding:'18px 22px',borderRadius:13,border:'1px solid var(--color-border)',background:'var(--color-surface-muted)'}}>
+                  <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:'var(--color-muted)'}}>{l.label}</div>
+                  <div style={{marginTop:8,fontSize:26,fontWeight:800,color:'var(--color-accent-ink)',fontFamily:"'JetBrains Mono',monospace"}}>{l.val}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p style={{margin:'24px auto 0',fontSize:14.5}}>
+            <Link href="/results" style={{color:'var(--color-accent-ink)',fontWeight:700,textDecoration:'none'}}>
+              See the full live scorecard — every engine, every week →
+            </Link>
+          </p>
         </div>
       </section>
 
