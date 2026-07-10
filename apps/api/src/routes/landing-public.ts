@@ -227,6 +227,9 @@ interface PublishedSite {
   slug: string;
   business: unknown;
   theme: unknown;
+  /** Google Place ID (#208 PR-9) — non-sensitive public identifier, safe to
+   *  expose; drives the optional Maps Embed iframe on the public site. */
+  place_id: string | null;
 }
 
 async function resolvePublishedSite(
@@ -235,7 +238,7 @@ async function resolvePublishedSite(
 ): Promise<PublishedSite | null> {
   if (!siteSlug || siteSlug.length > MAX_SLUG_LEN) return null;
   const res = await db.query<PublishedSite>(
-    `SELECT id, tenant_id, slug, business, theme
+    `SELECT id, tenant_id, slug, business, theme, place_id
        FROM landing_sites
       WHERE slug = $1 AND status = 'published'`,
     [siteSlug]
@@ -364,7 +367,7 @@ export function registerLandingPublicRoutes(app: Hono, db: PostgresClient): void
     );
 
     return c.json({
-      site: { slug: site.slug, business: site.business, theme: site.theme },
+      site: { slug: site.slug, business: site.business, theme: site.theme, place_id: site.place_id },
       nav,
       page: homeRes.rows[0] ?? null,
     });
@@ -412,7 +415,7 @@ export function registerLandingPublicRoutes(app: Hono, db: PostgresClient): void
     const nav = await fetchPublishedNav(db, site);
 
     return c.json({
-      site: { slug: site.slug, business: site.business, theme: site.theme },
+      site: { slug: site.slug, business: site.business, theme: site.theme, place_id: site.place_id },
       nav,
       page,
     });

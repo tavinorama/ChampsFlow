@@ -31,6 +31,7 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { getSharedRedis } from "../shared-redis";
+import { resolvePlace, googlePlacesConfigured, PlacesError } from "../lib/google-places";
 
 const VERSION_CAP = 20;
 
@@ -53,6 +54,10 @@ export const RESERVED_SITE_SLUGS = new Set([
 
 const SITE_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 const PAGE_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+// Google Place IDs are alphanumeric + '-'/'_', no fixed length in the spec —
+// this is a shape guard on CLIENT input, not a Google-format validator.
+const PLACE_ID_INPUT_RE = /^[A-Za-z0-9_-]{1,255}$/;
+const MAX_MAPS_URL_LEN = 2000;
 
 // ---------------------------------------------------------------------------
 // slugify — deterministic, ASCII-only, matches the DB CHECK constraints.
@@ -334,6 +339,25 @@ async function checkLandingGenerateRateLimit(tenantId: string): Promise<boolean>
   return current <= limit;
 }
 
+// ---------------------------------------------------------------------------
+// Per-tenant rate limit for the Places resolve lookup (10/hour) — same
+// fixed-window INCR+EXPIRE pattern as checkLandingGenerateRateLimit above
+// (issue #208 PR-9). Google's own console-side caps (20/min details+search)
+// protect against burst abuse; this bounds sustained per-tenant usage.
+// ---------------------------------------------------------------------------
+
+async function checkPlacesResolveRateLimit(tenantId: string): Promise<boolean> {
+  const redis = getSharedRedis();
+  const key = `landing:rl:places-resolve:${tenantId}`;
+  const limit = 10;
+  const windowSeconds = 3600;
+  const current = await redis.incr(key);
+  if (current === 1) {
+    await redis.expire(key, windowSeconds);
+  }
+  return current <= limit;
+}
+
 export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
   // GET /api/landing/allowance — what can this tenant build? (drives the UI)
@@ -406,6 +430,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         business?: Record<string, unknown>;
         theme?: Record<string, unknown>;
         brand_id?: string;
+        place_id?: string;
       };
       try {
         body = await c.req.json();
@@ -419,6 +444,21 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       const slug = (body.slug ?? "").trim() || slugify(name);
       const slugError = validateSiteSlug(slug);
       if (slugError) return c.json({ message: slugError, code: "INVALID_SLUG" }, 400);
+
+      // Optional Google Places link — the wizard resolves it client-side via
+      // POST /api/landing/places/resolve and submits the returned place_id
+      // (+ the pre-filled facts, already merged into `business` by the
+      // caller) on create. No server-side re-fetch here (#208 PR-9).
+      let placeId: string | null = null;
+      if (body.place_id !== undefined) {
+        const trimmed = (body.place_id ?? "").trim();
+        if (trimmed) {
+          if (!PLACE_ID_INPUT_RE.test(trimmed)) {
+            return c.json({ message: "Invalid place_id." }, 400);
+          }
+          placeId = trimmed;
+        }
+      }
 
       await db.setTenantId(auth.tenantId);
 
@@ -456,9 +496,18 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       const siteId = randomUUID();
       try {
         await db.query(
-          `INSERT INTO landing_sites (id, tenant_id, brand_id, slug, status, business, theme, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'draft', $5, $6, NOW(), NOW())`,
-          [siteId, auth.tenantId, brandId, slug, JSON.stringify(business), JSON.stringify(body.theme ?? {})]
+          `INSERT INTO landing_sites
+             (id, tenant_id, brand_id, slug, status, business, theme, place_id, google_synced_at, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7, CASE WHEN $7 IS NOT NULL THEN NOW() ELSE NULL END, NOW(), NOW())`,
+          [
+            siteId,
+            auth.tenantId,
+            brandId,
+            slug,
+            JSON.stringify(business),
+            JSON.stringify(body.theme ?? {}),
+            placeId,
+          ]
         );
       } catch (err) {
         if (isUniqueViolation(err)) {
@@ -477,6 +526,92 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
 
       logger.info("landing_site_created", { tenant_id: auth.tenantId, site_id: siteId });
       return c.json({ id: siteId, slug, status: "draft", home_page_id: homePageId }, 201);
+    }
+  );
+
+  // =========================================================================
+  // Google Places (New) integration (#208 PR-9) — kept in its own clearly-
+  // delimited block to minimize merge conflicts with concurrent work on this
+  // file (PR-8's site-detail/leads additions). All parsing/API logic lives
+  // in apps/api/src/lib/google-places.ts; this route is pure request/
+  // response plumbing: configured-gate, rate-limit, call, map typed errors.
+  //
+  // POST /api/landing/places/resolve — "paste your Google Maps link" wizard
+  // prefill. Does NOT write anything to the DB (pure lookup) — the wizard
+  // submits the create as usual with the resolved facts + place_id.
+  // =========================================================================
+  app.post(
+    "/api/landing/places/resolve",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+
+      // Fail-safe: no server key configured → 503, UI hides/disables the field.
+      if (!googlePlacesConfigured()) {
+        return c.json(
+          {
+            message: "Google Maps lookup is not available right now.",
+            code: "PLACES_NOT_CONFIGURED",
+          },
+          503
+        );
+      }
+
+      let body: { maps_url?: string };
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ message: "Invalid JSON body." }, 400);
+      }
+
+      const mapsUrl = (body.maps_url ?? "").trim();
+      if (!mapsUrl) return c.json({ message: "maps_url is required." }, 400);
+      if (mapsUrl.length > MAX_MAPS_URL_LEN) {
+        return c.json({ message: "That link is too long." }, 400);
+      }
+
+      const allowed = await checkPlacesResolveRateLimit(auth.tenantId).catch((err) => {
+        logger.warn("landing_places_resolve_rate_limit_redis_failed", {
+          message: (err as Error).message,
+        });
+        return true; // fail open on Redis error, consistent with the generate route
+      });
+      if (!allowed) {
+        c.header("Retry-After", "3600");
+        return c.json(
+          {
+            message: "Too many lookups. Please try again in an hour.",
+            code: "PLACES_RATE_LIMITED",
+          },
+          429
+        );
+      }
+
+      try {
+        const resolved = await resolvePlace(mapsUrl);
+        return c.json(resolved);
+      } catch (err) {
+        if (err instanceof PlacesError) {
+          if (err.code === "not_configured") {
+            return c.json({ message: err.message, code: "PLACES_NOT_CONFIGURED" }, 503);
+          }
+          if (err.code === "not_found") {
+            return c.json({ message: err.message, code: "PLACES_NOT_FOUND" }, 404);
+          }
+          if (err.code === "invalid_url") {
+            return c.json({ message: err.message, code: "PLACES_INVALID_URL" }, 400);
+          }
+          return c.json({ message: err.message, code: "PLACES_UPSTREAM_ERROR" }, 502);
+        }
+        // Never surface internal error text — PlacesError already carries a
+        // client-safe message; anything else is an unexpected bug.
+        logger.error("landing_places_resolve_unexpected_error", {
+          tenantId: auth.tenantId,
+          message: (err as Error).message?.slice(0, 160),
+        });
+        return c.json({ message: "Could not look up that business. Please try again." }, 502);
+      }
     }
   );
 

@@ -47,7 +47,11 @@ export async function middleware(request: NextRequest) {
     // GA4 sends hits to regionalized *.google-analytics.com / *.analytics.google.com.
     "connect-src 'self' https://*.supabase.co https://api.stripe.com https://r.stripe.com https://calendly.com https://*.calendly.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
     // Calendly renders its booking UI in an iframe from calendly.com.
-    "frame-src https://js.stripe.com https://hooks.stripe.com https://calendly.com",
+    // https://www.google.com — Ozvor Pages' Maps Embed iframe (map_nap
+    // section, #208 PR-9): free/unlimited Maps Embed API, browser-restricted
+    // key baked into the src, no script execution — the iframe itself is the
+    // sandbox boundary.
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://calendly.com https://www.google.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

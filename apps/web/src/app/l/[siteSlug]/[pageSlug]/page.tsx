@@ -25,6 +25,8 @@ interface PublicSite {
   slug: string;
   business: Record<string, unknown>;
   theme: Record<string, unknown>;
+  /** Google Place ID (#208 PR-9) — drives the optional Maps Embed iframe. */
+  place_id: string | null;
 }
 
 interface PublicPage {
@@ -130,7 +132,12 @@ export default async function PublicLandingSubPage({
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }}
       />
       <PageViewBeacon siteSlug={siteSlug} pageSlug={pageSlug} />
-      <SectionRenderer sections={data.page.sections} siteSlug={siteSlug} theme={data.site.theme} />
+      <SectionRenderer
+        sections={data.page.sections}
+        siteSlug={siteSlug}
+        theme={data.site.theme}
+        placeId={data.site.place_id}
+      />
       <LeadForm siteSlug={siteSlug} accentColor={accentColor(data.site.theme)} />
     </PublicLandingChrome>
   );

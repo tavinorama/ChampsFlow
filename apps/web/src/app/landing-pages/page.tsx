@@ -13,6 +13,15 @@
  * tenant that already has sites but is at their cap keeps read access to
  * those sites and just loses the "New site" action.
  *
+ * Google Maps prefill (#208 PR-9): an optional "Paste your Google Maps link"
+ * field at the top of the New-site form. "Fill from Google Maps" calls
+ * POST /api/landing/places/resolve and pre-fills name/address/phone/website
+ * — every field stays EDITABLE afterward (the user can correct anything;
+ * never treated as read-only truth). The resolved place_id rides along in
+ * form state and is submitted with the create call. A 503 (no server key
+ * configured) hides the field for the rest of this session — simplest
+ * consistent pattern, no separate probe-on-open round trip.
+ *
  * Accessibility: every input labelled, aria-live status regions, 44px min
  * tap targets, focus-visible outlines (shared with brands/page.tsx pattern).
  */
@@ -95,6 +104,14 @@ export default function LandingPagesHubPage() {
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Google Maps prefill (#208 PR-9) — see file header for the UX contract.
+  const [mapsUrl, setMapsUrl] = useState("");
+  const [mapsFieldAvailable, setMapsFieldAvailable] = useState(true);
+  const [resolvingMaps, setResolvingMaps] = useState(false);
+  const [mapsError, setMapsError] = useState<string | null>(null);
+  const [mapsResolved, setMapsResolved] = useState(false);
+  const [placeId, setPlaceId] = useState<string | null>(null);
+
   const nameId = useId();
   const categoryId = useId();
   const addressId = useId();
@@ -102,6 +119,7 @@ export default function LandingPagesHubPage() {
   const websiteId = useId();
   const areasId = useId();
   const slugId = useId();
+  const mapsUrlId = useId();
 
   const load = useCallback(async () => {
     setLoadState("loading");
@@ -140,6 +158,51 @@ export default function LandingPagesHubPage() {
 
   const slugPreview = (customSlug.trim() || slugify(name)) || "your-business";
 
+  // Google Maps prefill (#208 PR-9). Pure lookup — pre-fills the form fields
+  // and stashes place_id for the create call below. Deliberately overwrites
+  // whatever's currently in the fields: "Fill from Google Maps" is an
+  // explicit user action, and every field stays editable afterward.
+  async function handleResolveMaps() {
+    const trimmed = mapsUrl.trim();
+    if (!trimmed || resolvingMaps) return;
+    setResolvingMaps(true);
+    setMapsError(null);
+    setMapsResolved(false);
+    try {
+      const res = await apiFetch("/api/landing/places/resolve", {
+        method: "POST",
+        body: JSON.stringify({ maps_url: trimmed }),
+      });
+      if (res.status === 503) {
+        // No server key configured — hide the field for the rest of this session.
+        setMapsFieldAvailable(false);
+        return;
+      }
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        setMapsError(data.message ?? "Could not look up that business. You can still fill in the form manually.");
+        return;
+      }
+      const data = (await res.json()) as {
+        place_id?: string;
+        name?: string;
+        address?: string | null;
+        phone?: string | null;
+        website?: string | null;
+      };
+      if (data.name) setName(data.name);
+      if (data.address) setAddress(data.address);
+      if (data.phone) setPhone(data.phone);
+      if (data.website) setWebsite(data.website);
+      setPlaceId(data.place_id ?? null);
+      setMapsResolved(true);
+    } catch {
+      setMapsError("Could not look up that business. Check your connection and try again, or fill in the form manually.");
+    } finally {
+      setResolvingMaps(false);
+    }
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || creating) return;
@@ -163,6 +226,7 @@ export default function LandingPagesHubPage() {
           name: name.trim(),
           ...(trimmedSlug ? { slug: trimmedSlug } : {}),
           business,
+          ...(placeId ? { place_id: placeId } : {}),
         }),
       });
       if (!res.ok) {
@@ -282,6 +346,49 @@ export default function LandingPagesHubPage() {
                   <div role="alert" style={{ ...alertStyle, marginBottom: "var(--space-4)" }}>
                     {formError}
                   </div>
+                )}
+
+                {mapsFieldAvailable && (
+                  <Field id={mapsUrlId} label="Paste your Google Maps link" hint="optional">
+                    <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                      <input
+                        id={mapsUrlId}
+                        type="url"
+                        value={mapsUrl}
+                        onChange={(e) => {
+                          setMapsUrl(e.target.value);
+                          setMapsResolved(false);
+                        }}
+                        maxLength={2000}
+                        placeholder="https://maps.app.goo.gl/..."
+                        style={{ ...inputStyle, flex: "1 1 220px" }}
+                        aria-describedby={mapsError ? `${mapsUrlId}-status` : undefined}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleResolveMaps}
+                        disabled={!mapsUrl.trim() || resolvingMaps}
+                        style={secondaryButtonStyle(!mapsUrl.trim() || resolvingMaps)}
+                      >
+                        {resolvingMaps ? "Looking up…" : "Fill from Google Maps"}
+                      </button>
+                    </div>
+                    <p
+                      id={`${mapsUrlId}-status`}
+                      role="status"
+                      aria-live="polite"
+                      style={{
+                        margin: "var(--space-2) 0 0 0",
+                        fontSize: "var(--font-size-caption)",
+                        color: mapsError ? "var(--color-error)" : "var(--color-muted)",
+                      }}
+                    >
+                      {mapsError ??
+                        (mapsResolved
+                          ? "Filled from Google Maps — check and edit anything below before creating your site."
+                          : "We'll pre-fill the fields below from your Google Maps listing. Everything stays editable.")}
+                    </p>
+                  </Field>
                 )}
 
                 <Field id={nameId} label="Business name" required>
