@@ -36,8 +36,12 @@
  *      applied to the generated section text (renderSectionsForScoring).
  *  10. ai_generation_log row per page (GEO-A6 convention, feature_id 'GEO-7',
  *      migration 20260710000003 — hashes only, no raw section text).
- *  11. Mark consumed plan_task rows landing_site_id = site_id (status is left
- *      untouched — closing the loop is PR-7's job).
+ *  11. Close consumed plan_task rows (issue #208, PR-7 — the founder's
+ *      "audit → rebuild" loop): landing_site_id is stamped on every card
+ *      this run consumed; status/evidence/landing_page_id are closed via
+ *      closeConsumedGapCards() for cards still 'proposed'/'accepted' — never
+ *      a blanket close of every open card for the brand, only the exact set
+ *      step 5 loaded (and fed into the bundle).
  *  12. Record estimated platform spend in `api_spend` (op='pages_generate',
  *      issue #217) for real LLM runs only — same visibility-only ledger +
  *      try/catch pattern as audit-run.ts's post-completion spend record.
@@ -256,6 +260,95 @@ export function resolvePlatformAnthropicKey(): { provider: ContentProvider; apiK
 }
 
 // ---------------------------------------------------------------------------
+// Audit → rebuild loop closure (issue #208, PR-7) — "a audit da semana disse
+// que precisa de uma FAQ page; quando ele refaz o site, o creator já faz essa
+// FAQ page" (founder requirement). PR-4 consumed the open plan_task gaps as
+// generator input and stamped landing_site_id; this closes the loop by
+// marking those exact cards done, with evidence, linked to the page that
+// materialized them. Only the cards THIS run consumed are ever touched here
+// — never a blanket close of every open card for the brand.
+// ---------------------------------------------------------------------------
+
+export interface ConsumedGapCard {
+  id: string;
+  gap: string;
+  action: string;
+}
+
+interface ClosurePageRef {
+  id: string;
+  title: string;
+}
+
+/** Pure — same FAQ/question heuristic strategy-generator.ts's toCalendarTopic
+ * already uses to route a recommendation's text to a content shape. */
+export function isFaqGap(gap: string, action: string): boolean {
+  return /FAQ|question/i.test(`${gap} ${action}`);
+}
+
+/** Pure — the one-line evidence note appended when a card closes. */
+export function buildClosureEvidenceLine(pageLabel: string, now: Date = new Date()): string {
+  return `Applied by Ozvor Pages generation on ${now.toISOString()}: ${pageLabel}`;
+}
+
+/**
+ * Closes the plan_task rows this run consumed as generator input: for every
+ * card still 'proposed'/'accepted' at write time, stamps status='done',
+ * appends ONE evidence line, and links landing_page_id to whichever page
+ * materialized the gap — FAQ-shaped gaps (isFaqGap) → the faq page,
+ * everything else → the home page — when that page is determinable from
+ * this run's output (COALESCE leaves landing_page_id untouched otherwise).
+ *
+ * landing_site_id is stamped on every consumed card regardless of its
+ * current status (a separate, unconditional UPDATE) — unchanged PR-4
+ * contract: a card that fed this run keeps its site link even if a
+ * concurrent action rejected/completed it out of band.
+ *
+ * The status/evidence/landing_page_id transition uses a SECOND UPDATE
+ * guarded by `WHERE status IN ('proposed', 'accepted')` — a card that is not
+ * in that set matches zero rows and comes back completely untouched
+ * (rejected/done cards never flip, never gain a second evidence line). That
+ * same WHERE guard is what makes the RETURNING row count an accurate
+ * "did this call actually close it?" signal (unlike an unconditional
+ * `RETURNING status`, which would report the row's status whether or not
+ * this call changed it). Idempotency for repeated generation runs falls out
+ * of this for free too: once a card is 'done' it no longer matches the
+ * open-gap SELECT in step 5, so it is never passed in here again.
+ *
+ * Returns the number of cards actually closed this call (RETURNING-verified,
+ * not just the input count) — used for the summary log only.
+ */
+export async function closeConsumedGapCards(
+  sql: postgres.Sql,
+  siteId: string,
+  cards: ConsumedGapCard[],
+  pageIdByType: Map<string, ClosurePageRef>,
+  now: Date = new Date()
+): Promise<number> {
+  let closed = 0;
+  for (const card of cards) {
+    await sql`UPDATE plan_task SET landing_site_id = ${siteId} WHERE id = ${card.id}`;
+
+    const faq = isFaqGap(card.gap, card.action);
+    const target = faq ? pageIdByType.get("faq") : pageIdByType.get("home");
+    const pageLabel = target?.title || (faq ? "FAQ page" : "Home page");
+    const evidenceLine = buildClosureEvidenceLine(pageLabel, now);
+    const rows = await sql<{ id: string }[]>`
+      UPDATE plan_task
+         SET landing_page_id = COALESCE(${target?.id ?? null}, landing_page_id),
+             evidence = CASE WHEN evidence IS NULL OR evidence = '' THEN ${evidenceLine}
+                         ELSE evidence || E'\n' || ${evidenceLine} END,
+             status = 'done'
+       WHERE id = ${card.id}
+         AND status IN ('proposed', 'accepted')
+       RETURNING id
+    `;
+    if (rows.length > 0) closed += 1;
+  }
+  return closed;
+}
+
+// ---------------------------------------------------------------------------
 // Main processor
 // ---------------------------------------------------------------------------
 
@@ -321,8 +414,10 @@ export async function processLandingGenerateJob(
     }
 
     // 5. Open audit gaps for the linked brand (audit → rebuild loop, #208).
+    //    gapCards keeps the full row (id/gap/action) so step 9 below can
+    //    decide FAQ-vs-home routing and close each card with evidence.
     let auditGaps: string[] = [];
-    let consumedTaskIds: string[] = [];
+    let gapCards: ConsumedGapCard[] = [];
     if (site.brand_id) {
       try {
         const gapRows = await sql<{ id: string; gap: string; action: string }[]>`
@@ -335,7 +430,7 @@ export async function processLandingGenerateJob(
            LIMIT 6
         `;
         auditGaps = gapRows.map((r) => `${r.gap} — ${r.action}`);
-        consumedTaskIds = gapRows.map((r) => r.id);
+        gapCards = gapRows;
       } catch (err) {
         logger.warn("landing_generate_gaps_load_failed", {
           site_id,
@@ -394,6 +489,9 @@ export async function processLandingGenerateJob(
         : "mock-template-v1";
 
     let pagesWritten = 0;
+    // page_type -> the page that now carries it, for step 9's FAQ-vs-home
+    // gap-closure routing below (isFaqGap → 'faq' page, else 'home').
+    const pageIdByType = new Map<string, ClosurePageRef>();
     for (const page of bundle.pages) {
       const traits = scorePage(renderSectionsForScoring(page.sections));
       const contentScore = computeContentScoreFromTraits({
@@ -442,6 +540,7 @@ export async function processLandingGenerateJob(
                  updated_at = NOW()
            WHERE id = ${existingId}
         `;
+        pageIdByType.set(page.page_type, { id: existingId, title: page.title });
         pagesWritten += 1;
       } else {
         if (pageCount >= allowance.maxPagesPerSite) {
@@ -464,6 +563,7 @@ export async function processLandingGenerateJob(
              ${sql.json(JSON.parse(JSON.stringify(page.seo)))},
              ${sql.json(JSON.parse(JSON.stringify(aiReadiness)))}, NOW(), NOW())
         `;
+        pageIdByType.set(page.page_type, { id: newId, title: page.title });
         pageCount += 1;
         pagesWritten += 1;
       }
@@ -480,9 +580,15 @@ export async function processLandingGenerateJob(
       `;
     }
 
-    // 9. Link consumed plan_task rows to this site (status untouched — PR-7 closes the loop).
-    for (const taskId of consumedTaskIds) {
-      await sql`UPDATE plan_task SET landing_site_id = ${site_id} WHERE id = ${taskId}`;
+    // 9. Close consumed plan_task rows (issue #208, PR-7 — the founder's
+    //    "audit → rebuild" requirement): every card this run fed into the
+    //    bundle gets landing_site_id stamped, and — when still open —
+    //    status='done' + one evidence line + landing_page_id. Never a
+    //    blanket close of every open card for the brand: only gapCards, the
+    //    exact set loaded (and consumed) in step 5.
+    if (gapCards.length > 0 && pagesWritten > 0) {
+      const closedCount = await closeConsumedGapCards(sql, site_id, gapCards, pageIdByType);
+      logger.info("landing_cards_closed", { count: closedCount, site_id });
     }
 
     // 10. Record estimated platform spend (issue #217) — visibility only, same
