@@ -124,7 +124,9 @@ jobs:
         run: npm run build
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+        # PR runs are chromium-only (Hermes review #220): halves browser time so
+        # the suite fits the budget. Nightly/dispatch keep the full matrix.
+        run: npx playwright install --with-deps ${{ github.event_name == 'pull_request' && 'chromium' || 'chromium webkit' }}
 
       - name: Start API server
         run: |
@@ -153,7 +155,9 @@ jobs:
           PORT: "3000"
 
       - name: Run Playwright E2E tests
-        run: npx playwright test
+        # PR gate: chromium-desktop only. Full cross-browser (webkit-mobile)
+        # coverage runs nightly + on workflow_dispatch (Hermes review #220).
+        run: npx playwright test ${{ github.event_name == 'pull_request' && '--project=chromium-desktop' || '' }}
         env:
           CI: "true"
           BASE_URL: "http://localhost:3000"
