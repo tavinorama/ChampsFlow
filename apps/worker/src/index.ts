@@ -32,6 +32,7 @@ import { Worker } from "bullmq";
 import { logger } from "../../../packages/shared/src/logger";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
+import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import {
   createWorkerDb,
@@ -156,6 +157,50 @@ auditWorker.on("failed", (job, err) => {
 });
 
 // ---------------------------------------------------------------------------
+// Ozvor Pages generator worker — queue 'landing-generate' (#208 PR-4).
+// Own postgres client (created lazily, same pattern as _auditSql); no
+// platform-key gating — this queue only ever uses the client's own BYOK key
+// or mock mode, never a platform key. Concurrency 5: cheap, mostly template
+// work plus at most one narrow LLM call per job.
+// ---------------------------------------------------------------------------
+
+let _landingSql: import("postgres").Sql | null = null;
+function getLandingSql(): import("postgres").Sql {
+  if (_landingSql) return _landingSql;
+  _landingSql = createWorkerDb();
+  return _landingSql;
+}
+
+const landingWorker = new Worker(
+  "landing-generate",
+  async (job) => {
+    return processLandingGenerateJob(
+      job as Parameters<typeof processLandingGenerateJob>[0],
+      withRlsContext(getLandingSql())
+    );
+  },
+  {
+    connection,
+    concurrency: 5,
+    autorun: true,
+  }
+);
+
+landingWorker.on("active", (job) => {
+  logger.info("landing_generate_job_started", { job_id: job.id, attempt: job.attemptsMade + 1 });
+});
+landingWorker.on("completed", (job, result) => {
+  logger.info("landing_generate_job_succeeded", {
+    job_id: job.id,
+    pages_written: (result as { pages_written?: number } | undefined)?.pages_written,
+    mode: (result as { mode?: string } | undefined)?.mode,
+  });
+});
+landingWorker.on("failed", (job, err) => {
+  logger.error("landing_generate_job_failed", { job_id: job?.id, message: err?.message });
+});
+
+// ---------------------------------------------------------------------------
 // Nurture email send loop — polls nurture_enrollment every 5 minutes
 // for due, non-suppressed, incomplete enrollments and dispatches step emails.
 // Uses a plain setInterval (not a BullMQ queue) since the job is a DB-poll
@@ -277,6 +322,7 @@ const shutdown = async (signal: string): Promise<void> => {
     // Close workers — waits for in-flight jobs to complete
     await worker.close();
     await auditWorker.close();
+    await landingWorker.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,
@@ -285,6 +331,12 @@ const shutdown = async (signal: string): Promise<void> => {
 
   try {
     if (_auditSql) await _auditSql.end({ timeout: 5 });
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    if (_landingSql) await _landingSql.end({ timeout: 5 });
   } catch {
     // Best-effort
   }

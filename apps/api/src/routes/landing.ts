@@ -24,10 +24,13 @@
 
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
+import { Queue } from "bullmq";
+import IORedis from "ioredis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
+import { getSharedRedis } from "../shared-redis";
 
 const VERSION_CAP = 20;
 
@@ -132,6 +135,50 @@ async function siteOwnedByTenant(
     [siteId, tenantId]
   );
   return !!res.rows[0];
+}
+
+// ---------------------------------------------------------------------------
+// Generator job queue (BullMQ) — same Redis connection convention as
+// audits.ts' getAuditQueue / schedules.ts.
+// ---------------------------------------------------------------------------
+
+let _landingGenerateQueue: Queue | null = null;
+let _landingGenerateIoRedis: IORedis | null = null;
+
+function getLandingGenerateQueue(): Queue {
+  if (_landingGenerateQueue) return _landingGenerateQueue;
+  const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
+  _landingGenerateIoRedis = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+  _landingGenerateIoRedis.on("error", (err: Error) => {
+    logger.error("landing_generate_queue_redis_connection_error", { message: err.message });
+  });
+  _landingGenerateQueue = new Queue("landing-generate", {
+    connection: _landingGenerateIoRedis,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 30_000 },
+      removeOnComplete: { count: 500 },
+      removeOnFail: { count: 2000 },
+    },
+  });
+  return _landingGenerateQueue;
+}
+
+// ---------------------------------------------------------------------------
+// Per-tenant rate limit for the generator trigger (10/hour) — Redis fixed
+// window, same INCR + EXPIRE pattern as billing.ts' checkBillingRateLimit.
+// ---------------------------------------------------------------------------
+
+async function checkLandingGenerateRateLimit(tenantId: string): Promise<boolean> {
+  const redis = getSharedRedis();
+  const key = `landing:rl:generate:${tenantId}`;
+  const limit = 10;
+  const windowSeconds = 3600;
+  const current = await redis.incr(key);
+  if (current === 1) {
+    await redis.expire(key, windowSeconds);
+  }
+  return current <= limit;
 }
 
 export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
@@ -369,6 +416,113 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
       logger.info("landing_site_deleted", { tenant_id: auth.tenantId, site_id: siteId });
       return c.json({ ok: true });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /api/landing/sites/:id/generate — enqueue the 5-page bundle generator
+  // (#208 PR-4). The worker (landing-generate job) does the actual writing;
+  // this route only validates, rate-limits, and enqueues.
+  //
+  // Body: { job_kind?: 'generate' | 'regenerate' } — optional; inferred from
+  // whether the site already has generated (non-home) pages when omitted.
+  // Idempotency: a STABLE BullMQ jobId (`landing-generate:<siteId>`) means a
+  // duplicate click while a job is still waiting/active/delayed collapses
+  // into the SAME job (returns 409 with that job's id) instead of enqueueing
+  // a second run; once that job settles, the next trigger reuses the id for
+  // a fresh run (BullMQ jobIds are only unique among NOT-YET-completed jobs).
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/landing/sites/:id/generate",
+    requireAuth,
+    requireRole(["owner", "editor"]),
+    async (c) => {
+      const auth = c.get("auth");
+      const siteId = c.req.param("id") ?? "";
+
+      let body: { job_kind?: string };
+      try {
+        body = await c.req.json();
+      } catch {
+        body = {};
+      }
+      if (body.job_kind !== undefined && body.job_kind !== "generate" && body.job_kind !== "regenerate") {
+        return c.json({ message: "job_kind must be 'generate' or 'regenerate'." }, 400);
+      }
+
+      // Rate limit: 10/hour per tenant (fail open on Redis error).
+      const allowed = await checkLandingGenerateRateLimit(auth.tenantId).catch((err) => {
+        logger.warn("landing_generate_rate_limit_redis_failed", { message: (err as Error).message });
+        return true;
+      });
+      if (!allowed) {
+        c.header("Retry-After", "3600");
+        return c.json(
+          {
+            error: "rate_limit_exceeded",
+            code: "GENERATE_RATE_LIMITED",
+            message: "Too many generate requests. Please try again in an hour.",
+          },
+          429
+        );
+      }
+
+      await db.setTenantId(auth.tenantId);
+      const siteRes = await db.query<{ id: string; status: string; page_count: string }>(
+        `SELECT s.id, s.status,
+                (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count
+           FROM landing_sites s WHERE s.id = $1 AND s.tenant_id = $2`,
+        [siteId, auth.tenantId]
+      );
+      const site = siteRes.rows[0];
+      if (!site) return c.json({ message: "Site not found." }, 404);
+      if (site.status === "suspended") {
+        return c.json({ message: "This site is suspended. Contact support.", code: "SITE_SUSPENDED" }, 403);
+      }
+
+      const jobKind: "generate" | "regenerate" =
+        (body.job_kind as "generate" | "regenerate" | undefined) ??
+        (parseInt(site.page_count, 10) > 1 ? "regenerate" : "generate");
+
+      const queue = getLandingGenerateQueue();
+      const jobId = `landing-generate:${siteId}`;
+
+      try {
+        const existing = await queue.getJob(jobId);
+        if (existing) {
+          const state = await existing.getState();
+          if (state === "waiting" || state === "active" || state === "delayed") {
+            return c.json(
+              {
+                message: "A generation run for this site is already in progress. Wait for it to finish.",
+                code: "GENERATE_ALREADY_RUNNING",
+                job_id: jobId,
+              },
+              409
+            );
+          }
+          // Previous run settled (completed/failed) — clear it so the stable
+          // jobId can be reused for this fresh run.
+          await existing.remove().catch(() => {
+            // Best-effort — BullMQ add() below will still surface any real conflict.
+          });
+        }
+        await queue.add(
+          "generate",
+          { tenant_id: auth.tenantId, site_id: siteId, job_kind: jobKind },
+          { jobId }
+        );
+      } catch (err) {
+        logger.error("landing_generate_enqueue_failed", {
+          tenantId: auth.tenantId,
+          siteId,
+          message: (err as Error).message?.slice(0, 160),
+        });
+        return c.json({ message: "Could not start the generator. Please try again." }, 503);
+      }
+
+      logger.info("landing_generate_triggered", { tenant_id: auth.tenantId, site_id: siteId, job_kind: jobKind });
+      return c.json({ queued: true, job_id: jobId, job_kind: jobKind }, 202);
     }
   );
 
