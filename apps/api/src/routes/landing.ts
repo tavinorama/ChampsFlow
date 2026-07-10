@@ -370,16 +370,24 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       created_at: string;
       updated_at: string;
       page_count: string;
+      open_fixes: string;
     }>(
       `SELECT s.id, s.slug, s.status, s.business, s.created_at, s.updated_at,
-              (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count
+              (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count,
+              (SELECT COUNT(*) FROM plan_task pt
+                 JOIN strategy_plan sp ON sp.id = pt.plan_id
+                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted')) AS open_fixes
          FROM landing_sites s
         WHERE s.tenant_id = $1
         ORDER BY s.created_at DESC`,
       [auth.tenantId]
     );
     return c.json({
-      sites: res.rows.map((r) => ({ ...r, page_count: parseInt(r.page_count, 10) })),
+      sites: res.rows.map((r) => ({
+        ...r,
+        page_count: parseInt(r.page_count, 10),
+        open_fixes: parseInt(r.open_fixes, 10),
+      })),
     });
   });
 
@@ -474,24 +482,37 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
 
   // -------------------------------------------------------------------------
   // GET /api/landing/sites/:id — site + pages
+  //
+  // open_fixes (#208 PR-7 — the audit → rebuild loop): the count of this
+  // site's linked brand's plan_task rows still 'proposed'/'accepted' — i.e.
+  // fixes that the NEXT generate/regenerate will apply and close. 0 when the
+  // site has no brand_id link.
   // -------------------------------------------------------------------------
   app.get("/api/landing/sites/:id", requireAuth, async (c) => {
     const auth = c.get("auth");
     const siteId = c.req.param("id") ?? "";
     await db.setTenantId(auth.tenantId);
-    const site = await db.query<Record<string, unknown>>(
-      `SELECT id, brand_id, slug, status, business, theme, review_themes, created_at, updated_at
-         FROM landing_sites WHERE id = $1 AND tenant_id = $2`,
+    const site = await db.query<Record<string, unknown> & { open_fixes: string }>(
+      `SELECT s.id, s.brand_id, s.slug, s.status, s.business, s.theme, s.review_themes,
+              s.created_at, s.updated_at,
+              (SELECT COUNT(*) FROM plan_task pt
+                 JOIN strategy_plan sp ON sp.id = pt.plan_id
+                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted')) AS open_fixes
+         FROM landing_sites s WHERE s.id = $1 AND s.tenant_id = $2`,
       [siteId, auth.tenantId]
     );
-    if (!site.rows[0]) return c.json({ message: "Site not found." }, 404);
+    const siteRow = site.rows[0];
+    if (!siteRow) return c.json({ message: "Site not found." }, 404);
     const pages = await db.query<Record<string, unknown>>(
       `SELECT id, page_type, slug, title, status, ai_readiness, published_at, created_at, updated_at
          FROM landing_pages WHERE site_id = $1 AND tenant_id = $2
         ORDER BY (slug = '') DESC, created_at ASC`,
       [siteId, auth.tenantId]
     );
-    return c.json({ site: site.rows[0], pages: pages.rows });
+    return c.json({
+      site: { ...siteRow, open_fixes: parseInt(siteRow.open_fixes, 10) },
+      pages: pages.rows,
+    });
   });
 
   // -------------------------------------------------------------------------
