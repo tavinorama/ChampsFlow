@@ -12,15 +12,15 @@ import { test, expect } from "@playwright/test";
 test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () => {
   test("free test runs and shows a scorecard with a Kit CTA", async ({ page }) => {
     await page.goto("/test");
-    await expect(page.getByRole("heading", { name: /invisible to AI/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /AI picks you/i })).toBeVisible();
     await page.getByLabel(/your brand/i).fill("Demo CRM");
     await page.getByLabel(/a competitor/i).fill("HubSpot");
     await page.getByLabel(/your category/i).fill("CRM");
-    await page.getByRole("button", { name: /run my free test/i }).click();
+    await page.getByRole("button", { name: /run my test/i }).click();
 
     // Scorecard: a verdict + the per-engine table + the Kit CTA.
     await expect(page.locator("body")).toContainText(/cited|invisible/i, { timeout: 30_000 });
-    await expect(page.getByRole("link", { name: /get the kit/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /get my kit/i })).toBeVisible();
   });
 
   test("kit checkout (dev-unlock) delivers audit + 3 drafts", async ({ page }) => {
