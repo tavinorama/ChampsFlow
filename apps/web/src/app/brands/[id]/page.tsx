@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../../lib/supabase-browser";
-import { TrustIndexScorecard, VECTOR_COLORS, type ThreeScores } from "../../../components/TrustIndexScorecard";
+import { OzvorScorecard, VECTOR_COLORS, type ThreeScores } from "../../../components/OzvorScorecard";
 import { ScoreTrend } from "../../../components/ScoreTrend";
 import { PromptsPanel } from "./PromptsPanel";
 import { confidenceLabel } from "../../../lib/confidence";
@@ -446,7 +446,7 @@ export default function BrandDetailPage() {
       {section === "overview" && (<>
       {/* Scorecard hero — matches the landing page hero mockup */}
       <div style={{ marginBottom: "var(--space-6)" }}>
-        <TrustIndexScorecard
+        <OzvorScorecard
           overall={breakdown?.scores?.overall ?? overall}
           threeScores={threeScores ?? undefined}
           vectors={

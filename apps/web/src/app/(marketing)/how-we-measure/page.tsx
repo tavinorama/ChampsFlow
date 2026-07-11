@@ -17,7 +17,7 @@
 
 import type { Metadata } from "next";
 import { SoftCTA } from "../../../components/marketing/SoftCTA";
-import { THREE_SCORE_COLORS } from "../../../components/TrustIndexScorecard";
+import { THREE_SCORE_COLORS } from "../../../components/OzvorScorecard";
 
 // ---------------------------------------------------------------------------
 // Metadata
