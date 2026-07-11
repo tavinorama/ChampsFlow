@@ -8,13 +8,14 @@
  * leaf — same pattern as FreeTestCta / ThemeToggle.
  *
  * Pattern choice: a disclosure ("Products ▾" button + a plain list of
- * <Link>s), not the full ARIA Menu-button widget — the trigger advertises
- * `aria-haspopup="menu"` + `aria-expanded` (so assistive tech knows a popup
- * exists and its state), but the panel is a semantic <ul> of real links
- * users reach with Tab, not role="menu"/"menuitem" roving-tabindex + arrow
- * keys. Applying the strict menu roles without implementing arrow-key
- * navigation would be a WCAG 4.1.2 name-role-value mismatch; Tab-through
- * links is the same navigable-by-keyboard guarantee with no extra JS.
+ * <Link>s), NOT an ARIA menu widget — so the trigger deliberately does NOT
+ * declare `aria-haspopup="menu"` (that would promise role="menu"/"menuitem"
+ * + arrow-key semantics we don't implement — a WCAG 4.1.2 mismatch, per
+ * Hermes review on PR #235). The contract is: `aria-expanded` + an
+ * `aria-controls` pointing at the panel's stable id; the panel is a
+ * semantic <ul> of real links users reach with Tab. The pure helpers
+ * `triggerAria()` / `shouldCloseOnKey()` encode this contract and are
+ * unit-tested in ProductsMenu.aria.test.ts.
  *
  * Desktop-first: reuses `.mk-navlink-hide-sm` so the trigger hides at the
  * same breakpoint the other center-nav links do (no separate mobile
@@ -26,6 +27,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+
+import { PRODUCTS_PANEL_ID, shouldCloseOnKey, triggerAria } from "./products-menu-aria";
+
 
 interface ProductsMenuItem {
   slug: string;
@@ -62,7 +66,7 @@ export function ProductsMenu() {
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
+      if (shouldCloseOnKey(e.key)) {
         close();
         triggerRef.current?.focus();
       }
@@ -86,8 +90,7 @@ export function ProductsMenu() {
         ref={triggerRef}
         type="button"
         className="mk-navlink mk-navlink-hide-sm"
-        aria-haspopup="menu"
-        aria-expanded={open}
+        {...triggerAria(open)}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: "inline-flex",
@@ -118,6 +121,7 @@ export function ProductsMenu() {
 
       {open && (
         <ul
+          id={PRODUCTS_PANEL_ID}
           aria-label="Products"
           style={{
             position: "absolute",
