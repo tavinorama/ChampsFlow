@@ -45,8 +45,15 @@ function loadGa4(): void {
   loaded = true;
 
   window.dataLayer = window.dataLayer || [];
+  // GA4 requires each dataLayer entry to be the raw `arguments` object — gtag.js
+  // only treats arguments-objects as gtag commands. Pushing a spread array made
+  // it ignore config/js/consent, so no page_view ever fired (Realtime stayed 0).
+  // The `...args` signature is only for the call sites' types; we push the
+  // actual `arguments` object as GA4's snippet requires.
   function gtag(...args: unknown[]): void {
-    window.dataLayer!.push(args);
+    void args;
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer!.push(arguments);
   }
   window.gtag = gtag;
 
