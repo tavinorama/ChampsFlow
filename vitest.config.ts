@@ -1,7 +1,11 @@
 /**
  * Vitest root configuration — Organic Posts
  *
- * Covers: tests/unit, tests/security, tests/integration
+ * Covers: tests/unit, tests/security, tests/integration, and colocated
+ * pure-logic tests in apps/web/src (each .test.ts sits next to the module it
+ * tests). Colocated web tests must stay framework-free (no JSX/DOM — the
+ * "pure logic helpers" convention documented in those files): the runner
+ * environment is node and no React/jsdom plugin is configured here.
  * E2E (Playwright) is configured separately in playwright.config.ts
  *
  * Coverage thresholds (v8 provider) enforced on:
@@ -33,6 +37,7 @@ export default defineConfig({
       "tests/security/**/*.test.ts",
       "tests/integration/**/*.test.ts",
       "tests/ai/**/*.spec.ts",
+      "apps/web/src/**/*.test.ts",
     ],
 
     exclude: [
