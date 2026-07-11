@@ -45,6 +45,7 @@ import {
   GoogleOAuthStateError,
 } from "../auth/google-oauth-state";
 import { encryptToken, decryptToken } from "../../../../packages/shared/src/crypto";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { computeAttributionSummary } from "../lib/attribution-summary";
 import { logger } from "../../../../packages/shared/src/logger";
 import type { PostgresClient } from "./social-accounts";
@@ -808,7 +809,7 @@ export function registerAttributionRoutes(app: Hono, db: PostgresClient): void {
               now,
               periodStart,
               periodEnd,
-              JSON.stringify(series),
+              jsonbParam(series),
             ]
           );
 

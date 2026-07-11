@@ -35,6 +35,7 @@ import { truncateIp } from "./dpa";
 import { requireAuth } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { enrollNurture } from "./nurture";
 import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/free-test-result";
 import { signedDownloadUrl } from "../../../../packages/shared/src/download-token";
@@ -249,7 +250,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       await db.query(
         `INSERT INTO lead_capture (id, email, brand, competitor, category, region, sector, country, result, source, ip_truncated, marketing_consent, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'invisibility_test',$10,$11, NOW())`,
-        [leadId, email, brand, competitor, category, region, sector, country, JSON.stringify(result), ip ? truncateIp(ip) : null, marketingConsent]
+        [leadId, email, brand, competitor, category, region, sector, country, jsonbParam(result), ip ? truncateIp(ip) : null, marketingConsent]
       );
       testId = leadId;
     } catch (err) {
