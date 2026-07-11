@@ -64,10 +64,17 @@ import {
   computeContentScoreFromTraits,
   type ContentProvider,
   type LandingBusinessInput,
+  type LandingReviewInput,
+  type LandingPhotoInput,
 } from "../../../../packages/llm/src/index";
 import { guardedFetch, assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { logger } from "../../../../packages/shared/src/logger";
 import { parseJsonbObject } from "../../../../packages/shared/src/jsonb";
+import {
+  resolvePlaceById,
+  googlePlacesConfigured,
+  landingPhotoProxyPath,
+} from "../../../api/src/lib/google-places";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { computeLandingAllowance } from "../../../api/src/lib/landing-allowance";
 import type { PlanTier } from "../../../api/src/integrations/stripe";
@@ -362,8 +369,15 @@ export async function processLandingGenerateJob(
   return runWithTenant(tenant_id, async () => {
     // 1. Load the site.
     const siteRows = await sql<
-      { id: string; brand_id: string | null; status: string; business: unknown }[]
-    >`SELECT id, brand_id, status, business FROM landing_sites WHERE id = ${site_id}`;
+      {
+        id: string;
+        brand_id: string | null;
+        status: string;
+        business: unknown;
+        place_id: string | null;
+        theme: unknown;
+      }[]
+    >`SELECT id, brand_id, status, business, place_id, theme FROM landing_sites WHERE id = ${site_id}`;
     const site = siteRows[0];
     if (!site) {
       throw new Error("site_not_found");
@@ -452,12 +466,65 @@ export async function processLandingGenerateJob(
     //    Pages generation. Absent → mock mode, not a failure.
     const platformKey = resolvePlatformAnthropicKey();
 
+    // 6b. Rich Google Maps enrichment (reviews, photos, rating, category) —
+    //     fetched FRESH here, once per generation, so reviews respect the ToS
+    //     freshness rule. Wrapped so ANY failure just generates without the
+    //     rich extras (never fails, never fabricates). Photos become proxy URLs
+    //     (bytes streamed at serve time; the API key never reaches the browser).
+    let googleReviews: LandingReviewInput[] | undefined;
+    let photos: LandingPhotoInput[] | undefined;
+    if (site.place_id && googlePlacesConfigured()) {
+      try {
+        const place = await resolvePlaceById(site.place_id, { rich: true });
+        if (typeof place.rating === "number") business.rating = place.rating;
+        if (typeof place.reviewCount === "number") business.reviewCount = place.reviewCount;
+        if (place.priceLevel) business.priceLevel = place.priceLevel;
+        if (!business.category && place.category) business.category = place.category;
+        if (!business.description && place.description) business.description = place.description;
+        if (place.lat != null && place.lng != null) {
+          business.lat = place.lat;
+          business.lng = place.lng;
+        }
+        googleReviews = place.reviews.map((r) => ({
+          author: r.author,
+          body: r.text,
+          rating: r.rating ?? undefined,
+          relativeTime: r.relativeTime ?? undefined,
+        }));
+        photos = place.photos.map((p) => ({
+          src: landingPhotoProxyPath(p.name),
+          alt: `${business.name}${place.category ? ` — ${place.category}` : ""}`,
+          attribution: p.attribution ?? undefined,
+        }));
+        logger.info("landing_generate_places_enriched", {
+          site_id,
+          reviews: googleReviews.length,
+          photos: photos.length,
+          has_rating: typeof place.rating === "number",
+        });
+      } catch (err) {
+        logger.warn("landing_generate_places_enrich_failed", {
+          site_id,
+          message: (err as Error).message?.slice(0, 160),
+        });
+      }
+    }
+
+    // Brand colour: the owner's saved theme.primary drives the light+brand
+    // palette; absent → the generator falls back to the pastel default.
+    const siteTheme = parseJsonbObject(site.theme);
+    const brandColor =
+      typeof siteTheme["primary"] === "string" ? (siteTheme["primary"] as string) : undefined;
+
     // 7. Build the bundle (pure — packages/llm/src/landing-generate.ts).
     const bundle = await buildLandingBundle(
       {
         business,
         reviewThemes,
         testimonials,
+        googleReviews,
+        photos,
+        brandColor,
         crawlSummary,
         auditGaps,
       },
@@ -465,6 +532,11 @@ export async function processLandingGenerateJob(
         ? { mode: "llm", apiKey: platformKey.apiKey, provider: platformKey.provider }
         : { mode: "mock" }
     );
+
+    // 7b. Persist the derived theme (light base + brand/pastel) so the public
+    //     renderer themes the site. Merge over any existing theme fields to keep
+    //     owner customizations, then stamp base/primary/isDefault.
+    await sql`UPDATE landing_sites SET theme = ${sql.json({ ...siteTheme, ...bundle.theme })}, updated_at = NOW() WHERE id = ${site_id}`;
 
     // 8. Load existing pages + the tenant's page allowance (never exceed the cap).
     const existingRows = await sql<{ id: string; page_type: string; slug: string }[]>`
@@ -516,6 +588,12 @@ export async function processLandingGenerateJob(
       // workaround audit-run.ts uses for provider_breakdown.
       const aiReadiness = { score: contentScore, traits, computed_at: new Date().toISOString() };
 
+      // GEO/SEO structured data travels inside `seo.json_ld` so the public
+      // renderer can emit <script type="application/ld+json"> without a schema
+      // change. Only present when the generator built real schema (LocalBusiness
+      // / FAQPage) from real facts.
+      const seoOut = page.jsonLd ? { ...page.seo, json_ld: page.jsonLd } : page.seo;
+
       const key = `${page.page_type}:${page.slug}`;
       const existingId = existingByKey.get(key);
 
@@ -544,7 +622,7 @@ export async function processLandingGenerateJob(
           UPDATE landing_pages
              SET title = ${page.title},
                  sections = ${sql.json(JSON.parse(JSON.stringify(page.sections)))},
-                 seo = ${sql.json(JSON.parse(JSON.stringify(page.seo)))},
+                 seo = ${sql.json(JSON.parse(JSON.stringify(seoOut)))},
                  ai_readiness = ${sql.json(JSON.parse(JSON.stringify(aiReadiness)))},
                  updated_at = NOW()
            WHERE id = ${existingId}
@@ -569,7 +647,7 @@ export async function processLandingGenerateJob(
           VALUES
             (${newId}, ${tenant_id}, ${site_id}, ${page.page_type}, ${page.slug}, ${page.title},
              ${sql.json(JSON.parse(JSON.stringify(page.sections)))},
-             ${sql.json(JSON.parse(JSON.stringify(page.seo)))},
+             ${sql.json(JSON.parse(JSON.stringify(seoOut)))},
              ${sql.json(JSON.parse(JSON.stringify(aiReadiness)))}, NOW(), NOW())
         `;
         pageIdByType.set(page.page_type, { id: newId, title: page.title });
