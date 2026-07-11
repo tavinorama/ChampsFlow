@@ -13,8 +13,15 @@
  *    cacheable <=30 days (the caller stamps `google_synced_at` and is
  *    responsible for the refresh-or-drop policy on read past that window —
  *    this module does not persist anything itself, it's a pure lookup).
- *  - No reviews/ratings/photos are fetched or returned this PR — the field
- *    masks below are intentionally narrow.
+ *  - Reviews / ratings / photo references ARE fetched for the SITE GENERATOR
+ *    (founder-approved 2026-07-11) via resolvePlaceById(id, { rich:true }):
+ *      · reviews are shown verbatim WITH author attribution + "Google" and are
+ *        fetched FRESH at generation time (never cached long-term);
+ *      · photo BYTES are never stored — only the opaque photo resource `name`
+ *        is kept and streamed through our own key-bearing proxy at serve time,
+ *        with the required author attribution.
+ *    The narrow resolvePlace() PREFILL path stays reviews/photos-free so a
+ *    "Fill from Google Maps" click never triggers the Enterprise-SKU billing.
  *  - Never fabricate a location — an unresolvable link is a typed error, not
  *    a best-guess.
  *
@@ -56,13 +63,23 @@ function requireApiKey(): string {
 const PLACES_TIMEOUT_MS = 8000;
 const PLACES_API_BASE = "https://places.googleapis.com/v1";
 
-// Pro/Enterprise-lean field masks — deliberately narrow: no reviews, no
-// ratings, no photos this PR (grep-tested — tests/unit/google-places.test.ts).
+// NARROW mask — the cheap Pro-SKU shape used by the "Fill from Google Maps"
+// prefill + link resolution. No reviews/ratings/photos (keeps that click cheap).
 export const PLACE_DETAILS_FIELD_MASK =
   "id,displayName,formattedAddress,nationalPhoneNumber,internationalPhoneNumber,websiteUri,regularOpeningHours.weekdayDescriptions,location";
 
 export const TEXT_SEARCH_FIELD_MASK =
   "places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.internationalPhoneNumber,places.websiteUri,places.regularOpeningHours.weekdayDescriptions,places.location";
+
+// RICH mask — the Enterprise-SKU shape used ONLY by the site generator
+// (resolvePlaceById(id, { rich:true })), once per generation / weekly refresh.
+// Adds: category (primaryTypeDisplayName), editorial summary, rating +
+// userRatingCount, priceLevel, verbatim reviews (with author attribution), and
+// photo resource names (with attribution). These power the GEO/SEO schema
+// (LocalBusiness + AggregateRating + Review) and the rich page sections.
+export const PLACE_DETAILS_RICH_FIELD_MASK =
+  PLACE_DETAILS_FIELD_MASK +
+  ",primaryTypeDisplayName,editorialSummary,rating,userRatingCount,priceLevel,reviews,photos";
 
 // ---------------------------------------------------------------------------
 // Typed errors
@@ -297,6 +314,26 @@ export function extractPlaceReference(url: string): ExtractedPlaceRef {
 // Google API calls — fixed trusted host, no SSRF surface (no guardedFetch).
 // ---------------------------------------------------------------------------
 
+/** A single Google review, kept verbatim. `author` MUST be shown with the
+ *  quote (Places ToS attribution). Only present on the rich fetch. */
+export interface PlaceReview {
+  author: string;
+  authorPhoto: string | null;
+  rating: number | null;
+  text: string;
+  relativeTime: string | null;
+  publishTime: string | null;
+}
+
+/** A Google photo REFERENCE — the opaque resource `name` is streamed through
+ *  our proxy at serve time (bytes never stored). `attribution` MUST be shown. */
+export interface PlacePhoto {
+  name: string;
+  widthPx: number | null;
+  heightPx: number | null;
+  attribution: string | null;
+}
+
 export interface ResolvedPlace {
   place_id: string;
   name: string;
@@ -306,6 +343,31 @@ export interface ResolvedPlace {
   hours: string[];
   lat: number | null;
   lng: number | null;
+  // Rich fields — populated only by resolvePlaceById(id, { rich:true }); the
+  // narrow prefill/link path leaves them null / empty.
+  category: string | null;
+  description: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  priceLevel: string | null;
+  reviews: PlaceReview[];
+  photos: PlacePhoto[];
+}
+
+interface GoogleReviewShape {
+  rating?: number;
+  text?: { text?: string };
+  originalText?: { text?: string };
+  relativePublishTimeDescription?: string;
+  publishTime?: string;
+  authorAttribution?: { displayName?: string; photoUri?: string };
+}
+
+interface GooglePhotoShape {
+  name?: string;
+  widthPx?: number;
+  heightPx?: number;
+  authorAttributions?: { displayName?: string }[];
 }
 
 interface GooglePlaceApiShape {
@@ -317,6 +379,39 @@ interface GooglePlaceApiShape {
   websiteUri?: string;
   regularOpeningHours?: { weekdayDescriptions?: string[] };
   location?: { latitude?: number; longitude?: number };
+  primaryTypeDisplayName?: { text?: string };
+  editorialSummary?: { text?: string };
+  rating?: number;
+  userRatingCount?: number;
+  priceLevel?: string;
+  reviews?: GoogleReviewShape[];
+  photos?: GooglePhotoShape[];
+}
+
+function mapReview(r: GoogleReviewShape): PlaceReview | null {
+  const author = r.authorAttribution?.displayName?.trim();
+  const text = (r.text?.text ?? r.originalText?.text ?? "").trim();
+  // A review with no author cannot be shown (attribution is mandatory), and an
+  // empty-text review is useless — drop both rather than render a bare star.
+  if (!author || !text) return null;
+  return {
+    author,
+    authorPhoto: r.authorAttribution?.photoUri ?? null,
+    rating: typeof r.rating === "number" ? r.rating : null,
+    text,
+    relativeTime: r.relativePublishTimeDescription ?? null,
+    publishTime: r.publishTime ?? null,
+  };
+}
+
+function mapPhoto(p: GooglePhotoShape): PlacePhoto | null {
+  if (typeof p.name !== "string" || !p.name) return null;
+  return {
+    name: p.name,
+    widthPx: typeof p.widthPx === "number" ? p.widthPx : null,
+    heightPx: typeof p.heightPx === "number" ? p.heightPx : null,
+    attribution: p.authorAttributions?.[0]?.displayName ?? null,
+  };
 }
 
 function mapPlaceToResolved(place: GooglePlaceApiShape): ResolvedPlace | null {
@@ -333,6 +428,17 @@ function mapPlaceToResolved(place: GooglePlaceApiShape): ResolvedPlace | null {
       : [],
     lat: typeof place.location?.latitude === "number" ? place.location.latitude : null,
     lng: typeof place.location?.longitude === "number" ? place.location.longitude : null,
+    category: place.primaryTypeDisplayName?.text ?? null,
+    description: place.editorialSummary?.text ?? null,
+    rating: typeof place.rating === "number" ? place.rating : null,
+    reviewCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
+    priceLevel: typeof place.priceLevel === "string" ? place.priceLevel : null,
+    reviews: Array.isArray(place.reviews)
+      ? place.reviews.map(mapReview).filter((r): r is PlaceReview => r !== null)
+      : [],
+    photos: Array.isArray(place.photos)
+      ? place.photos.map(mapPhoto).filter((p): p is PlacePhoto => p !== null)
+      : [],
   };
 }
 
@@ -346,7 +452,10 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
   }
 }
 
-async function fetchPlaceDetails(placeId: string): Promise<ResolvedPlace> {
+async function fetchPlaceDetails(
+  placeId: string,
+  fieldMask: string = PLACE_DETAILS_FIELD_MASK
+): Promise<ResolvedPlace> {
   const apiKey = requireApiKey();
   const url = `${PLACES_API_BASE}/places/${encodeURIComponent(placeId)}`;
   let res: Response;
@@ -355,7 +464,7 @@ async function fetchPlaceDetails(placeId: string): Promise<ResolvedPlace> {
       method: "GET",
       headers: {
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": PLACE_DETAILS_FIELD_MASK,
+        "X-Goog-FieldMask": fieldMask,
       },
     });
   } catch (err) {
@@ -423,6 +532,43 @@ async function searchTextBiased(name: string, lat: number, lng: number): Promise
 // ---------------------------------------------------------------------------
 // resolvePlace — the single entry point the API route calls.
 // ---------------------------------------------------------------------------
+
+/**
+ * Fetches full business facts for a KNOWN place_id. With { rich:true } it uses
+ * the Enterprise-SKU mask (reviews, photos, rating, category, price) — this is
+ * the generator's entry point, called once per generation / weekly refresh, so
+ * reviews stay fresh (ToS). Without it, returns the same narrow shape as the
+ * prefill path. Typed PlacesError on failure; only place_id is logged.
+ */
+export async function resolvePlaceById(
+  placeId: string,
+  opts: { rich?: boolean } = {}
+): Promise<ResolvedPlace> {
+  if (!googlePlacesConfigured()) {
+    throw new PlacesError("not_configured", "Google Maps lookup is not available right now.");
+  }
+  const id = (placeId ?? "").trim();
+  if (!id) throw new PlacesError("invalid_url", "Missing place_id.");
+  try {
+    const resolved = await fetchPlaceDetails(
+      id,
+      opts.rich ? PLACE_DETAILS_RICH_FIELD_MASK : PLACE_DETAILS_FIELD_MASK
+    );
+    logger.info("google_places_details_by_id", {
+      place_id: resolved.place_id,
+      rich: Boolean(opts.rich),
+      review_count: resolved.reviews.length,
+      photo_count: resolved.photos.length,
+    });
+    return resolved;
+  } catch (err) {
+    if (err instanceof PlacesError) throw err;
+    logger.warn("google_places_details_by_id_failed", {
+      message: (err as Error).message?.slice(0, 160),
+    });
+    throw new PlacesError("upstream", "Google Maps is temporarily unavailable. Please try again.");
+  }
+}
 
 /**
  * Resolves a pasted Google Maps link (or shortlink) to real business facts.
