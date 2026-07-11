@@ -4,7 +4,8 @@
  *  1. Hero "Replace a $30k/yr specialist for under $100/mo."
  *  2. Founding-member band (gold) — 30% founder discount + free 5-page website, annual only.
  *  3. Three plan cards — Free / Growth (featured, emerald, "Most popular") / Agency (gold).
- *  4. Competitor comparison table (Buffer/Hootsuite/Later/Predis.ai vs Ozvor).
+ *  4. Competitor comparison table (Profound/Peec AI/Semrush AI/Ahrefs Brand Radar vs Ozvor —
+ *     table on wide screens, stacked cards below 720px so it never forces horizontal scroll).
  * Server component, SSR, real <a href> checkout links.
  */
 
@@ -32,13 +33,14 @@ export const metadata: Metadata = {
 // Plan cards (with the annual-default / monthly toggle) live in the client
 // component ./PricingPlans.tsx. Comparison table data stays below.
 
-const COMPARE_COLS = ["Buffer", "Hootsuite", "Later", "Predis.ai"];
+const COMPARE_COLS = ["Profound", "Peec AI", "Semrush AI", "Ahrefs Brand Radar"];
 const COMPARE_ROWS: { f: string; vals: string[]; us: string }[] = [
-  { f: "Content drafted for LLM visibility (GEO)", vals: ["✗", "✗", "✗", "✗"], us: "Structured drafts shaped for AI citation" },
-  { f: "No AI training on your content", vals: ["?", "?", "?", "?"], us: "Provider-contractual (Anthropic terms)" },
-  { f: "EU-region inference", vals: ["~", "~", "?", "?"], us: "On our roadmap" },
-  { f: "Draft-and-confirm (no autonomous posting)", vals: ["✗", "✗", "✗", "✗"], us: "Always, by design" },
-  { f: "AI disclosure (EU AI Act Art. 50)", vals: ["?", "?", "?", "?"], us: "Named model + visible badge" },
+  { f: "Ready-to-publish content drafts", vals: ["✗", "✗", "✗", "✗"], us: "Yes — structured for AI citation" },
+  { f: "Evidence-backed action plan", vals: ["✗", "✗", "✗", "✗"], us: "Every audit" },
+  { f: "Done-for-you execution", vals: ["✗", "✗", "✗", "✗"], us: "OrganicPosts, from $1,500" },
+  { f: "Starts free", vals: ["✗", "✗", "✗", "✗"], us: "Free audit → $29 → $99/mo" },
+  { f: "White-label agency tier ($249/mo)", vals: ["~", "?", "?", "?"], us: "Yes — 25 brands" },
+  { f: "Public measurement methodology", vals: ["✗", "✗", "✗", "✗"], us: "Yes — /how-we-measure" },
 ];
 
 const PAGE_CSS = `
@@ -56,6 +58,21 @@ const PAGE_CSS = `
   .pr-us { color:var(--color-accent-ink); font-weight:600; }
   .pr-fit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
   @media (max-width: 680px) { .pr-fit-grid { grid-template-columns: 1fr; } }
+  /* Comparison table ↔ stacked cards (mobile-overflow fix): the table's
+     min-width:720px forces horizontal page scroll on phones. Below 720px we
+     hide the table entirely and render the same COMPARE_ROWS data as a
+     one-column card list instead — no horizontal scroll, no shrunk-to-
+     unreadable columns. */
+  .pr-cmp-cards { display: none; }
+  @media (max-width: 719px) {
+    .pr-cmp-table { display: none; }
+    .pr-cmp-cards { display: flex; flex-direction: column; gap: var(--space-4); }
+  }
+  .pr-cmp-card { border:1px solid var(--color-border); border-radius:var(--radius-lg); background:var(--color-surface); padding:var(--space-4); }
+  .pr-cmp-card-f { margin:0 0 var(--space-2); font-weight:700; font-size:var(--font-size-body-sm); color:var(--color-text); }
+  .pr-cmp-card-us { margin:0 0 var(--space-3); font-weight:700; color:var(--color-accent-ink); }
+  .pr-cmp-card-them { display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--space-2) var(--space-3); }
+  .pr-cmp-card-them span { font-size:var(--font-size-caption); color:var(--color-muted); }
 `;
 
 export default function PricingPage() {
@@ -149,12 +166,14 @@ export default function PricingPage() {
       {/* Comparison table */}
       <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="pr-compare">
         <h2 id="pr-compare" style={{ fontSize: "clamp(1.5rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-2)", textAlign: "center" }}>
-          Social schedulers post. Ozvor gets you cited.
+          They score you. Ozvor gets you cited.
         </h2>
-        <p style={{ textAlign: "center", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-6)" }}>
-          Competitor capabilities not disclosed are marked &ldquo;?&rdquo; (checked 2026-05-11).
+        <p style={{ textAlign: "center", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-6)", maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
+          The four biggest AI-visibility tools track your mentions. Only Ozvor turns the audit into published, citable content. Undisclosed capabilities are marked &ldquo;?&rdquo; (checked 2026-07-11).
         </p>
-        <div className="pr-tablewrap" style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", background: "var(--color-surface)" }}>
+
+        {/* Wide table (≥720px) */}
+        <div className="pr-tablewrap pr-cmp-table" style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", background: "var(--color-surface)" }}>
           <table className="pr-table">
             <thead>
               <tr>
@@ -174,8 +193,28 @@ export default function PricingPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Stacked cards (<720px) — same data, no horizontal scroll */}
+        <div className="pr-cmp-cards">
+          {COMPARE_ROWS.map((r) => (
+            <div key={r.f} className="pr-cmp-card">
+              <p className="pr-cmp-card-f">{r.f}</p>
+              <p className="pr-cmp-card-us">Ozvor: {r.us}</p>
+              <div className="pr-cmp-card-them">
+                {COMPARE_COLS.map((c, i) => (
+                  <span key={c}>{c}: {r.vals[i]}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
         <p style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}>
           ✓ yes · ~ partial · ✗ no · ? not disclosed. <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", textDecoration: "none", fontWeight: 600 }}>How we measure →</Link>
+        </p>
+        <p style={{ marginTop: "var(--space-2)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center", maxWidth: 640, marginLeft: "auto", marginRight: "auto", lineHeight: 1.6 }}>
+          Where they lead &mdash; more engines, SOC 2, mature SEO tooling &mdash; we show exactly where, side by side, at{" "}
+          <Link href="/compare" style={{ color: "var(--color-accent-ink)", textDecoration: "none", fontWeight: 600 }}>/compare</Link>.
         </p>
       </section>
       <p style={{ maxWidth: 720, margin: "var(--space-8) auto 0", padding: "0 var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center", lineHeight: 1.6 }}>

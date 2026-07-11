@@ -18,12 +18,20 @@ import Link from "next/link";
 interface FreeTestCtaProps {
   className?: string;
   label?: string;
+  /**
+   * Shorter label shown on very small screens (via `.mk-cta-short` /
+   * `.mk-cta-full`, toggled in the marketing layout's ≤480px breakpoint) so
+   * the navbar CTA never forces horizontal overflow next to the logo + Log in
+   * link. Pass `null` to disable the swap (renders `label` at every width).
+   */
+  shortLabel?: string | null;
   ariaLabel?: string;
 }
 
 export function FreeTestCta({
   className,
   label = "Check my brand — free →",
+  shortLabel = "Free test →",
   ariaLabel = "Check my brand — run the free AI visibility test",
 }: FreeTestCtaProps) {
   return (
@@ -35,7 +43,14 @@ export function FreeTestCta({
         window.gtag?.("event", "cta_free_test_click");
       }}
     >
-      {label}
+      {shortLabel ? (
+        <>
+          <span className="mk-cta-full">{label}</span>
+          <span className="mk-cta-short">{shortLabel}</span>
+        </>
+      ) : (
+        label
+      )}
     </Link>
   );
 }

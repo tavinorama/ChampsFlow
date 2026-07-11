@@ -14,6 +14,21 @@ import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-
 
 const DRAFT_KEY = "kit";
 
+// Two-column layout (value stack + form) collapses to one column below this
+// breakpoint. Root cause of a mobile horizontal-overflow bug (#kit-overflow):
+// CSS Grid tracks default to `minmax(auto, 1fr)`, and "auto" resolves to the
+// content's min-content size — which, for a form with un-breakable single-word
+// buttons (e.g. the "Microsoft" OAuth button) and labeled inputs, can exceed
+// the fraction of viewport width available at 375px. The two tracks then
+// refuse to shrink further and push the grid past the container's edge.
+// Stacking to a single column below 760px removes the constraint entirely
+// (each child gets the full container width, which always fits) instead of
+// just papering over it with `minmax(0, 1fr)` squishing.
+const KCF_CSS = `
+  .kcf-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-6); align-items: start; }
+  @media (max-width: 760px) { .kcf-grid { grid-template-columns: 1fr; } }
+`;
+
 const STACK: [string, string][] = [
   ["Part 1 — Full AI Visibility Audit", "Your free test, completed: all engines, all your buyer prompts, your Ozvor AI Visibility Score + deep breakdown."],
   ["Your top 3 “get cited” fixes", "The 3 highest-impact actions, in plain language."],
@@ -99,7 +114,8 @@ export function KitCheckoutForm() {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "var(--space-6)", alignItems: "start" }}>
+    <div className="kcf-grid">
+      <style>{KCF_CSS}</style>
       {/* Value stack */}
       <div style={cardStyle}>
         <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-3) 0" }}>

@@ -251,6 +251,12 @@ const MARKETING_STYLES = `
     transform: translateY(-1px);
     box-shadow: 0 4px 14px rgba(39,201,138,0.28);
   }
+  /* Full/short label swap (mobile-overflow fix, #kit-overflow): the full
+     "Check my brand — free" copy is fine down to ~480px; below that it, plus
+     the logo and "Log in" link (none of which shrink), no longer fits the
+     375px navbar. mk-cta-short stays hidden until the width-480 rule below
+     swaps it in. */
+  .mk-cta-short { display: none; }
 
   /* ── Toggle button hover ──────────────────────────────────────────── */
   .mk-theme-toggle:hover {
@@ -381,17 +387,21 @@ const MARKETING_STYLES = `
   @media (max-width: 700px) {
     .mk-navlink-hide-sm { display: none !important; }
   }
-  /* On very small phones (≤480px): show only Free + Kit pills + ThemeToggle +
-     Sign-in. All labels are already short ("Free" / "Kit $29"); tighten padding
-     on Sign-in so nothing clips. StickyBuyBar carries Growth CTA on mobile. */
+  /* On very small phones (≤480px): logo mark + Log in + the free-test CTA are
+     the only right-fixed-width items left (the center nav links are already
+     hidden below 700px). Without this rule they don't shrink and the CTA
+     overflows the 375px viewport (#kit-overflow) — shrink padding/type and
+     swap in the short CTA label so everything stays on one line, on-screen,
+     and reachable without horizontal scroll. */
   @media (max-width: 480px) {
-    .mk-nav-free { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
-    .mk-nav-kit  { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
-    .mk-signin   { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
-    /* On phones the brand wordmark is the space hog. Show the logo MARK only so
-       Free + Kit $29 + theme toggle + Sign in all fit without clipping. The full
-       "Ozvor" wordmark returns on wider screens. */
-    .mk-logo-word { display: none !important; }
+    .mk-signin      { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
+    .mk-cta-primary { padding: 0.4375rem 0.75rem; font-size: 0.8125rem; }
+    .mk-cta-full    { display: none; }
+    .mk-cta-short   { display: inline; }
+    /* On phones the brand wordmark is the space hog. Show the logo MARK only
+       so Log in + the free-test CTA + theme toggle all fit without clipping.
+       The full "Ozvor" wordmark returns on wider screens. */
+    .mk-logo-word   { display: none !important; }
   }
 
   /* ── Smooth focus outlines ────────────────────────────────────────── */
@@ -501,7 +511,7 @@ function PublicNavbar() {
           }}
         >
           <LogoMark size={28} />
-          <Wordmark size="1.0625rem" />
+          <Wordmark size="1.0625rem" className="mk-logo-word" />
         </Link>
 
         {/* Center nav — simplified (satellite pages carry the complexity):
