@@ -68,7 +68,7 @@ import {
 import { guardedFetch, assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { logger } from "../../../../packages/shared/src/logger";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
-import { computeLandingAllowance } from "../../../api/src/routes/landing";
+import { computeLandingAllowance } from "../../../api/src/lib/landing-allowance";
 import type { PlanTier } from "../../../api/src/integrations/stripe";
 
 export interface LandingGenerateJobData {
