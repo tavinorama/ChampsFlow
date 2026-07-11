@@ -21,6 +21,7 @@ import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned } from "../../../lib/supabase-browser";
 import { pageTypeLabel, ADDABLE_PAGE_TYPES } from "../../../lib/landing-sections";
+import { SITE_URL } from "../../../lib/site";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,6 +110,23 @@ function scoreColor(score: number): string {
 
 function pagesSignature(pages: PageListItem[]): string {
   return pages.map((p) => `${p.id}:${p.updated_at}:${p.ai_readiness?.score ?? ""}`).sort().join("|");
+}
+
+// A site is an "ungenerated stub" the instant after create: exactly its home
+// page exists and nothing has been generated yet (no ai_readiness score). We
+// use this to auto-start generation so the user never lands on an empty draft
+// with no idea what to do next.
+function isUngeneratedStub(pages: PageListItem[]): boolean {
+  return pages.length === 1 && pages[0]?.slug === "" && pages[0]?.ai_readiness?.score == null;
+}
+
+// The public address of a published site. SITE_URL flips to ozvor.com via
+// NEXT_PUBLIC_SITE_URL; the display form drops the scheme for a clean read.
+function liveUrl(slug: string): string {
+  return `${SITE_URL.replace(/\/$/, "")}/l/${slug}`;
+}
+function liveUrlDisplay(slug: string): string {
+  return liveUrl(slug).replace(/^https?:\/\//, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -319,11 +337,39 @@ export default function LandingSiteDetailPage() {
         return;
       }
       setSite((prev) => (prev ? { ...prev, status: nextStatus } : prev));
-      showToast(nextStatus === "published" ? "Site published." : "Site set back to draft.", "success");
+      // Also flip the pages list locally so the badges match the cascade the
+      // server just did (content pages → published / all pages → draft).
+      setPages((prev) =>
+        prev.map((p) =>
+          nextStatus === "published"
+            ? p.ai_readiness?.score != null
+              ? { ...p, status: "published" }
+              : p
+            : { ...p, status: "draft" }
+        )
+      );
+      showToast(
+        nextStatus === "published"
+          ? "Your site is live. Share the link below."
+          : "Site set back to draft.",
+        "success"
+      );
     } catch {
       setStatusError("Could not update status. Please check your connection.");
     } finally {
       setStatusToggling(false);
+    }
+  }
+
+  // Copy the live URL to the clipboard (published sites) — the "I can't find my
+  // site" moment made impossible: the address is one tap away.
+  async function handleCopyLiveUrl() {
+    if (!site) return;
+    try {
+      await navigator.clipboard.writeText(liveUrl(site.slug));
+      showToast("Link copied.", "success");
+    } catch {
+      showToast("Could not copy the link. Select and copy it manually.", "error");
     }
   }
 
@@ -347,8 +393,14 @@ export default function LandingSiteDetailPage() {
         if (currentSignature !== baselineSignature.current) {
           stopPolling();
           setGenerateState("idle");
-          setGenerateMessage(null);
-          showToast(`Site generated — ${data.pages.length} page(s) ready.`, "success");
+          // Point the user at the ONE remaining step so a ready-but-draft site
+          // is never a dead end. Once published, the live-site banner takes over.
+          setGenerateMessage(
+            data.site?.status === "published"
+              ? null
+              : "Your 5-page site is ready. Click “Publish site” to make it live."
+          );
+          showToast(`Your site is ready — ${data.pages.length} pages.`, "success");
           return;
         }
       }
@@ -362,32 +414,65 @@ export default function LandingSiteDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadSite]);
 
+  // Core generate flow. `baselinePages` is the page set to diff against while
+  // polling — pass the freshly-loaded pages (not stale state) so the first
+  // poll doesn't false-positive. Used by the manual button AND the post-create
+  // auto-start below.
+  const runGenerate = useCallback(
+    async (baselinePages: PageListItem[]) => {
+      setGenerateMessage(null);
+      baselineSignature.current = pagesSignature(baselinePages);
+      try {
+        const res = await apiFetch(`/api/landing/sites/${siteId}/generate`, { method: "POST" });
+        if (res.status === 202) {
+          setGenerateState("polling");
+          setGenerateMessage("Building your 5-page site — this updates automatically.");
+          pollForCompletion();
+          return;
+        }
+        const data = await res.json().catch(() => ({}) as { message?: string; code?: string });
+        if (res.status === 409) {
+          // A run is already in flight (e.g. a refresh mid-build) — follow it to
+          // completion instead of leaving the user staring at a stub.
+          setGenerateState("polling");
+          setGenerateMessage("Your site is already building — this updates automatically.");
+          pollForCompletion();
+          return;
+        }
+        if (res.status === 429) {
+          setGenerateState("idle");
+          setGenerateMessage(data.message ?? "Too many generate requests. Please try again in an hour.");
+          return;
+        }
+        setGenerateState("idle");
+        setGenerateMessage(data.message ?? "Could not start the generator. Please try again.");
+      } catch {
+        setGenerateState("idle");
+        setGenerateMessage("Could not start the generator. Please check your connection.");
+      }
+    },
+    [siteId, pollForCompletion]
+  );
+
   async function handleGenerate() {
     if (generateState !== "idle") return;
-    setGenerateMessage(null);
-    baselineSignature.current = pagesSignature(pages);
-    try {
-      const res = await apiFetch(`/api/landing/sites/${siteId}/generate`, { method: "POST" });
-      if (res.status === 202) {
-        setGenerateState("polling");
-        setGenerateMessage("Generating — this page refreshes automatically in a moment.");
-        pollForCompletion();
-        return;
-      }
-      const data = await res.json().catch(() => ({}) as { message?: string; code?: string });
-      if (res.status === 409) {
-        setGenerateMessage(data.message ?? "A generation run is already in progress for this site.");
-        return;
-      }
-      if (res.status === 429) {
-        setGenerateMessage(data.message ?? "Too many generate requests. Please try again in an hour.");
-        return;
-      }
-      setGenerateMessage(data.message ?? "Could not start the generator. Please try again.");
-    } catch {
-      setGenerateMessage("Could not start the generator. Please check your connection.");
-    }
+    await runGenerate(pages);
   }
+
+  // Guided flow: the moment a freshly-created site loads as an ungenerated stub,
+  // start generation automatically. The user never sits on an empty draft
+  // wondering what to do — they land straight in "Building your site…". Fires
+  // once per mount; the stable server-side jobId dedupes any manual click.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    if (loadState !== "loaded" || !site || site.status === "suspended") return;
+    if (generateState !== "idle") return;
+    if (isUngeneratedStub(pages)) {
+      autoStartedRef.current = true;
+      void runGenerate(pages);
+    }
+  }, [loadState, site, pages, generateState, runGenerate]);
 
   // -------------------------------------------------------------------------
   // Add / delete page
@@ -589,6 +674,62 @@ export default function LandingSiteDetailPage() {
           View leads →
         </a>
       </div>
+
+      {/* ── Live site banner — unmissable once published ─────────────────── */}
+      {site.status === "published" && (
+        <section
+          aria-label="Your live site"
+          style={{
+            backgroundColor: "var(--color-badge-status-active-bg)",
+            border: "1px solid var(--color-success)",
+            borderRadius: "var(--radius-lg)",
+            padding: "var(--space-5) var(--space-6)",
+            marginBottom: "var(--space-6)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-2)" }}>
+            <span aria-hidden="true" style={{ fontSize: "var(--font-size-h3)" }}>✅</span>
+            <h2 style={{ fontSize: "var(--font-size-h3)", fontWeight: 700, margin: 0, color: "var(--color-badge-status-active-text)" }}>
+              Your site is live
+            </h2>
+          </div>
+          <p style={{ margin: "0 0 var(--space-4) 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+            Anyone can open it now. Share this link.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-3)" }}>
+            <a
+              href={liveUrl(site.slug)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                flex: "1 1 240px", minWidth: 0, wordBreak: "break-all",
+                fontFamily: "var(--font-mono)", fontSize: "var(--font-size-body)", fontWeight: 700,
+                color: "var(--color-primary)", textDecoration: "underline",
+              }}
+            >
+              {liveUrlDisplay(site.slug)} ↗
+            </a>
+            <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
+              <a
+                href={liveUrl(site.slug)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  minHeight: "var(--min-tap-target)", padding: "0 var(--space-5)",
+                  backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)",
+                  fontSize: "var(--font-size-body-sm)", fontWeight: 700, textDecoration: "none",
+                }}
+              >
+                Open my site
+              </a>
+              <button type="button" onClick={handleCopyLiveUrl} style={secondaryButtonStyle(false)}>
+                Copy link
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {site.status === "suspended" && (
         <div role="alert" style={{ ...alertStyle, marginBottom: "var(--space-6)" }}>

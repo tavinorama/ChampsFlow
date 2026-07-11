@@ -17,6 +17,7 @@ import {
   RESERVED_SITE_SLUGS,
   PAGE_TYPES,
   containsPlaceholder,
+  sectionsEmpty,
   registerLandingRoutes,
 } from "../../apps/api/src/routes/landing";
 
@@ -469,5 +470,141 @@ describe("GET /api/landing/sites — open_fixes per site (#208 PR-7)", () => {
     expect(body.sites[1]?.open_fixes).toBe(0);
     // Exactly one query issued for the whole list — no N+1.
     expect(db._queries.filter((q) => q.includes("FROM landing_sites"))).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sectionsEmpty — the "never publish an empty/ungenerated site" primitive.
+// ---------------------------------------------------------------------------
+
+describe("sectionsEmpty — the empty-site publish guard primitive", () => {
+  it("is true for the ungenerated stub (default '[]' sections)", () => {
+    expect(sectionsEmpty([])).toBe(true);
+  });
+  it("is true for missing / non-array values", () => {
+    expect(sectionsEmpty(undefined)).toBe(true);
+    expect(sectionsEmpty(null)).toBe(true);
+    expect(sectionsEmpty({})).toBe(true);
+  });
+  it("is false once the page carries at least one section", () => {
+    expect(sectionsEmpty([{ type: "hero", headline: "Acme" }])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/landing/sites/:id — publish guard + page-visibility cascade
+// (Ozvor Pages end-to-end delivery). Proves a site can never reach a
+// "published but /l/[slug] 404s" state: publish is blocked when the site has
+// no real content, and a successful publish cascades page status so the
+// public route actually renders. Same DEV_AUTH_BYPASS + mock-PostgresClient
+// pattern as above, extended with a working transaction() mock.
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/landing/sites/:id — publish guard + cascade", () => {
+  function makePublishDb(handler: RouteQueryHandler) {
+    const queries: string[] = [];
+    const query = async (sql: string, p?: unknown[]) => {
+      queries.push(sql);
+      return { rows: handler(sql, p) ?? [] };
+    };
+    return {
+      query,
+      setTenantId: async () => {},
+      // Execute the callback with a tx that shares the same query handler, and
+      // return its result (the route reads it to decide 404-vs-ok).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      transaction: async (fn: (tx: { query: typeof query }) => Promise<unknown>) => fn({ query }),
+      _queries: queries,
+    };
+  }
+  function publishApp(db: ReturnType<typeof makePublishDb>): Hono {
+    const app = new Hono();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerLandingRoutes(app, db as any);
+    return app;
+  }
+  async function patchStatus(db: ReturnType<typeof makePublishDb>, status: string) {
+    return publishApp(db).request(`/api/landing/sites/${SITE_ID}`, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer dev", "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  it("blocks publishing an ungenerated site (home page has empty sections) with 422 SITE_EMPTY", async () => {
+    const db = makePublishDb((sql) => {
+      if (sql.includes("SELECT status FROM landing_sites")) return [{ status: "draft" }];
+      if (sql.includes("FROM landing_pages WHERE site_id")) {
+        return [{ title: "Home", slug: "", sections: [] }]; // the create-time stub
+      }
+      return [];
+    });
+    const res = await patchStatus(db, "published");
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe("SITE_EMPTY");
+    expect(body.message).toMatch(/generate your site/i);
+    // Never reached the write path.
+    expect(db._queries.some((q) => q.includes("UPDATE landing_sites"))).toBe(false);
+  });
+
+  it("blocks publishing when a page still carries a placeholder (422 PLACEHOLDER_CONTENT)", async () => {
+    const db = makePublishDb((sql) => {
+      if (sql.includes("SELECT status FROM landing_sites")) return [{ status: "draft" }];
+      if (sql.includes("FROM landing_pages WHERE site_id")) {
+        return [
+          { title: "Home", slug: "", sections: [{ type: "hero", headline: "Acme Plumbing" }] },
+          {
+            title: "FAQ",
+            slug: "faq",
+            sections: [{ type: "faq", items: [{ q: "Hours?", a: "[PLACEHOLDER: your answer]" }] }],
+          },
+        ];
+      }
+      return [];
+    });
+    const res = await patchStatus(db, "published");
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("PLACEHOLDER_CONTENT");
+    expect(db._queries.some((q) => q.includes("UPDATE landing_sites"))).toBe(false);
+  });
+
+  it("publishes a generated site AND cascades page status to 'published'", async () => {
+    const db = makePublishDb((sql) => {
+      if (sql.includes("SELECT status FROM landing_sites")) return [{ status: "draft" }];
+      if (sql.includes("FROM landing_pages WHERE site_id")) {
+        return [
+          { title: "Home", slug: "", sections: [{ type: "hero", headline: "Acme Plumbing" }] },
+          { title: "FAQ", slug: "faq", sections: [{ type: "faq", items: [{ q: "Q", a: "A real answer." }] }] },
+        ];
+      }
+      if (sql.includes("UPDATE landing_sites")) return [{ id: SITE_ID }];
+      return [];
+    });
+    const res = await patchStatus(db, "published");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // The cascade published the content-bearing pages (the fix for the
+    // "published site, draft pages → /l/[slug] 404" dead end).
+    const cascade = db._queries.find(
+      (q) => q.includes("UPDATE landing_pages") && q.includes("status = 'published'")
+    );
+    expect(cascade).toBeTruthy();
+    expect(cascade).toMatch(/jsonb_array_length\(sections\) > 0/);
+  });
+
+  it("unpublishing the site cascades every page back to 'draft' (nothing lingers live)", async () => {
+    const db = makePublishDb((sql) => {
+      if (sql.includes("SELECT status FROM landing_sites")) return [{ status: "published" }];
+      if (sql.includes("UPDATE landing_sites")) return [{ id: SITE_ID }];
+      return [];
+    });
+    const res = await patchStatus(db, "draft");
+    expect(res.status).toBe(200);
+    const cascade = db._queries.find(
+      (q) => q.includes("UPDATE landing_pages") && q.includes("status = 'draft'")
+    );
+    expect(cascade).toBeTruthy();
   });
 });
