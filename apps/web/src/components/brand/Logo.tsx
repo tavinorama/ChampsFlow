@@ -37,9 +37,18 @@ export function LogoMark({ size = 30 }: { size?: number }) {
   );
 }
 
-export function Wordmark({ size = "1rem" }: { size?: string }) {
+export function Wordmark({
+  size = "1rem",
+  className,
+}: {
+  size?: string;
+  /** Optional class hook — e.g. the navbar hides the wordmark on very small
+   *  screens (via `.mk-logo-word`) to leave room for the primary CTA. */
+  className?: string;
+}) {
   return (
     <span
+      className={className}
       style={{
         fontFamily: "var(--font-family)",
         fontSize: size,
