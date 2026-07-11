@@ -30,24 +30,47 @@ export function PublicLandingChrome({
 }: PublicLandingChromeProps) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
-      <header style={{ borderBottom: "1px solid #d5dfd9", padding: "1rem 1.25rem" }}>
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          borderBottom: `1px solid ${accentColor}22`,
+          background: "rgba(255,255,255,0.85)",
+          backdropFilter: "saturate(1.2) blur(8px)",
+          WebkitBackdropFilter: "saturate(1.2) blur(8px)",
+        }}
+      >
         <nav
           aria-label="Site navigation"
           style={{
-            maxWidth: "820px",
+            maxWidth: "1080px",
             margin: "0 auto",
+            padding: "0.85rem 1.5rem",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
             flexWrap: "wrap",
-            gap: "0.75rem",
+            gap: "0.75rem 1.25rem",
           }}
         >
-          <a href={`/l/${siteSlug}`} style={{ fontWeight: 800, color: "#17211c", textDecoration: "none", fontSize: "1.05rem" }}>
+          <a
+            href={`/l/${siteSlug}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.55rem",
+              fontWeight: 800,
+              color: "#17211c",
+              textDecoration: "none",
+              fontSize: "1.2rem",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            <span aria-hidden="true" style={{ width: "11px", height: "11px", borderRadius: "50%", background: accentColor, flex: "none" }} />
             {businessName}
           </a>
           {nav.length > 0 && (
-            <ul style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem", listStyle: "none", margin: 0, padding: 0 }}>
+            <ul style={{ display: "flex", flexWrap: "wrap", gap: "1.1rem", listStyle: "none", margin: 0, padding: 0, marginLeft: "0.5rem" }}>
               {nav.map((item) => {
                 const href = item.slug ? `/l/${siteSlug}/${item.slug}` : `/l/${siteSlug}`;
                 const isActive = item.slug === activeSlug;
@@ -70,6 +93,25 @@ export function PublicLandingChrome({
               })}
             </ul>
           )}
+          <span style={{ flex: 1, minWidth: "1rem" }} />
+          <a
+            href={`/l/${siteSlug}#contact`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: "40px",
+              padding: "0.5rem 1.15rem",
+              background: accentColor,
+              color: "#ffffff",
+              fontWeight: 700,
+              fontSize: "0.9rem",
+              borderRadius: "10px",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Get in touch
+          </a>
         </nav>
       </header>
 
