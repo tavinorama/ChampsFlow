@@ -38,6 +38,7 @@ import { requireNotRestricted } from "./billing";
 import type { PostgresClient } from "./social-accounts";
 import { llmGateway, LLMGatewayError } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 // ---------------------------------------------------------------------------
 // Platform-specific prompt config (architecture §12 — system prompt hardcoded)
@@ -188,7 +189,7 @@ async function writeAuditLog(
       tenantId,
       "drafts",
       targetId,
-      JSON.stringify(metadata),
+      jsonbParam(metadata),
     ]
   );
 }

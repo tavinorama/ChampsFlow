@@ -43,6 +43,7 @@ import { requireAuth } from "../auth/middleware";
 import { requireDpaAcknowledged, truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 // ---------------------------------------------------------------------------
 // Redis client (shared Railway Redis)
@@ -274,7 +275,7 @@ export function registerCcpaRoutes(app: Hono, db: PostgresClient): void {
         [
           tenantId,
           "ccpa_request_received",
-          JSON.stringify({
+          jsonbParam({
             request_type: resolvedRequestType,
             ip_truncated: ipTruncated || null,
             // No email in audit log — it's in ccpa_requests row
@@ -411,7 +412,7 @@ export function registerCcpaRoutes(app: Hono, db: PostgresClient): void {
           auth.tenantId,
           auth.userId,
           "ccpa_limit_sensitive_pi_toggled",
-          JSON.stringify({ limit_sensitive_pi: enabled }),
+          jsonbParam({ limit_sensitive_pi: enabled }),
         ]
       );
 

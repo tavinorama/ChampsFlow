@@ -28,6 +28,7 @@ import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 // ---------------------------------------------------------------------------
 // Sequence configuration (total steps per sequence)
@@ -121,7 +122,7 @@ export async function enrollNurture(
         sourceLeadId ?? null,
         sourceKitId ?? null,
         brand,
-        JSON.stringify(metadata),
+        jsonbParam(metadata),
       ]
     );
   } else {
@@ -144,7 +145,7 @@ export async function enrollNurture(
         sourceLeadId ?? null,
         sourceKitId ?? null,
         brand,
-        JSON.stringify(metadata),
+        jsonbParam(metadata),
       ]
     );
   }

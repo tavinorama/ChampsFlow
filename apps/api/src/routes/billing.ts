@@ -49,6 +49,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole, requireNotProcessingRestricted } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import {
   createCheckoutSession,
   createBillingPortalSession,
@@ -145,7 +146,7 @@ async function writeBillingAuditLog(
       [
         params.tenantId,
         params.eventType,
-        JSON.stringify({
+        jsonbParam({
           plan_tier: params.planTier,
           status: params.status ?? null,
           // stripe_event_id included for traceability (not PII, not a secret)
