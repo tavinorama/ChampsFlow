@@ -414,22 +414,20 @@ export async function processPublishJob(
           [publishJob.draft_id, publishJob.tenant_id]
         );
 
-        // Append audit_log entry
-        await sql.unsafe(
-          `INSERT INTO audit_log (tenant_id, event_type, metadata)
-           VALUES ($1, 'post_published', $2)`,
-          [
-            publishJob.tenant_id,
-            JSON.stringify({
-              publish_job_id,
-              draft_id: publishJob.draft_id,
-              social_account_id: publishJob.social_account_id,
-              platform: socialAccount.platform,
-              post_id: result.post_id,
-              ai_generated: draftRow.ai_generated,
-            }),
-          ]
-        );
+        // Append audit_log entry. metadata is jsonb — use sql.json() (the
+        // worker's jsonb idiom, same as landing-generate) so postgres.js
+        // serializes the OBJECT once; passing JSON.stringify(...) here would
+        // double-encode it into a jsonb string scalar (see packages/shared/src/jsonb.ts).
+        await sql`
+          INSERT INTO audit_log (tenant_id, event_type, metadata)
+          VALUES (${publishJob.tenant_id}, 'post_published', ${sql.json({
+            publish_job_id,
+            draft_id: publishJob.draft_id,
+            social_account_id: publishJob.social_account_id,
+            platform: socialAccount.platform,
+            post_id: result.post_id,
+            ai_generated: draftRow.ai_generated,
+          })})`;
 
         // Prometheus: success counter + latency
         publishJobsSucceeded.labels(socialAccount.platform).inc();
@@ -541,23 +539,20 @@ export async function processPublishJob(
             );
             if (jobRows2.length > 0) {
               const pj = jobRows2[0];
-              await sql.unsafe(
-                `INSERT INTO audit_log (tenant_id, event_type, metadata)
-                 VALUES ($1, 'post_publish_failed', $2)`,
-                [
-                  pj.tenant_id,
-                  JSON.stringify({
-                    publish_job_id: publishJobId,
-                    draft_id: pj.draft_id,
-                    social_account_id: pj.social_account_id,
-                    platform: String(platform),
-                    error_code: errorCode,
-                    // sanitized message only — no tokens
-                    error_message: sanitizedMessage,
-                    attempt_count: newAttemptCount,
-                  }),
-                ]
-              );
+              // metadata is jsonb — sql.json() serializes the OBJECT once
+              // (JSON.stringify would double-encode; see packages/shared/src/jsonb.ts).
+              await sql`
+                INSERT INTO audit_log (tenant_id, event_type, metadata)
+                VALUES (${pj.tenant_id}, 'post_publish_failed', ${sql.json({
+                  publish_job_id: publishJobId,
+                  draft_id: pj.draft_id,
+                  social_account_id: pj.social_account_id,
+                  platform: String(platform),
+                  error_code: errorCode,
+                  // sanitized message only — no tokens
+                  error_message: sanitizedMessage,
+                  attempt_count: newAttemptCount,
+                })})`;
             }
           } catch {
             // Best-effort audit log

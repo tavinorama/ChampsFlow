@@ -39,6 +39,7 @@ import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { clientIpOrUnknown } from "../lib/client-ip";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 // ---------------------------------------------------------------------------
 // Domain label map (shared with audits.ts; re-declared here for independence)
@@ -111,7 +112,7 @@ async function writeAuditLog(
     `INSERT INTO audit_log
        (event_type, actor_user_id, tenant_id, target_entity, target_id, metadata, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [eventType, userId, tenantId, targetEntity, targetId, JSON.stringify(metadata)]
+    [eventType, userId, tenantId, targetEntity, targetId, jsonbParam(metadata)]
   );
 }
 

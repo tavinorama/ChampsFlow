@@ -30,6 +30,7 @@ import { requireAuth, requireRole } from "../auth/middleware";
 import { requireNotRestricted } from "./billing";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
 import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
@@ -319,7 +320,7 @@ async function writeAuditLog(
     `INSERT INTO audit_log
        (event_type, actor_user_id, tenant_id, target_entity, target_id, metadata, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [eventType, userId, tenantId, "geo_audit", targetId, JSON.stringify(metadata)]
+    [eventType, userId, tenantId, "geo_audit", targetId, jsonbParam(metadata)]
   );
 }
 
@@ -754,7 +755,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
                 SET tracked_models = $2, tracking_frequency = $3, updated_at = NOW()
               WHERE id = $1
            RETURNING id, tracked_models, tracking_frequency`,
-            [brandId, JSON.stringify(trackedModels), trackingFrequency]
+            [brandId, jsonbParam(trackedModels), trackingFrequency]
           );
           const row = res.rows[0];
           updatedTrackedModels = row.tracked_models;
@@ -765,7 +766,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
                 SET tracked_models = $2, updated_at = NOW()
               WHERE id = $1
            RETURNING id, tracked_models, tracking_frequency`,
-            [brandId, JSON.stringify(trackedModels)]
+            [brandId, jsonbParam(trackedModels)]
           );
           const row = res.rows[0];
           updatedTrackedModels = row.tracked_models;
@@ -1493,7 +1494,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       await db.query(
         `INSERT INTO strategy_plan (id, tenant_id, brand_id, audit_id, calendar, generated_by, created_at)
          VALUES ($1, $2, $3, $4, $5, 'rules', NOW())`,
-        [planId, auth.tenantId, audit.brand_id, auditId, JSON.stringify(plan.calendar)]
+        [planId, auth.tenantId, audit.brand_id, auditId, jsonbParam(plan.calendar)]
       );
       for (const r of plan.recommendations) {
         await db.query(

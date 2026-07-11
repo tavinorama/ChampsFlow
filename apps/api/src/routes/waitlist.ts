@@ -36,6 +36,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { sendResendEmail } from "../../../../packages/shared/src/emails/resend-send";
 import { clientIp } from "../lib/client-ip";
 
@@ -265,7 +266,7 @@ export function registerWaitlistRoutes(app: Hono, db: PostgresClient): void {
         `INSERT INTO audit_log (event_type, actor_user_id, tenant_id, target_entity, metadata, ip_address, created_at)
          VALUES ('waitlist_signup', NULL, NULL, 'waitlist', $1::jsonb, $2, NOW())`,
         [
-          JSON.stringify({
+          jsonbParam({
             opted_in,
             source: "landing",
             name_provided: cleanName !== null,
