@@ -89,17 +89,31 @@ export function SiteFooter() {
               <LogoMark size={24} />
               <Wordmark size="1.0625rem" />
             </Link>
+            {/* Brand slogan — founder-approved (2026-07-11); the ONE deliberate
+                "trust" wording exception to the visibility-frame cleanup. */}
             <p
               style={{
                 margin: "0.9rem 0 0",
+                fontSize: "1.1875rem",
+                fontWeight: 800,
+                letterSpacing: "-0.015em",
+                lineHeight: 1.3,
+                color: "var(--color-text)",
+              }}
+            >
+              Know if AI trusts you.{" "}
+              <span style={{ color: "var(--color-primary)" }}>Then fix it.</span>
+            </p>
+            <p
+              style={{
+                margin: "0.7rem 0 0",
                 fontSize: "var(--font-size-body-sm)",
                 lineHeight: 1.55,
                 color: "var(--color-muted)",
               }}
             >
               Ozvor checks how AI answers see your brand. You see why rivals
-              win instead of you. We turn the gaps into fixes you can
-              publish. Want a team to do it with you? That&rsquo;s{" "}
+              win instead of you. Want a team to do it with you? That&rsquo;s{" "}
               <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>OrganicPosts</strong>.
             </p>
             <p
