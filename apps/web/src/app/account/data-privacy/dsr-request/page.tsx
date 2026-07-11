@@ -24,6 +24,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { apiFetch } from "../../../../lib/supabase-browser";
 
 type DsrRequestType =
   | "access"
@@ -74,7 +75,7 @@ export default function AuthDsrRequestPage() {
       try {
         // Try to get user email from a profile endpoint if available
         // For v1, the DPA status response doesn't include email; skip silently.
-        const res = await fetch("/api/dpa/status", { credentials: "include" });
+        const res = await apiFetch("/api/dpa/status");
         if (!res.ok) return;
         // Email not available from this endpoint; user must type it.
       } catch {

@@ -18,6 +18,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { apiFetch } from "../../../../lib/supabase-browser";
 
 type FormState = "idle" | "submitting" | "success" | "error" | "rate_limited";
 
@@ -39,7 +40,7 @@ export default function AuthDoNotSellPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/dpa/status", { credentials: "include" });
+        const res = await apiFetch("/api/dpa/status");
         if (res.ok) {
           // DPA status doesn't expose email, but we can try a profile endpoint
           // if one exists. For v1, leaving email blank is acceptable.

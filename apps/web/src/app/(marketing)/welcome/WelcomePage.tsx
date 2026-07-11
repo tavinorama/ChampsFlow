@@ -91,9 +91,14 @@ export function WelcomePage() {
     setErrorMessage("");
 
     try {
+      // Route the magic link through the server-side /auth/callback so the
+      // code is exchanged for a session cookie before the browser ever hits
+      // /dashboard — mirrors /login/page.tsx. Landing straight on /dashboard
+      // with an unexchanged ?code= makes the middleware bounce to /login
+      // before the session exists.
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/dashboard`
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent("/dashboard")}`
           : undefined;
 
       const { error } = await getSupabase().auth.signInWithOtp({

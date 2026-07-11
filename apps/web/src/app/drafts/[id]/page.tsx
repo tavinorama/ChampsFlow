@@ -33,6 +33,7 @@
 
 import { useState, useEffect, useRef, useId } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { apiFetch } from "../../../lib/supabase-browser";
 import { AIBadge } from "../../../components/AIBadge";
 import { ReportDraftModal } from "../../../components/ReportDraftModal";
 import { ScheduleModal } from "../../../components/ScheduleModal";
@@ -78,7 +79,7 @@ export default function DraftReviewPage() {
   useEffect(() => {
     if (!draftId) return;
 
-    fetch(`/api/drafts/${draftId}`)
+    apiFetch(`/api/drafts/${draftId}`)
       .then((res) => {
         if (!res.ok) throw new Error("Draft not found");
         return res.json();
@@ -107,7 +108,7 @@ export default function DraftReviewPage() {
     setRegenError(null);
 
     try {
-      const res = await fetch(`/api/drafts/${draftId}/regenerate`, {
+      const res = await apiFetch(`/api/drafts/${draftId}/regenerate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,7 +152,7 @@ export default function DraftReviewPage() {
     setIsApproving(true);
 
     try {
-      const res = await fetch(`/api/drafts/${draftId}/approve`, {
+      const res = await apiFetch(`/api/drafts/${draftId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -178,7 +179,10 @@ export default function DraftReviewPage() {
     setIsDiscarding(true);
 
     try {
-      await fetch(`/api/drafts/${draftId}`, { method: "DELETE" });
+      // Note: no DELETE /api/drafts/:id route exists in the API today (this
+      // call currently 404s and is caught below as best-effort). Still
+      // routed through apiFetch for consistency/auth in case it's added.
+      await apiFetch(`/api/drafts/${draftId}`, { method: "DELETE" });
     } catch {
       // Best-effort discard — navigate anyway
     } finally {

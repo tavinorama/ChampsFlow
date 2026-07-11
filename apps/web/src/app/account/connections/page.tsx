@@ -37,6 +37,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { apiFetch } from "../../../lib/supabase-browser";
 import { PlatformTile } from "../../../components/PlatformTile";
 
 // ---------------------------------------------------------------------------
@@ -106,12 +107,11 @@ async function initiateOAuth(
   platform: Platform,
   popupRef: React.MutableRefObject<Window | null>
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/social-accounts/connect/${platform}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
     }
   );
 
@@ -148,9 +148,7 @@ async function initiateOAuth(
 }
 
 async function fetchAccounts(): Promise<ConnectedAccount[]> {
-  const response = await fetch("/api/social-accounts", {
-    credentials: "include",
-  });
+  const response = await apiFetch("/api/social-accounts");
   if (!response.ok) throw new Error("Failed to load connected accounts");
   const body = (await response.json()) as {
     data?: { accounts?: ConnectedAccount[] };
@@ -159,9 +157,8 @@ async function fetchAccounts(): Promise<ConnectedAccount[]> {
 }
 
 async function disconnectAccount(accountId: string): Promise<void> {
-  const response = await fetch(`/api/social-accounts/${accountId}`, {
+  const response = await apiFetch(`/api/social-accounts/${accountId}`, {
     method: "DELETE",
-    credentials: "include",
   });
   if (!response.ok) {
     const body = (await response.json()) as {
@@ -172,10 +169,9 @@ async function disconnectAccount(accountId: string): Promise<void> {
 }
 
 async function selectPage(accountId: string, pageId: string): Promise<void> {
-  const response = await fetch(`/api/social-accounts/${accountId}/select-page`, {
+  const response = await apiFetch(`/api/social-accounts/${accountId}/select-page`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ pageId }),
   });
   if (!response.ok) {
@@ -190,6 +186,9 @@ async function selectPage(accountId: string, pageId: string): Promise<void> {
 // Google Connector helpers
 // ---------------------------------------------------------------------------
 
+// PUBLIC route (no requireAuth on the API side) — used to decide whether to
+// show the Google connector UI at all, before we know if the user is signed
+// in. Left on raw fetch intentionally; do not switch to apiFetch.
 async function fetchGoogleStatus(): Promise<{ configured: boolean }> {
   const res = await fetch("/api/google/status", { credentials: "include" });
   if (!res.ok) return { configured: false };
@@ -197,16 +196,14 @@ async function fetchGoogleStatus(): Promise<{ configured: boolean }> {
 }
 
 async function fetchBrands(): Promise<BrandOption[]> {
-  const res = await fetch("/api/brands", { credentials: "include" });
+  const res = await apiFetch("/api/brands");
   if (!res.ok) return [];
   const body = (await res.json()) as { brands?: BrandOption[] };
   return body.brands ?? [];
 }
 
 async function fetchGoogleConnections(brandId: string): Promise<GoogleConnection[]> {
-  const res = await fetch(`/api/brands/${brandId}/google/connections`, {
-    credentials: "include",
-  });
+  const res = await apiFetch(`/api/brands/${brandId}/google/connections`);
   if (!res.ok) return [];
   const body = (await res.json()) as GoogleConnection[] | { data?: GoogleConnection[] };
   if (Array.isArray(body)) return body;
@@ -217,9 +214,9 @@ async function disconnectGoogleConnection(
   brandId: string,
   connectionId: string
 ): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/brands/${brandId}/google/connections/${connectionId}`,
-    { method: "DELETE", credentials: "include" }
+    { method: "DELETE" }
   );
   if (!res.ok) {
     const body = (await res.json()) as { error?: { message?: string } };
@@ -232,11 +229,10 @@ async function patchGoogleConnection(
   connectionId: string,
   patch: { ga4PropertyId?: string; gscSiteUrl?: string }
 ): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/brands/${brandId}/google/connections/${connectionId}/property`,
     {
       method: "PATCH",
-      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     }
@@ -550,9 +546,9 @@ function AttributionSection({
   async function handleConnect(kind: GoogleConnectorKind) {
     if (!selectedBrandId) return;
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/brands/${selectedBrandId}/google/connect/${kind}`,
-        { method: "POST", credentials: "include" }
+        { method: "POST" }
       );
       if (!res.ok) {
         const body = (await res.json()) as { error?: { message?: string } };

@@ -23,6 +23,7 @@
 
 import { useState, useRef, useId } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "../../lib/supabase-browser";
 
 const MAX_TOPIC_LENGTH = 4000; // backend cap (S-5/CC-3)
 const MIN_TOPIC_LENGTH = 10;   // PRD AC: minimum 10 chars
@@ -58,7 +59,7 @@ export default function CreatePage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/drafts/generate", {
+      const res = await apiFetch("/api/drafts/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic: topic.trim(), platform }),
