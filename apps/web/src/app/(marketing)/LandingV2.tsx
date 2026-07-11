@@ -136,7 +136,14 @@ const LANDING_V2_STYLES = `
   .lv2-btn-ghost:hover { border-color: var(--color-primary); background: var(--landing-tint-soft); }
   .lv2-btn-ghost:disabled { opacity: 0.65; cursor: not-allowed; }
 
+  /* 4-across on desktop, 2×2 on tablet, 1 on mobile — never the auto-fit 3+1
+     that orphaned the Agency card on ~1000–1150px windows. */
+  .lv2-pricing-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+  @media (max-width: 1120px) { .lv2-pricing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 560px) { .lv2-pricing-grid { grid-template-columns: minmax(0, 1fr); } }
+
   .lv2-btn-tier-primary {
+    box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
     padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 15px;
     font-family: var(--font-family); background: var(--landing-cta-bg); color: var(--landing-cta-text); border: 1px solid var(--landing-cta-bg);
@@ -147,6 +154,7 @@ const LANDING_V2_STYLES = `
   .lv2-btn-tier-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
   .lv2-btn-tier-ghost {
+    box-sizing: border-box;
     display: flex; align-items: center; justify-content: center;
     padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 15px;
     font-family: var(--font-family); background: transparent; color: var(--color-accent-ink);
@@ -1549,7 +1557,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
             </p>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(250px, 100%), 1fr))", gap: 16, alignItems: "stretch" }}>
+          <div className="lv2-pricing-grid">
             {PRICING_TIERS.map((t) => (
               <div
                 key={t.name}
