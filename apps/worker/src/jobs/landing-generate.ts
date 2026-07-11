@@ -67,6 +67,7 @@ import {
 } from "../../../../packages/llm/src/index";
 import { guardedFetch, assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { logger } from "../../../../packages/shared/src/logger";
+import { parseJsonbObject } from "../../../../packages/shared/src/jsonb";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { computeLandingAllowance } from "../../../api/src/lib/landing-allowance";
 import type { PlanTier } from "../../../api/src/integrations/stripe";
@@ -374,7 +375,15 @@ export async function processLandingGenerateJob(
       return { site_id, pages_written: 0, mode: "mock" as const };
     }
 
-    const business = toLandingBusiness((site.business ?? {}) as LandingGenerateBusinessRaw);
+    // Legacy rows may hold `business` DOUBLE-JSON-encoded — a jsonb *string
+    // scalar* like `"{\"name\":\"Ozvor\"...}"` rather than a jsonb object —
+    // from the pre-fix write path (postgres.js re-encoded a pre-stringified
+    // param). postgres.js hands those back as a JS string, so `.name` reads
+    // undefined and generation would wrongly skip. Parse a string form
+    // (twice-defensively) so any historical site still generates; the data
+    // migration heals the rows at rest, this heals them in flight.
+    const rawBusiness = parseJsonbObject(site.business);
+    const business = toLandingBusiness((rawBusiness ?? {}) as LandingGenerateBusinessRaw);
     if (!business) {
       logger.warn("landing_generate_skipped_no_business_name", { site_id });
       return { site_id, pages_written: 0, mode: "mock" as const };

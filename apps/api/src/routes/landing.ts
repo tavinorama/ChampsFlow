@@ -29,6 +29,7 @@ import IORedis from "ioredis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { getSharedRedis } from "../shared-redis";
 import { resolvePlace, googlePlacesConfigured, PlacesError } from "../lib/google-places";
@@ -142,6 +143,7 @@ export function containsPlaceholder(sections: unknown): boolean {
     return false;
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // sectionsEmpty — the "never publish an empty/ungenerated site" guard (Ozvor
@@ -520,8 +522,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
             auth.tenantId,
             brandId,
             slug,
-            JSON.stringify(business),
-            JSON.stringify(body.theme ?? {}),
+            jsonbParam(business),
+            jsonbParam(body.theme ?? {}),
             placeId,
           ]
         );
@@ -761,8 +763,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
           [
             siteId,
             auth.tenantId,
-            body.business ? JSON.stringify(body.business) : null,
-            body.theme ? JSON.stringify(body.theme) : null,
+            body.business ? jsonbParam(body.business) : null,
+            body.theme ? jsonbParam(body.theme) : null,
             body.status ?? null,
           ]
         );
@@ -1186,7 +1188,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
            VALUES ($1, $2, $3,
                    COALESCE((SELECT MAX(version) FROM landing_page_versions WHERE page_id = $3), 0) + 1,
                    $4, $5, 'user', NOW())`,
-          [randomUUID(), auth.tenantId, pageId, JSON.stringify(row.sections ?? []), JSON.stringify(row.seo ?? {})]
+          [randomUUID(), auth.tenantId, pageId, jsonbParam(row.sections ?? []), jsonbParam(row.seo ?? {})]
         );
         // Prune beyond the cap (oldest first).
         await db.query(
@@ -1213,8 +1215,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
             auth.tenantId,
             body.title !== undefined ? body.title.trim() : null,
             body.slug !== undefined ? body.slug.trim() : null,
-            body.sections !== undefined ? JSON.stringify(body.sections) : null,
-            body.seo !== undefined ? JSON.stringify(body.seo) : null,
+            body.sections !== undefined ? jsonbParam(body.sections) : null,
+            body.seo !== undefined ? jsonbParam(body.seo) : null,
             body.status ?? null,
           ]
         );
@@ -1336,8 +1338,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
           randomUUID(),
           auth.tenantId,
           pageId,
-          JSON.stringify(current.rows[0].sections ?? []),
-          JSON.stringify(current.rows[0].seo ?? {}),
+          jsonbParam(current.rows[0].sections ?? []),
+          jsonbParam(current.rows[0].seo ?? {}),
         ]
       );
       await db.query(
@@ -1346,8 +1348,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         [
           pageId,
           auth.tenantId,
-          JSON.stringify(snap.rows[0].sections ?? []),
-          JSON.stringify(snap.rows[0].seo ?? {}),
+          jsonbParam(snap.rows[0].sections ?? []),
+          jsonbParam(snap.rows[0].seo ?? {}),
         ]
       );
       return c.json({ ok: true, restored_version: version });
