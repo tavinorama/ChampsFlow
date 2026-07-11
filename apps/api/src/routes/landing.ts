@@ -32,6 +32,11 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { getSharedRedis } from "../shared-redis";
 import { resolvePlace, googlePlacesConfigured, PlacesError } from "../lib/google-places";
+// computeLandingAllowance lives in a Hono-free module so the WORKER can import
+// it without dragging this route file (and `hono`) into its build. Re-exported
+// here for existing importers/tests.
+import { computeLandingAllowance } from "../lib/landing-allowance";
+export { computeLandingAllowance };
 
 const VERSION_CAP = 20;
 
@@ -92,19 +97,9 @@ export function validateSiteSlug(slug: string): string | null {
 
 // ---------------------------------------------------------------------------
 // landingAllowanceFor — plan base + purchased credits ( #208 entitlement).
-// Exported for unit testing (pure math is computeLandingAllowance below).
+// The pure math (computeLandingAllowance) now lives in ../lib/landing-allowance
+// (imported + re-exported above) so the worker can share it Hono-free.
 // ---------------------------------------------------------------------------
-export function computeLandingAllowance(
-  planTier: PlanTier,
-  extraSites: number
-): { maxSites: number; maxPagesPerSite: number } {
-  const limits = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
-  return {
-    maxSites: limits.max_landing_sites + Math.max(0, extraSites),
-    maxPagesPerSite: limits.max_pages_per_site,
-  };
-}
-
 async function landingAllowanceFor(
   db: PostgresClient,
   tenantId: string,
