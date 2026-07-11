@@ -21,8 +21,10 @@ import {
   expandMapsLink,
   googlePlacesConfigured,
   resolvePlace,
+  resolvePlaceById,
   PlacesError,
   PLACE_DETAILS_FIELD_MASK,
+  PLACE_DETAILS_RICH_FIELD_MASK,
   TEXT_SEARCH_FIELD_MASK,
 } from "../../apps/api/src/lib/google-places";
 
@@ -281,8 +283,8 @@ describe("expandMapsLink()", () => {
 // Field masks — no reviews, no ratings, no photos this PR
 // ---------------------------------------------------------------------------
 
-describe("Field masks — reviews/photos out of scope this PR", () => {
-  it("PLACE_DETAILS_FIELD_MASK contains no review/rating/photo fields", () => {
+describe("Field masks — narrow prefill stays cheap; rich generator mask adds reviews/photos", () => {
+  it("PLACE_DETAILS_FIELD_MASK (prefill) contains no review/rating/photo fields", () => {
     const lower = PLACE_DETAILS_FIELD_MASK.toLowerCase();
     expect(lower).not.toContain("review");
     expect(lower).not.toContain("rating");
@@ -300,6 +302,15 @@ describe("Field masks — reviews/photos out of scope this PR", () => {
     for (const field of ["id", "displayName", "formattedAddress", "websiteUri", "location"]) {
       expect(PLACE_DETAILS_FIELD_MASK).toContain(field);
     }
+  });
+
+  it("PLACE_DETAILS_RICH_FIELD_MASK adds reviews, ratings, photos + category/price for the generator", () => {
+    const lower = PLACE_DETAILS_RICH_FIELD_MASK.toLowerCase();
+    for (const field of ["reviews", "photos", "rating", "userratingcount", "pricelevel", "primarytypedisplayname", "editorialsummary"]) {
+      expect(lower).toContain(field);
+    }
+    // Still a superset of the narrow prefill fields.
+    expect(PLACE_DETAILS_RICH_FIELD_MASK).toContain("formattedAddress");
   });
 });
 
@@ -367,6 +378,14 @@ describe("resolvePlace() — Place Details by explicit place_id", () => {
       hours: ["Monday: 8am–5pm"],
       lat: 30.27,
       lng: -97.74,
+      // Rich fields are absent on the narrow prefill mask → null / empty.
+      category: null,
+      description: null,
+      rating: null,
+      reviewCount: null,
+      priceLevel: null,
+      reviews: [],
+      photos: [],
     });
   });
 
@@ -433,6 +452,93 @@ describe("resolvePlace() — Text Search fallback (name + coords, no explicit pl
     await expect(resolvePlace("https://www.google.com/maps")).rejects.toMatchObject({
       code: "not_found",
     });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePlaceById({ rich:true }) — the generator's enrichment fetch
+// ---------------------------------------------------------------------------
+
+describe("resolvePlaceById() — rich generator fetch (reviews, photos, rating)", () => {
+  beforeEach(() => setPlacesEnv());
+
+  it("requests the RICH field mask and maps reviews/photos with attribution", async () => {
+    let sentMask = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        sentMask = String((init?.headers as Record<string, string>)["X-Goog-FieldMask"] ?? "");
+        expect(url).toContain("places.googleapis.com/v1/places/ChIJrich0000000000000000000");
+        return fakeResponse({
+          status: 200,
+          json: {
+            id: "ChIJrich0000000000000000000",
+            displayName: { text: "Marigold Café" },
+            formattedAddress: "1123 E 6th St, Austin, TX",
+            location: { latitude: 30.26, longitude: -97.72 },
+            primaryTypeDisplayName: { text: "Café" },
+            editorialSummary: { text: "Neighborhood café and bakery." },
+            rating: 4.7,
+            userRatingCount: 328,
+            priceLevel: "PRICE_LEVEL_MODERATE",
+            reviews: [
+              {
+                rating: 5,
+                text: { text: "Best cortado on the East Side." },
+                relativePublishTimeDescription: "2 weeks ago",
+                authorAttribution: { displayName: "Marcus R." },
+              },
+              // dropped: no author attribution (cannot be shown)
+              { rating: 4, text: { text: "no author" } },
+              // dropped: empty text
+              { rating: 5, text: { text: "" }, authorAttribution: { displayName: "Ghost" } },
+            ],
+            photos: [
+              { name: "places/ChIJrich/photos/AbC", widthPx: 4000, heightPx: 3000, authorAttributions: [{ displayName: "A. Photographer" }] },
+              { widthPx: 100 }, // dropped: no name
+            ],
+          },
+        });
+      })
+    );
+
+    const r = await resolvePlaceById("ChIJrich0000000000000000000", { rich: true });
+
+    expect(sentMask).toBe(PLACE_DETAILS_RICH_FIELD_MASK);
+    expect(r.category).toBe("Café");
+    expect(r.description).toBe("Neighborhood café and bakery.");
+    expect(r.rating).toBe(4.7);
+    expect(r.reviewCount).toBe(328);
+    expect(r.priceLevel).toBe("PRICE_LEVEL_MODERATE");
+    // Only the well-formed, attributed, non-empty review survives.
+    expect(r.reviews).toHaveLength(1);
+    expect(r.reviews[0]).toMatchObject({ author: "Marcus R.", rating: 5, text: "Best cortado on the East Side." });
+    // Only the photo with a resource name survives, attribution captured.
+    expect(r.photos).toHaveLength(1);
+    expect(r.photos[0]).toMatchObject({ name: "places/ChIJrich/photos/AbC", attribution: "A. Photographer" });
+  });
+
+  it("without { rich } uses the narrow mask (no Enterprise-SKU reviews/photos)", async () => {
+    let sentMask = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        sentMask = String((init?.headers as Record<string, string>)["X-Goog-FieldMask"] ?? "");
+        return fakeResponse({ status: 200, json: { id: "ChIJnarrow", displayName: { text: "X" } } });
+      })
+    );
+    const r = await resolvePlaceById("ChIJnarrow");
+    expect(sentMask).toBe(PLACE_DETAILS_FIELD_MASK);
+    expect(r.reviews).toEqual([]);
+    expect(r.photos).toEqual([]);
+  });
+
+  it("fails safe (not_configured) without the API key", async () => {
+    clearPlacesEnv();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    await expect(resolvePlaceById("ChIJx", { rich: true })).rejects.toMatchObject({ code: "not_configured" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
