@@ -1,0 +1,25 @@
+-- Rollback: 20260626000005_harden_function_search_path
+-- Documented no-op — NOT a destructive guess.
+--
+-- The up migration pins `search_path = ''` on two trigger helper functions
+-- (public.set_updated_at, public.trg_billing_subscriptions_updated_at) to
+-- close Supabase advisor 0011 (function_search_path_mutable). Before that
+-- migration ran, both functions had NO explicit search_path override — they
+-- inherited whatever search_path was active in the calling session/role at
+-- CREATE FUNCTION time, which was never recorded anywhere (not in a prior
+-- migration, not in this repo). There is no captured "prior value" to
+-- restore, so `ALTER FUNCTION ... RESET search_path` would not reproduce the
+-- original (unknown, session-dependent) behavior — it would just leave the
+-- functions with the Postgres default un-pinned search_path, silently
+-- reopening the exact search_path-hijack vector the up migration closed.
+--
+-- Rather than guess, this down is an explicit no-op: pinning an empty
+-- search_path on functions that only touch NEW (no unqualified object
+-- lookups) is strictly safe to leave in place, so "rolling back" this
+-- migration by doing nothing does not break anything either.
+--
+-- If a future migration needs to intentionally un-pin these functions, do it
+-- as its own forward migration with the target search_path stated explicitly
+-- (do not repurpose this file).
+
+SELECT 1; -- no-op: see comment above

@@ -28,6 +28,7 @@ import { ThemeToggle } from "../../components/marketing/ThemeToggle";
 import { ProductsMenu } from "../../components/marketing/ProductsMenu";
 import { LogoMark, Wordmark } from "../../components/brand/Logo";
 import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
+import { safeJsonLd } from "../../lib/safe-json-ld";
 import { ChatWidget } from "../../components/ChatWidget";
 import { SiteFooter } from "../../components/SiteFooter";
 import { FreeTestCta } from "../../components/marketing/FreeTestCta";
@@ -447,11 +448,11 @@ export default function MarketingLayout({
           layout so every public marketing page inherits them automatically) */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(orgJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(websiteJsonLd) }}
       />
 
       <style dangerouslySetInnerHTML={{ __html: MARKETING_STYLES }} />

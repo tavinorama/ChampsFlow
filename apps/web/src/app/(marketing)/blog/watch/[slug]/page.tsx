@@ -34,6 +34,7 @@ import {
   type VideoPost,
 } from "../../posts";
 import { BookCallButton } from "../../../../../components/BookCallButton";
+import { safeJsonLd } from "../../../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
 // Static params — pre-render all video slugs
@@ -162,11 +163,11 @@ export default async function VideoPostPage({
       {/* JSON-LD */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(videoObjectJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(videoObjectJsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }}
       />
 
       <article

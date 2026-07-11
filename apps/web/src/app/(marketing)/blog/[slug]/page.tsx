@@ -16,6 +16,7 @@ import Link from "next/link";
 import { BLOG_CONTENT, findBlogContent, type Block } from "../_content";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 import { SITE_URL } from "../../../../lib/site";
+import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export function generateStaticParams() {
   return BLOG_CONTENT.map((p) => ({ slug: p.slug }));
@@ -191,8 +192,8 @@ export default async function BlogArticlePage({
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }} />
 
       <article style={{ maxWidth: "720px", margin: "0 auto", padding: "var(--space-12) var(--space-4) var(--space-16)" }}>
         <Link href="/blog" style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600 }}>← The Blog</Link>

@@ -152,6 +152,14 @@
   --min-button-height: 48px;
   --bottom-nav-height: 56px;
 
+  /* Reserved bottom space so the fixed CookieConsent banner (position:fixed,
+     bottom:0 — see CookieConsent.tsx) never occludes interactive content on
+     pages that vertically center content in a min-height:100vh container
+     (e.g. /login). Mobile value is taller because the banner's text wraps to
+     more lines and its button row wraps to two rows on narrow viewports;
+     see the >=640px override below. QA Audit V2, #238. */
+  --cookie-banner-space: 21rem;
+
   /* ── Landing v2 — page-chrome atmosphere tokens ───────────────────
    * Theme the LandingV2.tsx page chrome (section backgrounds' decorative
    * glows/dot-grids, card borders/tints). The three product-demo frames
@@ -193,6 +201,15 @@
      only. Same hue in both themes; alpha tuned per theme below. */
   --landing-gold-border:           rgba(230,169,63,0.35);
   --landing-gold-bg:               rgba(230,169,63,0.10);
+}
+
+/* Cookie banner reserved space — desktop/tablet: the banner's button row no
+   longer wraps to two rows once the ≥640px card layout kicks in (see
+   CookieConsent.tsx BannerView), so less bottom space needs to be reserved. */
+@media (min-width: 640px) {
+  :root {
+    --cookie-banner-space: 14rem;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

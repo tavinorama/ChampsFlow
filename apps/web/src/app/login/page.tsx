@@ -237,8 +237,15 @@ export default function LoginPage() {
       }
     `}</style>
     <main style={{
-      minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "var(--space-6)", fontFamily: "var(--font-family)", color: "var(--color-text)",
+      minHeight: "100vh", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "var(--space-6)",
+      // Reserve space for the fixed CookieConsent banner (position:fixed, bottom:0,
+      // z-index:400 — see components/CookieConsent.tsx) so it never covers the
+      // email field / submit button below, even though this container is
+      // vertically centered and can otherwise sit flush with the viewport bottom
+      // (Hermes QA Audit V2, #238).
+      paddingBottom: "calc(var(--space-6) + var(--cookie-banner-space))",
+      fontFamily: "var(--font-family)", color: "var(--color-text)",
       backgroundColor: "var(--color-surface-muted)",
     }}>
       <div style={{

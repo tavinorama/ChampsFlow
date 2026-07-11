@@ -14,6 +14,7 @@ import Link from "next/link";
 import { KitCheckoutForm } from "./KitCheckoutForm";
 import { UpsellLadder } from "../../../components/UpsellLadder";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
+import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29) | Ozvor",
@@ -57,7 +58,7 @@ export default function KitPage() {
   return (
     <main style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(kitJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(kitJsonLd) }} />
 
       {/* Hero */}
       <span className="kit-eyebrow">Step 2 · $29 one-time</span>

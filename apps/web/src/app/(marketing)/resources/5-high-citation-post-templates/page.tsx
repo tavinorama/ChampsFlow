@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
@@ -161,7 +162,7 @@ const PRINCETON_RESULTS = [
 // JSON-LD
 // ---------------------------------------------------------------------------
 
-const TEMPLATES_LD = JSON.stringify({
+const TEMPLATES_LD_DATA = {
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -217,7 +218,7 @@ const TEMPLATES_LD = JSON.stringify({
       ],
     },
   ],
-});
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -228,7 +229,7 @@ export default function PostTemplatesPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: TEMPLATES_LD }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(TEMPLATES_LD_DATA) }}
       />
 
       <article

@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import { InvisibilityTestClient } from "./InvisibilityTestClient";
+import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -95,7 +96,7 @@ export default function InvisibilityTestPage() {
     >
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(testJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(testJsonLd) }}
       />
 
       <span

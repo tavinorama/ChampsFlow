@@ -22,6 +22,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PagesBuyForm } from "./PagesBuyForm";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
+import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title: "Ozvor Pages — AI-search-ready 5-page websites | Ozvor",
@@ -127,8 +128,8 @@ export default function LocalPagesSalesPage() {
   return (
     <main style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(pagesJsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(pagesJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} />
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}
       <div style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto" }}>

@@ -12,6 +12,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
@@ -132,7 +133,7 @@ const KEY_NUMBERS = [
 // JSON-LD
 // ---------------------------------------------------------------------------
 
-const GUIDE_LD = JSON.stringify({
+const GUIDE_LD_DATA = {
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -178,7 +179,7 @@ const GUIDE_LD = JSON.stringify({
       ],
     },
   ],
-});
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -189,7 +190,7 @@ export default function GeoVisibilityGuidePage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: GUIDE_LD }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(GUIDE_LD_DATA) }}
       />
 
       <article

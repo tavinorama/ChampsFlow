@@ -21,6 +21,7 @@ import {
   type VideoPost,
 } from "./posts";
 import { SoftCTA } from "../../../components/marketing/SoftCTA";
+import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -103,7 +104,7 @@ export default function BlogIndexPage() {
     >
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogIndexJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(blogIndexJsonLd) }}
       />
 
       {/* Page header */}

@@ -5,8 +5,13 @@
  * canonical Organization shape is defined once and reused everywhere.
  *
  * Usage (server components):
- *   import { orgJsonLd, websiteJsonLd, breadcrumbJsonLd } from "@/lib/structured-data";
- *   <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }} />
+ *   import { orgJsonLd, websiteJsonLd, breadcrumbJsonLd } from "./structured-data";
+ *   import { safeJsonLd } from "./safe-json-ld";
+ *   <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(orgJsonLd) }} />
+ *
+ * Always serialize with safeJsonLd (./safe-json-ld.ts), never raw
+ * JSON.stringify — these objects can carry tenant/user-controlled strings
+ * and a raw stringify is an XSS vector inside <script> (Hermes #216, #238).
  */
 
 // ---------------------------------------------------------------------------

@@ -6,58 +6,22 @@
  * NEVER invented. Absent facts are simply omitted from the schema rather
  * than fabricated (audit integrity rule, postmortem PR#90).
  *
+ * safeJsonLd + safeHref (Hermes review, #216) moved to
+ * ../../lib/safe-json-ld.ts as the single source of truth (QA Audit V2,
+ * #238 — every marketing page needs them, not just landing-page sites).
+ * Re-exported here so existing `from "../../components/landing-public/json-ld"`
+ * imports keep working unchanged.
+ *
  * Pure/DB-free/React-free — unit-testable without a DOM.
  */
+
+export { safeJsonLd, safeHref } from "../../lib/safe-json-ld";
 
 interface JsonLdBusiness {
   name?: unknown;
   address?: unknown;
   phone?: unknown;
   website?: unknown;
-}
-
-// ---------------------------------------------------------------------------
-// safeJsonLd — HTML-script-safe serialization (Hermes review, #216).
-//
-// The JSON-LD objects contain TENANT-CONTROLLED strings (business name, FAQ
-// text). Raw JSON.stringify inside <script type="application/ld+json"> lets a
-// stored `</script><script>…` break out of the tag on the PUBLIC site (XSS).
-// Escaping <, >, & as \uXXXX keeps the payload byte-identical after
-// JSON.parse (unicode escapes are plain JSON) while making it inert as HTML.
-// U+2028/2029 are escaped for JS-context safety too.
-// ---------------------------------------------------------------------------
-export function safeJsonLd(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-// ---------------------------------------------------------------------------
-// safeHref — allowlist for STORED website URLs rendered into <a href>
-// (Hermes follow-up, #216). Only http(s) survives; anything else — including
-// `javascript:`, `data:`, protocol-relative `//evil` — returns null and the
-// caller renders plain text instead. A bare domain gets https:// prefixed.
-// ---------------------------------------------------------------------------
-export function safeHref(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const value = raw.trim();
-  if (!value) return null;
-  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)
-    ? value
-    : value.startsWith("//")
-      ? `https:${value}`
-      : `https://${value}`;
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    if (!url.hostname || !url.hostname.includes(".")) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 /** home page → LocalBusiness, built ONLY from present business facts. */
