@@ -16,14 +16,14 @@ import { InvisibilityTestClient } from "./InvisibilityTestClient";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "Free AI Invisibility Test — Are You Visible in AI Search?",
+  title: "Free AI Invisibility Test — Does AI Know Your Name?",
   description:
-    "In 60 seconds, see whether ChatGPT, Claude, Perplexity, and Gemini recommend your brand or a competitor — across the real AI engines your buyers use. Free. No credit card.",
+    "People ask AI who to buy from. We check ChatGPT, Claude, Perplexity, and Gemini. See if it says your name — free, in 60 seconds.",
   alternates: { canonical: "https://ozvor.com/test" },
   openGraph: {
-    title: "Free AI Invisibility Test — Are You Visible in AI Search?",
+    title: "Free AI Invisibility Test — Does AI Know Your Name?",
     description:
-      "In 60 seconds, see whether ChatGPT, Claude, Perplexity, and Gemini recommend your brand or a competitor. Free. No credit card.",
+      "People ask AI who to buy from. We check ChatGPT, Claude, Perplexity, and Gemini. See if it says your name. Free.",
     url: "https://ozvor.com/test",
     siteName: "Ozvor",
     type: "website",
@@ -38,9 +38,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Free AI Invisibility Test — Are You Visible in AI Search?",
+    title: "Free AI Invisibility Test — Does AI Know Your Name?",
     description:
-      "In 60 seconds, see whether ChatGPT, Claude, Perplexity, and Gemini recommend your brand or a competitor. Free.",
+      "See if AI says your name — or your competitor's. Free, in 60 seconds.",
     images: ["https://ozvor.com/og-default.png"],
   },
 };
@@ -54,7 +54,7 @@ const testJsonLd = {
   "@type": "WebApplication",
   name: "AI Invisibility Test",
   description:
-    "Free tool: see whether ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview recommend your brand or a competitor when buyers ask about your category.",
+    "Free tool. We check: ChatGPT · Claude · Perplexity · Gemini · Google AI Overviews. See if AI recommends you or a competitor.",
   url: "https://ozvor.com/test",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
@@ -120,7 +120,7 @@ export default function InvisibilityTestPage() {
           margin: "0 0 var(--space-3) 0",
         }}
       >
-        Are you invisible to AI?
+        Find out if AI picks you &mdash; or your competitor.
       </h1>
       <p
         style={{
@@ -130,8 +130,8 @@ export default function InvisibilityTestPage() {
           margin: "0 0 var(--space-6) 0",
         }}
       >
-        When buyers ask ChatGPT, Claude, Perplexity and Gemini for the best option in your
-        category, does AI name <strong>you</strong> &mdash; or your competitor? Find out now.
+        People ask ChatGPT, Claude, Perplexity, and Gemini who to buy from. See what they say
+        about <strong>you</strong>. Free &mdash; takes 60 seconds.
       </p>
 
       {/* Interactive form + scorecard — client component */}
