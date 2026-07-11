@@ -76,7 +76,7 @@ const WHAT_TO_RECORD = [
   },
   {
     signal: "Sentiment (positive / neutral / negative / inaccurate)",
-    why: "'Inaccurate' is the most actionable flag. Business-profile info was only ~68% accurate on ChatGPT and Perplexity in one large study (SOCi, 2026).",
+    why: "'Inaccurate' is the flag worth fixing first. Business-profile info was only ~68% accurate on ChatGPT and Perplexity in one large study (SOCi, 2026).",
   },
   {
     signal: "Source URL cited",

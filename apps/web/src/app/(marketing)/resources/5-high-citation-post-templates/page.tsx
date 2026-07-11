@@ -125,7 +125,7 @@ const TEMPLATES = [
       text: "'Medical-grade skincare' gets used everywhere — and it means something different at almost every clinic using it. The precise, useful definition: medical-grade (more accurately, physician-dispensed or cosmeceutical) skincare means products formulated at active-ingredient concentrations high enough to require sale through a licensed provider — NOT an FDA-awarded grade. There is no government 'medical grade' stamp. The meaningful difference is the dose of the active (e.g. a 0.5–1% retinol vs a drugstore 0.025%). Ask one question: 'What is the concentration of the active ingredient, and why is that the right dose for my skin?' A real clinic answers specifically. A reseller can't.",
     },
     whyItWorks:
-      "A precise, actionable definition, a corrected misconception (\"there's no FDA medical grade\"), and a concrete decision tool (\"ask the concentration\"). When someone asks \"what does medical-grade skincare actually mean?\", this is the clearest direct answer in the category.",
+      "A precise, useful definition, a corrected misconception (\"there's no FDA medical grade\"), and a concrete decision tool (\"ask the concentration\"). When someone asks \"what does medical-grade skincare actually mean?\", this is the clearest direct answer in the category.",
   },
 ];
 

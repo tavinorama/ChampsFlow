@@ -17,7 +17,7 @@ import { RingFlow, ContentEngine } from "../../../components/marketing/illustrat
 export const metadata: Metadata = {
   title: "OrganicPosts — We build your AI visibility with you",
   description:
-    "The tools get you moving on your own. When you'd rather have a team run the whole AI-visibility project — research, content, cadence and monitoring — OrganicPosts is the managed engagement that does it with you.",
+    "The tools get you moving on your own. Rather have a team run the whole project? OrganicPosts handles research, content, cadence, and monitoring — with you.",
   alternates: { canonical: "https://ozvor.com/organicposts" },
   openGraph: {
     title: "OrganicPosts — We build your AI visibility with you",
@@ -30,10 +30,10 @@ export const metadata: Metadata = {
 };
 
 const STEPS: { n: string; t: string; d: string }[] = [
-  { n: "01", t: "Discovery & research", d: "We map the real buyer prompts in your category, audit your baseline, and identify the citations worth winning." },
-  { n: "02", t: "Content system", d: "A managed editorial calendar — proof pages, comparison content and LinkedIn posts engineered to be cited, written with you." },
-  { n: "03", t: "Publish cadence", d: "We hold the cadence steady across your site and LinkedIn — and you approve every draft before it goes live." },
-  { n: "04", t: "Monitor & report", d: "Weekly Ozvor tracking across all five engines, with a clear read on what moved your score and what comes next." },
+  { n: "01", t: "Discovery & research", d: "We map the real buyer prompts in your category. We audit your baseline and identify the citations worth winning." },
+  { n: "02", t: "Content system", d: "A managed editorial calendar — proof pages, comparison content, and LinkedIn posts. Each one is engineered to be cited, written with you." },
+  { n: "03", t: "Publish cadence", d: "We hold the cadence steady across your site and LinkedIn. You approve every draft before it goes live." },
+  { n: "04", t: "Monitor & report", d: "Weekly Ozvor tracking, across all five engines. You get a clear read on what moved your score, and what comes next." },
 ];
 
 const DIY = [
@@ -73,9 +73,8 @@ export default function OrganicPostsPage() {
         OrganicPosts. <span style={{ color: "var(--color-gold-ink)" }}>We build it with you.</span>
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: "0 0 var(--space-6)" }}>
-        The tools get you moving on your own. When you&rsquo;d rather have a team run the whole
-        AI-visibility project &mdash; research, content, cadence and monitoring &mdash; OrganicPosts is
-        the managed engagement that does it with you.
+        The tools get you moving on your own. Rather have a team run the whole
+        AI-visibility project? OrganicPosts handles research, content, cadence, and monitoring &mdash; with you.
       </p>
       <Link href="/book" className="op-cta-gold">Scope your project &rarr;</Link>
 

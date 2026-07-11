@@ -243,7 +243,7 @@ The local picture is not hopeless — it is the opposite. Because most local com
       id: "geo-vs-seo",
       number: "07",
       heading: "GEO vs. SEO — why you need both",
-      body: `A tempting conclusion at this point is that GEO is the new thing that replaces SEO. It is not. They optimize for different moments, and — crucially — **they share the same plumbing**, so the work you do for one largely helps the other.
+      body: `A tempting conclusion at this point is that GEO is the new thing that replaces SEO. It is not. They work at different moments, and — crucially — **they share the same plumbing**, so the work you do for one largely helps the other.
 
 | | **SEO** | **GEO** |
 |---|---|---|
@@ -267,7 +267,7 @@ The honest framing: **most small businesses have done some SEO and almost no GEO
       id: "what-to-do",
       number: "08",
       heading: "What to do now — a starter checklist (and an honest promise)",
-      body: `Enough diagnosis. Here is a concrete, prioritized starter checklist any business owner can begin this week, ordered roughly by impact-per-effort.
+      body: `Enough diagnosis. Here is a concrete starter checklist any business owner can begin this week, ordered roughly by impact-per-effort.
 
 **1. Find out where you actually stand.** You cannot fix what you cannot see. Ask ChatGPT, Gemini, Perplexity, and Claude the exact buyer-intent questions your customers would ask ("best [your category] in [your city]," "[your category] for [specific situation]") and write down whether you appear, who does, and whether the details are right. This single exercise is sobering and clarifying.
 
@@ -292,7 +292,7 @@ We will tell you plainly what GEO **can** and **cannot** do, because the field i
         "Start with what you control: see where you stand, unblock the crawlers, fix your facts, feed your reviews, and publish specific sourced content consistently. No honest provider guarantees a citation — but absence guarantees invisibility, and the practices that improve your odds are proven and within reach.",
     },
     {
-      id: "trustindex-ai",
+      id: "ozvor-fits",
       number: "09",
       heading: "How Ozvor fits",
       body: `Everything in this whitepaper is something a determined owner could do by hand — run the prompts across five engines, track who gets named, audit crawlers and schema, benchmark competitors, and keep it all current as the ground shifts. The catch is that last part: *keep it all current.* Doing it once is a weekend project. Doing it every week, across five engines, for your business and your competitors, is a job. That is the job **Ozvor** exists to do.
@@ -301,7 +301,7 @@ Here is the path, and it starts free.
 
 **Step 1 — The free AI Visibility Test.** In a couple of minutes, with no credit card, you find out exactly where you stand: how often you are cited across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, benchmarked against a competitor, with your **Ozvor AI Visibility Score** — a single number built on three vectors: **Brand (30%)** (does AI recognize you as a real, established business?), **Performance (35%)** (can engines technically read and parse your site?), and **AI (35%)** (how often, how prominently, and how favorably are you actually cited?). The free tier covers 1 brand, 1 competitor, and a 10-prompt snapshot audit.
 
-**Step 2 — The Get-Cited Kit ($29).** The Kit turns the diagnosis into action: your prioritized top fixes ranked by impact and effort, three ready-to-publish drafts — a blog post, a LinkedIn post, and an FAQ entry, each with schema.org markup — written to follow the citation-worthy traits from Section 4, plus this whitepaper as your manual for the *why*.
+**Step 2 — The Get-Cited Kit ($29).** The Kit turns the diagnosis into action: your top fixes, ranked by impact and effort, three ready-to-publish drafts — a blog post, a LinkedIn post, and an FAQ entry, each with schema.org markup — written to follow the citation-worthy traits from Section 4, plus this whitepaper as your manual for the *why*.
 
 **Step 3 — Ongoing monitoring (Growth & Agency).** Because where AI looks changes constantly, a one-time snapshot goes stale. The subscription plans re-run your probes on a schedule, track your Ozvor AI Visibility Score over time, alert you when a competitor displaces you or an engine drops you, and keep feeding you the next content drafts to publish:
 
@@ -309,7 +309,7 @@ Here is the path, and it starts free.
 - **Agency — $249/mo** (or **$2,091/yr** with founder pricing): up to 25 brands, white-label reports, and client workflow — built for agencies and multi-location operators.
 - **Founder pricing** is 30% off, annual only, for the first 100 customers.
 
-For done-for-you execution — where our team does the publishing and optimization for you — there is **[OrganicPosts by Ozvor](https://organicposts.ai)**, our consultancy arm.
+For done-for-you execution — where our team publishes and keeps improving it for you — there is **[OrganicPosts by Ozvor](https://organicposts.ai)**, our consultancy arm.
 
 The sequence is deliberate, and the first step costs nothing: **see where you stand free, act on the Kit, then keep the gains compounding instead of going stale.** Start at [ozvor.com](https://ozvor.com), or reach us at [hello@ozvor.com](mailto:hello@ozvor.com).`,
       keyTakeaway:
@@ -356,7 +356,7 @@ The sequence is deliberate, and the first step costs nothing: **see where you st
 
   plansCta: {
     heading: "Your Kit is a snapshot. AI search moves every week.",
-    body: "The Get-Cited Kit shows you where you stand today and gives you three fixes and three drafts to act on. But AI answers change constantly — new competitors get cited, engines re-index, your fixes start (or stop) working. A one-time audit can't tell you whether you're gaining or losing ground. That's what the subscription Plans do: re-run your probes on a schedule, track your Ozvor AI Visibility Score over time, alert you when a competitor displaces you or an engine drops you, and keep feeding you the next content drafts to publish. Growth ($99/mo, or $831/yr founder pricing) covers weekly monitoring for one brand; Agency ($249/mo, or $2,091/yr founder pricing) adds more brands and competitor tracking. Knock out your three fixes first — then keep the gains compounding instead of going stale.",
+    body: "The Get-Cited Kit shows you where you stand today. It gives you three fixes and three drafts to act on. But AI answers change constantly. New competitors get cited, engines re-index, and your fixes start — or stop — working. A one-time audit can't tell you whether you're gaining or losing ground. That's what the subscription Plans do. They re-run your probes on a schedule. They track your Ozvor AI Visibility Score over time. They alert you when a competitor displaces you, or an engine drops you. And they keep feeding you the next content drafts to publish. Growth ($99/mo, or $831/yr founder pricing) covers weekly monitoring for one brand. Agency ($249/mo, or $2,091/yr founder pricing) adds more brands and competitor tracking. Knock out your three fixes first. Then keep the gains compounding instead of going stale.",
     buttonLabel: "See Growth & Agency plans",
   },
 };

@@ -45,7 +45,7 @@ const PLANS: Plan[] = [
     annualPerMonth: "",
     sub: "See where you stand — no card.",
     features: ["1 brand", "10-prompt snapshot audit", "1 competitor", "All 5 AI engines", "Instant Ozvor AI Visibility Score"],
-    cta: "Run the free test",
+    cta: "Run my test — free",
     paid: false,
     accent: "muted",
   },
@@ -210,7 +210,7 @@ export function PricingPlans() {
                 <Link
                   href="/test"
                   className="pr-cta pr-cta-ghost"
-                  aria-label="Run the free test — Free plan"
+                  aria-label="Run my test — Free plan"
                 >
                   {pl.cta}
                 </Link>
