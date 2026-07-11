@@ -101,7 +101,7 @@ export function SiteFooter() {
                 color: "var(--color-text)",
               }}
             >
-              Know if AI trusts you.{" "}
+              Know if AI trusts your brand.{" "}
               <span style={{ color: "var(--color-primary)" }}>Then fix it.</span>
             </p>
             <p
