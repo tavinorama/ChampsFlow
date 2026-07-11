@@ -36,7 +36,9 @@ interface PublicPage {
   slug: string;
   title: string;
   sections: unknown;
-  seo: { title?: string; description?: string } | null;
+  // json_ld is folded in by the generator (LocalBusiness + AggregateRating +
+  // Review / FAQPage) — the RICH, real-facts schema for GEO/AI-search + SEO.
+  seo: { title?: string; description?: string; json_ld?: unknown[] } | null;
 }
 
 interface PublicLandingResponse {
@@ -111,8 +113,16 @@ export default async function PublicLandingSiteHomePage({
 
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const name = businessName(data.site);
-  const localBusinessJsonLd = buildLocalBusinessJsonLd(siteSlug, data.site.business);
-  const faqJsonLd = buildFaqJsonLd(data.page.sections);
+  // Prefer the generator's stored rich schema (has AggregateRating + Review
+  // from real Google reviews); fall back to the client-built schema when a
+  // page predates the rich generator.
+  const storedJsonLd = Array.isArray(data.page.seo?.json_ld)
+    ? (data.page.seo!.json_ld as unknown[]).filter(
+        (n): n is Record<string, unknown> => !!n && typeof n === "object"
+      )
+    : [];
+  const localBusinessJsonLd = storedJsonLd.length > 0 ? null : buildLocalBusinessJsonLd(siteSlug, data.site.business);
+  const faqJsonLd = storedJsonLd.length > 0 ? null : buildFaqJsonLd(data.page.sections);
 
   return (
     <PublicLandingChrome
@@ -122,6 +132,14 @@ export default async function PublicLandingSiteHomePage({
       activeSlug=""
       accentColor={accentColor(data.site.theme)}
     >
+      {storedJsonLd.map((node, i) => (
+        <script
+          key={`ld-${i}`}
+          nonce={nonce}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(node) }}
+        />
+      ))}
       {localBusinessJsonLd && (
         <script
           nonce={nonce}

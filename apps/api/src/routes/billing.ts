@@ -49,6 +49,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole, requireNotProcessingRestricted } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import {
   createCheckoutSession,
   createBillingPortalSession,
@@ -145,7 +146,7 @@ async function writeBillingAuditLog(
       [
         params.tenantId,
         params.eventType,
-        JSON.stringify({
+        jsonbParam({
           plan_tier: params.planTier,
           status: params.status ?? null,
           // stripe_event_id included for traceability (not PII, not a secret)
@@ -1245,20 +1246,47 @@ async function handleCheckoutSessionCompleted(
   });
 }
 
+// Resolve the tenant for a subscription webhook. Prefer the tenant_id stamped
+// into subscription metadata (the subscribe-FIRST flow sets it), but FALL BACK
+// to the durable stripe_subscription_id → billing_subscriptions lookup.
+//
+// The checkout-FIRST flow (marketing-CTA purchases via createDirectCheckoutSession)
+// never stamps tenant_id into subscription metadata, so without this fallback
+// `customer.subscription.updated/deleted` were permanent no-ops for that cohort:
+// a customer who cancelled in the Stripe portal stayed `active` / paid FOREVER
+// (access without payment). The lookup keys on the immutable, non-user-facing
+// stripe_subscription_id — the exact pattern handleInvoicePaymentFailed uses.
+async function resolveSubscriptionTenantId(
+  db: PostgresClient,
+  subscription: Stripe.Subscription
+): Promise<string | null> {
+  const fromMetadata = subscription.metadata?.tenant_id;
+  if (fromMetadata) return fromMetadata;
+
+  const { rows } = await db.query<{ tenant_id: string }>(
+    `SELECT tenant_id FROM billing_subscriptions
+     WHERE stripe_subscription_id = $1
+     LIMIT 1`,
+    [subscription.id]
+  );
+  return rows[0]?.tenant_id ?? null;
+}
+
 // customer.subscription.updated — plan change, renewal, cancellation scheduled
 async function handleSubscriptionUpdated(
   db: PostgresClient,
   subscription: Stripe.Subscription,
   eventId: string
 ): Promise<void> {
-  // Resolve tenant_id from subscription metadata (attached during checkout)
-  const tenantId = subscription.metadata?.tenant_id;
+  // Metadata first, then durable stripe_subscription_id lookup (checkout-first
+  // subscriptions carry no tenant_id in metadata — see resolveSubscriptionTenantId).
+  const tenantId = await resolveSubscriptionTenantId(db, subscription);
 
   if (!tenantId) {
-    logger.warn("stripe_subscription_updated_no_tenant_metadata", {
+    logger.warn("stripe_subscription_updated_tenant_unresolved", {
       event_id: eventId,
     });
-    // Cannot update without tenant context — do not retry indefinitely
+    // Genuinely unknown subscription (not yet persisted) — do not retry forever.
     return;
   }
 
@@ -1328,10 +1356,13 @@ async function handleSubscriptionDeleted(
   subscription: Stripe.Subscription,
   eventId: string
 ): Promise<void> {
-  const tenantId = subscription.metadata?.tenant_id;
+  // Metadata first, then durable stripe_subscription_id lookup — otherwise a
+  // checkout-first customer's cancellation never downgrades them (access
+  // without payment). See resolveSubscriptionTenantId.
+  const tenantId = await resolveSubscriptionTenantId(db, subscription);
 
   if (!tenantId) {
-    logger.warn("stripe_subscription_deleted_no_tenant_metadata", {
+    logger.warn("stripe_subscription_deleted_tenant_unresolved", {
       event_id: eventId,
     });
     return;

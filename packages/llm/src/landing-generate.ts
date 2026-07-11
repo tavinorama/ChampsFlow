@@ -40,12 +40,38 @@ export interface LandingBusinessInput {
   website?: string;
   serviceAreas?: string[];
   hours?: string | Record<string, string>;
+  /** Google Maps rich facts (from resolvePlaceById rich fetch). All optional —
+   *  absent for hand-entered businesses; present enables ratings/gallery/GEO. */
+  description?: string;
+  rating?: number;
+  reviewCount?: number;
+  priceLevel?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface LandingTestimonialInput {
   author: string;
   body: string;
   rating?: number;
+}
+
+/** A verbatim Google review — shown WITH `author` + a "Google" source label
+ *  (Places ToS attribution; founder-approved 2026-07-11). Distinct from the
+ *  owner-entered testimonials above. */
+export interface LandingReviewInput {
+  author: string;
+  body: string;
+  rating?: number;
+  relativeTime?: string;
+}
+
+/** A Google photo reference — `src` is our own proxy URL (bytes never stored),
+ *  `attribution` is shown per Places ToS. */
+export interface LandingPhotoInput {
+  src: string;
+  alt: string;
+  attribution?: string;
 }
 
 export interface LandingFaqInput {
@@ -64,9 +90,18 @@ export interface LandingGenerateInput {
   reviewThemes?: string[];
   /** Caller MUST already have filtered these to authorized=true. */
   testimonials?: LandingTestimonialInput[];
+  /** Verbatim Google reviews (attributed). Preferred over testimonials for the
+   *  proof section when present. Caller passes these straight from the Places
+   *  rich fetch — never fabricated. */
+  googleReviews?: LandingReviewInput[];
+  /** Google Maps photos (proxy URLs + attribution) → gallery + hero image. */
+  photos?: LandingPhotoInput[];
   crawlSummary?: LandingCrawlSummary;
   /** Open plan_task gap/action text for the linked brand — our own DB, not user input. */
   auditGaps?: string[];
+  /** Client brand colour (hex). Drives the light + brand-derived theme; absent
+   *  → the soft pastel default. */
+  brandColor?: string;
   locale?: string;
 }
 
@@ -90,6 +125,7 @@ export type LandingSectionType =
   | "areas"
   | "hours"
   | "trust"
+  | "gallery"
   | "text";
 
 export interface LandingSection {
@@ -110,11 +146,26 @@ export interface LandingBundlePage {
   title: string;
   seo: LandingPageSeo;
   sections: LandingSection[];
+  /** GEO/SEO structured data (schema.org) for this page — injected as a
+   *  <script type="application/ld+json"> by the public renderer. Present only
+   *  when there are real facts to describe. */
+  jsonLd?: Record<string, unknown>[];
+}
+
+/** Light-first palette. Only `primary` is chosen (the client's brand colour or
+ *  the pastel default); everything else derives from it at render time via
+ *  color-mix, exactly like the approved template mockup. */
+export interface LandingTheme {
+  base: "light";
+  primary: string;
+  /** true when `primary` is the fallback (no brand colour was supplied). */
+  isDefault: boolean;
 }
 
 export interface LandingBundle {
   mode: "mock" | "llm";
   pages: LandingBundlePage[];
+  theme: LandingTheme;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +341,101 @@ function genericFaqs(business: LandingBusinessInput): LandingFaqInput[] {
 }
 
 // ---------------------------------------------------------------------------
+// Theme — light-first, brand-derived (matches the approved template mockup).
+// ---------------------------------------------------------------------------
+
+/** Soft pastel neutral used when a business has no brand colour on file. */
+export const LANDING_DEFAULT_BRAND = "#9aa7b0";
+
+function normalizeHexColor(input?: string): string | null {
+  if (!input) return null;
+  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(input.trim());
+  if (!m) return null;
+  let hex = m[1] as string;
+  if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+  return `#${hex.toLowerCase()}`;
+}
+
+/** Only `primary` is chosen (client brand colour or the pastel default); the
+ *  renderer derives every other token from it via color-mix on a light base. */
+export function deriveLandingTheme(brandColor?: string): LandingTheme {
+  const primary = normalizeHexColor(brandColor);
+  return primary
+    ? { base: "light", primary, isDefault: false }
+    : { base: "light", primary: LANDING_DEFAULT_BRAND, isDefault: true };
+}
+
+// ---------------------------------------------------------------------------
+// GEO / SEO — schema.org JSON-LD from REAL facts only (no fabrication). This is
+// the structured data AI search + Google rich results read; it is exactly what
+// Ozvor's own audit rewards, so a generated site scores well by construction.
+// ---------------------------------------------------------------------------
+
+function priceLevelToRange(priceLevel: string): string | null {
+  switch (priceLevel) {
+    case "PRICE_LEVEL_FREE": return "Free";
+    case "PRICE_LEVEL_INEXPENSIVE": return "$";
+    case "PRICE_LEVEL_MODERATE": return "$$";
+    case "PRICE_LEVEL_EXPENSIVE": return "$$$";
+    case "PRICE_LEVEL_VERY_EXPENSIVE": return "$$$$";
+    default: return null;
+  }
+}
+
+export function buildLocalBusinessJsonLd(input: LandingGenerateInput): Record<string, unknown> {
+  const b = input.business;
+  const node: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: b.name,
+  };
+  if (b.description) node["description"] = b.description;
+  if (b.website) node["url"] = b.website;
+  if (b.phone) node["telephone"] = b.phone;
+  if (b.address) node["address"] = { "@type": "PostalAddress", streetAddress: b.address };
+  if (b.lat != null && b.lng != null) {
+    node["geo"] = { "@type": "GeoCoordinates", latitude: b.lat, longitude: b.lng };
+  }
+  const range = b.priceLevel ? priceLevelToRange(b.priceLevel) : null;
+  if (range) node["priceRange"] = range;
+  const hours = formatHours(b.hours);
+  if (hours) node["openingHours"] = hours;
+  if (typeof b.rating === "number" && typeof b.reviewCount === "number" && b.reviewCount > 0) {
+    node["aggregateRating"] = {
+      "@type": "AggregateRating",
+      ratingValue: b.rating,
+      reviewCount: b.reviewCount,
+    };
+  }
+  const reviews = (input.googleReviews ?? []).filter((r) => r.author && r.body).slice(0, 5);
+  if (reviews.length > 0) {
+    node["review"] = reviews.map((r) => ({
+      "@type": "Review",
+      author: { "@type": "Person", name: r.author },
+      ...(typeof r.rating === "number" ? { reviewRating: { "@type": "Rating", ratingValue: r.rating } } : {}),
+      reviewBody: r.body,
+    }));
+  }
+  return node;
+}
+
+/** FAQPage schema — only from FAQs with a REAL answer (placeholder answers are
+ *  excluded so we never emit "[PLACEHOLDER…]" into structured data). */
+export function buildFaqPageJsonLd(faqs: LandingFaqInput[]): Record<string, unknown> | null {
+  const real = faqs.filter((f) => f.a && !f.a.includes("[PLACEHOLDER"));
+  if (real.length === 0) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: real.map((f) => ({
+      "@type": "Question",
+      name: f.q,
+      acceptedAnswer: { "@type": "Answer", text: f.a },
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Section factories
 // ---------------------------------------------------------------------------
 
@@ -303,13 +449,38 @@ function seoFor(title: string, description: string): LandingPageSeo {
   return { title: title.slice(0, 70), description: description.slice(0, 160) };
 }
 
-function heroSection(business: LandingBusinessInput, headline: string, subheadline: string): LandingSection {
+function heroSection(
+  business: LandingBusinessInput,
+  headline: string,
+  subheadline: string,
+  heroImage?: LandingPhotoInput
+): LandingSection {
   return {
     type: "hero",
     headline,
     subheadline,
     business_name: business.name,
     cta_label: "Get a Quote",
+    // Rich fields only when Google Maps supplied them → existing hand-entered
+    // businesses render byte-identically (no rating/image keys).
+    ...(typeof business.rating === "number" ? { rating: business.rating } : {}),
+    ...(typeof business.reviewCount === "number" ? { review_count: business.reviewCount } : {}),
+    ...(heroImage
+      ? { image: heroImage.src, image_alt: heroImage.alt, image_attribution: heroImage.attribution ?? null }
+      : {}),
+  };
+}
+
+function gallerySection(photos: LandingPhotoInput[]): LandingSection {
+  return {
+    type: "gallery",
+    heading: "Photos",
+    source: "Google",
+    items: photos.slice(0, 12).map((p) => ({
+      src: p.src,
+      alt: p.alt,
+      attribution: p.attribution ?? null,
+    })),
   };
 }
 
@@ -324,6 +495,9 @@ function mapNapSection(business: LandingBusinessInput): LandingSection {
     address: business.address ?? null,
     phone: business.phone ?? null,
     website: business.website ?? null,
+    ...(typeof business.rating === "number" ? { rating: business.rating } : {}),
+    ...(typeof business.reviewCount === "number" ? { review_count: business.reviewCount } : {}),
+    ...(business.lat != null && business.lng != null ? { lat: business.lat, lng: business.lng } : {}),
   };
 }
 
@@ -356,7 +530,26 @@ function trustSection(reviewThemes: string[], testimonialCount: number): Landing
   };
 }
 
-function proofSection(testimonials: LandingTestimonialInput[]): LandingSection {
+function proofSection(
+  testimonials: LandingTestimonialInput[],
+  googleReviews?: LandingReviewInput[]
+): LandingSection {
+  // Prefer verbatim Google reviews (attributed) when present — founder-approved.
+  const gr = (googleReviews ?? []).filter((r) => r.author && r.body);
+  if (gr.length > 0) {
+    return {
+      type: "proof",
+      heading: "What people say",
+      source: "Google",
+      items: gr.slice(0, 6).map((r) => ({
+        author: r.author,
+        body: r.body,
+        rating: r.rating ?? null,
+        relative_time: r.relativeTime ?? null,
+        source: "Google",
+      })),
+    };
+  }
   if (testimonials.length === 0) {
     return { type: "proof", heading: "Customer Reviews", empty: true, note: "Reviews coming soon.", items: [] };
   }
@@ -391,10 +584,17 @@ function navLinksSection(links: NavLink[]): LandingSection {
 function buildMockBundle(input: LandingGenerateInput): LandingBundlePage[] {
   const business = input.business;
   const testimonials = (input.testimonials ?? []).slice(0, 20);
+  const googleReviews = (input.googleReviews ?? []).filter((r) => r.author && r.body);
+  const photos = (input.photos ?? []).filter((p) => p.src);
+  const heroImage = photos[0];
+  // Themes come from the richer source: Google reviews if we have them, else
+  // the owner's authorized testimonials (both expose a `.body`).
   const reviewThemes =
     input.reviewThemes && input.reviewThemes.length > 0
       ? input.reviewThemes
-      : deriveReviewThemes(testimonials);
+      : deriveReviewThemes(
+          (googleReviews.length > 0 ? googleReviews : testimonials) as LandingTestimonialInput[]
+        );
   const area = primaryArea(business);
   const areas = allServiceAreas(business);
   const [svc1, svc2] = topServices(business, input.crawlSummary);
@@ -448,15 +648,19 @@ function buildMockBundle(input: LandingGenerateInput): LandingBundlePage[] {
       heroSection(
         business,
         business.name,
-        business.category ? `${business.category} serving ${areas.join(", ")}` : `Serving ${areas.join(", ")}`
+        business.category ? `${business.category} serving ${areas.join(", ")}` : `Serving ${areas.join(", ")}`,
+        heroImage
       ),
+      ...(photos.length > 0 ? [gallerySection(photos)] : []),
       servicesSection(allServicesList),
       ...(hoursSection(business) ? [hoursSection(business) as LandingSection] : []),
       mapNapSection(business),
-      trustSection(reviewThemes, testimonials.length),
+      trustSection(reviewThemes, googleReviews.length || testimonials.length),
+      ...(googleReviews.length > 0 ? [proofSection(testimonials, googleReviews)] : []),
       ctaSection(business),
       navLinksSection(linksExcept(homeSlug)),
     ],
+    jsonLd: [buildLocalBusinessJsonLd(input)],
   });
 
   // 2 & 3. SERVICE_CITY
@@ -481,12 +685,14 @@ function buildMockBundle(input: LandingGenerateInput): LandingBundlePage[] {
   }
 
   // 4. FAQ
+  const faqJsonLd = buildFaqPageJsonLd(faqs);
   pages.push({
     page_type: "faq",
     slug: faqSlug,
     title: `FAQ — ${business.name}`,
     seo: seoFor(`Frequently Asked Questions | ${business.name}`, `Answers to common questions about ${business.name}.`),
     sections: [faqSection(faqs), ctaSection(business), navLinksSection(linksExcept(faqSlug))],
+    ...(faqJsonLd ? { jsonLd: [faqJsonLd] } : {}),
   });
 
   // 5. PROOF
@@ -496,11 +702,12 @@ function buildMockBundle(input: LandingGenerateInput): LandingBundlePage[] {
     title: `Reviews — ${business.name}`,
     seo: seoFor(`Customer Reviews | ${business.name}`, `What customers say about ${business.name}.`),
     sections: [
-      proofSection(testimonials),
-      trustSection(reviewThemes, testimonials.length),
+      proofSection(testimonials, googleReviews),
+      trustSection(reviewThemes, googleReviews.length || testimonials.length),
       ctaSection(business),
       navLinksSection(linksExcept(proofSlug)),
     ],
+    jsonLd: [buildLocalBusinessJsonLd(input)],
   });
 
   return pages;
@@ -528,7 +735,10 @@ async function callProviderText(
         signal: controller.signal,
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
-          model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-4-6",
+          // Haiku by default — 4× cheaper and plenty for fact-grounded page
+          // composition (founder decision 2026-07-11); ANTHROPIC_MODEL overrides
+          // per premium site.
+          model: process.env["ANTHROPIC_MODEL"] ?? "claude-haiku-4-5-20251001",
           max_tokens: maxTokens,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
@@ -673,16 +883,17 @@ export async function buildLandingBundle(
   input: LandingGenerateInput,
   opts?: LandingGenerateOptions
 ): Promise<LandingBundle> {
+  const theme = deriveLandingTheme(input.brandColor);
   const skeleton = buildMockBundle(input);
   const wantsLlm = opts?.mode === "llm" && Boolean(opts.apiKey);
   if (!wantsLlm) {
-    return { mode: "mock", pages: skeleton };
+    return { mode: "mock", pages: skeleton, theme };
   }
   try {
     const enriched = await enrichWithLlm(skeleton, input, opts!.apiKey as string, opts!.provider ?? "anthropic");
-    return enriched ? { mode: "llm", pages: enriched } : { mode: "mock", pages: skeleton };
+    return enriched ? { mode: "llm", pages: enriched, theme } : { mode: "mock", pages: skeleton, theme };
   } catch {
-    return { mode: "mock", pages: skeleton };
+    return { mode: "mock", pages: skeleton, theme };
   }
 }
 

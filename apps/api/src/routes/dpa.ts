@@ -43,6 +43,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 // ---------------------------------------------------------------------------
 // EU country codes (EU-27 + EEA: Norway, Iceland, Liechtenstein + CH + UK)
@@ -307,7 +308,7 @@ export function registerDpaRoutes(app: Hono, db: PostgresClient): void {
         auth.tenantId,
         auth.userId,
         "dpa_acknowledged",
-        JSON.stringify({
+        jsonbParam({
           dpa_version,
           variant,
           country_code: country_code ?? null,

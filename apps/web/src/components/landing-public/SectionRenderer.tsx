@@ -116,6 +116,38 @@ function Hero({ model, theme }: { model: Extract<SectionRenderModel, { kind: "he
       >
         {model.ctaLabel}
       </a>
+      {model.rating != null && (
+        <p style={{ marginTop: "1.1rem", color: theme.muted, fontSize: "0.95rem" }}>
+          <span aria-hidden="true" style={{ color: "#e0a325", letterSpacing: "1px" }}>
+            {"★".repeat(Math.max(0, Math.min(5, Math.round(model.rating))))}
+          </span>{" "}
+          <strong style={{ color: theme.text }}>{model.rating}</strong>
+          {model.reviewCount != null && ` · ${model.reviewCount} reviews on Google`}
+        </p>
+      )}
+      {model.image && (
+        <figure style={{ margin: "2rem auto 0", maxWidth: "900px" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- proxied Google photo, dynamic host */}
+          <img
+            src={model.image}
+            alt={model.imageAlt || model.businessName}
+            loading="eager"
+            style={{
+              width: "100%",
+              height: "auto",
+              borderRadius: "16px",
+              objectFit: "cover",
+              border: `1px solid ${theme.border}`,
+              display: "block",
+            }}
+          />
+          {model.imageAttribution && (
+            <figcaption style={{ fontSize: "0.7rem", color: theme.muted, marginTop: "0.4rem" }}>
+              Photo: {model.imageAttribution} &middot; Google
+            </figcaption>
+          )}
+        </figure>
+      )}
     </header>
   );
 }
@@ -295,10 +327,16 @@ function Proof({ model, theme }: { model: Extract<SectionRenderModel, { kind: "p
                 color: theme.text,
               }}
             >
+              {item.rating != null && (
+                <p aria-label={`${item.rating} out of 5`} style={{ margin: "0 0 0.35rem 0", color: "#e0a325", letterSpacing: "1px" }}>
+                  {"★".repeat(Math.max(0, Math.min(5, Math.round(item.rating))))}
+                </p>
+              )}
               <p style={{ margin: "0 0 0.5rem 0", lineHeight: 1.6 }}>&ldquo;{item.body}&rdquo;</p>
               <footer style={{ fontSize: "0.85rem", color: theme.muted }}>
                 &mdash; {item.author}
-                {item.rating != null && ` · ${item.rating}/5`}
+                {item.relativeTime && ` · ${item.relativeTime}`}
+                {item.source && ` · ${item.source}`}
               </footer>
             </blockquote>
           ))}
@@ -428,6 +466,49 @@ function TextBlock({ model, theme }: { model: Extract<SectionRenderModel, { kind
 // Public component
 // ---------------------------------------------------------------------------
 
+function Gallery({ model, theme }: { model: Extract<SectionRenderModel, { kind: "gallery" }>; theme: Required<LandingTheme> }) {
+  if (model.items.length === 0) return null;
+  return (
+    <section aria-labelledby="section-gallery" style={sectionStyle}>
+      <h2 id="section-gallery" style={headingStyle(theme.text)}>
+        {model.heading}
+      </h2>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+          gap: "0.75rem",
+        }}
+      >
+        {model.items.map((p, i) => (
+          <figure key={i} style={{ margin: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- proxied Google photo, dynamic host */}
+            <img
+              src={p.src}
+              alt={p.alt}
+              loading="lazy"
+              style={{
+                width: "100%",
+                aspectRatio: "4 / 3",
+                objectFit: "cover",
+                borderRadius: "12px",
+                border: `1px solid ${theme.border}`,
+                display: "block",
+              }}
+            />
+            {p.attribution && (
+              <figcaption style={{ fontSize: "0.65rem", color: theme.muted, marginTop: "0.2rem" }}>
+                {p.attribution}
+              </figcaption>
+            )}
+          </figure>
+        ))}
+      </div>
+      <p style={{ fontSize: "0.7rem", color: theme.muted, marginTop: "0.6rem" }}>Photos from Google</p>
+    </section>
+  );
+}
+
 export interface SectionRendererProps {
   sections: unknown;
   siteSlug: string;
@@ -447,6 +528,8 @@ export function SectionRenderer({ sections, siteSlug, theme, placeId }: SectionR
         switch (model.kind) {
           case "hero":
             return <Hero key={i} model={model} theme={resolvedTheme} />;
+          case "gallery":
+            return <Gallery key={i} model={model} theme={resolvedTheme} />;
           case "services":
             return <Services key={i} model={model} theme={resolvedTheme} />;
           case "map_nap":

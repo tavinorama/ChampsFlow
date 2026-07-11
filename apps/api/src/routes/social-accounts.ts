@@ -68,6 +68,7 @@ import {
   type FacebookPage,
 } from "../integrations/facebook";
 import { decryptToken, scrubTokens } from "../../../../packages/shared/src/crypto";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { logger } from "../../../../packages/shared/src/logger";
 import type { SocialAccountPublic } from "../../../../packages/shared/src/index";
 
@@ -152,7 +153,7 @@ async function writeAuditLog(
     `INSERT INTO audit_log
        (event_type, actor_user_id, tenant_id, target_entity, target_id, metadata, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-    [event, actorUserId, tenantId, "social_accounts", targetId, JSON.stringify(metadata)]
+    [event, actorUserId, tenantId, "social_accounts", targetId, jsonbParam(metadata)]
   );
 }
 

@@ -48,6 +48,7 @@ import { requireSuperAdmin } from "../auth/middleware";
 import { truncateIp } from "./dpa";
 import type { PostgresClient, TxClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { sendResendEmail } from "../../../../packages/shared/src/emails/resend-send";
 
 // ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ async function writeAuditLog(
       params.tenant_id ?? null,
       params.target_entity ?? "dsr_requests",
       params.target_id ?? null,
-      params.metadata ? JSON.stringify(params.metadata) : null,
+      params.metadata ? jsonbParam(params.metadata) : null,
       params.ip_truncated ? params.ip_truncated : null,
     ]
   );

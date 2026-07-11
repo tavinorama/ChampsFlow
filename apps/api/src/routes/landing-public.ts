@@ -46,6 +46,12 @@ import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { sendLandingLeadNotificationEmail } from "../../../../packages/shared/src/emails/landing-lead-notification";
+import {
+  fetchPlacePhoto,
+  isValidPhotoName,
+  googlePlacesConfigured,
+  PlacesError,
+} from "../lib/google-places";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -135,6 +141,12 @@ const READ_RATE_WINDOW_S = 600;
 const LEAD_RATE_LIMIT = 8;
 const LEAD_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const LEAD_RATE_WINDOW_S = 3600;
+
+// Photos are cost-bearing (Google Places Photo SKU) but a single page renders
+// many; a generous per-IP window + strong HTTP caching keeps spend bounded.
+const PHOTO_RATE_LIMIT = 300;
+const PHOTO_RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const PHOTO_RATE_WINDOW_S = 600;
 
 const EVENT_RATE_LIMIT = 60;
 const EVENT_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -333,6 +345,43 @@ async function writeLandingAdminAuditLog(
 // ---------------------------------------------------------------------------
 
 export function registerLandingPublicRoutes(app: Hono, db: PostgresClient): void {
+  // -------------------------------------------------------------------------
+  // GET /api/public/landing-photo?ref=places/<id>/photos/<id>
+  // Streams a Google Places photo server-side (API key never leaves the server;
+  // bytes are never persisted — ToS). Strong caching keeps the Photo-SKU spend
+  // bounded. Registered FIRST so the static path wins over /landing/:siteSlug.
+  // -------------------------------------------------------------------------
+  app.get("/api/public/landing-photo", async (c) => {
+    const ref = c.req.query("ref") ?? "";
+    if (!isValidPhotoName(ref)) {
+      return c.json({ message: "Invalid photo reference." }, 400);
+    }
+    const allowed = await checkSlidingWindowRateLimit(
+      `landing_photo_rl:${ipTruncOrUnknown(c)}`,
+      PHOTO_RATE_LIMIT,
+      PHOTO_RATE_WINDOW_MS,
+      PHOTO_RATE_WINDOW_S
+    ).catch(() => true);
+    if (!allowed) {
+      c.header("Retry-After", "60");
+      return c.json({ message: "Too many requests. Please try again later." }, 429);
+    }
+    if (!googlePlacesConfigured()) {
+      return c.json({ message: "Photos are unavailable right now." }, 503);
+    }
+    try {
+      const res = await fetchPlacePhoto(ref);
+      const buf = await res.arrayBuffer();
+      c.header("Content-Type", res.headers.get("content-type") ?? "image/jpeg");
+      // 1 day in the browser, 30 days at a CDN edge (ToS-allowed cache window).
+      c.header("Cache-Control", "public, max-age=86400, s-maxage=2592000");
+      return c.body(buf);
+    } catch (err) {
+      const notFound = err instanceof PlacesError && err.code === "not_found";
+      return c.json({ message: "Photo unavailable." }, notFound ? 404 : 502);
+    }
+  });
+
   // -------------------------------------------------------------------------
   // GET /api/public/landing/:siteSlug — site + nav + home page ('' slug)
   // -------------------------------------------------------------------------

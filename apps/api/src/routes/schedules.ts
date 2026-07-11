@@ -40,6 +40,7 @@ import { requireAuth, requireRole, requireNotProcessingRestricted } from "../aut
 import { requireDpaAcknowledged } from "./dpa";
 import { requireNotRestricted } from "./billing";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import type { PostgresClient } from "./social-accounts";
 
 // ---------------------------------------------------------------------------
@@ -457,7 +458,7 @@ export function registerScheduleRoutes(app: Hono, db: PostgresClient): void {
         [
           auth.tenantId,
           auth.userId,
-          JSON.stringify({
+          jsonbParam({
             draft_id: draftId,
             scheduled_at: scheduledAtDate.toISOString(),
             platform_account_ids,
@@ -740,7 +741,7 @@ export function registerScheduleRoutes(app: Hono, db: PostgresClient): void {
         [
           auth.tenantId,
           auth.userId,
-          JSON.stringify({
+          jsonbParam({
             publish_job_id: jobId,
             draft_id: job.draft_id,
           }),
