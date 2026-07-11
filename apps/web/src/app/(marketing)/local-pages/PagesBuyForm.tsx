@@ -72,7 +72,7 @@ export function PagesBuyForm() {
         </h2>
         <p style={{ margin: "0 0 var(--space-4) 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6 }}>
           Standalone $99 checkout for Ozvor Pages is being finalized. In the meantime, the site builder is included
-          free with the Growth plan &mdash; sign up and it unlocks immediately.
+          free with the Growth plan. Sign up and it unlocks immediately.
         </p>
         <Link href="/pricing" style={linkBtnStyle} aria-label="See the Growth plan — Ozvor Pages included">
           See the Growth plan &rarr;

@@ -59,12 +59,12 @@ const STEPS: { num: string; title: string; body: string }[] = [
   {
     num: "01",
     title: "Tell us about your business",
-    body: "Name, category, address, phone, service areas, hours, and (optionally) your existing site — the same facts your audit already uses.",
+    body: "Name, category, address, phone, service areas, and hours. Add your existing site if you have one — the same facts your audit already uses.",
   },
   {
     num: "02",
     title: "We generate 5 interlinked pages",
-    body: "Home, 2 service/city pages, an FAQ page, and a proof page — each cross-linked, with LocalBusiness and FAQ schema.org markup built in.",
+    body: "Home, 2 service/city pages, an FAQ page, and a proof page. Every page is cross-linked, with LocalBusiness and FAQ schema.org markup built in.",
   },
   {
     num: "03",
@@ -74,19 +74,19 @@ const STEPS: { num: string; title: string; body: string }[] = [
 ];
 
 const INCLUDED: { title: string; body: string }[] = [
-  { title: "5 interlinked pages", body: "Home, service/city pages, FAQ, and proof — cross-linked so AI crawlers and visitors can navigate the whole site." },
-  { title: "LocalBusiness + FAQ schema", body: "Structured data on every page, built for AI and search citation, not just human readers." },
-  { title: "Lead capture with email alerts", body: "A contact form on your site with consent capture; every submission notifies you and lands in your dashboard." },
+  { title: "5 interlinked pages", body: "Home, service/city pages, FAQ, and proof — all cross-linked. AI crawlers and visitors can navigate the whole site." },
+  { title: "LocalBusiness + FAQ schema", body: "Structured data on every page. Built for AI and search citation — not just human readers." },
+  { title: "Lead capture with email alerts", body: "A contact form on your site, with consent capture. Every submission notifies you and lands in your dashboard." },
   { title: "Version history", body: "Every edit is snapshotted. Restore any previous version of a page in one click." },
   { title: "Hosted on ozvor.com", body: "Live instantly at ozvor.com/l/your-business. Custom domain support is coming soon — not available yet." },
-  { title: "AI-readiness score per page", body: "Each page gets a score so you know exactly where it's weak before you publish." },
-  { title: "Audit-fix loop (subscribers)", body: "On Growth or Agency, your weekly audit's fixes regenerate straight into the site — one click, no rebuild from scratch." },
+  { title: "AI-readiness score per page", body: "Each page gets a score. You'll know exactly where it's weak before you publish." },
+  { title: "Audit-fix loop (subscribers)", body: "On Growth or Agency, your weekly audit's fixes regenerate straight into the site. One click, no rebuild from scratch." },
 ];
 
 const FAQS: { q: string; a: string }[] = [
   {
     q: "Who owns the site?",
-    a: "You do. It's your business's content, hosted on ozvor.com. Code export isn't available yet — it's on the roadmap — but nothing about the site is locked to a subscription once you've paid the one-time $99 or it's included with your plan.",
+    a: "You do. It's your business's content, hosted on ozvor.com. Code export isn't available yet — it's on the roadmap. But nothing about the site is locked to a subscription. Pay the one-time $99, or get it included with your plan — either way, it's yours.",
   },
   {
     q: "Where is it hosted?",
@@ -94,11 +94,11 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What happens on the Free plan?",
-    a: "The Free plan doesn't include the site builder. Buying the $99 one-time unlocks the builder for exactly 1 site on your account, regardless of plan tier. Growth includes 1 site as part of the subscription; Agency includes up to 25.",
+    a: "The Free plan doesn't include the site builder. Buying the $99 one-time unlocks the builder for 1 site. This works regardless of your plan tier. Growth includes 1 site as part of the subscription. Agency includes up to 25.",
   },
   {
     q: "How do regenerations work?",
-    a: "Regenerating a site (rebuilding it after edits to your business info, or pulling in fresh audit fixes) draws from a quota. The $99 one-time purchase includes 2 lifetime regenerations. Growth and Agency subscribers get 5 regenerations per site, per month, resetting on the 1st (UTC). The very first generation of a new site is always free and never counted against either quota.",
+    a: "Regenerating a site means rebuilding it. This happens after edits to your business info, or when fresh audit fixes come in. Each regeneration draws from a quota. The $99 one-time purchase includes 2 lifetime regenerations. Growth and Agency subscribers get 5 regenerations per site, per month. It resets on the 1st (UTC). The first generation of a new site is always free. It's never counted against either quota.",
   },
 ];
 
@@ -137,8 +137,8 @@ export default function LocalPagesSalesPage() {
           A 5-page website AI can actually cite.
         </h1>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: 0 }}>
-          Built from your real business data &mdash; your info, your existing site, your reviews &mdash; then interlinked and
-          schema-rich. Live on ozvor.com with a lead-capture form from day one.
+          We build it from your real business data &mdash; your info, your site, your reviews. Then we interlink
+          every page and make it schema-rich. Live on ozvor.com with a lead-capture form from day one.
         </p>
         <div className="lp-cta-row" style={{ marginTop: "var(--space-6)" }}>
           <Link

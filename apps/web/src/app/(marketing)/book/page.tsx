@@ -43,7 +43,7 @@ const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "";
 export const metadata: Metadata = {
   title: "Book a GEO Strategy Call — Ozvor",
   description:
-    "Book a 20-minute GEO strategy call with the Ozvor team. We'll review your AI search visibility gaps and walk you through a personalised action plan.",
+    "Book a 20-minute GEO strategy call with the Ozvor team. We'll review your AI search visibility gaps. Then we'll walk you through a personalised action plan.",
   alternates: {
     canonical: "https://ozvor.com/book",
   },
@@ -87,10 +87,10 @@ const bookPageJsonLd = {
 // ---------------------------------------------------------------------------
 
 const VALUE_POINTS = [
-  "We review your brand's current AI search visibility — what AI says about you today.",
+  "We review your brand's current AI search visibility. That's what AI says about you today.",
   "We identify the highest-impact GEO gaps specific to your category and location.",
-  "You leave with a prioritised action plan you can start executing immediately.",
-  "No pitch. If Ozvor is a good fit, we'll tell you — if not, we'll say so too.",
+  "You leave with a clear action plan, ranked by impact. You can start today.",
+  "No pitch. If Ozvor is a good fit, we'll tell you. If not, we'll say that too.",
 ];
 
 // ---------------------------------------------------------------------------
@@ -153,10 +153,10 @@ export default function BookPage() {
               maxWidth: "58ch",
             }}
           >
-            In 20 minutes we&rsquo;ll walk through your brand&rsquo;s AI
-            search visibility, identify the gaps costing you citations, and
-            map out the three actions with the biggest impact on your
-            Ozvor AI Visibility Score.
+            In 20 minutes, we&rsquo;ll walk through your brand&rsquo;s AI
+            search visibility. We&rsquo;ll identify the gaps costing you citations.
+            Then we&rsquo;ll map the three actions with the biggest impact
+            on your Ozvor AI Visibility Score.
           </p>
 
           {/* Value bullets */}
@@ -218,9 +218,8 @@ export default function BookPage() {
                 }}
               >
                 free Ozvor AI Visibility Audit
-              </Link>{" "}
-              — it takes 60 seconds and gives us something concrete to discuss
-              on the call.
+              </Link>
+              . It takes 60 seconds and gives us something concrete to discuss.
             </p>
           </div>
         </div>
@@ -237,7 +236,7 @@ export default function BookPage() {
       <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "var(--space-8) var(--space-4) var(--space-12)" }}>
         <SoftCTA
           headline="Not ready to book? Start smaller."
-          subline="Run the free AI Visibility Test first — takes 60 seconds and shows your exact gap."
+          subline="Run the free AI Visibility Test first. Takes 60 seconds and shows your exact gap."
           primary={{ label: "Run the free test", href: "/test" }}
           secondary={{ label: "Or get the $29 Get-Cited Kit", href: "/kit" }}
         />
@@ -284,7 +283,7 @@ function FallbackSection() {
           }}
         >
           The booking calendar is not yet configured. In the meantime, run your
-          free Ozvor AI Visibility Audit to get your AI search visibility score
+          free Ozvor AI Visibility Audit. Get your AI search visibility score
           instantly.
         </p>
         <Link

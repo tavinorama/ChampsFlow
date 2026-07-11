@@ -127,7 +127,7 @@ export default function PricingPage() {
         heading="Need someone to run it for you?"
         primary={{
           title: "OrganicPosts",
-          why: "The self-serve plans give you the tools and intelligence. OrganicPosts is the done-with-you summit: a managed GEO project where our team runs discovery, content, cadence, and monitoring — you approve every draft before it goes live.",
+          why: "The self-serve plans give you the tools and intelligence. OrganicPosts is the done-with-you summit. Our team runs discovery, content, cadence, and monitoring for you. You approve every draft before it goes live.",
           price: "Starts with a call",
           href: "/organicposts",
           accent: "gold",

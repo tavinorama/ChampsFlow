@@ -202,8 +202,8 @@ export function WelcomePage() {
                 marginInline: "auto",
               }}
             >
-              Your subscription is active. Sign in with the email you used at checkout
-              to access your account.
+              Your subscription is active. Sign in with the email you used at checkout.
+              That gets you into your account.
             </p>
           </div>
 

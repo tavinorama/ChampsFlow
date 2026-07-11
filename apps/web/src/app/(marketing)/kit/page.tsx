@@ -62,10 +62,10 @@ export default function KitPage() {
       {/* Hero */}
       <span className="kit-eyebrow">Step 2 · $29 one-time</span>
       <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
-        Get your AI-visibility audit + 3 publish-ready fixes &mdash; $29.
+        The Get-Cited Kit &mdash; your audit + 3 fixes, $29.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: 0 }}>
-        The Get-Cited Kit: full audit + your Ozvor AI Visibility Score, your top-3 citation fixes, 3 ready-to-publish drafts, a plain-English GEO guide, and a 30-day re-test plan. No subscription. We guarantee the deliverable &mdash; if your 3 drafts aren&rsquo;t publish-ready in ~10 minutes, we refund the $29 &mdash; never AI outcomes.
+        The Kit gives you a full audit and your Ozvor AI Visibility Score. You get your top 3 citation fixes and 3 ready-to-publish drafts. Plus a plain-English GEO guide and a 30-day re-test plan. No subscription. We guarantee the deliverable, never AI outcomes. If your 3 drafts aren&rsquo;t publish-ready in about 10 minutes, we refund the $29.
       </p>
 
       {/* Three deliverable cards */}
@@ -135,7 +135,7 @@ export default function KitPage() {
         heading="Keep climbing — from snapshot to weekly momentum"
         primary={{
           title: "Growth Plan",
-          why: "Your Kit is a one-time snapshot. Growth re-runs your full audit weekly, alerts you when your score or citation share moves, and hands you fresh content briefs. The Kit was the first brick — Growth is the wall.",
+          why: "Your Kit is a one-time snapshot. Growth re-runs your full audit every week. It alerts you when your score or citation share moves, and hands you fresh content briefs. The Kit was the first brick — Growth is the wall.",
           price: "$99/mo",
           plan: "growth", interval: "year",
           accent: "emerald",

@@ -20,7 +20,7 @@ import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNo
 export const metadata: Metadata = {
   title: "Ozvor for agencies — white-label AI-visibility for every client",
   description:
-    "Run AI-search audits, evidence-backed GEO plans and white-label reports for up to 25 client brands — $249/mo, about $10 per brand. Win the GEO line item before your competitor agency does.",
+    "Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to 25 client brands. $249/mo, about $10 per brand. Win the GEO line item before your competitor agency does.",
   alternates: { canonical: "https://ozvor.com/agencies" },
   openGraph: {
     title: "Ozvor for agencies — white-label AI visibility",
@@ -33,12 +33,12 @@ export const metadata: Metadata = {
 };
 
 const FEATURES: { t: string; d: string }[] = [
-  { t: "Multi-client dashboard", d: "Up to 25 brands in one portfolio view — every client's AI Visibility Score, trend and next action in one screen." },
-  { t: "White-label reports", d: "Client-facing reports under your agency's brand. The evidence is Ozvor's; the relationship is yours." },
+  { t: "Multi-client dashboard", d: "Up to 25 brands in one portfolio view. See every client's AI Visibility Score, trend, and next action in one screen." },
+  { t: "White-label reports", d: "Client-facing reports under your agency's brand. The evidence is Ozvor's. The relationship is yours." },
   { t: "Weekly monitoring on every client", d: "Every brand re-probed weekly across ChatGPT, Claude, Perplexity, Gemini and Google AI Overview." },
-  { t: "10 competitors per brand", d: "Show each client exactly who AI recommends instead of them — the single most persuasive slide you'll present all year." },
+  { t: "10 competitors per brand", d: "Show each client exactly who AI recommends instead of them. It's the single most persuasive slide you'll present all year." },
   { t: "Client approval workflow", d: "Drafts move through review and approval — nothing publishes without a sign-off. Your process, enforced by the tool." },
-  { t: "Pitch mode", d: "Run a free test on a prospect before the meeting and open with their real AI-visibility gaps. Evidence beats promises." },
+  { t: "Pitch mode", d: "Run a free test on a prospect before the meeting. Open with their real AI-visibility gaps. Evidence beats promises." },
   { t: "Priority support · 4h SLA", d: "When a client call is tomorrow, you get answers today." },
   { t: "CSV export + API", d: "Pull the data into your own decks, dashboards and reporting stack." },
 ];
@@ -67,7 +67,7 @@ export default function AgenciesPage() {
         </h1>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-6)" }}>
           Your clients are already asking why ChatGPT recommends their competitor. Ozvor Agency gives you the audits,
-          the evidence and the white-label reports to own that conversation — across your whole portfolio.
+          the evidence, and the white-label reports. Own that conversation across your whole portfolio.
         </p>
         <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", flexWrap: "wrap" }}>
           <DirectCheckoutButton
@@ -110,10 +110,10 @@ export default function AgenciesPage() {
           Reports your clients can verify.
         </h2>
         <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "720px" }}>
-          Every number in an Ozvor report is measured live — real prompts, real engines, repeated probes, per-answer
-          evidence your client can click into. When an engine can&rsquo;t be measured, the report says so instead of
-          inventing a score. That is a strange thing to brag about until the day a client asks &ldquo;where does this
-          number come from?&rdquo; — and you have an answer. <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600, textDecoration: "none" }}>Read the public methodology →</Link>
+          Every number in an Ozvor report is measured live. We use real prompts and real engines, with repeated
+          probes. Your client can click into the per-answer evidence. When an engine can&rsquo;t be measured, the report
+          says so. We never invent a score. That&rsquo;s a strange thing to brag about — until a client asks
+          &ldquo;where does this number come from?&rdquo; Then you have an answer. <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600, textDecoration: "none" }}>Read the public methodology →</Link>
         </p>
       </section>
 
@@ -123,8 +123,8 @@ export default function AgenciesPage() {
           Client too big to serve in-house?
         </h2>
         <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "720px" }}>
-          When a client needs the whole engagement run for them — research, content system, cadence and monitoring —
-          <strong> OrganicPosts</strong> is Ozvor&rsquo;s managed arm. Hand it off, stay the relationship owner.
+          When a client needs the whole engagement run for them, <strong>OrganicPosts</strong> is Ozvor&rsquo;s managed
+          arm. It covers research, content system, cadence, and monitoring. Hand it off, and stay the relationship owner.
         </p>
         <Link href="/organicposts" style={{ display: "inline-flex", alignItems: "center", minHeight: "44px", padding: "0 var(--space-5)", borderRadius: "var(--radius-md)", fontWeight: 700, textDecoration: "none", background: "linear-gradient(135deg,#e6a93f,#b9791f)", color: "#1a1206" }}>
           How OrganicPosts works →

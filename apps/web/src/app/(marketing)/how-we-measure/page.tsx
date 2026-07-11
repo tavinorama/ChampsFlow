@@ -138,7 +138,7 @@ export default function HowWeMeasurePage() {
             maxWidth: "600px",
           }}
         >
-          The Ozvor AI Visibility Score is one umbrella number made up of{" "}
+          The Ozvor AI Visibility Score is one umbrella number. It&rsquo;s made up of{" "}
           <strong style={{ color: "var(--color-text)" }}>three distinct sub-scores</strong>:{" "}
           Visibility, Citation Readiness, and Execution. Each measures something different,
           and each is something you can act on. Here is exactly how each is computed.
@@ -153,8 +153,8 @@ export default function HowWeMeasurePage() {
           }}
         >
           Honest methodology — measured signals only, baselines labelled as such.
-          Every number tells you whether it came from a live probe of your brand
-          or from a neutral placeholder.
+          Every number tells you where it came from: either a live probe of your
+          brand, or a neutral placeholder.
         </p>
       </header>
 

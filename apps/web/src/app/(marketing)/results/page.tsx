@@ -20,7 +20,7 @@ export const revalidate = 600;
 export const metadata: Metadata = {
   title: "Live case study — Ozvor's real AI visibility numbers",
   description:
-    "We run Ozvor on ourselves and publish the raw audit data — score history and citation rate per AI engine, straight from the production database. No fabricated numbers, ever.",
+    "We run Ozvor on ourselves and publish the raw audit data. Score history and citation rate, per AI engine, straight from the production database. No fabricated numbers, ever.",
   alternates: { canonical: "https://ozvor.com/results" },
   openGraph: {
     title: "Live case study — Ozvor's real AI visibility numbers",
@@ -141,9 +141,9 @@ export default async function ResultsPage() {
           margin: 0,
         }}
       >
-        We run Ozvor on ourselves and publish the raw audit data — the same engine, the same
-        scoring our customers get. This page reads directly from our production database and
-        updates after every audit. No cherry-picking, no invented trends.
+        We run Ozvor on ourselves and publish the raw audit data. It&rsquo;s the same engine, the
+        same scoring our customers get. This page reads directly from our production database.
+        It updates after every audit. No cherry-picking, no invented trends.
       </p>
 
       <div style={{ display: "grid", placeItems: "center", marginTop: "var(--space-8)" }}>
@@ -166,7 +166,7 @@ export default async function ResultsPage() {
         <strong style={{ color: "var(--color-text)" }}>
           These are Ozvor&rsquo;s own numbers, not a customer&rsquo;s.
         </strong>{" "}
-        We are a new brand measuring ourselves in public — which means the early numbers are
+        We are a new brand measuring ourselves in public. That means the early numbers are
         honest, not impressive. That is the point.
       </p>
 
@@ -185,7 +185,7 @@ export default async function ResultsPage() {
               fontSize: "var(--font-size-body-sm)",
             }}
           >
-            Rather than show you stale or made-up numbers, we show you nothing until the live
+            We won&rsquo;t show you stale or made-up numbers. We show you nothing until the live
             feed is back. That is the same integrity rule your audits run on.
           </p>
         </div>
@@ -321,7 +321,7 @@ export default async function ResultsPage() {
                 }}
               >
                 Buyer-intent prompts where Ozvor was cited, per engine. Low numbers are normal
-                for a new brand — watch them move as we execute.
+                for a new brand. Watch them move as we execute.
               </p>
             </div>
           </div>
@@ -457,9 +457,8 @@ export default async function ResultsPage() {
                   lineHeight: 1.7,
                 }}
               >
-                Every brand starts by knowing its real number — ours is on this page for anyone
-                to see. Yours takes 60 seconds to find out, on the same engine, with the same
-                no-fabrication rule.
+                Every brand starts by knowing its real number. Ours is on this page for anyone
+                to see. Yours takes 60 seconds to find out. Same engine, same no-fabrication rule.
               </p>
               <Link
                 href="/test"

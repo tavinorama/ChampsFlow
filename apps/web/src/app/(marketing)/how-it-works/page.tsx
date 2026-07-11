@@ -16,12 +16,12 @@ import { StepGlyph } from "../../../components/marketing/illustrations";
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
   description:
-    "Audit across ChatGPT, Claude, Perplexity, Gemini & Google AI; benchmark who AI recommends instead of you; get the plan and let the platform write the fix; then monitor — or hand it to OrganicPosts.",
+    "We check: ChatGPT · Claude · Perplexity · Gemini · Google AI Overviews. See who AI recommends instead of you. Get your GEO plan, publish the fix, then monitor — or hand it to OrganicPosts.",
   alternates: { canonical: "https://ozvor.com/how-it-works" },
   openGraph: {
     title: "How Ozvor Works — From invisible to cited in four moves",
     description:
-      "Audit → Benchmark → Plan & publish → Monitor. The loop that gets SMBs cited by AI answer engines.",
+      "Audit → Benchmark → Plan & publish → Monitor. The loop that gets small businesses cited by AI.",
     url: "https://ozvor.com/how-it-works",
     siteName: "Ozvor",
     type: "website",
@@ -40,10 +40,10 @@ const howToJsonLd = {
   "@type": "HowTo",
   name: "How Ozvor gets your brand cited by AI",
   step: [
-    { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini and Google AI Overview and record whether you're cited." },
+    { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews. Record whether you're cited." },
     { "@type": "HowToStep", position: 2, name: "Benchmark", text: "See who AI recommends instead of you, and the sources it trusts." },
-    { "@type": "HowToStep", position: 3, name: "Plan & publish", text: "Get a GEO content plan and let Content Studio draft the fix you publish." },
-    { "@type": "HowToStep", position: 4, name: "Monitor", text: "Re-run weekly and track your Ozvor AI Visibility Score — or hand the engagement to OrganicPosts." },
+    { "@type": "HowToStep", position: 3, name: "Plan & publish", text: "Get a GEO content plan. Content Studio drafts the fix you publish." },
+    { "@type": "HowToStep", position: 4, name: "Monitor", text: "Re-run weekly. Track your Ozvor AI Visibility Score — or hand the engagement to OrganicPosts." },
   ],
 };
 
@@ -51,17 +51,17 @@ const STEPS: { num: string; title: string; body: string }[] = [
   {
     num: "01",
     title: "Audit",
-    body: "We ask the real buyer questions your customers ask — across ChatGPT, Claude, Perplexity, Gemini and Google AI Overview — and record whether you're named, where you rank in the answer, and how you're described.",
+    body: "We ask the real buyer questions your customers ask. We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews. Then we record whether you're named, where you rank, and how you're described.",
   },
   {
     num: "02",
     title: "Benchmark",
-    body: "See exactly who AI recommends instead of you, on which prompts, and the high-authority sources (Reddit, G2, Wikipedia…) it trusts to make that call.",
+    body: "See exactly who AI recommends instead of you, and on which prompts. See the high-authority sources — Reddit, G2, Wikipedia — it trusts to make that call.",
   },
   {
     num: "03",
     title: "Plan & publish",
-    body: "Get a prioritized GEO content plan, then let Content Studio draft the posts, schema and answers that earn the citation. You review and publish — nothing goes live without your say-so.",
+    body: "Get a GEO content plan, ranked by impact. Content Studio drafts the posts, schema, and answers that earn the citation. You review and publish — nothing goes live without your say-so.",
   },
 ];
 
@@ -139,7 +139,7 @@ export default function HowItWorksPage() {
         From invisible to cited, in four moves.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "620px", margin: 0 }}>
-        No GEO degree required. You run the audit, we surface the gaps, and the platform writes the fix you publish.
+        No GEO degree needed. You run the audit. We surface the gaps. The platform writes your fix — you publish it.
       </p>
 
       {/* Four-move walkthrough */}
@@ -152,7 +152,7 @@ export default function HowItWorksPage() {
           gold
           variant="monitor"
           title="Monitor — or hand it to us"
-          body="Growth and Agency re-run your audit weekly and track your Ozvor AI Visibility Score over time. When you'd rather not run it yourself, OrganicPosts does the whole engagement with you."
+          body="Growth and Agency re-run your audit every week. We track your Ozvor AI Visibility Score over time. Don't want to run it yourself? OrganicPosts handles the whole thing for you."
         />
         <div style={{ paddingLeft: "calc(44px + var(--space-5))" }}>
           <Link href="/organicposts" style={{ color: "var(--color-gold-ink)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}>

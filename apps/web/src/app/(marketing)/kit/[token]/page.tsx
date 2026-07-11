@@ -119,7 +119,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
       </header>
 
       <h1 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.03em", margin: "0 0 var(--space-3) 0" }}>
-        Your Get-Cited Kit for {d.brand}
+        Your Get-Cited Kit for {d.brand} — the first step to getting cited
       </h1>
 
       {/* Downloads — the Kit PDF (customer-only) + companion whitepaper.
@@ -152,8 +152,8 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
       </h2>
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-5) 0" }}>
         {d.fromTest
-          ? `Your free test showed how ${d.brand} appeared for one buyer question across ${d.fromTest.totalEngines} AI engines. This is the complete audit it was a preview of — every buyer prompt, every engine, your full Ozvor AI Visibility Score, and exactly where you’re losing citations.`
-          : "Your free test asked one buyer question across the AI engines. This is the full version: every high-intent buyer prompt in your category, across every engine, scored on all three Ozvor AI Visibility vectors — Brand, Performance, and AI."}
+          ? `Your free test showed how ${d.brand} appeared for one buyer question, across ${d.fromTest.totalEngines} AI engines. This audit is the complete version. It covers every buyer prompt, every engine, and your full Ozvor AI Visibility Score. It shows exactly where you’re losing citations.`
+          : "Your free test asked one buyer question across the AI engines. This is the full version. It covers every high-intent buyer prompt in your category, across every engine. It's scored on all three Ozvor AI Visibility vectors — Brand, Performance, and AI."}
       </p>
 
       {/* Score */}
@@ -218,7 +218,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
       </h2>
       <div style={{ ...card, borderLeft: "4px solid var(--color-primary)" }}>
         <p style={{ fontSize: "var(--font-size-body-sm)", lineHeight: 1.7, margin: "0 0 var(--space-3) 0" }}>
-          Your plain-English guide to <strong>how AI search actually works</strong> and how engines decide who to cite —
+          Your plain-English guide to <strong>how AI search actually works</strong>. It explains how engines decide who to cite —
           the <em>why</em> behind every fix above. Read it once, then act on Part 1.
         </p>
         <Link href="/resources/what-is-geo-search" target="_blank" style={{ display: "inline-flex", alignItems: "center", height: "44px", padding: "0 var(--space-5)", backgroundColor: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", fontWeight: 700, fontSize: "var(--font-size-body-sm)", textDecoration: "none" }}>
@@ -234,7 +234,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
         heading="You found the gaps. Keep them closed."
         primary={{
           title: "Growth Plan",
-          why: "Your Kit is a one-time snapshot. But AI answers move every week — new competitors get cited, and content you publish today can lift your score in 30 days or quietly slip back. Growth re-runs your full audit weekly, alerts you the moment your score or citation share moves, and delivers fresh content briefs. The Kit was the first brick — Growth is the wall.",
+          why: "Your Kit is a one-time snapshot. But AI answers move every week, and new competitors get cited. Content you publish today can lift your score in 30 days — or quietly slip back. Growth re-runs your full audit every week. It flags the moment your score or citation share moves, and delivers fresh content briefs. The Kit was the first brick — Growth is the wall.",
           price: "$99/mo",
           plan: "growth", interval: "year",
           accent: "emerald",
@@ -243,7 +243,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
         secondary={[
           {
             title: "Agency Plan",
-            why: "Same weekly monitoring across up to 25 brands, with white-label reports and a client approval workflow.",
+            why: "Weekly monitoring across up to 25 brands. Includes white-label reports and a client approval workflow.",
             price: "$249/mo",
             plan: "agency", interval: "year",
             accent: "ghost",
