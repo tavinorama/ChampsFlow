@@ -97,11 +97,10 @@ export function SiteFooter() {
                 color: "var(--color-muted)",
               }}
             >
-              The AI Search Visibility platform for SMBs. Ozvor shows how AI answers see
-              your brand, why rivals win, and turns the gaps into publish-ready fixes
-              &mdash; backed by{" "}
-              <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>OrganicPosts</strong>,
-              our done-with-you GEO content service.
+              Ozvor checks how AI answers see your brand. You see why rivals
+              win instead of you. We turn the gaps into fixes you can
+              publish. Want a team to do it with you? That&rsquo;s{" "}
+              <strong style={{ color: "var(--color-text)", fontWeight: 600 }}>OrganicPosts</strong>.
             </p>
             <p
               style={{
@@ -113,29 +112,37 @@ export function SiteFooter() {
             >
               hello@ozvor.com
             </p>
+            <p
+              style={{
+                margin: "0.6rem 0 0",
+                fontFamily: "var(--font-mono)",
+                fontSize: "0.75rem",
+                color: "var(--color-muted)",
+              }}
+            >
+              We check: ChatGPT &middot; Claude &middot; Perplexity &middot; Gemini &middot; Google AI Overviews
+            </p>
           </div>
 
           {/* Link columns */}
           <div style={{ display: "flex", gap: "var(--space-12)", flexWrap: "wrap" }}>
             <FooterCol
-              title="Product"
+              title="Learn"
               links={[
                 ["How it works", "/how-it-works"],
-                ["For agencies", "/agencies"],
-                ["Compare", "/vs"],
-                ["Tutorials", "/learn"],
-                ["Case study", "/results"],
-                ["Ozvor Pages", "/local-pages"],
-                ["Plans", "/pricing"],
+                ["Compare", "/compare"],
+                ["Research", "/research"],
+                ["FAQ", "/faq"],
+                ["Blog", "/blog"],
               ]}
             />
             <FooterCol
-              title="Get started"
+              title="Product"
               links={[
-                ["Free AI test", "/test"],
-                ["Get-Cited Kit", "/kit"],
+                ["Free test", "/test"],
+                ["Pricing", "/pricing"],
+                ["Ozvor Pages", "/local-pages"],
                 ["OrganicPosts", "/organicposts"],
-                ["Blog", "/blog"],
               ]}
             />
             <div>
@@ -177,7 +184,7 @@ export function SiteFooter() {
           }}
         >
           <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-            &copy; {currentYear} Ozvor &mdash; AI Search Trust Intelligence
+            &copy; {currentYear} Ozvor. All audit data comes from real queries on real engines.
           </p>
           <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
             Serving SMBs in Brazil, the EU &amp; the United States.

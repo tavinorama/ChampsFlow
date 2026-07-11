@@ -60,6 +60,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/organicposts", "monthly", 0.8],
     ["/results", "monthly", 0.4],
 
+    // Satellite pages (nav simplification) — friendly indexes that carry the
+    // complexity moved off the home page.
+    ["/compare", "monthly", 0.7],
+    ["/faq", "monthly", 0.7],
+    ["/research", "monthly", 0.7],
+
     // Comparison pages (P2) — high buyer-intent
     ["/vs", "monthly", 0.7],
     ["/vs/profound", "monthly", 0.7],

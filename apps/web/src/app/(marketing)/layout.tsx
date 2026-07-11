@@ -29,6 +29,7 @@ import { LogoMark, Wordmark } from "../../components/brand/Logo";
 import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
 import { ChatWidget } from "../../components/ChatWidget";
 import { SiteFooter } from "../../components/SiteFooter";
+import { FreeTestCta } from "../../components/marketing/FreeTestCta";
 
 // ---------------------------------------------------------------------------
 // Marketing CSS classes
@@ -499,20 +500,18 @@ function PublicNavbar() {
           <Wordmark size="1.0625rem" />
         </Link>
 
-        {/* Center nav (mockup): How it works · Results · OrganicPosts · Kit $29 · Plans */}
+        {/* Center nav — simplified (satellite pages carry the complexity):
+            How it works · Compare · Research · FAQ · Blog */}
         <div
           className="mk-navlinks"
           style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}
         >
           {([
             ["How it works", "/how-it-works"],
-            ["For agencies", "/agencies"],
-            ["Tutorials", "/learn"],
+            ["Compare", "/compare"],
+            ["Research", "/research"],
+            ["FAQ", "/faq"],
             ["Blog", "/blog"],
-            ["Case study", "/results"],
-            ["OrganicPosts", "/organicposts"],
-            ["Kit $29", "/kit"],
-            ["Plans", "/pricing"],
           ] as const).map(([label, href]) => (
             <Link
               key={href}
@@ -533,7 +532,7 @@ function PublicNavbar() {
           ))}
         </div>
 
-        {/* Right: theme toggle + Log in (quiet text link) + Free AI test (the one highlighted CTA) */}
+        {/* Right: theme toggle + Log in (quiet text link) + "Check my brand — free" (the one highlighted CTA) */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
           <ThemeToggle />
           <Link
@@ -543,13 +542,7 @@ function PublicNavbar() {
           >
             Log in
           </Link>
-          <Link
-            href="/test"
-            className="mk-cta-primary"
-            aria-label="Run the free AI visibility test"
-          >
-            Free AI test
-          </Link>
+          <FreeTestCta className="mk-cta-primary" />
         </div>
       </nav>
     </header>

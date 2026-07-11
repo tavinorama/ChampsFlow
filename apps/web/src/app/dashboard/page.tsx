@@ -420,7 +420,7 @@ export default function DashboardPage() {
                 animation: "db-pulse 2s infinite",
               }}
             />
-            AI Search Trust Intelligence
+            AI Search Visibility
           </div>
 
           {/* Heading */}
