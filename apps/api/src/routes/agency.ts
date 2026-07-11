@@ -38,6 +38,7 @@ import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { clientIpOrUnknown } from "../lib/client-ip";
 
 // ---------------------------------------------------------------------------
 // Domain label map (shared with audits.ts; re-declared here for independence)
@@ -90,11 +91,8 @@ async function checkShareRateLimit(ip: string): Promise<boolean> {
   return count <= SHARE_RATE_LIMIT;
 }
 
-function clientIp(c: { req: { header: (n: string) => string | undefined } }): string {
-  const fwd = c.req.header("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return c.req.header("x-real-ip") ?? "unknown";
-}
+// clientIpOrUnknown imported from ../lib/client-ip (cf-connecting-ip → LAST XFF
+// hop → x-real-ip) — never the client-forgeable first XFF entry.
 
 // ---------------------------------------------------------------------------
 // Audit log helper (append-only, parameterized)
@@ -520,7 +518,7 @@ export function registerAgencyRoutes(app: Hono, db: PostgresClient): void {
     // Rate limit — 60 req / 10 min / IP. Prevents DB-level abuse on the public
     // unauthenticated path. Gracefully no-ops when Upstash is not configured.
     // -----------------------------------------------------------------------
-    const ip = clientIp(c);
+    const ip = clientIpOrUnknown(c);
     const allowed = await checkShareRateLimit(ip).catch(() => true);
     if (!allowed) {
       c.header("Retry-After", "600");
