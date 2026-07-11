@@ -913,7 +913,10 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         (parseInt(site.page_count, 10) > 1 ? "regenerate" : "generate");
 
       const queue = getLandingGenerateQueue();
-      const jobId = `landing-generate:${siteId}`;
+      // NOTE: no ':' in the jobId — BullMQ rejects custom ids containing a colon
+      // ("Custom Ids cannot contain :"), which silently 503'd EVERY generate.
+      // Hyphen-separated keeps it stable-per-site and colon-free.
+      const jobId = `landing-generate-${siteId}`;
 
       // Duplicate/in-flight check FIRST (Hermes review, #221): a double-click,
       // refresh, or frontend retry while a run is in flight must 409 WITHOUT
