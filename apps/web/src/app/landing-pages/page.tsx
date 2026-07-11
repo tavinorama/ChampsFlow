@@ -30,6 +30,7 @@ import { useState, useEffect, useCallback, useId } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned } from "../../lib/supabase-browser";
 import { slugify, validateSiteSlug } from "../../lib/landing-slug";
+import { SITE_URL } from "../../lib/site";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,6 +79,11 @@ function statusColors(status: string): { bg: string; text: string } {
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+// Public address of a published site (SITE_URL flips to ozvor.com via env).
+function liveUrl(slug: string): string {
+  return `${SITE_URL.replace(/\/$/, "")}/l/${slug}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -529,7 +535,7 @@ export default function LandingPagesHubPage() {
                 {sites.map((site) => {
                   const colors = statusColors(site.status);
                   return (
-                    <li key={site.id}>
+                    <li key={site.id} style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
                       <a
                         href={`/landing-pages/${site.id}`}
                         style={{
@@ -573,6 +579,20 @@ export default function LandingPagesHubPage() {
                           )}
                         </div>
                       </a>
+                      {site.status === "published" && (
+                        <a
+                          href={liveUrl(site.slug)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            alignSelf: "flex-start", padding: "0 var(--space-2)",
+                            color: "var(--color-primary)", fontWeight: 600,
+                            fontSize: "var(--font-size-caption)", textDecoration: "none",
+                          }}
+                        >
+                          View live site ↗
+                        </a>
+                      )}
                     </li>
                   );
                 })}

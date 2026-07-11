@@ -149,6 +149,22 @@ export function containsPlaceholder(sections: unknown): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// sectionsEmpty — the "never publish an empty/ungenerated site" guard (Ozvor
+// Pages end-to-end delivery). A site that was never generated still has the
+// stub home page POST /api/landing/sites seeds with `sections` = '[]'. Flipping
+// such a site to 'published' used to succeed, yet the public /l/[slug] route
+// requires a PUBLISHED page WITH content, so the visitor got a 404 — the
+// confidence-destroying "I published but nothing is visible" dead end. This
+// guard (paired with containsPlaceholder) makes the publish route reject a site
+// that has no real content yet. A page is "empty" when `sections` is absent,
+// not a JSON array, or a zero-length array. Pure/exported for unit testing.
+// ---------------------------------------------------------------------------
+
+export function sectionsEmpty(sections: unknown): boolean {
+  return !Array.isArray(sections) || sections.length === 0;
+}
+
+// ---------------------------------------------------------------------------
 // Pages regeneration quota (issue #217) — usage_counters-backed. INITIAL
 // generation (a site with no generated content yet) is always free; a
 // REGENERATION is quota-checked: free tenants regenerate against a LIFETIME
@@ -691,13 +707,28 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         return c.json({ message: "This site is suspended. Contact support.", code: "SITE_SUSPENDED" }, 403);
       }
 
-      // Publish guard: none of this site's pages may still carry a generator
-      // placeholder marker. Draft saves are unaffected.
+      // Publish guards. Draft saves are unaffected.
       if (body.status === "published") {
         const pagesRes = await db.query<{ title: string; slug: string; sections: unknown }>(
           `SELECT title, slug, sections FROM landing_pages WHERE site_id = $1 AND tenant_id = $2`,
           [siteId, auth.tenantId]
         );
+
+        // Guard 1 — never publish an ungenerated/empty site. The home page
+        // (site root, slug '') must carry real content, and at least one page
+        // overall must; otherwise /l/[slug] would render nothing and 404 the
+        // visitor even though the dashboard shows "Published".
+        const home = pagesRes.rows.find((p) => p.slug === "");
+        const hasContent = pagesRes.rows.some((p) => !sectionsEmpty(p.sections));
+        if (!home || sectionsEmpty(home.sections) || !hasContent) {
+          return c.json(
+            { code: "SITE_EMPTY", message: "Generate your site before publishing." },
+            422
+          );
+        }
+
+        // Guard 2 — no page may still carry a generator placeholder marker
+        // (honesty rule: unfilled gap answers must never go live).
         const offending = pagesRes.rows.filter((p) => containsPlaceholder(p.sections));
         if (offending.length > 0) {
           return c.json(
@@ -712,46 +743,83 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         }
       }
 
-      const res = await db.query<{ id: string }>(
-        `UPDATE landing_sites
-            SET business = COALESCE($3, business),
-                theme    = COALESCE($4, theme),
-                status   = COALESCE($5, status),
-                updated_at = NOW()
-          WHERE id = $1 AND tenant_id = $2
-          RETURNING id`,
-        [
-          siteId,
-          auth.tenantId,
-          body.business ? JSON.stringify(body.business) : null,
-          body.theme ? JSON.stringify(body.theme) : null,
-          body.status ?? null,
-        ]
-      );
-      if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
+      // A publish/unpublish is a real STATUS transition (status is validated to
+      // 'draft'|'published' above; 'suspended' is already blocked). Business/
+      // theme-only edits are neither and skip the cascade + audit trail.
+      const isPublishTransition =
+        body.status === "published" && current.rows[0].status !== "published";
+      const isUnpublishTransition =
+        body.status === "draft" && current.rows[0].status === "published";
 
-      // Publish/unpublish audit trail — only on an actual transition, not
-      // every business/theme edit. Never blocks the response.
-      if (body.status !== undefined && body.status !== current.rows[0].status) {
-        if (body.status === "published") {
-          void writeLandingAuditLog(
-            db,
-            "landing_site_published",
-            auth.userId,
+      // Site update + page-visibility cascade run in ONE transaction, so a
+      // "published site, draft pages" half-state (which 404s /l/[slug]) can
+      // never be observed — either both land or neither does.
+      const updated = await db.transaction(async (tx) => {
+        const res = await tx.query<{ id: string }>(
+          `UPDATE landing_sites
+              SET business = COALESCE($3, business),
+                  theme    = COALESCE($4, theme),
+                  status   = COALESCE($5, status),
+                  updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2
+            RETURNING id`,
+          [
+            siteId,
             auth.tenantId,
-            "landing_site",
-            siteId
+            body.business ? JSON.stringify(body.business) : null,
+            body.theme ? JSON.stringify(body.theme) : null,
+            body.status ?? null,
+          ]
+        );
+        if (!res.rows[0]) return false;
+
+        // Publishing the SITE publishes its content-bearing pages so the public
+        // route (which requires a PUBLISHED page WITH content) actually renders.
+        // Guard 1/2 above already ensured the home page + real content qualify;
+        // empty pages stay 'draft' and simply don't appear publicly.
+        // Unpublishing takes every page offline so nothing lingers live.
+        if (isPublishTransition) {
+          await tx.query(
+            `UPDATE landing_pages
+                SET status = 'published',
+                    published_at = COALESCE(published_at, NOW()),
+                    updated_at = NOW()
+              WHERE site_id = $1 AND tenant_id = $2
+                AND jsonb_typeof(sections) = 'array'
+                AND jsonb_array_length(sections) > 0`,
+            [siteId, auth.tenantId]
           );
-        } else if (current.rows[0].status === "published") {
-          void writeLandingAuditLog(
-            db,
-            "landing_site_unpublished",
-            auth.userId,
-            auth.tenantId,
-            "landing_site",
-            siteId
+        } else if (isUnpublishTransition) {
+          await tx.query(
+            `UPDATE landing_pages SET status = 'draft', updated_at = NOW()
+              WHERE site_id = $1 AND tenant_id = $2`,
+            [siteId, auth.tenantId]
           );
         }
+        return true;
+      });
+      if (!updated) return c.json({ message: "Site not found." }, 404);
+
+      // Publish/unpublish audit trail — only on an actual transition. Never
+      // blocks the response.
+      if (isPublishTransition) {
+        void writeLandingAuditLog(
+          db,
+          "landing_site_published",
+          auth.userId,
+          auth.tenantId,
+          "landing_site",
+          siteId
+        );
+      } else if (isUnpublishTransition) {
+        void writeLandingAuditLog(
+          db,
+          "landing_site_unpublished",
+          auth.userId,
+          auth.tenantId,
+          "landing_site",
+          siteId
+        );
       }
 
       return c.json({ ok: true });
