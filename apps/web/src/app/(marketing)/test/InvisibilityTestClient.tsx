@@ -11,7 +11,7 @@
  */
 
 import { useState, useRef, useEffect, useId } from "react";
-import { TrustIndexScorecard, THREE_SCORE_COLORS } from "../../../components/TrustIndexScorecard";
+import { OzvorScorecard, THREE_SCORE_COLORS } from "../../../components/OzvorScorecard";
 import { useDirectCheckout } from "../../../lib/use-direct-checkout";
 import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
 import { useVerifiedEmail } from "../../../lib/use-verified-email";
@@ -1042,7 +1042,7 @@ function ResultsPanel({
 
       {/* C) Ozvor Scorecard */}
       <div style={cardStyle}>
-        <TrustIndexScorecard
+        <OzvorScorecard
           overall={result.score.overall}
           threeScores={{
             visibility: result.score.ai,

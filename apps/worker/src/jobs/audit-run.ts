@@ -1,5 +1,5 @@
 /**
- * BullMQ audit-run job processor — C1 GEO Audit Engine (TrustIndex AI)
+ * BullMQ audit-run job processor — C1 GEO Audit Engine (Ozvor)
  *
  * Job payload: { audit_id, tenant_id, brand_id, region }  — no PII.
  *

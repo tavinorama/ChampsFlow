@@ -16,7 +16,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { TrustIndexScorecard } from "../../../components/TrustIndexScorecard";
+import { OzvorScorecard } from "../../../components/OzvorScorecard";
 import { SiteFooter } from "../../../components/SiteFooter";
 
 // Regex used to validate the accent_hex before CSS injection.
@@ -250,7 +250,7 @@ export default function PublicReportPage() {
 
           {/* Scorecard */}
           <div style={{ padding: "0 var(--space-6) var(--space-6)" }}>
-            <TrustIndexScorecard
+            <OzvorScorecard
               overall={report.scores.overall}
               threeScores={{
                 visibility: report.scores.visibility,
