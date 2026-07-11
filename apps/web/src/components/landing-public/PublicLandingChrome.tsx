@@ -17,7 +17,13 @@ interface PublicLandingChromeProps {
   /** The current page's slug ('' for home) — highlighted in the nav. */
   activeSlug: string;
   accentColor?: string;
+  /** The client's business facts — footer is THEIR footer (NAP), not Ozvor's. */
+  business?: Record<string, unknown>;
   children: React.ReactNode;
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
 export function PublicLandingChrome({
@@ -26,8 +32,15 @@ export function PublicLandingChrome({
   nav,
   activeSlug,
   accentColor = "#0c7d54",
+  business,
   children,
 }: PublicLandingChromeProps) {
+  const category = str(business?.["category"]);
+  const address = str(business?.["address"]);
+  const phone = str(business?.["phone"]);
+  const website = str(business?.["website"]);
+  const hours =
+    typeof business?.["hours"] === "string" ? (business["hours"] as string).trim() : null;
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
       <header
@@ -117,13 +130,81 @@ export function PublicLandingChrome({
 
       <main style={{ flex: 1 }}>{children}</main>
 
-      <footer style={{ borderTop: "1px solid #d5dfd9", padding: "1.5rem 1.25rem", textAlign: "center" }}>
-        <p style={{ margin: 0, fontSize: "0.8rem", color: "#5c6e65" }}>
-          Built with{" "}
-          <a href="https://ozvor.com" style={{ color: accentColor, textDecoration: "none", fontWeight: 700 }}>
-            Ozvor Pages
-          </a>
-        </p>
+      {/* The CLIENT's footer — their business, their NAP. Ozvor is only a small
+          credit line at the very bottom. */}
+      <footer style={{ borderTop: `1px solid ${accentColor}22`, background: `${accentColor}08` }}>
+        <div
+          style={{
+            maxWidth: "1080px",
+            margin: "0 auto",
+            padding: "2.5rem 1.5rem",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: "2rem",
+          }}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 800, fontSize: "1.1rem", color: "#17211c" }}>
+              <span aria-hidden="true" style={{ width: "10px", height: "10px", borderRadius: "50%", background: accentColor, flex: "none" }} />
+              {businessName}
+            </div>
+            {category && <p style={{ margin: "0.5rem 0 0", fontSize: "0.9rem", color: "#5c6e65" }}>{category}</p>}
+            {address && <p style={{ margin: "0.75rem 0 0", fontSize: "0.9rem", color: "#3a473f", lineHeight: 1.5 }}>{address}</p>}
+            {phone && (
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.9rem" }}>
+                <a href={`tel:${phone.replace(/[^0-9+]/g, "")}`} style={{ color: accentColor, textDecoration: "none" }}>{phone}</a>
+              </p>
+            )}
+          </div>
+          {hours && (
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5c6e65" }}>Hours</div>
+              <div style={{ marginTop: "0.5rem", fontSize: "0.88rem", color: "#3a473f", lineHeight: 1.7 }}>
+                {hours.split(/\n|;|,\s(?=[A-Z])/).map((line, i) => <div key={i}>{line.trim()}</div>)}
+              </div>
+            </div>
+          )}
+          {nav.length > 0 && (
+            <div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5c6e65" }}>Pages</div>
+              <ul style={{ margin: "0.5rem 0 0", padding: 0, listStyle: "none", display: "grid", gap: "0.4rem" }}>
+                {nav.map((item) => (
+                  <li key={item.slug || "home"}>
+                    <a href={item.slug ? `/l/${siteSlug}/${item.slug}` : `/l/${siteSlug}`} style={{ color: "#3a473f", textDecoration: "none", fontSize: "0.9rem" }}>
+                      {item.title || "Home"}
+                    </a>
+                  </li>
+                ))}
+                {website && (
+                  <li>
+                    <a href={website} rel="noopener" style={{ color: accentColor, textDecoration: "none", fontSize: "0.9rem" }}>Website</a>
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+        <div style={{ borderTop: `1px solid ${accentColor}18` }}>
+          <div
+            style={{
+              maxWidth: "1080px",
+              margin: "0 auto",
+              padding: "1rem 1.5rem",
+              display: "flex",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+              fontSize: "0.78rem",
+              color: "#5c6e65",
+            }}
+          >
+            <span>© {new Date().getFullYear()} {businessName}</span>
+            <span>
+              Made with{" "}
+              <a href="https://ozvor.com" rel="noopener" style={{ color: accentColor, textDecoration: "none", fontWeight: 600 }}>Ozvor</a>
+            </span>
+          </div>
+        </div>
       </footer>
     </div>
   );

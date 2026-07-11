@@ -131,6 +131,7 @@ export default async function PublicLandingSiteHomePage({
       nav={data.nav}
       activeSlug=""
       accentColor={accentColor(data.site.theme)}
+      business={data.site.business}
     >
       {storedJsonLd.map((node, i) => (
         <script

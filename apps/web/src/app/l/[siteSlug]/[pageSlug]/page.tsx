@@ -118,6 +118,7 @@ export default async function PublicLandingSubPage({
       nav={data.nav}
       activeSlug={pageSlug}
       accentColor={accentColor(data.site.theme)}
+      business={data.site.business}
     >
       {faqJsonLd && (
         <script
