@@ -6,7 +6,11 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  REAL_SCORE,
+  SNAPSHOT_SCORE,
+  scoreCardState,
+  formatMeasuredDate,
+  EXECUTION_NOTE,
+  type SelfScoreApiData,
   ringOffset,
   subScoreWidthPct,
   heroLoopPct,
@@ -19,21 +23,12 @@ import {
   KIT_PAGES,
 } from "./landing-v2-logic";
 
-describe("REAL_SCORE", () => {
-  it("matches the 2026-07-10 self-audit snapshot", () => {
-    expect(REAL_SCORE.overall).toBe(73);
-    expect(REAL_SCORE.visibility).toBe(54);
-    expect(REAL_SCORE.citationReadiness).toBe(82);
-    expect(REAL_SCORE.execution).toBe(0);
-  });
-});
-
 describe("ringOffset", () => {
   it("is full circumference at score 0", () => {
     expect(ringOffset(0)).toBe(339);
   });
 
-  it("is ~91.6 at score 73 (the real overall score)", () => {
+  it("is ~91.6 at score 73", () => {
     expect(ringOffset(73)).toBeCloseTo(339 * (1 - 73 / 100), 5);
   });
 
@@ -48,23 +43,111 @@ describe("ringOffset", () => {
 
 describe("subScoreWidthPct", () => {
   it("is 0 while score is 0 regardless of target", () => {
-    expect(subScoreWidthPct(82, 0)).toBe(0);
+    expect(subScoreWidthPct(82, 0, 73)).toBe(0);
   });
 
-  it("reaches the full target once score reaches REAL_SCORE.overall", () => {
-    expect(subScoreWidthPct(82, REAL_SCORE.overall)).toBe(82);
-    expect(subScoreWidthPct(54, REAL_SCORE.overall)).toBe(54);
+  it("reaches the full target once score reaches the overall target", () => {
+    expect(subScoreWidthPct(82, 73, 73)).toBe(82);
+    expect(subScoreWidthPct(54, 73, 73)).toBe(54);
   });
 
-  it("Execution always renders 0%, at any point in the animation — honesty rule", () => {
-    expect(subScoreWidthPct(0, 0)).toBe(0);
-    expect(subScoreWidthPct(0, 40)).toBe(0);
-    expect(subScoreWidthPct(0, REAL_SCORE.overall)).toBe(0);
+  it("a 0-value target (Execution) always renders 0%, at any point in the animation — honesty rule", () => {
+    expect(subScoreWidthPct(0, 0, 73)).toBe(0);
+    expect(subScoreWidthPct(0, 40, 73)).toBe(0);
+    expect(subScoreWidthPct(0, 73, 73)).toBe(0);
   });
 
   it("is proportional mid-animation", () => {
-    // At score=36.5 (half of 73), an 82-target bar should be ~half filled.
-    expect(subScoreWidthPct(82, 36.5)).toBe(41);
+    // At score=36.5 (half of overallTarget=73), an 82-target bar should be ~half filled.
+    expect(subScoreWidthPct(82, 36.5, 73)).toBe(41);
+  });
+
+  it("never divides by zero when overallTarget itself is 0", () => {
+    expect(subScoreWidthPct(50, 0, 0)).toBe(0);
+  });
+});
+
+describe("scoreCardState — live branch (apiData present)", () => {
+  const apiData: SelfScoreApiData = {
+    overall: 73,
+    visibility: 54,
+    citationReadiness: 82,
+    executionProgress: 0,
+    measuredAt: "2026-07-10T09:00:00.000Z",
+  };
+
+  it("uses the LIVE chip and the 'updated weekly' claim", () => {
+    const s = scoreCardState(apiData);
+    expect(s.isLive).toBe(true);
+    expect(s.chipLabel).toBe("● LIVE — we run Ozvor on Ozvor");
+    expect(s.noteLine).toContain("updated weekly");
+  });
+
+  it("carries the measured date into the provenance line", () => {
+    const s = scoreCardState(apiData);
+    expect(s.provenanceLine).toBe("Measured July 10, 2026");
+  });
+
+  it("passes the API's three scores through, keeping null (unknown) as null, not 0", () => {
+    const s = scoreCardState({ ...apiData, executionProgress: null });
+    const execution = s.subScores.find((ss) => ss.key === "execution")!;
+    expect(execution.val).toBeNull();
+    const visibility = s.subScores.find((ss) => ss.key === "visibility")!;
+    expect(visibility.val).toBe(54);
+  });
+
+  it("overall matches the API value, not the hardcoded snapshot", () => {
+    const s = scoreCardState({ ...apiData, overall: 81 });
+    expect(s.overall).toBe(81);
+  });
+});
+
+describe("scoreCardState — fallback branch (apiData null)", () => {
+  it("never claims LIVE or 'updated weekly' — honesty rule (PR #231 blocker)", () => {
+    const s = scoreCardState(null);
+    expect(s.isLive).toBe(false);
+    expect(s.chipLabel).not.toContain("LIVE");
+    expect(s.noteLine).not.toContain("updated weekly");
+    expect(s.provenanceLine).not.toContain("LIVE");
+  });
+
+  it("chip explicitly reads SNAPSHOT", () => {
+    expect(scoreCardState(null).chipLabel).toBe("SNAPSHOT — we run Ozvor on Ozvor");
+  });
+
+  it("provenance line explicitly labels the snapshot + its measured date", () => {
+    expect(scoreCardState(null).provenanceLine).toBe("Snapshot · measured July 10, 2026");
+  });
+
+  it("falls back to the last-known SNAPSHOT_SCORE values", () => {
+    const s = scoreCardState(null);
+    expect(s.overall).toBe(SNAPSHOT_SCORE.overall);
+    expect(s.subScores.map((ss) => ss.val)).toEqual([
+      SNAPSHOT_SCORE.visibility,
+      SNAPSHOT_SCORE.citationReadiness,
+      SNAPSHOT_SCORE.executionProgress,
+    ]);
+  });
+});
+
+describe("formatMeasuredDate", () => {
+  it("formats a plain ISO date", () => {
+    expect(formatMeasuredDate("2026-07-10")).toBe("July 10, 2026");
+  });
+
+  it("formats a full ISO timestamp the same way, regardless of time-of-day", () => {
+    expect(formatMeasuredDate("2026-07-10T23:59:00.000Z")).toBe("July 10, 2026");
+  });
+
+  it("returns the raw input unchanged if it doesn't parse", () => {
+    expect(formatMeasuredDate("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("EXECUTION_NOTE", () => {
+  it("is neutral copy with no unsourced live claim", () => {
+    expect(EXECUTION_NOTE).toBe("Execution tracks fixes you publish.");
+    expect(EXECUTION_NOTE).not.toContain("fixes queued");
   });
 });
 

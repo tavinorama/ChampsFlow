@@ -2,11 +2,18 @@
  * Landing page v2 — Ozvor homepage redesign (feat/landing-v2-home).
  * Route: / (within (marketing) route group)
  *
- * Server shell: exports metadata only. All interactive state (hero demo
- * loop, score-ring count-up, click-to-play sims, FAQ accordion, checkout)
- * lives in the client component — see LandingV2.tsx for the full section
- * breakdown, the design source of truth, and the founder-approved
- * amendments layered on top of the raw design handoff.
+ * Server shell: exports metadata + server-fetches the ONE dynamic bit — the
+ * live self-score card's data (GET /api/showcase/geo, 10-min ISR, same
+ * pattern + INTERNAL_API_URL fallback the pre-v2 homepage used for its
+ * "building in public" band). All interactive state (hero demo loop,
+ * score-ring count-up, click-to-play sims, FAQ accordion, checkout) lives in
+ * the client component — see LandingV2.tsx for the full section breakdown.
+ *
+ * PR #231 review fix (Hermes, blocker): the score card's "LIVE" chip and
+ * "updated weekly" claim need an actual live value, not a hardcoded const.
+ * fetchSelfScore() below is the only place that value comes from; when it
+ * fails/404s/is incomplete, `selfScore` is null and LandingV2 renders the
+ * honest SNAPSHOT fallback (see landing-v2-logic.ts's scoreCardState()).
  *
  * Nav + footer are NOT rendered here — ../layout.tsx already provides
  * PublicNavbar + SiteFooter for every route in this group (see the
@@ -15,6 +22,48 @@
 
 import type { Metadata } from "next";
 import { LandingV2 } from "./LandingV2";
+import type { SelfScoreApiData } from "./landing-v2-logic";
+
+export const revalidate = 600;
+
+// ---------------------------------------------------------------------------
+// Self-score fetch — same source + ISR window as the old homepage's
+// "building in public" band (GET /api/showcase/geo). Never invents a number:
+// any failure, non-200, or incomplete latest audit returns null and the
+// client component falls back to the honest, explicitly-labeled snapshot.
+// ---------------------------------------------------------------------------
+
+interface ShowcaseGeoResponse {
+  overall: number | null;
+  threeScores: {
+    visibility: number;
+    citationReadiness: number;
+    executionProgress: number | null;
+  } | null;
+  measuredAt: string;
+}
+
+async function fetchSelfScore(): Promise<SelfScoreApiData | null> {
+  const base =
+    process.env.INTERNAL_API_URL ?? "https://api-production-2052.up.railway.app";
+  try {
+    const res = await fetch(`${base}/api/showcase/geo`, {
+      next: { revalidate: 600 },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as ShowcaseGeoResponse;
+    if (data.overall == null || !data.threeScores || !data.measuredAt) return null;
+    return {
+      overall: data.overall,
+      visibility: data.threeScores.visibility,
+      citationReadiness: data.threeScores.citationReadiness,
+      executionProgress: data.threeScores.executionProgress,
+      measuredAt: data.measuredAt,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const metadata: Metadata = {
   title: "Ozvor — Get your brand cited by AI search",
@@ -45,6 +94,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function LandingPage() {
-  return <LandingV2 />;
+export default async function LandingPage() {
+  const selfScore = await fetchSelfScore();
+  return <LandingV2 selfScore={selfScore} />;
 }

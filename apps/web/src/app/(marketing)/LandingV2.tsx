@@ -18,12 +18,18 @@
  * drives the hero scene/tick reducer + the two click-to-play sims' tick
  * counters, reading "is this currently playing" via refs so the interval
  * itself never needs to be recreated (mirrors the design handoff's single-
- * timer logic class). The score ring's 0 -> 73 count-up is a separate,
- * one-shot IntersectionObserver + requestAnimationFrame tween (never bound
- * to an SVG <text> node — the number is a plain HTML overlay, per the
- * handoff's explicit warning that an SVG-text counter "broke in testing").
- * prefers-reduced-motion disables both the hero autoplay and the ring tween
- * (jumps straight to the final values) after mount.
+ * timer logic class). The score ring's 0 -> scoreState.overall count-up is a
+ * separate, one-shot IntersectionObserver + requestAnimationFrame tween
+ * (never bound to an SVG <text> node — the number is a plain HTML overlay,
+ * per the handoff's explicit warning that an SVG-text counter "broke in
+ * testing"). prefers-reduced-motion disables both the hero autoplay and the
+ * ring tween (jumps straight to the final values) after mount.
+ *
+ * Self-score data: `selfScore` is server-fetched in page.tsx (GET
+ * /api/showcase/geo, 10-min ISR) and passed in as a prop — this component
+ * never fetches or hardcodes it. `scoreCardState()` (landing-v2-logic.ts)
+ * turns that into either the LIVE chip/copy or the honest SNAPSHOT fallback
+ * when the fetch failed. See that file's header for the PR #231 review fix.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -33,8 +39,9 @@ import { LogoMark } from "../../components/brand/Logo";
 import { safeJsonLd } from "../../components/landing-public/json-ld";
 import { useDirectCheckout } from "../../lib/use-direct-checkout";
 import {
-  REAL_SCORE,
-  SUB_SCORES,
+  type SelfScoreApiData,
+  scoreCardState,
+  EXECUTION_NOTE,
   SCORE_BULLETS,
   STEPS,
   PRICING_TIERS,
@@ -168,7 +175,16 @@ const LANDING_V2_STYLES = `
 // Component
 // ---------------------------------------------------------------------------
 
-export function LandingV2() {
+interface LandingV2Props {
+  /** Server-fetched in page.tsx (GET /api/showcase/geo, 10-min ISR). null
+   * when the fetch failed/404'd/was incomplete — scoreCardState() renders the
+   * honest SNAPSHOT fallback in that case, never a fabricated "live" value. */
+  selfScore: SelfScoreApiData | null;
+}
+
+export function LandingV2({ selfScore }: LandingV2Props) {
+  const scoreState = scoreCardState(selfScore);
+
   const [hero, setHero] = useState({ scene: 0, tick: 0 });
   const [paused, setPaused] = useState(false);
   const [score, setScore] = useState(0);
@@ -215,10 +231,14 @@ export function LandingV2() {
   }, []);
 
   // Score ring: one-shot count-up on scroll into view (or immediate jump for
-  // prefers-reduced-motion), never re-triggered.
+  // prefers-reduced-motion), never re-triggered. Target is scoreState.overall
+  // (live value if the fetch succeeded, snapshot value otherwise) — stable
+  // for the lifetime of this page load since `selfScore` is a server-fetched
+  // prop, not client-refetched.
+  const overallTarget = scoreState.overall;
   useEffect(() => {
     if (reducedMotion) {
-      setScore(REAL_SCORE.overall);
+      setScore(overallTarget);
       return;
     }
     const el = scoreCardRef.current;
@@ -232,7 +252,7 @@ export function LandingV2() {
         const step = (now: number) => {
           const p = Math.min(1, (now - start) / DURATION);
           const eased = 1 - Math.pow(1 - p, 3);
-          setScore(Math.round(REAL_SCORE.overall * eased));
+          setScore(Math.round(overallTarget * eased));
           if (p < 1) requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
@@ -242,7 +262,7 @@ export function LandingV2() {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [reducedMotion]);
+  }, [reducedMotion, overallTarget]);
 
   function togglePause() {
     setPaused((p) => !p);
@@ -913,10 +933,7 @@ export function LandingV2() {
                       background: "rgba(39,201,138,0.08)",
                     }}
                   >
-                    <span aria-hidden="true" style={{ color: "#27c98a" }}>
-                      ●
-                    </span>{" "}
-                    LIVE — we run Ozvor on Ozvor
+                    {scoreState.chipLabel}
                   </span>
                 </div>
 
@@ -963,13 +980,15 @@ export function LandingV2() {
                   </div>
 
                   <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 14 }}>
-                    {SUB_SCORES.map((ss) => {
-                      const w = subScoreWidthPct(ss.val, score);
+                    {scoreState.subScores.map((ss) => {
+                      const w = ss.val == null ? 0 : subScoreWidthPct(ss.val, score, scoreState.overall);
                       return (
                         <div key={ss.key}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
                             <span style={{ color: "#9fb0a4" }}>{ss.label}</span>
-                            <span style={{ fontFamily: "var(--font-mono)", color: "#5fdfa8" }}>{w}</span>
+                            <span style={{ fontFamily: "var(--font-mono)", color: "#5fdfa8" }}>
+                              {ss.val == null ? "—" : w}
+                            </span>
                           </div>
                           <div style={{ height: 7, borderRadius: 4, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
                             <div
@@ -986,7 +1005,7 @@ export function LandingV2() {
                       );
                     })}
                     <p style={{ margin: "2px 0 0", fontFamily: "var(--font-mono)", fontSize: 11.5, color: "#9fb0a4", lineHeight: 1.5 }}>
-                      Execution just reset — 5 fixes queued. Watch it climb.
+                      {EXECUTION_NOTE}
                     </p>
                   </div>
                 </div>
@@ -1008,9 +1027,12 @@ export function LandingV2() {
                   >
                     <LogoMark size={28} />
                   </span>
-                  <p style={{ margin: 0, fontSize: 13, color: "#9fb0a4", lineHeight: 1.5 }}>
-                    Our own score, updated weekly. Yes — we test ourselves too.
-                  </p>
+                  <span>
+                    <p style={{ margin: 0, fontSize: 13, color: "#9fb0a4", lineHeight: 1.5 }}>{scoreState.noteLine}</p>
+                    <p style={{ margin: "3px 0 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "#5b6a60" }}>
+                      {scoreState.provenanceLine}
+                    </p>
+                  </span>
                 </div>
               </div>
             </div>

@@ -324,6 +324,49 @@ async function writeAuditLog(
 }
 
 // ---------------------------------------------------------------------------
+// Three-score derivation — shared by GET /api/brands/:id/score and the
+// public GET /api/showcase/geo (landing v2 real-data blocker, PR #231
+// follow-up). Both routes MUST derive citationReadiness/executionProgress
+// identically — extracted here so there is exactly one implementation.
+// ---------------------------------------------------------------------------
+
+/** Pure — exported for unit testing. Clamped 0-100. */
+export function deriveCitationReadiness(performance: number, brand: number): number {
+  return Math.round(Math.min(100, Math.max(0, performance * 0.6 + brand * 0.4)));
+}
+
+/**
+ * Execution Progress — live from plan_task (never stored in a score
+ * snapshot). Counts across the brand's LATEST plan only (most recent
+ * strategy_plan row). null when no plan exists or no tasks were created yet
+ * (not started) — distinct from 0 (cards exist, none done). Degrades to
+ * null if plan_task doesn't exist yet (defensive — no hard dependency).
+ */
+async function deriveExecutionProgress(db: PostgresClient, brandId: string): Promise<number | null> {
+  try {
+    const planRes = await db.query<{ id: string }>(
+      `SELECT id FROM strategy_plan WHERE brand_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [brandId]
+    );
+    const planId = planRes.rows[0]?.id ?? null;
+    if (!planId) return null;
+    const taskRes = await db.query<{ total: string; done: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE status != 'rejected') AS total,
+         COUNT(*) FILTER (WHERE status = 'done')     AS done
+       FROM plan_task WHERE plan_id = $1`,
+      [planId]
+    );
+    const total = parseInt(taskRes.rows[0]?.total ?? "0", 10);
+    const done = parseInt(taskRes.rows[0]?.done ?? "0", 10);
+    return total > 0 ? Math.round((done / total) * 100) : null;
+  } catch {
+    // plan_task table may not exist yet — degrade gracefully
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 
@@ -1867,32 +1910,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     );
 
     // Execution Progress — live from plan_task (not stored in snapshot).
-    // Counts across the brand's LATEST plan only (most recent strategy_plan row).
-    // null when no plan exists or no tasks created.
-    let executionProgress: number | null = null;
-    try {
-      const planRes = await db.query<{ id: string }>(
-        `SELECT id FROM strategy_plan WHERE brand_id = $1 ORDER BY created_at DESC LIMIT 1`,
-        [brandId]
-      );
-      const planId = planRes.rows[0]?.id ?? null;
-      if (planId) {
-        const taskRes = await db.query<{ total: string; done: string }>(
-          `SELECT
-             COUNT(*) FILTER (WHERE status != 'rejected') AS total,
-             COUNT(*) FILTER (WHERE status = 'done')     AS done
-           FROM plan_task WHERE plan_id = $1`,
-          [planId]
-        );
-        const total = parseInt(taskRes.rows[0]?.total ?? "0", 10);
-        const done  = parseInt(taskRes.rows[0]?.done  ?? "0", 10);
-        // null = no cards (not started); 0 = cards exist but none done
-        executionProgress = total > 0 ? Math.round((done / total) * 100) : null;
-      }
-    } catch {
-      // plan_task table may not exist yet — degrade gracefully
-      executionProgress = null;
-    }
+    const executionProgress = brandId ? await deriveExecutionProgress(db, brandId) : null;
 
     // Derive three product-facing scores from the latest snapshot.
     const latest = trend.rows[0] ?? null;
@@ -1908,9 +1926,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       latest.score_brand != null
     ) {
       const visibility = latest.score_ai;
-      const citationReadiness = Math.round(
-        Math.min(100, Math.max(0, latest.score_performance * 0.6 + latest.score_brand * 0.4))
-      );
+      const citationReadiness = deriveCitationReadiness(latest.score_performance, latest.score_brand);
       threeScores = { visibility, citationReadiness, executionProgress };
     }
 
@@ -2068,11 +2084,12 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
   // -------------------------------------------------------------------------
   // GET /api/showcase/geo — PUBLIC: Ozvor's own building-in-public numbers.
-  // Powers the /results live case study. Exposes ONLY our own brand's
-  // aggregates (score history + per-engine citation summary) — no tenant
-  // identifiers, no prompt text, no competitor names. Cached 5 minutes.
-  // Data integrity: if there is no real data, the endpoint 404s — the page
-  // renders an honest fallback; numbers are never invented.
+  // Powers the /results live case study AND the homepage's live self-score
+  // card (landing v2). Exposes ONLY our own brand's aggregates (score
+  // history + per-engine citation summary + threeScores + measuredAt) — no
+  // tenant identifiers, no prompt text, no competitor names. Cached 5
+  // minutes. Data integrity: if there is no real data, the endpoint 404s —
+  // callers render an honest fallback; numbers are never invented.
   // -------------------------------------------------------------------------
   app.get("/api/showcase/geo", async (c) => {
     const brandId =
@@ -2121,15 +2138,34 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       [latest.id]
     );
 
+    // Three product-facing scores for the homepage's live self-score card
+    // (landing v2 real-data blocker, PR #231 follow-up). Same derivation as
+    // GET /api/brands/:id/score — null when the latest audit is incomplete,
+    // never fabricated. `overall` is the same weighted figure as the last
+    // `history[]` entry — exposed at the top level too so callers don't have
+    // to reach into the array for it.
+    const overall = history[history.length - 1]?.overall ?? null;
+    const threeScores =
+      latest.score_ai != null && latest.score_performance != null && latest.score_brand != null
+        ? {
+            visibility: latest.score_ai,
+            citationReadiness: deriveCitationReadiness(latest.score_performance, latest.score_brand),
+            executionProgress: await deriveExecutionProgress(db, brandId),
+          }
+        : null;
+
     c.header("Cache-Control", "public, max-age=300, s-maxage=300");
     return c.json({
       brand: "Ozvor",
       history,
+      overall,
       latest_engines: enginesRes.rows.map((e) => ({
         provider: e.provider,
         probes: parseInt(e.probes, 10),
         cited: parseInt(e.cited, 10),
       })),
+      threeScores,
+      measuredAt: latest.created_at,
       generated_at: latest.created_at,
     });
   });

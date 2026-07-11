@@ -14,8 +14,6 @@
  *    (BRAND-GUIDE.md: "Gold is reserved for OrganicPosts only"). Gold is kept
  *    ONLY on the two explicitly whitelisted gradient hairlines (hero progress
  *    bar, score-card border) — rendered directly in LandingV2.tsx, not here.
- *  - Real self-audit values (2026-07-10 geo_score row) replace the
- *    prototype's placeholder 71/78/70 sub-scores.
  *  - Hero demo cut from 4 scenes to 3 (the score-reveal scene duplicated the
  *    live score card in section 2 — 2026-07-11 founder feedback).
  *  - Section 2 + 3 simulations redesigned to three distinct "visual
@@ -25,28 +23,16 @@
  *  - All three sims are simulated product animations, not real screen
  *    recordings — every surface says so ("EXAMPLE DATA"), per the house rule
  *    against rendering fabricated metrics as if real.
+ *
+ * PR #231 review fix (Hermes, blocker): the score card's "LIVE" chip and
+ * "updated weekly" claim require an actual live value — a hardcoded const is
+ * not live. `page.tsx` now server-fetches GET /api/showcase/geo (10-min ISR,
+ * same pattern the pre-v2 homepage used for its "building in public" band)
+ * and passes the result into `scoreCardState()` below. When the fetch fails
+ * or the latest audit is incomplete, the card falls back to the last-known
+ * SNAPSHOT_SCORE, honestly labeled "SNAPSHOT" — never "LIVE", never "updated
+ * weekly".
  */
-
-// ---------------------------------------------------------------------------
-// Real self-audit data — Ozvor's own Ozvor AI Visibility Score.
-// SOURCE: geo_score row dated 2026-07-10 ("we run Ozvor on Ozvor" — the same
-// build-in-public claim the old homepage sourced from GET /api/showcase/geo).
-// TODO(post-launch): wire this to that same public self-score endpoint
-// instead of a hardcoded snapshot, so the number updates automatically every
-// week rather than needing a manual edit here.
-// ---------------------------------------------------------------------------
-export const REAL_SCORE = {
-  overall: 73,
-  visibility: 54,
-  citationReadiness: 82,
-  execution: 0,
-} as const;
-
-export const SUB_SCORES = [
-  { key: "visibility", label: "Visibility", val: REAL_SCORE.visibility },
-  { key: "citationReadiness", label: "Citation Readiness", val: REAL_SCORE.citationReadiness },
-  { key: "execution", label: "Execution", val: REAL_SCORE.execution },
-] as const;
 
 const RING_CIRCUMFERENCE = 339; // matches the r=54 circle in the score-card SVG
 
@@ -57,16 +43,106 @@ export function ringOffset(score: number): number {
 }
 
 /**
- * Sub-score bar width (%) at a given point in the ring's 0 -> REAL_SCORE.overall
+ * Sub-score bar width (%) at a given point in the ring's 0 -> overallTarget
  * count-up animation. Bars fill in lockstep with the ring so they finish
- * together. Execution's target is 0, so it always renders honestly flat.
+ * together. `overallTarget` is the score card's overall value for this page
+ * load (live or snapshot) — no longer a fixed module constant, since the
+ * live value now varies week to week.
  */
-export function subScoreWidthPct(targetVal: number, score: number): number {
-  const overall: number = REAL_SCORE.overall; // widened to `number` — guards a real /0 if this const ever changes
-  if (overall === 0) return 0;
-  const clamped = Math.min(overall, Math.max(0, score));
-  return Math.round(targetVal * (clamped / overall));
+export function subScoreWidthPct(targetVal: number, score: number, overallTarget: number): number {
+  if (overallTarget === 0) return 0;
+  const clamped = Math.min(overallTarget, Math.max(0, score));
+  return Math.round(targetVal * (clamped / overallTarget));
 }
+
+// ---------------------------------------------------------------------------
+// Score card — live (server-fetched) or honest snapshot fallback.
+// ---------------------------------------------------------------------------
+
+/** Shape `page.tsx` passes to `<LandingV2 selfScore={...} />` after fetching
+ * GET /api/showcase/geo. null = fetch failed, 404'd, or the latest audit was
+ * incomplete (never fabricated — see fetchSelfScore in page.tsx). */
+export interface SelfScoreApiData {
+  overall: number;
+  visibility: number;
+  citationReadiness: number;
+  executionProgress: number | null;
+  measuredAt: string; // ISO timestamp — the latest audit's created_at
+}
+
+/**
+ * Last-known snapshot — used ONLY when the live fetch fails. This is real
+ * data (a real geo_score row), just not fetched live for this page load, so
+ * the UI must say "SNAPSHOT", not "LIVE" — see scoreCardState().
+ * SOURCE: geo_score row dated 2026-07-10.
+ */
+export const SNAPSHOT_SCORE = {
+  overall: 73,
+  visibility: 54,
+  citationReadiness: 82,
+  executionProgress: 0,
+  measuredAt: "2026-07-10",
+} as const;
+
+export interface ScoreCardSubScore {
+  key: string;
+  label: string;
+  /** null renders as "—" — genuinely unknown (e.g. no plan/tasks yet), not zero. */
+  val: number | null;
+}
+
+export interface ScoreCardState {
+  isLive: boolean;
+  chipLabel: string;
+  /** Longer note next to the avatar. Fallback branch never contains "LIVE" or "updated weekly". */
+  noteLine: string;
+  /** Small mono provenance line, e.g. "Measured July 10, 2026" / "Snapshot · measured July 10, 2026". */
+  provenanceLine: string;
+  overall: number;
+  subScores: ScoreCardSubScore[];
+}
+
+/** Formats an ISO date/timestamp as "July 10, 2026", pinned to UTC so it's
+ * deterministic regardless of server/test-runner timezone. Returns the raw
+ * input unchanged if it doesn't parse (never throws on bad data). */
+export function formatMeasuredDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+const SCORE_SUB_LABELS = [
+  { key: "visibility", label: "Visibility" },
+  { key: "citationReadiness", label: "Citation Readiness" },
+  { key: "execution", label: "Execution" },
+] as const;
+
+export function scoreCardState(apiData: SelfScoreApiData | null): ScoreCardState {
+  if (apiData) {
+    const values = [apiData.visibility, apiData.citationReadiness, apiData.executionProgress];
+    return {
+      isLive: true,
+      chipLabel: "● LIVE — we run Ozvor on Ozvor",
+      noteLine: "Our own score, updated weekly. Yes — we test ourselves too.",
+      provenanceLine: `Measured ${formatMeasuredDate(apiData.measuredAt)}`,
+      overall: apiData.overall,
+      subScores: SCORE_SUB_LABELS.map((s, i) => ({ ...s, val: values[i] ?? null })),
+    };
+  }
+  const values = [SNAPSHOT_SCORE.visibility, SNAPSHOT_SCORE.citationReadiness, SNAPSHOT_SCORE.executionProgress];
+  return {
+    isLive: false,
+    chipLabel: "SNAPSHOT — we run Ozvor on Ozvor",
+    noteLine: "Snapshot from our own audit. Yes — we test ourselves too.",
+    provenanceLine: `Snapshot · measured ${formatMeasuredDate(SNAPSHOT_SCORE.measuredAt)}`,
+    overall: SNAPSHOT_SCORE.overall,
+    subScores: SCORE_SUB_LABELS.map((s, i) => ({ ...s, val: values[i] ?? null })),
+  };
+}
+
+/** Neutral note under the Execution bar — replaces the old "Execution just
+ * reset — 5 fixes queued" copy, which implied a live event with no source. */
+export const EXECUTION_NOTE = "Execution tracks fixes you publish.";
 
 // ---------------------------------------------------------------------------
 // Hero demo — 3 scenes x 7 ticks = 21s loop (score-reveal scene cut).
