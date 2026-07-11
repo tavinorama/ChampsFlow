@@ -495,10 +495,15 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       const business = { name, ...(body.business ?? {}) };
       const siteId = randomUUID();
       try {
+        // $7 is cast to ::text because it is referenced twice — once as the
+        // place_id value and once in `CASE WHEN … IS NOT NULL`. Without the
+        // cast, the bare IS NULL test gives Postgres no type hint and it fails
+        // with "could not determine data type of parameter $7", breaking every
+        // site creation (regression from the place_id column, #226).
         await db.query(
           `INSERT INTO landing_sites
              (id, tenant_id, brand_id, slug, status, business, theme, place_id, google_synced_at, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7, CASE WHEN $7 IS NOT NULL THEN NOW() ELSE NULL END, NOW(), NOW())`,
+           VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7::text, CASE WHEN $7::text IS NOT NULL THEN NOW() ELSE NULL END, NOW(), NOW())`,
           [
             siteId,
             auth.tenantId,
