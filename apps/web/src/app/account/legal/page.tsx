@@ -20,6 +20,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { apiFetch } from "../../../lib/supabase-browser";
 
 interface AckRecord {
   id: string;
@@ -41,9 +42,7 @@ export default function AccountLegalPage() {
     setHistoryError(null);
 
     try {
-      const res = await fetch("/api/dpa/history", {
-        credentials: "include",
-      });
+      const res = await apiFetch("/api/dpa/history");
       if (!res.ok) throw new Error("Failed to load acknowledgment history");
       const data = (await res.json()) as { history: AckRecord[] };
       setHistory(data.history);

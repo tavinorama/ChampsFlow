@@ -34,6 +34,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { apiFetch } from "../../../lib/supabase-browser";
 
 type LoadState = "loading" | "loaded" | "error";
 
@@ -47,9 +48,7 @@ export default function DataPrivacyPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/ccpa/limit-sensitive-pi", {
-          credentials: "include",
-        });
+        const res = await apiFetch("/api/ccpa/limit-sensitive-pi");
         if (!res.ok) throw new Error("Failed to load settings");
         const data = (await res.json()) as { limit_sensitive_pi: boolean };
         setLimitSensitivePi(data.limit_sensitive_pi ?? false);
@@ -68,9 +67,8 @@ export default function DataPrivacyPage() {
     setToggleError(null);
 
     try {
-      const res = await fetch("/api/ccpa/limit-sensitive-pi", {
+      const res = await apiFetch("/api/ccpa/limit-sensitive-pi", {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: newValue }),
       });

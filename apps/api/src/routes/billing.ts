@@ -15,9 +15,10 @@
  * Key design decisions:
  *   - Webhook endpoint is mounted WITHOUT requireAuth (Stripe sends its own Stripe-Signature header).
  *     Signature is verified via verifyWebhookSignature() BEFORE any DB side-effects.
- *   - Idempotency: each processed Stripe event ID is stored in Redis (TTL 7 days, NX) for fast-path
- *     deduplication, plus the DB UPDATE uses `WHERE stripe_event_id_last IS DISTINCT FROM $eventId`
- *     for durability.
+ *   - Idempotency: each SUCCESSFULLY processed Stripe event ID is stored in Redis (TTL 7 days) for
+ *     fast-path deduplication, written only after its handler completes without throwing (a failed
+ *     handler leaves no marker, so Stripe's retry re-runs it), plus the DB UPDATE uses
+ *     `WHERE stripe_event_id_last IS DISTINCT FROM $eventId` for durability.
  *   - All currency handled externally by Stripe. We store only plan_tier + status.
  *   - stripe_customer_id / stripe_subscription_id are opaque Stripe references:
  *     logged at structured INFO level for audit only; NEVER returned in error bodies.
@@ -38,7 +39,7 @@
  *   - stripe_customer_id NEVER in error messages or response bodies (only safe audit log)
  *   - No card numbers, CVVs, or payment method details ever stored or logged
  *   - All DB queries parameterized — no string interpolation
- *   - Redis idempotency key: billing:event:<eventId> with 7-day TTL (NX)
+ *   - Redis idempotency key: billing:event:<eventId> with 7-day TTL, set only post-success
  *   - Grace period for cancelled/past_due: 7 days from current_period_end
  */
 
@@ -95,16 +96,31 @@ async function checkBillingRateLimit(
 }
 
 // ---------------------------------------------------------------------------
-// Idempotency check for webhook events (Redis NX, 7-day TTL)
-// Returns true if the event was already processed (duplicate → skip)
+// Idempotency check for webhook events (Redis, 7-day TTL)
+//
+// Split into a read-only check + a separate "mark done" write so a handler
+// that throws never leaves a false "processed" marker behind. The marker is
+// only written AFTER the event's handler completes successfully (see the
+// route below) — a failed handler (500 → Stripe retry) must find no marker,
+// so the retry re-runs the handler. This is a fast-path optimization only;
+// the durable guard is the `stripe_event_id_last IS DISTINCT FROM $eventId`
+// UPDATE in each handler, which stays safe to re-run even if two requests
+// for the same event race past the (non-atomic) check here.
 // ---------------------------------------------------------------------------
 
+/** Returns true if this event ID was already marked processed (duplicate → skip). */
 async function isWebhookEventProcessed(eventId: string): Promise<boolean> {
   const redis = getRedis();
   const key = `billing:event:${eventId}`;
-  // NX: only set if not exists — returns "OK" if set (new event), null if already exists
-  const result = await redis.set(key, "1", { nx: true, ex: 7 * 24 * 3600 });
-  return result === null;
+  const existing = await redis.get(key);
+  return existing !== null;
+}
+
+/** Marks an event ID as processed. Call ONLY after its handler succeeds. */
+async function markWebhookEventProcessed(eventId: string): Promise<void> {
+  const redis = getRedis();
+  const key = `billing:event:${eventId}`;
+  await redis.set(key, "1", { ex: 7 * 24 * 3600 });
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +663,10 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
   //   invoice.payment_failed           → status=past_due, audit log
   //
   // Idempotency:
-  //   1. Redis NX key billing:event:<eventId> (7-day TTL) — fast path
+  //   1. Redis key billing:event:<eventId> (7-day TTL) — fast path. Written
+  //      ONLY after the handler below completes successfully, so a failed
+  //      handler (500 → Stripe retry) leaves no marker and the redelivery
+  //      re-runs the handler instead of being silently skipped.
   //   2. DB UPDATE WHERE stripe_event_id_last IS DISTINCT FROM <eventId> — durable path
   //   Both checks prevent double-processing on retry.
   //
@@ -782,11 +801,28 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         event_type: event.type,
         message: (err as Error).message,
       });
-      // Return 500 so Stripe retries the event
+      // Return 500 so Stripe retries the event. Do NOT mark the event as
+      // processed here — a redelivery must find no marker and re-run the
+      // handler (see markWebhookEventProcessed above).
       return ctx.json(
         { error: "handler_failed", code: "WEBHOOK_HANDLER_ERROR" },
         500
       );
+    }
+
+    // -----------------------------------------------------------------------
+    // STEP 4: Mark processed — ONLY after the handler above succeeded.
+    // Best-effort: a Redis failure here must not fail the response (the
+    // event WAS processed); the durable per-row DB guard still protects
+    // against double-processing on the next redelivery.
+    // -----------------------------------------------------------------------
+    try {
+      await markWebhookEventProcessed(event.id);
+    } catch (err) {
+      logger.warn("billing_webhook_redis_mark_processed_failed", {
+        event_id: event.id,
+        message: (err as Error).message,
+      });
     }
 
     return ctx.json({ received: true });

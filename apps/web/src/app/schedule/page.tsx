@@ -21,6 +21,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { apiFetch } from "../../lib/supabase-browser";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,7 +145,7 @@ export default function SchedulePage() {
           page: String(page),
           limit: "20",
         });
-        const res = await fetch(`/api/schedules?${params.toString()}`);
+        const res = await apiFetch(`/api/schedules?${params.toString()}`);
         if (!res.ok) throw new Error("Failed to load schedules");
         const data = await res.json();
         setJobs(data.data?.jobs ?? []);
@@ -167,7 +168,7 @@ export default function SchedulePage() {
     setCancelError(null);
 
     try {
-      const res = await fetch(`/api/schedules/${jobId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/schedules/${jobId}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setCancelError(
