@@ -23,6 +23,24 @@ export interface HeroRenderModel {
   subheadline: string;
   businessName: string;
   ctaLabel: string;
+  /** Google Maps rich extras (present only when generation had them). */
+  image: string | null;
+  imageAlt: string;
+  imageAttribution: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+}
+
+export interface GalleryPhoto {
+  src: string;
+  alt: string;
+  attribution: string | null;
+}
+
+export interface GalleryRenderModel {
+  kind: "gallery";
+  heading: string;
+  items: GalleryPhoto[];
 }
 
 export interface ServicesRenderModel {
@@ -37,6 +55,8 @@ export interface MapNapRenderModel {
   address: string | null;
   phone: string | null;
   website: string | null;
+  rating: number | null;
+  reviewCount: number | null;
 }
 
 export interface CtaRenderModel {
@@ -51,6 +71,9 @@ export interface ProofItem {
   author: string;
   body: string;
   rating: number | null;
+  /** "Google" when the review is a verbatim Google review (attribution). */
+  source: string | null;
+  relativeTime: string | null;
 }
 
 export interface ProofRenderModel {
@@ -110,6 +133,7 @@ export interface TextRenderModel {
 
 export type SectionRenderModel =
   | HeroRenderModel
+  | GalleryRenderModel
   | ServicesRenderModel
   | MapNapRenderModel
   | CtaRenderModel
@@ -161,7 +185,26 @@ export function mapSectionToRenderModel(section: unknown): SectionRenderModel | 
         subheadline: str(section.subheadline),
         businessName: str(section.business_name),
         ctaLabel: str(section.cta_label, "Get a Quote"),
+        image: nullableStr(section.image),
+        imageAlt: str(section.image_alt),
+        imageAttribution: nullableStr(section.image_attribution),
+        rating: num(section.rating),
+        reviewCount: num(section.review_count),
       };
+
+    case "gallery": {
+      const rawItems = Array.isArray(section.items) ? section.items : [];
+      const items: GalleryPhoto[] = rawItems
+        .filter(isObject)
+        .map((it) => ({
+          src: str(it.src),
+          alt: str(it.alt),
+          attribution: nullableStr(it.attribution),
+        }))
+        .filter((it) => it.src.length > 0);
+      if (items.length === 0) return null;
+      return { kind: "gallery", heading: str(section.heading, "Photos"), items };
+    }
 
     case "services":
       return {
@@ -177,6 +220,8 @@ export function mapSectionToRenderModel(section: unknown): SectionRenderModel | 
         address: nullableStr(section.address),
         phone: nullableStr(section.phone),
         website: nullableStr(section.website),
+        rating: num(section.rating),
+        reviewCount: num(section.review_count),
       };
 
     case "cta":
@@ -196,6 +241,8 @@ export function mapSectionToRenderModel(section: unknown): SectionRenderModel | 
           author: str(it.author, "Verified customer"),
           body: str(it.body),
           rating: num(it.rating),
+          source: nullableStr(it.source),
+          relativeTime: nullableStr(it.relative_time),
         }))
         .filter((it) => it.body.length > 0);
       return {
