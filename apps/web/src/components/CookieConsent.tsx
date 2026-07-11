@@ -341,8 +341,8 @@ function CustomizePanel({
         }}
       >
         {jurisdiction === "opt-out"
-          ? "We currently use only essential cookies. The toggles below will govern any analytics or marketing tools we add in the future. Turn them off to opt out before those tools are introduced."
-          : "We currently use only essential cookies. The toggles below will govern any analytics or marketing tools we add in the future. They are off by default — turn them on only if you would like to allow them when introduced."}
+          ? "Essential cookies (your login) always work. The toggles below control optional tools — today that is Google Analytics. Turn a toggle off to opt out."
+          : "Essential cookies (your login) always work. The toggles below control optional tools — today that is Google Analytics. They are off by default. Turn on only what you allow."}
       </p>
 
       <CategoryRow
@@ -468,9 +468,8 @@ function BannerView({
         {isOptOut ? (
           <>
             Ozvor currently uses <strong style={{ color: "var(--color-text)" }}>only essential cookies</strong> (your
-            login session). We do not currently use analytics or marketing
-            cookies. You can record your preferences now for when we introduce
-            optional tools in the future.{" "}
+            login session) and one optional tool: Google Analytics. Analytics
+            stays off unless you allow it. You can opt out anytime.{" "}
             <Link
               href="/legal/cookies"
               style={{
@@ -485,9 +484,8 @@ function BannerView({
         ) : (
           <>
             Ozvor currently uses <strong style={{ color: "var(--color-text)" }}>only essential cookies</strong> (your
-            login session). We do not currently use analytics or marketing
-            cookies. We ask for your consent so your preferences are recorded
-            before any optional tools are introduced.{" "}
+            login session) and one optional tool: Google Analytics. Analytics
+            only turns on if you say yes. You can change your mind anytime.{" "}
             <Link
               href="/legal/cookies"
               style={{
