@@ -354,7 +354,7 @@ export default async function VideoPostPage({
               marginBottom: "var(--space-8)",
             }}
           >
-            Ozvor is an AI Search Trust Intelligence platform for small
+            Ozvor is an AI Search Visibility platform for small
             and medium businesses. We audit how your brand appears across
             ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — then
             give you the Ozvor AI Visibility Score and a GEO content plan to improve

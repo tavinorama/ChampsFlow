@@ -269,7 +269,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
       <footer style={{ marginTop: "var(--space-8)", paddingTop: "var(--space-5)", borderTop: "1px solid var(--color-border)", display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
         <Logo markSize={22} wordSize="0.9rem" />
         <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
-          AI Search Trust Intelligence · Your free test, completed → weekly monitoring on Growth & Agency.
+          AI Search Visibility platform · Your free test, completed → weekly monitoring on Growth & Agency.
         </span>
       </footer>
     </>

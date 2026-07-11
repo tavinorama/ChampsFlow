@@ -55,7 +55,7 @@ export const metadata = {
     template: `%s | ${SITE_NAME}`,
   },
   description:
-    "AI Search Trust Intelligence for SMBs. Ozvor audits how your brand appears across AI search, benchmarks competitors, finds trust gaps, and builds the GEO content plan you need to get cited organically.",
+    "Ozvor checks how AI search sees your brand. We test ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews. Then we compare you to competitors and build your GEO content plan.",
   openGraph: {
     siteName: SITE_NAME,
     type: "website",

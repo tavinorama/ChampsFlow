@@ -793,7 +793,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             That&rsquo;s the line where you graduate to{" "}
-            <strong>Ozvor</strong> — the AI Search Trust Intelligence
+            <strong>Ozvor</strong> — the AI Search Visibility
             platform this tracker comes from. Ozvor automates everything
             above, computes your <strong>Ozvor AI Visibility Score</strong> (Brand 30% /
             Performance 35% / AI 35%), benchmarks you against your competitors,

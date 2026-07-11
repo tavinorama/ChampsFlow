@@ -143,6 +143,12 @@ export default function LearnPage() {
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "640px", margin: 0 }}>
         Plain, written how-tos for the real product — run your first audit, read your score, benchmark competitors, generate content, and track progress every week. Video walkthroughs are on the way.
       </p>
+      <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, maxWidth: "640px", margin: "var(--space-3) 0 0" }}>
+        Looking for quick answers?{" "}
+        <Link href="/faq" className="lrn-guide">→ /faq</Link>
+        {" "}&middot; The research:{" "}
+        <Link href="/research" className="lrn-guide">→ /research</Link>
+      </p>
 
       {/* Tutorial grid */}
       <div className="lrn-grid" style={{ marginTop: "var(--space-12)" }}>

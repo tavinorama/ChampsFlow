@@ -1678,8 +1678,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
             })}
           </div>
           <p style={{ margin: "24px 0 0", fontSize: 15 }}>
-            {/* /faq isn't a dedicated route yet — routes to the tutorials index until it ships (TODO, later PR). */}
-            <Link href="/learn" style={{ color: "#5fdfa8" }}>
+            <Link href="/faq" style={{ color: "#5fdfa8" }}>
               More questions →
             </Link>
           </p>
