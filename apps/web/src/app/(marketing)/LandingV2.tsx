@@ -1624,17 +1624,22 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                     </button>
                   )}
                   {t.ctaKind === "checkout-agency" && (
-                    <>
-                      <button
-                        type="button"
-                        className="lv2-btn-tier-ghost"
-                        disabled={loadingPlan !== null}
-                        aria-busy={loadingPlan === "agency"}
-                        onClick={handleAgencyCheckout}
-                      >
-                        {loadingPlan === "agency" ? "Opening checkout…" : t.cta}
-                      </button>
-                      <p style={{ margin: "10px 0 0", textAlign: "center" }}>
+                    <button
+                      type="button"
+                      className="lv2-btn-tier-ghost"
+                      disabled={loadingPlan !== null}
+                      aria-busy={loadingPlan === "agency"}
+                      onClick={handleAgencyCheckout}
+                    >
+                      {loadingPlan === "agency" ? "Opening checkout…" : t.cta}
+                    </button>
+                  )}
+                  {/* Reserved secondary-CTA row — rendered on every card so all
+                      four primary CTAs share one baseline; only Agency fills it
+                      (the Calendly link no longer pushes its button up). */}
+                  <div style={{ minHeight: 18, marginTop: 10 }}>
+                    {t.ctaKind === "checkout-agency" && (
+                      <p style={{ margin: 0, textAlign: "center" }}>
                         <a
                           href={CALENDLY_URL}
                           target="_blank"
@@ -1644,8 +1649,8 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                           Prefer to talk? Book a call →
                         </a>
                       </p>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
