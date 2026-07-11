@@ -18,6 +18,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Context, Next } from "hono";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { runWithTenant } from "../db/tenant-context";
 
 // ---------------------------------------------------------------------------
@@ -344,7 +345,7 @@ export function requireNotProcessingRestricted(db: DbClient) {
             [
               auth.tenantId,
               auth.userId,
-              JSON.stringify({ target_endpoint: ctx.req.path }),
+              jsonbParam({ target_endpoint: ctx.req.path }),
             ]
           )
           .catch((auditErr: Error) => {

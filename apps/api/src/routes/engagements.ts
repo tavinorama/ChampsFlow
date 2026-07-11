@@ -14,6 +14,7 @@ import { randomUUID } from "crypto";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,7 +66,7 @@ export function registerEngagementRoutes(app: Hono, db: PostgresClient): void {
       `INSERT INTO engagement
          (id, tenant_id, brand_id, sku, contact_email, note, brand_snapshot, status, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'requested', NOW(), NOW())`,
-      [id, tenantId, brandId, sku, email, note, JSON.stringify(snapshot)]
+      [id, tenantId, brandId, sku, email, note, jsonbParam(snapshot)]
     );
 
     // Best-effort audit trail (reuse audit_log; never blocks the request).
@@ -74,7 +75,7 @@ export function registerEngagementRoutes(app: Hono, db: PostgresClient): void {
         `INSERT INTO audit_log
            (event_type, actor_user_id, tenant_id, target_entity, target_id, metadata, created_at)
          VALUES ('engagement_requested', $1, $2, 'engagement', $3, $4, NOW())`,
-        [userId, tenantId, id, JSON.stringify({ brandId, sku })]
+        [userId, tenantId, id, jsonbParam({ brandId, sku })]
       );
     } catch (err) {
       logger.warn("engagement_audit_log_failed", { message: (err as Error).message });
