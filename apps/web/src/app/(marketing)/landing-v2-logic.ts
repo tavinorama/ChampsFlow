@@ -181,6 +181,15 @@ export interface HeroCompetitor {
   border: string;
 }
 
+/**
+ * Theming note (feat/landing-v2-theming): the colors below (and on
+ * HeroCompetitor) render exclusively INSIDE the hero product-demo frame,
+ * which depicts the (dark-only) product UI like a screenshot — see
+ * LandingV2.tsx's theming comments. They are intentionally left as fixed
+ * hex/rgba literals, NOT converted to the light/dark CSS custom properties
+ * in tokens.css, unlike STEPS and ECOSYSTEM_CARDS below (real page content).
+ */
+
 /** Scene index 1 = "who AI cites instead" visibility-growth time-lapse. */
 export function heroGrowth(
   scene: number,
@@ -394,6 +403,13 @@ export const FAQS = [
 // "Three steps" ladder — gold replaced with emerald on step 2 (the Kit).
 // Step 2 uses a lighter tint + outlined number to stay visually distinct
 // from step 3's filled emerald number (Amendment A).
+//
+// Theming note (feat/landing-v2-theming): these are real page cards (not
+// product-demo internals), so every color below is a CSS custom-property
+// reference into tokens.css — resolved by the browser per data-theme, not a
+// fixed hex. Step 3's number badge sources the same fixed --landing-cta-*
+// tokens as the primary CTA (bright emerald + near-black text — already
+// contrasts on any page background, see tokens.css note).
 // ---------------------------------------------------------------------------
 export const STEPS = [
   {
@@ -401,39 +417,39 @@ export const STEPS = [
     title: "Check your brand",
     desc: "60 seconds. See your score and what's missing.",
     price: "FREE",
-    priceColor: "#5fdfa8",
-    border: "rgba(255,255,255,0.09)",
-    bg: "linear-gradient(165deg, #0d1310, #0a0f0c)",
+    priceColor: "var(--color-accent-ink)",
+    border: "var(--color-border)",
+    bg: "var(--color-surface)",
     lift: "24px",
-    numBg: "rgba(255,255,255,0.05)",
-    numColor: "#f4f7f5",
-    numBorder: "rgba(255,255,255,0.15)",
+    numBg: "var(--color-surface-muted)",
+    numColor: "var(--color-text)",
+    numBorder: "var(--color-border)",
   },
   {
     n: "2",
     title: "Get the Kit",
     desc: "We write 3 pages for you. Copy, paste, publish. Done in an afternoon.",
     price: "$29 ONE-TIME",
-    priceColor: "#5fdfa8",
-    border: "rgba(39,201,138,0.30)",
-    bg: "linear-gradient(165deg, rgba(39,201,138,0.07), #0a0f0c)",
+    priceColor: "var(--color-accent-ink)",
+    border: "var(--landing-border-accent)",
+    bg: "linear-gradient(165deg, var(--landing-tint-soft), var(--color-surface))",
     lift: "12px",
-    numBg: "rgba(39,201,138,0.10)",
-    numColor: "#5fdfa8",
-    numBorder: "rgba(39,201,138,0.45)",
+    numBg: "var(--color-badge-ai-bg)",
+    numColor: "var(--color-accent-ink)",
+    numBorder: "var(--landing-border-accent-strong)",
   },
   {
     n: "3",
     title: "Put it on autopilot",
     desc: "We re-check every week and tell you what to fix next. Your 5-page site (Ozvor Pages) is included.",
     price: "$99 / MO",
-    priceColor: "#5fdfa8",
-    border: "rgba(39,201,138,0.45)",
-    bg: "linear-gradient(165deg, rgba(39,201,138,0.09), #0a0f0c)",
+    priceColor: "var(--color-accent-ink)",
+    border: "var(--landing-border-accent-strong)",
+    bg: "linear-gradient(165deg, var(--landing-tint-strong), var(--color-surface))",
     lift: "0px",
-    numBg: "#27c98a",
-    numColor: "#0a0f0d",
-    numBorder: "#27c98a",
+    numBg: "var(--landing-cta-bg)",
+    numColor: "var(--landing-cta-text)",
+    numBorder: "var(--landing-cta-bg)",
   },
 ] as const;
 
@@ -502,3 +518,52 @@ export const PRICING_TIERS: readonly PricingTier[] = [
 ] as const;
 
 export const CALENDLY_URL = "https://calendly.com/hello-ozvor/20-minute-ozvor";
+
+// ---------------------------------------------------------------------------
+// "Two more ways we help" — Ozvor Pages + OrganicPosts teasers (2026-07-11
+// founder request: the landing never presented these as products, only a
+// feature line in Growth). Copy: teen-copy standard, sentences <=12 words,
+// no invented numbers/outcomes — prices are facts, results are never
+// promised (see EcosystemSection in LandingV2.tsx).
+//
+// OrganicPosts is the ONE legitimate place for the gold accent on this page
+// (BRAND-GUIDE.md: gold is reserved for OrganicPosts only) — sourced from
+// --landing-gold-border / --landing-gold-bg / --color-gold-ink so it still
+// behaves correctly in light mode.
+// ---------------------------------------------------------------------------
+export interface EcosystemCard {
+  slug: string;
+  chip: string;
+  title: string;
+  body: string;
+  cta: string;
+  href: string;
+  /** GA4 event name — fired via the same optional-chained window.gtag?.()
+   * pattern as every other tracked click on this page (#117 consent-gated). */
+  gtagEvent: string;
+  /** true = OrganicPosts card, gets the brand's one legitimate gold accent. */
+  gold: boolean;
+}
+
+export const ECOSYSTEM_CARDS: readonly EcosystemCard[] = [
+  {
+    slug: "pages",
+    chip: "OZVOR PAGES",
+    title: "Your website, built to be quoted.",
+    body: "We build you a 5-page site from your Google Maps listing. AI-ready from day one. $99 one-time — or included with Growth.",
+    cta: "See Ozvor Pages →",
+    href: "/local-pages",
+    gtagEvent: "pages_teaser_click",
+    gold: false,
+  },
+  {
+    slug: "organicposts",
+    chip: "ORGANICPOSTS BY OZVOR",
+    title: "Don't want to do it yourself?",
+    body: "Our team writes and publishes everything for you. You approve, we ship.",
+    cta: "Meet OrganicPosts →",
+    href: "/organicposts",
+    gtagEvent: "organicposts_teaser_click",
+    gold: true,
+  },
+] as const;

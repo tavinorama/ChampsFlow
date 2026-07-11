@@ -45,6 +45,7 @@ import {
   SCORE_BULLETS,
   STEPS,
   PRICING_TIERS,
+  ECOSYSTEM_CARDS,
   FAQS,
   CALENDLY_URL,
   HERO_CAPTIONS,
@@ -80,6 +81,9 @@ const BUTTON_RESET: CSSProperties = {
   cursor: "pointer",
 };
 
+/** Overlay label rendered on top of the three product-demo frames — part of
+ * the "screenshot" chrome, so intentionally fixed-dark in both themes (see
+ * the theming header note above each demo frame). */
 const DEMO_CHIP_STYLE: CSSProperties = {
   position: "absolute",
   top: 8,
@@ -107,32 +111,35 @@ const LANDING_V2_STYLES = `
   .lv2-faq-panel { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
   .lv2-faq-panel[data-open="true"] { max-height: 240px; }
 
+  /* Primary CTA — bright emerald + near-black text, sourced from the fixed
+     --landing-cta-* tokens (NOT --color-primary — see tokens.css note): this
+     exact combo already contrasts on any page background, dark or light. */
   .lv2-btn-primary {
     display: inline-flex; align-items: center; gap: 9px;
     padding: 15px 28px; border-radius: 12px; border: none;
-    background: #27c98a; color: #0a0f0d; font-weight: 800; font-size: 16px;
+    background: var(--landing-cta-bg); color: var(--landing-cta-text); font-weight: 800; font-size: 16px;
     font-family: var(--font-family); text-decoration: none; cursor: pointer;
-    box-shadow: 0 8px 32px rgba(39,201,138,0.25);
+    box-shadow: var(--landing-cta-shadow);
     transition: background 0.15s, box-shadow 0.15s;
   }
-  .lv2-btn-primary:hover { background: #5fdfa8; box-shadow: 0 8px 40px rgba(39,201,138,0.4); }
+  .lv2-btn-primary:hover { background: var(--landing-cta-bg-hover); box-shadow: var(--landing-cta-shadow-hover); }
   .lv2-btn-primary:disabled { opacity: 0.65; cursor: not-allowed; }
 
   .lv2-btn-ghost {
     display: inline-flex; align-items: center; gap: 9px;
     padding: 15px 28px; border-radius: 12px;
-    border: 1px solid rgba(39,201,138,0.45); background: transparent; color: #5fdfa8;
+    border: 1px solid var(--landing-border-accent-strong); background: transparent; color: var(--color-accent-ink);
     font-weight: 700; font-size: 16px; font-family: var(--font-family);
     text-decoration: none; cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
   }
-  .lv2-btn-ghost:hover { border-color: #27c98a; background: rgba(39,201,138,0.08); }
+  .lv2-btn-ghost:hover { border-color: var(--color-primary); background: var(--landing-tint-soft); }
   .lv2-btn-ghost:disabled { opacity: 0.65; cursor: not-allowed; }
 
   .lv2-btn-tier-primary {
     display: flex; align-items: center; justify-content: center;
     padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 15px;
-    font-family: var(--font-family); background: #27c98a; color: #0a0f0d; border: 1px solid #27c98a;
+    font-family: var(--font-family); background: var(--landing-cta-bg); color: var(--landing-cta-text); border: 1px solid var(--landing-cta-bg);
     text-decoration: none; cursor: pointer; width: 100%;
     transition: opacity 0.15s;
   }
@@ -142,14 +149,16 @@ const LANDING_V2_STYLES = `
   .lv2-btn-tier-ghost {
     display: flex; align-items: center; justify-content: center;
     padding: 12px 18px; border-radius: 10px; font-weight: 700; font-size: 15px;
-    font-family: var(--font-family); background: transparent; color: #5fdfa8;
-    border: 1px solid rgba(39,201,138,0.45);
+    font-family: var(--font-family); background: transparent; color: var(--color-accent-ink);
+    border: 1px solid var(--landing-border-accent-strong);
     text-decoration: none; cursor: pointer; width: 100%;
     transition: opacity 0.15s;
   }
   .lv2-btn-tier-ghost:hover { opacity: 0.85; }
   .lv2-btn-tier-ghost:disabled { opacity: 0.6; cursor: not-allowed; }
 
+  /* Hero demo's play/pause control — chrome for a fixed-dark "screenshot"
+     frame (see the hero demo's header comment), intentionally not themed. */
   .lv2-icon-btn {
     display: flex; align-items: center; justify-content: center;
     width: 30px; height: 30px; border-radius: 50%;
@@ -324,7 +333,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
 
       {/* ============ SECTION 1 — HERO ============ */}
       <section
-        style={{ position: "relative", overflow: "hidden", background: "#070b09", color: "#f4f7f5" }}
+        style={{ position: "relative", overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)" }}
       >
         <div
           aria-hidden="true"
@@ -332,7 +341,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
             position: "absolute",
             inset: 0,
             background:
-              "radial-gradient(ellipse 90% 70% at 70% -10%, rgba(18,60,44,0.85), rgba(7,11,9,0) 65%), radial-gradient(ellipse 50% 40% at 15% 100%, rgba(39,201,138,0.07), rgba(7,11,9,0) 70%)",
+              "radial-gradient(ellipse 90% 70% at 70% -10%, var(--landing-glow-hero-1), transparent 65%), radial-gradient(ellipse 50% 40% at 15% 100%, var(--landing-glow-hero-2), transparent 70%)",
             pointerEvents: "none",
           }}
         />
@@ -341,7 +350,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
           style={{
             position: "absolute",
             inset: 0,
-            backgroundImage: "radial-gradient(rgba(95,223,168,0.10) 1px, transparent 1.5px)",
+            backgroundImage: "radial-gradient(var(--landing-dot-hero) 1px, transparent 1.5px)",
             backgroundSize: "30px 30px",
             WebkitMaskImage: "radial-gradient(ellipse 60% 60% at 75% 20%, black 0%, transparent 70%)",
             maskImage: "radial-gradient(ellipse 60% 60% at 75% 20%, black 0%, transparent 70%)",
@@ -364,9 +373,9 @@ export function LandingV2({ selfScore }: LandingV2Props) {
           }}
         >
           <g fill="none" strokeLinecap="round">
-            <circle cx="300" cy="300" r="285" stroke="rgba(39,201,138,0.10)" strokeWidth="2" strokeDasharray="440 160" />
-            <circle cx="300" cy="300" r="225" stroke="rgba(39,201,138,0.14)" strokeWidth="3" strokeDasharray="330 140" />
-            <circle cx="300" cy="300" r="160" stroke="rgba(39,201,138,0.10)" strokeWidth="2" strokeDasharray="230 110" />
+            <circle cx="300" cy="300" r="285" stroke="var(--landing-ring-soft)" strokeWidth="2" strokeDasharray="440 160" />
+            <circle cx="300" cy="300" r="225" stroke="var(--landing-ring-strong)" strokeWidth="3" strokeDasharray="330 140" />
+            <circle cx="300" cy="300" r="160" stroke="var(--landing-ring-soft)" strokeWidth="2" strokeDasharray="230 110" />
           </g>
         </svg>
 
@@ -400,7 +409,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                 margin: "0 0 28px",
                 fontSize: "clamp(17px, 1.4vw, 20px)",
                 lineHeight: 1.5,
-                color: "#9fb0a4",
+                color: "var(--color-muted)",
                 maxWidth: "52ch",
               }}
             >
@@ -410,23 +419,29 @@ export function LandingV2({ selfScore }: LandingV2Props) {
               <Link href="/test" onClick={handleFreeTestClick} className="lv2-btn-primary">
                 Check my brand — free →
               </Link>
-              <span style={{ fontSize: 13, color: "#9fb0a4", paddingLeft: 4 }}>60 seconds. No credit card.</span>
+              <span style={{ fontSize: 13, color: "var(--color-muted)", paddingLeft: 4 }}>60 seconds. No credit card.</span>
             </div>
             <p
               style={{
                 margin: "32px 0 0",
                 fontFamily: "var(--font-mono)",
                 fontSize: 13,
-                color: "#9fb0a4",
+                color: "var(--color-muted)",
                 letterSpacing: "0.02em",
               }}
             >
-              <span style={{ color: "#5fdfa8" }}>We check:</span> ChatGPT · Claude · Perplexity · Gemini · Google AI
+              <span style={{ color: "var(--color-accent-ink)" }}>We check:</span> ChatGPT · Claude · Perplexity · Gemini · Google AI
               Overviews
             </p>
           </div>
 
-          {/* HERO DEMO — simulated 21s product loop (3 scenes x 7 ticks), example data */}
+          {/* HERO DEMO — simulated 21s product loop (3 scenes x 7 ticks), example
+              data. DEPICTS the (dark-only) product UI, like a screenshot — its
+              interior colors below are intentionally fixed-dark in both themes;
+              only the outer border/shadow (var(--landing-frame-*)) adapts so the
+              widget sits naturally on a light page. `color` is pinned too, so the
+              currentColor-based LogoMark inside stays visible on the fixed-dark
+              background regardless of page theme. */}
           <div style={{ flex: "1 1 460px", minWidth: "min(460px, 100%)" }}>
             <div
               role="group"
@@ -434,10 +449,11 @@ export function LandingV2({ selfScore }: LandingV2Props) {
               style={{
                 position: "relative",
                 borderRadius: 16,
-                border: "1px solid rgba(95,223,168,0.18)",
-                background: "linear-gradient(165deg, #0e1512, #0a100d)",
+                border: "1px solid var(--landing-frame-border)",
+                background: "linear-gradient(165deg, #0e1512, #0a100d)" /* product-demo internals: intentionally fixed dark */,
+                color: "#f4f7f5" /* product-demo internals: intentionally fixed dark */,
                 overflow: "hidden",
-                boxShadow: "0 30px 90px rgba(0,0,0,0.6), 0 0 80px rgba(39,201,138,0.07)",
+                boxShadow: "var(--landing-frame-shadow)",
               }}
             >
               {/* browser chrome + loop progress (emerald->gold hairline — explicitly whitelisted) */}
@@ -840,7 +856,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
               style={{
                 margin: "10px 4px 0",
                 fontSize: 12,
-                color: "#9fb0a4",
+                color: "var(--color-muted)",
                 textAlign: "right",
                 fontFamily: "var(--font-mono)",
               }}
@@ -851,21 +867,21 @@ export function LandingV2({ selfScore }: LandingV2Props) {
         </div>
         <div
           aria-hidden="true"
-          style={{ height: 1, background: "linear-gradient(90deg, transparent, rgba(39,201,138,0.5), transparent)" }}
+          style={{ height: 1, background: "linear-gradient(90deg, transparent, var(--landing-divider), transparent)" }}
         />
       </section>
 
       {/* ============ SECTION 2 — YOUR SCORE IN 60 SECONDS ============ */}
       <section
         aria-labelledby="lv2-score-heading"
-        style={{ position: "relative", overflow: "hidden", background: "#070b09", color: "#f4f7f5" }}
+        style={{ position: "relative", overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)" }}
       >
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
             inset: 0,
-            background: "radial-gradient(ellipse 55% 65% at 22% 50%, rgba(39,201,138,0.10), transparent 70%)",
+            background: "radial-gradient(ellipse 55% 65% at 22% 50%, var(--landing-glow-score), transparent 70%)",
             pointerEvents: "none",
           }}
         />
@@ -881,14 +897,20 @@ export function LandingV2({ selfScore }: LandingV2Props) {
             alignItems: "center",
           }}
         >
-          {/* live score card — gradient border emerald->gold (explicitly whitelisted) */}
+          {/* Live score card. Shows our real self-audit, styled like the actual
+              (dark-only) product dashboard — same "screenshot" treatment as the
+              three demo frames: interior colors below stay fixed-dark in both
+              themes (with an explicit `color` pin, since the currentColor-based
+              LogoMark needs it), while the ambient halo behind the card and its
+              gradient border adapt to the page theme (the border's emerald->gold
+              gradient itself is explicitly whitelisted — works on both themes). */}
           <div style={{ flex: "1 1 400px", minWidth: "min(400px, 100%)", position: "relative" }}>
             <div
               aria-hidden="true"
               style={{
                 position: "absolute",
                 inset: -40,
-                background: "radial-gradient(ellipse at center, rgba(39,201,138,0.13), transparent 65%)",
+                background: "radial-gradient(ellipse at center, var(--landing-glow-score-card), transparent 65%)",
                 pointerEvents: "none",
               }}
             />
@@ -904,7 +926,8 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                 ref={scoreCardRef}
                 style={{
                   borderRadius: 21,
-                  background: "linear-gradient(165deg, #0e1512, #090e0b)",
+                  background: "linear-gradient(165deg, #0e1512, #090e0b)" /* product-demo internals: intentionally fixed dark */,
+                  color: "#f4f7f5" /* product-demo internals: intentionally fixed dark */,
                   padding: "clamp(24px, 3vw, 36px)",
                 }}
               >
@@ -1049,16 +1072,18 @@ export function LandingV2({ selfScore }: LandingV2Props) {
               {SCORE_BULLETS.map((b) => (
                 <li key={b} style={{ display: "flex", gap: 14, alignItems: "flex-start", fontSize: "clamp(15px, 1.3vw, 17px)", lineHeight: 1.5 }}>
                   <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }}>
-                    <circle cx="10" cy="10" r="9" fill="none" stroke="#27c98a" strokeWidth="1.5" strokeDasharray="4 3" />
-                    <circle cx="10" cy="10" r="3" fill="#27c98a" />
+                    <circle cx="10" cy="10" r="9" fill="none" stroke="var(--color-primary)" strokeWidth="1.5" strokeDasharray="4 3" />
+                    <circle cx="10" cy="10" r="3" fill="var(--color-primary)" />
                   </svg>
                   <span>{b}</span>
                 </li>
               ))}
             </ul>
 
-            {/* SECTION 2 DEMO — streaming AI-answer chat, click-to-play, example data */}
-            <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "linear-gradient(165deg, #0e1512, #0a100d)", overflow: "hidden" }}>
+            {/* SECTION 2 DEMO — streaming AI-answer chat, click-to-play, example
+                data. Same fixed-dark "screenshot" treatment as the hero demo:
+                interior colors stay hardcoded; only the outer border adapts. */}
+            <div style={{ borderRadius: 14, border: "1px solid var(--landing-frame-border)", background: "linear-gradient(165deg, #0e1512, #0a100d)" /* product-demo internals: intentionally fixed dark */, color: "#f4f7f5" /* product-demo internals: intentionally fixed dark */, overflow: "hidden" }}>
               <div
                 style={{
                   display: "flex",
@@ -1204,7 +1229,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                 )}
               </button>
             </div>
-            <p style={{ margin: "10px 2px 0", fontSize: 12, color: "#9fb0a4", fontFamily: "var(--font-mono)" }}>
+            <p style={{ margin: "10px 2px 0", fontSize: 12, color: "var(--color-muted)", fontFamily: "var(--font-mono)" }}>
               Growth does this for you, every week.
             </p>
           </div>
@@ -1214,14 +1239,14 @@ export function LandingV2({ selfScore }: LandingV2Props) {
       {/* ============ SECTION 3 — THREE STEPS ============ */}
       <section
         aria-labelledby="lv2-steps-heading"
-        style={{ position: "relative", overflow: "hidden", borderTop: "1px solid rgba(255,255,255,0.05)", background: "#070b09", color: "#f4f7f5" }}
+        style={{ position: "relative", overflow: "hidden", borderTop: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)" }}
       >
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
             inset: 0,
-            backgroundImage: "radial-gradient(rgba(95,223,168,0.07) 1px, transparent 1.5px)",
+            backgroundImage: "radial-gradient(var(--landing-dot-steps) 1px, transparent 1.5px)",
             backgroundSize: "30px 30px",
             WebkitMaskImage: "radial-gradient(ellipse 70% 55% at 50% 0%, black 0%, transparent 75%)",
             maskImage: "radial-gradient(ellipse 70% 55% at 50% 0%, black 0%, transparent 75%)",
@@ -1274,15 +1299,18 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: st.priceColor }}>{st.price}</span>
                 </div>
                 <h3 style={{ margin: "6px 0 0", fontSize: 21, fontWeight: 800, letterSpacing: "-0.02em" }}>{st.title}</h3>
-                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: "#9fb0a4" }}>{st.desc}</p>
+                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: "var(--color-muted)" }}>{st.desc}</p>
               </div>
             ))}
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: "clamp(24px, 4vw, 48px)", alignItems: "center" }}>
-            {/* SECTION 3 DEMO — document-flip cards (3 pages: DRAFT -> LIVE), example data */}
+            {/* SECTION 3 DEMO — document-flip cards (3 pages: DRAFT -> LIVE),
+                example data. Same fixed-dark "screenshot" treatment as the
+                other two demo frames: interior colors stay hardcoded; only the
+                outer border adapts. */}
             <div style={{ flex: "1 1 380px", minWidth: "min(380px, 100%)" }}>
-              <div style={{ borderRadius: 14, border: "1px solid rgba(39,201,138,0.25)", background: "linear-gradient(165deg, #0e1512, #0a100d)", overflow: "hidden" }}>
+              <div style={{ borderRadius: 14, border: "1px solid var(--landing-frame-border)", background: "linear-gradient(165deg, #0e1512, #0a100d)" /* product-demo internals: intentionally fixed dark */, color: "#f4f7f5" /* product-demo internals: intentionally fixed dark */, overflow: "hidden" }}>
                 <div
                   style={{
                     display: "flex",
@@ -1477,7 +1505,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                   )}
                 </button>
               </div>
-              <p style={{ margin: "10px 2px 0", fontSize: 12, color: "#9fb0a4", fontFamily: "var(--font-mono)" }}>
+              <p style={{ margin: "10px 2px 0", fontSize: 12, color: "var(--color-muted)", fontFamily: "var(--font-mono)" }}>
                 Publish the first page in ~10 minutes. Become quotable.
               </p>
             </div>
@@ -1498,14 +1526,14 @@ export function LandingV2({ selfScore }: LandingV2Props) {
       <section
         id="pricing"
         aria-labelledby="lv2-pricing-heading"
-        style={{ position: "relative", overflow: "hidden", borderTop: "1px solid rgba(255,255,255,0.05)", background: "#070b09", color: "#f4f7f5" }}
+        style={{ position: "relative", overflow: "hidden", borderTop: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)" }}
       >
         <div
           aria-hidden="true"
           style={{
             position: "absolute",
             inset: 0,
-            background: "radial-gradient(ellipse 80% 60% at 50% 110%, rgba(18,60,44,0.6), transparent 70%)",
+            background: "radial-gradient(ellipse 80% 60% at 50% 110%, var(--landing-glow-pricing), transparent 70%)",
             pointerEvents: "none",
           }}
         />
@@ -1513,10 +1541,10 @@ export function LandingV2({ selfScore }: LandingV2Props) {
           <h2 id="lv2-pricing-heading" style={{ margin: "0 0 10px", fontSize: "clamp(28px, 3vw, 40px)", fontWeight: 800, letterSpacing: "-0.03em" }}>
             Pricing
           </h2>
-          <p style={{ margin: "0 0 44px", color: "#9fb0a4", fontSize: 16 }}>Start free. Upgrade when you&apos;re ready to fix things.</p>
+          <p style={{ margin: "0 0 44px", color: "var(--color-muted)", fontSize: 16 }}>Start free. Upgrade when you&apos;re ready to fix things.</p>
 
           {checkoutError && (
-            <p role="alert" style={{ margin: "0 0 20px", color: "#f0584e", fontSize: 14, fontFamily: "var(--font-family)" }}>
+            <p role="alert" style={{ margin: "0 0 20px", color: "var(--color-error)", fontSize: 14, fontFamily: "var(--font-family)" }}>
               {checkoutError}
             </p>
           )}
@@ -1528,13 +1556,13 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                 style={{
                   position: "relative",
                   borderRadius: 18,
-                  border: t.popular ? "1px solid rgba(39,201,138,0.5)" : "1px solid rgba(255,255,255,0.09)",
-                  background: t.popular ? "rgba(39,201,138,0.06)" : "#0d1310",
+                  border: t.popular ? "1px solid var(--landing-border-accent-strong)" : "1px solid var(--color-border)",
+                  background: t.popular ? "var(--landing-tint-soft)" : "var(--color-surface)",
                   padding: "26px 24px",
                   display: "flex",
                   flexDirection: "column",
                   gap: 6,
-                  boxShadow: t.popular ? "0 12px 48px rgba(39,201,138,0.1)" : "none",
+                  boxShadow: t.popular ? "var(--landing-shadow-popular)" : "none",
                 }}
               >
                 {t.popular && (
@@ -1549,24 +1577,24 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                       letterSpacing: "0.06em",
                       padding: "4px 10px",
                       borderRadius: 12,
-                      background: "#27c98a",
-                      color: "#0a0f0d",
+                      background: "var(--landing-cta-bg)",
+                      color: "var(--landing-cta-text)",
                     }}
                   >
                     MOST POPULAR
                   </span>
                 )}
-                <h3 style={{ margin: 0, fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 500, color: "#9fb0a4", letterSpacing: "0.05em" }}>
+                <h3 style={{ margin: 0, fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 500, color: "var(--color-muted)", letterSpacing: "0.05em" }}>
                   {t.name}
                 </h3>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6, margin: "4px 0 10px" }}>
                   <span style={{ fontSize: 34, fontWeight: 800, letterSpacing: "-0.03em" }}>{t.price}</span>
-                  <span style={{ fontSize: 13, color: "#9fb0a4" }}>{t.per}</span>
+                  <span style={{ fontSize: 13, color: "var(--color-muted)" }}>{t.per}</span>
                 </div>
                 <ul style={{ margin: "0 0 20px", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 9 }}>
                   {t.features.map((f) => (
-                    <li key={f} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 14, lineHeight: 1.45, color: "#cfd8d2" }}>
-                      <span aria-hidden="true" style={{ color: "#27c98a", flexShrink: 0 }}>
+                    <li key={f} style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 14, lineHeight: 1.45, color: "var(--color-text)" }}>
+                      <span aria-hidden="true" style={{ color: "var(--color-primary)", flexShrink: 0 }}>
                         ✓
                       </span>
                       <span>{f}</span>
@@ -1611,7 +1639,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                           href={CALENDLY_URL}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ fontSize: 13, color: "#5fdfa8", textDecoration: "none" }}
+                          style={{ fontSize: 13, color: "var(--color-accent-ink)", textDecoration: "none" }}
                         >
                           Prefer to talk? Book a call →
                         </a>
@@ -1625,8 +1653,11 @@ export function LandingV2({ selfScore }: LandingV2Props) {
         </div>
       </section>
 
+      {/* ============ SECTION 4.5 — ECOSYSTEM ("Two more ways we help") ============ */}
+      <EcosystemSection />
+
       {/* ============ SECTION 5 — MINI FAQ ============ */}
-      <section aria-labelledby="lv2-faq-heading" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: "#070b09", color: "#f4f7f5" }}>
+      <section aria-labelledby="lv2-faq-heading" style={{ borderTop: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "clamp(64px, 8vw, 110px) clamp(20px, 4vw, 48px)" }}>
           <h2 id="lv2-faq-heading" style={{ margin: "0 0 12px", fontSize: "clamp(26px, 2.6vw, 36px)", fontWeight: 800, letterSpacing: "-0.03em" }}>
             Quick answers
@@ -1637,7 +1668,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
               const triggerId = `lv2-faq-trigger-${i}`;
               const panelId = `lv2-faq-panel-${i}`;
               return (
-                <div key={fq.q} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div key={fq.q} style={{ borderBottom: "1px solid var(--color-border)" }}>
                   <h3 style={{ margin: 0 }}>
                     <button
                       type="button"
@@ -1666,25 +1697,95 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                         aria-hidden="true"
                         style={{ flexShrink: 0, transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s" }}
                       >
-                        <path d="M2 5 L7 10 L12 5" fill="none" stroke="#27c98a" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M2 5 L7 10 L12 5" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" />
                       </svg>
                     </button>
                   </h3>
                   <div id={panelId} role="region" aria-labelledby={triggerId} className="lv2-faq-panel" data-open={open}>
-                    <p style={{ margin: 0, padding: "0 2px 22px", fontSize: 15, lineHeight: 1.6, color: "#9fb0a4", maxWidth: "62ch" }}>{fq.a}</p>
+                    <p style={{ margin: 0, padding: "0 2px 22px", fontSize: 15, lineHeight: 1.6, color: "var(--color-muted)", maxWidth: "62ch" }}>{fq.a}</p>
                   </div>
                 </div>
               );
             })}
           </div>
           <p style={{ margin: "24px 0 0", fontSize: 15 }}>
-            <Link href="/faq" style={{ color: "#5fdfa8" }}>
+            <Link href="/faq" style={{ color: "var(--color-accent-ink)" }}>
               More questions →
             </Link>
           </p>
         </div>
       </section>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section 4.5 — "Two more ways we help" (Ozvor Pages + OrganicPosts teasers)
+// ---------------------------------------------------------------------------
+
+/** Every card's link click fires a GA4 event, gated the same way the rest of
+ * the app treats gtag: it may not exist yet (no consent) — always optional-
+ * chained, never assumed present (#117 consent-gated GA4). */
+function EcosystemSection() {
+  return (
+    <section
+      aria-labelledby="lv2-ecosystem-heading"
+      style={{ borderTop: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)" }}
+    >
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "clamp(56px, 7vw, 100px) clamp(20px, 4vw, 48px)" }}>
+        <h2
+          id="lv2-ecosystem-heading"
+          style={{ margin: "0 0 28px", fontSize: "clamp(28px, 3vw, 40px)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.1 }}
+        >
+          Two more ways we help
+        </h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 18 }}>
+          {ECOSYSTEM_CARDS.map((card) => (
+            <div
+              key={card.slug}
+              style={{
+                flex: "1 1 320px",
+                minWidth: "min(320px, 100%)",
+                borderRadius: 18,
+                border: `1px solid ${card.gold ? "var(--landing-gold-border)" : "var(--color-border)"}`,
+                background: card.gold ? "var(--landing-gold-bg)" : "var(--color-surface)",
+                padding: "28px 26px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: "0.08em",
+                  color: card.gold ? "var(--color-gold-ink)" : "var(--color-accent-ink)",
+                }}
+              >
+                {card.chip}
+              </span>
+              <h3 style={{ margin: 0, fontSize: 21, fontWeight: 800, letterSpacing: "-0.02em" }}>{card.title}</h3>
+              <p style={{ margin: 0, fontSize: 15, lineHeight: 1.5, color: "var(--color-muted)" }}>{card.body}</p>
+              <Link
+                href={card.href}
+                onClick={() => window.gtag?.("event", card.gtagEvent)}
+                style={{
+                  marginTop: 4,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: card.gold ? "var(--color-gold-ink)" : "var(--color-accent-ink)",
+                  textDecoration: "none",
+                }}
+              >
+                {card.cta}
+              </Link>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

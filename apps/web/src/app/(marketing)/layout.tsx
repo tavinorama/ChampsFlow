@@ -25,6 +25,7 @@ import Link from "next/link";
 import "../../styles/tokens.css";
 import { SkipToMainContent } from "../../components/marketing/SkipToMainContent";
 import { ThemeToggle } from "../../components/marketing/ThemeToggle";
+import { ProductsMenu } from "../../components/marketing/ProductsMenu";
 import { LogoMark, Wordmark } from "../../components/brand/Logo";
 import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
 import { ChatWidget } from "../../components/ChatWidget";
@@ -220,6 +221,9 @@ const MARKETING_STYLES = `
 
   /* ── Center nav ghost links ─────────────────────────────────────── */
   .mk-navlink:hover { color: var(--color-text) !important; }
+
+  /* ── Products dropdown menu items ──────────────────────────────── */
+  .mk-products-item:hover { background: var(--color-surface-muted); }
 
   /* ── Primary CTA — emerald gradient, dark text, soft glow ───────── */
   .mk-cta-primary {
@@ -501,11 +505,12 @@ function PublicNavbar() {
         </Link>
 
         {/* Center nav — simplified (satellite pages carry the complexity):
-            How it works · Compare · Research · FAQ · Blog */}
+            Products ▾ · How it works · Compare · Research · FAQ · Blog */}
         <div
           className="mk-navlinks"
           style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}
         >
+          <ProductsMenu />
           {([
             ["How it works", "/how-it-works"],
             ["Compare", "/compare"],

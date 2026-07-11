@@ -151,6 +151,48 @@
   --min-tap-target:    44px;
   --min-button-height: 48px;
   --bottom-nav-height: 56px;
+
+  /* ── Landing v2 — page-chrome atmosphere tokens ───────────────────
+   * Theme the LandingV2.tsx page chrome (section backgrounds' decorative
+   * glows/dot-grids, card borders/tints). The three product-demo frames
+   * (hero loop, AI-answer chat, Kit doc-flip) and the live score card's
+   * inner panel deliberately do NOT use these — they render like a
+   * screenshot of the (dark-only) product UI and stay hardcoded dark in
+   * both themes; only their outer frame border/shadow below is theme-
+   * aware, via --landing-frame-border / --landing-frame-shadow. */
+  --landing-glow-hero-1:           rgba(18,60,44,0.85);
+  --landing-glow-hero-2:           rgba(39,201,138,0.07);
+  --landing-glow-score:            rgba(39,201,138,0.10);
+  --landing-glow-score-card:       rgba(39,201,138,0.13);
+  --landing-glow-pricing:          rgba(18,60,44,0.6);
+  --landing-dot-hero:              rgba(95,223,168,0.10);
+  --landing-dot-steps:             rgba(95,223,168,0.07);
+  --landing-ring-soft:             rgba(39,201,138,0.10);
+  --landing-ring-strong:           rgba(39,201,138,0.14);
+  --landing-divider:               rgba(39,201,138,0.5);
+  --landing-frame-border:          rgba(95,223,168,0.20);
+  --landing-frame-shadow:          0 30px 90px rgba(0,0,0,0.6), 0 0 80px rgba(39,201,138,0.07);
+  --landing-border-accent:         rgba(39,201,138,0.30);
+  --landing-border-accent-strong:  rgba(39,201,138,0.45);
+  --landing-tint-soft:             rgba(39,201,138,0.06);
+  --landing-tint-strong:           rgba(39,201,138,0.09);
+  --landing-shadow-popular:        0 12px 48px rgba(39,201,138,0.1);
+
+  /* Fixed brand CTA — intentionally NOT overridden in light mode. Bright
+     emerald bg + near-black text already contrasts on any page background,
+     so re-deriving it from the theme-adaptive --color-primary (which turns
+     forest-green in light mode) would break contrast against the fixed
+     near-black label — see LandingV2.tsx report for detail. */
+  --landing-cta-bg:                #27c98a;
+  --landing-cta-bg-hover:          #5fdfa8;
+  --landing-cta-text:              #0a0f0d;
+  --landing-cta-shadow:            0 8px 32px rgba(39,201,138,0.25);
+  --landing-cta-shadow-hover:      0 8px 40px rgba(39,201,138,0.4);
+
+  /* OrganicPosts gold accent — brand guide reserves gold for OrganicPosts
+     only. Same hue in both themes; alpha tuned per theme below. */
+  --landing-gold-border:           rgba(230,169,63,0.35);
+  --landing-gold-bg:               rgba(230,169,63,0.10);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -469,4 +511,30 @@ html[data-theme="light"] {
   --shadow-card-hover: 0 8px 24px rgba(0,0,0,.10), 0 2px 8px rgba(0,0,0,.06);
   --shadow-modal:      0 20px 25px -5px rgba(0,0,0,.10), 0 10px 10px -5px rgba(0,0,0,.04);
   --shadow-blue:       0 8px 32px rgba(12,125,84,0.15);
+
+  /* Landing v2 — page-chrome atmosphere (light overrides). Deliberately
+     much subtler than dark, warm-tinted where the dark version was a green
+     bloom, so the page reads as an airy cream surface, not a dirty smear. */
+  --landing-glow-hero-1:           rgba(230,169,63,0.10);
+  --landing-glow-hero-2:           rgba(12,125,84,0.05);
+  --landing-glow-score:            rgba(12,125,84,0.06);
+  --landing-glow-score-card:       rgba(12,125,84,0.08);
+  --landing-glow-pricing:          rgba(230,169,63,0.08);
+  --landing-dot-hero:              rgba(12,125,84,0.07);
+  --landing-dot-steps:             rgba(12,125,84,0.05);
+  --landing-ring-soft:             rgba(12,125,84,0.08);
+  --landing-ring-strong:           rgba(12,125,84,0.11);
+  --landing-divider:               rgba(12,125,84,0.35);
+  --landing-frame-border:          rgba(12,125,84,0.25);
+  --landing-frame-shadow:          0 20px 50px rgba(20,45,32,0.12), 0 0 30px rgba(12,125,84,0.07);
+  --landing-border-accent:         rgba(12,125,84,0.24);
+  --landing-border-accent-strong:  rgba(12,125,84,0.34);
+  --landing-tint-soft:             rgba(12,125,84,0.05);
+  --landing-tint-strong:           rgba(12,125,84,0.07);
+  --landing-shadow-popular:        0 12px 48px rgba(12,125,84,0.08);
+
+  /* OrganicPosts gold accent — same hue, slightly stronger alpha so it
+     still reads against the cream surface. */
+  --landing-gold-border:           rgba(230,169,63,0.45);
+  --landing-gold-bg:               rgba(230,169,63,0.12);
 }
