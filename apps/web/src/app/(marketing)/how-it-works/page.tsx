@@ -12,6 +12,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StepGlyph } from "../../../components/marketing/illustrations";
+import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
@@ -131,7 +132,7 @@ export default function HowItWorksPage() {
   return (
     <main style={{ maxWidth: "880px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(howToJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(howToJsonLd) }} />
 
       {/* Hero */}
       <span className="hiw-eyebrow">How it works</span>

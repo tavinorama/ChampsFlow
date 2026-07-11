@@ -13,6 +13,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
@@ -99,7 +100,7 @@ const HONEST_CAVEATS = [
 // JSON-LD
 // ---------------------------------------------------------------------------
 
-const TRACKER_LD = JSON.stringify({
+const TRACKER_LD_DATA = {
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -148,7 +149,7 @@ const TRACKER_LD = JSON.stringify({
       ],
     },
   ],
-});
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -159,7 +160,7 @@ export default function LlmCitationTrackerPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: TRACKER_LD }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(TRACKER_LD_DATA) }}
       />
 
       <article

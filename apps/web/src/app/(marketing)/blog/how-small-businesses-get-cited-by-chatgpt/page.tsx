@@ -25,6 +25,7 @@ import Link from "next/link";
 import { GeoGraphBackdrop } from "../../../../components/marketing/GeoGraphBackdrop";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
 import { DirectCheckoutButton } from "../../../../components/marketing/DirectCheckoutButton";
+import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -212,11 +213,11 @@ export default function PillarGeoPage() {
       {/* JSON-LD */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }}
       />
 
       <article

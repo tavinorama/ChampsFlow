@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { ResourceMarkdown } from "../../../../components/ResourceMarkdown";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
@@ -378,7 +379,7 @@ const PRINT_CSS = `
 // JSON-LD structured data
 // ---------------------------------------------------------------------------
 
-const ARTICLE_LD = JSON.stringify({
+const ARTICLE_LD_DATA = {
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -481,7 +482,7 @@ const ARTICLE_LD = JSON.stringify({
       ],
     },
   ],
-});
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -502,7 +503,7 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
       <style dangerouslySetInnerHTML={{ __html: PRINT_CSS }} />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: ARTICLE_LD }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(ARTICLE_LD_DATA) }}
       />
 
       {/* Branded header */}

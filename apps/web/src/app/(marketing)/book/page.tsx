@@ -33,6 +33,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendlyEmbedSection } from "./CalendlyEmbedSection";
 import { SoftCTA } from "../../../components/marketing/SoftCTA";
+import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
 // Metadata
@@ -104,7 +105,7 @@ export default function BookPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(bookPageJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(bookPageJsonLd) }}
       />
 
       {/* ── Hero section ─────────────────────────────────────────────── */}
