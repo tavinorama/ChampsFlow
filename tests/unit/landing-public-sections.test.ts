@@ -25,6 +25,12 @@ describe("mapSectionToRenderModel — every known generator section shape", () =
       subheadline: "Serving Austin",
       businessName: "Acme Plumbing",
       ctaLabel: "Get a Quote",
+      // Rich Google-Maps extras are null/"" when absent (never invented).
+      image: null,
+      imageAlt: "",
+      imageAttribution: null,
+      rating: null,
+      reviewCount: null,
     });
   });
 
@@ -37,7 +43,7 @@ describe("mapSectionToRenderModel — every known generator section shape", () =
   it("maps a map_nap section, omitting absent fields as null (never invented)", () => {
     expect(
       mapSectionToRenderModel({ type: "map_nap", name: "Acme", address: "123 Main St", phone: null, website: null })
-    ).toEqual({ kind: "map_nap", name: "Acme", address: "123 Main St", phone: null, website: null });
+    ).toEqual({ kind: "map_nap", name: "Acme", address: "123 Main St", phone: null, website: null, rating: null, reviewCount: null });
   });
 
   it("maps a cta section", () => {
@@ -55,7 +61,7 @@ describe("mapSectionToRenderModel — every known generator section shape", () =
     expect(model).toEqual({
       kind: "proof",
       heading: "What Customers Say",
-      items: [{ author: "Jane", body: "Great service!", rating: 5 }],
+      items: [{ author: "Jane", body: "Great service!", rating: 5, source: null, relativeTime: null }],
       empty: false,
       note: null,
     });
@@ -214,5 +220,59 @@ describe("mapSectionsToRenderModels — full page arrays", () => {
 
   it("returns an empty array for an empty sections array", () => {
     expect(mapSectionsToRenderModels([])).toEqual([]);
+  });
+});
+
+describe("mapSectionToRenderModel — rich Google-Maps shapes (PR D)", () => {
+  it("maps a hero with rating, review count, and image", () => {
+    const m = mapSectionToRenderModel({
+      type: "hero",
+      headline: "Marigold Café",
+      business_name: "Marigold Café",
+      rating: 4.7,
+      review_count: 328,
+      image: "/api/public/landing-photo?ref=places/x/photos/y",
+      image_alt: "Storefront",
+      image_attribution: "A. Photographer",
+    });
+    expect(m).toMatchObject({
+      kind: "hero",
+      rating: 4.7,
+      reviewCount: 328,
+      image: "/api/public/landing-photo?ref=places/x/photos/y",
+      imageAlt: "Storefront",
+      imageAttribution: "A. Photographer",
+    });
+  });
+
+  it("maps a gallery section, dropping items with no src, else null when empty", () => {
+    const m = mapSectionToRenderModel({
+      type: "gallery",
+      heading: "Photos",
+      items: [
+        { src: "/api/public/landing-photo?ref=a", alt: "one", attribution: "Ann" },
+        { alt: "no src — dropped" },
+      ],
+    });
+    expect(m).toEqual({
+      kind: "gallery",
+      heading: "Photos",
+      items: [{ src: "/api/public/landing-photo?ref=a", alt: "one", attribution: "Ann" }],
+    });
+    // No usable photos → skipped entirely (renders nothing rather than an empty grid).
+    expect(mapSectionToRenderModel({ type: "gallery", items: [{ alt: "x" }] })).toBeNull();
+  });
+
+  it("maps a proof section built from attributed Google reviews", () => {
+    const m = mapSectionToRenderModel({
+      type: "proof",
+      heading: "What people say",
+      source: "Google",
+      items: [{ author: "Marcus R.", body: "Best cortado.", rating: 5, relative_time: "2 weeks ago", source: "Google" }],
+    });
+    expect(m).toMatchObject({
+      kind: "proof",
+      items: [{ author: "Marcus R.", body: "Best cortado.", rating: 5, relativeTime: "2 weeks ago", source: "Google" }],
+    });
   });
 });
