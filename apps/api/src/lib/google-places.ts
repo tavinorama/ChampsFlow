@@ -63,6 +63,47 @@ function requireApiKey(): string {
 const PLACES_TIMEOUT_MS = 8000;
 const PLACES_API_BASE = "https://places.googleapis.com/v1";
 
+// ---------------------------------------------------------------------------
+// Photo proxy — Places photo BYTES are never stored; the generator points
+// <img src> at our own key-bearing proxy, which streams the media server-side.
+// ---------------------------------------------------------------------------
+
+/** Public proxy path for a Google photo resource `name`. The API key stays
+ *  server-side; the browser only ever sees this path. */
+export function landingPhotoProxyPath(photoName: string): string {
+  return `/api/public/landing-photo?ref=${encodeURIComponent(photoName)}`;
+}
+
+/** A visitor-supplied `ref` must look EXACTLY like a Places photo resource name
+ *  (`places/<id>/photos/<id>`) before we proxy it — defense against using the
+ *  proxy to fetch arbitrary Places resources. */
+export function isValidPhotoName(ref: string): boolean {
+  return /^places\/[A-Za-z0-9_.-]+\/photos\/[A-Za-z0-9_.-]+$/.test(ref);
+}
+
+/** Fetch a Places photo's bytes for the proxy route (key via header, never in
+ *  the URL/logs). Returns the image Response (follows Google's redirect to the
+ *  CDN). Throws PlacesError on any failure. */
+export async function fetchPlacePhoto(photoName: string, maxWidthPx = 1200): Promise<Response> {
+  if (!isValidPhotoName(photoName)) {
+    throw new PlacesError("invalid_url", "Invalid photo reference.");
+  }
+  const apiKey = requireApiKey();
+  const url = `${PLACES_API_BASE}/${photoName}/media?maxWidthPx=${maxWidthPx}`;
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(url, { method: "GET", headers: { "X-Goog-Api-Key": apiKey } });
+  } catch (err) {
+    logger.warn("google_places_photo_network_error", { message: (err as Error).message?.slice(0, 160) });
+    throw new PlacesError("upstream", "Photo temporarily unavailable.");
+  }
+  if (!res.ok) {
+    logger.warn("google_places_photo_failed", { status: res.status });
+    throw new PlacesError(res.status === 404 ? "not_found" : "upstream", "Photo unavailable.");
+  }
+  return res;
+}
+
 // NARROW mask — the cheap Pro-SKU shape used by the "Fill from Google Maps"
 // prefill + link resolution. No reviews/ratings/photos (keeps that click cheap).
 export const PLACE_DETAILS_FIELD_MASK =

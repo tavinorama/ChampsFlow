@@ -223,6 +223,8 @@ export { scorePage, computeContentScoreFromTraits } from "./content-geo";
 export type {
   LandingBusinessInput,
   LandingTestimonialInput,
+  LandingReviewInput,
+  LandingPhotoInput,
   LandingFaqInput,
   LandingCrawlSummary,
   LandingGenerateInput,
@@ -233,10 +235,15 @@ export type {
   LandingBundlePageType,
   LandingBundlePage,
   LandingBundle,
+  LandingTheme,
 } from "./landing-generate";
 export {
   buildLandingBundle,
   deriveReviewThemes,
+  deriveLandingTheme,
+  buildLocalBusinessJsonLd,
+  buildFaqPageJsonLd,
+  LANDING_DEFAULT_BRAND,
   landingSlugify,
   renderSectionsForScoring,
 } from "./landing-generate";

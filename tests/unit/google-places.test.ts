@@ -26,6 +26,8 @@ import {
   PLACE_DETAILS_FIELD_MASK,
   PLACE_DETAILS_RICH_FIELD_MASK,
   TEXT_SEARCH_FIELD_MASK,
+  landingPhotoProxyPath,
+  isValidPhotoName,
 } from "../../apps/api/src/lib/google-places";
 
 // ---------------------------------------------------------------------------
@@ -459,6 +461,30 @@ describe("resolvePlace() — Text Search fallback (name + coords, no explicit pl
 // ---------------------------------------------------------------------------
 // resolvePlaceById({ rich:true }) — the generator's enrichment fetch
 // ---------------------------------------------------------------------------
+
+describe("photo proxy — path builder + ref validation (abuse guard)", () => {
+  it("builds a proxy path with the ref URL-encoded", () => {
+    expect(landingPhotoProxyPath("places/ChIJ_abc/photos/AaBb-1")).toBe(
+      "/api/public/landing-photo?ref=places%2FChIJ_abc%2Fphotos%2FAaBb-1"
+    );
+  });
+  it("accepts only a well-formed Places photo resource name", () => {
+    expect(isValidPhotoName("places/ChIJ_abc/photos/AaBb-1.2")).toBe(true);
+    // Rejects anything that isn't exactly places/<id>/photos/<id>:
+    for (const bad of [
+      "",
+      "places/abc",
+      "photos/abc",
+      "places//photos/x",
+      "../etc/passwd",
+      "places/abc/photos/x/../../y",
+      "https://evil.com/x",
+      "places/abc/reviews/x",
+    ]) {
+      expect(isValidPhotoName(bad)).toBe(false);
+    }
+  });
+});
 
 describe("resolvePlaceById() — rich generator fetch (reviews, photos, rating)", () => {
   beforeEach(() => setPlacesEnv());
