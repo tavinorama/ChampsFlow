@@ -1,6 +1,13 @@
 # macOS
 .DS_Store
 
+# Cloud-sync (iCloud/Dropbox) conflict copies: "name 2.ts", "settings.local 3.json", …
+# These are untracked duplicates of real files that broke local worker/web tsc
+# and were one `git add -A` from being committed. Never track them (use
+# `git add -f` if you ever legitimately need a "name N.ext" file).
+* [0-9].*
+* [0-9]
+
 # Dependencies
 node_modules/
 
