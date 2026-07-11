@@ -21,6 +21,7 @@ import {
   AI_ANSWER_CITATION_INDEX,
   kitSim,
   KIT_PAGES,
+  ECOSYSTEM_CARDS,
 } from "./landing-v2-logic";
 
 describe("ringOffset", () => {
@@ -291,5 +292,32 @@ describe("kitSim", () => {
 
   it("covers exactly the 3 promised pages", () => {
     expect(KIT_PAGES.map((p) => p.slug)).toEqual(["faq", "compare", "schema"]);
+  });
+});
+
+describe("ECOSYSTEM_CARDS — Ozvor Pages + OrganicPosts teasers", () => {
+  it("links to the two real ecosystem product pages", () => {
+    const hrefs = ECOSYSTEM_CARDS.map((c) => c.href);
+    expect(hrefs).toContain("/local-pages");
+    expect(hrefs).toContain("/organicposts");
+  });
+
+  it("only the OrganicPosts card gets the gold accent (brand rule: gold is OrganicPosts-only)", () => {
+    const goldCards = ECOSYSTEM_CARDS.filter((c) => c.gold);
+    expect(goldCards).toHaveLength(1);
+    expect(goldCards[0]!.href).toBe("/organicposts");
+  });
+
+  it("each card has a distinct GA4 event name", () => {
+    const events = ECOSYSTEM_CARDS.map((c) => c.gtagEvent);
+    expect(new Set(events).size).toBe(events.length);
+    expect(events).toContain("pages_teaser_click");
+    expect(events).toContain("organicposts_teaser_click");
+  });
+
+  it("never promises a result or invents a metric (integrity rule)", () => {
+    for (const c of ECOSYSTEM_CARDS) {
+      expect(c.body.toLowerCase()).not.toMatch(/climb|guarantee|% more|double your/);
+    }
   });
 });
