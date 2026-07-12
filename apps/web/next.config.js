@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 
+const path = require("path");
+
 // ---------------------------------------------------------------------------
 // Security headers (SEC-G7-4 / S-13 / S-15)
 // ---------------------------------------------------------------------------
@@ -50,6 +52,15 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // Pin the file-tracing root to THIS app's monorepo root (…/apps/web → ../..).
+  // Without it, Next infers the root by scanning for lockfiles and — in a git
+  // worktree or any checkout nested under another repo — finds TWO lockfiles and
+  // guesses the wrong parent directory, emitting the "inferred your workspace
+  // root, but it may not be correct" warning. Pinning it makes `output:
+  // standalone` tracing deterministic (the Railway bundle traces the right root)
+  // and silences the warning. __dirname is …/apps/web in every checkout.
+  outputFileTracingRoot: path.join(__dirname, "../.."),
+
   // Standalone output for Docker — produces a minimal runtime bundle in
   // .next/standalone/. Enabled ONLY when NEXT_OUTPUT=standalone is set
   // (the Docker build sets it). The key is fully ABSENT in `next dev`

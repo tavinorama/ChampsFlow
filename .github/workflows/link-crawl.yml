@@ -1,0 +1,43 @@
+name: Link Health
+
+# Scheduled sitemap + internal-link 200 crawl of production (P3.4). Catches a
+# 404/500 the moment it appears — a broken nav/footer/CTA link or a sitemap
+# entry that points at a page that no longer renders (we've shipped both before).
+# Read-only: it only issues public GET requests. No secrets, no side effects.
+#
+# This is ADVISORY monitoring, not a per-PR merge gate — it runs on a cadence
+# and on demand, and fails loudly (non-zero exit) when a public URL is broken so
+# the failure surfaces in the Actions tab / notifications.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL to crawl (default: production)"
+        required: false
+        default: "https://ozvor.com"
+  schedule:
+    # 07:00 UTC daily — offset an hour after the nightly E2E sweep (06:00).
+    - cron: "0 7 * * *"
+
+# Only one crawl at a time; a newer run supersedes an in-flight one.
+concurrency:
+  group: link-crawl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  crawl:
+    name: Sitemap + internal-link 200 check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No `npm ci` — the crawler is dependency-free (Node global fetch only).
+      - name: Crawl links
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url || 'https://ozvor.com' }}
+        run: node scripts/crawl-links.mjs "$BASE_URL"

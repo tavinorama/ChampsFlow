@@ -279,7 +279,11 @@ export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
   // Notes:
   //   - `redeemed` is intentionally omitted (social-proof concern; remaining
   //     is sufficient for urgency copy without revealing exact take-up).
-  //   - Always returns 200 — never 5xx. Fail-safe: { active: true, remaining: 100, limit: 100 }.
+  //   - Always returns 200 — never 5xx. Fail-safe: { active: true, remaining: null, limit: 100 }.
+  //   - `remaining` is `null` whenever the count is UNVERIFIED (Stripe read
+  //     failed / unconfigured). The offer stays open (`active`), but we never
+  //     publish an unverified number as if it were a live count — the UI falls
+  //     back to the honest generic "first 100" copy. No fake scarcity.
   //   - Stripe cost is absorbed by the 60s Redis cache inside getFounderOfferStatus().
   //   - No PII exposed. No auth required.
   // -------------------------------------------------------------------------
@@ -289,7 +293,8 @@ export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
       return c.json(
         {
           active: status.active,
-          remaining: status.remaining,
+          // Only publish a verified live count; otherwise null → UI hides the number.
+          remaining: status.verified ? status.remaining : null,
           limit: status.limit,
         },
         200
@@ -300,7 +305,7 @@ export function registerCheckoutRoutes(app: Hono, _db: PostgresClient): void {
       logger.warn("founder_status_route_unexpected_error", {
         error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
       });
-      return c.json({ active: true, remaining: 100, limit: 100 }, 200);
+      return c.json({ active: true, remaining: null, limit: 100 }, 200);
     }
   });
 }

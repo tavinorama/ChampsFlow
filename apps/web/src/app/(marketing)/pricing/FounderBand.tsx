@@ -4,10 +4,13 @@
  * FounderBand — the "Founding member · first 100" offer banner on /pricing.
  *
  * Reads the live founder-offer status (GET /api/founder-status). It renders the
- * banner ONLY while the offer is active, and shows the real slots remaining.
- * Once the first-100 cohort is full the banner disappears automatically — no
- * stale "30% off" claim after the offer ends. Optimistic-hidden until the fetch
- * resolves so it never flashes a dead offer.
+ * banner ONLY while the offer is active, and shows the real slots remaining when
+ * the count is VERIFIED. When the count is unverified (Stripe read failed), the
+ * endpoint returns `remaining: null` and the band shows the generic "first 100"
+ * copy instead of a fabricated number — no fake scarcity. Once the first-100
+ * cohort is full the banner disappears automatically — no stale "30% off" claim
+ * after the offer ends. Optimistic-hidden until the fetch resolves so it never
+ * flashes a dead offer.
  */
 
 import { useEffect, useState } from "react";
@@ -20,9 +23,10 @@ export function FounderBand() {
     let live = true;
     fetch("/api/founder-status")
       .then((r) => r.json())
-      .then((d: { active?: boolean; remaining?: number }) => {
+      .then((d: { active?: boolean; remaining?: number | null }) => {
         if (!live) return;
         setActive(d?.active === true);
+        // Only a verified number arrives as a number; null → keep generic copy.
         if (typeof d?.remaining === "number") setRemaining(d.remaining);
       })
       .catch(() => {

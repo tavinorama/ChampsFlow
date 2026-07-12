@@ -93,9 +93,11 @@ export function PricingPlans() {
     let live = true;
     fetch("/api/founder-status")
       .then((r) => r.json())
-      .then((d: { active?: boolean; remaining?: number }) => {
+      .then((d: { active?: boolean; remaining?: number | null }) => {
         if (!live) return;
         if (typeof d?.active === "boolean") setFounderActive(d.active);
+        // `remaining` is null when the count is unverified — leave state null so
+        // the UI shows the honest generic copy instead of a fabricated number.
         if (typeof d?.remaining === "number") setFounderRemaining(d.remaining);
       })
       .catch(() => {});
