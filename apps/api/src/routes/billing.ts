@@ -1041,20 +1041,32 @@ async function handleCheckoutSessionCompleted(
     const buyerTenantId = userRows[0]?.tenant_id ?? null;
 
     if (buyerTenantId) {
-      // Guard the credit on the status transition so a concurrent/replayed
-      // event can never double-credit.
-      const { rows: credited } = await db.query<{ id: string }>(
-        `UPDATE pages_order
-         SET status = 'credited', credited_tenant_id = $2, credited_at = NOW()
-         WHERE id = $1 AND status = 'paid'
-         RETURNING id`,
-        [pages_order_id, buyerTenantId]
-      );
-      if (credited[0]) {
-        await db.query(
-          `UPDATE tenants SET extra_landing_sites = extra_landing_sites + 1 WHERE id = $1`,
-          [buyerTenantId]
+      // ATOMIC credit (#262 related HIGH): the status transition AND the tenant
+      // increment must commit together. Previously they were two separate
+      // statements — a crash between them left the order 'credited' but the
+      // tenant un-credited, and retry (which selects status='paid') could never
+      // re-fire, permanently losing the paid credit. Now one transaction: a
+      // crash before commit rolls back BOTH, so a webhook replay re-credits
+      // correctly. The status guard still blocks double-credit on replay.
+      const credited = await db.transaction(async (tx) => {
+        const { rows } = await tx.query<{ id: string }>(
+          `UPDATE pages_order
+             SET status = 'credited', credited_tenant_id = $2, credited_at = NOW()
+           WHERE id = $1 AND status = 'paid'
+           RETURNING id`,
+          [pages_order_id, buyerTenantId]
         );
+        if (rows[0]) {
+          await tx.query(
+            `UPDATE tenants SET extra_landing_sites = extra_landing_sites + 1 WHERE id = $1`,
+            [buyerTenantId]
+          );
+        }
+        return rows[0] ?? null;
+      });
+      if (credited) {
+        // Audit log is best-effort and stays OUTSIDE the tx — an audit INSERT
+        // failure must never abort (and thus roll back) the money-critical credit.
         await writeBillingAuditLog(db, {
           tenantId: buyerTenantId,
           eventType: "pages_order_credited",
