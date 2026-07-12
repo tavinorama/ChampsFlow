@@ -34,6 +34,8 @@ export interface LandingTheme {
   muted?: string;
   surface?: string;
   border?: string;
+  /** Contrast-safe text colour for text sitting ON `primary` (derived). */
+  onPrimary?: string;
 }
 
 const DEFAULT_THEME: Required<LandingTheme> = {
@@ -42,17 +44,33 @@ const DEFAULT_THEME: Required<LandingTheme> = {
   muted: "#5c6e65",
   surface: "#ffffff",
   border: "#d5dfd9",
+  onPrimary: "#ffffff",
 };
+
+/** Contrast-safe text colour (#171717 or #fff) for text on the `primary` fill. */
+function onAccent(hex: string): string {
+  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return "#ffffff";
+  const h = m[1];
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#171717" : "#ffffff";
+}
 
 function resolveTheme(theme: unknown): Required<LandingTheme> {
   if (!theme || typeof theme !== "object") return DEFAULT_THEME;
   const t = theme as Record<string, unknown>;
+  const primary = typeof t.primary === "string" && t.primary ? t.primary : DEFAULT_THEME.primary;
   return {
-    primary: typeof t.primary === "string" && t.primary ? t.primary : DEFAULT_THEME.primary,
+    primary,
     text: typeof t.text === "string" && t.text ? t.text : DEFAULT_THEME.text,
     muted: typeof t.muted === "string" && t.muted ? t.muted : DEFAULT_THEME.muted,
     surface: typeof t.surface === "string" && t.surface ? t.surface : DEFAULT_THEME.surface,
     border: typeof t.border === "string" && t.border ? t.border : DEFAULT_THEME.border,
+    onPrimary: onAccent(primary),
   };
 }
 
@@ -126,7 +144,7 @@ function Hero({ model, theme }: { model: Extract<SectionRenderModel, { kind: "he
                 minHeight: "46px",
                 padding: "0.8rem 1.6rem",
                 background: theme.primary,
-                color: "#ffffff",
+                color: theme.onPrimary,
                 fontWeight: 700,
                 textDecoration: "none",
                 borderRadius: "12px",
@@ -297,7 +315,7 @@ function Cta({ model, theme }: { model: Extract<SectionRenderModel, { kind: "cta
                 minHeight: "44px",
                 padding: "0.75rem 1.5rem",
                 background: theme.primary,
-                color: "#ffffff",
+                color: theme.onPrimary,
                 fontWeight: 700,
                 textDecoration: "none",
                 borderRadius: "10px",

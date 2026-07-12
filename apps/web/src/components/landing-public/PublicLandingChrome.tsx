@@ -4,6 +4,21 @@
  * (issue #208, PR-6). Server component — no interactivity, no client hooks.
  */
 
+import { safeHref } from "../../lib/safe-json-ld";
+
+/** Contrast-safe text colour for text sitting ON the accent fill (WCAG). */
+function onAccent(hex: string): string {
+  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
+  if (!m) return "#ffffff";
+  const h = m[1];
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#171717" : "#ffffff";
+}
+
 export interface PublicNavItem {
   slug: string;
   title: string;
@@ -38,9 +53,10 @@ export function PublicLandingChrome({
   const category = str(business?.["category"]);
   const address = str(business?.["address"]);
   const phone = str(business?.["phone"]);
-  const website = str(business?.["website"]);
+  const websiteHref = safeHref(business?.["website"]); // http(s) only, else null
   const hours =
     typeof business?.["hours"] === "string" ? (business["hours"] as string).trim() : null;
+  const ctaText = onAccent(accentColor);
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
       <header
@@ -115,7 +131,7 @@ export function PublicLandingChrome({
               minHeight: "40px",
               padding: "0.5rem 1.15rem",
               background: accentColor,
-              color: "#ffffff",
+              color: ctaText,
               fontWeight: 700,
               fontSize: "0.9rem",
               borderRadius: "10px",
@@ -175,9 +191,9 @@ export function PublicLandingChrome({
                     </a>
                   </li>
                 ))}
-                {website && (
+                {websiteHref && (
                   <li>
-                    <a href={website} rel="noopener" style={{ color: accentColor, textDecoration: "none", fontSize: "0.9rem" }}>Website</a>
+                    <a href={websiteHref} rel="noopener nofollow" style={{ color: accentColor, textDecoration: "none", fontSize: "0.9rem" }}>Website</a>
                   </li>
                 )}
               </ul>
