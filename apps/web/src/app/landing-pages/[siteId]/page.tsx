@@ -160,6 +160,7 @@ export default function LandingSiteDetailPage() {
   // Status toggle
   const [statusToggling, setStatusToggling] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   // Generate
   const [generateState, setGenerateState] = useState<GenerateState>("idle");
@@ -370,6 +371,39 @@ export default function LandingSiteDetailPage() {
       showToast("Link copied.", "success");
     } catch {
       showToast("Could not copy the link. Select and copy it manually.", "error");
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Download the whole site as a .zip of static HTML/CSS the client can drag
+  // onto their own hosting/domain. Google Maps photos are intentionally left
+  // out (Google's policy forbids redistributing the image files) — the README
+  // inside the zip explains it; we flag it here too so it's never a surprise.
+  // -------------------------------------------------------------------------
+  async function handleDownloadZip() {
+    if (!site || downloading) return;
+    setDownloading(true);
+    try {
+      const res = await apiFetch(`/api/landing/sites/${siteId}/export`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}) as { message?: string });
+        showToast(data.message ?? "Could not build the download. Please try again.", "error");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${site.slug || "site"}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast("Download ready. Note: Google photos aren’t included — see the README inside.", "success");
+    } catch {
+      showToast("Could not build the download. Please check your connection.", "error");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -781,7 +815,23 @@ export default function LandingSiteDetailPage() {
           >
             {statusToggling ? "Updating…" : site.status === "published" ? "Unpublish site" : "Publish site"}
           </button>
+          {site.status === "published" && (
+            <button
+              type="button" onClick={handleDownloadZip} disabled={downloading}
+              aria-busy={downloading}
+              style={secondaryButtonStyle(downloading)}
+            >
+              {downloading ? "Preparing…" : "Download site (.zip)"}
+            </button>
+          )}
         </div>
+        {site.status === "published" && (
+          <p style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: "var(--line-height-body)" }}>
+            Ready-to-host HTML &amp; CSS — drag it onto your own domain. Google Maps photos aren&rsquo;t
+            included (Google&rsquo;s policy doesn&rsquo;t allow redistributing the image files); the README
+            inside shows where to drop your own.
+          </p>
+        )}
         {generateMessage && (
           <p aria-live="polite" style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
             {generateMessage}

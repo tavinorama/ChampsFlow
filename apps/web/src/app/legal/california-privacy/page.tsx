@@ -197,7 +197,7 @@ export default function CaliforniaPrivacyPage() {
             <li style={LIST_ITEM_STYLE}>
               <strong>Access, Delete, Correct, Portability, Restriction:</strong>{" "}
               <Link
-                href="/privacy/dsr"
+                href="/legal/dsr-request"
                 style={{ color: "var(--color-primary)" }}
               >
                 Submit a Data Subject Request

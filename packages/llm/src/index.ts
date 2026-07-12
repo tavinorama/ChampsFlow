@@ -248,6 +248,10 @@ export {
   renderSectionsForScoring,
 } from "./landing-generate";
 
+// Static-site export (client downloads the pages for their own hosting).
+export { buildLandingExport, escapeHtml } from "./landing-export";
+export type { ExportSiteInput, ExportBusiness, ExportPage, ExportFile } from "./landing-export";
+
 // ---------------------------------------------------------------------------
 // OpenAI adapter — STUB (not activated for v1; compliance review required)
 // ---------------------------------------------------------------------------
