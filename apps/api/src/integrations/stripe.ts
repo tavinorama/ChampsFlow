@@ -729,6 +729,29 @@ export async function verifyKitCheckoutSession(
 }
 
 // ---------------------------------------------------------------------------
+// retrieveDisputeCharge
+// ---------------------------------------------------------------------------
+// Fetches the Charge behind a charge.dispute.created event. The Dispute object
+// carries neither product metadata nor the customer, so the webhook needs the
+// charge to know WHAT to revoke (Kit / Pages order via metadata, subscription
+// via customer). Throws on Stripe failure — the webhook returns 500 and Stripe
+// redelivers; a revocation must never be silently skipped.
+// ---------------------------------------------------------------------------
+export async function retrieveDisputeCharge(chargeId: string): Promise<Stripe.Charge> {
+  try {
+    const stripe = getStripe();
+    return await stripe.charges.retrieve(chargeId);
+  } catch (err) {
+    logger.error("stripe_dispute_charge_retrieve_error", {
+      error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
+      error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
+      // NOTE: charge id / customer id intentionally NOT logged — hard rule
+    });
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // createBillingPortalSession
 // ---------------------------------------------------------------------------
 // Opens a Stripe Customer Portal session for an existing subscriber.
