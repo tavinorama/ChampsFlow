@@ -39,6 +39,7 @@ import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { enrollNurture } from "./nurture";
 import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/free-test-result";
 import { signedDownloadUrl } from "../../../../packages/shared/src/download-token";
+import { clientIp } from "../lib/client-ip";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,11 +75,8 @@ function kitDownloads(): KitDownload[] {
   ];
 }
 
-function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
-  const fwd = c.req.header("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return c.req.header("x-real-ip") ?? null;
-}
+// clientIp is imported from ../lib/client-ip (cf-connecting-ip → LAST XFF hop →
+// x-real-ip) — never the client-forgeable first XFF entry. See that file.
 
 function normRegion(r: unknown): "EU" | "US" {
   return r === "EU" ? "EU" : "US";

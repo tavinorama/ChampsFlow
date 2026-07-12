@@ -43,6 +43,7 @@ import { requireAuth } from "../auth/middleware";
 import { requireDpaAcknowledged, truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { clientIp } from "../lib/client-ip";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 // ---------------------------------------------------------------------------
@@ -218,12 +219,10 @@ export function registerCcpaRoutes(app: Hono, db: PostgresClient): void {
         ? request_type
         : "do_not_sell";
 
-    // Extract and truncate IP (never store full IP — GDPR + CCPA data minimization)
-    const rawIp =
-      ctx.req.header("cf-connecting-ip") ??
-      ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "";
-    const ipTruncated = truncateIp(rawIp);
+    // Extract and truncate IP (never store full IP — GDPR + CCPA data
+    // minimization). clientIp = cf-connecting-ip → LAST XFF hop (never the
+    // client-forgeable first entry).
+    const ipTruncated = truncateIp(clientIp(ctx) ?? "");
 
     // Per-IP rate limit (3/hour)
     const allowed = await checkDoNotSellRateLimit(ipTruncated || "unknown");

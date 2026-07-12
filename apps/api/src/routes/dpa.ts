@@ -44,6 +44,7 @@ import { requireAuth } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
+import { clientIp } from "../lib/client-ip";
 
 // ---------------------------------------------------------------------------
 // EU country codes (EU-27 + EEA: Norway, Iceland, Liechtenstein + CH + UK)
@@ -291,12 +292,10 @@ export function registerDpaRoutes(app: Hono, db: PostgresClient): void {
     // Resolve country from cf-ipcountry header
     const { country_code } = resolveVariant(ctx.req.raw);
 
-    // Truncate IP before any storage (GDPR data minimization — full IP never stored)
-    const rawIp =
-      ctx.req.header("cf-connecting-ip") ??
-      ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "";
-    const ip_truncated = truncateIp(rawIp);
+    // Truncate IP before any storage (GDPR data minimization — full IP never
+    // stored). clientIp = cf-connecting-ip → LAST XFF hop (never the forgeable
+    // first hop) → x-real-ip.
+    const ip_truncated = truncateIp(clientIp(ctx) ?? "");
 
     await db.setTenantId(auth.tenantId);
 
