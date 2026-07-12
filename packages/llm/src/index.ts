@@ -134,7 +134,7 @@ export type {
   ProbeCallOptions,
   ProviderErrorKind,
 } from "./providers/types";
-export { ProviderError } from "./providers/types";
+export { ProviderError, mockAllowed } from "./providers/types";
 
 // Routing gate — single chokepoint for EU/US provider access control (GEO-A3)
 export { routeProvider, permittedProviders } from "./providers/routing";

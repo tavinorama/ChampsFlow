@@ -142,15 +142,24 @@ describe("pagesRegenPeriodStart", () => {
 });
 
 describe("shouldEnforcePagesRegenQuota", () => {
-  it("INITIAL generation (0 content pages) is always free — never quota-checked", () => {
-    expect(shouldEnforcePagesRegenQuota(0, false)).toBe(false);
-    expect(shouldEnforcePagesRegenQuota(0, true)).toBe(false);
+  it("INITIAL generation (0 content pages AND never generated) is free — never quota-checked", () => {
+    expect(shouldEnforcePagesRegenQuota(0, false, false)).toBe(false);
+    expect(shouldEnforcePagesRegenQuota(0, true, false)).toBe(false);
   });
   it("a REGENERATION (content pages exist) is quota-checked for normal tenants", () => {
-    expect(shouldEnforcePagesRegenQuota(5, false)).toBe(true);
+    expect(shouldEnforcePagesRegenQuota(5, false, true)).toBe(true);
+    // Legacy site generated before the generated_at stamp existed: content
+    // pages alone still force the quota even with the stamp missing.
+    expect(shouldEnforcePagesRegenQuota(5, false, false)).toBe(true);
+  });
+  it("BYPASS CLOSED (#121): emptying every page's sections no longer resets the free generation", () => {
+    // Attacker PATCHes sections to [] (contentPageCount drops to 0), but the
+    // worker-stamped generated_at survives → still a quota-checked regen.
+    expect(shouldEnforcePagesRegenQuota(0, false, true)).toBe(true);
   });
   it("super_admin bypasses the quota even on a regeneration", () => {
-    expect(shouldEnforcePagesRegenQuota(5, true)).toBe(false);
+    expect(shouldEnforcePagesRegenQuota(5, true, true)).toBe(false);
+    expect(shouldEnforcePagesRegenQuota(0, true, true)).toBe(false);
   });
 });
 
@@ -544,13 +553,24 @@ describe("POST /api/landing/sites/:id/generate — pages regen quota guard (#217
     planTier: PlanTier;
     contentPageCount: number;
     incrementReturns: number;
+    /** landing_sites.generated_at IS NOT NULL (#121). Defaults to "has content
+     * ⇒ has generated" so pre-#121 scenarios keep their meaning. */
+    hasGeneratedBefore?: boolean;
   }): RouteQueryHandler {
     return (sql) => {
+      // The quota probe (#121) combines the content-page count AND the
+      // generated_at stamp in ONE statement that mentions both landing_pages
+      // and landing_sites — match it BEFORE the generic site-load branch.
+      if (sql.includes("sections <> '[]'::jsonb")) {
+        return [
+          {
+            count: String(opts.contentPageCount),
+            generated: opts.hasGeneratedBefore ?? opts.contentPageCount > 0,
+          },
+        ];
+      }
       if (sql.includes("FROM landing_sites")) {
         return [{ id: SITE_ID, status: "draft", page_count: "5" }];
-      }
-      if (sql.includes("sections <> '[]'::jsonb")) {
-        return [{ count: String(opts.contentPageCount) }];
       }
       if (sql.includes("FROM tenants")) return [{ plan_tier: opts.planTier }];
       if (sql.includes("INSERT INTO usage_counters")) {
@@ -692,5 +712,26 @@ describe("POST /api/landing/sites/:id/generate — pages regen quota guard (#217
     });
     expect(res.status).toBe(202);
     expect(db._queries.some((q) => q.includes("usage_counters"))).toBe(false);
+  });
+
+  it("BYPASS CLOSED (#121): sections emptied to [] but generated_at stamped → still quota-checked (429 at limit)", async () => {
+    // The attack: PATCH every page's sections to [] so contentPageCount reads
+    // 0 again. The worker-stamped generated_at survives any PATCH, so the run
+    // is a REGENERATION — and at quota it is denied + refunded, not free.
+    const db = makeRouteDb(
+      defaultHandler({
+        planTier: "free",
+        contentPageCount: 0,
+        hasGeneratedBefore: true,
+        incrementReturns: 3, // free lifetime quota is 2 → 3rd attempt denied
+      })
+    );
+    const res = await landingApp(db).request(`/api/landing/sites/${SITE_ID}/generate`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(429);
+    expect((await res.json()).code).toBe("PAGES_REGEN_LIMIT");
   });
 });

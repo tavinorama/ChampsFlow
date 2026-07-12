@@ -23,7 +23,8 @@
  *      Same env-injection mechanism the audit engine relies on
  *      (packages/shared/src/platform-keys.ts refreshes process.env.
  *      ANTHROPIC_API_KEY at boot + on an interval). No key configured → mock
- *      mode; this is never a failure. Customer BYOK (`provider_keys`) is
+ *      mode in dev/test ONLY; in production a mock bundle is an HONEST JOB
+ *      FAILURE (assertBundleModeHonest, #122). Customer BYOK (`provider_keys`) is
  *      intentionally NEVER read here — it stays reserved for Content Studio /
  *      customer-initiated content generation (routes/system.ts:
  *      resolveProviderKey), a different cost model.
@@ -62,6 +63,7 @@ import {
   renderSectionsForScoring,
   scorePage,
   computeContentScoreFromTraits,
+  mockAllowed,
   type ContentProvider,
   type LandingBusinessInput,
   type LandingReviewInput,
@@ -258,13 +260,35 @@ async function buildCrawlSummary(
 // probe calls; landing-generate never queries `provider_keys` (customer
 // BYOK), which stays reserved for Content Studio / customer-initiated
 // content generation (apps/api/src/routes/system.ts:resolveProviderKey).
-// No key configured → mock mode; this is never a failure.
+// No key configured → mock mode in dev/test only; in production that becomes
+// an honest job failure at the assertBundleModeHonest gate below (#122).
 // ---------------------------------------------------------------------------
 
 export function resolvePlatformAnthropicKey(): { provider: ContentProvider; apiKey: string } | null {
   const apiKey = process.env["ANTHROPIC_API_KEY"];
   if (!apiKey || !apiKey.trim()) return null;
   return { provider: "anthropic", apiKey };
+}
+
+/**
+ * HARD INTEGRITY RULE for Ozvor Pages (task #122 — same rule the audit engine
+ * enforces via `mockAllowed()`/PR #90): a paid $99 generation must NEVER
+ * silently ship template content as if it were generated. `bundle.mode ===
+ * "mock"` after buildLandingBundle means one of its three silent fallbacks
+ * fired (platform ANTHROPIC_API_KEY absent, the LLM call threw, or its output
+ * was unusable). In production — with no explicit GEO_ALLOW_MOCK=true opt-in —
+ * that is an honest job failure: nothing is written, the job surfaces as
+ * failed, and the founder sees a config/provider incident instead of a
+ * customer receiving a generic template. Mock stays available for local/dev/
+ * test and seeded demos, exactly like the audit path. Exported for unit tests.
+ */
+export function assertBundleModeHonest(mode: "mock" | "llm", siteId: string): void {
+  if (mode === "mock" && !mockAllowed()) {
+    logger.error("landing_generate_mock_forbidden_in_production", { site_id: siteId });
+    throw new Error(
+      "landing_generate_mock_forbidden_in_production: platform ANTHROPIC_API_KEY missing or LLM generation failed — refusing to deliver template content for a paid generation"
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -463,7 +487,8 @@ export async function processLandingGenerateJob(
     }
 
     // 6. Platform Anthropic key (issue #217) — never customer BYOK for Ozvor
-    //    Pages generation. Absent → mock mode, not a failure.
+    //    Pages generation. Absent → mock mode in dev/test; in production the
+    //    integrity gate after buildLandingBundle fails the job honestly (#122).
     const platformKey = resolvePlatformAnthropicKey();
 
     // 6b. Rich Google Maps enrichment (reviews, photos, rating, category) —
@@ -532,6 +557,10 @@ export async function processLandingGenerateJob(
         ? { mode: "llm", apiKey: platformKey.apiKey, provider: platformKey.provider }
         : { mode: "mock" }
     );
+
+    // 7a. Integrity gate (#122) — BEFORE anything is persisted. In production
+    //     a mock bundle is an honest failure, never a silent template delivery.
+    assertBundleModeHonest(bundle.mode, site_id);
 
     // 7b. Persist the derived theme (light base + brand/pastel) so the public
     //     renderer themes the site. Merge over any existing theme fields to keep
@@ -689,6 +718,16 @@ export async function processLandingGenerateJob(
       } catch (err) {
         logger.warn("landing_generate_spend_record_failed", { message: (err as Error).message });
       }
+    }
+
+    // 11. Stamp the site's first successful generation (#121). COALESCE keeps
+    //     the FIRST timestamp forever; no API route ever writes this column,
+    //     so the free-initial-generation signal cannot be reset by emptying
+    //     sections or deleting pages.
+    if (pagesWritten > 0) {
+      await sql`UPDATE landing_sites
+                   SET generated_at = COALESCE(generated_at, NOW())
+                 WHERE id = ${site_id}`;
     }
 
     logger.info("landing_generate_completed", {
