@@ -498,9 +498,9 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     const res = await db.query<{
       id: string; brand: string; domain: string | null; category: string; region: string;
-      status: string; deliverable: unknown; lead_capture_id: string | null;
+      status: string; deliverable: unknown; lead_capture_id: string | null; stripe_session_id: string | null;
     }>(
-      `SELECT id, brand, domain, category, region, status, deliverable, lead_capture_id FROM kit_order WHERE order_token = $1`,
+      `SELECT id, brand, domain, category, region, status, deliverable, lead_capture_id, stripe_session_id FROM kit_order WHERE order_token = $1`,
       [token]
     );
     const order = res.rows[0];
@@ -511,9 +511,13 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ status: "delivered", deliverable: order.deliverable, downloads: kitDownloads() });
     }
 
-    // Verify payment: paid status already set, OR a paid Stripe session BOUND to
-    // THIS order, OR a dev unlock outside production.
-    let paid = order.status === "paid";
+    // Verify payment: a 'paid' order is only trusted when a Stripe session is
+    // BOUND to it (Hermes #263 — `status==='paid'` alone must not bypass the
+    // session binding). Both legit paths that reach 'paid' set stripe_session_id:
+    // the signed webhook (billing.ts) and the bound sync path below. A future
+    // path that flips 'paid' without binding therefore can't leak the Kit.
+    // (dev_unlock, handled separately, is non-production only.)
+    let paid = order.status === "paid" && order.stripe_session_id != null;
     if (!paid && sessionId && process.env["STRIPE_SECRET_KEY"]) {
       // Binding check (#262): the session's own metadata must name THIS order +
       // token + product + Kit price — payment_status alone would let a buyer

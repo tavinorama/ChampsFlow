@@ -644,6 +644,7 @@ export type KitSessionRejectReason =
   | "order_mismatch"
   | "token_mismatch"
   | "price_mismatch"
+  | "price_unconfigured"
   | "retrieve_error";
 
 export interface KitSessionVerification {
@@ -679,14 +680,15 @@ export function evaluateKitSession(
   if (md["product"] !== "get_cited_kit") return { ok: false, reason: "wrong_product" };
   if (md["kit_order_id"] !== bind.orderId) return { ok: false, reason: "order_mismatch" };
   if (md["order_token"] !== bind.orderToken) return { ok: false, reason: "token_mismatch" };
-  // Price binding: when configured, the single line item MUST be the Kit price
-  // (blocks a cheap unrelated paid session being reused as a Kit unlock).
-  if (expectedPriceId) {
-    const ids = (session.line_items?.data ?? [])
-      .map((li) => li?.price?.id)
-      .filter((x): x is string => Boolean(x));
-    if (ids.length !== 1 || ids[0] !== expectedPriceId) return { ok: false, reason: "price_mismatch" };
-  }
+  // Price binding is MANDATORY (Hermes #263): validating only `if (expectedPriceId)`
+  // was fail-OPEN — an unset STRIPE_PRICE_ID_KIT would skip the price check and let
+  // a cheap unrelated paid session unlock a Kit. A missing configured price is a
+  // misconfiguration → reject (fail-closed), never accept blindly.
+  if (!expectedPriceId) return { ok: false, reason: "price_unconfigured" };
+  const ids = (session.line_items?.data ?? [])
+    .map((li) => li?.price?.id)
+    .filter((x): x is string => Boolean(x));
+  if (ids.length !== 1 || ids[0] !== expectedPriceId) return { ok: false, reason: "price_mismatch" };
   return { ok: true };
 }
 

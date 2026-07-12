@@ -63,11 +63,13 @@ describe("evaluateKitSession — session must be bound to the order", () => {
       .toEqual({ ok: false, reason: "wrong_product" });
   });
 
-  it("skips price binding only when no expected price is configured (still order-bound)", () => {
+  it("FAILS CLOSED when the Kit price is unconfigured (never skips the price check)", () => {
+    // Hermes #263: an unset STRIPE_PRICE_ID_KIT must reject, not accept blindly.
     const s = paidSessionFor("order-A", "tok-A");
-    s.line_items = { data: [{ price: { id: "anything" } }] };
-    expect(evaluateKitSession(s, bindA, undefined)).toEqual({ ok: true });
-    // ...but the order binding still holds without a price.
+    expect(evaluateKitSession(s, bindA, undefined)).toEqual({ ok: false, reason: "price_unconfigured" });
+    expect(evaluateKitSession(s, bindA, null)).toEqual({ ok: false, reason: "price_unconfigured" });
+    expect(evaluateKitSession(s, bindA, "")).toEqual({ ok: false, reason: "price_unconfigured" });
+    // Order binding is still checked first regardless.
     expect(evaluateKitSession(s, bindB, undefined)).toEqual({ ok: false, reason: "order_mismatch" });
   });
 });

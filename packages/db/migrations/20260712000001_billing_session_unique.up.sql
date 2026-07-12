@@ -10,10 +10,32 @@
 -- application check were ever bypassed.
 --
 -- Partial (WHERE stripe_session_id IS NOT NULL) because unpaid orders share a
--- NULL session id and must NOT collide. Pre-launch there are no paid orders, so
--- no duplicate-session cleanup is needed; if a duplicate ever existed the index
--- build fails loudly (the desired outcome — investigate, don't silently ship).
+-- NULL session id and must NOT collide.
 -- =============================================================================
+
+-- Preflight (Hermes #263): explicitly detect any pre-existing duplicate session
+-- binding and abort with a clear, actionable message BEFORE attempting the index
+-- build — a duplicate is a real integrity incident (a session already unlocked
+-- two orders) that must be reconciled by hand, never silently. Raises rather than
+-- letting CREATE UNIQUE INDEX fail with an opaque error.
+DO $$
+DECLARE
+  dup RECORD;
+BEGIN
+  FOR dup IN
+    SELECT 'kit_order' AS tbl, stripe_session_id, COUNT(*) AS n
+      FROM kit_order WHERE stripe_session_id IS NOT NULL
+      GROUP BY stripe_session_id HAVING COUNT(*) > 1
+    UNION ALL
+    SELECT 'pages_order' AS tbl, stripe_session_id, COUNT(*) AS n
+      FROM pages_order WHERE stripe_session_id IS NOT NULL
+      GROUP BY stripe_session_id HAVING COUNT(*) > 1
+  LOOP
+    RAISE EXCEPTION
+      'Duplicate stripe_session_id in %: % rows share session %. Reconcile (refund/void the extra order) before applying the UNIQUE index.',
+      dup.tbl, dup.n, dup.stripe_session_id;
+  END LOOP;
+END $$;
 
 -- kit_order: replace the plain lookup index with a UNIQUE partial index.
 DROP INDEX IF EXISTS idx_kit_order_session;
