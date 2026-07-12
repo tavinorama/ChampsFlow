@@ -33,6 +33,7 @@ import { AppLegalStrip } from "../components/AppLegalStrip";
 import { CaliforniaBanner } from "../components/CaliforniaBanner";
 import { CookieConsent } from "../components/CookieConsent";
 import { Ga4Analytics } from "../components/Ga4Analytics";
+import { isPublicLandingPath, isMarketingPath, isAuthedAppPath } from "../lib/chrome-routing";
 
 const schibsted = Schibsted_Grotesk({
   subsets: ["latin"],
@@ -81,8 +82,10 @@ export const metadata = {
 };
 
 /**
- * Chrome routing. Three categories:
+ * Chrome routing (see ../lib/chrome-routing.ts). Four categories:
  *
+ * 0. PUBLIC LANDING — /l/* customer sites. ZERO Ozvor chrome (no footer, no
+ *    banner, no cookie manager, no GA4, no aurora). The page owns its chrome.
  * 1. MARKETING — the (marketing) route group. The marketing layout already
  *    provides navbar + footer, so the root renders ONLY children (no AppTopBar,
  *    no second footer). "/" is the landing page.
@@ -92,44 +95,6 @@ export const metadata = {
  * 3. OTHER PUBLIC — legal pages, login, shared report (/r/...). Public, so no
  *    DPA gate and NO Back button — but they still get the footer.
  */
-const MARKETING_PREFIXES = [
-  "/blog",
-  "/resources",
-  "/book",
-  "/how-it-works",
-  "/how-we-measure",
-  "/kit",
-  "/learn",
-  "/organicposts",
-  "/pricing",
-  "/results",
-  "/test",
-];
-
-const AUTHED_APP_PREFIXES = [
-  "/dashboard",
-  "/brands",
-  "/account",
-  "/admin",
-  "/create",
-  "/drafts",
-  "/schedule",
-  "/marketing",
-  "/landing-pages",
-  "/sources",
-  "/competitors",
-  "/agency",
-];
-
-function isMarketingPath(pathname: string): boolean {
-  if (pathname === "/") return true;
-  return MARKETING_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
-
-function isAuthedAppPath(pathname: string): boolean {
-  return AUTHED_APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
-
 export default async function RootLayout({
   children,
 }: {
@@ -139,6 +104,7 @@ export default async function RootLayout({
   const country = headersList.get("cf-ipcountry") ?? null;
   const pathname = headersList.get("x-pathname") ?? "";
   const nonce = headersList.get("x-nonce") ?? undefined;
+  const isPublicLanding = isPublicLandingPath(pathname);
   const isMarketing = isMarketingPath(pathname);
   const isAuthedApp = isAuthedAppPath(pathname);
 
@@ -162,7 +128,9 @@ export default async function RootLayout({
           color: "var(--color-text)",
         }}
       >
-        {/* Global atmosphere — fixed behind all content */}
+        {/* Global atmosphere — fixed behind all content. Skipped on public
+            tenant sites (/l/*): the client's site owns its own background. */}
+        {!isPublicLanding && (
         <div
           aria-hidden="true"
           style={{
@@ -197,6 +165,7 @@ export default async function RootLayout({
             pointerEvents: "none",
           }} />
         </div>
+        )}
         {/* Keyframes for atmosphere drift — respects prefers-reduced-motion */}
         <style>{`
           @keyframes atmo-drift {
@@ -207,7 +176,13 @@ export default async function RootLayout({
             @keyframes atmo-drift { from, to { transform: none; } }
           }
         `}</style>
-        {isMarketing ? (
+        {isPublicLanding ? (
+          // 0. Public tenant sites (/l/*): render ONLY the page. No Ozvor
+          // chrome of any kind — the page's own PublicLandingChrome provides
+          // the client's header + footer with a minimal "Made with Ozvor"
+          // credit. Cookie/GA4/California/atmosphere are all skipped below.
+          children
+        ) : isMarketing ? (
           // 1. Marketing routes: (marketing)/layout.tsx owns all chrome
           // (skip link, navbar, main, footer). Root adds nothing — otherwise
           // the footer would be duplicated and a Back button would appear on
@@ -247,13 +222,20 @@ export default async function RootLayout({
             <SiteFooter />
           </>
         )}
-        {/* Cookie consent banner — global, on every route (marketing + app).
-            Self-gates on first visit + listens for the footer "Cookie
-            preferences" re-open trigger. */}
-        <CookieConsent />
-        {/* GA4 — HARD consent gate: renders nothing and loads nothing unless
-            NEXT_PUBLIC_GA4_ID is set AND the user opted in to analytics. */}
-        <Ga4Analytics />
+        {/* Cookie consent + GA4 — Ozvor's own compliance + analytics, on every
+            Ozvor route (marketing + app). NOT on public tenant sites (/l/*):
+            that's the client's website, not Ozvor's, so Ozvor must neither show
+            its cookie banner there nor track the client's visitors. */}
+        {!isPublicLanding && (
+          <>
+            {/* Self-gates on first visit + listens for the footer "Cookie
+                preferences" re-open trigger. */}
+            <CookieConsent />
+            {/* HARD consent gate: renders nothing and loads nothing unless
+                NEXT_PUBLIC_GA4_ID is set AND the user opted in to analytics. */}
+            <Ga4Analytics />
+          </>
+        )}
       </body>
     </html>
   );

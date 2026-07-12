@@ -38,6 +38,7 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { sendResendEmail } from "../../../../packages/shared/src/emails/resend-send";
+import { clientIp } from "../lib/client-ip";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -206,12 +207,9 @@ export function registerWaitlistRoutes(app: Hono, db: PostgresClient): void {
     const cleanTeamSize =
       typeof team_size === "string" ? team_size.slice(0, 50).trim() : null;
 
-    // Truncate IP (GDPR data minimization)
-    const rawIp =
-      ctx.req.header("cf-connecting-ip") ??
-      ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "";
-    const ipTruncated = truncateIp(rawIp);
+    // Truncate IP (GDPR data minimization). clientIp = cf-connecting-ip → LAST
+    // XFF hop (never the client-forgeable first entry).
+    const ipTruncated = truncateIp(clientIp(ctx) ?? "");
 
     // Rate limit
     let allowed = true;

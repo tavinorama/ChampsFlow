@@ -13,6 +13,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { PublicLandingChrome, type PublicNavItem } from "../../../../components/landing-public/PublicLandingChrome";
+import { normalizeLocale } from "../../../../components/landing-public/i18n";
 import { SectionRenderer } from "../../../../components/landing-public/SectionRenderer";
 import { LeadForm } from "../../../../components/landing-public/LeadForm";
 import { PageViewBeacon } from "../../../../components/landing-public/PageViewBeacon";
@@ -118,6 +119,8 @@ export default async function PublicLandingSubPage({
       nav={data.nav}
       activeSlug={pageSlug}
       accentColor={accentColor(data.site.theme)}
+      business={data.site.business}
+      locale={normalizeLocale(data.site.theme?.lang ?? data.site.business?.language)}
     >
       {faqJsonLd && (
         <script

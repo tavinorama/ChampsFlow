@@ -45,6 +45,7 @@ import { requireAuth, requireSuperAdmin } from "../auth/middleware";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { clientIp } from "../lib/client-ip";
 import { sendLandingLeadNotificationEmail } from "../../../../packages/shared/src/emails/landing-lead-notification";
 import {
   fetchPlacePhoto,
@@ -91,11 +92,8 @@ export function publicSiteNotFoundBody(
 // clientIp — same header precedence as products.ts / agency.ts.
 // ---------------------------------------------------------------------------
 
-function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
-  const fwd = c.req.header("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return c.req.header("x-real-ip") ?? null;
-}
+// clientIp imported from ../lib/client-ip (cf-connecting-ip → LAST XFF hop) —
+// never the client-forgeable first XFF entry.
 
 /** Truncated IP for rate-limit bucketing + storage — "unknown" when absent/unparseable. */
 function ipTruncOrUnknown(c: { req: { header: (n: string) => string | undefined } }): string {

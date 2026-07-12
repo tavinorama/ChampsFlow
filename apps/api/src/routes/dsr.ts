@@ -46,6 +46,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth } from "../auth/middleware";
 import { requireSuperAdmin } from "../auth/middleware";
 import { truncateIp } from "./dpa";
+import { clientIp } from "../lib/client-ip";
 import type { PostgresClient, TxClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
@@ -426,11 +427,9 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
         : null;
 
     // Truncate IP (GDPR data minimization — never store full IP)
-    const rawIp =
-      ctx.req.header("cf-connecting-ip") ??
-      ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "";
-    const ipTruncated = truncateIp(rawIp);
+    // clientIp = cf-connecting-ip → LAST XFF hop (never the forgeable first hop)
+    // → x-real-ip. Then truncate for storage (GDPR data minimization).
+    const ipTruncated = truncateIp(clientIp(ctx) ?? "");
 
     // Per-IP rate limit (S-14): 5 requests/hour
     const allowed = await checkIntakeRateLimit(ipTruncated || "unknown");
@@ -768,11 +767,9 @@ export function registerDsrRoutes(app: Hono, db: PostgresClient): void {
       );
     }
 
-    const rawIp =
-      ctx.req.header("cf-connecting-ip") ??
-      ctx.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "";
-    const ipTruncated = truncateIp(rawIp);
+    // clientIp = cf-connecting-ip → LAST XFF hop (never the forgeable first hop)
+    // → x-real-ip. Then truncate for storage (GDPR data minimization).
+    const ipTruncated = truncateIp(clientIp(ctx) ?? "");
 
     // Per-IP rate limit (shared with intake)
     const allowed = await checkIntakeRateLimit(ipTruncated || "unknown");

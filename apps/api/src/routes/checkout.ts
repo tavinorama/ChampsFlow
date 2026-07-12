@@ -27,6 +27,7 @@ import { createDirectCheckoutSession, getFounderOfferStatus } from "../integrati
 import type { BillingInterval } from "../integrations/stripe";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { clientIp } from "../lib/client-ip";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,11 +39,8 @@ function webOrigin(): string {
   return process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "http://localhost:3000";
 }
 
-function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
-  const fwd = c.req.header("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return c.req.header("x-real-ip") ?? null;
-}
+// clientIp imported from ../lib/client-ip (cf-connecting-ip → LAST XFF hop) —
+// never the client-forgeable first XFF entry.
 
 // ---------------------------------------------------------------------------
 // IP truncation for rate-limit key (GDPR data minimization)
