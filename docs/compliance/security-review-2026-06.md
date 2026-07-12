@@ -176,7 +176,9 @@ These are accepted residual risks for a sales widget and content tool, but shoul
 | `postcss <8.5.10` | Moderate | GHSA-qx2v-qp2m-jg93 | XSS via unescaped `</style>` in CSS stringify output |
 | `next 9.3.4-canary.0 – 16.3.0-canary.5` | Moderate | (depends on postcss above) | Transitive via next's internal postcss |
 
-**Impact**: The postcss XSS affects CSS stringification on the server side; it does not directly expose a user-facing attack vector in a typical Next.js deployment unless user-controlled CSS is processed through postcss stringify. **Not a BLOCK condition** (no High/Critical). Upgrade when next releases a non-breaking bundle with postcss ≥8.5.10.
+**Impact**: The postcss XSS affects CSS stringification on the server side; it does not directly expose a user-facing attack vector in a typical Next.js deployment unless user-controlled CSS is processed through postcss stringify. Our build only runs postcss over first-party Tailwind/CSS at build time — never over attacker-controlled input — so this is not exploitable in our usage. **Not a BLOCK condition** (no High/Critical); CI gate `SEC-G7-6` (`npm audit --audit-level=high --omit=dev`) stays green.
+
+**Remediation evaluated (2026-07-12), P3 triage**: an npm `overrides` pin (`postcss ≥8.5.10`, both root-level and `next`-scoped) was tested and does **not** take effect — `next@15.5.18` declares `postcss` as an exact `8.4.31` dependency and npm keeps the nested copy regardless of the override; forcing it via a full lockfile regen additionally churns dozens of unrelated optional/platform packages and risks the Next build. Decision: **accept and hold** — do not fight the pin. The advisory clears automatically when `next` ships a release pinning postcss ≥8.5.10 (npm's only offered "fix", `next@9.3.3`, is a 6-major downgrade and is rejected). Re-check on each `next` minor bump.
 
 ---
 
