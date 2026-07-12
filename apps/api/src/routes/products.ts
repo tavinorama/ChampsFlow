@@ -203,9 +203,15 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
 
     // Monthly budget cap (founder's platform-key spend). The free test is the
-    // runaway-cost, unauthenticated surface, so it is hard-capped against the
-    // whole month's spend (free tests + audits). Fail-open: if the ledger can't
-    // be read, don't block legitimate traffic.
+    // runaway-cost, UNAUTHENTICATED surface, so it is hard-capped against the
+    // whole month's spend (free tests + audits).
+    //
+    // Fail-CLOSED (#261 P2, founder decision): this is a COST guard on paid
+    // provider calls. If the spend ledger can't be read we must NOT make the
+    // billable LLM/API call — during a DB outage an attacker could otherwise
+    // hammer this open endpoint and blow the platform budget. We ask the visitor
+    // to retry instead of spending blind. (The per-IP RATE limit above stays
+    // fail-open — a Redis blip there shouldn't block legitimate sign-ups.)
     const budgetCents = Math.round(Number(process.env["MONTHLY_BUDGET_USD"] ?? 100) * 100);
     const freeTestCostCents = Number(process.env["FREE_TEST_COST_CENTS"] ?? 3);
     try {
@@ -224,7 +230,14 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
         );
       }
     } catch (err) {
-      logger.warn("budget_check_failed_open", { message: (err as Error).message });
+      logger.error("budget_check_failed_closed", { message: (err as Error).message });
+      return c.json(
+        {
+          message: "We can't start your test right now. Please try again in a minute.",
+          code: "BUDGET_CHECK_UNAVAILABLE",
+        },
+        503
+      );
     }
 
     let result;
