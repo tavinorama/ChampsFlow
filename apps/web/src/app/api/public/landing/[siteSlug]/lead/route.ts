@@ -18,6 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { clientIpForwardHeaders } from "../../../../../../lib/forward-ip";
 
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:3001";
 
@@ -34,9 +35,6 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body", code: "INVALID_BODY" }, { status: 400 });
   }
 
-  // Forward the real client IP for rate limiting on the Hono side.
-  const forwardedFor =
-    request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip") ?? "";
   const userAgent = request.headers.get("user-agent") ?? "";
 
   try {
@@ -46,7 +44,9 @@ export async function POST(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
+          // Forward cf-connecting-ip (unspoofable at the edge) + XFF for the
+          // Hono rate limiter — the API prefers cf-connecting-ip.
+          ...clientIpForwardHeaders(request),
           ...(userAgent ? { "user-agent": userAgent } : {}),
         },
         body: JSON.stringify(body),

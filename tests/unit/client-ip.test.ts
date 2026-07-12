@@ -9,6 +9,8 @@
  * XFF hop (our proxy's) → x-real-ip.
  */
 import { describe, it, expect } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { clientIp, clientIpOrUnknown } from "../../apps/api/src/lib/client-ip";
 
 function carrier(headers: Record<string, string | undefined>) {
@@ -41,5 +43,47 @@ describe("clientIp — anti-spoofing header resolution", () => {
   it("clientIpOrUnknown returns a stable bucket key when nothing is present", () => {
     expect(clientIpOrUnknown(carrier({}))).toBe("unknown");
     expect(clientIpOrUnknown(carrier({ "cf-connecting-ip": "203.0.113.7" }))).toBe("203.0.113.7");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Repo-wide regression guard (Hermes audit, PR #258, finding #5): no source
+// file may resurrect the vulnerable first-hop idiom
+// `header("x-forwarded-for")...split(",")[0]`. Everything must go through
+// clientIp() (which takes the LAST hop). This walks the real source tree so a
+// future copy-paste re-opening the hole fails CI.
+// ---------------------------------------------------------------------------
+function collectSourceFiles(dir: string, acc: string[] = []): string[] {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+  for (const e of entries) {
+    if (e.name === "node_modules" || e.name === ".next" || e.name === "dist") continue;
+    const full = join(dir, e.name);
+    if (e.isDirectory()) collectSourceFiles(full, acc);
+    else if (/\.(ts|tsx)$/.test(e.name)) acc.push(full);
+  }
+  return acc;
+}
+
+describe("no route resurrects the first-hop X-Forwarded-For idiom", () => {
+  it("apps/api + apps/web contain zero `forwarded-for...split(\",\")[0]`", () => {
+    const roots = [
+      join(__dirname, "../../apps/api/src"),
+      join(__dirname, "../../apps/web/src"),
+    ];
+    // Whitespace-insensitive: catches the pattern across line breaks too.
+    const vulnerable = /forwarded-for"\)(\?\.|\.)?split\(","\)\[0\]/i;
+    const offenders: string[] = [];
+    for (const root of roots) {
+      for (const file of collectSourceFiles(root)) {
+        const stripped = readFileSync(file, "utf8").replace(/\s+/g, "");
+        if (vulnerable.test(stripped)) offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

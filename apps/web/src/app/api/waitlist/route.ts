@@ -18,6 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { clientIpForwardHeaders } from "../../../lib/forward-ip";
 
 const INTERNAL_API_URL =
   process.env.INTERNAL_API_URL ?? "http://localhost:3001";
@@ -33,18 +34,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Forward the real client IP for rate limiting on the Hono side
-  const forwardedFor =
-    request.headers.get("x-forwarded-for") ??
-    request.headers.get("x-real-ip") ??
-    "";
-
   try {
     const upstream = await fetch(`${INTERNAL_API_URL}/api/waitlist`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}),
+        // Forward cf-connecting-ip (unspoofable at the edge) + XFF for the
+        // Hono rate limiter — the API prefers cf-connecting-ip.
+        ...clientIpForwardHeaders(request),
       },
       body: JSON.stringify(body),
     });

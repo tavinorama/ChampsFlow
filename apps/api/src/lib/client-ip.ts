@@ -1,9 +1,14 @@
 /**
  * client-ip.ts — the ONE place that extracts a client IP for rate limiting.
  *
- * Prefer `cf-connecting-ip` (set by Cloudflare from the real TCP connection —
- * a client cannot forge it). Fall back to the LAST `x-forwarded-for` hop (the
- * entry our own proxy appended), NEVER the first: a client can send
+ * Prefer `cf-connecting-ip` (set by Cloudflare from the real TCP connection).
+ * This is only trustworthy while the origin (Railway) refuses direct,
+ * non-Cloudflare traffic — otherwise a client could reach the origin and set
+ * the header itself. That network rule is a deploy-time guarantee (Cloudflare
+ * Authenticated Origin Pulls / origin firewall), tracked in the launch
+ * checklist; this helper assumes it holds. Fall back to the LAST
+ * `x-forwarded-for` hop (the entry our own proxy appended), NEVER the first: a
+ * client can send
  * `X-Forwarded-For: <random>` and, because most proxies APPEND rather than
  * replace, `split(",")[0]` would return that forged value — a fresh rate-limit
  * bucket per request, defeating every per-IP limit (free-test budget, lead
