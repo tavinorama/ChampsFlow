@@ -29,7 +29,9 @@ import IORedis from "ioredis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
-import { jsonbParam } from "../../../../packages/shared/src/jsonb";
+import { jsonbParam, parseJsonbObject } from "../../../../packages/shared/src/jsonb";
+import { createZip } from "../../../../packages/shared/src/zip";
+import { buildLandingExport, type ExportPage } from "../../../../packages/llm/src/index";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { getSharedRedis } from "../shared-redis";
 import { resolvePlace, googlePlacesConfigured, PlacesError } from "../lib/google-places";
@@ -159,6 +161,24 @@ export function containsPlaceholder(sections: unknown): boolean {
 
 export function sectionsEmpty(sections: unknown): boolean {
   return !Array.isArray(sections) || sections.length === 0;
+}
+
+/**
+ * Coerce a jsonb `sections` value to an array. postgres.js already parses jsonb
+ * to JS, so this is usually a passthrough; the string branch is a safety net for
+ * any legacy double-encoded row (see the #257 jsonb repair migration).
+ */
+function asJsonArray(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -665,6 +685,116 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
     return c.json({
       site: { ...siteRow, open_fixes: parseInt(siteRow.open_fixes, 10) },
       pages: pages.rows,
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/landing/sites/:id/export — download the whole site as a .zip of
+  // static HTML/CSS the owner can drag onto their own hosting/domain.
+  //
+  // Founder decision (2026-07-12): the export does NOT bundle the Google Maps
+  // photos — Google's policy forbids redistributing the image files — so every
+  // photo slot is replaced with a "add your own photo" notice and the README
+  // spells out why. Everything else (real copy, attributed reviews, JSON-LD for
+  // GEO/SEO, brand colour) ships self-contained. Pure read of the tenant's own
+  // site; no fabrication (only stored content is written).
+  // -------------------------------------------------------------------------
+  app.get("/api/landing/sites/:id/export", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const siteId = c.req.param("id") ?? "";
+    await db.setTenantId(auth.tenantId);
+
+    const siteRes = await db.query<{
+      slug: string;
+      business: unknown;
+      theme: unknown;
+    }>(
+      `SELECT slug, business, theme FROM landing_sites WHERE id = $1 AND tenant_id = $2`,
+      [siteId, auth.tenantId]
+    );
+    const site = siteRes.rows[0];
+    if (!site) return c.json({ message: "Site not found." }, 404);
+
+    const pagesRes = await db.query<{
+      slug: string;
+      title: string;
+      sections: unknown;
+      seo: unknown;
+    }>(
+      `SELECT slug, title, sections, seo
+         FROM landing_pages
+        WHERE site_id = $1 AND tenant_id = $2 AND status = 'published'
+        ORDER BY (slug = '') DESC, created_at ASC`,
+      [siteId, auth.tenantId]
+    );
+    if (pagesRes.rows.length === 0) {
+      return c.json(
+        {
+          code: "NOTHING_TO_EXPORT",
+          message: "Publish your site before downloading it.",
+        },
+        422
+      );
+    }
+
+    const business = parseJsonbObject(site.business) ?? {};
+    const theme = parseJsonbObject(site.theme) ?? {};
+    const str = (v: unknown): string | undefined =>
+      typeof v === "string" && v.trim() ? v.trim() : undefined;
+
+    const pages: ExportPage[] = pagesRes.rows.map((p) => {
+      const sections = asJsonArray(p.sections);
+      const seo = parseJsonbObject(p.seo) ?? {};
+      const jsonLd = Array.isArray((seo as Record<string, unknown>).json_ld)
+        ? ((seo as Record<string, unknown>).json_ld as unknown[])
+        : [];
+      return {
+        slug: p.slug,
+        title: p.title,
+        sections,
+        seo: {
+          title: str((seo as Record<string, unknown>).title),
+          description: str((seo as Record<string, unknown>).description),
+        },
+        jsonLd,
+      };
+    });
+
+    const b = business as Record<string, unknown>;
+    const files = buildLandingExport({
+      business: {
+        name: str(b.name) ?? site.slug,
+        category: str(b.category) ?? null,
+        address: str(b.address) ?? str(b.formattedAddress) ?? null,
+        phone: str(b.phone) ?? str(b.formattedPhoneNumber) ?? null,
+        website: str(b.website) ?? null,
+        hours: str(b.hours) ?? null,
+      },
+      themePrimary: str((theme as Record<string, unknown>).primary),
+      pages,
+    });
+
+    const zip = createZip(files);
+    const safeName =
+      (site.slug || "site").replace(/[^a-z0-9-]/gi, "-").slice(0, 60) || "site";
+    logger.info("landing_site_exported", {
+      tenant_id: auth.tenantId,
+      site_id: siteId,
+      files: files.length,
+      bytes: zip.length,
+    });
+
+    // Hand Hono a standalone ArrayBuffer of exactly the zip bytes (satisfies
+    // its strict body typing without a cast).
+    const body = zip.buffer.slice(
+      zip.byteOffset,
+      zip.byteOffset + zip.byteLength
+    ) as ArrayBuffer;
+    return c.body(body, 200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${safeName}.zip"`,
+      "Content-Length": String(zip.length),
+      "Cache-Control": "no-store",
     });
   });
 
