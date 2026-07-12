@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "db:migrate": "npm run migrate --workspace=packages/db",
-    "db:check-rls": "npm run check-rls --workspace=packages/db"
+    "db:check-rls": "npm run check-rls --workspace=packages/db",
+    "crawl:links": "node scripts/crawl-links.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.44.0",
