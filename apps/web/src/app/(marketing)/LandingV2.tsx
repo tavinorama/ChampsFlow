@@ -973,7 +973,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                     <svg
                       viewBox="0 0 120 120"
                       role="img"
-                      aria-label={`Ozvor AI Visibility Score: ${score} out of 100`}
+                      aria-label={`Ozvor AI Visibility Score: ${overallTarget} out of 100`}
                       style={{ width: "100%", display: "block", filter: "drop-shadow(0 0 28px rgba(39,201,138,0.3))" }}
                     >
                       <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="8" />
@@ -1004,7 +1004,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                       }}
                     >
                       <span style={{ fontSize: "clamp(34px, 3.4vw, 44px)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
-                        {score}
+                        {overallTarget}
                       </span>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "#9fb0a4" }}>/ 100</span>
                     </div>
@@ -1018,7 +1018,7 @@ export function LandingV2({ selfScore }: LandingV2Props) {
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
                             <span style={{ color: "#9fb0a4" }}>{ss.label}</span>
                             <span style={{ fontFamily: "var(--font-mono)", color: "#5fdfa8" }}>
-                              {ss.val == null ? "—" : w}
+                              {ss.val == null ? "—" : ss.val}
                             </span>
                           </div>
                           <div style={{ height: 7, borderRadius: 4, background: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
