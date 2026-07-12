@@ -72,7 +72,21 @@ const envSchema = z.object({
   // Observability
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).optional(),
   SERVICE_NAME: z.string().optional(),
-});
+})
+  // Production must NOT boot without the DPA version gate configured (#261 P2).
+  // Without DPA_CURRENT_VERSION the requireDpaAcknowledged middleware silently
+  // fails open (every user bypasses the acknowledgment). Fail readiness/startup
+  // LOUDLY instead of shipping a silent compliance bypass. Optional in dev/test.
+  .superRefine((val, ctx) => {
+    if (val.NODE_ENV === "production" && !val.DPA_CURRENT_VERSION) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["DPA_CURRENT_VERSION"],
+        message:
+          "DPA_CURRENT_VERSION is required in production — the DPA acknowledgment gate must not fail open.",
+      });
+    }
+  });
 
 export type Config = z.infer<typeof envSchema>;
 
