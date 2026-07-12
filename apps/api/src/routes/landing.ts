@@ -212,16 +212,24 @@ export function pagesRegenQuotaFor(
 
 /**
  * Pure gate: should this /generate call be checked against the regeneration
- * quota at all? `contentPageCount` is the number of this site's pages that
- * already carry generated content (sections <> '[]') — 0 means this is the
- * FREE initial generation. super_admin always bypasses. Exported so the
- * decision is unit-testable without a DB or Redis.
+ * quota at all? The FREE initial generation requires BOTH signals to say
+ * "virgin site":
+ *   - `contentPageCount === 0` — no page currently carries generated content
+ *     (sections <> '[]'); and
+ *   - `hasGeneratedBefore === false` — `landing_sites.generated_at` is NULL.
+ *     This stamp is written ONLY by the worker on a successful generation, so
+ *     it cannot be reset from the API. Without it, PATCHing every page's
+ *     sections to [] (or deleting the pages) made the next run look initial
+ *     again — unlimited free regenerations (task #121, QA audit 2026-07-12).
+ * super_admin always bypasses. Exported so the decision is unit-testable
+ * without a DB or Redis.
  */
 export function shouldEnforcePagesRegenQuota(
   contentPageCount: number,
-  isSuperAdmin: boolean
+  isSuperAdmin: boolean,
+  hasGeneratedBefore: boolean
 ): boolean {
-  const isInitialGeneration = contentPageCount === 0;
+  const isInitialGeneration = contentPageCount === 0 && !hasGeneratedBefore;
   return !isInitialGeneration && !isSuperAdmin;
 }
 
@@ -1078,21 +1086,28 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         return c.json({ message: "Could not start the generator. Please try again." }, 503);
       }
 
-      // Pages regeneration quota (issue #217). INITIAL generation (no page of
-      // this site carries generated content yet) is always free — no counter
-      // touched. A REGENERATION is quota-checked; super_admin bypasses.
+      // Pages regeneration quota (issue #217). INITIAL generation is always
+      // free — no counter touched. A REGENERATION is quota-checked;
+      // super_admin bypasses. "Initial" requires BOTH: zero pages with
+      // generated content AND landing_sites.generated_at IS NULL — the stamp
+      // is worker-written only, so emptying sections via PATCH (or deleting
+      // pages) can no longer reset the free generation (#121).
       // (A concurrent request slipping between the in-flight check above and
       // add() below dedupes on the stable jobId — worst case one spare charge
       // for a genuinely simultaneous double-submit, never for plain retries.)
       let chargedPeriodStart: string | null = null;
-      const contentRes = await db.query<{ count: string }>(
-        `SELECT COUNT(*) AS count FROM landing_pages
-          WHERE site_id = $1 AND tenant_id = $2 AND sections <> '[]'::jsonb`,
+      const contentRes = await db.query<{ count: string; generated: boolean | null }>(
+        `SELECT
+           (SELECT COUNT(*) FROM landing_pages
+             WHERE site_id = $1 AND tenant_id = $2 AND sections <> '[]'::jsonb) AS count,
+           (SELECT generated_at IS NOT NULL FROM landing_sites
+             WHERE id = $1 AND tenant_id = $2) AS generated`,
         [siteId, auth.tenantId]
       );
       const contentPageCount = parseInt(contentRes.rows[0]?.count ?? "0", 10);
+      const hasGeneratedBefore = contentRes.rows[0]?.generated === true;
 
-      if (shouldEnforcePagesRegenQuota(contentPageCount, auth.isSuperAdmin)) {
+      if (shouldEnforcePagesRegenQuota(contentPageCount, auth.isSuperAdmin, hasGeneratedBefore)) {
         const tenantRes = await db.query<{ plan_tier: string | null }>(
           `SELECT plan_tier FROM tenants WHERE id = $1`,
           [auth.tenantId]
