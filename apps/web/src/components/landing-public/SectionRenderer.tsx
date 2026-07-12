@@ -23,6 +23,7 @@ import {
   type SectionRenderModel,
 } from "./section-render-model";
 import { safeHref } from "./json-ld";
+import { safeHexColor, onAccent } from "./color";
 
 // ---------------------------------------------------------------------------
 // Theme — a small neutral palette, overridable from landing_sites.theme.
@@ -34,6 +35,8 @@ export interface LandingTheme {
   muted?: string;
   surface?: string;
   border?: string;
+  /** Contrast-safe text colour for text sitting ON `primary` (derived). */
+  onPrimary?: string;
 }
 
 const DEFAULT_THEME: Required<LandingTheme> = {
@@ -42,17 +45,22 @@ const DEFAULT_THEME: Required<LandingTheme> = {
   muted: "#5c6e65",
   surface: "#ffffff",
   border: "#d5dfd9",
+  onPrimary: "#ffffff",
 };
 
 function resolveTheme(theme: unknown): Required<LandingTheme> {
   if (!theme || typeof theme !== "object") return DEFAULT_THEME;
   const t = theme as Record<string, unknown>;
+  // Sanitize the tenant brand colour to a strict hex (#259) — defends every
+  // style sink and keeps onAccent()'s WCAG maths well-defined.
+  const primary = safeHexColor(t.primary, DEFAULT_THEME.primary);
   return {
-    primary: typeof t.primary === "string" && t.primary ? t.primary : DEFAULT_THEME.primary,
+    primary,
     text: typeof t.text === "string" && t.text ? t.text : DEFAULT_THEME.text,
     muted: typeof t.muted === "string" && t.muted ? t.muted : DEFAULT_THEME.muted,
     surface: typeof t.surface === "string" && t.surface ? t.surface : DEFAULT_THEME.surface,
     border: typeof t.border === "string" && t.border ? t.border : DEFAULT_THEME.border,
+    onPrimary: onAccent(primary),
   };
 }
 
@@ -61,9 +69,9 @@ function resolveTheme(theme: unknown): Required<LandingTheme> {
 // ---------------------------------------------------------------------------
 
 const sectionStyle: CSSProperties = {
-  maxWidth: "820px",
+  maxWidth: "1080px",
   margin: "0 auto",
-  padding: "2.5rem 1.25rem",
+  padding: "2.5rem 1.5rem",
 };
 
 function headingStyle(color: string): CSSProperties {
@@ -81,73 +89,96 @@ function headingStyle(color: string): CSSProperties {
 // ---------------------------------------------------------------------------
 
 function Hero({ model, theme }: { model: Extract<SectionRenderModel, { kind: "hero" }>; theme: Required<LandingTheme> }) {
+  const hasImage = Boolean(model.image);
+  const stars = "★".repeat(Math.max(0, Math.min(5, Math.round(model.rating ?? 0))));
   return (
-    <header
-      style={{
-        ...sectionStyle,
-        maxWidth: "100%",
-        padding: "3.5rem 1.25rem",
-        background: `linear-gradient(180deg, ${theme.surface} 0%, ${theme.border}22 100%)`,
-        textAlign: "center",
-      }}
-    >
-      <h1 style={{ ...headingStyle(theme.text), fontSize: "clamp(1.75rem, 5vw, 2.75rem)" }}>
-        {model.headline || model.businessName}
-      </h1>
-      {model.subheadline && (
-        <p style={{ fontSize: "1.05rem", color: theme.muted, maxWidth: "560px", margin: "0 auto 1.5rem" }}>
-          {model.subheadline}
-        </p>
-      )}
-      <a
-        href="#contact"
+    // Full-width band with a soft brand tint; the image (right) brings the colour.
+    <header style={{ background: `linear-gradient(180deg, ${theme.surface} 0%, ${theme.primary}0d 100%)` }}>
+      <div
         style={{
-          display: "inline-flex",
+          maxWidth: "1080px",
+          margin: "0 auto",
+          padding: "3.75rem 1.5rem",
+          display: "grid",
+          // auto-fit stacks to a single column on narrow screens with no media query.
+          gridTemplateColumns: hasImage ? "repeat(auto-fit, minmax(300px, 1fr))" : "1fr",
+          gap: "2.75rem",
           alignItems: "center",
-          justifyContent: "center",
-          minHeight: "44px",
-          padding: "0.75rem 1.5rem",
-          background: theme.primary,
-          color: "#ffffff",
-          fontWeight: 700,
-          textDecoration: "none",
-          borderRadius: "10px",
         }}
       >
-        {model.ctaLabel}
-      </a>
-      {model.rating != null && (
-        <p style={{ marginTop: "1.1rem", color: theme.muted, fontSize: "0.95rem" }}>
-          <span aria-hidden="true" style={{ color: "#e0a325", letterSpacing: "1px" }}>
-            {"★".repeat(Math.max(0, Math.min(5, Math.round(model.rating))))}
-          </span>{" "}
-          <strong style={{ color: theme.text }}>{model.rating}</strong>
-          {model.reviewCount != null && ` · ${model.reviewCount} reviews on Google`}
-        </p>
-      )}
-      {model.image && (
-        <figure style={{ margin: "2rem auto 0", maxWidth: "900px" }}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- proxied Google photo, dynamic host */}
-          <img
-            src={model.image}
-            alt={model.imageAlt || model.businessName}
-            loading="eager"
+        {/* Text — LEFT aligned (matches the delivery template). */}
+        <div>
+          <h1
             style={{
-              width: "100%",
-              height: "auto",
-              borderRadius: "16px",
-              objectFit: "cover",
-              border: `1px solid ${theme.border}`,
-              display: "block",
+              fontSize: "clamp(2rem, 5vw, 3.25rem)",
+              fontWeight: 800,
+              letterSpacing: "-0.03em",
+              lineHeight: 1.03,
+              margin: 0,
+              color: theme.text,
             }}
-          />
-          {model.imageAttribution && (
-            <figcaption style={{ fontSize: "0.7rem", color: theme.muted, marginTop: "0.4rem" }}>
-              Photo: {model.imageAttribution} &middot; Google
-            </figcaption>
+          >
+            {model.headline || model.businessName}
+          </h1>
+          {model.subheadline && (
+            <p style={{ marginTop: "1.1rem", fontSize: "1.15rem", lineHeight: 1.5, color: theme.muted, maxWidth: "34ch" }}>
+              {model.subheadline}
+            </p>
           )}
-        </figure>
-      )}
+          <div style={{ marginTop: "1.75rem" }}>
+            <a
+              href="#contact"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                minHeight: "46px",
+                padding: "0.8rem 1.6rem",
+                background: theme.primary,
+                color: theme.onPrimary,
+                fontWeight: 700,
+                textDecoration: "none",
+                borderRadius: "12px",
+              }}
+            >
+              {model.ctaLabel}
+            </a>
+          </div>
+          {model.rating != null && (
+            <div style={{ marginTop: "1.5rem", display: "flex", alignItems: "center", gap: "0.55rem", fontSize: "0.95rem", color: theme.muted }}>
+              <span aria-hidden="true" style={{ color: "#e0a325", letterSpacing: "2px", fontSize: "1.05rem" }}>
+                {stars}
+              </span>
+              <strong style={{ color: theme.text }}>{model.rating}</strong>
+              {model.reviewCount != null && <span>&middot; {model.reviewCount} reviews on Google</span>}
+            </div>
+          )}
+        </div>
+
+        {/* Photo — RIGHT (from Google Maps, via the proxy). */}
+        {model.image && (
+          <figure style={{ margin: 0 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- proxied Google photo, dynamic host */}
+            <img
+              src={model.image}
+              alt={model.imageAlt || model.businessName}
+              loading="eager"
+              style={{
+                width: "100%",
+                aspectRatio: "5 / 4",
+                objectFit: "cover",
+                borderRadius: "18px",
+                border: `1px solid ${theme.border}`,
+                display: "block",
+              }}
+            />
+            {model.imageAttribution && (
+              <figcaption style={{ fontSize: "0.7rem", color: theme.muted, marginTop: "0.4rem" }}>
+                Photo: {model.imageAttribution} &middot; Google
+              </figcaption>
+            )}
+          </figure>
+        )}
+      </div>
     </header>
   );
 }
@@ -274,7 +305,7 @@ function Cta({ model, theme }: { model: Extract<SectionRenderModel, { kind: "cta
                 minHeight: "44px",
                 padding: "0.75rem 1.5rem",
                 background: theme.primary,
-                color: "#ffffff",
+                color: theme.onPrimary,
                 fontWeight: 700,
                 textDecoration: "none",
                 borderRadius: "10px",
