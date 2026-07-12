@@ -28,8 +28,10 @@
  *   - C6 PRD AC: GET /api/billing/plan, POST /api/billing/checkout, POST /api/billing/portal
  *   - C6 PRD AC: Stripe Checkout + Portal integration (no PCI scope expansion)
  *   - C6 PRD AC: Webhook handles checkout.session.completed,
+ *                checkout.session.async_payment_succeeded/failed,
  *                customer.subscription.updated, customer.subscription.deleted,
- *                invoice.payment_failed — idempotent + audit logged
+ *                invoice.payment_failed, charge.refunded, charge.dispute.created
+ *                — idempotent + audit logged
  *   - Tenant isolation: all queries scoped to tenantId from JWT / billing_subscriptions lookup
  *   - Rate limit: checkout + portal each 20/hour per tenant (Redis token bucket)
  *
@@ -56,6 +58,7 @@ import {
   verifyWebhookSignature,
   mapStripeStatusToInternal,
   mapPriceIdToPlanTier,
+  retrieveDisputeCharge,
   PLAN_LIMITS,
   type PlanTier,
 } from "../integrations/stripe";
@@ -671,10 +674,14 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
   // any payload processing or DB side-effects.
   //
   // Handles:
-  //   checkout.session.completed       → set status=active, store Stripe IDs
-  //   customer.subscription.updated    → sync status + plan + renewal
-  //   customer.subscription.deleted    → status=canceled, downgrade to free
-  //   invoice.payment_failed           → status=past_due, audit log
+  //   checkout.session.completed                → grant (ONLY if payment settled)
+  //   checkout.session.async_payment_succeeded  → grant (delayed methods: boleto…)
+  //   checkout.session.async_payment_failed     → mark one-time order 'failed'
+  //   customer.subscription.updated             → sync status + plan + renewal
+  //   customer.subscription.deleted             → status=canceled, downgrade to free
+  //   invoice.payment_failed                    → status=past_due, audit log
+  //   charge.refunded (full)                    → revoke what the charge paid for
+  //   charge.dispute.created                    → revoke what the charge paid for
   //
   // Idempotency:
   //   1. Redis key billing:event:<eventId> (7-day TTL) — fast path. Written
@@ -777,6 +784,43 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           );
           break;
         }
+        case "checkout.session.async_payment_succeeded": {
+          // Delayed payment method (e.g. boleto) settled AFTER completion.
+          // The session object is the same shape, now with payment_status='paid',
+          // so the completed handler grants exactly as if it were instant.
+          // Distinct event.id → the idempotency layers don't collide with the
+          // earlier (deferred) checkout.session.completed delivery.
+          await handleCheckoutSessionCompleted(
+            db,
+            event.data.object as Stripe.Checkout.Session,
+            event.id
+          );
+          break;
+        }
+        case "checkout.session.async_payment_failed": {
+          await handleAsyncPaymentFailed(
+            db,
+            event.data.object as Stripe.Checkout.Session,
+            event.id
+          );
+          break;
+        }
+        case "charge.refunded": {
+          await handleChargeRefunded(
+            db,
+            event.data.object as Stripe.Charge,
+            event.id
+          );
+          break;
+        }
+        case "charge.dispute.created": {
+          await handleChargeDisputeCreated(
+            db,
+            event.data.object as Stripe.Dispute,
+            event.id
+          );
+          break;
+        }
         case "customer.subscription.updated": {
           await handleSubscriptionUpdated(
             db,
@@ -847,12 +891,37 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
 // Webhook event handlers (private — not exported)
 // ---------------------------------------------------------------------------
 
-// checkout.session.completed — new subscription OR Kit one-time payment
+// checkout.session.completed — new subscription OR Kit one-time payment.
+// Also invoked for checkout.session.async_payment_succeeded (same object shape).
 async function handleCheckoutSessionCompleted(
   db: PostgresClient,
   session: Stripe.Checkout.Session,
   eventId: string
 ): Promise<void> {
+  // -------------------------------------------------------------------------
+  // PAYMENT GATE (launch-eve QA P1): checkout.session.completed fires when the
+  // CHECKOUT finishes, not when the money settles. Delayed methods (boleto,
+  // some bank debits) complete with payment_status='unpaid' — granting here
+  // would hand out the Kit / Pages credit / subscription for a payment that
+  // may never arrive. Grant only when Stripe says the session is settled:
+  //   'paid'                → money captured
+  //   'no_payment_required' → legitimately free (trial, 100%-off promo code)
+  // Anything else: do nothing and wait for async_payment_succeeded (handled
+  // above, routed back here with payment_status='paid') or async_payment_failed.
+  // -------------------------------------------------------------------------
+  if (
+    session.payment_status !== "paid" &&
+    session.payment_status !== "no_payment_required"
+  ) {
+    logger.info("stripe_checkout_completed_awaiting_payment", {
+      session_id: session.id,
+      event_id: eventId,
+      mode: session.mode,
+      payment_status: session.payment_status,
+    });
+    return;
+  }
+
   // -------------------------------------------------------------------------
   // Kit payment branch (mode='payment', product='get_cited_kit')
   // Must be checked BEFORE the subscription logic so Kit sessions never fall
@@ -1647,4 +1716,260 @@ async function handleDirectCheckoutCompleted(
     event_id: eventId,
     // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
   });
+}
+
+// ---------------------------------------------------------------------------
+// checkout.session.async_payment_failed — a delayed payment method (boleto,
+// bank debit) never settled. Nothing was granted (the payment gate in
+// handleCheckoutSessionCompleted deferred), so this only closes the order:
+// 'pending' → 'failed', keeping 'pending' meaning "checkout still in flight"
+// for the bootstrap-claim paths. Subscription-mode sessions have nothing local
+// to clean (nothing was written while unpaid); Stripe handles the failed
+// subscription on its side.
+// ---------------------------------------------------------------------------
+async function handleAsyncPaymentFailed(
+  db: PostgresClient,
+  session: Stripe.Checkout.Session,
+  eventId: string
+): Promise<void> {
+  const product = session.metadata?.product;
+
+  if (session.mode === "payment" && product === "get_cited_kit") {
+    const kit_order_id = session.metadata?.kit_order_id;
+    if (kit_order_id) {
+      await db.query(
+        `UPDATE kit_order SET status='failed' WHERE id=$1 AND status='pending'`,
+        [kit_order_id]
+      );
+      logger.info("stripe_kit_async_payment_failed", {
+        kit_order_id,
+        event_id: eventId,
+      });
+    }
+    return;
+  }
+
+  if (session.mode === "payment" && product === "ozvor_pages_site") {
+    const pages_order_id = session.metadata?.pages_order_id;
+    if (pages_order_id) {
+      await db.query(
+        `UPDATE pages_order SET status='failed' WHERE id=$1 AND status='pending'`,
+        [pages_order_id]
+      );
+      logger.info("stripe_pages_async_payment_failed", {
+        pages_order_id,
+        event_id: eventId,
+      });
+    }
+    return;
+  }
+
+  logger.info("stripe_async_payment_failed_noop", {
+    event_id: eventId,
+    mode: session.mode,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Refund / dispute revocation (launch-eve QA P1)
+// ---------------------------------------------------------------------------
+// A refunded or disputed charge must stop granting whatever it paid for.
+// Resolution order (all offline — no Stripe API call needed for refunds):
+//   1. charge.metadata.product — Kit and Pages checkouts stamp
+//      payment_intent_data.metadata at session creation, and Stripe copies
+//      PaymentIntent metadata onto the charge. Names the exact order.
+//   2. charge.customer — subscription invoice charges carry no product
+//      metadata; the customer maps to billing_subscriptions.
+//   3. Neither → log and acknowledge (200). Retrying forever can't resolve it;
+//      the warn log is the founder's signal to reconcile by hand.
+//
+// Subscription revocation is LOCAL ONLY: status='canceled' + plan_tier='free'
+// (same downgrade as customer.subscription.deleted). We never call Stripe to
+// cancel from a webhook — the founder cancels in the dashboard (the warn log
+// says so); an outbound mutation here could loop with its own webhooks.
+// ---------------------------------------------------------------------------
+async function revokeEntitlementsForCharge(
+  db: PostgresClient,
+  charge: Stripe.Charge,
+  eventId: string,
+  kind: "refund" | "dispute"
+): Promise<void> {
+  const md = charge.metadata ?? {};
+
+  // --- Kit: order named by charge metadata --------------------------------
+  if (md["product"] === "get_cited_kit" && md["kit_order_id"]) {
+    const kitOrderId = md["kit_order_id"];
+    // Any state → 'refunded' (idempotent: replays match 0 rows). Every access
+    // path filters on status IN ('pending','paid'/'delivered'), so 'refunded'
+    // blocks the token page, /deliver (even with the still-'paid' Stripe
+    // session), and claimed-history.
+    const { rows } = await db.query<{ claimed_by_tenant_id: string | null }>(
+      `UPDATE kit_order
+          SET status = 'refunded', refunded_at = NOW()
+        WHERE id = $1 AND status <> 'refunded'
+        RETURNING claimed_by_tenant_id`,
+      [kitOrderId]
+    );
+    if (rows.length === 0) {
+      logger.info("stripe_kit_revocation_noop", {
+        kit_order_id: kitOrderId,
+        event_id: eventId,
+        kind,
+      });
+      return;
+    }
+    const claimedTenantId = rows[0].claimed_by_tenant_id;
+    if (claimedTenantId) {
+      await writeBillingAuditLog(db, {
+        tenantId: claimedTenantId,
+        eventType: `kit_order_revoked_${kind}`,
+        planTier: null,
+        stripeEventId: eventId,
+      });
+    }
+    logger.info("stripe_kit_order_revoked", {
+      kit_order_id: kitOrderId,
+      event_id: eventId,
+      kind,
+    });
+    return;
+  }
+
+  // --- Pages: order named by charge metadata ------------------------------
+  if (md["product"] === "ozvor_pages_site" && md["pages_order_id"]) {
+    const pagesOrderId = md["pages_order_id"];
+    // ATOMIC (same invariant as the credit path #262): the status transition
+    // and the allowance decrement commit together. credited_tenant_id is set
+    // only when the +1 was actually granted (webhook or bootstrap claim) — a
+    // 'paid'-awaiting-claim order revokes with no decrement, and 'refunded'
+    // blocks the claim query (status='paid') from ever granting it.
+    const revokedTenantId = await db.transaction(async (tx) => {
+      const { rows } = await tx.query<{ credited_tenant_id: string | null }>(
+        `UPDATE pages_order
+            SET status = 'refunded', refunded_at = NOW()
+          WHERE id = $1 AND status <> 'refunded'
+          RETURNING credited_tenant_id`,
+        [pagesOrderId]
+      );
+      if (rows.length === 0) return null;
+      const tenantId = rows[0].credited_tenant_id;
+      if (tenantId) {
+        // GREATEST floor: the credit may already be consumed by a built site —
+        // the allowance still drops (blocking the NEXT site), never below 0.
+        await tx.query(
+          `UPDATE tenants
+              SET extra_landing_sites = GREATEST(extra_landing_sites - 1, 0)
+            WHERE id = $1`,
+          [tenantId]
+        );
+      }
+      return tenantId;
+    });
+    if (revokedTenantId) {
+      await writeBillingAuditLog(db, {
+        tenantId: revokedTenantId,
+        eventType: `pages_order_revoked_${kind}`,
+        planTier: null,
+        stripeEventId: eventId,
+      });
+    }
+    logger.info("stripe_pages_order_revoked", {
+      pages_order_id: pagesOrderId,
+      event_id: eventId,
+      kind,
+    });
+    return;
+  }
+
+  // --- Subscription: no product metadata → resolve by Stripe customer -----
+  const customerId =
+    typeof charge.customer === "string"
+      ? charge.customer
+      : charge.customer?.id ?? null;
+
+  if (customerId) {
+    const { rows } = await db.query<{ tenant_id: string }>(
+      `UPDATE billing_subscriptions
+          SET status = 'canceled',
+              plan_tier = 'free',
+              stripe_event_id_last = $2,
+              updated_at = NOW()
+        WHERE stripe_customer_id = $1
+          AND stripe_event_id_last IS DISTINCT FROM $2
+        RETURNING tenant_id`,
+      [customerId, eventId]
+    );
+    if (rows.length > 0) {
+      for (const { tenant_id } of rows) {
+        await db.query(`UPDATE tenants SET plan_tier = 'free' WHERE id = $1`, [
+          tenant_id,
+        ]);
+        await writeBillingAuditLog(db, {
+          tenantId: tenant_id,
+          eventType: `billing_subscription_revoked_${kind}`,
+          planTier: "free",
+          stripeEventId: eventId,
+          status: "canceled",
+        });
+        logger.warn("stripe_subscription_revoked_local_only", {
+          tenant_id,
+          event_id: eventId,
+          kind,
+          action_required:
+            "cancel the Stripe subscription in the dashboard — local access already revoked",
+        });
+      }
+      return;
+    }
+  }
+
+  // --- Nothing matched — acknowledge, but make it loud --------------------
+  logger.warn("stripe_charge_revocation_unmatched", {
+    event_id: eventId,
+    kind,
+    has_product_metadata: Boolean(md["product"]),
+    has_customer: Boolean(customerId),
+    // NOTE: customer_id / charge id metadata values intentionally NOT logged
+  });
+}
+
+// charge.refunded — fires for PARTIAL refunds too; charge.refunded (the field)
+// is true only when the charge is FULLY refunded. A partial/goodwill refund
+// must not revoke access, so we gate on the field.
+async function handleChargeRefunded(
+  db: PostgresClient,
+  charge: Stripe.Charge,
+  eventId: string
+): Promise<void> {
+  if (charge.refunded !== true) {
+    logger.info("stripe_charge_partial_refund_ignored", {
+      event_id: eventId,
+      amount_refunded: charge.amount_refunded,
+      amount: charge.amount,
+    });
+    return;
+  }
+  await revokeEntitlementsForCharge(db, charge, eventId, "refund");
+}
+
+// charge.dispute.created — ANY dispute revokes immediately (fail-closed: a
+// disputed buyer must not keep using the product while the dispute runs; if
+// we win it, restoration is a manual founder action). The Dispute object
+// doesn't carry metadata/customer, so retrieve its charge — a Stripe failure
+// throws → 500 → Stripe redelivers (revocation is money-critical, never skip).
+async function handleChargeDisputeCreated(
+  db: PostgresClient,
+  dispute: Stripe.Dispute,
+  eventId: string
+): Promise<void> {
+  const chargeId =
+    typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id ?? null;
+
+  if (!chargeId) {
+    logger.warn("stripe_dispute_missing_charge", { event_id: eventId });
+    return;
+  }
+
+  const charge = await retrieveDisputeCharge(chargeId);
+  await revokeEntitlementsForCharge(db, charge, eventId, "dispute");
 }
