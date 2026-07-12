@@ -34,10 +34,18 @@ function makeDb(
     callCount++;
     return result;
   });
+  const setTenantId = vi.fn(async () => {});
+  // claimPagesOrders now runs the status transition + tenant increment inside a
+  // single db.transaction (#262 atomicity fix). The mock runs the callback with
+  // a tx that proxies to the SAME query fn, so the call-count results + throwOn
+  // behave identically and a throw inside rejects the transaction (as in prod).
+  const transaction = vi.fn(async (fn: (tx: { query: typeof query; setTenantId: typeof setTenantId }) => unknown) =>
+    fn({ query, setTenantId })
+  );
   return {
     query,
-    setTenantId: vi.fn(async () => {}),
-    transaction: vi.fn(),
+    setTenantId,
+    transaction,
     _queries: queries,
     _params: params,
   };

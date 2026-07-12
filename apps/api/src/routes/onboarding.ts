@@ -238,21 +238,29 @@ export async function claimPagesOrders(
   if (!verifiedEmail) return 0;
   const normalizedEmail = verifiedEmail.toLowerCase().trim();
   try {
-    const { rows } = await db.query<{ id: string }>(
-      `UPDATE pages_order
-          SET status = 'credited', credited_tenant_id = $1, credited_at = NOW()
-        WHERE email = $2 AND status = 'paid'
-        RETURNING id`,
-      [tenantId, normalizedEmail]
-    );
-    if (rows.length > 0) {
-      await db.query(
-        `UPDATE tenants SET extra_landing_sites = extra_landing_sites + $2 WHERE id = $1`,
-        [tenantId, rows.length]
+    // ATOMIC (#262 related HIGH): the status transition + tenant increment must
+    // commit together, or a crash between them loses the paid credit forever
+    // (retry only re-selects status='paid'). One transaction fixes that.
+    const count = await db.transaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `UPDATE pages_order
+            SET status = 'credited', credited_tenant_id = $1, credited_at = NOW()
+          WHERE email = $2 AND status = 'paid'
+          RETURNING id`,
+        [tenantId, normalizedEmail]
       );
-      logger.info("pages_orders_claimed", { tenant_id: tenantId, count: rows.length });
+      if (rows.length > 0) {
+        await tx.query(
+          `UPDATE tenants SET extra_landing_sites = extra_landing_sites + $2 WHERE id = $1`,
+          [tenantId, rows.length]
+        );
+      }
+      return rows.length;
+    });
+    if (count > 0) {
+      logger.info("pages_orders_claimed", { tenant_id: tenantId, count });
     }
-    return rows.length;
+    return count;
   } catch (err) {
     logger.error("pages_orders_claim_failed", {
       tenant_id: tenantId,

@@ -637,20 +637,83 @@ export async function createPagesCheckoutSession(
   return { url: session.url };
 }
 
+export type KitSessionRejectReason =
+  | "not_paid"
+  | "wrong_mode"
+  | "wrong_product"
+  | "order_mismatch"
+  | "token_mismatch"
+  | "price_mismatch"
+  | "price_unconfigured"
+  | "retrieve_error";
+
+export interface KitSessionVerification {
+  ok: boolean;
+  reason?: KitSessionRejectReason;
+}
+
+/** Minimal shape of the fields we validate — keeps evaluateKitSession pure. */
+export interface KitSessionShape {
+  payment_status?: string | null;
+  mode?: string | null;
+  metadata?: Record<string, string> | null;
+  line_items?: { data?: Array<{ price?: { id?: string | null } | null }> } | null;
+}
+
 /**
- * Retrieve a Checkout Session and report whether it is paid. Used by the Kit
- * delivery page to verify payment without relying solely on the webhook.
+ * PURE binding check (no network) — a paid Checkout Session only unlocks the
+ * order it was created for. The synchronous /kit/:token/deliver path lets the
+ * CALLER supply session_id, so `payment_status === "paid"` alone is exploitable:
+ * a buyer could replay one paid session against another Kit order and get it
+ * free. We require the session's own metadata (set at creation in
+ * createKitCheckoutSession) to name THIS order + token + product, and the line
+ * item to be the configured Kit price. Exported for unit testing.
  */
-export async function isCheckoutSessionPaid(sessionId: string): Promise<boolean> {
+export function evaluateKitSession(
+  session: KitSessionShape,
+  bind: { orderId: string; orderToken: string },
+  expectedPriceId?: string | null
+): KitSessionVerification {
+  if (session.payment_status !== "paid") return { ok: false, reason: "not_paid" };
+  if (session.mode !== "payment") return { ok: false, reason: "wrong_mode" };
+  const md = session.metadata ?? {};
+  if (md["product"] !== "get_cited_kit") return { ok: false, reason: "wrong_product" };
+  if (md["kit_order_id"] !== bind.orderId) return { ok: false, reason: "order_mismatch" };
+  if (md["order_token"] !== bind.orderToken) return { ok: false, reason: "token_mismatch" };
+  // Price binding is MANDATORY (Hermes #263): validating only `if (expectedPriceId)`
+  // was fail-OPEN — an unset STRIPE_PRICE_ID_KIT would skip the price check and let
+  // a cheap unrelated paid session unlock a Kit. A missing configured price is a
+  // misconfiguration → reject (fail-closed), never accept blindly.
+  if (!expectedPriceId) return { ok: false, reason: "price_unconfigured" };
+  const ids = (session.line_items?.data ?? [])
+    .map((li) => li?.price?.id)
+    .filter((x): x is string => Boolean(x));
+  if (ids.length !== 1 || ids[0] !== expectedPriceId) return { ok: false, reason: "price_mismatch" };
+  return { ok: true };
+}
+
+/**
+ * Retrieve a Checkout Session and verify it is a PAID Get-Cited Kit purchase
+ * BOUND to this order + token. Replaces the old payment_status-only check used
+ * by the Kit delivery page (which allowed cross-order session replay).
+ */
+export async function verifyKitCheckoutSession(
+  sessionId: string,
+  bind: { orderId: string; orderToken: string }
+): Promise<KitSessionVerification> {
   try {
     const stripe = getStripe();
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    return session.payment_status === "paid";
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
+    return evaluateKitSession(
+      session as unknown as KitSessionShape,
+      bind,
+      process.env["STRIPE_PRICE_ID_KIT"] ?? null
+    );
   } catch (err) {
-    logger.error("stripe_session_retrieve_error", {
+    logger.error("stripe_kit_session_verify_error", {
       error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
     });
-    return false;
+    return { ok: false, reason: "retrieve_error" };
   }
 }
 

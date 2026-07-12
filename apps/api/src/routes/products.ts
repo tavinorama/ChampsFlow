@@ -29,7 +29,7 @@ import {
 import {
   createKitCheckoutSession,
   createPagesCheckoutSession,
-  isCheckoutSessionPaid,
+  verifyKitCheckoutSession,
 } from "../integrations/stripe";
 import { truncateIp } from "./dpa";
 import { requireAuth } from "../auth/middleware";
@@ -496,9 +496,9 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     const res = await db.query<{
       id: string; brand: string; domain: string | null; category: string; region: string;
-      status: string; deliverable: unknown; lead_capture_id: string | null;
+      status: string; deliverable: unknown; lead_capture_id: string | null; stripe_session_id: string | null;
     }>(
-      `SELECT id, brand, domain, category, region, status, deliverable, lead_capture_id FROM kit_order WHERE order_token = $1`,
+      `SELECT id, brand, domain, category, region, status, deliverable, lead_capture_id, stripe_session_id FROM kit_order WHERE order_token = $1`,
       [token]
     );
     const order = res.rows[0];
@@ -509,13 +509,45 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ status: "delivered", deliverable: order.deliverable, downloads: kitDownloads() });
     }
 
-    // Verify payment: paid status already set, OR a paid Stripe session, OR a
-    // dev unlock outside production.
-    let paid = order.status === "paid";
+    // Verify payment: a 'paid' order is only trusted when a Stripe session is
+    // BOUND to it (Hermes #263 — `status==='paid'` alone must not bypass the
+    // session binding). Both legit paths that reach 'paid' set stripe_session_id:
+    // the signed webhook (billing.ts) and the bound sync path below. A future
+    // path that flips 'paid' without binding therefore can't leak the Kit.
+    // (dev_unlock, handled separately, is non-production only.)
+    let paid = order.status === "paid" && order.stripe_session_id != null;
     if (!paid && sessionId && process.env["STRIPE_SECRET_KEY"]) {
-      paid = await isCheckoutSessionPaid(sessionId);
-      if (paid) {
-        await db.query(`UPDATE kit_order SET status='paid', stripe_session_id=$2, paid_at=NOW() WHERE id=$1`, [order.id, sessionId]);
+      // Binding check (#262): the session's own metadata must name THIS order +
+      // token + product + Kit price — payment_status alone would let a buyer
+      // replay one paid session against another order to get a free Kit.
+      const check = await verifyKitCheckoutSession(sessionId, {
+        orderId: order.id,
+        orderToken: token,
+      });
+      if (check.ok) {
+        try {
+          // Guarded + idempotent transition, and the DB UNIQUE(stripe_session_id)
+          // (partial index) is the backstop: a session can bind to at most one
+          // order even if the metadata check were ever bypassed.
+          const upd = await db.query<{ id: string }>(
+            `UPDATE kit_order SET status='paid', stripe_session_id=$2, paid_at=NOW()
+              WHERE id=$1 AND status IN ('pending','paid') RETURNING id`,
+            [order.id, sessionId]
+          );
+          paid = upd.rows.length > 0;
+        } catch (err) {
+          // 23505 = another order already claimed this session → reject, do not unlock.
+          if ((err as { code?: string })?.code === "23505") {
+            logger.warn("kit_deliver_session_already_bound", { kit_order_id: order.id });
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        logger.warn("kit_deliver_session_rejected", {
+          kit_order_id: order.id,
+          reason: check.reason,
+        });
       }
     }
     if (!paid && devUnlock && process.env["NODE_ENV"] !== "production") {
