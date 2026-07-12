@@ -133,6 +133,13 @@ export interface FounderOfferStatus {
   redeemed: number;
   /** Maximum allowed redemptions (FOUNDER_OFFER_LIMIT env var, default 100). */
   limit: number;
+  /**
+   * True ONLY when `remaining`/`redeemed` came from a real Stripe read (or its
+   * 60s cache). False on every fail-safe path (Stripe unconfigured/unreachable):
+   * in that case `remaining` is the full limit as a keep-open default, NOT a
+   * verified count — public surfaces must NOT present it as a live number.
+   */
+  verified: boolean;
 }
 
 const FOUNDER_STATUS_CACHE_KEY = "founder_offer_status";
@@ -156,12 +163,15 @@ export async function getFounderOfferStatus(): Promise<FounderOfferStatus> {
   const parsed = Number(rawLimit);
   const limit = Number.isNaN(parsed) ? 100 : parsed;
 
-  // Fail-safe default — keeps offer open if anything goes wrong
+  // Fail-safe default — keeps offer open if anything goes wrong. `remaining` is
+  // the full limit only as a keep-open default; `verified: false` marks it as an
+  // UNVERIFIED count so public surfaces hide the number instead of showing it live.
   const failSafe: FounderOfferStatus = {
     active: founderDiscountActive(),
     remaining: limit,
     redeemed: 0,
     limit,
+    verified: false,
   };
 
   // If Stripe env is not configured, we cannot reach the coupon — return fail-safe
@@ -212,6 +222,7 @@ export async function getFounderOfferStatus(): Promise<FounderOfferStatus> {
       remaining: Math.max(0, limit - redeemed),
       redeemed,
       limit,
+      verified: true,
     };
   } catch (err) {
     // Only a Stripe failure lands here now (not a missing cache) → fail-safe.
