@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { PUBLISHED_POSTS } from "./(marketing)/blog/posts";
 
 /**
  * sitemap.xml — public, AI-crawlable surface of Ozvor.
@@ -84,14 +85,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Booking
     ["/book", "monthly", 0.7],
 
-    // Blog — articles
+    // Blog — index (individual articles + published videos are appended below,
+    // generated from PUBLISHED_POSTS so the sitemap never advertises an
+    // unpublished/placeholder page — the /blog/watch/* 500s came from hardcoding
+    // placeholder video slugs here).
     ["/blog", "weekly", 0.7],
-    ["/blog/how-small-businesses-get-cited-by-chatgpt", "monthly", 0.7],
-    ["/blog/why-small-businesses-stop-posting", "monthly", 0.6],
-
-    // Blog — videos (placeholder slugs; update when real videos are published)
-    ["/blog/watch/what-is-geo-and-why-it-matters", "monthly", 0.6],
-    ["/blog/watch/ozvor-audit-walkthrough", "monthly", 0.6],
 
     // Legal / trust pages
     ["/privacy-policy", "yearly", 0.3],
@@ -109,6 +107,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority,
   }));
 
+  // Blog posts (articles at /blog/<slug>, published videos at /blog/watch/<slug>)
+  // straight from PUBLISHED_POSTS — placeholder/unpublished videos are already
+  // filtered out there, so the sitemap can never advertise a page that 404/500s.
+  const blogEntries: MetadataRoute.Sitemap = PUBLISHED_POSTS.map((post) => ({
+    url: post.type === "video"
+      ? `${SITE}/blog/watch/${post.slug}`
+      : `${SITE}/blog/${post.slug}`,
+    lastModified: post.publishedAt ? new Date(post.publishedAt) : now,
+    changeFrequency: "monthly",
+    priority: post.type === "video" ? 0.6 : 0.7,
+  }));
+
   const landingEntries = await fetchLandingSitemapEntries();
   const ozvorPagesEntries: MetadataRoute.Sitemap = landingEntries.map((entry) => ({
     url: entry.page_slug
@@ -119,5 +129,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
 
-  return [...staticEntries, ...ozvorPagesEntries];
+  return [...staticEntries, ...blogEntries, ...ozvorPagesEntries];
 }
