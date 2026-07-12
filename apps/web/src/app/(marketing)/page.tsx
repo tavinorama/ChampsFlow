@@ -66,7 +66,8 @@ async function fetchSelfScore(): Promise<SelfScoreApiData | null> {
 }
 
 export const metadata: Metadata = {
-  title: "Ozvor — Get your brand cited by AI search",
+  // Bare title — the root layout template already suffixes "| Ozvor".
+  title: "Get your brand cited by AI search",
   description:
     "Run a free 60-second test. See your Ozvor AI Visibility Score, who AI cites instead of you — and exactly what to fix.",
   alternates: { canonical: "https://ozvor.com/" },

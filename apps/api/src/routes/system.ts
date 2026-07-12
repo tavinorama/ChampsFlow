@@ -197,8 +197,8 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
 
       // Platform-level connections (auth, billing).
       platform: {
-        auth: { label: "Supabase Auth (magic-link login)", connected: present("SUPABASE_URL"), key: "SUPABASE_URL + anon key" },
-        billing: { label: "Stripe (BRL/Pix · EUR/USD)", connected: present("STRIPE_SECRET_KEY"), key: "STRIPE_SECRET_KEY" },
+        auth: { label: "Supabase Auth (magic-link login)", connected: present("SUPABASE_URL"), key: "Supabase" },
+        billing: { label: "Stripe (BRL/Pix · EUR/USD)", connected: present("STRIPE_SECRET_KEY"), key: "Stripe" },
       },
 
       // Always-on compliance controls (shown so customers know what protects them).
