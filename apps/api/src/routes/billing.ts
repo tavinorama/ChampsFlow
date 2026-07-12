@@ -262,12 +262,25 @@ export function requireNotRestricted(db: PostgresClient) {
       // Any other status (incomplete, etc.) → allow through (conservative)
       await next();
     } catch (err) {
-      // On DB error, fail open (allow the request) to avoid blocking users on infra issues
-      logger.error("billing_restriction_check_failed", {
+      // Fail-CLOSED (#261 P2, founder decision): this gate protects PAID actions
+      // (post generation, scheduling). If we can't verify the subscription is
+      // active we must NOT grant the billable action on an ambiguous infra error
+      // — a canceled/past-due tenant could otherwise slip a paid action through
+      // during a DB blip. Ask them to retry. Read-only routes don't carry this
+      // gate, so browsing is unaffected.
+      logger.error("billing_restriction_check_failed_closed", {
         tenant_id: auth.tenantId,
         message: (err as Error).message,
       });
-      await next();
+      return ctx.json(
+        {
+          error: "billing_check_unavailable",
+          code: "BILLING_CHECK_UNAVAILABLE",
+          message:
+            "We can't verify your subscription right now. Please try again in a minute.",
+        },
+        503
+      );
     }
   };
 }
