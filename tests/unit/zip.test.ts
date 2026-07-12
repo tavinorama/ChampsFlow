@@ -78,4 +78,26 @@ describe("createZip", () => {
     const b = createZip(entries);
     expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true);
   });
+
+  it("rejects path-traversal / absolute / backslash entry paths", () => {
+    expect(() => createZip([{ path: "../evil.html", content: "x" }])).toThrow(/Unsafe/);
+    expect(() => createZip([{ path: "a/../../b", content: "x" }])).toThrow(/Unsafe/);
+    expect(() => createZip([{ path: "/etc/passwd", content: "x" }])).toThrow(/Unsafe/);
+    expect(() => createZip([{ path: "C:\\win.html", content: "x" }])).toThrow(/Unsafe/);
+    expect(() => createZip([{ path: "a\\b.html", content: "x" }])).toThrow(/Unsafe/);
+  });
+
+  it("rejects duplicate entry paths (would overwrite on extract)", () => {
+    expect(() =>
+      createZip([
+        { path: "index.html", content: "a" },
+        { path: "INDEX.html", content: "b" },
+      ])
+    ).toThrow(/Duplicate/);
+  });
+
+  it("allows nested (non-traversing) paths", () => {
+    const z = createZip([{ path: "assets/styles.css", content: "body{}" }]);
+    expect(z.length).toBeGreaterThan(0);
+  });
 });

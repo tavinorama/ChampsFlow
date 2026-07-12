@@ -48,8 +48,29 @@ function utf8(str: string): Uint8Array {
  * Build a ZIP archive (STORE / no compression) from a list of files.
  * Returns the raw bytes, ready to send as `application/zip`.
  */
+/**
+ * Reject any entry path that could escape the archive root when extracted:
+ * absolute paths, Windows drive/backslash paths, or a `..`/`.` segment. This is
+ * the archive-boundary backstop — callers should also sanitize their own names.
+ */
+function assertSafeEntryPath(path: string): void {
+  if (!path || path.startsWith("/") || path.includes("\\") || /^[A-Za-z]:/.test(path)) {
+    throw new Error(`Unsafe zip entry path: ${JSON.stringify(path)}`);
+  }
+  for (const seg of path.split("/")) {
+    if (seg === ".." || seg === ".") {
+      throw new Error(`Unsafe zip entry path: ${JSON.stringify(path)}`);
+    }
+  }
+}
+
 export function createZip(entries: ZipEntry[]): Uint8Array {
+  const seen = new Set<string>();
   const files = entries.map((e) => {
+    assertSafeEntryPath(e.path);
+    const key = e.path.toLowerCase();
+    if (seen.has(key)) throw new Error(`Duplicate zip entry path: ${JSON.stringify(e.path)}`);
+    seen.add(key);
     const nameBytes = utf8(e.path);
     const data = typeof e.content === "string" ? utf8(e.content) : e.content;
     return { nameBytes, data, crc: crc32(data), offset: 0 };

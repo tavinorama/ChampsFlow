@@ -40,6 +40,10 @@ export interface ExportSiteInput {
   /** Brand colour (hex). Falls back to a neutral if absent. */
   themePrimary?: string;
   pages: ExportPage[];
+  /** BCP-47 language tag for <html lang>. Defaults to "en". */
+  lang?: string;
+  /** Copyright year for the footer. Defaults to the current year. */
+  year?: number;
 }
 
 export interface ExportFile {
@@ -66,12 +70,89 @@ function isObj(v: unknown): v is Record<string, unknown> {
 function s(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
+/**
+ * Normalize a slug to a filesystem/URL-safe token. Strips everything outside
+ * [a-z0-9-] — so `../../x`, quotes, slashes and separators can never escape the
+ * ZIP root or inject an HTML attribute. '' stays '' (the home page → index.html).
+ */
+export function safeSlug(slug: unknown): string {
+  return String(slug ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function fileNameForSlug(slug: string): string {
-  return slug ? `${slug}.html` : "index.html";
+  const norm = safeSlug(slug);
+  return norm ? `${norm}.html` : "index.html";
 }
-function hrefForSlug(slug: string): string {
-  return slug ? `${slug}.html` : "index.html";
+
+/**
+ * Allowlist for STORED website URLs rendered into <a href> — mirrors the web
+ * app's safeHref contract (apps/web/src/lib/safe-json-ld.ts). Only http(s)
+ * survives; `javascript:`, `data:`, protocol-relative `//evil` → null and the
+ * caller renders plain text instead. A bare domain gets https:// prefixed.
+ */
+export function safeUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!value) return null;
+  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)
+    ? value
+    : value.startsWith("//")
+      ? `https:${value}`
+      : `https://${value}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    if (!url.hostname || !url.hostname.includes(".")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
+
+/**
+ * HTML-script-safe JSON-LD serialization — mirrors the web app's safeJsonLd
+ * (apps/web/src/lib/safe-json-ld.ts). Escapes <, >, & and U+2028/2029 as \uXXXX
+ * so a stored `</script><script>` can't break out of the tag. Byte-identical
+ * after JSON.parse (unicode escapes are plain JSON).
+ */
+export function safeJsonLdExport(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+/** Normalize a brand colour to #rgb or #rrggbb (adds the #). null if invalid. */
+export function normalizeHex(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const m = v.trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(m) || /^[0-9a-fA-F]{6}$/.test(m)) return `#${m.toLowerCase()}`;
+  return null;
+}
+
+/** Contrast-safe text colour (#111 or #fff) for text sitting ON the brand fill. */
+export function contrastText(hex: string): string {
+  const h = hex.replace(/^#/, "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return lum > 0.62 ? "#171717" : "#ffffff";
+}
+
+/**
+ * Resolve an internal-link slug to a same-folder href. Uses the site's slug→
+ * filename map when the target is a real page; otherwise falls back to the
+ * normalized name (still traversal-safe).
+ */
+type HrefResolver = (slug: unknown) => string;
 
 // ---------------------------------------------------------------------------
 // Section → HTML (mirrors the public SectionRenderer, minus Google photos)
@@ -82,7 +163,7 @@ const IMAGE_NOTICE =
   `Google Maps photos aren't included in this download — Google's policy doesn't ` +
   `allow redistributing them as files. Drop your own images in and update this section.</div>`;
 
-function renderSection(sec: unknown): string {
+function renderSection(sec: unknown, resolveHref: HrefResolver): string {
   if (!isObj(sec)) return "";
   const type = s(sec.type);
   switch (type) {
@@ -122,10 +203,15 @@ function renderSection(sec: unknown): string {
         .join("")}</section>`;
     }
     case "map_nap": {
+      const site = safeUrl(sec.website);
       const rows = [
         s(sec.address) ? `<dd>${escapeHtml(sec.address)}</dd>` : "",
         s(sec.phone) ? `<dd><a href="tel:${escapeHtml(s(sec.phone).replace(/[^0-9+]/g, ""))}">${escapeHtml(sec.phone)}</a></dd>` : "",
-        s(sec.website) ? `<dd><a href="${escapeHtml(sec.website)}">${escapeHtml(sec.website)}</a></dd>` : "",
+        site
+          ? `<dd><a href="${escapeHtml(site)}" rel="noopener nofollow">${escapeHtml(s(sec.website))}</a></dd>`
+          : s(sec.website)
+            ? `<dd>${escapeHtml(sec.website)}</dd>`
+            : "",
       ].join("");
       return `<section class="sec" id="contact"><h2>${escapeHtml(sec.name || "Visit")}</h2><dl>${rows}</dl></section>`;
     }
@@ -150,7 +236,7 @@ function renderSection(sec: unknown): string {
       // internal-links variant
       if (sec.role === "internal_links" && Array.isArray(sec.links)) {
         const links = sec.links.filter(isObj);
-        return `<nav class="sec"><h2>${escapeHtml(sec.heading || "Explore More")}</h2><ul class="chips">${links.map((l) => `<li><a href="${hrefForSlug(s(l.slug))}">${escapeHtml(l.label)}</a></li>`).join("")}</ul></nav>`;
+        return `<nav class="sec"><h2>${escapeHtml(sec.heading || "Explore More")}</h2><ul class="chips">${links.map((l) => `<li><a href="${escapeHtml(resolveHref(l.slug))}">${escapeHtml(l.label)}</a></li>`).join("")}</ul></nav>`;
       }
       if (!s(sec.body) && !s(sec.heading)) return "";
       const paras = s(sec.body).split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
@@ -165,37 +251,44 @@ function renderSection(sec: unknown): string {
 // Page + site assembly
 // ---------------------------------------------------------------------------
 
-function navHtml(business: ExportBusiness, pages: ExportPage[], currentSlug: string): string {
+function navHtml(business: ExportBusiness, pages: ExportPage[], currentSlug: string, resolveHref: HrefResolver): string {
   const links = pages
-    .map((p) => `<a href="${hrefForSlug(p.slug)}"${p.slug === currentSlug ? ' aria-current="page"' : ""}>${escapeHtml(p.title || "Home")}</a>`)
+    .map((p) => `<a href="${escapeHtml(resolveHref(p.slug))}"${p.slug === currentSlug ? ' aria-current="page"' : ""}>${escapeHtml(p.title || "Home")}</a>`)
     .join("");
   return `<header class="site-nav"><div class="wrap"><a class="word" href="index.html"><span class="dot"></span> ${escapeHtml(business.name)}</a><nav>${links}</nav><a class="btn small" href="#contact">Get in touch</a></div></header>`;
 }
 
-function footerHtml(business: ExportBusiness, pages: ExportPage[]): string {
-  const year = 2026; // stamped at build; keeps the module deterministic/testable
+function footerHtml(business: ExportBusiness, pages: ExportPage[], resolveHref: HrefResolver, year: number): string {
   const b = business;
+  const site = safeUrl(b.website);
   const napLines = [
     b.category ? `<p class="muted">${escapeHtml(b.category)}</p>` : "",
     b.address ? `<p>${escapeHtml(b.address)}</p>` : "",
     b.phone ? `<p><a href="tel:${escapeHtml(s(b.phone).replace(/[^0-9+]/g, ""))}">${escapeHtml(b.phone)}</a></p>` : "",
   ].join("");
-  const pageLinks = pages.map((p) => `<a href="${hrefForSlug(p.slug)}">${escapeHtml(p.title || "Home")}</a>`).join("");
-  return `<footer class="site-footer"><div class="wrap"><div><div class="word"><span class="dot"></span> ${escapeHtml(b.name)}</div>${napLines}</div><div class="col">${pageLinks}${b.website ? `<a href="${escapeHtml(b.website)}">Website</a>` : ""}</div></div><div class="bar"><span>© ${year} ${escapeHtml(b.name)}</span><span>Made with Ozvor</span></div></footer>`;
+  const pageLinks = pages.map((p) => `<a href="${escapeHtml(resolveHref(p.slug))}">${escapeHtml(p.title || "Home")}</a>`).join("");
+  const websiteLink = site ? `<a href="${escapeHtml(site)}" rel="noopener nofollow">Website</a>` : "";
+  return `<footer class="site-footer"><div class="wrap"><div><div class="word"><span class="dot"></span> ${escapeHtml(b.name)}</div>${napLines}</div><div class="col">${pageLinks}${websiteLink}</div></div><div class="bar"><span>© ${year} ${escapeHtml(b.name)}</span><span>Made with Ozvor</span></div></footer>`;
 }
 
-function pageHtml(input: ExportSiteInput, page: ExportPage): string {
+function pageHtml(
+  input: ExportSiteInput,
+  page: ExportPage,
+  resolveHref: HrefResolver,
+  lang: string,
+  year: number
+): string {
   const title = escapeHtml(page.seo?.title || page.title || input.business.name);
   const desc = escapeHtml(page.seo?.description || "");
   const jsonLd = Array.isArray(page.jsonLd)
     ? page.jsonLd
         .filter(isObj)
-        .map((n) => `<script type="application/ld+json">${JSON.stringify(n).replace(/</g, "\\u003c")}</script>`)
+        .map((n) => `<script type="application/ld+json">${safeJsonLdExport(n)}</script>`)
         .join("")
     : "";
-  const body = page.sections.map(renderSection).join("\n");
+  const body = page.sections.map((sec) => renderSection(sec, resolveHref)).join("\n");
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -205,18 +298,18 @@ ${desc ? `<meta name="description" content="${desc}">` : ""}
 ${jsonLd}
 </head>
 <body>
-${navHtml(input.business, input.pages, page.slug)}
+${navHtml(input.business, input.pages, page.slug, resolveHref)}
 <main>
 ${body}
 </main>
-${footerHtml(input.business, input.pages)}
+${footerHtml(input.business, input.pages, resolveHref, year)}
 </body>
 </html>
 `;
 }
 
-function stylesCss(primary: string): string {
-  return `:root{--brand:${primary};--ink:#211d17;--muted:#736b5e;--line:#e6e1d7;--bg:#fdfcfa;--surface:#fff}
+function stylesCss(primary: string, onBrand: string): string {
+  return `:root{--brand:${primary};--on-brand:${onBrand};--ink:#211d17;--muted:#736b5e;--line:#e6e1d7;--bg:#fdfcfa;--surface:#fff}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
 a{color:var(--brand)}.wrap{max-width:1080px;margin:0 auto;padding:0 1.5rem}
 .site-nav{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
@@ -225,7 +318,7 @@ a{color:var(--brand)}.wrap{max-width:1080px;margin:0 auto;padding:0 1.5rem}
 .dot{width:11px;height:11px;border-radius:50%;background:var(--brand);display:inline-block}
 .site-nav nav{display:flex;flex-wrap:wrap;gap:1.1rem;margin-left:.5rem}.site-nav nav a{color:#3a473f;text-decoration:none;font-size:.9rem}
 .site-nav .btn{margin-left:auto}
-.btn{display:inline-flex;align-items:center;min-height:46px;padding:.8rem 1.6rem;background:var(--brand);color:#fff;font-weight:700;text-decoration:none;border-radius:12px}
+.btn{display:inline-flex;align-items:center;min-height:46px;padding:.8rem 1.6rem;background:var(--brand);color:var(--on-brand);font-weight:700;text-decoration:none;border-radius:12px}
 .btn.small{min-height:40px;padding:.5rem 1.15rem;font-size:.9rem}
 .hero{background:linear-gradient(180deg,var(--surface),color-mix(in srgb,var(--brand) 6%,var(--surface)))}
 .hero .wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2.75rem;align-items:center;padding-top:3.75rem;padding-bottom:3.75rem}
@@ -250,8 +343,10 @@ dl{margin:0}dd{margin:0 0 .35rem}
 `;
 }
 
-function readme(input: ExportSiteInput): string {
-  const files = input.pages.map((p) => `  - ${fileNameForSlug(p.slug)}${p.slug ? "" : "  (home page)"}`).join("\n");
+function readme(input: ExportSiteInput, fileMap: Map<string, string>): string {
+  const files = input.pages
+    .map((p) => `  - ${fileMap.get(p.slug) ?? fileNameForSlug(p.slug)}${p.slug ? "" : "  (home page)"}`)
+    .join("\n");
   return `${input.business.name} — website export (made with Ozvor)
 ====================================================================
 
@@ -285,14 +380,52 @@ Questions? https://ozvor.com
 // buildLandingExport — the single entry point.
 // ---------------------------------------------------------------------------
 
+const DEFAULT_BRAND = "#9aa7b0";
+
 export function buildLandingExport(input: ExportSiteInput): ExportFile[] {
-  const primary = /^#?[0-9a-fA-F]{3,8}$/.test(input.themePrimary ?? "") ? (input.themePrimary as string) : "#9aa7b0";
+  const primary = normalizeHex(input.themePrimary) ?? DEFAULT_BRAND;
+  const onBrand = contrastText(primary);
+  const lang = (input.lang && /^[a-zA-Z-]{2,10}$/.test(input.lang) ? input.lang : "en").toLowerCase();
+  const year =
+    typeof input.year === "number" && input.year >= 2000 && input.year <= 9999
+      ? Math.floor(input.year)
+      : new Date().getFullYear();
+
+  // Build the slug→filename map ONCE so filenames and every href agree, and so
+  // two slugs that normalize to the same token can't overwrite each other in
+  // the zip. Reserved names (styles.css/README.txt) are never reused.
+  const reserved = new Set(["styles.css", "readme.txt"]);
+  const used = new Set(reserved);
+  const fileMap = new Map<string, string>();
+  for (const page of input.pages) {
+    const norm = safeSlug(page.slug);
+    let base = norm ? `${norm}.html` : "index.html";
+    let name = base;
+    let i = 2;
+    while (used.has(name.toLowerCase())) {
+      name = norm ? `${norm}-${i}.html` : `index-${i}.html`;
+      i++;
+    }
+    used.add(name.toLowerCase());
+    fileMap.set(page.slug, name);
+  }
+  const resolveHref: HrefResolver = (slug) => {
+    const key = String(slug ?? "");
+    const mapped = fileMap.get(key);
+    if (mapped) return mapped;
+    const norm = safeSlug(key);
+    return norm ? `${norm}.html` : "index.html";
+  };
+
   const files: ExportFile[] = [
-    { path: "styles.css", content: stylesCss(primary) },
-    { path: "README.txt", content: readme(input) },
+    { path: "styles.css", content: stylesCss(primary, onBrand) },
+    { path: "README.txt", content: readme(input, fileMap) },
   ];
   for (const page of input.pages) {
-    files.push({ path: fileNameForSlug(page.slug), content: pageHtml({ ...input, themePrimary: primary }, page) });
+    files.push({
+      path: fileMap.get(page.slug) ?? fileNameForSlug(page.slug),
+      content: pageHtml({ ...input, themePrimary: primary }, page, resolveHref, lang, year),
+    });
   }
   return files;
 }
