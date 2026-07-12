@@ -413,7 +413,7 @@ export default function DoNotSellPage() {
         >
           For other privacy requests (access, deletion, correction, portability),
           visit our{" "}
-          <Link href="/privacy/dsr" style={{ color: "var(--color-primary)" }}>
+          <Link href="/legal/dsr-request" style={{ color: "var(--color-primary)" }}>
             Data Subject Request form
           </Link>
           . Questions? Email{" "}

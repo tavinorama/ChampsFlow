@@ -173,10 +173,26 @@ export function requireDpaAcknowledged(db: PostgresClient) {
   return async function dpaAcknowledgedGuard(ctx: Context, next: Next): Promise<Response | void> {
     const currentVersion = process.env.DPA_CURRENT_VERSION;
     if (!currentVersion) {
-      // Env var missing — log warning and allow through (fail-open to avoid
-      // blocking all users if misconfigured). PM/devops must fix at deploy.
+      // Production boot already refuses to start without DPA_CURRENT_VERSION
+      // (config.ts superRefine), so this branch is unreachable in prod. As
+      // defense-in-depth (#261 P2) we still FAIL CLOSED in production — never
+      // silently bypass the DPA acknowledgment gate. In dev/test the var is
+      // optional, so we allow through with a warning to keep local flows working.
+      if (process.env.NODE_ENV === "production") {
+        logger.error("dpa_current_version_env_missing_fail_closed", {
+          message: "DPA_CURRENT_VERSION unset in production; denying paid action",
+        });
+        return ctx.json(
+          {
+            error: "dpa_gate_misconfigured",
+            code: "DPA_GATE_UNAVAILABLE",
+            message: "This action is temporarily unavailable. Please try again shortly.",
+          },
+          503
+        );
+      }
       logger.warn("dpa_current_version_env_missing", {
-        message: "DPA_CURRENT_VERSION env var not set; skipping DPA check",
+        message: "DPA_CURRENT_VERSION env var not set (dev/test); skipping DPA check",
       });
       await next();
       return;
