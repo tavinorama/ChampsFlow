@@ -5,6 +5,7 @@
  */
 
 import { safeHref } from "../../lib/safe-json-ld";
+import { chromeLabels, type Locale } from "./i18n";
 
 /** Contrast-safe text colour for text sitting ON the accent fill (WCAG). */
 function onAccent(hex: string): string {
@@ -34,6 +35,8 @@ interface PublicLandingChromeProps {
   accentColor?: string;
   /** The client's business facts — footer is THEIR footer (NAP), not Ozvor's. */
   business?: Record<string, unknown>;
+  /** Site language (from theme.lang). Drives chrome copy + subtree lang. */
+  locale?: Locale;
   children: React.ReactNode;
 }
 
@@ -48,6 +51,7 @@ export function PublicLandingChrome({
   activeSlug,
   accentColor = "#0c7d54",
   business,
+  locale = "en",
   children,
 }: PublicLandingChromeProps) {
   const category = str(business?.["category"]);
@@ -57,8 +61,34 @@ export function PublicLandingChrome({
   const hours =
     typeof business?.["hours"] === "string" ? (business["hours"] as string).trim() : null;
   const ctaText = onAccent(accentColor);
+  const t = chromeLabels(locale);
+  const navLinks = nav.map((item) => ({
+    href: item.slug ? `/l/${siteSlug}/${item.slug}` : `/l/${siteSlug}`,
+    label: item.title || t.home,
+    isActive: item.slug === activeSlug,
+    key: item.slug || "home",
+  }));
+  // `lang` on this subtree marks the site's language for screen readers + search
+  // engines, overriding the root <html lang="en"> (which we can't change per
+  // route). Accessible mobile nav is a <details> disclosure — keyboard-operable
+  // and no client JS (this stays a server component). CSS below swaps the inline
+  // desktop nav for the disclosure under 720px.
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
+    <div lang={locale} style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#ffffff" }}>
+      <style>{`
+        .ozpc-desktop-nav { display: flex; align-items: center; flex: 1; gap: 0.75rem 1.25rem; }
+        .ozpc-mobile-nav { display: none; margin-left: auto; }
+        .ozpc-mobile-nav > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; padding: 0 0.85rem; border: 1px solid ${accentColor}44; border-radius: 10px; font-size: 0.9rem; font-weight: 600; color: #17211c; }
+        .ozpc-mobile-nav > summary::-webkit-details-marker { display: none; }
+        .ozpc-mobile-nav[open] > summary { border-color: ${accentColor}; }
+        .ozpc-mobile-panel { position: absolute; left: 1rem; right: 1rem; margin-top: 0.6rem; background: #fff; border: 1px solid ${accentColor}33; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.12); padding: 0.5rem; display: grid; gap: 0.15rem; z-index: 60; }
+        .ozpc-mobile-panel a { display: block; padding: 0.7rem 0.75rem; border-radius: 8px; text-decoration: none; font-size: 0.95rem; color: #3a473f; }
+        .ozpc-mobile-panel a[aria-current="page"] { color: ${accentColor}; font-weight: 700; }
+        @media (max-width: 719px) {
+          .ozpc-desktop-nav { display: none; }
+          .ozpc-mobile-nav { display: block; }
+        }
+      `}</style>
       <header
         style={{
           position: "sticky",
@@ -98,49 +128,53 @@ export function PublicLandingChrome({
             <span aria-hidden="true" style={{ width: "11px", height: "11px", borderRadius: "50%", background: accentColor, flex: "none" }} />
             {businessName}
           </a>
-          {nav.length > 0 && (
-            <ul style={{ display: "flex", flexWrap: "wrap", gap: "1.1rem", listStyle: "none", margin: 0, padding: 0, marginLeft: "0.5rem" }}>
-              {nav.map((item) => {
-                const href = item.slug ? `/l/${siteSlug}/${item.slug}` : `/l/${siteSlug}`;
-                const isActive = item.slug === activeSlug;
-                return (
-                  <li key={item.slug || "home"}>
+          {/* Desktop nav (≥720px) — inline links + CTA */}
+          <div className="ozpc-desktop-nav">
+            {navLinks.length > 0 && (
+              <ul style={{ display: "flex", flexWrap: "wrap", gap: "1.1rem", listStyle: "none", margin: 0, padding: 0, marginLeft: "0.5rem" }}>
+                {navLinks.map((l) => (
+                  <li key={l.key}>
                     <a
-                      href={href}
-                      aria-current={isActive ? "page" : undefined}
-                      style={{
-                        color: isActive ? accentColor : "#3a473f",
-                        fontWeight: isActive ? 700 : 500,
-                        textDecoration: "none",
-                        fontSize: "0.9rem",
-                      }}
+                      href={l.href}
+                      aria-current={l.isActive ? "page" : undefined}
+                      style={{ color: l.isActive ? accentColor : "#3a473f", fontWeight: l.isActive ? 700 : 500, textDecoration: "none", fontSize: "0.9rem" }}
                     >
-                      {item.title || "Home"}
+                      {l.label}
                     </a>
                   </li>
-                );
-              })}
-            </ul>
-          )}
-          <span style={{ flex: 1, minWidth: "1rem" }} />
-          <a
-            href={`/l/${siteSlug}#contact`}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              minHeight: "40px",
-              padding: "0.5rem 1.15rem",
-              background: accentColor,
-              color: ctaText,
-              fontWeight: 700,
-              fontSize: "0.9rem",
-              borderRadius: "10px",
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Get in touch
-          </a>
+                ))}
+              </ul>
+            )}
+            <span style={{ flex: 1, minWidth: "1rem" }} />
+            <a
+              href={`/l/${siteSlug}#contact`}
+              style={{ display: "inline-flex", alignItems: "center", minHeight: "40px", padding: "0.5rem 1.15rem", background: accentColor, color: ctaText, fontWeight: 700, fontSize: "0.9rem", borderRadius: "10px", textDecoration: "none", whiteSpace: "nowrap" }}
+            >
+              {t.getInTouch}
+            </a>
+          </div>
+
+          {/* Mobile menu (<720px) — accessible <details> disclosure: the summary
+              is keyboard-focusable, Enter/Space toggles, [open] exposes state.
+              No client JS, so this component stays server-rendered. */}
+          <details className="ozpc-mobile-nav">
+            <summary aria-label={t.menu}>
+              <span aria-hidden="true">☰</span> {t.menu}
+            </summary>
+            <div className="ozpc-mobile-panel">
+              {navLinks.map((l) => (
+                <a key={l.key} href={l.href} aria-current={l.isActive ? "page" : undefined}>
+                  {l.label}
+                </a>
+              ))}
+              <a
+                href={`/l/${siteSlug}#contact`}
+                style={{ background: accentColor, color: ctaText, fontWeight: 700, textAlign: "center", marginTop: "0.25rem" }}
+              >
+                {t.getInTouch}
+              </a>
+            </div>
+          </details>
         </nav>
       </header>
 
@@ -174,7 +208,7 @@ export function PublicLandingChrome({
           </div>
           {hours && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5c6e65" }}>Hours</div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5c6e65" }}>{t.hours}</div>
               <div style={{ marginTop: "0.5rem", fontSize: "0.88rem", color: "#3a473f", lineHeight: 1.7 }}>
                 {hours.split(/\n|;|,\s(?=[A-Z])/).map((line, i) => <div key={i}>{line.trim()}</div>)}
               </div>
@@ -182,18 +216,18 @@ export function PublicLandingChrome({
           )}
           {nav.length > 0 && (
             <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5c6e65" }}>Pages</div>
+              <div style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#5c6e65" }}>{t.pages}</div>
               <ul style={{ margin: "0.5rem 0 0", padding: 0, listStyle: "none", display: "grid", gap: "0.4rem" }}>
-                {nav.map((item) => (
-                  <li key={item.slug || "home"}>
-                    <a href={item.slug ? `/l/${siteSlug}/${item.slug}` : `/l/${siteSlug}`} style={{ color: "#3a473f", textDecoration: "none", fontSize: "0.9rem" }}>
-                      {item.title || "Home"}
+                {navLinks.map((l) => (
+                  <li key={l.key}>
+                    <a href={l.href} style={{ color: "#3a473f", textDecoration: "none", fontSize: "0.9rem" }}>
+                      {l.label}
                     </a>
                   </li>
                 ))}
                 {websiteHref && (
                   <li>
-                    <a href={websiteHref} rel="noopener nofollow" style={{ color: accentColor, textDecoration: "none", fontSize: "0.9rem" }}>Website</a>
+                    <a href={websiteHref} rel="noopener nofollow" style={{ color: accentColor, textDecoration: "none", fontSize: "0.9rem" }}>{t.website}</a>
                   </li>
                 )}
               </ul>
@@ -216,7 +250,7 @@ export function PublicLandingChrome({
           >
             <span>© {new Date().getFullYear()} {businessName}</span>
             <span>
-              Made with{" "}
+              {t.madeWith}{" "}
               <a href="https://ozvor.com" rel="noopener" style={{ color: accentColor, textDecoration: "none", fontWeight: 600 }}>Ozvor</a>
             </span>
           </div>
