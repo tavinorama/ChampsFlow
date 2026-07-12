@@ -30,6 +30,7 @@ import type { Context } from "hono";
 import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { sanitizeUserPrompt } from "../../../../packages/llm/src/prompt-sanitizer";
 import { logger } from "../../../../packages/shared/src/logger";
+import { clientIpOrUnknown } from "../lib/client-ip";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -239,16 +240,11 @@ export function registerChatRoutes(app: Hono): void {
    */
   app.post("/api/chat", async (ctx: Context) => {
     // -------------------------------------------------------------------------
-    // Extract IP for rate limiting. Prefer cf-connecting-ip (set by Cloudflare
-    // from the real connection — not client-spoofable). Fall back to the LAST
-    // x-forwarded-for hop (the one our proxy appended), never the first (which
-    // a client can forge to evade rate limiting). Security review 2026-06.
+    // Extract IP for rate limiting via the central clientIp() — the ONE
+    // trusted-edge policy (cf-connecting-ip when origin-locked → trusted XFF hop
+    // → x-real-ip, validated + canonicalized). No local parser (Hermes #258).
     // -------------------------------------------------------------------------
-    const rawIp =
-      ctx.req.header("cf-connecting-ip")?.trim() ??
-      ctx.req.header("x-forwarded-for")?.split(",").pop()?.trim() ??
-      "unknown";
-    const ipTruncated = truncateIp(rawIp);
+    const ipTruncated = truncateIp(clientIpOrUnknown(ctx));
 
     // Structured request log — no message content (potential PII/attack payload)
     logger.info("chat_request", {
