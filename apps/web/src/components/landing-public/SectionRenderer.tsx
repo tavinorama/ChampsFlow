@@ -23,6 +23,7 @@ import {
   type SectionRenderModel,
 } from "./section-render-model";
 import { safeHref } from "./json-ld";
+import { safeHexColor, onAccent } from "./color";
 
 // ---------------------------------------------------------------------------
 // Theme — a small neutral palette, overridable from landing_sites.theme.
@@ -47,23 +48,12 @@ const DEFAULT_THEME: Required<LandingTheme> = {
   onPrimary: "#ffffff",
 };
 
-/** Contrast-safe text colour (#171717 or #fff) for text on the `primary` fill. */
-function onAccent(hex: string): string {
-  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) return "#ffffff";
-  const h = m[1];
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.62 ? "#171717" : "#ffffff";
-}
-
 function resolveTheme(theme: unknown): Required<LandingTheme> {
   if (!theme || typeof theme !== "object") return DEFAULT_THEME;
   const t = theme as Record<string, unknown>;
-  const primary = typeof t.primary === "string" && t.primary ? t.primary : DEFAULT_THEME.primary;
+  // Sanitize the tenant brand colour to a strict hex (#259) — defends every
+  // style sink and keeps onAccent()'s WCAG maths well-defined.
+  const primary = safeHexColor(t.primary, DEFAULT_THEME.primary);
   return {
     primary,
     text: typeof t.text === "string" && t.text ? t.text : DEFAULT_THEME.text,

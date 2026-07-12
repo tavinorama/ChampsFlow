@@ -6,19 +6,7 @@
 
 import { safeHref } from "../../lib/safe-json-ld";
 import { chromeLabels, type Locale } from "./i18n";
-
-/** Contrast-safe text colour for text sitting ON the accent fill (WCAG). */
-function onAccent(hex: string): string {
-  const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) return "#ffffff";
-  const h = m[1];
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return lum > 0.62 ? "#171717" : "#ffffff";
-}
+import { safeHexColor, onAccent } from "./color";
 
 export interface PublicNavItem {
   slug: string;
@@ -49,11 +37,15 @@ export function PublicLandingChrome({
   businessName,
   nav,
   activeSlug,
-  accentColor = "#0c7d54",
+  accentColor: accentColorInput = "#0c7d54",
   business,
   locale = "en",
   children,
 }: PublicLandingChromeProps) {
+  // SECURITY (#259): the brand colour is tenant-controlled and gets interpolated
+  // into an SSR <style> block (React doesn't escape <style> children). Clamp it
+  // to a strict hex BEFORE any style sink — blocks CSS injection.
+  const accentColor = safeHexColor(accentColorInput);
   const category = str(business?.["category"]);
   const address = str(business?.["address"]);
   const phone = str(business?.["phone"]);
