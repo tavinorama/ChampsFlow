@@ -47,6 +47,15 @@ export function generateStaticParams() {
   }));
 }
 
+// Every valid slug comes from the static posts registry above, so an unknown
+// slug must 404 IMMEDIATELY. Without this, Next attempts on-demand static
+// generation for unknown params, hits the per-request CSP-nonce headers() in
+// the layout, and dies with digest DYNAMIC_SERVER_USAGE — a customer-facing
+// 500 (launch-day incident: /blog/watch/<placeholder-video-slug> → 500,
+// issue #261). With zero published videos this route pre-renders zero pages,
+// making EVERY hit take that broken path.
+export const dynamicParams = false;
+
 // ---------------------------------------------------------------------------
 // Dynamic metadata
 // ---------------------------------------------------------------------------
