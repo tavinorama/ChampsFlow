@@ -1,0 +1,80 @@
+name: Auto-merge gated PRs
+
+# Kills the manual merge routine (relax protection → dismiss review → merge --admin).
+#
+# How it works: this workflow ARMS GitHub's native auto-merge on a PR the moment
+# it becomes eligible by its risk label. From there GitHub merges the PR by
+# itself the instant the required status checks pass — no human toggling, no
+# --admin, no dismissing reviews. `main` stays protected with its 6 required
+# checks and 0 required approvals, so a non-blocking Hermes review never gates.
+#
+# Eligibility (mirrors AGENTS.md §2 risk levels):
+#   LOW      (claude-ready)                       → auto-merge
+#   MEDIUM   (hermes-review)                      → auto-merge
+#   HIGH     (hermes-review + security-sensitive) → HELD until founder-approved
+#   CRITICAL (needs-founder-approval)             → HELD until founder-approved
+#   founder-approved overrides every hold (the founder explicitly OK'd it).
+#   hold / no-autodeploy / do-not-merge always block.
+#
+# The founder approves a HIGH/CRITICAL PR by adding the `founder-approved` label
+# — one click — instead of the whole protection dance.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, labeled, unlabeled, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  arm:
+    # Skip drafts; they can't be merged anyway.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide eligibility from labels and arm/cancel auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          labels=",${LABELS},"
+          has() { case "$labels" in *",$1,"*) return 0;; *) return 1;; esac; }
+
+          # Hard holds always win.
+          if has "hold" || has "no-autodeploy" || has "do-not-merge"; then
+            echo "PR #$PR held by a blocking label — not arming."
+            gh pr merge "$PR" --disable-auto -R "$REPO" 2>/dev/null || true
+            exit 0
+          fi
+
+          eligible=false
+          if has "founder-approved"; then
+            # Founder override releases HIGH/CRITICAL.
+            eligible=true
+          elif has "security-sensitive" || has "needs-founder-approval"; then
+            # HIGH/CRITICAL without the founder override → wait.
+            echo "PR #$PR is HIGH/CRITICAL and not founder-approved yet — waiting."
+            gh pr merge "$PR" --disable-auto -R "$REPO" 2>/dev/null || true
+            exit 0
+          elif has "claude-ready" || has "hermes-review"; then
+            # LOW/MEDIUM → auto.
+            eligible=true
+          fi
+
+          if [ "$eligible" != "true" ]; then
+            echo "PR #$PR has no merge-authorizing label — leaving as is."
+            exit 0
+          fi
+
+          echo "Arming native auto-merge (squash) for PR #$PR."
+          # GitHub completes the merge once the required checks pass. Idempotent:
+          # re-arming an already-armed PR is a no-op.
+          gh pr merge "$PR" --auto --squash -R "$REPO"
