@@ -29,6 +29,8 @@ import { safeHexColor, onAccent } from "./color";
 // Theme — a small neutral palette, overridable from landing_sites.theme.
 // ---------------------------------------------------------------------------
 
+export type LandingTemplate = "classic" | "modern" | "bold" | "minimal";
+
 export interface LandingTheme {
   primary?: string;
   text?: string;
@@ -37,7 +39,46 @@ export interface LandingTheme {
   border?: string;
   /** Contrast-safe text colour for text sitting ON `primary` (derived). */
   onPrimary?: string;
+  /** Visual template — drives typography + shape so sites don't all look alike. */
+  template?: LandingTemplate;
+  // Derived typography/shape tokens (populated by resolveTheme from the template).
+  headingFont?: string;
+  bodyFont?: string;
+  headingWeight?: number;
+  headingTracking?: string;
+  radius?: string;
+  heroAlign?: "left" | "center";
 }
+
+// Curated typography + shape presets. System-safe font stacks ONLY — the public
+// CSP blocks external font CDNs, so we differentiate with distinct system
+// families (serif vs sans vs rounded), weight, tracking and corner radius. Each
+// template gives a genuinely different feel, not just a different accent hue.
+interface TemplateTokens {
+  headingFont: string;
+  bodyFont: string;
+  headingWeight: number;
+  headingTracking: string;
+  radius: string;
+  heroAlign: "left" | "center";
+}
+
+const SANS = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const SERIF = "Georgia, 'Iowan Old Style', 'Times New Roman', Times, serif";
+const ROUNDED = "'Segoe UI Rounded', ui-rounded, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+const TEMPLATE_PRESETS: Record<LandingTemplate, TemplateTokens> = {
+  // Warm, established — serif display over clean sans. Cafés, restaurants, trades.
+  classic: { headingFont: SERIF, bodyFont: SANS, headingWeight: 700, headingTracking: "-0.01em", radius: "8px", heroAlign: "left" },
+  // Clean, contemporary (closest to the original look). SaaS, agencies, services.
+  modern:  { headingFont: SANS, bodyFont: SANS, headingWeight: 800, headingTracking: "-0.02em", radius: "12px", heroAlign: "left" },
+  // Punchy, high-energy — heaviest weight, tightest tracking. Fitness, salons, events.
+  bold:    { headingFont: SANS, bodyFont: SANS, headingWeight: 900, headingTracking: "-0.03em", radius: "6px", heroAlign: "left" },
+  // Airy, understated — lighter weight, centred hero, soft rounding. Wellness, law, finance.
+  minimal: { headingFont: ROUNDED, bodyFont: SANS, headingWeight: 600, headingTracking: "0", radius: "16px", heroAlign: "center" },
+};
+
+const DEFAULT_TEMPLATE: LandingTemplate = "modern";
 
 const DEFAULT_THEME: Required<LandingTheme> = {
   primary: "#0c7d54",
@@ -46,14 +87,20 @@ const DEFAULT_THEME: Required<LandingTheme> = {
   surface: "#ffffff",
   border: "#d5dfd9",
   onPrimary: "#ffffff",
+  template: DEFAULT_TEMPLATE,
+  ...TEMPLATE_PRESETS[DEFAULT_TEMPLATE],
 };
 
 function resolveTheme(theme: unknown): Required<LandingTheme> {
-  if (!theme || typeof theme !== "object") return DEFAULT_THEME;
-  const t = theme as Record<string, unknown>;
+  const t = (theme && typeof theme === "object" ? theme : {}) as Record<string, unknown>;
   // Sanitize the tenant brand colour to a strict hex (#259) — defends every
   // style sink and keeps onAccent()'s WCAG maths well-defined.
   const primary = safeHexColor(t.primary, DEFAULT_THEME.primary);
+  const template: LandingTemplate =
+    typeof t.template === "string" && t.template in TEMPLATE_PRESETS
+      ? (t.template as LandingTemplate)
+      : DEFAULT_TEMPLATE;
+  const tokens = TEMPLATE_PRESETS[template];
   return {
     primary,
     text: typeof t.text === "string" && t.text ? t.text : DEFAULT_THEME.text,
@@ -61,6 +108,8 @@ function resolveTheme(theme: unknown): Required<LandingTheme> {
     surface: typeof t.surface === "string" && t.surface ? t.surface : DEFAULT_THEME.surface,
     border: typeof t.border === "string" && t.border ? t.border : DEFAULT_THEME.border,
     onPrimary: onAccent(primary),
+    template,
+    ...tokens,
   };
 }
 
@@ -74,13 +123,14 @@ const sectionStyle: CSSProperties = {
   padding: "2.5rem 1.5rem",
 };
 
-function headingStyle(color: string): CSSProperties {
+function headingStyle(theme: Required<LandingTheme>): CSSProperties {
   return {
     fontSize: "clamp(1.375rem, 3.5vw, 2rem)",
-    fontWeight: 800,
-    letterSpacing: "-0.02em",
+    fontFamily: theme.headingFont,
+    fontWeight: theme.headingWeight,
+    letterSpacing: theme.headingTracking,
     margin: "0 0 1rem 0",
-    color,
+    color: theme.text,
   };
 }
 
@@ -106,13 +156,14 @@ function Hero({ model, theme }: { model: Extract<SectionRenderModel, { kind: "he
           alignItems: "center",
         }}
       >
-        {/* Text — LEFT aligned (matches the delivery template). */}
-        <div>
+        {/* Text — alignment driven by the template (minimal centres the hero). */}
+        <div style={{ textAlign: theme.heroAlign, ...(theme.heroAlign === "center" ? { margin: "0 auto", maxWidth: "44ch" } : {}) }}>
           <h1
             style={{
               fontSize: "clamp(2rem, 5vw, 3.25rem)",
-              fontWeight: 800,
-              letterSpacing: "-0.03em",
+              fontFamily: theme.headingFont,
+              fontWeight: theme.headingWeight,
+              letterSpacing: theme.headingTracking,
               lineHeight: 1.03,
               margin: 0,
               color: theme.text,
@@ -121,7 +172,7 @@ function Hero({ model, theme }: { model: Extract<SectionRenderModel, { kind: "he
             {model.headline || model.businessName}
           </h1>
           {model.subheadline && (
-            <p style={{ marginTop: "1.1rem", fontSize: "1.15rem", lineHeight: 1.5, color: theme.muted, maxWidth: "34ch" }}>
+            <p style={{ marginTop: "1.1rem", fontSize: "1.15rem", lineHeight: 1.5, color: theme.muted, maxWidth: "34ch", ...(theme.heroAlign === "center" ? { marginInline: "auto" } : {}) }}>
               {model.subheadline}
             </p>
           )}
@@ -137,7 +188,7 @@ function Hero({ model, theme }: { model: Extract<SectionRenderModel, { kind: "he
                 color: theme.onPrimary,
                 fontWeight: 700,
                 textDecoration: "none",
-                borderRadius: "12px",
+                borderRadius: theme.radius,
               }}
             >
               {model.ctaLabel}
@@ -187,7 +238,7 @@ function Services({ model, theme }: { model: Extract<SectionRenderModel, { kind:
   if (model.items.length === 0) return null;
   return (
     <section aria-labelledby="section-services" style={sectionStyle}>
-      <h2 id="section-services" style={headingStyle(theme.text)}>
+      <h2 id="section-services" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: "0.75rem" }}>
@@ -230,7 +281,7 @@ function MapNap({
 
   return (
     <section aria-labelledby="section-business-info" style={sectionStyle}>
-      <h2 id="section-business-info" style={headingStyle(theme.text)}>
+      <h2 id="section-business-info" style={headingStyle(theme)}>
         {model.name || "Business information"}
       </h2>
       {embedSrc && (
@@ -291,7 +342,7 @@ function Cta({ model, theme }: { model: Extract<SectionRenderModel, { kind: "cta
     >
       <div style={{ maxWidth: "560px", margin: "0 auto" }}>
         {model.heading && (
-          <h2 id="section-cta" style={headingStyle(theme.text)}>
+          <h2 id="section-cta" style={headingStyle(theme)}>
             {model.heading}
           </h2>
         )}
@@ -340,7 +391,7 @@ function Cta({ model, theme }: { model: Extract<SectionRenderModel, { kind: "cta
 function Proof({ model, theme }: { model: Extract<SectionRenderModel, { kind: "proof" }>; theme: Required<LandingTheme> }) {
   return (
     <section aria-labelledby="section-proof" style={sectionStyle}>
-      <h2 id="section-proof" style={headingStyle(theme.text)}>
+      <h2 id="section-proof" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       {model.empty || model.items.length === 0 ? (
@@ -381,7 +432,7 @@ function Faq({ model, theme }: { model: Extract<SectionRenderModel, { kind: "faq
   if (model.items.length === 0) return null;
   return (
     <section aria-labelledby="section-faq" style={sectionStyle}>
-      <h2 id="section-faq" style={headingStyle(theme.text)}>
+      <h2 id="section-faq" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       <div style={{ display: "grid", gap: "0.5rem" }}>
@@ -403,7 +454,7 @@ function Areas({ model, theme }: { model: Extract<SectionRenderModel, { kind: "a
   if (model.items.length === 0) return null;
   return (
     <section aria-labelledby="section-areas" style={sectionStyle}>
-      <h2 id="section-areas" style={headingStyle(theme.text)}>
+      <h2 id="section-areas" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -433,7 +484,7 @@ function Hours({ model, theme }: { model: Extract<SectionRenderModel, { kind: "h
   const lines = model.hours.split(/\n|;/).map((l) => l.trim()).filter(Boolean);
   return (
     <section aria-labelledby="section-hours" style={sectionStyle}>
-      <h2 id="section-hours" style={headingStyle(theme.text)}>
+      <h2 id="section-hours" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", color: theme.text, lineHeight: 1.8 }}>
@@ -449,7 +500,7 @@ function Trust({ model, theme }: { model: Extract<SectionRenderModel, { kind: "t
   if (model.themes.length === 0) return null;
   return (
     <section aria-labelledby="section-trust" style={sectionStyle}>
-      <h2 id="section-trust" style={headingStyle(theme.text)}>
+      <h2 id="section-trust" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: "0.5rem" }}>
@@ -476,7 +527,7 @@ function TextBlock({ model, theme }: { model: Extract<SectionRenderModel, { kind
   return (
     <section aria-labelledby={model.heading ? "section-text" : undefined} style={sectionStyle}>
       {model.heading && (
-        <h2 id="section-text" style={headingStyle(theme.text)}>
+        <h2 id="section-text" style={headingStyle(theme)}>
           {model.heading}
         </h2>
       )}
@@ -501,7 +552,7 @@ function Gallery({ model, theme }: { model: Extract<SectionRenderModel, { kind: 
   if (model.items.length === 0) return null;
   return (
     <section aria-labelledby="section-gallery" style={sectionStyle}>
-      <h2 id="section-gallery" style={headingStyle(theme.text)}>
+      <h2 id="section-gallery" style={headingStyle(theme)}>
         {model.heading}
       </h2>
       <div
@@ -554,7 +605,9 @@ export function SectionRenderer({ sections, siteSlug, theme, placeId }: SectionR
   const models = mapSectionsToRenderModels(sections);
 
   return (
-    <>
+    // Body font from the template — inherited by every section (which set only
+    // weight/size, not family), so the whole site picks up the template's voice.
+    <div style={{ fontFamily: resolvedTheme.bodyFont }}>
       {models.map((model, i) => {
         switch (model.kind) {
           case "hero":
@@ -588,7 +641,7 @@ export function SectionRenderer({ sections, siteSlug, theme, placeId }: SectionR
             return null;
         }
       })}
-    </>
+    </div>
   );
 }
 
@@ -606,7 +659,7 @@ function NavLinksSection({
   if (model.links.length === 0) return null;
   return (
     <nav aria-label={model.heading} style={sectionStyle}>
-      <h2 style={headingStyle(theme.text)}>{model.heading}</h2>
+      <h2 style={headingStyle(theme)}>{model.heading}</h2>
       <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
         {model.links.map((link) => (
           <li key={link.slug}>
