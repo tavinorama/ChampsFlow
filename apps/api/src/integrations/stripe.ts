@@ -887,6 +887,34 @@ export async function cancelSubscriptionAtPeriodEnd(
 }
 
 // ---------------------------------------------------------------------------
+// retrieveCustomerEmail — resolve a Stripe customer's email (deliverables fix)
+// ---------------------------------------------------------------------------
+// The bonus/deliverables email used only session.customer_details.email ??
+// session.customer_email. In some completed-checkout shapes (observed with a
+// 100%-off subscription), BOTH are null on the webhook's session object, so the
+// email was silently SKIPPED and no paying customer got their deliverables.
+// The customer object still carries the email — this is the fallback.
+// Best-effort: returns null (never throws) so it can't break the webhook.
+// ---------------------------------------------------------------------------
+export async function retrieveCustomerEmail(
+  customer: string | { id?: string } | null | undefined
+): Promise<string | null> {
+  const customerId = typeof customer === "string" ? customer : customer?.id;
+  if (!customerId) return null;
+  try {
+    const stripe = getStripe();
+    const c = await stripe.customers.retrieve(customerId);
+    if ((c as Stripe.DeletedCustomer).deleted) return null;
+    return (c as Stripe.Customer).email ?? null;
+  } catch (err) {
+    logger.warn("stripe_customer_email_lookup_failed", {
+      error_code: (err as NodeJS.ErrnoException).code ?? "unknown",
+    });
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // verifyWebhookSignature
 // ---------------------------------------------------------------------------
 // Verifies the Stripe-Signature header using HMAC-SHA256.
