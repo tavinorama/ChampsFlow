@@ -29,12 +29,15 @@ const externalStack = !!process.env["E2E_BASE_URL"];
 export default defineConfig({
   testDir: "tests/e2e",
 
-  // Global test timeout
-  timeout: 45_000,
+  // Global test timeout. CI gets a much larger budget: the GitHub runner has a
+  // documented SSR slowness (#222, ~2 min/page under `next start`), so a 45s cap
+  // guaranteed timeouts. 150s lets a slow-but-working page finish instead of
+  // failing — the single biggest lever against the #222 flake.
+  timeout: isCI ? 150_000 : 45_000,
 
   // Action timeout (click, fill, etc.)
   expect: {
-    timeout: 10_000,
+    timeout: isCI ? 20_000 : 10_000,
   },
 
   // Retry flaky tests — more in CI
@@ -50,6 +53,11 @@ export default defineConfig({
 
   use: {
     baseURL,
+
+    // Per-navigation / per-action ceilings. On CI the slow SSR (#222) means a
+    // page `goto` can legitimately take >30s; give it room so it isn't the flake.
+    navigationTimeout: isCI ? 90_000 : 30_000,
+    actionTimeout: isCI ? 20_000 : 15_000,
 
     // All network calls are captured; failures show trace
     trace: isCI ? "on-first-retry" : "retain-on-failure",
