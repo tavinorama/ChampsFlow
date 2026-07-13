@@ -799,6 +799,117 @@ async function callProviderText(
   }
 }
 
+// ---------------------------------------------------------------------------
+// LLM enrichment (llm mode) — grounded copy, not just headlines.
+//
+// The previous version rewrote ONLY hero headlines and fed the model just
+// name/category/areas. brila's whole pitch is copy grounded in the customer's
+// reviews and their own site — all of which is ALREADY loaded into the input
+// (reviewThemes, googleReviews, crawlSummary) but was unused. This enrichment
+// feeds those facts to the model and also composes fact-grounded answers for the
+// FAQ questions that would otherwise ship an honest "[PLACEHOLDER]".
+//
+// Honesty is preserved exactly: the model is instructed to use ONLY the provided
+// facts, and applyLlmEnrichment replaces a FAQ answer ONLY when the placeholder
+// is swapped for a substantive, placeholder-free answer. A missing/failed answer
+// leaves the placeholder in place (the publish guard + JSON-LD filter already
+// exclude placeholders), so this is strictly additive — never a fabrication path.
+// ---------------------------------------------------------------------------
+
+export interface LlmEnrichment {
+  pages: Array<{ slug: string; headline?: string; subheadline?: string }>;
+  faqAnswers: Array<{ q: string; a: string }>;
+}
+
+/** Parse the model's STRICT-JSON reply into an enrichment (tolerant of prose/fences). */
+export function parseLlmEnrichment(text: string): LlmEnrichment | null {
+  let raw: unknown;
+  try {
+    const match = text.match(/\{[\s\S]*\}/);
+    raw = JSON.parse(match ? match[0] : text);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as { pages?: unknown; faq_answers?: unknown };
+
+  const pages: LlmEnrichment["pages"] = [];
+  if (Array.isArray(obj.pages)) {
+    for (const p of obj.pages as Array<Record<string, unknown>>) {
+      if (p && typeof p.slug === "string") {
+        pages.push({
+          slug: p.slug,
+          headline: typeof p.headline === "string" ? p.headline : undefined,
+          subheadline: typeof p.subheadline === "string" ? p.subheadline : undefined,
+        });
+      }
+    }
+  }
+
+  const faqAnswers: LlmEnrichment["faqAnswers"] = [];
+  if (Array.isArray(obj.faq_answers)) {
+    for (const f of obj.faq_answers as Array<Record<string, unknown>>) {
+      if (f && typeof f.q === "string" && typeof f.a === "string") {
+        faqAnswers.push({ q: f.q, a: f.a });
+      }
+    }
+  }
+
+  if (pages.length === 0 && faqAnswers.length === 0) return null;
+  return { pages, faqAnswers };
+}
+
+const normalizeQuestion = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Apply hero rewrites + FAQ-answer fills. Pure; safe to run on any bundle. */
+export function applyLlmEnrichment(
+  pages: LandingBundlePage[],
+  enrichment: LlmEnrichment
+): LandingBundlePage[] {
+  const bySlug = new Map(enrichment.pages.map((p) => [p.slug, p]));
+
+  // Accept only substantive, placeholder-free FAQ answers.
+  const answerByQ = new Map<string, string>();
+  for (const fa of enrichment.faqAnswers) {
+    if (fa.a && !fa.a.includes("[PLACEHOLDER") && fa.a.trim().length >= 12) {
+      answerByQ.set(normalizeQuestion(fa.q), fa.a.trim());
+    }
+  }
+
+  return pages.map((page) => {
+    const rewrite = bySlug.get(page.slug);
+    return {
+      ...page,
+      sections: page.sections.map((sec) => {
+        if (sec.type === "hero" && rewrite?.headline) {
+          const fallbackSub = (sec["subheadline"] as string) ?? "";
+          return {
+            ...sec,
+            headline: rewrite.headline.slice(0, 70),
+            subheadline: (rewrite.subheadline ?? fallbackSub).slice(0, 120),
+          };
+        }
+        if (sec.type === "faq" && Array.isArray((sec as { items?: unknown }).items)) {
+          const items = (sec as unknown as { items: LandingFaqInput[] }).items;
+          let changed = false;
+          const nextItems = items.map((it) => {
+            if (it.a && it.a.includes("[PLACEHOLDER")) {
+              const filled = answerByQ.get(normalizeQuestion(it.q));
+              if (filled) {
+                changed = true;
+                return { ...it, a: filled };
+              }
+            }
+            return it;
+          });
+          return changed ? { ...sec, items: nextItems } : sec;
+        }
+        return sec;
+      }),
+    };
+  });
+}
+
 async function enrichWithLlm(
   pages: LandingBundlePage[],
   input: LandingGenerateInput,
@@ -809,63 +920,66 @@ async function enrichWithLlm(
   const nameCheck = sanitizeUserPrompt(business.name);
   if (nameCheck.rejected) return null;
 
+  // FAQ questions that currently ship an honest placeholder answer.
+  const placeholderQuestions: string[] = [];
+  for (const page of pages) {
+    for (const sec of page.sections) {
+      if (sec.type === "faq" && Array.isArray((sec as { items?: unknown }).items)) {
+        for (const it of (sec as unknown as { items: LandingFaqInput[] }).items) {
+          if (it.a && it.a.includes("[PLACEHOLDER") && !placeholderQuestions.includes(it.q)) {
+            placeholderQuestions.push(it.q);
+          }
+        }
+      }
+    }
+  }
+
+  // Fact-only context — the raw material brila-style copy is grounded in.
+  const reviews = (input.googleReviews ?? []).filter((r) => r.author && r.body).slice(0, 3);
+  const crawlServices = (input.crawlSummary?.services ?? []).slice(0, 6);
+  const context = [
+    `Business: ${nameCheck.sanitized}${business.category ? ` (${business.category})` : ""}.`,
+    business.serviceAreas && business.serviceAreas.length > 0 ? `Service areas: ${business.serviceAreas.join(", ")}.` : "",
+    business.phone ? `Phone: ${business.phone}.` : "",
+    input.reviewThemes && input.reviewThemes.length > 0
+      ? `What customers consistently praise: ${input.reviewThemes.join(", ")}.`
+      : "",
+    reviews.length > 0
+      ? "Recent customer reviews (verbatim):\n" +
+        reviews.map((r) => `- "${r.body.slice(0, 220)}" — ${r.author} (Google)`).join("\n")
+      : "",
+    crawlServices.length > 0 ? `Services offered (from their own site): ${crawlServices.join(", ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const systemPrompt = [
-    "You write concise marketing headlines for local business websites.",
-    "Use ONLY the facts given below — never invent statistics, reviews, awards, or claims not stated.",
-    'Respond with STRICT JSON only: an array of {"slug": string, "headline": string, "subheadline": string}',
-    "matching the page list given, one object per page, no extra commentary.",
+    "You write concise, specific marketing copy for a local business website, grounded ONLY in the facts provided.",
+    "Rules: use ONLY the facts given — NEVER invent prices, guarantees, awards, statistics, certifications, discounts, or any claim not stated.",
+    "Voice: warm, concrete, benefit-led; no hype, no clichés, no filler.",
+    "FAQ answers: 2–3 sentences that directly answer the question from the facts; if a specific (exact price/hours) is not provided, stay general and invite the reader to call.",
+    'Respond with STRICT JSON only, no commentary: {"pages":[{"slug":string,"headline":string,"subheadline":string}],"faq_answers":[{"q":string,"a":string}]}',
   ].join(" ");
 
   const pageList = pages.map((p) => ({ slug: p.slug, page_type: p.page_type, title: p.title }));
-  const userPromptParts = [
-    `Business: ${nameCheck.sanitized}${business.category ? ` (${business.category})` : ""}.`,
-    business.serviceAreas && business.serviceAreas.length > 0
-      ? `Service areas: ${business.serviceAreas.join(", ")}.`
+  const userPrompt = [
+    context,
+    "",
+    `Write a headline (max 70 chars) and subheadline (max 120 chars) for each page: ${JSON.stringify(pageList)}.`,
+    placeholderQuestions.length > 0
+      ? `Also write a grounded answer for each of these FAQ questions (echo the question verbatim in "q"): ${JSON.stringify(placeholderQuestions)}.`
       : "",
-    `Pages: ${JSON.stringify(pageList)}.`,
-    "Write a short headline (max 70 chars) and subheadline (max 120 chars) for each page.",
-  ].filter(Boolean);
-  const userPrompt = userPromptParts.join(" ");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-  const text = await callProviderText(provider, apiKey, systemPrompt, userPrompt, 800);
+  const text = await callProviderText(provider, apiKey, systemPrompt, userPrompt, 2000);
   if (!text) return null;
 
-  let parsed: unknown;
-  try {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed)) return null;
+  const enrichment = parseLlmEnrichment(text);
+  if (!enrichment) return null;
 
-  const bySlug = new Map<string, { headline?: string; subheadline?: string }>();
-  for (const entry of parsed as Array<{ slug?: unknown; headline?: unknown; subheadline?: unknown }>) {
-    if (entry && typeof entry.slug === "string") {
-      bySlug.set(entry.slug, {
-        headline: typeof entry.headline === "string" ? entry.headline : undefined,
-        subheadline: typeof entry.subheadline === "string" ? entry.subheadline : undefined,
-      });
-    }
-  }
-  if (bySlug.size === 0) return null;
-
-  return pages.map((page) => {
-    const rewrite = bySlug.get(page.slug);
-    if (!rewrite?.headline) return page;
-    return {
-      ...page,
-      sections: page.sections.map((sec) => {
-        if (sec.type !== "hero") return sec;
-        const fallbackSub = (sec["subheadline"] as string) ?? "";
-        return {
-          ...sec,
-          headline: rewrite.headline!.slice(0, 70),
-          subheadline: (rewrite.subheadline ?? fallbackSub).slice(0, 120),
-        };
-      }),
-    };
-  });
+  return applyLlmEnrichment(pages, enrichment);
 }
 
 // ---------------------------------------------------------------------------
