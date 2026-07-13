@@ -34,15 +34,13 @@ import { requireOperatorKey } from "./api-keys";
 import { enrollNurture, checkNurtureEligibility } from "./nurture";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { mrrForTier, arrFromMrr } from "../../../../packages/shared/src/pricing";
+import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ENGAGEMENT_STATUSES = new Set(["requested", "contacted", "won", "lost"]);
 const VALID_SEQUENCES = new Set(["free_to_kit", "kit_to_dfy"]);
-
-// List prices (USD) for MRR math — same constants as the admin analytics.
-const GROWTH_PRICE_USD = 99;
-const AGENCY_PRICE_USD = 249;
 
 function clampLimit(raw: string | undefined, dflt: number, max: number): number {
   const n = parseInt(raw ?? "", 10);
@@ -71,7 +69,7 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
         db.query<{ plan_tier: string; count: string }>(
           `SELECT plan_tier, COUNT(*) AS count
              FROM billing_subscriptions
-            WHERE status IN ('active', 'trialing')
+            WHERE status = 'active'
             GROUP BY plan_tier`,
           []
         ),
@@ -85,7 +83,9 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
       for (const row of subsByTier.rows) tiers[row.plan_tier] = parseInt(row.count, 10);
       const growth = tiers["growth"] ?? 0;
       const agency = tiers["agency"] ?? 0;
-      const mrrUsd = growth * GROWTH_PRICE_USD + agency * AGENCY_PRICE_USD;
+      // MRR from actively-billing subs only — same canonical rule as the founder
+      // dashboard (packages/shared/src/pricing), so the two never disagree.
+      const mrrUsd = growth * mrrForTier("growth") + agency * mrrForTier("agency");
 
       const pipeline: Record<string, number> = {};
       for (const row of engagements.rows) pipeline[row.status] = parseInt(row.count, 10);
@@ -101,13 +101,48 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
         kit_orders_paid: parseInt(kitsPaid.rows[0]?.count ?? "0", 10),
         subscriptions: { growth, agency },
         mrr_usd: mrrUsd,
-        arr_usd: mrrUsd * 12,
+        arr_usd: arrFromMrr(mrrUsd),
         dfy_pipeline: pipeline,
-        note: "List-price MRR from active/trialing Stripe subscriptions; founder-granted plans excluded.",
+        note: "List-price MRR from active Stripe subscriptions; founder-granted plans excluded.",
       });
     } catch (err) {
       logger.error("operator_analytics_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ANALYTICS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/v1/operator/clients?limit=200 — the client cockpit: each tenant
+  // with owner email, subscription state, per-tenant MRR, and product usage
+  // (audits run + last audit). Same shared query the founder dashboard uses.
+  // -------------------------------------------------------------------------
+  app.get("/api/v1/operator/clients", businessKey, async (c) => {
+    const limit = clampLimit(c.req.query("limit"), 200, 500);
+    try {
+      const clients = await fetchEnrichedClients(db, limit);
+      const key = c.get("apiKey");
+      logger.info("operator_clients_accessed", { key_id: key.id, count: clients.length });
+      return c.json({ clients });
+    } catch (err) {
+      logger.error("operator_clients_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CLIENTS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/v1/operator/revenue — full money picture (recurring MRR/ARR from
+  // active subs + one-time Kit/Pages revenue + refund counts). Read-only;
+  // Stripe money movement stays founder-only (hard limit above).
+  // -------------------------------------------------------------------------
+  app.get("/api/v1/operator/revenue", businessKey, async (c) => {
+    try {
+      const summary = await fetchRevenueSummary(db);
+      const key = c.get("apiKey");
+      logger.info("operator_revenue_accessed", { key_id: key.id });
+      return c.json(summary);
+    } catch (err) {
+      logger.error("operator_revenue_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "REVENUE_FAILED" }, 500);
     }
   });
 

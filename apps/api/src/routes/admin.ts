@@ -46,6 +46,8 @@ import {
 import { refreshPlatformKeys } from "../lib/platform-keys";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { normalizeCrmPatch } from "../lib/crm-validation";
+import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
+import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,12 +69,14 @@ function present(name: string): boolean {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VALID_STATUSES = new Set(["requested", "contacted", "won", "lost"]);
 
-// Pricing constants — list prices in USD
-const KIT_PRICE_USD = 29;
-const GROWTH_PRICE_USD = 99;
-const AGENCY_PRICE_USD = 249;
-const GEO_SPRINT_PRICE_USD = 1500;
-const MANAGED_GEO_PRICE_USD = 1900;
+// Pricing constants — sourced from the shared canonical module (packages/shared
+// src/pricing) so the founder dashboard and the Hermes operator surface never
+// drift. Names kept for the existing call sites below.
+const KIT_PRICE_USD = LIST_PRICE_USD.kit;
+const GROWTH_PRICE_USD = LIST_PRICE_USD.growth;
+const AGENCY_PRICE_USD = LIST_PRICE_USD.agency;
+const GEO_SPRINT_PRICE_USD = LIST_PRICE_USD.geoSprint;
+const MANAGED_GEO_PRICE_USD = LIST_PRICE_USD.managedGeo;
 
 // ---------------------------------------------------------------------------
 // Route registration
@@ -159,33 +163,9 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
   app.get("/api/admin/clients", requireAuth, requireSuperAdmin, async (c) => {
     try {
-      const result = await db.query<{
-        id: string;
-        name: string;
-        plan_tier: string | null;
-        created_at: string;
-        brand_count: string;
-      }>(
-        `SELECT t.id, t.name, t.plan_tier, t.created_at,
-                COUNT(DISTINCT b.id) AS brand_count
-         FROM tenants t
-         LEFT JOIN brands b ON b.tenant_id = t.id
-         GROUP BY t.id
-         ORDER BY t.created_at DESC
-         LIMIT 200`
-      );
-
-      logger.info("admin_clients_fetched", { count: result.rows.length });
-
-      return c.json({
-        clients: result.rows.map((row) => ({
-          id: row.id,
-          name: row.name,
-          plan_tier: row.plan_tier,
-          created_at: row.created_at,
-          brand_count: parseInt(row.brand_count, 10),
-        })),
-      });
+      const clients = await fetchEnrichedClients(db, 200);
+      logger.info("admin_clients_fetched", { count: clients.length });
+      return c.json({ clients });
     } catch (err) {
       logger.error("admin_clients_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CLIENTS_FAILED" }, 500);
@@ -757,6 +737,22 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     } catch (err) {
       logger.error("admin_analytics_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ANALYTICS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/revenue — full money picture: recurring MRR/ARR (active subs
+  // only), one-time Kit + Pages revenue, refund counts. Same shared query the
+  // operator surface uses, so the founder and Hermes never see different money.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/revenue", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const summary = await fetchRevenueSummary(db);
+      logger.info("admin_revenue_fetched", {});
+      return c.json(summary);
+    } catch (err) {
+      logger.error("admin_revenue_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "REVENUE_FAILED" }, 500);
     }
   });
 
