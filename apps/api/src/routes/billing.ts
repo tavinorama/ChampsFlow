@@ -55,12 +55,14 @@ import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import {
   createCheckoutSession,
   createBillingPortalSession,
+  cancelSubscriptionAtPeriodEnd,
   verifyWebhookSignature,
   mapStripeStatusToInternal,
   mapPriceIdToPlanTier,
   retrieveDisputeCharge,
   PLAN_LIMITS,
   type PlanTier,
+  type StripeCancellationFeedback,
 } from "../integrations/stripe";
 import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
@@ -663,6 +665,107 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           { error: "portal_failed", code: "PORTAL_ERROR" },
           500
         );
+      }
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /api/billing/cancel
+  // Cancels the workspace's subscription at period end (consumer-friendly: the
+  // customer keeps paid access until the period ends). Backs the in-app
+  // retention flow (survey + save-offer) — but the flow is entirely SKIPPABLE
+  // and this endpoint NEVER adds delay or extra gates: cancellation is always
+  // one request away (FTC click-to-cancel / EU dark-pattern / BR CDC compliant).
+  // Auth: requireAuth + requireRole(['owner']). Body: { feedback?, comment? }.
+  // Returns: { cancel_at_period_end: true, current_period_end }
+  // -------------------------------------------------------------------------
+  const CANCEL_FEEDBACKS: readonly StripeCancellationFeedback[] = [
+    "customer_service",
+    "low_quality",
+    "missing_features",
+    "other",
+    "switched_service",
+    "too_complex",
+    "too_expensive",
+    "unused",
+  ];
+
+  app.post(
+    "/api/billing/cancel",
+    requireAuth,
+    requireRole(["owner"]),
+    async (ctx: Context) => {
+      const auth = ctx.get("auth");
+
+      let body: { feedback?: string; comment?: string } = {};
+      try {
+        body = await ctx.req.json();
+      } catch {
+        // Empty/invalid body is fine — feedback is optional.
+        body = {};
+      }
+      const feedback = CANCEL_FEEDBACKS.includes(body.feedback as StripeCancellationFeedback)
+        ? (body.feedback as StripeCancellationFeedback)
+        : undefined;
+      const comment = typeof body.comment === "string" ? body.comment : undefined;
+
+      // Resolve the ACTIVE subscription for this tenant (tenant-scoped).
+      let stripeSubscriptionId: string | null = null;
+      try {
+        await db.setTenantId(auth.tenantId);
+        const { rows } = await db.query<{ stripe_subscription_id: string | null }>(
+          `SELECT stripe_subscription_id
+             FROM billing_subscriptions
+            WHERE tenant_id = $1
+              AND stripe_subscription_id IS NOT NULL
+              AND status NOT IN ('canceled')
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [auth.tenantId]
+        );
+        stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
+      } catch (err) {
+        logger.error("billing_cancel_lookup_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "internal_error", code: "CANCEL_LOOKUP_ERROR" }, 500);
+      }
+
+      if (!stripeSubscriptionId) {
+        return ctx.json(
+          {
+            error: "no_subscription",
+            code: "NO_ACTIVE_SUBSCRIPTION",
+            message: "No active subscription found to cancel.",
+          },
+          404
+        );
+      }
+
+      try {
+        const result = await cancelSubscriptionAtPeriodEnd(
+          stripeSubscriptionId,
+          feedback,
+          comment
+        );
+        // The customer.subscription.updated webhook syncs cancel_at_period_end
+        // into billing_subscriptions; no local write here (single source of truth).
+        await writeBillingAuditLog(db, {
+          tenantId: auth.tenantId,
+          eventType: "billing_subscription_cancel_requested",
+          planTier: null,
+        });
+        return ctx.json({
+          cancel_at_period_end: result.cancel_at_period_end,
+          current_period_end: result.current_period_end,
+        });
+      } catch (err) {
+        logger.error("billing_cancel_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "cancel_failed", code: "CANCEL_ERROR" }, 500);
       }
     }
   );

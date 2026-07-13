@@ -810,6 +810,83 @@ export async function createBillingPortalSession(
 }
 
 // ---------------------------------------------------------------------------
+// cancelSubscriptionAtPeriodEnd — schedule a subscription to end at period end
+// ---------------------------------------------------------------------------
+// Consumer-friendly cancellation: the customer keeps the access they already
+// paid for until the current period ends, then it does not renew. This is the
+// behavior our billing-portal config also uses (mode: at_period_end).
+//
+// `feedback` maps to Stripe's cancellation_details.feedback enum (survey
+// reason); `comment` is the optional free-text. Both are stored on the Stripe
+// subscription so the reason is queryable without a local table.
+//
+// NEVER adds artificial delay or blocks the cancel — the in-app retention flow
+// (survey + save-offer) is entirely skippable; this call always cancels when
+// reached (FTC click-to-cancel / EU dark-pattern / BR CDC compliant).
+// ---------------------------------------------------------------------------
+
+export type StripeCancellationFeedback =
+  | "customer_service"
+  | "low_quality"
+  | "missing_features"
+  | "other"
+  | "switched_service"
+  | "too_complex"
+  | "too_expensive"
+  | "unused";
+
+export async function cancelSubscriptionAtPeriodEnd(
+  subscriptionId: string,
+  feedback?: StripeCancellationFeedback,
+  comment?: string
+): Promise<{ cancel_at_period_end: boolean; current_period_end: number | null }> {
+  try {
+    const stripe = getStripe();
+    const details: Stripe.SubscriptionUpdateParams.CancellationDetails = {};
+    if (feedback) details.feedback = feedback;
+    if (comment && comment.trim()) details.comment = comment.trim().slice(0, 500);
+
+    const sub = await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+      ...(Object.keys(details).length > 0 ? { cancellation_details: details } : {}),
+    });
+
+    // Stripe moved current_period_end onto the subscription item in newer API
+    // versions; fall back across both shapes so the return is stable. Both are
+    // read through an unknown cast since the SDK types expose only one shape.
+    const subAny = sub as unknown as {
+      current_period_end?: number;
+      items?: { data?: Array<{ current_period_end?: number }> };
+    };
+    const periodEnd =
+      subAny.current_period_end ?? subAny.items?.data?.[0]?.current_period_end ?? null;
+
+    logger.info("stripe_subscription_cancel_scheduled", {
+      // No customer/sub id in logs beyond the opaque sub id already scoped here.
+      cancel_at_period_end: sub.cancel_at_period_end,
+    });
+
+    return {
+      cancel_at_period_end: sub.cancel_at_period_end ?? true,
+      current_period_end: periodEnd,
+    };
+  } catch (err) {
+    if (err instanceof Stripe.errors.StripeError) {
+      logger.error("stripe_subscription_cancel_api_error", {
+        error_type: err.type,
+        error_code: err.code ?? "unknown",
+      });
+      const wrapped = new Error(
+        `Stripe cancel error: ${err.type} — ${err.code ?? "unknown"}`
+      );
+      (wrapped as NodeJS.ErrnoException).code = "stripe_api_error";
+      throw wrapped;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // verifyWebhookSignature
 // ---------------------------------------------------------------------------
 // Verifies the Stripe-Signature header using HMAC-SHA256.
