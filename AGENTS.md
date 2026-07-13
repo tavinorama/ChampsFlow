@@ -75,7 +75,22 @@ Full **Playwright E2E is advisory, not a merge gate.** It has a known CI-runner 
 - the six required checks are green, and
 - the PR is LOW/MEDIUM risk and does **not** change auth, billing, checkout, admin, or the middleware/CSP.
 
-For HIGH/CRITICAL or auth/billing/checkout/admin changes, run full E2E first (`workflow_dispatch` on the branch, or rely on the path-filtered auto-run) and confirm it passes before approving.
+**For HIGH/CRITICAL or auth/billing/checkout/admin changes** — the full Playwright
+E2E is chronically flaky on the CI runner (#222: ~2 min/test SSR slowness, 23/41
+timeouts on a bad run), so a *red or stalled full E2E is NOT by itself a merge
+blocker*. Requiring a green full suite deadlocks every HIGH PR. Instead, a HIGH
+change is mergeable when ALL of:
+- the six required checks are green, **and**
+- the changed billing/auth/checkout logic carries **unit or integration coverage
+  in the PR itself** (the fast, deterministic signal), **and**
+- the E2E failures are the known #222 flake — i.e. the PR touches **no** E2E spec
+  and the failing specs are pre-existing (`git diff --name-only` shows no
+  `tests/e2e/**`), **and**
+- **explicit founder approval** (HIGH/CRITICAL always needs the founder).
+
+When the change genuinely alters an E2E-covered flow, prefer a **targeted** run
+of just those spec(s) (`npx playwright test tests/e2e/<file> --project=chromium-desktop`)
+over the whole flaky suite. Do **not** hard-gate HIGH PRs on a green full E2E.
 
 ---
 
