@@ -35,6 +35,7 @@ import {
   type PlanTier,
   type BillingInterval,
 } from "../../../components/PlanCard";
+import { CancelRetentionFlow } from "../../../components/CancelRetentionFlow";
 import { apiFetch } from "../../../lib/supabase-browser";
 
 // ---------------------------------------------------------------------------
@@ -243,6 +244,7 @@ function BillingPageInner(): React.ReactElement {
   const [isLoadingPlan, setIsLoadingPlan] = useState(true);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [showCancelFlow, setShowCancelFlow] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   // Monthly vs annual pricing view. Annual unlocks the founder 30% discount
@@ -1049,12 +1051,13 @@ function BillingPageInner(): React.ReactElement {
                     </svg>
                   </button>
 
-                  {/* Cancel subscription */}
+                  {/* Cancel subscription — opens the in-app retention flow
+                      (survey → save-offer → confirm). Skippable, no delay,
+                      cancel always one step away. */}
                   <button
                     type="button"
-                    onClick={() => void handleOpenPortal()}
-                    disabled={isOpeningPortal}
-                    aria-label="Cancel subscription — opens Stripe customer portal to manage cancellation"
+                    onClick={() => setShowCancelFlow(true)}
+                    aria-label="Cancel subscription"
                     style={{
                       width: "100%",
                       minHeight: "52px",
@@ -1114,6 +1117,21 @@ function BillingPageInner(): React.ReactElement {
           </>
         )}
       </div>
+
+      {/* Cancellation retention flow (survey → save-offer → confirm). Skippable,
+          no artificial delay — cancel is always reachable. */}
+      {showCancelFlow && (
+        <CancelRetentionFlow
+          plan={currentPlan}
+          renewalLabel={renewalLabel}
+          onKeep={() => setShowCancelFlow(false)}
+          onCancelled={() => {
+            setShowCancelFlow(false);
+            showToast("info", "Your plan is set to cancel at the end of the period.");
+            void fetchBillingPlan();
+          }}
+        />
+      )}
 
       {/* Bottom navigation */}
 
