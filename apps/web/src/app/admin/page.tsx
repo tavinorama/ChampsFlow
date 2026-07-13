@@ -52,6 +52,31 @@ interface Client {
   plan_tier: string;
   created_at: string;
   brand_count: number;
+  // Cockpit enrichment (Fase 1)
+  owner_email: string | null;
+  sub_status: string | null;
+  sub_plan_tier: string | null;
+  renews_at: string | null;
+  cancel_at_period_end: boolean;
+  mrr_usd: number;
+  audits_run: number;
+  last_audit_at: string | null;
+}
+
+interface RevenueSummary {
+  mrr_usd: number;
+  arr_usd: number;
+  subscriptions: {
+    active: { growth: number; agency: number; starter: number; total: number };
+    trialing: number;
+    pastDue: number;
+    canceled: number;
+  };
+  oneTime: {
+    kit: { paid: number; refunded: number; revenueUsd: number };
+    pages: { paid: number; refunded: number; revenueUsd: number };
+  };
+  refundsTotalCount: number;
 }
 
 interface Lead {
@@ -2314,6 +2339,76 @@ function ResendDeliverablesForm() {
 }
 
 // ---------------------------------------------------------------------------
+// Subscription status badge (cockpit)
+// ---------------------------------------------------------------------------
+
+function SubStatusBadge({ status }: { status: string | null }) {
+  if (!status) {
+    return <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-badge)" }}>—</span>;
+  }
+  const tokenMap: Record<string, { bg: string; color: string }> = {
+    active:     { bg: "var(--color-badge-status-active-bg)",  color: "var(--color-badge-status-active-text)" },
+    trialing:   { bg: "var(--color-badge-status-info-bg)",    color: "var(--color-badge-status-info-text)" },
+    past_due:   { bg: "var(--color-badge-status-warn-bg)",    color: "var(--color-badge-status-warn-text)" },
+    canceled:   { bg: "var(--color-badge-status-error-bg)",   color: "var(--color-badge-status-error-text)" },
+    incomplete: { bg: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" },
+  };
+  const s = tokenMap[status] ?? tokenMap.incomplete;
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px var(--space-2)",
+        borderRadius: "var(--radius-pill)",
+        fontSize: "var(--font-size-badge)",
+        fontWeight: 600,
+        backgroundColor: s.bg,
+        color: s.color,
+        textTransform: "capitalize",
+      }}
+    >
+      {status.replace("_", " ")}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RevenueSummaryCards — the full money picture at the top of the Revenue tab
+// ---------------------------------------------------------------------------
+
+function RevenueSummaryCards({ revenue }: { revenue: RevenueSummary | null }) {
+  if (!revenue) return null;
+  const { subscriptions: subs, oneTime } = revenue;
+  return (
+    <section aria-label="Revenue summary" style={{ marginBottom: "var(--space-6)" }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gap: "var(--space-4)",
+        }}
+      >
+        <Tile label="MRR" value={`${fmtCurrency(revenue.mrr_usd)}/mo`} />
+        <Tile label="ARR" value={`${fmtCurrency(revenue.arr_usd)}/yr`} />
+        <Tile
+          label="Active subs"
+          value={subs.active.total}
+          sub={`${subs.active.growth} growth · ${subs.active.agency} agency`}
+        />
+        <Tile label="Trialing" value={subs.trialing} />
+        <Tile label="Kit revenue" value={fmtCurrency(oneTime.kit.revenueUsd)} sub={`${oneTime.kit.paid} paid`} />
+        <Tile label="Pages revenue" value={fmtCurrency(oneTime.pages.revenueUsd)} sub={`${oneTime.pages.paid} paid`} />
+        <Tile
+          label="Refunds"
+          value={revenue.refundsTotalCount}
+          sub={`${subs.pastDue} past due · ${subs.canceled} canceled`}
+        />
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -2330,6 +2425,7 @@ export default function AdminPage() {
   const [opportunities, setOpportunities] = useState<Opportunities | null>(null);
   const [crmMap, setCrmMap] = useState<Record<string, CrmContact>>({});
   const [crmMigrationPending, setCrmMigrationPending] = useState(false);
+  const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
 
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingHealth, setLoadingHealth] = useState(false);
@@ -2502,10 +2598,16 @@ export default function AdminPage() {
             setLeads(data.leads ?? []);
           }
         } else if (tab === "revenue") {
-          const res = await apiFetch("/api/admin/kit-orders");
-          if (res.ok) {
-            const data = (await res.json()) as { kitOrders: KitOrder[] };
+          const [ordersRes, revRes] = await Promise.all([
+            apiFetch("/api/admin/kit-orders"),
+            apiFetch("/api/admin/revenue"),
+          ]);
+          if (ordersRes.ok) {
+            const data = (await ordersRes.json()) as { kitOrders: KitOrder[] };
             setKitOrders(data.kitOrders ?? []);
+          }
+          if (revRes.ok) {
+            setRevenue((await revRes.json()) as RevenueSummary);
           }
         } else if (tab === "pipeline") {
           const res = await apiFetch("/api/admin/engagements");
@@ -2899,9 +3001,11 @@ export default function AdminPage() {
             <TableWrapper>
               <thead>
                 <tr>
-                  <th scope="col" style={TH_STYLE}>Name</th>
-                  <th scope="col" style={TH_STYLE}>Plan</th>
+                  <th scope="col" style={TH_STYLE}>Client</th>
+                  <th scope="col" style={TH_STYLE}>Subscription</th>
+                  <th scope="col" style={TH_STYLE}>MRR</th>
                   <th scope="col" style={TH_STYLE}>Brands</th>
+                  <th scope="col" style={TH_STYLE}>Audits</th>
                   <th scope="col" style={TH_STYLE}>Joined</th>
                 </tr>
               </thead>
@@ -2909,7 +3013,7 @@ export default function AdminPage() {
                 {clients.length === 0 && !loadingTab ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={6}
                       style={{
                         ...TD_STYLE,
                         color: "var(--color-muted)",
@@ -2926,16 +3030,39 @@ export default function AdminPage() {
                       key={c.id}
                       style={{ backgroundColor: "var(--color-surface)" }}
                     >
-                      <td style={{ ...TD_STYLE, fontWeight: 600 }}>{c.name}</td>
                       <td style={TD_STYLE}>
-                        <PlanBadge tier={c.plan_tier} />
+                        <div style={{ fontWeight: 600 }}>{c.name}</div>
+                        <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                          {c.owner_email ?? "—"}
+                        </div>
                       </td>
-                      <td style={TD_STYLE}>{c.brand_count}</td>
+                      <td style={TD_STYLE}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                          <SubStatusBadge status={c.sub_status} />
+                          <PlanBadge tier={c.sub_plan_tier ?? c.plan_tier} />
+                        </div>
+                        {c.renews_at && (
+                          <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginTop: "2px" }}>
+                            {c.cancel_at_period_end ? "ends" : "renews"} {fmtShortDate(c.renews_at)}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...TD_STYLE, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                        {c.mrr_usd > 0 ? `${fmtCurrency(c.mrr_usd)}/mo` : "—"}
+                      </td>
+                      <td style={{ ...TD_STYLE, fontVariantNumeric: "tabular-nums" }}>{c.brand_count}</td>
+                      <td style={TD_STYLE}>
+                        <div style={{ fontVariantNumeric: "tabular-nums" }}>{c.audits_run}</div>
+                        <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                          {c.last_audit_at ? `last ${fmtShortDate(c.last_audit_at)}` : "never"}
+                        </div>
+                      </td>
                       <td
                         style={{
                           ...TD_STYLE,
                           color: "var(--color-muted)",
                           fontSize: "var(--font-size-caption)",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         {fmtMonthYear(c.created_at)}
@@ -2967,21 +3094,28 @@ export default function AdminPage() {
                   boxShadow: "var(--shadow-card)",
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: "var(--space-2)" }}>
-                  {c.name}
-                </div>
+                <div style={{ fontWeight: 700 }}>{c.name}</div>
+                {c.owner_email && (
+                  <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", marginBottom: "var(--space-2)" }}>
+                    {c.owner_email}
+                  </div>
+                )}
                 <div
                   style={{
                     display: "flex",
-                    gap: "var(--space-3)",
+                    gap: "var(--space-2)",
                     alignItems: "center",
                     flexWrap: "wrap",
                     fontSize: "var(--font-size-caption)",
                     color: "var(--color-muted)",
+                    marginTop: "var(--space-1)",
                   }}
                 >
-                  <PlanBadge tier={c.plan_tier} />
+                  <SubStatusBadge status={c.sub_status} />
+                  <PlanBadge tier={c.sub_plan_tier ?? c.plan_tier} />
+                  {c.mrr_usd > 0 && <span style={{ fontWeight: 700, color: "var(--color-text)" }}>{fmtCurrency(c.mrr_usd)}/mo</span>}
                   <span>{c.brand_count} brand{c.brand_count === 1 ? "" : "s"}</span>
+                  <span>{c.audits_run} audit{c.audits_run === 1 ? "" : "s"}</span>
                   <span>Joined {fmtMonthYear(c.created_at)}</span>
                 </div>
               </div>
@@ -3080,12 +3214,25 @@ export default function AdminPage() {
               margin: "0 0 var(--space-4) 0",
             }}
           >
-            Revenue &mdash; Kit Orders ({kitOrders.length})
+            Revenue
           </h2>
+
+          {/* Full money picture — recurring + one-time + refunds. */}
+          <RevenueSummaryCards revenue={revenue} />
 
           {/* Growth/Agency subscriptions never appear in Kit Orders — this form
               covers re-sending their deliverables email. */}
           <ResendDeliverablesForm />
+
+          <h3
+            style={{
+              fontSize: "var(--font-size-h4)",
+              fontWeight: 700,
+              margin: "0 0 var(--space-3) 0",
+            }}
+          >
+            Kit Orders ({kitOrders.length})
+          </h3>
 
           <TableWrapper>
             <thead>
