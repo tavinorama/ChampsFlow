@@ -79,6 +79,37 @@ interface RevenueSummary {
   refundsTotalCount: number;
 }
 
+// Operating cadence brief (GET /api/admin/cadence) — the same worklist Hermes acts on.
+interface CadenceContactRow {
+  email: string;
+  stage: CrmStage;
+  note: string | null;
+  next_follow_up: string | null;
+}
+interface CadenceLeadRow {
+  email: string | null;
+  brand: string;
+  category: string | null;
+  created_at: string;
+}
+interface CadenceUpsellRow {
+  email: string;
+  brand: string;
+  kit_paid_at: string | null;
+}
+interface CadenceData {
+  summary: {
+    follow_ups_due: number;
+    new_leads_to_triage: number;
+    upsell_targets: number;
+    stale_contacts: number;
+  };
+  follow_ups_due: CadenceContactRow[];
+  new_leads_to_triage: CadenceLeadRow[];
+  upsell_targets: CadenceUpsellRow[];
+  stale_contacts: CadenceContactRow[];
+}
+
 interface Lead {
   id: string;
   email: string;
@@ -183,7 +214,7 @@ interface Opportunities {
   note: string;
 }
 
-type TabId = "system-health" | "analytics" | "clients" | "leads" | "revenue" | "pipeline" | "opportunities" | "assets";
+type TabId = "today" | "system-health" | "analytics" | "clients" | "leads" | "revenue" | "pipeline" | "opportunities" | "assets";
 
 // ---------------------------------------------------------------------------
 // Helper — date formatting
@@ -2409,6 +2440,181 @@ function RevenueSummaryCards({ revenue }: { revenue: RevenueSummary | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// CadenceTab — the "Today" panel: the operating worklist Hermes acts on
+// (follow-ups due, new leads to triage, upsell targets, stale contacts).
+// ---------------------------------------------------------------------------
+
+function CadenceSection({
+  title,
+  count,
+  accent,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  accent: string;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section aria-label={title}>
+      <h3
+        style={{
+          fontSize: "var(--font-size-h4)",
+          fontWeight: 700,
+          margin: "0 0 var(--space-3) 0",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-block",
+            minWidth: "24px",
+            textAlign: "center",
+            padding: "0 var(--space-2)",
+            borderRadius: "var(--radius-pill)",
+            backgroundColor: accent,
+            color: "#fff",
+            fontSize: "var(--font-size-caption)",
+          }}
+        >
+          {count}
+        </span>
+        {title}
+      </h3>
+      {count === 0 ? (
+        <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: 0 }}>{empty}</p>
+      ) : (
+        children
+      )}
+    </section>
+  );
+}
+
+function CadenceTab({ cadence }: { cadence: CadenceData | null }) {
+  if (!cadence) {
+    return (
+      <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
+        Loading today&rsquo;s worklist&hellip;
+      </p>
+    );
+  }
+  const s = cadence.summary;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-8)" }}>
+      <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", maxWidth: "70ch" }}>
+        The same worklist Hermes acts on each cycle: what needs a touch today. Move contacts in the
+        Leads &amp; CRM tab; Hermes advances them automatically via the operator API.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "var(--space-4)" }}>
+        <Tile label="Follow-ups due" value={s.follow_ups_due} />
+        <Tile label="Leads to triage" value={s.new_leads_to_triage} />
+        <Tile label="Upsell targets" value={s.upsell_targets} />
+        <Tile label="Stale contacts" value={s.stale_contacts} />
+      </div>
+
+      <CadenceSection title="Follow-ups due" count={s.follow_ups_due} accent="var(--color-error)" empty="Nothing due — you're clear.">
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>Due</th>
+              <th scope="col" style={TH_STYLE}>Stage</th>
+              <th scope="col" style={TH_STYLE}>Contact</th>
+              <th scope="col" style={TH_STYLE}>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cadence.follow_ups_due.map((c) => (
+              <tr key={c.email} style={{ backgroundColor: "var(--color-surface)" }}>
+                <td style={{ ...TD_STYLE, whiteSpace: "nowrap", color: "var(--color-error)", fontWeight: 600 }}>
+                  {fmtShortDate(c.next_follow_up)}
+                </td>
+                <td style={TD_STYLE}><CrmStageBadge stage={c.stage} /></td>
+                <td style={{ ...TD_STYLE, fontWeight: 600 }}>{c.email}</td>
+                <td style={{ ...TD_STYLE, color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>{c.note ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </CadenceSection>
+
+      <CadenceSection title="New leads to triage" count={s.new_leads_to_triage} accent="var(--color-primary)" empty="No fresh leads waiting.">
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>Contact</th>
+              <th scope="col" style={TH_STYLE}>Brand</th>
+              <th scope="col" style={TH_STYLE}>Category</th>
+              <th scope="col" style={TH_STYLE}>Captured</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cadence.new_leads_to_triage.map((l, i) => (
+              <tr key={`${l.email}-${i}`} style={{ backgroundColor: "var(--color-surface)" }}>
+                <td style={{ ...TD_STYLE, fontWeight: 600 }}>{l.email ?? "—"}</td>
+                <td style={TD_STYLE}>{l.brand}</td>
+                <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{l.category ?? "—"}</td>
+                <td style={{ ...TD_STYLE, color: "var(--color-muted)", fontSize: "var(--font-size-caption)", whiteSpace: "nowrap" }}>
+                  {fmtShortDate(l.created_at)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </CadenceSection>
+
+      <CadenceSection title="Upsell — Kit buyers without a subscription" count={s.upsell_targets} accent="var(--color-success)" empty="No open upsell right now.">
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>Contact</th>
+              <th scope="col" style={TH_STYLE}>Brand</th>
+              <th scope="col" style={TH_STYLE}>Kit paid</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cadence.upsell_targets.map((u, i) => (
+              <tr key={`${u.email}-${i}`} style={{ backgroundColor: "var(--color-surface)" }}>
+                <td style={{ ...TD_STYLE, fontWeight: 600 }}>{u.email}</td>
+                <td style={TD_STYLE}>{u.brand}</td>
+                <td style={{ ...TD_STYLE, color: "var(--color-muted)", fontSize: "var(--font-size-caption)", whiteSpace: "nowrap" }}>
+                  {fmtShortDate(u.kit_paid_at)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </CadenceSection>
+
+      <CadenceSection title="Stale contacts (14+ days, no follow-up)" count={s.stale_contacts} accent="var(--color-accent-amber, #b7791f)" empty="Nothing gone stale.">
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>Stage</th>
+              <th scope="col" style={TH_STYLE}>Contact</th>
+              <th scope="col" style={TH_STYLE}>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cadence.stale_contacts.map((c) => (
+              <tr key={c.email} style={{ backgroundColor: "var(--color-surface)" }}>
+                <td style={TD_STYLE}><CrmStageBadge stage={c.stage} /></td>
+                <td style={{ ...TD_STYLE, fontWeight: 600 }}>{c.email}</td>
+                <td style={{ ...TD_STYLE, color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>{c.note ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </CadenceSection>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -2426,11 +2632,12 @@ export default function AdminPage() {
   const [crmMap, setCrmMap] = useState<Record<string, CrmContact>>({});
   const [crmMigrationPending, setCrmMigrationPending] = useState(false);
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
+  const [cadence, setCadence] = useState<CadenceData | null>(null);
 
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingHealth, setLoadingHealth] = useState(false);
   const [loadingTab, setLoadingTab] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>("system-health");
+  const [activeTab, setActiveTab] = useState<TabId>("today");
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   // Tracks which tabs have already fetched data (to avoid re-fetching)
@@ -2585,7 +2792,12 @@ export default function AdminPage() {
       setLoadingTab(true);
       setGlobalError(null);
       try {
-        if (tab === "clients") {
+        if (tab === "today") {
+          const res = await apiFetch("/api/admin/cadence");
+          if (res.ok) {
+            setCadence((await res.json()) as CadenceData);
+          }
+        } else if (tab === "clients") {
           const res = await apiFetch("/api/admin/clients");
           if (res.ok) {
             const data = (await res.json()) as { clients: Client[] };
@@ -2638,10 +2850,10 @@ export default function AdminPage() {
     [authorized, fetchedTabs]
   );
 
-  // Load initial tab (clients) on mount once authorized
+  // Load the default tab (Today) on mount once authorized
   useEffect(() => {
     if (authorized === true) {
-      void loadTab("clients");
+      void loadTab("today");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
@@ -2729,6 +2941,7 @@ export default function AdminPage() {
   // ---------------------------------------------------------------------------
 
   const tabs: { id: TabId; label: string }[] = [
+    { id: "today",         label: "Today" },
     { id: "system-health", label: "System Health" },
     { id: "analytics",     label: "Analytics" },
     { id: "clients",       label: "Clients" },
@@ -2921,6 +3134,25 @@ export default function AdminPage() {
             Loading&hellip;
           </p>
         )}
+
+        {/* ── Today tab ── */}
+        <section
+          id="tabpanel-today"
+          role="tabpanel"
+          aria-labelledby="tab-today"
+          hidden={activeTab !== "today"}
+        >
+          <h2
+            style={{
+              fontSize: "var(--font-size-h3)",
+              fontWeight: 700,
+              margin: "0 0 var(--space-4) 0",
+            }}
+          >
+            Today
+          </h2>
+          <CadenceTab cadence={cadence} />
+        </section>
 
         {/* ── Assets tab ── */}
         <section
