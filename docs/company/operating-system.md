@@ -5,6 +5,12 @@
 > get made?"** Everything here points to a live source — this page never holds
 > data, only the map. Cadence detail: [operating-cadence.md](operating-cadence.md).
 > Risk gates + agent roles: [../../AGENTS.md](../../AGENTS.md).
+>
+> **Founder decision 2026-07-13 (launch day):** with the GitHub-webhook trigger
+> live, **Hermes operates the company end-to-end** on the cadence rails;
+> **Claude Code owns implementation + repo/docs organization**; the **founder
+> keeps the crivo** (secrets, money, live/destructive, external sends).
+> Launch-week runlist + full artifact map: **[launch-week-ops.md](launch-week-ops.md)**.
 
 ## "What is the company doing today?" — read order
 
