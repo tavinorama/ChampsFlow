@@ -22,6 +22,12 @@ export function generateStaticParams() {
   return BLOG_CONTENT.map((p) => ({ slug: p.slug }));
 }
 
+// Same guard as /blog/watch/[slug]: all valid slugs come from the static
+// registry, so unknown slugs must 404 immediately. Without this, on-demand
+// static generation of an unknown slug hits the layout's per-request
+// CSP-nonce headers() and 500s with digest DYNAMIC_SERVER_USAGE (issue #261).
+export const dynamicParams = false;
+
 export async function generateMetadata({
   params,
 }: {
