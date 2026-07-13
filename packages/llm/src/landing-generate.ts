@@ -735,10 +735,11 @@ async function callProviderText(
         signal: controller.signal,
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
-          // Haiku by default — 4× cheaper and plenty for fact-grounded page
-          // composition (founder decision 2026-07-11); ANTHROPIC_MODEL overrides
-          // per premium site.
-          model: process.env["ANTHROPIC_MODEL"] ?? "claude-haiku-4-5-20251001",
+          // Sonnet by default — premium, review-grounded copy (brila-level;
+          // founder decision 2026-07-13). ~3× Haiku's cost but still ~1.5¢ per
+          // page-bundle generation. ANTHROPIC_MODEL overrides (e.g. back to
+          // claude-haiku-4-5-20251001 to cut cost at high volume).
+          model: process.env["ANTHROPIC_MODEL"] ?? "claude-sonnet-5",
           max_tokens: maxTokens,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
