@@ -56,6 +56,7 @@ import {
   createCheckoutSession,
   createBillingPortalSession,
   cancelSubscriptionAtPeriodEnd,
+  retrieveCustomerEmail,
   verifyWebhookSignature,
   mapStripeStatusToInternal,
   mapPriceIdToPlanTier,
@@ -771,6 +772,53 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
   );
 
   // -------------------------------------------------------------------------
+  // POST /api/billing/resend-deliverables
+  // Founder/operator recovery: re-send the Growth/Agency bonus-deliverables
+  // email to a given address. Covers the case where the original webhook send
+  // was skipped/failed (deliverables gap). super_admin only.
+  // Body: { email, plan: 'growth'|'agency', annual?: boolean }
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/billing/resend-deliverables",
+    requireAuth,
+    async (ctx: Context) => {
+      const auth = ctx.get("auth");
+      if (auth.isSuperAdmin !== true) {
+        return ctx.json({ error: "forbidden", code: "SUPER_ADMIN_ONLY" }, 403);
+      }
+      let body: { email?: string; plan?: string; annual?: boolean } = {};
+      try {
+        body = await ctx.req.json();
+      } catch {
+        return ctx.json({ error: "bad_request", code: "INVALID_JSON" }, 400);
+      }
+      const email = (body.email ?? "").trim();
+      const plan = body.plan;
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        return ctx.json({ error: "bad_request", code: "INVALID_EMAIL" }, 400);
+      }
+      if (plan !== "growth" && plan !== "agency") {
+        return ctx.json({ error: "bad_request", code: "INVALID_PLAN" }, 400);
+      }
+      try {
+        await sendBonusDeliveryEmail({ to: email, plan, annual: body.annual === true });
+        logger.info("bonus_delivery_email_resent", {
+          tenant_id: auth.tenantId,
+          plan_tier: plan,
+          // recipient email intentionally NOT logged — PII hard rule
+        });
+        return ctx.json({ ok: true });
+      } catch (err) {
+        logger.error("bonus_delivery_email_resend_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "resend_failed", code: "RESEND_ERROR" }, 502);
+      }
+    }
+  );
+
+  // -------------------------------------------------------------------------
   // POST /api/billing/webhook
   // Stripe webhook receiver — NO auth middleware.
   // Stripe-Signature header is verified by verifyWebhookSignature() BEFORE
@@ -1391,11 +1439,15 @@ async function handleCheckoutSessionCompleted(
   // parameter passed to this function — accessed here through closure.
   // -----------------------------------------------------------------------
   if (resolvedPlanTier === "growth" || resolvedPlanTier === "agency") {
-    // Derive customer email from the Checkout Session (no PII in logs).
+    // Derive customer email from the Checkout Session (no PII in logs). If BOTH
+    // session fields are null (observed on some completed checkouts, e.g. a
+    // 100%-off subscription) fall back to the Stripe CUSTOMER's email so the
+    // deliverables email is never silently skipped for a paying customer.
+    const sess = session as Stripe.Checkout.Session;
     const customerEmail =
-      (session as Stripe.Checkout.Session).customer_details?.email ??
-      (session as Stripe.Checkout.Session).customer_email ??
-      null;
+      sess.customer_details?.email ??
+      sess.customer_email ??
+      (await retrieveCustomerEmail(sess.customer));
 
     // Derive billing interval from session metadata (set during checkout creation).
     const billingInterval =
