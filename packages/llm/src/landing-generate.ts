@@ -155,11 +155,16 @@ export interface LandingBundlePage {
 /** Light-first palette. Only `primary` is chosen (the client's brand colour or
  *  the pastel default); everything else derives from it at render time via
  *  color-mix, exactly like the approved template mockup. */
+/** Visual template — the renderer maps this to a typography + shape system so
+ *  different businesses don't all look alike. Derived from the category. */
+export type LandingTemplate = "classic" | "modern" | "bold" | "minimal";
+
 export interface LandingTheme {
   base: "light";
   primary: string;
   /** true when `primary` is the fallback (no brand colour was supplied). */
   isDefault: boolean;
+  template?: LandingTemplate;
 }
 
 export interface LandingBundle {
@@ -356,13 +361,26 @@ function normalizeHexColor(input?: string): string | null {
   return `#${hex.toLowerCase()}`;
 }
 
+/** Map a business category to a visual template so different businesses get a
+ *  genuinely different look automatically (the builder can override later).
+ *  Keyword match on the category text; defaults to the clean 'modern' preset. */
+export function templateForCategory(category?: string): LandingTemplate {
+  const c = (category ?? "").toLowerCase();
+  if (/caf|coffee|restaurant|bakery|\bfood\b|bistro|diner|deli|catering|brew|pizz|kitchen|eatery/.test(c)) return "classic";
+  if (/gym|fitness|salon|spa|beauty|barber|nail|tattoo|dance|yoga|pilates|\bevent|photo|makeup|lash/.test(c)) return "bold";
+  if (/law|legal|attorney|account|financ|insur|consult|wealth|advisor|clinic|dental|medical|therap|wellness|notary/.test(c)) return "minimal";
+  return "modern";
+}
+
 /** Only `primary` is chosen (client brand colour or the pastel default); the
- *  renderer derives every other token from it via color-mix on a light base. */
-export function deriveLandingTheme(brandColor?: string): LandingTheme {
+ *  renderer derives every other colour token from it via color-mix on a light
+ *  base. `template` (from category) drives typography + shape. */
+export function deriveLandingTheme(brandColor?: string, category?: string): LandingTheme {
   const primary = normalizeHexColor(brandColor);
+  const template = templateForCategory(category);
   return primary
-    ? { base: "light", primary, isDefault: false }
-    : { base: "light", primary: LANDING_DEFAULT_BRAND, isDefault: true };
+    ? { base: "light", primary, isDefault: false, template }
+    : { base: "light", primary: LANDING_DEFAULT_BRAND, isDefault: true, template };
 }
 
 // ---------------------------------------------------------------------------
@@ -998,7 +1016,7 @@ export async function buildLandingBundle(
   input: LandingGenerateInput,
   opts?: LandingGenerateOptions
 ): Promise<LandingBundle> {
-  const theme = deriveLandingTheme(input.brandColor);
+  const theme = deriveLandingTheme(input.brandColor, input.business.category);
   const skeleton = buildMockBundle(input);
   const wantsLlm = opts?.mode === "llm" && Boolean(opts.apiKey);
   if (!wantsLlm) {

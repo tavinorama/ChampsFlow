@@ -51,10 +51,11 @@ const richInput: LandingGenerateInput = {
 
 describe("deriveLandingTheme", () => {
   it("uses the client brand colour on a light base", () => {
-    expect(deriveLandingTheme("#c07d12")).toEqual({ base: "light", primary: "#c07d12", isDefault: false });
+    // No category → the default 'modern' template.
+    expect(deriveLandingTheme("#c07d12")).toEqual({ base: "light", primary: "#c07d12", isDefault: false, template: "modern" });
   });
   it("expands #rgb shorthand and lowercases", () => {
-    expect(deriveLandingTheme("#ABC")).toEqual({ base: "light", primary: "#aabbcc", isDefault: false });
+    expect(deriveLandingTheme("#ABC")).toEqual({ base: "light", primary: "#aabbcc", isDefault: false, template: "modern" });
   });
   it("falls back to the pastel default when absent or invalid", () => {
     for (const bad of [undefined, "", "not-a-colour", "#12"]) {
@@ -62,6 +63,7 @@ describe("deriveLandingTheme", () => {
         base: "light",
         primary: LANDING_DEFAULT_BRAND,
         isDefault: true,
+        template: "modern",
       });
     }
   });
@@ -110,7 +112,8 @@ describe("buildFaqPageJsonLd", () => {
 describe("buildLandingBundle — rich path", () => {
   it("themes the bundle to the brand colour", async () => {
     const bundle = await buildLandingBundle(richInput);
-    expect(bundle.theme).toEqual({ base: "light", primary: "#c07d12", isDefault: false });
+    // "Café" category → the classic (serif) template.
+    expect(bundle.theme).toEqual({ base: "light", primary: "#c07d12", isDefault: false, template: "classic" });
   });
 
   it("adds a gallery from Maps photos and a hero image + rating on home", async () => {
