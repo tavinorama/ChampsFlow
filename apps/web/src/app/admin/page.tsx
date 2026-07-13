@@ -14,13 +14,13 @@
  *   1. System Health (loaded on auth, not lazy)
  *   2. Analytics     (lazy — on tab click)
  *   3. Clients       (lazy — on tab click, loaded initially)
- *   4. Leads         (lazy — on tab click)
- *   5. Revenue       (lazy — on tab click, was "Kit Orders")
+ *   4. Leads & CRM   (lazy — on tab click; inline stage/note/follow-up per lead)
+ *   5. Revenue       (lazy — on tab click, was "Kit Orders"; + subscriber resend)
  *   6. Pipeline      (lazy — on tab click)
  *   7. Opportunities (lazy — on tab click)
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { apiFetch, getSupabase, isSupabaseConfigured } from "../../lib/supabase-browser";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +62,37 @@ interface Lead {
   region: string;
   source: string;
   created_at: string;
+}
+
+// Lightweight CRM annotation, keyed by email, overlaid on leads (and reusable
+// for any email-identified contact). Fetched from GET /api/admin/crm.
+type CrmStage = "new" | "contacted" | "qualified" | "customer" | "lost";
+
+const CRM_STAGES: CrmStage[] = ["new", "contacted", "qualified", "customer", "lost"];
+
+const CRM_STAGE_LABELS: Record<CrmStage, string> = {
+  new: "New",
+  contacted: "Contacted",
+  qualified: "Qualified",
+  customer: "Customer",
+  lost: "Lost",
+};
+
+const CRM_STAGE_TOKENS: Record<CrmStage, { bg: string; color: string }> = {
+  new:       { bg: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" },
+  contacted: { bg: "var(--color-badge-status-info-bg)",    color: "var(--color-badge-status-info-text)" },
+  qualified: { bg: "var(--color-badge-status-warn-bg)",    color: "var(--color-badge-status-warn-text)" },
+  customer:  { bg: "var(--color-badge-status-active-bg)",  color: "var(--color-badge-status-active-text)" },
+  lost:      { bg: "var(--color-badge-status-error-bg)",   color: "var(--color-badge-status-error-text)" },
+};
+
+interface CrmContact {
+  email: string;
+  stage: CrmStage;
+  note: string | null;
+  next_follow_up: string | null;
+  owner: string | null;
+  updated_at: string;
 }
 
 interface KitOrder {
@@ -1880,6 +1911,409 @@ function OpportunitiesTab({ opportunities }: { opportunities: Opportunities | nu
 }
 
 // ---------------------------------------------------------------------------
+// CRM helpers + components (lightweight sales layer on the Leads tab)
+// ---------------------------------------------------------------------------
+
+/** ISO → YYYY-MM-DD for <input type="date">; "" when absent/invalid. */
+function toDateInputValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+/** True when a follow-up date is today or in the past (i.e. it is due). */
+function isFollowUpDue(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return false;
+  // Compare on calendar day: due if the follow-up day <= today.
+  const day = new Date(t);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return day.getTime() <= today.getTime();
+}
+
+function CrmStageBadge({ stage }: { stage: CrmStage }) {
+  const s = CRM_STAGE_TOKENS[stage];
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px var(--space-2)",
+        borderRadius: "var(--radius-pill)",
+        fontSize: "var(--font-size-badge)",
+        fontWeight: 600,
+        backgroundColor: s.bg,
+        color: s.color,
+      }}
+    >
+      {CRM_STAGE_LABELS[stage]}
+    </span>
+  );
+}
+
+type CrmPatch = { stage?: CrmStage; note?: string | null; nextFollowUp?: string | null };
+
+// A single lead row with inline CRM controls (stage / follow-up / note). Each
+// control autosaves via onSave; note saves on blur only when it changed.
+function LeadRow({
+  lead,
+  crm,
+  onSave,
+}: {
+  lead: Lead;
+  crm: CrmContact | undefined;
+  onSave: (email: string, patch: CrmPatch) => Promise<boolean>;
+}) {
+  const email = (lead.email ?? "").trim();
+  const stage: CrmStage = crm?.stage ?? "new";
+  const [noteDraft, setNoteDraft] = useState(crm?.note ?? "");
+  const [busy, setBusy] = useState<null | "stage" | "note" | "follow">(null);
+  const [flash, setFlash] = useState<null | "stage" | "note" | "follow">(null);
+  const [rowError, setRowError] = useState(false);
+
+  // Keep the note draft in sync when the annotation changes elsewhere.
+  useEffect(() => {
+    setNoteDraft(crm?.note ?? "");
+  }, [crm?.note]);
+
+  function flashOk(which: "stage" | "note" | "follow") {
+    setFlash(which);
+    setTimeout(() => setFlash((f) => (f === which ? null : f)), 1400);
+  }
+
+  async function run(which: "stage" | "note" | "follow", patch: CrmPatch) {
+    if (!email) return;
+    setBusy(which);
+    setRowError(false);
+    const ok = await onSave(email, patch);
+    setBusy(null);
+    if (ok) flashOk(which);
+    else setRowError(true);
+  }
+
+  const due = isFollowUpDue(crm?.next_follow_up);
+
+  // Leads captured without an email cannot be tracked — show a hint instead.
+  const noEmail = !email;
+
+  return (
+    <tr style={{ backgroundColor: "var(--color-surface)" }}>
+      <td style={TD_STYLE}>
+        <div style={{ fontWeight: 600 }}>{email || "—"}</div>
+        <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+          {[lead.region, lead.source].filter(Boolean).join(" · ") || "—"}
+        </div>
+      </td>
+      <td style={{ ...TD_STYLE, fontWeight: 600 }}>{lead.brand}</td>
+      <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{lead.category}</td>
+
+      {/* Stage */}
+      <td style={TD_STYLE}>
+        {noEmail ? (
+          <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>—</span>
+        ) : (
+          <select
+            value={stage}
+            disabled={busy === "stage"}
+            aria-label={`Stage for ${email}`}
+            onChange={(e) => void run("stage", { stage: e.target.value as CrmStage })}
+            style={{
+              padding: "var(--space-1) var(--space-2)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--color-border)",
+              backgroundColor: "var(--color-surface)",
+              color: "var(--color-text)",
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-caption)",
+              cursor: busy === "stage" ? "wait" : "pointer",
+            }}
+          >
+            {CRM_STAGES.map((s) => (
+              <option key={s} value={s}>
+                {CRM_STAGE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        )}
+        {flash === "stage" && (
+          <span style={{ marginLeft: 6, color: "var(--color-success)", fontSize: "var(--font-size-caption)" }}>✓</span>
+        )}
+      </td>
+
+      {/* Next follow-up */}
+      <td style={{ ...TD_STYLE, whiteSpace: "nowrap" }}>
+        {noEmail ? (
+          <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>—</span>
+        ) : (
+          <input
+            type="date"
+            value={toDateInputValue(crm?.next_follow_up)}
+            disabled={busy === "follow"}
+            aria-label={`Next follow-up for ${email}`}
+            onChange={(e) => void run("follow", { nextFollowUp: e.target.value === "" ? "" : e.target.value })}
+            style={{
+              padding: "var(--space-1) var(--space-2)",
+              borderRadius: "var(--radius-sm)",
+              border: due ? "1px solid var(--color-error)" : "1px solid var(--color-border)",
+              backgroundColor: "var(--color-surface)",
+              color: due ? "var(--color-error)" : "var(--color-text)",
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-caption)",
+            }}
+          />
+        )}
+        {flash === "follow" && (
+          <span style={{ marginLeft: 6, color: "var(--color-success)", fontSize: "var(--font-size-caption)" }}>✓</span>
+        )}
+      </td>
+
+      {/* Note (saves on blur) */}
+      <td style={TD_STYLE}>
+        {noEmail ? (
+          <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>—</span>
+        ) : (
+          <input
+            type="text"
+            value={noteDraft}
+            placeholder="Add note…"
+            disabled={busy === "note"}
+            aria-label={`Note for ${email}`}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onBlur={() => {
+              if (noteDraft !== (crm?.note ?? "")) {
+                void run("note", { note: noteDraft === "" ? null : noteDraft });
+              }
+            }}
+            style={{
+              width: "180px",
+              maxWidth: "100%",
+              padding: "var(--space-1) var(--space-2)",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--color-border)",
+              backgroundColor: "var(--color-surface)",
+              color: "var(--color-text)",
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-caption)",
+            }}
+          />
+        )}
+        {flash === "note" && (
+          <span style={{ marginLeft: 6, color: "var(--color-success)", fontSize: "var(--font-size-caption)" }}>✓</span>
+        )}
+        {rowError && (
+          <span role="alert" style={{ marginLeft: 6, color: "var(--color-error)", fontSize: "var(--font-size-caption)" }}>
+            save failed
+          </span>
+        )}
+      </td>
+
+      <td
+        style={{
+          ...TD_STYLE,
+          color: "var(--color-muted)",
+          fontSize: "var(--font-size-caption)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {fmtShortDate(lead.created_at)}
+      </td>
+    </tr>
+  );
+}
+
+// "Who needs a follow-up" summary — the reason a CRM exists. Lists contacts with
+// a scheduled follow-up, due ones first.
+function FollowUpsDue({ contacts }: { contacts: CrmContact[] }) {
+  const scheduled = contacts
+    .filter((c) => c.next_follow_up)
+    .sort((a, b) => Date.parse(a.next_follow_up ?? "") - Date.parse(b.next_follow_up ?? ""));
+  const dueCount = scheduled.filter((c) => isFollowUpDue(c.next_follow_up)).length;
+
+  if (scheduled.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        border: dueCount > 0 ? "1px solid var(--color-error)" : "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-3) var(--space-4)",
+        marginBottom: "var(--space-4)",
+        backgroundColor: dueCount > 0 ? "var(--color-badge-status-warn-bg)" : "var(--color-surface)",
+      }}
+    >
+      <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+        Follow-ups{dueCount > 0 ? ` — ${dueCount} due now` : ""}
+      </p>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+        {scheduled.slice(0, 8).map((c) => {
+          const due = isFollowUpDue(c.next_follow_up);
+          return (
+            <li
+              key={c.email}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-3)",
+                fontSize: "var(--font-size-caption)",
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ color: due ? "var(--color-error)" : "var(--color-muted)", fontWeight: 600, minWidth: "84px" }}>
+                {fmtShortDate(c.next_follow_up)}
+              </span>
+              <CrmStageBadge stage={c.stage} />
+              <span style={{ color: "var(--color-text)" }}>{c.email}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+// Resend the Growth/Agency bonus-deliverables email to any address. Fills the
+// gap the Revenue → Kit Orders "Resend email" button does NOT cover:
+// subscriptions never appear there, so a subscriber who missed the bonus email
+// (e.g. a $0 100%-off checkout) had no recovery path in the UI.
+function ResendDeliverablesForm() {
+  const [email, setEmail] = useState("");
+  const [plan, setPlan] = useState<"growth" | "agency">("growth");
+  const [annual, setAnnual] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+
+  async function send() {
+    if (!emailValid || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await apiFetch("/api/billing/resend-deliverables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), plan, annual }),
+      });
+      if (res.ok) {
+        setMsg({ kind: "ok", text: `Deliverables email sent to ${email.trim()} (${plan}).` });
+        setEmail("");
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+        setMsg({ kind: "err", text: data.message ?? data.code ?? "Send failed." });
+      }
+    } catch {
+      setMsg({ kind: "err", text: "Network error — nothing was sent." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby="resend-deliverables-heading"
+      style={{
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-4) var(--space-5)",
+        marginBottom: "var(--space-6)",
+        backgroundColor: "var(--color-surface)",
+        boxShadow: "var(--shadow-card)",
+      }}
+    >
+      <h3
+        id="resend-deliverables-heading"
+        style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, margin: "0 0 var(--space-1) 0" }}
+      >
+        Resend Growth / Agency deliverables
+      </h3>
+      <p style={{ margin: "0 0 var(--space-3) 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+        Subscriptions don’t appear in Kit Orders. Use this to re-send the bonus-deliverables email to a
+        subscriber who didn’t receive it.
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)", alignItems: "center" }}>
+        <input
+          type="email"
+          value={email}
+          placeholder="subscriber@email.com"
+          aria-label="Subscriber email"
+          onChange={(e) => setEmail(e.target.value)}
+          style={{
+            flex: "2 1 240px",
+            height: "36px",
+            padding: "0 var(--space-3)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-surface)",
+            color: "var(--color-text)",
+            fontFamily: "var(--font-family)",
+            fontSize: "var(--font-size-body-sm)",
+          }}
+        />
+        <select
+          value={plan}
+          aria-label="Plan"
+          onChange={(e) => setPlan(e.target.value as "growth" | "agency")}
+          style={{
+            height: "36px",
+            padding: "0 var(--space-2)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-surface)",
+            color: "var(--color-text)",
+            fontFamily: "var(--font-family)",
+            fontSize: "var(--font-size-body-sm)",
+          }}
+        >
+          <option value="growth">Growth</option>
+          <option value="agency">Agency</option>
+        </select>
+        <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+          <input type="checkbox" checked={annual} onChange={(e) => setAnnual(e.target.checked)} />
+          Annual
+        </label>
+        <button
+          type="button"
+          disabled={!emailValid || busy}
+          onClick={() => void send()}
+          style={{
+            height: "36px",
+            padding: "0 var(--space-4)",
+            border: "none",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-primary)",
+            color: "#fff",
+            fontWeight: 700,
+            fontSize: "var(--font-size-body-sm)",
+            cursor: !emailValid || busy ? "not-allowed" : "pointer",
+            opacity: !emailValid || busy ? 0.5 : 1,
+          }}
+        >
+          {busy ? "Sending…" : "Send"}
+        </button>
+      </div>
+      {msg && (
+        <p
+          role="status"
+          aria-live="polite"
+          style={{
+            margin: "var(--space-3) 0 0 0",
+            fontSize: "var(--font-size-body-sm)",
+            fontWeight: 600,
+            color: msg.kind === "ok" ? "var(--color-success)" : "var(--color-error)",
+          }}
+        >
+          {msg.text}
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -1894,6 +2328,8 @@ export default function AdminPage() {
   const [resendState, setResendState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunities | null>(null);
+  const [crmMap, setCrmMap] = useState<Record<string, CrmContact>>({});
+  const [crmMigrationPending, setCrmMigrationPending] = useState(false);
 
   const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingHealth, setLoadingHealth] = useState(false);
@@ -1968,16 +2404,81 @@ export default function AdminPage() {
     }
   }, [fetchedTabs]);
 
+  // CRM annotations (email-keyed). Kept in a ref too so the optimistic patch can
+  // read the pre-edit value for rollback without a stale closure.
+  const crmMapRef = useRef(crmMap);
+  useEffect(() => {
+    crmMapRef.current = crmMap;
+  }, [crmMap]);
+
+  const loadCrm = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/admin/crm");
+      if (res.ok) {
+        const data = (await res.json()) as { contacts: CrmContact[]; migrationPending?: boolean };
+        const map: Record<string, CrmContact> = {};
+        for (const contact of data.contacts ?? []) {
+          map[contact.email.toLowerCase()] = contact;
+        }
+        setCrmMap(map);
+        setCrmMigrationPending(data.migrationPending === true);
+      }
+    } catch {
+      // Non-fatal — CRM controls just start blank.
+    }
+  }, []);
+
+  const patchCrm = useCallback(async (email: string, patch: CrmPatch): Promise<boolean> => {
+    const key = email.trim().toLowerCase();
+    if (!key) return false;
+    const prev = crmMapRef.current[key];
+
+    // Optimistic apply.
+    setCrmMap((m) => {
+      const base: CrmContact =
+        m[key] ?? { email: key, stage: "new", note: null, next_follow_up: null, owner: null, updated_at: "" };
+      const next: CrmContact = { ...base };
+      if (patch.stage !== undefined) next.stage = patch.stage;
+      if (patch.note !== undefined) next.note = patch.note;
+      if (patch.nextFollowUp !== undefined) next.next_follow_up = patch.nextFollowUp === "" ? null : patch.nextFollowUp;
+      return { ...m, [key]: next };
+    });
+
+    try {
+      const res = await apiFetch("/api/admin/crm", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: key, ...patch }),
+      });
+      if (!res.ok) throw new Error("patch failed");
+      const data = (await res.json()) as { contact?: CrmContact };
+      if (data.contact) {
+        setCrmMap((m) => ({ ...m, [key]: data.contact as CrmContact }));
+      }
+      return true;
+    } catch {
+      // Roll back to the pre-edit value.
+      setCrmMap((m) => {
+        const n = { ...m };
+        if (prev) n[key] = prev;
+        else delete n[key];
+        return n;
+      });
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     void init();
   }, [init]);
 
-  // Load system health once authorized
+  // Load system health + CRM once authorized
   useEffect(() => {
     if (authorized === true) {
       void loadSystemHealth();
+      void loadCrm();
     }
-  }, [authorized, loadSystemHealth]);
+  }, [authorized, loadSystemHealth, loadCrm]);
 
   // Load tab data on demand
   const loadTab = useCallback(
@@ -2502,16 +3003,37 @@ export default function AdminPage() {
               margin: "0 0 var(--space-4) 0",
             }}
           >
-            Leads ({leads.length})
+            Leads &amp; CRM ({leads.length})
           </h2>
+
+          {/* Follow-ups due first — the reason the CRM exists. */}
+          <FollowUpsDue contacts={Object.values(crmMap)} />
+
+          {crmMigrationPending && (
+            <p
+              role="status"
+              style={{
+                margin: "0 0 var(--space-4) 0",
+                padding: "var(--space-2) var(--space-3)",
+                borderRadius: "var(--radius-sm)",
+                backgroundColor: "var(--color-surface-muted)",
+                color: "var(--color-muted)",
+                fontSize: "var(--font-size-caption)",
+              }}
+            >
+              CRM fields are read-only until the <code>crm_contact</code> migration is applied.
+            </p>
+          )}
+
           <TableWrapper>
             <thead>
               <tr>
-                <th scope="col" style={TH_STYLE}>Email</th>
+                <th scope="col" style={TH_STYLE}>Contact</th>
                 <th scope="col" style={TH_STYLE}>Brand</th>
                 <th scope="col" style={TH_STYLE}>Category</th>
-                <th scope="col" style={TH_STYLE}>Region</th>
-                <th scope="col" style={TH_STYLE}>Source</th>
+                <th scope="col" style={TH_STYLE}>Stage</th>
+                <th scope="col" style={TH_STYLE}>Next follow-up</th>
+                <th scope="col" style={TH_STYLE}>Note</th>
                 <th scope="col" style={TH_STYLE}>Date</th>
               </tr>
             </thead>
@@ -2519,7 +3041,7 @@ export default function AdminPage() {
               {leads.length === 0 && !loadingTab ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     style={{
                       ...TD_STYLE,
                       color: "var(--color-muted)",
@@ -2532,23 +3054,12 @@ export default function AdminPage() {
                 </tr>
               ) : (
                 leads.map((l) => (
-                  <tr key={l.id} style={{ backgroundColor: "var(--color-surface)" }}>
-                    <td style={TD_STYLE}>{l.email}</td>
-                    <td style={{ ...TD_STYLE, fontWeight: 600 }}>{l.brand}</td>
-                    <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{l.category}</td>
-                    <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{l.region}</td>
-                    <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{l.source}</td>
-                    <td
-                      style={{
-                        ...TD_STYLE,
-                        color: "var(--color-muted)",
-                        fontSize: "var(--font-size-caption)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {fmtShortDate(l.created_at)}
-                    </td>
-                  </tr>
+                  <LeadRow
+                    key={l.id}
+                    lead={l}
+                    crm={crmMap[(l.email ?? "").trim().toLowerCase()]}
+                    onSave={patchCrm}
+                  />
                 ))
               )}
             </tbody>
@@ -2571,6 +3082,11 @@ export default function AdminPage() {
           >
             Revenue &mdash; Kit Orders ({kitOrders.length})
           </h2>
+
+          {/* Growth/Agency subscriptions never appear in Kit Orders — this form
+              covers re-sending their deliverables email. */}
+          <ResendDeliverablesForm />
+
           <TableWrapper>
             <thead>
               <tr>

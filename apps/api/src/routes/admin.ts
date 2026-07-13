@@ -45,6 +45,7 @@ import {
 } from "../../../../packages/shared/src/platform-keys";
 import { refreshPlatformKeys } from "../lib/platform-keys";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
+import { normalizeCrmPatch } from "../lib/crm-validation";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -403,6 +404,106 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     } catch (err) {
       logger.error("admin_engagement_update_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGAGEMENT_UPDATE_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/crm — lightweight CRM annotations (email-keyed).
+  //
+  // Deliberately SEPARATE from /leads and /kit-orders (not a JOIN) so those
+  // existing tabs keep working even if this migration has not been applied yet:
+  // if crm_contact is missing (SQLSTATE 42P01), we degrade to an empty list +
+  // migrationPending flag instead of 500-ing the dashboard. The web client
+  // merges these annotations into the leads rows by email.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/crm", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const result = await db.query<{
+        email: string;
+        stage: string;
+        note: string | null;
+        next_follow_up: string | null;
+        owner: string | null;
+        updated_at: string;
+      }>(
+        `SELECT email, stage, note, next_follow_up, owner, updated_at
+           FROM crm_contact
+          ORDER BY (next_follow_up IS NULL), next_follow_up ASC, updated_at DESC
+          LIMIT 1000`
+      );
+      logger.info("admin_crm_fetched", { count: result.rows.length });
+      return c.json({ contacts: result.rows, migrationPending: false });
+    } catch (err) {
+      if ((err as { code?: string }).code === "42P01") {
+        // Table not created yet — feature is inert, dashboard stays healthy.
+        logger.warn("admin_crm_table_missing", {});
+        return c.json({ contacts: [], migrationPending: true });
+      }
+      logger.error("admin_crm_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CRM_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/admin/crm — upsert a contact's stage / note / next_follow_up.
+  // Email in the body (not the path) so addresses with reserved URL chars need
+  // no encoding dance. All validation is in normalizeCrmPatch (unit-tested).
+  // -------------------------------------------------------------------------
+  app.patch("/api/admin/crm", requireAuth, requireSuperAdmin, async (c) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: "Bad Request", code: "INVALID_JSON" }, 400);
+    }
+
+    const parsed = normalizeCrmPatch(raw);
+    if (!parsed.ok) {
+      return c.json({ error: "Bad Request", code: parsed.code, message: parsed.message }, 400);
+    }
+    const p = parsed.patch;
+    const auth = c.get("auth") as { userId?: string } | undefined;
+
+    try {
+      const result = await db.query<{
+        email: string;
+        stage: string;
+        note: string | null;
+        next_follow_up: string | null;
+        updated_at: string;
+      }>(
+        // COALESCE/CASE let an omitted field keep its stored value while an
+        // explicit null/"" (noteProvided / followUpProvided) clears it.
+        `INSERT INTO crm_contact (email, stage, note, next_follow_up, updated_by, updated_at)
+         VALUES ($1, COALESCE($2, 'new'), $3, $4, $5, NOW())
+         ON CONFLICT (email) DO UPDATE SET
+           stage          = COALESCE($2, crm_contact.stage),
+           note           = CASE WHEN $6 THEN $3 ELSE crm_contact.note END,
+           next_follow_up = CASE WHEN $7 THEN $4 ELSE crm_contact.next_follow_up END,
+           updated_by     = $5,
+           updated_at     = NOW()
+         RETURNING email, stage, note, next_follow_up, updated_at`,
+        [
+          p.email,
+          p.stage ?? null,
+          p.noteProvided ? p.note ?? null : null,
+          p.followUpProvided ? p.nextFollowUp ?? null : null,
+          auth?.userId ?? null,
+          p.noteProvided,
+          p.followUpProvided,
+        ]
+      );
+      logger.info("admin_crm_upserted", { stage: p.stage ?? "unchanged" });
+      return c.json({ contact: result.rows[0] });
+    } catch (err) {
+      if ((err as { code?: string }).code === "42P01") {
+        return c.json(
+          { error: "migration_pending", code: "CRM_TABLE_MISSING", message: "Apply the crm_contact migration first." },
+          503
+        );
+      }
+      logger.error("admin_crm_upsert_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
     }
   });
 
