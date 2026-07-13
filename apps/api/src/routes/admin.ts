@@ -49,6 +49,7 @@ import { normalizeCrmPatch } from "../lib/crm-validation";
 import { upsertCrmContact } from "../lib/crm";
 import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
+import { fetchOperatingCadence } from "../lib/cadence";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -727,6 +728,22 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     } catch (err) {
       logger.error("admin_revenue_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "REVENUE_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/cadence — the same autonomous-loop brief Hermes reads
+  // (follow-ups due, new leads to triage, upsell targets, stale contacts), so
+  // the founder sees exactly the worklist the agent is acting on.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/cadence", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const cadence = await fetchOperatingCadence(db);
+      logger.info("admin_cadence_fetched", cadence.summary);
+      return c.json(cadence);
+    } catch (err) {
+      logger.error("admin_cadence_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CADENCE_FAILED" }, 500);
     }
   });
 
