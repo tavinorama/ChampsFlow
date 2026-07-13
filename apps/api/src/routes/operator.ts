@@ -18,12 +18,14 @@
  *   - Destructive operations (no DELETEs anywhere on this surface)
  *   - Raw cross-tenant client CONTENT (drafts, audits detail stay tenant-scoped)
  *
- * Writes are limited to two safe verbs:
+ * Writes are limited to safe, internal, reversible verbs:
  *   - PATCH engagement status (pipeline: requested → contacted → won/lost)
+ *   - PATCH CRM annotation (sales stage / note / next follow-up on crm_contact)
  *   - POST nurture enrollment — reuses the compliant email machine
  *     (idempotent, suppression-checked, unsubscribe built in). Hermes cannot
  *     compose free-form outbound email; it can only enroll into sequences the
  *     founder already approved.
+ * None of these move money or send free-form email — those stay founder-only.
  *
  * Observability: every access is logged with the key id and row COUNTS —
  * never emails or names in logs.
@@ -36,6 +38,8 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { mrrForTier, arrFromMrr } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
+import { normalizeCrmPatch } from "../lib/crm-validation";
+import { upsertCrmContact } from "../lib/crm";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -338,6 +342,69 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
     } catch (err) {
       logger.error("operator_engagement_update_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGAGEMENT_UPDATE_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/v1/operator/crm — read the email-keyed CRM annotations so Hermes
+  // knows each contact's current sales stage / note / follow-up. Degrades to an
+  // empty list if the crm_contact table has not been migrated yet.
+  // -------------------------------------------------------------------------
+  app.get("/api/v1/operator/crm", businessKey, async (c) => {
+    try {
+      const { rows } = await db.query<{
+        email: string;
+        stage: string;
+        note: string | null;
+        next_follow_up: string | null;
+        updated_at: string;
+      }>(
+        `SELECT email, stage, note, next_follow_up, updated_at
+           FROM crm_contact
+          ORDER BY (next_follow_up IS NULL), next_follow_up ASC, updated_at DESC
+          LIMIT 1000`
+      );
+      const key = c.get("apiKey");
+      logger.info("operator_crm_accessed", { key_id: key.id, count: rows.length });
+      return c.json({ contacts: rows, migrationPending: false });
+    } catch (err) {
+      if ((err as { code?: string }).code === "42P01") {
+        return c.json({ contacts: [], migrationPending: true });
+      }
+      logger.error("operator_crm_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CRM_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/v1/operator/crm — Hermes moves a contact through the sales
+  // pipeline: set stage / note / next follow-up. INTERNAL, reversible write on
+  // the annotation only — never money, never email (those stay founder-only).
+  // Same validation + upsert the founder dashboard uses, so the two never drift.
+  // -------------------------------------------------------------------------
+  app.patch("/api/v1/operator/crm", businessKey, async (c) => {
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: "invalid_body", code: "INVALID_BODY" }, 400);
+    }
+    const parsed = normalizeCrmPatch(raw);
+    if (!parsed.ok) {
+      return c.json({ error: "invalid_input", code: parsed.code, message: parsed.message }, 400);
+    }
+    try {
+      // updated_by is null: the operator key is a machine actor, not a user row.
+      const contact = await upsertCrmContact(db, parsed.patch, null);
+      const key = c.get("apiKey");
+      logger.info("operator_crm_upserted", { key_id: key.id, stage: parsed.patch.stage ?? "unchanged" });
+      return c.json({ contact });
+    } catch (err) {
+      if ((err as { code?: string }).code === "42P01") {
+        return c.json({ error: "migration_pending", code: "CRM_TABLE_MISSING" }, 503);
+      }
+      logger.error("operator_crm_upsert_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
     }
   });
 

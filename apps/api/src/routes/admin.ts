@@ -46,6 +46,7 @@ import {
 import { refreshPlatformKeys } from "../lib/platform-keys";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { normalizeCrmPatch } from "../lib/crm-validation";
+import { upsertCrmContact } from "../lib/crm";
 import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
 
@@ -445,36 +446,9 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     const auth = c.get("auth") as { userId?: string } | undefined;
 
     try {
-      const result = await db.query<{
-        email: string;
-        stage: string;
-        note: string | null;
-        next_follow_up: string | null;
-        updated_at: string;
-      }>(
-        // COALESCE/CASE let an omitted field keep its stored value while an
-        // explicit null/"" (noteProvided / followUpProvided) clears it.
-        `INSERT INTO crm_contact (email, stage, note, next_follow_up, updated_by, updated_at)
-         VALUES ($1, COALESCE($2, 'new'), $3, $4, $5, NOW())
-         ON CONFLICT (email) DO UPDATE SET
-           stage          = COALESCE($2, crm_contact.stage),
-           note           = CASE WHEN $6 THEN $3 ELSE crm_contact.note END,
-           next_follow_up = CASE WHEN $7 THEN $4 ELSE crm_contact.next_follow_up END,
-           updated_by     = $5,
-           updated_at     = NOW()
-         RETURNING email, stage, note, next_follow_up, updated_at`,
-        [
-          p.email,
-          p.stage ?? null,
-          p.noteProvided ? p.note ?? null : null,
-          p.followUpProvided ? p.nextFollowUp ?? null : null,
-          auth?.userId ?? null,
-          p.noteProvided,
-          p.followUpProvided,
-        ]
-      );
+      const contact = await upsertCrmContact(db, p, auth?.userId ?? null);
       logger.info("admin_crm_upserted", { stage: p.stage ?? "unchanged" });
-      return c.json({ contact: result.rows[0] });
+      return c.json({ contact });
     } catch (err) {
       if ((err as { code?: string }).code === "42P01") {
         return c.json(
