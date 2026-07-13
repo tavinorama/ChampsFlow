@@ -40,6 +40,8 @@ interface SiteBusiness {
 
 interface SiteTheme {
   tone?: string;
+  primary?: string;
+  template?: string;
   [key: string]: unknown;
 }
 
@@ -154,6 +156,8 @@ export default function LandingSiteDetailPage() {
   const [bizAreas, setBizAreas] = useState("");
   const [bizHours, setBizHours] = useState("");
   const [themeTone, setThemeTone] = useState("");
+  const [themePrimary, setThemePrimary] = useState("");
+  const [themeTemplate, setThemeTemplate] = useState("");
   const [savingBusiness, setSavingBusiness] = useState(false);
   const [businessError, setBusinessError] = useState<string | null>(null);
 
@@ -201,6 +205,8 @@ export default function LandingSiteDetailPage() {
   const bizAreasId = useId();
   const bizHoursId = useId();
   const themeToneId = useId();
+  const themePrimaryId = useId();
+  const themeTemplateId = useId();
   const pageTypeId = useId();
   const pageTitleId = useId();
   const pageSlugId = useId();
@@ -223,6 +229,8 @@ export default function LandingSiteDetailPage() {
     setBizAreas(Array.isArray(s.business?.serviceAreas) ? s.business.serviceAreas.join(", ") : "");
     setBizHours(typeof s.business?.hours === "string" ? s.business.hours : "");
     setThemeTone(s.theme?.tone ?? "");
+    setThemePrimary(typeof s.theme?.primary === "string" ? s.theme.primary : "");
+    setThemeTemplate(typeof s.theme?.template === "string" ? s.theme.template : "");
   }
 
   const loadSite = useCallback(async (): Promise<{ site: Site; pages: PageListItem[] } | null> => {
@@ -300,6 +308,11 @@ export default function LandingSiteDetailPage() {
 
       const theme: SiteTheme = {};
       if (themeTone.trim()) theme.tone = themeTone.trim();
+      // Persist the brand colour + template so a business save never wipes them
+      // (the PATCH replaces theme wholesale). Colour validated to a strict hex;
+      // template must be a known preset ("" = auto from category).
+      if (/^#[0-9a-fA-F]{6}$/.test(themePrimary.trim())) theme.primary = themePrimary.trim().toLowerCase();
+      if (["classic", "modern", "bold", "minimal"].includes(themeTemplate)) theme.template = themeTemplate;
 
       const res = await apiFetch(`/api/landing/sites/${siteId}`, {
         method: "PATCH",
@@ -872,6 +885,34 @@ export default function LandingSiteDetailPage() {
         </Field>
         <Field id={bizHoursId} label="Hours" hint="optional, e.g. Mon–Fri 9am–5pm">
           <input id={bizHoursId} value={bizHours} onChange={(e) => setBizHours(e.target.value)} maxLength={200} style={inputStyle} />
+        </Field>
+        <Field id={themePrimaryId} label="Brand colour" hint="your accent — buttons, links and highlights across the site">
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <input
+              type="color"
+              value={/^#[0-9a-fA-F]{6}$/.test(themePrimary) ? themePrimary : "#0c7d54"}
+              onChange={(e) => setThemePrimary(e.target.value)}
+              aria-label="Brand colour picker"
+              style={{ width: "44px", height: "38px", padding: 0, border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", background: "none", cursor: "pointer" }}
+            />
+            <input
+              id={themePrimaryId}
+              value={themePrimary}
+              onChange={(e) => setThemePrimary(e.target.value)}
+              placeholder="#0c7d54"
+              maxLength={7}
+              style={{ ...inputStyle, maxWidth: "150px", fontFamily: "monospace" }}
+            />
+          </div>
+        </Field>
+        <Field id={themeTemplateId} label="Template" hint="the visual style — fonts and shape of the whole site">
+          <select id={themeTemplateId} value={themeTemplate} onChange={(e) => setThemeTemplate(e.target.value)} style={inputStyle}>
+            <option value="">Auto — pick from my category</option>
+            <option value="classic">Classic — elegant serif</option>
+            <option value="modern">Modern — clean sans</option>
+            <option value="bold">Bold — punchy &amp; strong</option>
+            <option value="minimal">Minimal — airy &amp; light</option>
+          </select>
         </Field>
         <Field id={themeToneId} label="Brand tone" hint="optional — a short style note for future content">
           <input id={themeToneId} value={themeTone} onChange={(e) => setThemeTone(e.target.value)} maxLength={120} placeholder="warm, professional, no-nonsense" style={inputStyle} />
