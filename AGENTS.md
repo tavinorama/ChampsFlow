@@ -92,6 +92,20 @@ When the change genuinely alters an E2E-covered flow, prefer a **targeted** run
 of just those spec(s) (`npx playwright test tests/e2e/<file> --project=chromium-desktop`)
 over the whole flaky suite. Do **not** hard-gate HIGH PRs on a green full E2E.
 
+### Auto-merge — no manual merge routine (ever)
+
+Merging must **never** require relaxing branch protection, dismissing a review, or `gh pr merge --admin`. That routine is banned. `.github/workflows/automerge.yml` arms GitHub's **native auto-merge** from the PR's **risk label**, and GitHub completes the squash-merge the instant the six required checks pass.
+
+- `main` stays permanently protected: the six required checks, **0 required approvals**. Do **not** set required approvals back to 1 — at 0, a non-blocking Hermes review can't deadlock the merge, which is the whole point. The founder gate lives on the **label**, not on the approval count.
+- Label → behaviour:
+  - `claude-ready` (LOW) → auto-merges on green.
+  - `hermes-review` (MEDIUM) → auto-merges on green.
+  - `hermes-review` + `security-sensitive` (HIGH) → **held** until the founder adds `founder-approved`.
+  - `needs-founder-approval` (CRITICAL) → **held** until the founder adds `founder-approved`.
+  - `founder-approved` overrides any hold. `hold` / `no-autodeploy` / `do-not-merge` always block.
+- **The founder approves a HIGH/CRITICAL merge with one label** (`founder-approved`) — never by toggling protection. A Hermes `CHANGES_REQUESTED` is advisory: at 0 required approvals it does not block, so it never needs dismissing.
+- Every PR Claude opens gets its risk label at creation, so LOW/MEDIUM work merges hands-free; only HIGH/CRITICAL waits on the founder's one-click label.
+
 ---
 
 ## 4. Launch execution phases
