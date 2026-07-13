@@ -30,6 +30,7 @@ import {
   sectionsWithPlaceholder,
   pageTypeLabel,
 } from "../../../../../lib/landing-sections";
+import { SectionRenderer } from "../../../../../components/landing-public/SectionRenderer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,6 +96,10 @@ export default function LandingPageEditorPage() {
   const [sections, setSections] = useState<LandingSection[]>([]);
   const baselineRef = useRef("");
 
+  // Site theme + slug for an accurate live preview (fetched once).
+  const [siteTheme, setSiteTheme] = useState<unknown>(undefined);
+  const [siteSlug, setSiteSlug] = useState("");
+
   const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -112,6 +117,25 @@ export default function LandingPageEditorPage() {
   const slugId = useId();
   const seoTitleId = useId();
   const seoDescId = useId();
+
+  // Fetch the site's theme + slug once so the live preview matches production.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await apiFetch(`/api/landing/sites/${siteId}`);
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { site?: { theme?: unknown; slug?: string } };
+        setSiteTheme(data.site?.theme);
+        setSiteSlug(data.site?.slug ?? "");
+      } catch {
+        // Non-fatal — the preview falls back to the default theme.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [siteId]);
 
   function showToast(message: string, kind: "success" | "error") {
     setToast({ message, kind });
@@ -421,6 +445,32 @@ export default function LandingPageEditorPage() {
             ))}
           </select>
           <button type="button" onClick={addSection} style={secondaryButtonStyle(false)}>+ Add section</button>
+        </div>
+      </section>
+
+      {/* ── Live preview ─────────────────────────────────────────────────── */}
+      <section style={cardStyle} aria-labelledby="preview-heading">
+        <h2 id="preview-heading" style={sectionHeadingStyle}>Live preview</h2>
+        <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", marginBottom: "var(--space-3)" }}>
+          Exactly how this page renders, with your brand colour and template — updates as you edit. Save to publish.
+        </p>
+        <div
+          style={{
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            overflow: "hidden",
+            background: "#ffffff",
+            maxHeight: "640px",
+            overflowY: "auto",
+          }}
+        >
+          {sections.length === 0 ? (
+            <p style={{ padding: "var(--space-8)", color: "var(--color-muted)", textAlign: "center" }}>
+              Add sections to see the preview.
+            </p>
+          ) : (
+            <SectionRenderer sections={sections} theme={siteTheme} siteSlug={siteSlug || "preview"} />
+          )}
         </div>
       </section>
 
