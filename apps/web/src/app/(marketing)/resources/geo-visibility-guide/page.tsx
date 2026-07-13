@@ -676,7 +676,7 @@ export default function GeoVisibilityGuidePage() {
             }}
           >
             <Link
-              href="/#pricing"
+              href="/pricing"
               style={{
                 display: "inline-flex",
                 alignItems: "center",

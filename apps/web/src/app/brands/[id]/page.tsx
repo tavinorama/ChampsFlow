@@ -3890,7 +3890,7 @@ function ExportCsvButton({ auditId }: { auditId: string }) {
       // Get filename from Content-Disposition header if available, fallback to generic
       const cd = res.headers.get("Content-Disposition") ?? "";
       const match = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';\r\n]+)/i);
-      a.download = match?.[1] ?? "trustindex-export.csv";
+      a.download = match?.[1] ?? "ozvor-export.csv";
       a.href = url;
       a.click();
       URL.revokeObjectURL(url);
