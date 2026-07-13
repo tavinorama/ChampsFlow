@@ -16,6 +16,7 @@ import { useDirectCheckout } from "../../../lib/use-direct-checkout";
 import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
 import { useVerifiedEmail } from "../../../lib/use-verified-email";
 import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
+import { trackEvent } from "../../../lib/track";
 
 const FREE_TEST_DRAFT_KEY = "free-test";
 
@@ -786,6 +787,7 @@ function KitHeroCta({ kitHref }: { kitHref: string }) {
         <a
           href={kitHref}
           aria-label="Get my Get-Cited Kit — $29, one-time"
+          onClick={() => trackEvent("kit_cta_click", { source: "results_hero" })}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -1258,6 +1260,7 @@ export function InvisibilityTestClient() {
 
     setBusy(true);
     setApiError("");
+    trackEvent("audit_started", { category: category.trim() || undefined });
 
     try {
       const res = await fetch("/api/test", {
@@ -1295,6 +1298,7 @@ export function InvisibilityTestClient() {
           setResult(data.result);
           setTestId(data.testId ?? null);
           clearFormDraft(FREE_TEST_DRAFT_KEY);
+          trackEvent("audit_completed", { has_result: true });
         }
       }
     } catch {
