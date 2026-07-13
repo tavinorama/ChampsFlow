@@ -310,7 +310,7 @@ Here is the path, and it starts free.
 - **Agency — $249/mo** (or **$2,091/yr** with founder pricing): up to 25 brands, white-label reports, and client workflow — built for agencies and multi-location operators.
 - **Founder pricing** is 30% off, annual only, for the first 100 customers.
 
-For done-for-you execution — where our team publishes and keeps improving it for you — there is **[OrganicPosts by Ozvor](https://organicposts.ai)**, our consultancy arm.
+For done-for-you execution — where our team publishes and keeps improving it for you — there is **[OrganicPosts by Ozvor](/organicposts)**, our consultancy arm.
 
 The sequence is deliberate, and the first step costs nothing: **see where you stand free, act on the Kit, then keep the gains compounding instead of going stale.** Start at [ozvor.com](https://ozvor.com), or reach us at [hello@ozvor.com](mailto:hello@ozvor.com).`,
       keyTakeaway:
@@ -793,7 +793,7 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
           {WHITEPAPER.plansCta.body}
         </p>
         <Link
-          href="/#pricing"
+          href="/pricing"
           style={{
             display: "inline-flex",
             alignItems: "center",

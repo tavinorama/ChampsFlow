@@ -893,7 +893,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             <Link
-              href="/#pricing"
+              href="/pricing"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
