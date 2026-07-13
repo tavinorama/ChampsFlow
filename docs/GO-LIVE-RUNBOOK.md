@@ -153,6 +153,27 @@ $99** one-time (Price exists; env intentionally unset = feature OFF), coupon
 **FOUNDER30** (30% off, annual-only, first-100 with live verified count).
 Webhook endpoint + signing secret are configured on the prod API.
 
+**Webhook events the endpoint MUST be subscribed to** (Dashboard → Developers →
+Webhooks → the `/api/billing/webhook` endpoint → "Listening to"). The launch-eve
+smoke (2026-07-12, issue #261) caught the endpoint subscribed to only the first
+four — the `charge.refunded` from the refund test was never delivered (Stripe
+does not deliver events to endpoints that weren't subscribed at emission time,
+and won't redeliver them after you subscribe):
+
+| Event | Handler does |
+|---|---|
+| `checkout.session.completed` | Kit/Pages/subscription grant (only when `payment_status ∈ {paid, no_payment_required}`) |
+| `customer.subscription.updated` / `.deleted` | plan state sync |
+| `invoice.payment_failed` | past-due flag |
+| `charge.refunded` (#271) | FULL refund → revoke Kit token / Pages credit; subscription → local cancel + free (Stripe-side cancel stays manual — watch `stripe_subscription_revoked_local_only`) |
+| `charge.dispute.created` (#271) | always revoke (fail-closed; 500 → Stripe retries) |
+| `checkout.session.async_payment_succeeded` / `_failed` (#271) | delayed methods settle → grant / mark `failed` |
+
+> ⚠️ **Order when re-creating this setup**: apply migration `20260712000002`
+> (adds the `refunded`/`failed` statuses) BEFORE subscribing the new events — a
+> `charge.refunded` arriving against the old CHECK constraint puts the webhook
+> into a retry loop. Partial refunds intentionally do NOT revoke.
+
 Remaining/optional:
 1. ~~Create Products → Prices~~ ✅ done (USD; the old €99/€149 plan is superseded).
 2. Brazil BRL + Pix/boleto Prices — **optional, future** (US-first launch; the
