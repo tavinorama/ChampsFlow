@@ -12,6 +12,7 @@
  */
 
 import { useState } from "react";
+import { trackEvent } from "./track";
 
 export type CheckoutPlan = "growth" | "agency";
 export type CheckoutInterval = "month" | "year";
@@ -58,6 +59,7 @@ export function useDirectCheckout() {
     if (loadingPlan !== null) return;
     setLoadingPlan(plan);
     setError(null);
+    trackEvent("plan_checkout_created", { plan, interval });
     try {
       const result = await fetchCheckoutUrl(plan, interval, email);
       if ("error" in result) {

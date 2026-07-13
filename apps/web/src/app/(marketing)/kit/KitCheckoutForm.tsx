@@ -11,6 +11,7 @@ import { useState, useEffect } from "react";
 import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
 import { useVerifiedEmail } from "../../../lib/use-verified-email";
 import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
+import { trackEvent } from "../../../lib/track";
 
 const DRAFT_KEY = "kit";
 
@@ -86,6 +87,7 @@ export function KitCheckoutForm() {
     if (!brand.trim() || !category.trim() || !email.trim() || busy) return;
     setBusy(true);
     setError("");
+    trackEvent("kit_checkout_created", { has_test: Boolean(testId) });
     try {
       const res = await fetch("/api/kit/checkout", {
         method: "POST",
