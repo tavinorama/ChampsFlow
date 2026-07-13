@@ -223,15 +223,20 @@ skipIfNoDb("Ozvor Pages generator — real-Postgres plumbing", () => {
 
     const realFetch = global.fetch;
     // Only the Anthropic endpoint is ever hit (no website → no crawl fetch).
-    const heroRewrite = [
-      { slug: "", headline: "STUBBED-LIVE-HEADLINE", subheadline: "stubbed subheadline from the model" },
-    ];
+    // The enrichment contract is {pages, faq_answers} (grounded-copy upgrade):
+    // pages carry hero rewrites; faq_answers (empty here) fill FAQ placeholders.
+    const llmResponse = {
+      pages: [
+        { slug: "", headline: "STUBBED-LIVE-HEADLINE", subheadline: "stubbed subheadline from the model" },
+      ],
+      faq_answers: [],
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.fetch = (async (url: any) => {
       const u = String(url);
       if (u.includes("api.anthropic.com")) {
         return new Response(
-          JSON.stringify({ content: [{ type: "text", text: JSON.stringify(heroRewrite) }] }),
+          JSON.stringify({ content: [{ type: "text", text: JSON.stringify(llmResponse) }] }),
           { status: 200, headers: { "content-type": "application/json" } }
         );
       }
