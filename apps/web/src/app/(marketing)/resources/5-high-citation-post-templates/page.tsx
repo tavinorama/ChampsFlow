@@ -933,7 +933,7 @@ export default function PostTemplatesPage() {
             }}
           >
             <Link
-              href="/#pricing"
+              href="/pricing"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -950,7 +950,7 @@ export default function PostTemplatesPage() {
               Start free — no credit card →
             </Link>
             <Link
-              href="/#pricing"
+              href="/pricing"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
