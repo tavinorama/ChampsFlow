@@ -32,6 +32,33 @@ lead outside both segments is a polite no — see disqualifiers below.
 Founder offer: **FOUNDER30** — 30% off, annual-only, first-100 with live
 verified count (no fake scarcity; the band hides the number when unverified).
 
+## The landing-page creation angle (Ozvor Pages)
+
+Pages is not "a website builder" — it is **the execution half of the audit**.
+Pitch it as: *the audit shows why AI doesn't cite you; Pages builds the pages
+that fix it.* Product truths we can claim (all shipped, verified in prod):
+
+- Generates a **5-page, AI-citable site** (home, services, about, FAQ, contact)
+  from the business's **real data only**: Google Business Profile rating,
+  reviews and photos (ToS-compliant, fetched fresh), a crawl of the existing
+  site, and authorized testimonials. **Never invented content** — generation
+  fails honestly rather than shipping filler (integrity gate, #122).
+- **Audit → rebuild loop**: open gaps from the brand's GEO audit feed the
+  generator, and the plan cards close automatically with evidence when the
+  page that fixes them is generated. This is the differentiator no template
+  builder has — say it exactly this way.
+- Published at a clean public URL with **consented lead capture** built in.
+- **Who buys via which door**: B-local → **$99 one-time** at /local-pages
+  ("site pronto que a IA consegue citar"); B-SaaS/e-com → **included with
+  Growth** (turn audit gaps into pages, no extra cost); A-agencies → fast
+  client deliverable inside an engagement (do NOT claim white-label for Pages
+  — white-label covers reporting; Pages white-label is not shipped).
+
+**Do not promise**: same-day social publishing (LinkedIn/Meta/Reddit
+connectors are per-user OAuth, off at platform level), page-speed superlatives
+(a /l/* performance pass is still queued), or citation guarantees (never,
+anywhere).
+
 ## Fast-qualification (2-minute test)
 
 Score with the full scorecard in playbook §2. Shortcut signals:

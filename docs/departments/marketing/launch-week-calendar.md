@@ -27,6 +27,7 @@ end-of-day ops comment (see launch-week-ops.md).
 | Tue 07-14 | Reply to every launch-post comment; DM warm engagers only | DM template (in linkedin-launch-posts.md) | 🧑 template approved once, then per-conversation judgment |
 | **Wed 07-15** | Post 2 — the agency angle | Post 2 | 🧑 |
 | Thu 07-16 | Short blog/case update: launch-week learnings (real numbers only) | new blog post (Hermes drafts, founder approves) | 🧑 |
+| Thu 07-16 | **Pages angle draft** — "the audit shows the gap, Pages builds the fix": local-services post pointing at /local-pages ($99 one-time) + Growth-includes-builder framing | Hermes drafts from [sales/icp.md → "landing-page creation angle"](../sales/icp.md); founder approves before any posting | 🧑 |
 | **Fri 07-17** | Post 3 — the evidence post (our own real score from /results) | Post 3 | 🧑 |
 | Sat–Sun | No publishing. Weekly report: what moved which metric | ops comment | — |
 
@@ -34,6 +35,9 @@ end-of-day ops comment (see launch-week-ops.md).
 
 - **Proof = the real dogfood audit** (/results). Never a fabricated screenshot,
   never an invented client story.
+- **Pages claims** follow the icp.md "landing-page creation angle" verbatim:
+  real-data generation + audit→rebuild loop are claimable; same-day social
+  publishing, page-speed superlatives and citation guarantees are NOT.
 - **Stats in copy** only from the sourced set in the sales playbook §1.
 - **Reddit**: listening + genuine manual participation only (#118 aging). No
   product plugs during launch week.
