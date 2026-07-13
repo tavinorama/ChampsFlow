@@ -38,6 +38,7 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { mrrForTier, arrFromMrr } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
+import { fetchOperatingCadence } from "../lib/cadence";
 import { normalizeCrmPatch } from "../lib/crm-validation";
 import { upsertCrmContact } from "../lib/crm";
 
@@ -342,6 +343,23 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
     } catch (err) {
       logger.error("operator_engagement_update_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGAGEMENT_UPDATE_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/v1/operator/cadence — the autonomous-loop brief: follow-ups due,
+  // new leads to triage, upsell targets, stale contacts. Hermes reads this to
+  // decide what to do, then acts via the write endpoints. Read-only.
+  // -------------------------------------------------------------------------
+  app.get("/api/v1/operator/cadence", businessKey, async (c) => {
+    try {
+      const cadence = await fetchOperatingCadence(db);
+      const key = c.get("apiKey");
+      logger.info("operator_cadence_accessed", { key_id: key.id, ...cadence.summary });
+      return c.json(cadence);
+    } catch (err) {
+      logger.error("operator_cadence_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CADENCE_FAILED" }, 500);
     }
   });
 
