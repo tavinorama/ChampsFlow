@@ -66,6 +66,7 @@ import {
   type StripeCancellationFeedback,
 } from "../integrations/stripe";
 import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
+import { ownerEmailForTenant } from "../lib/tenant-email";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
@@ -315,9 +316,15 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         current_period_end: string | null;
         cancel_at_period_end: boolean;
       }>(
+        // A tenant can have MORE THAN ONE subscription row over time (e.g. a
+        // canceled Growth sub plus a new active Agency sub). Without an ORDER BY,
+        // LIMIT 1 returns an arbitrary row — which showed the account as "free"
+        // while the DB was actually on the active paid plan. Prefer the ACTIVE
+        // subscription, then the most recent.
         `SELECT plan_tier, status, current_period_end, cancel_at_period_end
          FROM billing_subscriptions
          WHERE tenant_id = $1
+         ORDER BY (status = 'active') DESC, created_at DESC
          LIMIT 1`,
         [auth.tenantId]
       );
@@ -1444,10 +1451,18 @@ async function handleCheckoutSessionCompleted(
     // 100%-off subscription) fall back to the Stripe CUSTOMER's email so the
     // deliverables email is never silently skipped for a paying customer.
     const sess = session as Stripe.Checkout.Session;
-    const customerEmail =
+    let customerEmail =
       sess.customer_details?.email ??
       sess.customer_email ??
       (await retrieveCustomerEmail(sess.customer));
+
+    // Ultimate fallback: the account owner's email. A subscription grant always
+    // knows the tenant, so a $0 (100%-off) checkout with no email on the Stripe
+    // session OR customer still reaches the buyer. This is what silently skipped
+    // the Growth/Agency deliverables on the internal 100%-off tests.
+    if (!customerEmail) {
+      customerEmail = await ownerEmailForTenant(db, tenantId);
+    }
 
     // Derive billing interval from session metadata (set during checkout creation).
     const billingInterval =
