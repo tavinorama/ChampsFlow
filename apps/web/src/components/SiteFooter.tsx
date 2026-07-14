@@ -157,6 +157,7 @@ export function SiteFooter() {
                 ["Pricing", "/pricing"],
                 ["Ozvor Pages", "/local-pages"],
                 ["OrganicPosts", "/organicposts"],
+                ["Support", "/support"],
               ]}
             />
             <div>
@@ -172,6 +173,7 @@ export function SiteFooter() {
               >
                 <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
                 <FooterLink href="/terms-of-service">Terms of Service</FooterLink>
+                <FooterLink href="/refund">Refund Policy</FooterLink>
                 <FooterLink href="/legal/dpa">DPA</FooterLink>
                 <FooterLink href="/legal/sub-processors">Sub-processors</FooterLink>
                 <FooterLink href="/how-we-measure">How we measure</FooterLink>
