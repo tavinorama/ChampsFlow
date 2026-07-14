@@ -136,6 +136,25 @@ export function SiteFooter() {
             >
               We check: ChatGPT &middot; Claude &middot; Perplexity &middot; Gemini &middot; Google AI Overviews
             </p>
+            <div
+              style={{
+                margin: "0.9rem 0 0",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.45rem",
+              }}
+            >
+              <ClaudeMark size={16} />
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: "0.75rem",
+                  color: "var(--color-muted)",
+                }}
+              >
+                part of Claude for Startups!
+              </span>
+            </div>
           </div>
 
           {/* Link columns */}
@@ -208,6 +227,45 @@ export function SiteFooter() {
         </div>
       </div>
     </footer>
+  );
+}
+
+/**
+ * ClaudeMark — small inline Claude sunburst mark (clay), for the
+ * "part of Claude for Startups!" footer badge. Inlined (no external asset) so it
+ * respects the site CSP and never 404s. Approximation of the Claude mark; swap
+ * for the official SVG if/when the program provides a brand asset.
+ */
+function ClaudeMark({ size = 16 }: { size?: number }) {
+  const c = size / 2;
+  const inner = size * 0.13;
+  const outer = size * 0.46;
+  const rays = Array.from({ length: 11 }, (_, i) => {
+    const rad = ((i * 360) / 11 - 90) * (Math.PI / 180);
+    return (
+      <line
+        key={i}
+        x1={c + inner * Math.cos(rad)}
+        y1={c + inner * Math.sin(rad)}
+        x2={c + outer * Math.cos(rad)}
+        y2={c + outer * Math.sin(rad)}
+        stroke="#D97757"
+        strokeWidth={size * 0.11}
+        strokeLinecap="round"
+      />
+    );
+  });
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label="Claude"
+      style={{ flexShrink: 0, display: "block" }}
+    >
+      {rays}
+    </svg>
   );
 }
 
