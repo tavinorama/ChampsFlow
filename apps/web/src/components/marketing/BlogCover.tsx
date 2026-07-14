@@ -47,11 +47,14 @@ export function BlogCover({
   title,
   dek,
   variant = "hero",
+  titleId,
 }: {
   category: string;
   title: string;
   dek?: string;
   variant?: "hero" | "card";
+  /** id for the rendered <h1> (hero) — lets a page keep an aria-labelledby link. */
+  titleId?: string;
 }) {
   const isHero = variant === "hero";
 
@@ -101,7 +104,7 @@ export function BlogCover({
     >
       <div>
         {eyebrow}
-        {isHero ? <h1 style={titleStyle}>{title}</h1> : <h2 style={titleStyle}>{title}</h2>}
+        {isHero ? <h1 id={titleId} style={titleStyle}>{title}</h1> : <h2 style={titleStyle}>{title}</h2>}
         {isHero && dek && (
           <p
             style={{
