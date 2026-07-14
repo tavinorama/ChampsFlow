@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   memoryRateLimitAllow,
   __resetMemoryRateLimit,
+  __memoryRateLimitSize,
 } from "../../apps/api/src/lib/memory-rate-limit";
 
 beforeEach(() => {
@@ -57,5 +58,16 @@ describe("memoryRateLimitAllow", () => {
     expect(memoryRateLimitAllow("fresh", 2, windowMs, now)).toBe(true);
     expect(memoryRateLimitAllow("fresh", 2, windowMs, now + 1)).toBe(true);
     expect(memoryRateLimitAllow("fresh", 2, windowMs, now + 2)).toBe(false);
+  });
+
+  it("hard-bounds the store even under a flood of still-ACTIVE keys", () => {
+    // 12,000 distinct keys all hit WITHIN the same window (none expire) — the
+    // expired-prune can't help, so the oldest-eviction must hold the bound.
+    const windowMs = 1_000_000;
+    const t = 9_000_000;
+    for (let i = 0; i < 12_000; i++) {
+      memoryRateLimitAllow(`live:${i}`, 5, windowMs, t + i);
+    }
+    expect(__memoryRateLimitSize()).toBeLessThanOrEqual(10_000);
   });
 });
