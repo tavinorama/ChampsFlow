@@ -21,6 +21,7 @@ import {
   type VideoPost,
 } from "./posts";
 import { SoftCTA } from "../../../components/marketing/SoftCTA";
+import { BlogCover } from "../../../components/marketing/BlogCover";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
@@ -207,60 +208,16 @@ function ArticleCard({ post }: { post: ArticlePost }) {
           : "var(--shadow-card)",
       }}
     >
-      {/* Type tag */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-2)",
-          marginBottom: "var(--space-2)",
-        }}
+      {/* Branded Ozvor cover (the card's <h2> title lives inside it) */}
+      <Link
+        href={href}
+        style={{ textDecoration: "none", color: "inherit", display: "block", marginBottom: "var(--space-4)" }}
       >
-        {post.isPillar && (
-          <span
-            style={{
-              fontSize: "var(--font-size-caption)",
-              fontWeight: "var(--font-weight-medium)",
-              color: "var(--color-primary)",
-              fontFamily: "var(--font-family)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
-          >
-            Pillar article &middot; GEO guide
-          </span>
-        )}
-        {!post.isPillar && (
-          <span
-            style={{
-              display: "inline-block",
-              fontSize: "var(--font-size-caption)",
-              fontWeight: "var(--font-weight-medium)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
-          >
-            Article
-          </span>
-        )}
-      </div>
-
-      <Link href={href} style={{ textDecoration: "none", color: "inherit" }}>
-        <h2
-          style={{
-            fontSize: "var(--font-size-h2)",
-            fontWeight: "var(--font-weight-semibold)",
-            color: "var(--color-text)",
-            fontFamily: "var(--font-family)",
-            marginBottom: "var(--space-3)",
-            lineHeight: "var(--line-height-h2)",
-            marginTop: 0,
-          }}
-        >
-          {post.title}
-        </h2>
+        <BlogCover
+          variant="card"
+          category={post.isPillar ? "Pillar · GEO guide" : "GEO article"}
+          title={post.title}
+        />
       </Link>
 
       <p
