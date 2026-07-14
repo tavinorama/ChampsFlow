@@ -31,6 +31,7 @@ import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { sanitizeUserPrompt } from "../../../../packages/llm/src/prompt-sanitizer";
 import { logger } from "../../../../packages/shared/src/logger";
 import { clientIpOrUnknown } from "../lib/client-ip";
+import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -353,15 +354,26 @@ export function registerChatRoutes(app: Hono): void {
     }
 
     // -------------------------------------------------------------------------
-    // Rate limiting — sliding window per IP (fail-open on Redis error)
+    // Rate limiting — sliding window per IP. Chat calls a paid LLM and has NO
+    // monthly-budget backstop (unlike the free test), so a Redis outage must
+    // NOT drop the cap entirely (fail-open = unbounded provider cost, #261).
+    // On Redis error we fall back to a bounded in-process limiter: still capped,
+    // just per-instance and best-effort until Redis recovers.
     // -------------------------------------------------------------------------
     let rateLimitAllowed = true;
     try {
       rateLimitAllowed = await checkChatRateLimit(ipTruncated);
     } catch (err) {
-      // Redis unavailable — fail open (log warning, continue without rate limiting)
-      logger.warn("chat_rate_limit_redis_unavailable", {
+      // Redis unavailable — fail *bounded*, not open.
+      rateLimitAllowed = memoryRateLimitAllow(
+        `chat_msg:${ipTruncated}`,
+        RATE_LIMIT_REQUESTS,
+        RATE_LIMIT_WINDOW_MS,
+      );
+      logger.warn("chat_rate_limit_redis_unavailable_fallback", {
         message: (err as Error).message,
+        fallback: "memory",
+        allowed: rateLimitAllowed,
       });
     }
 

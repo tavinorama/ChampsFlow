@@ -40,6 +40,7 @@ import { enrollNurture } from "./nurture";
 import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/free-test-result";
 import { signedDownloadUrl } from "../../../../packages/shared/src/download-token";
 import { clientIp } from "../lib/client-ip";
+import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -184,14 +185,26 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       logger.warn("free_test_dedupe_check_failed_open", { message: (err as Error).message });
     }
 
-    // Rate limit: 8 free tests / hour / IP (fail-open on Redis error)
+    // Rate limit: 8 free tests / hour / IP. On Redis error, fall back to a
+    // bounded in-process limiter instead of failing fully open (#261) — the
+    // monthly budget cap below is the hard backstop, this keeps the per-IP cap
+    // roughly in force during a Redis blip too.
     const rawIp = clientIp(c);
     const ipTruncated = rawIp ? truncateIpForRateLimit(rawIp) : "unknown";
     let rateLimitAllowed = true;
     try {
       rateLimitAllowed = await checkTestRateLimit(ipTruncated);
     } catch (err) {
-      logger.warn("test_rate_limit_redis_unavailable", { message: (err as Error).message });
+      rateLimitAllowed = memoryRateLimitAllow(
+        `test_rl:${ipTruncated}`,
+        TEST_RATE_LIMIT,
+        TEST_RATE_WINDOW_MS,
+      );
+      logger.warn("test_rate_limit_redis_unavailable_fallback", {
+        message: (err as Error).message,
+        fallback: "memory",
+        allowed: rateLimitAllowed,
+      });
     }
     if (!rateLimitAllowed) {
       return c.json(
