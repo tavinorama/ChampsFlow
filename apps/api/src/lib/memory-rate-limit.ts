@@ -31,15 +31,24 @@ const MAX_KEYS = 10_000;
 const store = new Map<string, number[]>();
 
 /**
- * Drop keys whose most recent hit is older than `windowMs` (all their
- * timestamps are guaranteed expired). Called when the store grows past
- * MAX_KEYS so memory stays bounded even under a distinct-key flood.
+ * Keep the store within MAX_KEYS. First drop keys whose most recent hit is
+ * older than `windowMs` (all their timestamps are guaranteed expired). If a
+ * flood of still-active keys keeps us over the cap, evict the oldest-inserted
+ * keys (Map preserves insertion order) until within bound — a HARD guarantee,
+ * not best-effort. Evicting a live key just resets that IP's degraded-mode
+ * counter, which is acceptable for an outage backstop.
  */
-function pruneExpired(now: number, windowMs: number): void {
+function enforceKeyBound(now: number, windowMs: number): void {
   const cutoff = now - windowMs;
   for (const [key, hits] of store) {
     const last = hits[hits.length - 1];
     if (last === undefined || last <= cutoff) store.delete(key);
+  }
+  if (store.size <= MAX_KEYS) return;
+  let toEvict = store.size - MAX_KEYS;
+  for (const key of store.keys()) {
+    store.delete(key);
+    if (--toEvict <= 0) break;
   }
 }
 
@@ -57,20 +66,33 @@ export function memoryRateLimitAllow(
   windowMs: number,
   now: number = Date.now(),
 ): boolean {
-  const cutoff = now - windowMs;
-  const prev = store.get(key);
-  const recent = prev ? prev.filter((t) => t > cutoff) : [];
-  recent.push(now);
-  store.set(key, recent);
+  try {
+    const cutoff = now - windowMs;
+    const prev = store.get(key);
+    const recent = prev ? prev.filter((t) => t > cutoff) : [];
+    recent.push(now);
+    store.set(key, recent);
 
-  // Bound memory: once we exceed the cap, drop fully-expired keys. This runs
-  // rarely (only past the threshold) so it is not on the hot path per request.
-  if (store.size > MAX_KEYS) pruneExpired(now, windowMs);
+    // Bound memory: once we exceed the cap, prune + evict. Runs rarely (only
+    // past the threshold) so it is not on the hot path per request.
+    if (store.size > MAX_KEYS) enforceKeyBound(now, windowMs);
 
-  return recent.length <= limit;
+    return recent.length <= limit;
+  } catch {
+    // The limiter must NEVER crash the request it is protecting. If anything
+    // unexpected throws, deny (fail-closed): we are already in the degraded,
+    // Redis-down path, so a broken fallback must not silently become fail-open
+    // on a cost-bearing endpoint. Denying sheds load; it never leaks cost.
+    return false;
+  }
 }
 
 /** Test-only: wipe all counters so cases don't leak state into each other. */
 export function __resetMemoryRateLimit(): void {
   store.clear();
+}
+
+/** Test-only: current number of tracked keys (to assert the MAX_KEYS bound). */
+export function __memoryRateLimitSize(): number {
+  return store.size;
 }
