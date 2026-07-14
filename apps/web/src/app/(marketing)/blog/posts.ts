@@ -80,6 +80,16 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "why-your-business-isnt-in-chatgpt-answers",
+    title: "Why Your Business Isn't in ChatGPT's Answers (And the 3 Places It Actually Looks)",
+    excerpt:
+      "Nearly half of shoppers now start their search inside an AI tool, not Google. It names two or three businesses, not ten links. Here are the three places it looks, and how to show up in each.",
+    readTime: "4 min read",
+    publishedAt: "2026-07-14",
+    publishedAtDisplay: "14 July 2026",
+  },
+  {
+    type: "article",
     slug: "what-is-generative-engine-optimization",
     title: "What Is Generative Engine Optimization (GEO)? A Plain-English 2026 Field Guide",
     excerpt:
