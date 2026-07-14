@@ -130,7 +130,7 @@ Consolidated from PRD §7 + architecture §4. Full lawful basis map at Gate 2→
 Architecture §13 documents the full DSR workflow. Assessment below verifies GDPR and CCPA/CPRA compliance in design.
 
 **Right to access (Art. 15 / CCPA § 1798.110):**
-- Intake: public `/privacy/dsr` form + `POST /api/dsr` (no login required).
+- Intake: public `/legal/dsr-request` form + `POST /api/dsr` (no login required). The historical `/privacy/dsr` path issues a permanent redirect to `/legal/dsr-request` (next.config.js) so previously-published portal links resolve.
 - Identity verification: email OTP (10-minute expiry) sent to requester-provided email. Proportionate — email OTP is the lowest-friction verification method appropriate for this service type and avoids over-collection (no government ID requested).
 - Fulfillment: all tables queried by user_id; OAuth tokens exported as presence-only (token exists: yes/no, scope, connected_at) — decrypted token never included in export. IP addresses redacted in export (minimization on export). Generation log included (prompt inputs and outputs, as per Art. 15(1)(h) logic for automated processing). Delivered to verified email.
 - SLA: 30 days from receipt (GDPR Art. 12(3)); 45 days (CCPA § 1798.130). Alert fires at day 25 (architecture §10 observability).

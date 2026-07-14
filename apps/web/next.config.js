@@ -80,6 +80,27 @@ const nextConfig = {
     ];
   },
 
+  // Permanent redirects for legacy / promised URLs.
+  // /privacy/dsr was published in our compliance records (ROPA/DPIA) as the
+  // public DSR intake portal, but the implemented public form lives at
+  // /legal/dsr-request — so the promised URL 404'd (Hermes daily brief
+  // 2026-07-14, B4). Redirect it (and the shorter /privacy/dsr-request alias)
+  // to the real form so any regulator- or policy-facing link resolves.
+  async redirects() {
+    return [
+      {
+        source: "/privacy/dsr",
+        destination: "/legal/dsr-request",
+        permanent: true,
+      },
+      {
+        source: "/privacy/dsr-request",
+        destination: "/legal/dsr-request",
+        permanent: true,
+      },
+    ];
+  },
+
   // Proxy API calls to the Hono API server. Next.js route handlers under
   // src/app/api/* (e.g. /api/waitlist) take precedence over rewrites, so this
   // catch-all only forwards the routes that DON'T have a local handler

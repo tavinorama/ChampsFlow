@@ -75,7 +75,7 @@
 
 ## Data Subject Rights — Operational Handling
 
-- **Intake portal**: `/privacy/dsr` (public, no login required)
+- **Intake portal**: `/legal/dsr-request` (public, no login required). Legacy `/privacy/dsr` permanently redirects here (next.config.js).
 - **SLA**: 30 days from receipt (GDPR Art. 12(3)); extendable to 60 days with notice. CCPA: 45 days. LGPD: ANPD has not specified a statutory deadline beyond "without undue delay" — align to GDPR 30-day standard.
 - **Identity verification**: Email OTP (10-minute expiry). Proportionate for service type.
 - **ANPD complaint right**: Disclosed in Privacy Policy and DSR intake page (Gate 7 action).
