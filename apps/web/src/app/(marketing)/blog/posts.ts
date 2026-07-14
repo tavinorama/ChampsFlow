@@ -64,7 +64,7 @@ export const POSTS: Post[] = [
   },
   {
     type: "video",
-    slug: "trustindex-ai-audit-walkthrough",
+    slug: "ozvor-audit-walkthrough",
     title: "Ozvor Audit Walkthrough — See Your Brand Through AI's Eyes",
     excerpt:
       "A product demo walking through a live Ozvor audit: running the brand scan across ChatGPT, Claude, Perplexity, and Gemini; reading the Ozvor AI Visibility Score; and understanding the GEO action plan.",
