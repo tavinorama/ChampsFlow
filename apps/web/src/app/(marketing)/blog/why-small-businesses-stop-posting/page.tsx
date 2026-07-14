@@ -23,6 +23,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { BlogCover } from "../../../../components/marketing/BlogCover";
 import { DirectCheckoutButton } from "../../../../components/marketing/DirectCheckoutButton";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
@@ -204,35 +205,15 @@ export default function BlogPost1Page() {
           padding: "var(--space-12) var(--space-4) var(--space-16) var(--space-4)",
         }}
       >
-        {/* Article header */}
+        {/* Article header — branded Ozvor cover (holds the <h1>) + byline */}
         <header style={{ marginBottom: "var(--space-8)" }}>
-          <p
-            style={{
-              fontSize: "var(--font-size-caption)",
-              color: "var(--color-muted)",
-              fontFamily: "var(--font-family)",
-              marginBottom: "var(--space-3)",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              fontWeight: "var(--font-weight-medium)",
-            }}
-          >
-            Social Media Marketing
-          </p>
-          <h1
-            id="blog-post-1-heading"
-            style={{
-              fontSize: "clamp(1.5rem, 4vw, 2.25rem)",
-              fontWeight: "var(--font-weight-bold)",
-              color: "var(--color-text)",
-              fontFamily: "var(--font-family)",
-              lineHeight: 1.2,
-              marginBottom: "var(--space-4)",
-            }}
-          >
-            Why Small Businesses Stop Posting on Social Media (And What
-            Actually Fixes It)
-          </h1>
+          <BlogCover
+            variant="hero"
+            titleId="blog-post-1-heading"
+            category="Social Media Marketing"
+            title="Why Small Businesses Stop Posting on Social Media (And What Actually Fixes It)"
+            dek="It is not a discipline problem. It is a structural one, and the tools most people reach for were not built to solve it."
+          />
           <div
             style={{
               display: "flex",
@@ -241,6 +222,7 @@ export default function BlogPost1Page() {
               fontSize: "var(--font-size-caption)",
               color: "var(--color-muted)",
               fontFamily: "var(--font-family)",
+              marginTop: "var(--space-4)",
             }}
           >
             <span>Ozvor</span>

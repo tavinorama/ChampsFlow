@@ -99,6 +99,73 @@ const S = {
 // ---------------------------------------------------------------------------
 
 export const BLOG_CONTENT: BlogContent[] = [
+  // 0 ───────────────────────────────────────────────────────────────────────
+  {
+    slug: "why-your-business-isnt-in-chatgpt-answers",
+    title: "Why Your Business Isn't in ChatGPT's Answers (And the 3 Places It Actually Looks)",
+    dek: "Nearly half of shoppers now start their search inside an AI tool, not Google. It names two or three businesses, not ten links. Here are the three places it looks, and how to show up in each.",
+    category: "GEO Playbook",
+    datePublished: "2026-07-14",
+    dateDisplay: "14 July 2026",
+    readTime: "4 min read",
+    keywords: ["ChatGPT citations", "AI search visibility", "GEO", "get cited by AI", "Reddit AI citations", "LinkedIn AI visibility"],
+    takeaways: [
+      "AI hands back a name, not ten links. ChatGPT recommends only about 1.2% of local businesses, and roughly five brands per category get named again and again.",
+      "Three sources you can actually influence: Reddit and Q&A threads, your own LinkedIn, and third-party review profiles.",
+      "A Princeton / Georgia Tech / Allen Institute study (KDD 2024) found quotations (+41%), statistics (+33%) and cited sources (+28%) raise visibility. Keyword stuffing (-8.7%) is the one tactic that backfires.",
+      "The sources AI pulls from shift month to month, so treat getting named as a habit, not a one-time fix.",
+    ],
+    body: [
+      { t: "p", text: "You still rank on Google. You did everything the SEO agency asked. And the phone rings less." },
+      { t: "p", text: "Here is why. Nearly half of shoppers now start or split their search inside an AI tool, not Google. Bain puts it at 44%. And AI does not hand back ten blue links. ChatGPT names two or three businesses. If you are not one of them, you lost the customer before they knew you existed." },
+      { t: "cite", text: S.bain },
+      { t: "p", text: "The good news: getting named is a skill, not luck. Let us look at the three places AI actually looks, and how to show up in each." },
+
+      { t: "h2", id: "shortlist", text: "First, understand the shortlist" },
+      { t: "p", text: "Google gives you ten links. AI gives you a name. Maybe two." },
+      { t: "p", text: "ChatGPT recommends only about **1.2% of local businesses** when someone asks. Across repeated questions, only about **five brands per category** get named again and again. Roughly **72%** of businesses sit in a long tail the AI almost never mentions." },
+      { t: "cite", text: `${S.soci}; ${S.repeatRuns}` },
+      { t: "p", text: "This is winner-take-most. A few names take the leads. Everyone else is invisible. So the goal is not to \"rank higher.\" It is to get named. Where does AI find those names? Three places you can actually influence." },
+
+      { t: "h2", id: "reddit", text: "Place 1: Reddit and Q&A threads" },
+      { t: "p", text: "Reddit is the single most-cited source across major AI engines: **3.11% of all citations**, ahead of YouTube and Wikipedia. It is number one on Perplexity and number two on ChatGPT." },
+      { t: "cite", text: S.profound },
+      { t: "p", text: "Quora matters too. It is the fourth most-cited source in Google's AI Mode, showing up in about **1 in 14** answers." },
+      { t: "cite", text: S.semrushDomains },
+      { t: "p", text: "What to do: find the threads where people ask for a business like yours. Answer honestly and usefully. Do not spam links. Share real experience. AI reads these threads, and it remembers who gave the clearest answer." },
+
+      { t: "h2", id: "linkedin", text: "Place 2: your own LinkedIn" },
+      { t: "p", text: "You control this one, and it punches above its weight. LinkedIn is roughly the **number two most-cited domain**, with an average citation rate near **11%**." },
+      { t: "cite", text: S.semrushLinkedin },
+      { t: "p", text: "Here is the part that kills the excuse that you do not have a big following. The median cited LinkedIn post had just **15 to 25 reactions** and one comment or fewer. About 95% was original content. You do not need to go viral. You need to be clear and useful. Post the answer to a question your customers actually ask, and do it consistently." },
+
+      { t: "h2", id: "reviews", text: "Place 3: third-party review profiles" },
+      { t: "p", text: "When AI vets a local business, it checks reviews. Profiles like G2, Capterra, and your industry's directories feed those answers." },
+      { t: "p", text: "Being present on more than one review platform helps. It gives AI more than one source that says you are real and trusted. A single profile is a thin signal. Several is a pattern. So claim your profiles, keep them current, and ask happy customers to leave honest reviews across the platforms your buyers trust." },
+
+      { t: "h2", id: "earns-citation", text: "What actually earns the citation" },
+      { t: "p", text: "This is not guesswork. There is an academic spine. A peer-reviewed study from Princeton, Georgia Tech, and the Allen Institute for AI (KDD 2024) tested nine tactics across 10,000 real queries. The results are clear:" },
+      { t: "ul", items: [
+        "Add a credible quotation: up to **+41%** visibility.",
+        "Add a concrete statistic: **+33%**.",
+        "Cite authoritative sources: **+28%** on average, and up to +115% for an underdog page.",
+        "Keyword stuffing: **-8.7%**. It is the one tactic that backfired.",
+      ] },
+      { t: "cite", text: S.geoPaper },
+      { t: "p", text: "Read that last line again. The old SEO trick of stuffing in keywords actively hurts you with AI. AI rewards the opposite: useful, well-sourced, current answers. That is a field a small business can win." },
+
+      { t: "h2", id: "faq", text: "A quick FAQ" },
+      { t: "p", text: "**Does ChatGPT always search the live web?** No. A lot of its answers come from what it already learned in training. That is why steady presence over time beats one big push." },
+      { t: "p", text: "**Do I need to go viral?** No. Remember the 15 to 25 reaction median. Useful beats loud." },
+      { t: "p", text: "**How fast does this change?** Fast. The sources AI pulls from shift month to month, so a one-time fix does not hold. Treat it like a habit, not a project." },
+      { t: "cite", text: S.semrushDomains },
+
+      { t: "h2", id: "start", text: "Start with what AI says about you today" },
+      { t: "p", text: "You cannot fix what you cannot see. The first step is simple: find out how ChatGPT, Gemini, and Perplexity describe your business right now. Ozvor runs that check for you, shows how AI reads your brand, and gives you the plan to get named." },
+    ],
+    sources: [S.bain, S.soci, S.repeatRuns, S.profound, S.semrushDomains, S.semrushLinkedin, S.geoPaper],
+  },
+
   // 1 ───────────────────────────────────────────────────────────────────────
   {
     slug: "what-is-generative-engine-optimization",
