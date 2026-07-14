@@ -15,6 +15,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { BLOG_CONTENT, findBlogContent, type Block } from "../_content";
 import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { BlogCover } from "../../../../components/marketing/BlogCover";
 import { SITE_URL } from "../../../../lib/site";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
@@ -204,18 +205,10 @@ export default async function BlogArticlePage({
       <article style={{ maxWidth: "720px", margin: "0 auto", padding: "var(--space-12) var(--space-4) var(--space-16)" }}>
         <Link href="/blog" style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600 }}>← The Blog</Link>
 
-        {/* Header */}
+        {/* Header — branded Ozvor cover (the <h1> lives inside it) + byline */}
         <header style={{ margin: "var(--space-5) 0 var(--space-6)" }}>
-          <span style={{ display: "inline-block", fontSize: "var(--font-size-caption)", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-primary)", marginBottom: "var(--space-3)" }}>
-            {post.category}
-          </span>
-          <h1 style={{ fontSize: "clamp(1.9rem, 4.5vw, 2.7rem)", fontWeight: 800, color: "var(--color-text)", fontFamily: "var(--font-family)", lineHeight: 1.12, letterSpacing: "-0.03em", margin: "0 0 var(--space-4)", textWrap: "balance" }}>
-            {post.title}
-          </h1>
-          <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-4)", maxWidth: "62ch" }}>
-            {post.dek}
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600 }}>
+          <BlogCover variant="hero" category={post.category} title={post.title} dek={post.dek} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600, marginTop: "var(--space-4)" }}>
             <span>Ozvor Research</span>
             <span aria-hidden="true">·</span>
             <time dateTime={post.datePublished}>{post.dateDisplay}</time>
