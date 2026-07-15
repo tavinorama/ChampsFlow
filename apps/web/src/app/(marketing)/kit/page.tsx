@@ -41,8 +41,8 @@ const kitJsonLd = {
 };
 
 const PARTS: { tag: string; t: string; items: string[] }[] = [
-  { tag: "Part 1", t: "Full audit + your Ozvor AI Visibility Score", items: ["Your score across all 5 engines", "Your top 3 highest-impact fixes", "Head-to-head vs your main competitor"] },
-  { tag: "Part 2", t: "3 ready-to-publish drafts", items: ["1 blog post (with schema)", "1 LinkedIn proof post", "1 FAQ block for your site"] },
+  { tag: "Part 1", t: "Full audit + your Ozvor AI Visibility Score", items: ["Your score across all 5 engines", "Your top 3 highest-impact fixes", "See exactly where AI already mentions you."] },
+  { tag: "Part 2", t: "3 structured drafts, built to finish fast", items: ["1 blog post (with schema)", "1 LinkedIn proof post", "1 FAQ block for your site"] },
   { tag: "Bonus", t: "Plain-English GEO guide (PDF)", items: ["Why AI cites what it cites", "A publish checklist", "Your 30-day re-test plan"] },
 ];
 
@@ -63,10 +63,10 @@ export default function KitPage() {
       {/* Hero */}
       <span className="kit-eyebrow">Step 2 · $29 one-time</span>
       <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
-        The Get-Cited Kit &mdash; your audit + 3 fixes, $29.
+        The Get-Cited Kit. Your audit plus 3 fixes, $29.
       </h1>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: 0 }}>
-        The Kit gives you a full audit and your Ozvor AI Visibility Score. You get your top 3 citation fixes and 3 ready-to-publish drafts. Plus a plain-English GEO guide and a 30-day re-test plan. No subscription. We guarantee the deliverable, never AI outcomes. If your 3 drafts aren&rsquo;t publish-ready in about 10 minutes, we refund the $29.
+        The Kit gives you a full audit and your Ozvor AI Visibility Score. You get your top 3 citation fixes. You also get 3 structured drafts, built to finish fast: a blog post, a LinkedIn post, and an FAQ, each with your top fixes baked in. Plus a plain-English GEO guide and a 30-day re-test plan. No subscription. We guarantee the deliverable, never AI outcomes. If your 3 drafts aren&rsquo;t ready to finish in about 10 minutes, we refund the $29.
       </p>
 
       {/* Three deliverable cards */}

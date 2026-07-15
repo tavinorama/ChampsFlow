@@ -47,7 +47,7 @@ const TUTORIALS: Tutorial[] = [
     steps: [
       "Enter your website, brand, category, and a competitor.",
       "Add your email — your results are saved to it so you can pick up where you left off.",
-      "Click Run. Ozvor queries ChatGPT, Claude, Perplexity, Gemini and Google AI Overview live.",
+      "Click Run. Ozvor checks your brand across all five AI engines and shows what it finds.",
       "Read your Ozvor AI Visibility Score, the exact buyer prompt asked, and which engines cited you vs your competitor.",
     ],
     cta: "Run the free test →",
@@ -71,7 +71,7 @@ const TUTORIALS: Tutorial[] = [
     title: "Benchmark your competitors",
     desc: "See exactly where AI recommends someone else instead of you.",
     steps: [
-      "Add up to three competitors to your brand.",
+      "Add a competitor to your brand. Paid plans track up to ten.",
       "Per engine, see whether AI cited you, a competitor, or neither — and at what position.",
       "The gap is where they win: that is what the recommended fixes target first.",
     ],
@@ -111,7 +111,7 @@ const TUTORIALS: Tutorial[] = [
     steps: [
       "Growth re-runs your full audit every week automatically.",
       "Watch your score trend and citation-share change over time.",
-      "Get alerted when your score or a competitor's position moves.",
+      "Check your dashboard each week for score and position changes.",
       "Pull the next week's work from the Fix queue and repeat.",
     ],
     cta: "See the plans →",

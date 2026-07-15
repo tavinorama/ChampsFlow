@@ -110,10 +110,9 @@ export default function AgenciesPage() {
           Reports your clients can verify.
         </h2>
         <p style={{ margin: 0, color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "720px" }}>
-          Every number in an Ozvor report is measured live. We use real prompts and real engines, with repeated
-          probes. Your client can click into the per-answer evidence. When an engine can&rsquo;t be measured, the report
-          says so. We never invent a score. That&rsquo;s a strange thing to brag about — until a client asks
-          &ldquo;where does this number come from?&rdquo; Then you have an answer. <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600, textDecoration: "none" }}>Read the public methodology →</Link>
+          Every score in an Ozvor report comes from real prompts and real engines. When an engine cannot be
+          measured, the report says so. AI answers can change from day to day. We label every number measured or
+          baseline, never invented. <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600, textDecoration: "none" }}>Read the public methodology →</Link>
         </p>
       </section>
 

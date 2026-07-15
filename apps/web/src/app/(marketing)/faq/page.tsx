@@ -102,8 +102,8 @@ const GROUPS: FaqGroup[] = [
       {
         q: "What's included in Growth ($99/mo)?",
         aText:
-          "Growth checks all 5 AIs every week. You get a monthly content plan. Plus a free Ozvor Pages site. You can track up to 5 competitors.",
-        a: "Growth checks all 5 AIs every week. You get a monthly content plan. Plus a free Ozvor Pages site. You can track up to 5 competitors.",
+          "Growth checks all 5 AIs every week. You get a monthly content plan. Plus a free Ozvor Pages site. You can track up to 10 competitors.",
+        a: "Growth checks all 5 AIs every week. You get a monthly content plan. Plus a free Ozvor Pages site. You can track up to 10 competitors.",
       },
       {
         q: "What's included in Agency ($249/mo)?",

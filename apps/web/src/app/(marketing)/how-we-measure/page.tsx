@@ -279,7 +279,7 @@ export default function HowWeMeasurePage() {
               margin: "0 0 var(--space-4) 0",
             }}
           >
-            Sourced entirely from live probes across 5 AI engines.
+            Sourced from live probes across 5 AI engines whenever provider access is connected.
           </p>
 
           <div>
@@ -464,9 +464,9 @@ export default function HowWeMeasurePage() {
                 paddingLeft: "var(--space-1)",
               }}
             >
-              Are your pages marked up with standard structured data? Standard SEO hygiene
-              — Google&rsquo;s 2026 documentation confirms no &ldquo;special AI schema&rdquo;
-              is required.
+              Are your pages marked up with standard structured data? Standard schema markup
+              helps AI engines understand your pages. No special AI-only schema is required, per
+              current SEO guidance.
             </p>
 
             <div style={inputRowStyle}>
@@ -843,7 +843,7 @@ export default function HowWeMeasurePage() {
           >
             <thead>
               <tr style={{ backgroundColor: "var(--color-surface-muted)", textAlign: "left" }}>
-                <th scope="col" style={{ ...thStyle, color: "var(--color-success)" }}>Measured now</th>
+                <th scope="col" style={{ ...thStyle, color: "var(--color-success)" }}>Live once your API keys connect</th>
                 <th scope="col" style={{ ...thStyle, color: "var(--color-muted)" }}>Still on the roadmap</th>
               </tr>
             </thead>

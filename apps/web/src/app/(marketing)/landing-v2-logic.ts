@@ -376,7 +376,7 @@ export function kitSim(playing: boolean, tick: number): KitSimState {
 // Section 2 — bullet copy (verbatim from the design handoff).
 // ---------------------------------------------------------------------------
 export const SCORE_BULLETS = [
-  "We ask all 5 AIs about your brand. Real questions, real answers.",
+  "Once connected, we ask all 5 AIs about your brand. Then we show exactly what they say.",
   "You see who the AI names instead of you.",
   "You get a simple to-do list. Fix this first. Then this.",
 ] as const;
@@ -395,7 +395,7 @@ export const FAQS = [
   },
   {
     q: "Is the audit data real?",
-    a: "Yes. Real questions to real engines. If we can't measure something, we say so. We never make up a result.",
+    a: "Yes, when live. We send real prompts to real engines once they are connected. If a result cannot be measured yet, we label it and never fake it.",
   },
 ] as const;
 

@@ -5,7 +5,7 @@
  *  1. Hero
  *  2. Four-move walkthrough — 01/02/03 emerald (Audit · Benchmark · Plan & publish)
  *     + 04 GOLD "Monitor — or hand it to us" → OrganicPosts (the ladder summit)
- *  3. "What your Ozvor AI Visibility Score is made of" — AI / Performance / Brand sub-scores
+ *  3. "What your Ozvor AI Visibility Score is made of" — Visibility / Citation Readiness / Execution sub-scores
  *  4. CTA → free test
  */
 
@@ -17,7 +17,7 @@ import { safeJsonLd } from "../../../lib/safe-json-ld";
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
   description:
-    "We check: ChatGPT · Claude · Perplexity · Gemini · Google AI Overviews. See who AI recommends instead of you. Get your GEO plan, publish the fix, then monitor — or hand it to OrganicPosts.",
+    "We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews once they are connected. Results can vary by engine and day. See who AI recommends instead of you. Get your GEO plan, publish the fix, then monitor, or hand it to OrganicPosts.",
   alternates: { canonical: "https://ozvor.com/how-it-works" },
   openGraph: {
     title: "How Ozvor Works — From invisible to cited in four moves",
@@ -41,7 +41,7 @@ const howToJsonLd = {
   "@type": "HowTo",
   name: "How Ozvor gets your brand cited by AI",
   step: [
-    { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews. Record whether you're cited." },
+    { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews once they are connected. Results can vary by engine and day. Record whether you're cited." },
     { "@type": "HowToStep", position: 2, name: "Benchmark", text: "See who AI recommends instead of you, and the sources it trusts." },
     { "@type": "HowToStep", position: 3, name: "Plan & publish", text: "Get a GEO content plan. Content Studio drafts the fix you publish." },
     { "@type": "HowToStep", position: 4, name: "Monitor", text: "Re-run weekly. Track your Ozvor AI Visibility Score — or hand the engagement to OrganicPosts." },
@@ -52,7 +52,7 @@ const STEPS: { num: string; title: string; body: string }[] = [
   {
     num: "01",
     title: "Audit",
-    body: "We ask the real buyer questions your customers ask. We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews. Then we record whether you're named, where you rank, and how you're described.",
+    body: "We ask the real buyer questions your customers ask. We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews once they are connected. Results can vary by engine and day. Then we record whether you're named, where you rank, and how you're described.",
   },
   {
     num: "02",
@@ -62,14 +62,14 @@ const STEPS: { num: string; title: string; body: string }[] = [
   {
     num: "03",
     title: "Plan & publish",
-    body: "Get a GEO content plan, ranked by impact. Content Studio drafts the posts, schema, and answers that earn the citation. You review and publish — nothing goes live without your say-so.",
+    body: "Get a GEO content plan, ranked by impact. Content Studio drafts posts and schema built to earn citations. Results are not guaranteed. You review and publish. Nothing goes live without your say-so.",
   },
 ];
 
-const VECTORS: { label: string; weight: string; score: number; body: string }[] = [
-  { label: "AI", weight: "35%", score: 58, body: "How often AI engines cite you, where you rank in the answer, and how positively you're described." },
-  { label: "Performance", weight: "35%", score: 71, body: "Citation share vs competitors, Google AI Overview presence, schema coverage, and AI-crawler access." },
-  { label: "Brand", weight: "30%", score: 49, body: "Entity authority — Wikidata/Wikipedia consistency, off-site presence (Reddit, G2), and on-site E-E-A-T." },
+const VECTORS: { label: string; score: number; body: string }[] = [
+  { label: "Visibility", score: 58, body: "How often AI engines name you, where you rank in the answer, and how positively you're described." },
+  { label: "Citation Readiness", score: 71, body: "Whether engines can read and trust your site. Schema coverage, AI-crawler access, and source authority." },
+  { label: "Execution", score: 49, body: "How many ranked fixes from your GEO plan you have shipped." },
 ];
 
 const PAGE_CSS = `
@@ -164,7 +164,7 @@ export default function HowItWorksPage() {
 
       {/* Score breakdown */}
       <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="score-made-of">
-        <span className="hiw-eyebrow">The Ozvor method · AI × Brand × Performance</span>
+        <span className="hiw-eyebrow">The Ozvor method · Visibility × Citation Readiness × Execution</span>
         <h2 id="score-made-of" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-3) 0 var(--space-6)" }}>
           What your Ozvor AI Visibility Score is made of.
         </h2>
@@ -173,7 +173,6 @@ export default function HowItWorksPage() {
             <div key={v.label} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
                 <h3 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 800, color: "var(--color-text)" }}>{v.label}</h3>
-                <span className="hiw-num" style={{ color: "var(--color-accent-ink)" }}>{v.weight}</span>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)", margin: "var(--space-3) 0" }}>
                 <span style={{ fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.03em" }}>{v.score}</span>
