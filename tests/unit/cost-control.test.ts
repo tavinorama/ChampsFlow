@@ -27,7 +27,7 @@
  * below returns its response strictly before that point.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -71,7 +71,10 @@ import {
   PAGES_REGEN_FEATURE,
   LIFETIME_PERIOD_START,
 } from "../../apps/api/src/routes/landing";
-import { resolvePlatformAnthropicKey } from "../../apps/worker/src/jobs/landing-generate";
+import {
+  resolvePlatformAnthropicKey,
+  resolvePlatformPagesKey,
+} from "../../apps/worker/src/jobs/landing-generate";
 
 // ---------------------------------------------------------------------------
 // 1. PLAN_LIMITS shape — single source of truth (#217 design matrix)
@@ -318,6 +321,63 @@ describe("resolvePlatformAnthropicKey", () => {
     expect(src).not.toContain("resolveClientProviderKey");
     expect(src).toContain("ANTHROPIC_API_KEY");
     expect(src).toContain("resolvePlatformAnthropicKey");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePlatformPagesKey — Ozvor Pages is OpenAI-first (cost + quality) with
+// an Anthropic fallback; OZVOR_PAGES_PROVIDER forces one provider.
+// ---------------------------------------------------------------------------
+
+describe("resolvePlatformPagesKey", () => {
+  const origOpenai = process.env["OPENAI_API_KEY"];
+  const origAnthropic = process.env["ANTHROPIC_API_KEY"];
+  const origForce = process.env["OZVOR_PAGES_PROVIDER"];
+
+  function restore(name: string, val: string | undefined) {
+    if (val === undefined) delete process.env[name];
+    else process.env[name] = val;
+  }
+
+  afterEach(() => {
+    restore("OPENAI_API_KEY", origOpenai);
+    restore("ANTHROPIC_API_KEY", origAnthropic);
+    restore("OZVOR_PAGES_PROVIDER", origForce);
+  });
+
+  it("prefers OpenAI when both platform keys are set", () => {
+    process.env["OPENAI_API_KEY"] = "sk-openai-platform";
+    process.env["ANTHROPIC_API_KEY"] = "sk-ant-platform";
+    delete process.env["OZVOR_PAGES_PROVIDER"];
+    expect(resolvePlatformPagesKey()).toEqual({ provider: "openai", apiKey: "sk-openai-platform" });
+  });
+
+  it("falls back to Anthropic when OpenAI has no platform key", () => {
+    delete process.env["OPENAI_API_KEY"];
+    process.env["ANTHROPIC_API_KEY"] = "sk-ant-platform";
+    delete process.env["OZVOR_PAGES_PROVIDER"];
+    expect(resolvePlatformPagesKey()).toEqual({ provider: "anthropic", apiKey: "sk-ant-platform" });
+  });
+
+  it("returns null (mock mode) when neither key is set", () => {
+    delete process.env["OPENAI_API_KEY"];
+    delete process.env["ANTHROPIC_API_KEY"];
+    delete process.env["OZVOR_PAGES_PROVIDER"];
+    expect(resolvePlatformPagesKey()).toBeNull();
+  });
+
+  it("OZVOR_PAGES_PROVIDER=anthropic forces Anthropic even when OpenAI is set", () => {
+    process.env["OPENAI_API_KEY"] = "sk-openai-platform";
+    process.env["ANTHROPIC_API_KEY"] = "sk-ant-platform";
+    process.env["OZVOR_PAGES_PROVIDER"] = "anthropic";
+    expect(resolvePlatformPagesKey()).toEqual({ provider: "anthropic", apiKey: "sk-ant-platform" });
+  });
+
+  it("ignores a blank OpenAI key and falls back to Anthropic", () => {
+    process.env["OPENAI_API_KEY"] = "   ";
+    process.env["ANTHROPIC_API_KEY"] = "sk-ant-platform";
+    delete process.env["OZVOR_PAGES_PROVIDER"];
+    expect(resolvePlatformPagesKey()).toEqual({ provider: "anthropic", apiKey: "sk-ant-platform" });
   });
 });
 
