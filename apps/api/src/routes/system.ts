@@ -163,7 +163,7 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
           id: "score",
           name: "Ozvor AI Visibility Score",
           summary:
-            "A 0 to 100 score from three vectors: Visibility, Citation Readiness, and Execution. Every input is labelled measured or baseline, and measured inputs need the AI engines connected. Aligned with current generative-AI SEO guidance. llms.txt is informational only and never scored.",
+            "A 0 to 100 score from three vectors: Visibility, Citation Readiness, and Execution. Every input is labelled measured (live) or baseline. AI answers vary by day and engine. Aligned with current generative-AI SEO guidance. llms.txt is informational only and never scored.",
           tools: [],
         },
         {

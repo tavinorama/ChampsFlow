@@ -380,7 +380,7 @@ function LoadingPanel({ brand, domain }: { brand: string; domain: string | null 
             lineHeight: 1.6,
           }}
         >
-          This takes 20 to 40 seconds. We check 4 AI engines for you.
+          This takes 20 to 40 seconds. We check 4 real AI engines.
         </p>
       </div>
     </div>

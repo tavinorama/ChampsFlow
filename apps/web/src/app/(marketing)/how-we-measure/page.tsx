@@ -279,7 +279,7 @@ export default function HowWeMeasurePage() {
               margin: "0 0 var(--space-4) 0",
             }}
           >
-            Sourced from live probes across 5 AI engines whenever provider access is connected.
+            Sourced from live probes across 5 AI engines. AI answers vary by day and engine.
           </p>
 
           <div>
@@ -843,7 +843,7 @@ export default function HowWeMeasurePage() {
           >
             <thead>
               <tr style={{ backgroundColor: "var(--color-surface-muted)", textAlign: "left" }}>
-                <th scope="col" style={{ ...thStyle, color: "var(--color-success)" }}>Live once your API keys connect</th>
+                <th scope="col" style={{ ...thStyle, color: "var(--color-success)" }}>Measured now</th>
                 <th scope="col" style={{ ...thStyle, color: "var(--color-muted)" }}>Still on the roadmap</th>
               </tr>
             </thead>

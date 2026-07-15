@@ -47,7 +47,7 @@ const TUTORIALS: Tutorial[] = [
     steps: [
       "Enter your website, brand, category, and a competitor.",
       "Add your email — your results are saved to it so you can pick up where you left off.",
-      "Click Run. Ozvor checks your brand across all five AI engines and shows what it finds.",
+      "Click Run. Ozvor queries ChatGPT, Claude, Perplexity, Gemini and Google AI Overview live, then shows what it finds.",
       "Read your Ozvor AI Visibility Score, the exact buyer prompt asked, and which engines cited you vs your competitor.",
     ],
     cta: "Run the free test →",

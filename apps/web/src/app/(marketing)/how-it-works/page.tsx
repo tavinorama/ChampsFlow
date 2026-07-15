@@ -17,7 +17,7 @@ import { safeJsonLd } from "../../../lib/safe-json-ld";
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
   description:
-    "We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews once they are connected. Results can vary by engine and day. See who AI recommends instead of you. Get your GEO plan, publish the fix, then monitor, or hand it to OrganicPosts.",
+    "We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews, live. Results can vary by engine and day. See who AI recommends instead of you. Get your GEO plan, publish the fix, then monitor, or hand it to OrganicPosts.",
   alternates: { canonical: "https://ozvor.com/how-it-works" },
   openGraph: {
     title: "How Ozvor Works — From invisible to cited in four moves",
@@ -41,7 +41,7 @@ const howToJsonLd = {
   "@type": "HowTo",
   name: "How Ozvor gets your brand cited by AI",
   step: [
-    { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews once they are connected. Results can vary by engine and day. Record whether you're cited." },
+    { "@type": "HowToStep", position: 1, name: "Audit", text: "Run real buyer prompts across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews, live. Results can vary by engine and day. Record whether you're cited." },
     { "@type": "HowToStep", position: 2, name: "Benchmark", text: "See who AI recommends instead of you, and the sources it trusts." },
     { "@type": "HowToStep", position: 3, name: "Plan & publish", text: "Get a GEO content plan. Content Studio drafts the fix you publish." },
     { "@type": "HowToStep", position: 4, name: "Monitor", text: "Re-run weekly. Track your Ozvor AI Visibility Score — or hand the engagement to OrganicPosts." },
@@ -52,7 +52,7 @@ const STEPS: { num: string; title: string; body: string }[] = [
   {
     num: "01",
     title: "Audit",
-    body: "We ask the real buyer questions your customers ask. We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews once they are connected. Results can vary by engine and day. Then we record whether you're named, where you rank, and how you're described.",
+    body: "We ask the real buyer questions your customers ask. We check ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews, live. Results can vary by engine and day. Then we record whether you're named, where you rank, and how you're described.",
   },
   {
     num: "02",
