@@ -270,13 +270,43 @@ export function resolvePlatformAnthropicKey(): { provider: ContentProvider; apiK
   return { provider: "anthropic", apiKey };
 }
 
+// resolvePlatformPagesKey — provider selection for Ozvor Pages generation.
+// Ozvor Pages runs on OpenAI by default: gpt-4o-mini-class page copy is
+// materially cheaper per generation than Claude Sonnet and the founder
+// confirmed the output quality is equal-or-better for this structured,
+// fact-grounded rewrite (short hero/answer copy, not long-form reasoning).
+// So we PREFER the platform OPENAI_API_KEY and fall back to the platform
+// ANTHROPIC_API_KEY only when OpenAI has no platform key configured. Both keys
+// are the founder's platform keys, kept current in process.env by
+// platform-keys.ts (same mechanism as the audit engine) — this never touches
+// customer BYOK. OZVOR_PAGES_PROVIDER=anthropic|openai forces one provider
+// (ops override / A-B); an unset or unknown value uses the OpenAI-first order.
+export function resolvePlatformPagesKey(): { provider: ContentProvider; apiKey: string } | null {
+  const openaiKey = process.env["OPENAI_API_KEY"];
+  const anthropicKey = process.env["ANTHROPIC_API_KEY"];
+  const openai =
+    openaiKey && openaiKey.trim() ? { provider: "openai" as ContentProvider, apiKey: openaiKey } : null;
+  const anthropic =
+    anthropicKey && anthropicKey.trim()
+      ? { provider: "anthropic" as ContentProvider, apiKey: anthropicKey }
+      : null;
+
+  const forced = process.env["OZVOR_PAGES_PROVIDER"]?.trim().toLowerCase();
+  if (forced === "anthropic") return anthropic;
+  if (forced === "openai") return openai;
+
+  // Default: OpenAI first (cost + quality), Anthropic as fallback.
+  return openai ?? anthropic;
+}
+
 /**
  * HARD INTEGRITY RULE for Ozvor Pages (task #122 — same rule the audit engine
  * enforces via `mockAllowed()`/PR #90): a paid $99 generation must NEVER
  * silently ship template content as if it were generated. `bundle.mode ===
  * "mock"` after buildLandingBundle means one of its three silent fallbacks
- * fired (platform ANTHROPIC_API_KEY absent, the LLM call threw, or its output
- * was unusable). In production — with no explicit GEO_ALLOW_MOCK=true opt-in —
+ * fired (no platform key — OPENAI_API_KEY/ANTHROPIC_API_KEY both absent — the
+ * LLM call threw, or its output was unusable). In production — with no
+ * explicit GEO_ALLOW_MOCK=true opt-in —
  * that is an honest job failure: nothing is written, the job surfaces as
  * failed, and the founder sees a config/provider incident instead of a
  * customer receiving a generic template. Mock stays available for local/dev/
@@ -286,7 +316,7 @@ export function assertBundleModeHonest(mode: "mock" | "llm", siteId: string): vo
   if (mode === "mock" && !mockAllowed()) {
     logger.error("landing_generate_mock_forbidden_in_production", { site_id: siteId });
     throw new Error(
-      "landing_generate_mock_forbidden_in_production: platform ANTHROPIC_API_KEY missing or LLM generation failed — refusing to deliver template content for a paid generation"
+      "landing_generate_mock_forbidden_in_production: no platform key (OPENAI_API_KEY/ANTHROPIC_API_KEY) or LLM generation failed — refusing to deliver template content for a paid generation"
     );
   }
 }
@@ -486,10 +516,12 @@ export async function processLandingGenerateJob(
       }
     }
 
-    // 6. Platform Anthropic key (issue #217) — never customer BYOK for Ozvor
-    //    Pages generation. Absent → mock mode in dev/test; in production the
-    //    integrity gate after buildLandingBundle fails the job honestly (#122).
-    const platformKey = resolvePlatformAnthropicKey();
+    // 6. Platform key (issue #217) — never customer BYOK for Ozvor Pages
+    //    generation. OpenAI-first for cost + quality, Anthropic fallback (see
+    //    resolvePlatformPagesKey). Absent → mock mode in dev/test; in
+    //    production the integrity gate after buildLandingBundle fails the job
+    //    honestly (#122).
+    const platformKey = resolvePlatformPagesKey();
 
     // 6b. Rich Google Maps enrichment (reviews, photos, rating, category) —
     //     fetched FRESH here, once per generation, so reviews respect the ToS
