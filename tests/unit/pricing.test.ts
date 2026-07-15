@@ -17,7 +17,7 @@ import {
 describe("pricing", () => {
   it("prices each plan tier; unknown/free/starter = 0", () => {
     expect(mrrForTier("growth")).toBe(99);
-    expect(mrrForTier("agency")).toBe(249);
+    expect(mrrForTier("agency")).toBe(549);
     expect(mrrForTier("pro")).toBe(99); // legacy alias
     expect(mrrForTier("free")).toBe(0);
     expect(mrrForTier("starter")).toBe(0);
@@ -28,13 +28,13 @@ describe("pricing", () => {
   it("computeMrr counts ONLY active subscriptions", () => {
     const subs = [
       { plan_tier: "growth", status: "active" },   // 99
-      { plan_tier: "agency", status: "active" },   // 249
+      { plan_tier: "agency", status: "active" },   // 549
       { plan_tier: "growth", status: "trialing" }, // 0 — not billing yet
       { plan_tier: "agency", status: "past_due" }, // 0
       { plan_tier: "growth", status: "canceled" }, // 0
       { plan_tier: "starter", status: "active" },  // 0 — starter is free-priced
     ];
-    expect(computeMrr(subs)).toBe(99 + 249);
+    expect(computeMrr(subs)).toBe(99 + 549);
   });
 
   it("computeMrr is empty-safe and arr is x12", () => {

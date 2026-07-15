@@ -116,7 +116,7 @@ describe("business reads", () => {
     const res = await buildApp(db).request("/api/v1/operator/analytics", { headers: AUTH });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { mrr_usd: number; arr_usd: number };
-    expect(body.mrr_usd).toBe(3 * 99 + 1 * 249);
+    expect(body.mrr_usd).toBe(3 * 99 + 1 * 549);
     expect(body.arr_usd).toBe(body.mrr_usd * 12);
   });
 });
