@@ -507,7 +507,7 @@ export const PRICING_TIERS: readonly PricingTier[] = [
   },
   {
     name: "AGENCY",
-    price: "$249",
+    price: "$549",
     per: "/ month",
     popular: false,
     features: ["Multiple client brands", "White-label reports", "Priority support"],

@@ -106,10 +106,10 @@ const GROUPS: FaqGroup[] = [
         a: "Growth checks all 5 AIs every week. You get a monthly content plan. Plus a free Ozvor Pages site. You can track up to 10 competitors.",
       },
       {
-        q: "What's included in Agency ($249/mo)?",
+        q: "What's included in Agency ($549/mo)?",
         aText:
-          "Agency covers up to 25 client brands. Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
-        a: "Agency covers up to 25 client brands. Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
+          "Agency covers up to 15 client brands, at about $37 each ($26 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
+        a: "Agency covers up to 15 client brands, at about $37 each ($26 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
       },
     ],
   },

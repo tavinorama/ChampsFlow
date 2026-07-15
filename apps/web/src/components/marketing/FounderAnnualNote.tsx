@@ -5,8 +5,8 @@
  *
  * Follows the live founder-offer status (GET /api/founder-status) so the copy
  * can never go stale: while the first-100 offer is active it shows the founder
- * annual prices ($831 / $2,091, 30% off); once the cohort fills it switches to
- * the list annual prices ($1,188 / $2,988) automatically. Optimistic-founder
+ * annual prices ($831 / $4,611, 30% off); once the cohort fills it switches to
+ * the list annual prices ($1,188 / $6,588) automatically. Optimistic-founder
  * until the fetch resolves (same convention as PricingPlans).
  */
 
@@ -38,8 +38,8 @@ export function FounderAnnualNote({
   return (
     <p style={style}>
       {active
-        ? "Founder annual: Growth $831/yr (~$69/mo), Agency $2,091/yr (~$174/mo) — 30% off, first 100 founders, annual only."
-        : "Annual: Growth $1,188/yr (~$99/mo), Agency $2,988/yr (~$249/mo)."}
+        ? "Founder annual: Growth $831/yr (~$69/mo), Agency $4,611/yr (~$384/mo, just $25.62 per brand) — 30% off, first 100 founders, annual only."
+        : "Annual: Growth $1,188/yr (~$99/mo), Agency $6,588/yr (~$549/mo)."}
       {suffix ? ` ${suffix}` : ""}
     </p>
   );

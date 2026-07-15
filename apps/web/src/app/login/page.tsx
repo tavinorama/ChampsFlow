@@ -280,7 +280,7 @@ export default function LoginPage() {
               <span aria-hidden="true" style={{ fontSize: "0.9rem" }}>✓</span>
               <span>
                 <span style={{ textTransform: "capitalize" }}>{plan}</span>{" "}
-                plan &mdash; ${plan === "growth" ? "99" : "249"}/mo &middot; 30-day money-back guarantee
+                plan &mdash; ${plan === "growth" ? "99" : "549"}/mo &middot; 30-day money-back guarantee
               </span>
             </div>
           </>

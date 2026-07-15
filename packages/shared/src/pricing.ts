@@ -16,7 +16,7 @@ export const LIST_PRICE_USD = {
   kit: 29,
   pages: 99, // Ozvor Pages — one-time landing-site pack
   growth: 99,
-  agency: 249,
+  agency: 549,
   geoSprint: 1500,
   managedGeo: 1900,
 } as const;

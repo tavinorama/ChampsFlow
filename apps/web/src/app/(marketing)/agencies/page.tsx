@@ -5,7 +5,7 @@
  * surface: the homepage speaks to single-brand SMB owners and the Agency tier
  * only appeared as a pricing card. This page sells the tier's real capabilities:
  *  1. Hero — "Deliver AI visibility to every client. Under your brand."
- *  2. Economics strip — $249/mo across up to 25 brands (~$10/brand)
+ *  2. Economics strip — $549/mo across up to 15 brands (~$37/brand)
  *  3. What's in the tier (real features only) + pitch-mode play
  *  4. Honesty block — measured-never-fabricated is a client-trust asset
  *  5. OrganicPosts referral (gold) + final CTA
@@ -20,11 +20,11 @@ import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNo
 export const metadata: Metadata = {
   title: "Ozvor for agencies — white-label AI-visibility for every client",
   description:
-    "Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to 25 client brands. $249/mo, about $10 per brand. Win the GEO line item before your competitor agency does.",
+    "Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to 15 client brands. $549/mo, about $37 per brand ($26 on founder annual). Win the GEO line item before your competitor agency does.",
   alternates: { canonical: "https://ozvor.com/agencies" },
   openGraph: {
     title: "Ozvor for agencies — white-label AI visibility",
-    description: "Audits, evidence, plans and white-label reports for up to 25 client brands. $249/mo.",
+    description: "Audits, evidence, plans and white-label reports for up to 15 client brands. $549/mo.",
     url: "https://ozvor.com/agencies",
     siteName: "Ozvor",
     type: "website",
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 };
 
 const FEATURES: { t: string; d: string }[] = [
-  { t: "Multi-client dashboard", d: "Up to 25 brands in one portfolio view. See every client's AI Visibility Score, trend, and next action in one screen." },
+  { t: "Multi-client dashboard", d: "Up to 15 brands in one portfolio view. See every client's AI Visibility Score, trend, and next action in one screen." },
   { t: "White-label reports", d: "Client-facing reports under your agency's brand. The evidence is Ozvor's. The relationship is yours." },
   { t: "Weekly monitoring on every client", d: "Every brand re-probed weekly across ChatGPT, Claude, Perplexity, Gemini and Google AI Overview." },
   { t: "10 competitors per brand", d: "Show each client exactly who AI recommends instead of them. It's the single most persuasive slide you'll present all year." },
@@ -73,7 +73,7 @@ export default function AgenciesPage() {
           <DirectCheckoutButton
             plan="agency"
             interval="year"
-            label="Start Agency — $249/mo"
+            label="Start Agency — $549/mo"
             style={{ background: "linear-gradient(135deg,#27c98a,#0c7d54)", color: "#06140e", border: "none", fontWeight: 800, boxShadow: "0 10px 32px rgba(39,201,138,0.28)" }}
           />
           <Link href="/book" className="ag-cta-ghost">Talk it through first</Link>
@@ -82,8 +82,8 @@ export default function AgenciesPage() {
 
       {/* Economics strip */}
       <div className="ag-card" style={{ marginTop: "var(--space-12)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-2)" }}>
-        <div className="ag-stat"><b>25</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>client brands on one plan</span></div>
-        <div className="ag-stat"><b>~$10</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>per brand per month at capacity</span></div>
+        <div className="ag-stat"><b>15</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>client brands on one plan</span></div>
+        <div className="ag-stat"><b>$36.60</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>per brand per month. Just $25.62 on founder annual pricing.</span></div>
         <div className="ag-stat"><b>5</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>AI engines probed weekly</span></div>
         <div className="ag-stat"><b>4h</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>priority-support SLA</span></div>
       </div>

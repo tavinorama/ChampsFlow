@@ -953,7 +953,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       }
 
       // 2) + 3) Cost-control quotas by plan (issue #217; replaces the old flat
-      // 20/24h tenant cap — Agency's 25 brands at 1/day each would starve
+      // 20/24h tenant cap — Agency's 15 brands at 1/day each would starve
       // under that). super_admin (platform operator) bypasses both — existing
       // convention (see planLimitsFor). Scheduled monitoring is EXCLUDED from
       // both counts (triggered_by <> 'cron') — weekly/daily cron audits must

@@ -27,7 +27,7 @@
  * Plan tiers (USD; founder confirms price IDs via env vars):
  *   free:   $0/mo            — 1 brand, 1 competitor, 10-prompt snapshot audit, no monitoring
  *   growth: $99/mo or $831/yr — 1 brand, 10 competitors, 250 prompts, weekly monitoring
- *   agency: $249/mo or $2,091/yr — 25 brands, 10 competitors, 250 prompts, weekly monitoring
+ *   agency: $549/mo or $4,611/yr — 15 brands, 10 competitors, 250 prompts, weekly monitoring
  *   Founder 30% discount is annual-only (STRIPE_FOUNDER_COUPON_ID). Capped at first 100.
  *
  * Sub-processor status:
@@ -274,7 +274,7 @@ function getStripe(): Stripe {
 // Ozvor plan tiers (brand-package pricing architecture):
 //   free     — 1 brand, 3 competitors, 50 prompts, monthly audit
 //   growth   — 1 brand, 10 competitors, 250 prompts, weekly monitoring
-//   agency   — 25 brands, 10 competitors, 250 prompts, weekly monitoring (multi-client)
+//   agency   — 15 brands, 10 competitors, 250 prompts, weekly monitoring (multi-client)
 export type PlanTier = "free" | "growth" | "agency";
 
 /** Paid tiers that can be purchased via checkout. */
@@ -305,9 +305,10 @@ export const PLAN_LIMITS: Record<
     /** Margin guard: max SCHEDULED (cron/monitor) audits per tenant per calendar
      * month. Each full 250-prompt audit costs ~$5 of platform API (see
      * api_spend). This caps the automatic monitor so a high-brand-count Agency
-     * can't run the plan negative. Math: Agency $249/mo, ~$5/audit → 40 audits
-     * ≈ $200 API, stays positive with buffer (≈9 brands weekly before it
-     * throttles). Growth (1 brand weekly ≈ 4.3) gets 8 for headroom. MANUAL
+     * can't run the plan negative. Math: Agency $549/mo, ~$5/audit → 70 audits
+     * ≈ $350 API, stays positive (~$180 buffer) AND covers all 15 brands
+     * weekly (15 × 4.3 ≈ 65). Growth (1 brand weekly ≈ 4.3) gets 8 for
+     * headroom. MANUAL
      * audits the user explicitly triggers are NOT counted here — they have the
      * manual_audit_interval + audit_backstop_24h guards above. Enforced in
      * apps/worker/src/jobs/audit-run.ts (scheduled branch only). */
@@ -333,9 +334,9 @@ export const PLAN_LIMITS: Record<
     manual_audit_interval: "week", audit_backstop_24h: 5, monthly_audit_cap: 8, pages_regens_per_site_month: 5,
   },
   agency: {
-    max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
-    max_landing_sites: 25, max_pages_per_site: 6,
-    manual_audit_interval: "day", audit_backstop_24h: 30, monthly_audit_cap: 40, pages_regens_per_site_month: 5,
+    max_brands: 15, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
+    max_landing_sites: 15, max_pages_per_site: 6,
+    manual_audit_interval: "day", audit_backstop_24h: 30, monthly_audit_cap: 70, pages_regens_per_site_month: 5,
   },
 };
 

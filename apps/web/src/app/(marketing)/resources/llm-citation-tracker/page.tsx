@@ -281,7 +281,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             The spreadsheet and methodology are included with every Growth
-            ($99/mo) and Agency ($249/mo) plan.
+            ($99/mo) and Agency ($549/mo) plan.
           </p>
         </header>
 
@@ -879,7 +879,7 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Agency: $249/mo</strong> (or $2,091/yr founder): up to 25
+              <strong>Agency: $549/mo</strong> (or $4,611/yr founder): up to 15
               brands, white-label reports, client workflow.
             </li>
           </ul>
