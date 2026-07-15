@@ -145,11 +145,11 @@ export default function KitPage() {
         secondary={[
           {
             title: "Agency Plan",
-            why: "Monitor up to 25 brands, white-label reports, and a client approval workflow.",
-            price: "$249/mo",
+            why: "Monitor up to 15 brands, white-label reports, and a client approval workflow.",
+            price: "$549/mo",
             plan: "agency", interval: "year",
             accent: "ghost",
-            ctaAriaLabel: "Start the Agency Plan — $249 per month",
+            ctaAriaLabel: "Start the Agency Plan — $549 per month",
           },
           {
             title: "OrganicPosts",

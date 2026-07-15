@@ -38,8 +38,8 @@ describe("computeLandingAllowance — the plan/credit access matrix", () => {
     expect(computeLandingAllowance("growth", 1).maxSites).toBe(2);
   });
 
-  it("agency: 25 sites (1 per brand)", () => {
-    expect(computeLandingAllowance("agency", 0).maxSites).toBe(25);
+  it("agency: 15 sites (1 per brand)", () => {
+    expect(computeLandingAllowance("agency", 0).maxSites).toBe(15);
   });
 
   it("negative credit values never subtract from the plan base", () => {

@@ -107,7 +107,7 @@ describe("PLAN_LIMITS — cost-control fields (#217)", () => {
 
 describe("PLAN_LIMITS.monthly_audit_cap — margin guard", () => {
   const APPROX_AUDIT_COST_USD = 5; // ~$5 per full 250-prompt audit (api_spend)
-  const PLAN_PRICE_USD: Record<PlanTier, number> = { free: 0, growth: 99, agency: 249 };
+  const PLAN_PRICE_USD: Record<PlanTier, number> = { free: 0, growth: 99, agency: 549 };
 
   it("every tier defines a positive integer cap", () => {
     (["free", "growth", "agency"] as PlanTier[]).forEach((t) => {
@@ -124,9 +124,9 @@ describe("PLAN_LIMITS.monthly_audit_cap — margin guard", () => {
     });
   });
 
-  it("agency cap (40) bounds cost at ~$200 < $249 — the founder's trava", () => {
-    expect(PLAN_LIMITS.agency.monthly_audit_cap).toBe(40);
-    expect(PLAN_LIMITS.agency.monthly_audit_cap * APPROX_AUDIT_COST_USD).toBe(200);
+  it("agency cap (70) bounds cost at ~$350 < $549 — the founder's trava", () => {
+    expect(PLAN_LIMITS.agency.monthly_audit_cap).toBe(70);
+    expect(PLAN_LIMITS.agency.monthly_audit_cap * APPROX_AUDIT_COST_USD).toBe(350);
   });
 });
 

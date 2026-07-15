@@ -68,7 +68,7 @@ export async function sendKitDeliveryEmail(
     "",
     "When you're ready to stop doing it by hand:",
     "- Growth ($99/mo): weekly re-audits and alerts across all 5 engines, plus publish-ready drafts in your brand voice.",
-    "- Agency ($249/mo): the same, white-label, for up to 25 client brands.",
+    "- Agency ($549/mo): the same, white-label, for up to 15 client brands (about $37 each).",
     "- OrganicPosts by Ozvor: our team executes the whole plan for you.",
     `See the plans: ${pricingUrl}`,
     "",
@@ -142,7 +142,7 @@ export async function sendKitDeliveryEmail(
         <strong>Growth &mdash; $99/mo:</strong> weekly re-audits and alerts across all 5 engines, plus publish-ready drafts in your brand voice.
       </p>
       <p style="margin:0 0 6px 0;font-size:14px;color:#3a473f;line-height:1.6;">
-        <strong>Agency &mdash; $249/mo:</strong> the same, white-label, for up to 25 client brands.
+        <strong>Agency &mdash; $549/mo:</strong> the same, white-label, for up to 15 client brands.
       </p>
       <p style="margin:0 0 12px 0;font-size:14px;color:#3a473f;line-height:1.6;">
         <strong>OrganicPosts by Ozvor:</strong> our team executes the whole plan for you.

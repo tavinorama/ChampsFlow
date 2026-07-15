@@ -39,7 +39,7 @@ export interface Competitor {
   landmine: string;
 }
 
-const OZVOR_LADDER = "Free audit → $29 Kit → $99/mo Growth → $249/mo Agency (white-label)";
+const OZVOR_LADDER = "Free audit → $29 Kit → $99/mo Growth → $549/mo Agency (white-label)";
 
 export const COMPETITORS: Competitor[] = [
   {
@@ -67,7 +67,7 @@ export const COMPETITORS: Competitor[] = [
       { feature: "Turns the audit into content", ozvor: "Yes — BYOK drafts in the same session", them: "No", edge: "ozvor" },
       { feature: "Evidence-backed action plan", ozvor: "Yes — every audit", them: "No", edge: "ozvor" },
       { feature: "Done-for-you execution", ozvor: "OrganicPosts, from $1,500", them: "No", edge: "ozvor" },
-      { feature: "White-label agency tier", ozvor: "$249/mo, 25 brands", them: "Not at this price point", edge: "ozvor" },
+      { feature: "White-label agency tier", ozvor: "$549/mo, 15 brands", them: "Not at this price point", edge: "ozvor" },
       { feature: "Public measurement methodology", ozvor: "Yes — /how-we-measure", them: "Not published", edge: "ozvor" },
       { feature: "Engine coverage", ozvor: "5 engines", them: "Up to 10 (Enterprise)", edge: "them" },
       { feature: "SSO / SOC 2", ozvor: "On the roadmap", them: "Yes (Enterprise)", edge: "them" },
@@ -102,7 +102,7 @@ export const COMPETITORS: Competitor[] = [
       { feature: "Turns the audit into content", ozvor: "Yes — BYOK drafts", them: "No", edge: "ozvor" },
       { feature: "Evidence-backed action plan", ozvor: "Yes", them: "No", edge: "ozvor" },
       { feature: "Done-for-you execution", ozvor: "OrganicPosts", them: "No", edge: "ozvor" },
-      { feature: "White-label agency tier", ozvor: "$249/mo, 25 brands", them: "Not found on public pages", edge: "ozvor" },
+      { feature: "White-label agency tier", ozvor: "$549/mo, 15 brands", them: "Not found on public pages", edge: "ozvor" },
       { feature: "Monitoring depth", ozvor: "5 engines, weekly", them: "Strong, dedicated", edge: "tie" },
     ],
     whenTheyWin:
@@ -166,7 +166,7 @@ export const COMPETITORS: Competitor[] = [
       { feature: "Entry price", ozvor: "Free → $29 → $99/mo", them: "$295/mo", edge: "ozvor" },
       { feature: "Action layer", ozvor: "Evidence plan + BYOK drafts", them: "Content-optimization agent", edge: "tie" },
       { feature: "Client-visible content cost", ozvor: "Yes — you control the model", them: "Opaque credit metering", edge: "ozvor" },
-      { feature: "White-label agency tier", ozvor: "$249/mo, 25 brands", them: "Not found", edge: "ozvor" },
+      { feature: "White-label agency tier", ozvor: "$549/mo, 15 brands", them: "Not found", edge: "ozvor" },
       { feature: "Done-for-you execution", ozvor: "OrganicPosts", them: "No", edge: "ozvor" },
       { feature: "Engine coverage", ozvor: "5 engines", them: "9 models (Starter)", edge: "them" },
     ],

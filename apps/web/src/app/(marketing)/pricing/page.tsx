@@ -18,11 +18,11 @@ import { FounderBand } from "./FounderBand";
 export const metadata: Metadata = {
   title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
   description:
-    "Start free, climb when you're ready. Free AI test, $29 Get-Cited Kit, Growth $99/mo, Agency $249/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: 30% off annual + a free 5-page website.",
+    "Start free, climb when you're ready. Free AI test, $29 Get-Cited Kit, Growth $99/mo, Agency $549/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: 30% off annual + a free 5-page website.",
   alternates: { canonical: "https://ozvor.com/pricing" },
   openGraph: {
     title: "Plans — Ozvor",
-    description: "Free → Kit $29 → Growth $99/mo → Agency $249/mo. 30-day money-back, no lock-in.",
+    description: "Free → Kit $29 → Growth $99/mo → Agency $549/mo. 30-day money-back, no lock-in.",
     url: "https://ozvor.com/pricing",
     siteName: "Ozvor",
     type: "website",
@@ -39,7 +39,7 @@ const COMPARE_ROWS: { f: string; vals: string[]; us: string }[] = [
   { f: "Evidence-backed action plan", vals: ["✗", "✗", "✗", "✗"], us: "Every audit" },
   { f: "Done-for-you execution", vals: ["✗", "✗", "✗", "✗"], us: "OrganicPosts, from $1,500" },
   { f: "Starts free", vals: ["✗", "✗", "✗", "✗"], us: "Free audit → $29 → $99/mo" },
-  { f: "White-label agency tier ($249/mo)", vals: ["~", "?", "?", "?"], us: "Yes — 25 brands" },
+  { f: "White-label agency tier ($549/mo)", vals: ["~", "?", "?", "?"], us: "Yes — 15 brands ($36.60 each)" },
   { f: "Public measurement methodology", vals: ["✗", "✗", "✗", "✗"], us: "Yes — /how-we-measure" },
 ];
 

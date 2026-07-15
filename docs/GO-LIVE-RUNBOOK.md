@@ -25,7 +25,7 @@ verify/rebuild it — not a to-do list. Evidence (all re-checked 2026-07-12):
   gemini, perplexity, serp, Supabase auth and Stripe billing all connected.
 - **DB migrations current** on Supabase prod (applied via Supabase MCP as
   written; see the Phase 2 note + the ⚠️ migration-path warning below).
-- **Stripe catalog LIVE in USD** — Growth $99/mo, Agency $249/mo (+annual),
+- **Stripe catalog LIVE in USD** — Growth $99/mo, Agency $549/mo (+annual),
   Kit $29 one-time, FOUNDER30 coupon (annual-only, verified count, no fake
   scarcity). Ozvor Pages $99 exists but is intentionally OFF (env unset).
 - **Security posture** — the 2026-07 Hermes audit (issues #261/#262) is fully
@@ -148,7 +148,7 @@ Legend: 🔑 = **secret** (founder pastes — never commit/echo) · ⚙️ = **n
 ## Phase 5 — Stripe (✅ DONE — live USD catalog; BRL/Pix optional later)
 
 **Live catalog (verified on /pricing 2026-07-12):** Growth **$99/mo**, Agency
-**$249/mo** (+ annual Prices), **Get-Cited Kit $29** one-time, **Ozvor Pages
+**$549/mo** (+ annual Prices), **Get-Cited Kit $29** one-time, **Ozvor Pages
 $99** one-time (Price exists; env intentionally unset = feature OFF), coupon
 **FOUNDER30** (30% off, annual-only, first-100 with live verified count).
 Webhook endpoint + signing secret are configured on the prod API.

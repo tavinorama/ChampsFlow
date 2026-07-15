@@ -102,7 +102,7 @@ export async function sendBonusDeliveryEmail(
 
   // Plan-specific value line (Growth vs Agency).
   const planValue = isAgency
-    ? "You've got white-label AI-visibility for up to 25 client brands, 10 competitors each, and priority support — everything you need to run GEO as a line item across your whole book."
+    ? "You've got white-label AI-visibility for up to 15 client brands, 10 competitors each, and priority support — everything you need to run GEO as a line item across your whole book."
     : "You've got weekly re-audits and alerts across all 5 engines, plus publish-ready content drafts generated in your brand voice.";
 
   const subject =

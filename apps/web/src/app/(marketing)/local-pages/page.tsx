@@ -95,7 +95,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What happens on the Free plan?",
-    a: "The Free plan doesn't include the site builder. Buying the $99 one-time unlocks the builder for 1 site. This works regardless of your plan tier. Growth includes 1 site as part of the subscription. Agency includes up to 25.",
+    a: "The Free plan doesn't include the site builder. Buying the $99 one-time unlocks the builder for 1 site. This works regardless of your plan tier. Growth includes 1 site as part of the subscription. Agency includes up to 15.",
   },
   {
     q: "How do regenerations work?",
@@ -220,7 +220,7 @@ export default function LocalPagesSalesPage() {
           </div>
           <div style={{ padding: "var(--space-6)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)", background: "var(--color-surface)", boxShadow: "var(--shadow-card)" }}>
             <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--color-gold-ink)" }}>Agency</div>
-            <div style={{ marginTop: "var(--space-2)", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em" }}>$249<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>/mo</span></div>
+            <div style={{ marginTop: "var(--space-2)", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em" }}>$549<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>/mo</span></div>
             <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>Up to 25 sites &mdash; 1 per client brand. Same 5 regenerations/site/month.</p>
           </div>
         </div>

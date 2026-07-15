@@ -76,7 +76,7 @@ describe("kit delivery email", () => {
     expect(p.html).toContain("Growth");
     expect(p.html).toContain("$99/mo");
     expect(p.html).toContain("Agency");
-    expect(p.html).toContain("$249/mo");
+    expect(p.html).toContain("$549/mo");
     expect(p.html).toContain("OrganicPosts by Ozvor");
     expect(p.html).toContain("https://ozvor.com/pricing");
   });
@@ -148,7 +148,7 @@ describe("bonus delivery email", () => {
     const p = lastPayload();
     expect(p.html).toContain("Welcome to Agency");
     expect(p.html.toLowerCase()).toContain("white-label");
-    expect(p.html).toContain("25 client brands");
+    expect(p.html).toContain("15 client brands");
     expect(p.html).toContain("https://ozvor.com/agencies");
     // Agency-annual perk surfaces.
     expect(p.html).toContain("Agency Annual perk");

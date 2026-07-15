@@ -19,9 +19,9 @@
 |---|---|---|---|
 | **Free** | $0 | — | 1 brand · 1 competitor · 10-prompt snapshot · monthly audit · no weekly monitoring |
 | **Growth** | **$99/mo** | **$831/yr (≈$69/mo)** | 1 brand · 10 competitors · 250 prompts · one manual re-audit/brand per week + weekly monitoring · citation tracking · GEO content briefs |
-| **Agency** | **$249/mo** | **$2,091/yr (≈$174/mo)** | up to 25 brands (multi-client) · 10 competitors/brand · white-label reports · client approval workflow · priority support |
+| **Agency** | **$549/mo** | **$4,611/yr (≈$384/mo)** | up to 15 brands (multi-client) · 10 competitors/brand · white-label reports · client approval workflow · priority support |
 
-- **Annual list price** (before founder discount): Growth $1,188/yr (12×99), Agency $2,988/yr (12×249). The 30% founder coupon brings them to $831 / $2,091.
+- **Annual list price** (before founder discount): Growth $1,188/yr (12×99), Agency $6,588/yr (12×549). The 30% founder coupon brings them to $831 / $4,611.
 - **Founder discount rule:** 30%, applied **only on annual** checkout, first-100 founders. Enforced in code (`createCheckoutSession`) + tested.
 - **Annual bonus:** Growth → free 5-page website (week 1); Agency → one free website GEO audit.
 
@@ -44,8 +44,8 @@ Create these objects, then put each ID in the matching API env var:
 |---|---|---|---|
 | Growth — monthly | recurring / month | $99 | `STRIPE_PRICE_ID_GROWTH` (or MoR variant id) |
 | Growth — annual | recurring / year | $1,188 | `STRIPE_PRICE_ID_GROWTH_ANNUAL` |
-| Agency — monthly | recurring / month | $249 | `STRIPE_PRICE_ID_AGENCY` |
-| Agency — annual | recurring / year | $2,988 | `STRIPE_PRICE_ID_AGENCY_ANNUAL` |
+| Agency — monthly | recurring / month | $549 | `STRIPE_PRICE_ID_AGENCY` |
+| Agency — annual | recurring / year | $6,588 | `STRIPE_PRICE_ID_AGENCY_ANNUAL` |
 | Get-Cited Kit | one-time | $29 | `STRIPE_PRICE_ID_KIT` |
 | Founder coupon | 30% off, duration "forever" | — | `STRIPE_FOUNDER_COUPON_ID` |
 

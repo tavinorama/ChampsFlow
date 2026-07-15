@@ -307,14 +307,14 @@ Here is the path, and it starts free.
 **Step 3: Ongoing monitoring (Growth & Agency).** Because where AI looks changes constantly, a one-time snapshot goes stale. The subscription plans re-run your probes every week, track your Ozvor AI Visibility Score over time, and surface any competitor gains or engine drops on your dashboard, plus keep feeding you the next content drafts to publish:
 
 - **Growth: $99/mo** (or **$831/yr** with founder pricing): 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, and GEO content.
-- **Agency: $249/mo** (or **$2,091/yr** with founder pricing): up to 25 brands, white-label reports, and client workflow, built for agencies and multi-location operators.
+- **Agency: $549/mo** (or **$4,611/yr** with founder pricing): up to 15 brands, white-label reports, and client workflow, built for agencies and multi-location operators.
 - **Founder pricing** is 30% off, annual only, for the first 100 customers.
 
 For done-for-you execution, where our team publishes and keeps improving it for you, there is **[OrganicPosts by Ozvor](/organicposts)**, our consultancy arm.
 
 The sequence is deliberate, and the first step costs nothing: **see where you stand free, act on the Kit, then keep the gains compounding instead of going stale.** Start at [ozvor.com](https://ozvor.com), or reach us at [hello@ozvor.com](mailto:hello@ozvor.com).`,
       keyTakeaway:
-        "Start with the free AI Visibility Test to see exactly where you stand across five engines, no credit card. The $29 Get-Cited Kit turns that into action; Growth ($99/mo) and Agency ($249/mo) keep you monitored as the ground shifts. Founder pricing: 30% off, annual, first 100 only.",
+        "Start with the free AI Visibility Test to see exactly where you stand across five engines, no credit card. The $29 Get-Cited Kit turns that into action; Growth ($99/mo) and Agency ($549/mo) keep you monitored as the ground shifts. Founder pricing: 30% off, annual, first 100 only.",
     },
   ],
 
@@ -357,7 +357,7 @@ The sequence is deliberate, and the first step costs nothing: **see where you st
 
   plansCta: {
     heading: "Your Kit is a snapshot. AI search moves every week.",
-    body: "The Get-Cited Kit shows you where you stand today. It gives you three fixes and three drafts to act on. But AI answers change constantly. New competitors get cited, engines re-index, and your fixes start (or stop) working. A one-time audit can't tell you whether you're gaining or losing ground. That's what the subscription Plans do. They track your Ozvor AI Visibility Score over time. They re-run your probes every week. Your dashboard then shows any competitor gains or engine drops. And they keep feeding you the next content drafts to publish. Growth ($99/mo, or $831/yr founder pricing) covers weekly monitoring for one brand. Agency ($249/mo, or $2,091/yr founder pricing) adds more brands and competitor tracking. Knock out your three fixes first. Then keep the gains compounding instead of going stale.",
+    body: "The Get-Cited Kit shows you where you stand today. It gives you three fixes and three drafts to act on. But AI answers change constantly. New competitors get cited, engines re-index, and your fixes start (or stop) working. A one-time audit can't tell you whether you're gaining or losing ground. That's what the subscription Plans do. They track your Ozvor AI Visibility Score over time. They re-run your probes every week. Your dashboard then shows any competitor gains or engine drops. And they keep feeding you the next content drafts to publish. Growth ($99/mo, or $831/yr founder pricing) covers weekly monitoring for one brand. Agency ($549/mo, or $4,611/yr founder pricing) adds more brands and competitor tracking. Knock out your three fixes first. Then keep the gains compounding instead of going stale.",
     buttonLabel: "See Growth & Agency plans",
   },
 };
