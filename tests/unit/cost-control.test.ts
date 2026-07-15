@@ -101,6 +101,36 @@ describe("PLAN_LIMITS — cost-control fields (#217)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 1b. monthly_audit_cap — margin guard: scheduled audits can't run a plan
+//     negative. Enforced in apps/worker/src/jobs/audit-run.ts (cron branch).
+// ---------------------------------------------------------------------------
+
+describe("PLAN_LIMITS.monthly_audit_cap — margin guard", () => {
+  const APPROX_AUDIT_COST_USD = 5; // ~$5 per full 250-prompt audit (api_spend)
+  const PLAN_PRICE_USD: Record<PlanTier, number> = { free: 0, growth: 99, agency: 249 };
+
+  it("every tier defines a positive integer cap", () => {
+    (["free", "growth", "agency"] as PlanTier[]).forEach((t) => {
+      const cap = PLAN_LIMITS[t].monthly_audit_cap;
+      expect(Number.isInteger(cap)).toBe(true);
+      expect(cap).toBeGreaterThan(0);
+    });
+  });
+
+  it("caps keep paid tiers' scheduled-audit API cost BELOW revenue (non-negative)", () => {
+    (["growth", "agency"] as PlanTier[]).forEach((t) => {
+      const maxApiCost = PLAN_LIMITS[t].monthly_audit_cap * APPROX_AUDIT_COST_USD;
+      expect(maxApiCost).toBeLessThan(PLAN_PRICE_USD[t]);
+    });
+  });
+
+  it("agency cap (40) bounds cost at ~$200 < $249 — the founder's trava", () => {
+    expect(PLAN_LIMITS.agency.monthly_audit_cap).toBe(40);
+    expect(PLAN_LIMITS.agency.monthly_audit_cap * APPROX_AUDIT_COST_USD).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 2. auditWindowDays — pure mapping (audits.ts)
 // ---------------------------------------------------------------------------
 

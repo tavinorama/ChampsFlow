@@ -233,6 +233,40 @@ export async function processAuditJob(
     } catch {
       // plan_tier unreadable → default to free (most conservative).
     }
+
+    // Margin guard (cost-control): SCHEDULED (cron/monitor) audits only. Each full
+    // audit costs ~$5 of platform API (see api_spend); without a ceiling a
+    // high-brand-count Agency can run its plan negative. Once the tenant reaches
+    // its plan's monthly_audit_cap of COMPLETED cron audits this calendar month,
+    // skip this run and delete its (un-run) row. Manual audits the user triggers
+    // are unaffected (auditId present + their own manual_audit_interval / backstop).
+    if (!job.data.audit_id) {
+      const cap = PLAN_LIMITS[planTier]?.monthly_audit_cap;
+      if (typeof cap === "number") {
+        try {
+          const capRows = await sql<{ n: number }[]>`
+            SELECT count(*)::int AS n FROM geo_audit
+             WHERE tenant_id = ${tenant_id}
+               AND status = 'complete'
+               AND triggered_by = 'cron'
+               AND created_at >= date_trunc('month', NOW())
+          `;
+          const completed = capRows[0]?.n ?? 0;
+          if (completed >= cap) {
+            logger.warn("audit_monthly_cap_reached", { tenant_id, plan: planTier, cap, completed });
+            await sql`DELETE FROM geo_audit WHERE id = ${audit_id}`;
+            return { audit_id, overall: 0 };
+          }
+        } catch (err: unknown) {
+          // Never let the guard block a legitimate audit on a count error.
+          logger.warn("audit_monthly_cap_check_failed", {
+            tenant_id,
+            message: (err as Error).message?.slice(0, 160),
+          });
+        }
+      }
+    }
+
     const promptCap = PLAN_LIMITS[planTier]?.prompts_per_audit ?? PLAN_LIMITS.free.prompts_per_audit;
     if (prompts.length > promptCap) prompts.length = promptCap;
 

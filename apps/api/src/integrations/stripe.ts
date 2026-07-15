@@ -302,6 +302,16 @@ export const PLAN_LIMITS: Record<
      * rolling 24h window (across ALL brands) — bounds brand-delete-and-recreate
      * abuse of the per-brand window above. super_admin bypasses this. */
     audit_backstop_24h: number;
+    /** Margin guard: max SCHEDULED (cron/monitor) audits per tenant per calendar
+     * month. Each full 250-prompt audit costs ~$5 of platform API (see
+     * api_spend). This caps the automatic monitor so a high-brand-count Agency
+     * can't run the plan negative. Math: Agency $249/mo, ~$5/audit → 40 audits
+     * ≈ $200 API, stays positive with buffer (≈9 brands weekly before it
+     * throttles). Growth (1 brand weekly ≈ 4.3) gets 8 for headroom. MANUAL
+     * audits the user explicitly triggers are NOT counted here — they have the
+     * manual_audit_interval + audit_backstop_24h guards above. Enforced in
+     * apps/worker/src/jobs/audit-run.ts (scheduled branch only). */
+    monthly_audit_cap: number;
     /** Cost-control (#217): Ozvor Pages REgenerations per site per calendar
      * month (UTC). Free is 0 here — free tenants regenerate against a
      * LIFETIME quota (2 per $99-credit site) enforced separately in
@@ -315,17 +325,17 @@ export const PLAN_LIMITS: Record<
   free: {
     max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false,
     max_landing_sites: 0, max_pages_per_site: 6,
-    manual_audit_interval: "week", audit_backstop_24h: 3, pages_regens_per_site_month: 0,
+    manual_audit_interval: "week", audit_backstop_24h: 3, monthly_audit_cap: 4, pages_regens_per_site_month: 0,
   },
   growth: {
     max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
     max_landing_sites: 1, max_pages_per_site: 6,
-    manual_audit_interval: "week", audit_backstop_24h: 5, pages_regens_per_site_month: 5,
+    manual_audit_interval: "week", audit_backstop_24h: 5, monthly_audit_cap: 8, pages_regens_per_site_month: 5,
   },
   agency: {
     max_brands: 25, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
     max_landing_sites: 25, max_pages_per_site: 6,
-    manual_audit_interval: "day", audit_backstop_24h: 30, pages_regens_per_site_month: 5,
+    manual_audit_interval: "day", audit_backstop_24h: 30, monthly_audit_cap: 40, pages_regens_per_site_month: 5,
   },
 };
 
