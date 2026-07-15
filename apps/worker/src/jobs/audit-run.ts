@@ -240,6 +240,11 @@ export async function processAuditJob(
     // its plan's monthly_audit_cap of COMPLETED cron audits this calendar month,
     // skip this run and delete its (un-run) row. Manual audits the user triggers
     // are unaffected (auditId present + their own manual_audit_interval / backstop).
+    // Month window uses date_trunc('month', NOW()) — the DB server tz, same
+    // convention as the api_spend monthly budget (products.ts). This is a SOFT
+    // ceiling by design: fail-open on a count error, and count-then-act is not
+    // atomic, so it bounds cost rather than hard-locking it. A few hours of
+    // month-boundary drift is immaterial for a spend guard.
     if (!job.data.audit_id) {
       const cap = PLAN_LIMITS[planTier]?.monthly_audit_cap;
       if (typeof cap === "number") {
