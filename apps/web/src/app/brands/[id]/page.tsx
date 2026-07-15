@@ -162,6 +162,25 @@ export default function BrandDetailPage() {
     return Math.round(a.score_brand * 0.3 + a.score_performance * 0.35 + a.score_ai * 0.35);
   }, []);
 
+  // Derive the three product-facing vectors from the raw sub-scores. Mirrors the
+  // server (audits.ts deriveCitationReadiness / computeThreeScores): visibility = AI,
+  // citationReadiness = round(clamp(performance*0.6 + brand*0.4)). executionProgress is
+  // plan-based (audit-independent) and backfilled from /score. Without this, viewing a
+  // specific audit (?audit=) left threeScores null and the scorecard fell back to the
+  // legacy AI/Performance/Brand layout — the marketing site + free test show the 3 vectors.
+  const deriveThreeScores = useCallback(
+    (a: AuditState, executionProgress: number | null = null): ThreeScores | null => {
+      if (a.score_ai == null || a.score_performance == null || a.score_brand == null) return null;
+      const clamp = (n: number) => Math.max(0, Math.min(100, n));
+      return {
+        visibility: a.score_ai,
+        citationReadiness: Math.round(clamp(a.score_performance * 0.6 + a.score_brand * 0.4)),
+        executionProgress,
+      };
+    },
+    []
+  );
+
   const loadBreakdown = useCallback(async (aId: string) => {
     try {
       const res = await apiFetch(`/api/audits/${aId}/breakdown`);
@@ -243,9 +262,25 @@ export default function BrandDetailPage() {
           setAudit(a);
           if (a.status === "complete") {
             setOverall(computeOverall(a));
+            // Show the 3 vectors (Visibility / Citation Readiness / Execution) instead of
+            // the legacy AI/Performance/Brand fallback when viewing a specific audit.
+            setThreeScores(deriveThreeScores(a));
             setStatusMsg("Audit complete.");
             setResolvedAuditId(auditId);
             void loadBreakdown(auditId);
+            // Backfill Execution (plan-based, not in the audit row) from the score endpoint.
+            void apiFetch(`/api/brands/${brandId}/score`)
+              .then(async (r) => {
+                if (!r.ok) return;
+                const d = (await r.json().catch(() => null)) as
+                  | { threeScores?: { executionProgress?: number | null } }
+                  | null;
+                const exec = d?.threeScores?.executionProgress ?? null;
+                if (exec != null) {
+                  setThreeScores((prev) => (prev ? { ...prev, executionProgress: exec } : deriveThreeScores(a, exec)));
+                }
+              })
+              .catch(() => {});
             return;
           }
           if (a.status === "failed") {
@@ -262,7 +297,7 @@ export default function BrandDetailPage() {
     }
     void poll();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [auditId, computeOverall, loadBreakdown]);
+  }, [auditId, brandId, computeOverall, deriveThreeScores, loadBreakdown]);
 
   // On load without ?audit, fetch latest score, then its breakdown.
   useEffect(() => {
