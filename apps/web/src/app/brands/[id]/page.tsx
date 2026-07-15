@@ -171,10 +171,9 @@ export default function BrandDetailPage() {
   const deriveThreeScores = useCallback(
     (a: AuditState, executionProgress: number | null = null): ThreeScores | null => {
       if (a.score_ai == null || a.score_performance == null || a.score_brand == null) return null;
-      const clamp = (n: number) => Math.max(0, Math.min(100, n));
       return {
         visibility: a.score_ai,
-        citationReadiness: Math.round(clamp(a.score_performance * 0.6 + a.score_brand * 0.4)),
+        citationReadiness: citationReadinessScore(a.score_performance, a.score_brand) ?? a.score_ai,
         executionProgress,
       };
     },
@@ -4040,6 +4039,14 @@ function DeltaChip({ delta }: { delta: number | null }) {
   );
 }
 
+// Citation Readiness = blend of Performance (0.6) and Brand (0.4). Mirrors the
+// server (audits.ts deriveCitationReadiness). Shared by the scorecard derivation
+// and the history table so the formula lives in one place.
+function citationReadinessScore(performance: number | null, brand: number | null): number | null {
+  if (performance == null || brand == null) return null;
+  return Math.round(Math.max(0, Math.min(100, performance * 0.6 + brand * 0.4)));
+}
+
 function AuditHistoryCompare({ brandId }: { brandId: string }) {
   const [audits, setAudits] = useState<AuditHistoryEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -4111,7 +4118,7 @@ function AuditHistoryCompare({ brandId }: { brandId: string }) {
             <thead>
               <tr>
                 <th style={th}>Date</th><th style={th}>Run</th>
-                <th style={th}>AI</th><th style={th}>Perf</th><th style={th}>Brand</th><th style={th}>Overall</th>
+                <th style={th}>Visibility</th><th style={th}>Cite readiness</th><th style={th}>Overall</th>
                 <th style={th}>From</th><th style={th}>To</th>
               </tr>
             </thead>
@@ -4121,8 +4128,7 @@ function AuditHistoryCompare({ brandId }: { brandId: string }) {
                   <td style={td}>{fmtDate(a.created_at)}</td>
                   <td style={{ ...td, color: "var(--color-muted)" }}>{a.triggered_by ?? "—"}</td>
                   <td style={td}>{a.score_ai ?? "—"}</td>
-                  <td style={td}>{a.score_performance ?? "—"}</td>
-                  <td style={td}>{a.score_brand ?? "—"}</td>
+                  <td style={td}>{citationReadinessScore(a.score_performance, a.score_brand) ?? "—"}</td>
                   <td style={td}>{a.score_overall ?? "—"}</td>
                   <td style={td}>
                     <input type="radio" name="audit-from" aria-label={`Compare from ${fmtDate(a.created_at)}`}
