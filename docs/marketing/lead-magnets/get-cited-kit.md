@@ -136,7 +136,7 @@ You have everything you need to move your score by hand. Here is the ladder if y
 - **Free AI Visibility Test** — re-run it any time to see where you stand today. *(ozvor.com/test)*
 - **The Get-Cited Kit — $29** — this playbook, generated for your brand with your real audit and your drafts. *(you're reading it)*
 - **Growth — $99/mo** — weekly re-audits and alerts across all five engines, plus publish-ready content drafts generated in your brand voice. The Kit is a snapshot; Growth keeps it moving. *(ozvor.com/pricing)*
-- **Agency — $249/mo** — the same, white-label, for up to 25 client brands. *(ozvor.com/agencies)*
+- **Agency — $549/mo** — the same, white-label, for up to 15 client brands (about $37 each). *(ozvor.com/agencies)*
 - **OrganicPosts by Ozvor** — if you'd rather not do it yourself, our team executes the whole plan for you: content, cadence, and monitoring. *(ozvor.com/organicposts)*
 
 **The next step is the smallest one:** open your `robots.txt`, check for those four crawlers, and publish Draft A this week. That alone puts you ahead of most of your category.

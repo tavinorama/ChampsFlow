@@ -212,7 +212,7 @@ Everything above is doable by hand. The catch is that it never stops — the aud
 | 1 | **Free AI Visibility Test** (ozvor.com/test) | $0, no card | See where you stand today across all five engines |
 | 2 | **The Get-Cited Kit** | **$29** one-time | The templates, checklists, and prompts in this guide, ready to use — no subscription |
 | 3 | **Growth** (ozvor.com/pricing) | **$99/mo** | Weekly monitoring, citation tracking, and GEO content for 1 brand |
-| 3 | **Agency** (ozvor.com/agencies) | **$249/mo** | The same engine across up to 25 brands, with white-label reports |
+| 3 | **Agency** (ozvor.com/agencies) | **$549/mo** | The same engine across up to 15 brands (about $37 each), with white-label reports |
 | 4 | **OrganicPosts by Ozvor** (ozvor.com/organicposts) | done-for-you | We draft and schedule the citation-shaped posts; you approve every one before it goes live |
 
 Every plan runs on the same rule as this guide: we measure what's actually happening across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview — we never fabricate a score or a citation that isn't there.

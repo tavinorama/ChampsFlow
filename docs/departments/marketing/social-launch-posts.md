@@ -66,7 +66,7 @@ day; each reply is a chance to run someone's test.
 > Agencies: when a client asks "why aren't we in ChatGPT answers?" — what's
 > your answer?
 >
-> Ozvor audits 5 engines, white-labels the report, 25 client brands for
+> Ozvor audits 5 engines, white-labels the report, 15 client brands for
 > $249/mo (~$10/brand).
 >
 > Run the free test on a prospect BEFORE the pitch. Evidence wins retainers.
