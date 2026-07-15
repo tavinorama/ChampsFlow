@@ -46,12 +46,12 @@ const TEMPLATES = [
     research: "Aggarwal et al., KDD 2024",
     when: "When you have a real number from your own work, a clear observation you can quantify, or a credible published statistic you can interpret for your niche.",
     before: {
-      label: "BEFORE (weak — will not get cited)",
+      label: "BEFORE (weak, will not get cited)",
       text: "A lot of restaurants overpay on taxes because they don't track expenses properly. Good bookkeeping saves you money! DM me if you want help getting organized this year. #bookkeeping #smallbusiness",
     },
     after: {
-      label: "AFTER — independent bookkeeper, restaurant niche",
-      text: "About 7 in 10 of the independent restaurants that come to me are leaving the FICA tip credit on the table — a federal credit on the employer payroll taxes you already pay on staff tip income. For a 15-seat spot with a few tipped servers, that can be a four-figure recovery — and you can often amend prior returns. In our practice, this single item recovers an average of $1,800–$4,000 per restaurant in the first year we take them on.",
+      label: "AFTER: independent bookkeeper, restaurant niche",
+      text: "About 7 in 10 of the independent restaurants that come to me are leaving the FICA tip credit on the table, a federal credit on the employer payroll taxes you already pay on staff tip income. For a 15-seat spot with a few tipped servers, that can be a four-figure recovery, and you can often amend prior returns. In our practice, this single item recovers an average of $1,800–$4,000 per restaurant in the first year we take them on.",
     },
     whyItWorks:
       "A specific statistic (\"7 in 10\"), a named mechanism (Form 8846, FICA tip credit), and a quantified result ($1,800–$4,000). The BEFORE has zero retrievable substance.",
@@ -62,13 +62,13 @@ const TEMPLATES = [
     principle: "Quotation addition",
     lift: "+41% AI visibility (strongest single tactic)",
     research: "Aggarwal et al., KDD 2024",
-    when: "When conventional wisdom in your field is wrong — or wrong for your specific audience. You need a genuine, experience-backed opinion.",
+    when: "When conventional wisdom in your field is wrong, or wrong for your specific audience. You need a genuine, experience-backed opinion.",
     before: {
       label: "BEFORE (weak)",
-      text: "Consistency is key on social media! If you want to grow, you need to show up every single day. The algorithm rewards people who post daily. No excuses — get posting! 💪",
+      text: "Consistency is key on social media! If you want to grow, you need to show up every single day. The algorithm rewards people who post daily. No excuses. Get posting! 💪",
     },
     after: {
-      label: "AFTER — freelance social-media manager for service businesses",
+      label: "AFTER: freelance social-media manager for service businesses",
       text: "The standard advice for small-business social media is 'post every day.' For a solo plumber, dentist, or accountant, that's the wrong target. A Semrush study of 89,000 LinkedIn URLs cited across ChatGPT, Google AI Mode, and Perplexity (Jan–Feb 2026) found the median cited post had just 15–25 reactions. Frequency wasn't the driver. Specificity was. What actually works: two well-researched posts a week, each answering one real question a prospective customer would ask.",
     },
     whyItWorks:
@@ -80,14 +80,14 @@ const TEMPLATES = [
     principle: "Cite authoritative sources / specificity",
     lift: "+28% average, up to +115% for an underdog page",
     research: "Aggarwal et al., KDD 2024",
-    when: "When you have a recent client win you can describe concretely — even anonymised. You need real steps and a real (or honestly ranged) outcome.",
+    when: "When you have a recent client win you can describe concretely, even anonymised. You need real steps and a real (or honestly ranged) outcome.",
     before: {
       label: "BEFORE (weak)",
       text: "Another happy customer! 😊 We replaced a full system for a family this week and they couldn't be happier. We always go above and beyond for our clients. Call us for all your heating and cooling needs! ❄️🔥",
     },
     after: {
-      label: "AFTER — HVAC contractor, Austin",
-      text: "A 1990s two-story home in Austin: $540 summer electric bills and an upstairs that never dropped below 80°F. We ran a Manual J load calculation instead of 'matching the old unit' — the original 4-ton system was oversized, causing short-cycling. Found and sealed 31% duct leakage in the attic runs. Installed a correctly-sized 3-ton variable-speed system. Result: the upstairs now holds 72°F, first full summer bill came in at $310 — a 43% drop, verified against prior-year utility statements. The one thing that mattered most: the duct-leakage test, not the new equipment.",
+      label: "AFTER: HVAC contractor, Austin",
+      text: "A 1990s two-story home in Austin: $540 summer electric bills and an upstairs that never dropped below 80°F. We ran a Manual J load calculation instead of 'matching the old unit': the original 4-ton system was oversized, causing short-cycling. Found and sealed 31% duct leakage in the attic runs. Installed a correctly-sized 3-ton variable-speed system. Result: the upstairs now holds 72°F, first full summer bill came in at $310, a 43% drop, verified against prior-year utility statements. The one thing that mattered most: the duct-leakage test, not the new equipment.",
     },
     whyItWorks:
       "Named diagnostics (Manual J, blower-door), concrete numbers (\"31% leakage,\" \"$540 → $310,\" \"43% drop\"), and an opinionated takeaway (\"it's the ducts, not the unit\"). A specific case like this is how a small local shop out-cites a national franchise.",
@@ -98,13 +98,13 @@ const TEMPLATES = [
     principle: "Quotation addition + single-idea focus",
     lift: "+41% AI visibility",
     research: "Aggarwal et al., KDD 2024",
-    when: "When you've made — or repeatedly watched clients make — a specific, costly mistake you can name precisely. One of the most-cited content types.",
+    when: "When you've made, or repeatedly watched clients make, a specific, costly mistake you can name precisely. One of the most-cited content types.",
     before: {
       label: "BEFORE (weak)",
       text: "Lesson learned over the years: communication is everything! Early in my career I didn't communicate enough with clients and it caused problems. Now I always keep my clients in the loop. Trust the process! ✨",
     },
     after: {
-      label: "AFTER — residential interior designer",
+      label: "AFTER: residential interior designer",
       text: "The biggest mistake I made with my first interior-design clients: I let them approve a design without a fixed, itemised budget attached to it. They'd fall in love with a concept, and the real total would land 40–60% over what they'd vaguely imagined. Two projects nearly collapsed at the invoice stage. What I should have done: present every concept with a line-item budget and get sign-off on the number, not just the mood board. The sign you're making it right now: your clients regularly react to the final invoice, not the proposal.",
     },
     whyItWorks:
@@ -116,14 +116,14 @@ const TEMPLATES = [
     principle: "Cite authoritative sources + authority positioning",
     lift: "+28% average AI visibility",
     research: "Aggarwal et al., KDD 2024",
-    when: "When there's a term in your field that's used loosely, misunderstood, or oversold — and you have a precise, practical definition that helps your audience do something.",
+    when: "When there's a term in your field that's used loosely, misunderstood, or oversold, and you have a precise, practical definition that helps your audience do something.",
     before: {
       label: "BEFORE (weak)",
       text: "Did you know we offer 'medical-grade' skincare? 🌿 Our products are so much better than what you find at the drugstore. Book a consultation today and glow up this season! 💆‍♀️",
     },
     after: {
-      label: "AFTER — independent med-spa / aesthetics clinic",
-      text: "'Medical-grade skincare' gets used everywhere — and it means something different at almost every clinic using it. The precise, useful definition: medical-grade (more accurately, physician-dispensed or cosmeceutical) skincare means products formulated at active-ingredient concentrations high enough to require sale through a licensed provider — NOT an FDA-awarded grade. There is no government 'medical grade' stamp. The meaningful difference is the dose of the active (e.g. a 0.5–1% retinol vs a drugstore 0.025%). Ask one question: 'What is the concentration of the active ingredient, and why is that the right dose for my skin?' A real clinic answers specifically. A reseller can't.",
+      label: "AFTER: independent med-spa / aesthetics clinic",
+      text: "'Medical-grade skincare' gets used everywhere, and it means something different at almost every clinic using it. The precise, useful definition: medical-grade (more accurately, physician-dispensed or cosmeceutical) skincare means products formulated at active-ingredient concentrations high enough to require sale through a licensed provider, NOT an FDA-awarded grade. There is no government 'medical grade' stamp. The meaningful difference is the dose of the active (e.g. a 0.5–1% retinol vs a drugstore 0.025%). Ask one question: 'What is the concentration of the active ingredient, and why is that the right dose for my skin?' A real clinic answers specifically. A reseller can't.",
     },
     whyItWorks:
       "A precise, useful definition, a corrected misconception (\"there's no FDA medical grade\"), and a concrete decision tool (\"ask the concentration\"). When someone asks \"what does medical-grade skincare actually mean?\", this is the clearest direct answer in the category.",
@@ -154,7 +154,7 @@ const PRINCETON_RESULTS = [
   {
     tactic: "Keyword stuffing",
     lift: "−8.7% (backfires)",
-    template: "None — this is what NOT to do",
+    template: "None: this is what NOT to do",
   },
 ];
 
@@ -280,7 +280,7 @@ export default function PostTemplatesPage() {
           >
             Fill-in-the-blank LinkedIn structures engineered to get your business
             named by ChatGPT, Claude, Perplexity, Gemini &amp; Google AI
-            Overview — backed by Princeton GEO research (KDD 2024)
+            Overview, backed by Princeton GEO research (KDD 2024)
           </p>
 
           <p
@@ -331,7 +331,7 @@ export default function PostTemplatesPage() {
               color: "var(--color-muted)",
             }}
           >
-            Included with every Growth ($99/mo) and Agency plan — yours to
+            Included with every Growth ($99/mo) and Agency plan, yours to
             download the moment you subscribe.
           </p>
         </header>
@@ -491,8 +491,8 @@ export default function PostTemplatesPage() {
                 margin: 0,
               }}
             >
-              Read that last row twice. Keyword stuffing — the spammy SEO reflex
-              — is the <strong>only</strong> tactic that made content{" "}
+              Read that last row twice. Keyword stuffing (the spammy SEO reflex)
+              is the <strong>only</strong> tactic that made content{" "}
               <strong>less</strong> visible to AI. GEO rewards genuine substance:
               data, quotes, sources, clarity.
             </p>
@@ -511,14 +511,14 @@ export default function PostTemplatesPage() {
               about 11% of AI answers
             </strong>{" "}
             (Semrush, 325,000 prompts, Jan–Feb 2026). And you do not need a big
-            following — the{" "}
+            following, the{" "}
             <strong>
               median cited LinkedIn post had just 15–25 reactions and one or zero
               comments
             </strong>
             , with about 95% of cited posts being original content (Semrush,
             2026). You are not competing on virality. You are competing on
-            usefulness and credibility — a game a small business can actually win.
+            usefulness and credibility, a game a small business can actually win.
           </p>
         </section>
 
@@ -535,7 +535,7 @@ export default function PostTemplatesPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            The 5 templates — summary
+            The 5 templates: summary
           </h2>
 
           <div
@@ -772,7 +772,7 @@ export default function PostTemplatesPage() {
           >
             A single brilliant post is a lottery ticket. Citation is won by{" "}
             <strong>showing up consistently with substance</strong>. AI engines
-            strongly favor fresh content — AI-cited URLs are about{" "}
+            strongly favor fresh content, AI-cited URLs are about{" "}
             <strong>25.7% fresher</strong> than the top-10 organic results, with
             ChatGPT citing pages hundreds of days newer than the standard search
             listing (Ahrefs, ~17M citations, Dec 2025).
@@ -785,7 +785,7 @@ export default function PostTemplatesPage() {
             }}
           >
             The Princeton paper found that{" "}
-            <strong>combining tactics compounds</strong> — fluency optimization plus
+            <strong>combining tactics compounds</strong>, fluency optimization plus
             statistics beat the best single tactic by more than 5.5% (Aggarwal et
             al., KDD 2024). Rotating through the five templates means your feed
             accumulates statistics <em>and</em> quotations <em>and</em> cited
@@ -812,7 +812,7 @@ export default function PostTemplatesPage() {
               A realistic, sustainable cadence: two posts a week, alternating
               templates. Open with a Data Story Monday and a How-We-Did-It Case or
               Mistake Confession Thursday. Over four weeks that&rsquo;s eight posts
-              across four different citation-driving formats — keeping your feed
+              across four different citation-driving formats, keeping your feed
               fresh without sacrificing the specificity that actually earns
               citations.
             </p>
@@ -884,7 +884,7 @@ export default function PostTemplatesPage() {
             headline="See if these templates are already working for your brand"
             subline="The free AI Visibility Test checks whether ChatGPT, Claude, and Perplexity mention you today."
             primary={{ label: "Run the free test", href: "/test" }}
-            secondary={{ label: "$29 Get-Cited Kit — get 3 ready-to-publish drafts →", href: "/kit" }}
+            secondary={{ label: "$29 Get-Cited Kit: get 3 ready-to-publish drafts →", href: "/kit" }}
           />
         </div>
 
@@ -917,8 +917,8 @@ export default function PostTemplatesPage() {
             }}
           >
             Publishing the right content is step one. Knowing whether it&rsquo;s
-            working — which queries you&rsquo;re cited for, what position, by which
-            engine, versus which competitors — is step two. Ozvor audits
+            working (which queries you&rsquo;re cited for, what position, by which
+            engine, versus which competitors) is step two. Ozvor audits
             how your brand appears across all five AI surfaces, computes your{" "}
             <strong>Ozvor AI Visibility Score</strong> (Brand 30% / Performance 35% / AI
             35%), benchmarks you against up to 10 competitors, and builds a
@@ -947,7 +947,7 @@ export default function PostTemplatesPage() {
                 textDecoration: "none",
               }}
             >
-              Start free — no credit card →
+              Start free, no credit card →
             </Link>
             <Link
               href="/pricing"
@@ -986,7 +986,7 @@ export default function PostTemplatesPage() {
             lineHeight: 1.6,
           }}
         >
-          A premium resource from Ozvor — ozvor.com ·
+          A premium resource from Ozvor, ozvor.com ·
           hello@ozvor.com
           <br />
           Research anchor: Aggarwal et al., &ldquo;GEO: Generative Engine

@@ -41,7 +41,7 @@ export const metadata: Metadata = {
 const ENGINES = [
   {
     name: "ChatGPT",
-    note: "~900M weekly users (OpenAI, Feb 2026). Runs a live search on only ~34.5% of queries — the rest answer from training memory.",
+    note: "~900M weekly users (OpenAI, Feb 2026). Runs a live search on only ~34.5% of queries, the rest answer from training memory.",
     pull: "Wikipedia, Reddit, homepages, news; live search results when triggered.",
   },
   {
@@ -61,7 +61,7 @@ const ENGINES = [
   },
   {
     name: "Google AI Overview",
-    note: "The AI answer box above normal Google results — 2B+ monthly users (Alphabet, Jul 2025). Worth tracking as a 5th engine.",
+    note: "The AI answer box above normal Google results, 2B+ monthly users (Alphabet, Jul 2025). Worth tracking as a 5th engine.",
     pull: "The live Google index; favours content that already ranks.",
   },
 ];
@@ -85,12 +85,12 @@ const WHAT_TO_RECORD = [
   },
   {
     signal: "Competitor cited",
-    why: "Knowing who was cited instead of you — and from where — tells you what 'winning' looks like in your category.",
+    why: "Knowing who was cited instead of you, and from where, tells you what 'winning' looks like in your category.",
   },
 ];
 
 const HONEST_CAVEATS = [
-  "You only see the queries you think to run — test the questions customers actually ask, not your business name.",
+  "You only see the queries you think to run. Test the questions customers actually ask, not your business name.",
   "Answers vary run to run. Ask ChatGPT the same thing 100 times and it surfaces ~44 different brands, but only ~5 appear 80%+ of the time (Search Engine Land / Fishkin, Feb 2026). The trend over weeks is the signal.",
   "Log out and use a fresh/incognito session so results are not personalised to you.",
   '"Mentioned" and "cited with a link" are different things. Track both.',
@@ -210,7 +210,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             Monitor when ChatGPT, Claude, Perplexity &amp; Gemini mention your
-            business — in 10 minutes a week
+            business, in 10 minutes a week
           </p>
 
           <p
@@ -298,7 +298,7 @@ export default function LlmCitationTrackerPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            What this is — and why it matters
+            What this is, and why it matters
           </h2>
 
           <blockquote
@@ -319,7 +319,7 @@ export default function LlmCitationTrackerPage() {
               }}
             >
               <strong>The one-sentence version:</strong> AI answer engines now hand
-              customers two or three business names instead of ten blue links — and
+              customers two or three business names instead of ten blue links, and
               if yours isn&rsquo;t one of them, you lost the customer before they
               knew you existed. This tracker is the cheapest, most honest way to
               find out whether you&rsquo;re on that shortlist, starting this week,
@@ -352,7 +352,7 @@ export default function LlmCitationTrackerPage() {
             requires no tools, no subscriptions, and no technical setup. It gives
             you the most direct feedback available on whether your GEO efforts are
             producing results. Most businesses have no idea whether they&rsquo;re
-            being cited or not — only around{" "}
+            being cited or not, only around{" "}
             <strong>16% of brands systematically track AI search performance</strong>{" "}
             (HubSpot, citing Sep 2025 data). You&rsquo;re about to be in the
             minority that actually knows.
@@ -503,7 +503,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             This is not a perfect instrument. It is the best free, honest,
-            do-it-yourself instrument that exists — and it gives you genuine,
+            do-it-yourself instrument that exists, and it gives you genuine,
             unmediated feedback no dashboard can fake. Run it with discipline and
             the pattern becomes undeniable within a month.
           </p>
@@ -522,7 +522,7 @@ export default function LlmCitationTrackerPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            The engines — and why you test all of them
+            The engines, and why you test all of them
           </h2>
           <p
             style={{
@@ -609,7 +609,7 @@ export default function LlmCitationTrackerPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            What to record — 5 signals per query
+            What to record: 5 signals per query
           </h2>
           <div
             style={{
@@ -669,7 +669,7 @@ export default function LlmCitationTrackerPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            The weekly routine — 10 minutes, same day, every week
+            The weekly routine: 10 minutes, same day, every week
           </h2>
 
           <p
@@ -679,7 +679,7 @@ export default function LlmCitationTrackerPage() {
               marginBottom: "var(--space-4)",
             }}
           >
-            Weekly is the right rhythm. Retrieval indexes change constantly — in
+            Weekly is the right rhythm. Retrieval indexes change constantly. In
             one study, Reddit&rsquo;s share of ChatGPT citations swung from ~60% of
             responses to ~10% inside six weeks (Semrush, 230k+ prompts). Monthly
             testing is too coarse to act on; daily testing is noise.
@@ -696,7 +696,7 @@ export default function LlmCitationTrackerPage() {
           >
             {[
               "Open a fresh/incognito browser session (so results are not personalised to you). Log out of AI accounts where you can.",
-              "Run your live queries across the engines that matter to your audience — a sustainable default is your top 8–10 queries across ChatGPT + Perplexity + Gemini, rotating Claude and Google AI Overview in.",
+              "Run your live queries across the engines that matter to your audience: a sustainable default is your top 8–10 queries across ChatGPT + Perplexity + Gemini, rotating Claude and Google AI Overview in.",
               "Log each result as one row in the Weekly Log: query, engine, Cited Y/N, position, source URL, sentiment, competitor cited, a one-line note.",
               "Glance at the Dashboard. Your citation rate, per-engine breakdown, share-of-voice vs competitors, and sentiment mix update automatically.",
               "Done. Close the laptop. Ten minutes.",
@@ -724,7 +724,7 @@ export default function LlmCitationTrackerPage() {
           >
             After <strong>four weeks</strong>, you have a trend you can trust. A
             realistic, healthy pattern: nothing for the first couple of weeks, then
-            a first appearance once your content gets indexed and trusted —
+            a first appearance once your content gets indexed and trusted,
             climbing from &ldquo;none&rdquo; to &ldquo;list&rdquo; to a named
             position.
           </p>
@@ -743,7 +743,7 @@ export default function LlmCitationTrackerPage() {
               letterSpacing: "-0.01em",
             }}
           >
-            When to automate — and where Ozvor fits
+            When to automate, and where Ozvor fits
           </h2>
 
           <p
@@ -794,7 +794,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             That&rsquo;s the line where you graduate to{" "}
-            <strong>Ozvor</strong> — the AI Search Visibility
+            <strong>Ozvor</strong>, the AI Search Visibility
             platform this tracker comes from. Ozvor automates everything
             above, computes your <strong>Ozvor AI Visibility Score</strong> (Brand 30% /
             Performance 35% / AI 35%), benchmarks you against your competitors,
@@ -830,7 +830,7 @@ export default function LlmCitationTrackerPage() {
               margin: "0 0 var(--space-3) 0",
             }}
           >
-            Included with paid plans — or automate it entirely
+            Included with paid plans, or automate it entirely
           </h2>
           <p
             style={{
@@ -859,7 +859,7 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Free</strong> — 1 brand, 1 competitor, a 10-prompt snapshot
+              <strong>Free</strong>: 1 brand, 1 competitor, a 10-prompt snapshot
               audit and Ozvor AI Visibility Score. No credit card.
             </li>
             <li
@@ -868,7 +868,7 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Growth — $99/mo</strong> (or $831/yr with founder pricing) —
+              <strong>Growth: $99/mo</strong> (or $831/yr with founder pricing):
               1 brand, 10 competitors, 250 prompts, weekly automated monitoring,
               citation tracking, and GEO content. This is the automated version of
               this spreadsheet at 25× the coverage.
@@ -879,7 +879,7 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Agency — $249/mo</strong> (or $2,091/yr founder) — up to 25
+              <strong>Agency: $249/mo</strong> (or $2,091/yr founder): up to 25
               brands, white-label reports, client workflow.
             </li>
           </ul>
