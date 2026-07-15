@@ -1189,7 +1189,10 @@ async function handleCheckoutSessionCompleted(
       });
     }
 
-    // Best-effort: suppress free_to_kit nurture (they've converted) + enroll in kit_to_dfy.
+    // Best-effort: suppress free_to_kit nurture (they've converted) + enroll in
+    // kit_to_growth. The recurring plan (Growth $99/mo) is the natural next rung
+    // for a $29 buyer — the DFY jump ($1,900/mo) is a poor fit for a cold drip,
+    // so the last Growth email carries a soft OrganicPosts/book-a-call line instead.
     // Must not throw — kit delivery is already complete at this point.
     try {
       const kitEmail = session.customer_details?.email ?? session.customer_email ?? "";
@@ -1199,7 +1202,7 @@ async function handleCheckoutSessionCompleted(
         if (kitBrand) {
           await enrollNurture(db, {
             email: kitEmail,
-            sequence: "kit_to_dfy",
+            sequence: "kit_to_growth",
             brand: kitBrand,
             metadata: { orderId: kit_order_id },
             sourceKitId: kit_order_id,

@@ -204,6 +204,25 @@ describe("enrollNurture", () => {
     // kit_to_dfy has 3 email steps (sendNurtureKit1/2/3Email, steps 0/1/2)
     expect(insertParams).toContain(3);
   });
+
+  it("sets total_steps=3 for kit_to_growth (the new MRR rung)", async () => {
+    const db = makeDb({
+      queryResults: [{ rows: [] }, { rows: [{ id: "id-3" }] }],
+    });
+
+    await enrollNurture(db as Parameters<typeof enrollNurture>[0], {
+      email: "a@b.com",
+      sequence: "kit_to_growth",
+      brand: "B",
+      metadata: {},
+    });
+
+    const insertParams = db._params[0] ?? [];
+    // kit_to_growth has 3 email steps (sendNurtureGrowth1/2/3Email, steps 0/1/2)
+    expect(insertParams).toContain(3);
+    // and the sequence string is persisted
+    expect(insertParams).toContain("kit_to_growth");
+  });
 });
 
 // ---------------------------------------------------------------------------
