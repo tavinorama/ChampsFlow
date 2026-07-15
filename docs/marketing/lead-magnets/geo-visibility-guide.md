@@ -262,6 +262,6 @@ You don't need a platform to begin — the 10-minute check on page one and the 4
 
 ## About Ozvor
 
-Ozvor audits how your brand appears across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, computes your **Ozvor AI Visibility Score** on three weighted vectors (Brand 30% / Performance 35% / AI 35%), benchmarks you against real competitors, and builds the GEO content plan around the levers in this guide. **OrganicPosts by Ozvor** is the done-for-you arm — content drafted and scheduled for you, AI involvement disclosed on every draft, your approval required before anything goes live.
+Ozvor audits how your brand appears across ChatGPT, Claude, Perplexity, Gemini, and Google AI Overview, computes your **Ozvor AI Visibility Score** across three vectors (Visibility, Citation Readiness, Execution), benchmarks you against real competitors, and builds the GEO content plan around the levers in this guide. **OrganicPosts by Ozvor** is the done-for-you arm — content drafted and scheduled for you, AI involvement disclosed on every draft, your approval required before anything goes live.
 
 *Ozvor · ozvor.com · hello@ozvor.com*

@@ -395,7 +395,7 @@ export const FAQS = [
   },
   {
     q: "Is the audit data real?",
-    a: "Yes. Real questions to real engines. If we can't measure something, we say so. We never make up a result.",
+    a: "Yes. Real questions to real engines, live. AI answers vary by day and engine, so we label every input measured or baseline. We never make up a result.",
   },
 ] as const;
 

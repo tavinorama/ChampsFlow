@@ -125,7 +125,7 @@ const KEY_NUMBERS = [
   {
     number: "11×",
     label: "Higher sign-up rate from AI traffic vs. search traffic",
-    source: "Microsoft Clarity, 1,277 sites",
+    source: "One vendor study (Microsoft Clarity). Directional, not a guarantee for your site.",
   },
 ];
 
@@ -723,7 +723,10 @@ export default function GeoVisibilityGuidePage() {
         >
           Research anchor: Aggarwal et al., &ldquo;GEO: Generative Engine
           Optimization,&rdquo; ACM SIGKDD 2024, arXiv:2311.09735. All statistics
-          are attributed inline and current as of mid-2026.
+          are attributed inline and current as of mid-2026. Platform user counts
+          are self-reported by vendors. The 120% click lift and 11x sign-up rate
+          come from single studies, so treat them as directional, not guarantees.
+          AI answers are non-deterministic and change by day and engine.
         </p>
       </article>
     </>
