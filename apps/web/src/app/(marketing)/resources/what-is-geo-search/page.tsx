@@ -421,7 +421,7 @@ const ARTICLE_LD_DATA = {
           name: "What is GEO (Generative Engine Optimization)?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "GEO — Generative Engine Optimization — is the practice of structuring your online presence so AI answer engines like ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews are more likely to name your business when someone asks a question your business can answer. SEO gets you a link. GEO gets you mentioned inside the AI's answer.",
+            text: "GEO (Generative Engine Optimization) is the practice of structuring your online presence so AI answer engines like ChatGPT, Claude, Perplexity, Gemini, and Google AI Overviews are more likely to name your business when someone asks a question your business can answer. SEO gets you a link. GEO gets you mentioned inside the AI's answer.",
           },
         },
         {
@@ -437,7 +437,7 @@ const ARTICLE_LD_DATA = {
           name: "How is GEO different from SEO?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "SEO aims to rank a page in Google's index so users click a blue link. GEO aims to be named inside an AI-generated answer. GEO leans on structured, specific, authoritative content rather than backlinks and keywords. Live-retrieval GEO impact can appear in weeks; SEO typically takes months to years. They share the same technical foundations — crawlability, schema, fresh content — so fixing one often helps the other.",
+            text: "SEO aims to rank a page in Google's index so users click a blue link. GEO aims to be named inside an AI-generated answer. GEO leans on structured, specific, authoritative content rather than backlinks and keywords. Live-retrieval GEO impact can appear in weeks; SEO typically takes months to years. They share the same technical foundations (crawlability, schema, fresh content), so fixing one often helps the other.",
           },
         },
         {
@@ -453,7 +453,7 @@ const ARTICLE_LD_DATA = {
           name: "How often does AI cite local businesses?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Very rarely. SOCi's 2026 Local Visibility Index analyzed 350,000 business locations and found ChatGPT recommends only about 1.2% of local business locations when asked for a local business — compared to 35.9% appearing in Google's traditional '3-pack'. Earning AI local visibility is 3 to 30 times harder than ranking in traditional local search.",
+            text: "Very rarely. SOCi's 2026 Local Visibility Index analyzed 350,000 business locations and found ChatGPT recommends only about 1.2% of local business locations when asked for a local business, compared to 35.9% appearing in Google's traditional '3-pack'. Earning AI local visibility is 3 to 30 times harder than ranking in traditional local search.",
           },
         },
       ],
