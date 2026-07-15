@@ -1153,6 +1153,10 @@ export function InvisibilityTestClient() {
   const [country, setCountry] = useState("United States");
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
+  // LGPD/GDPR: marketing consent is a separate, affirmative opt-in (unchecked by
+  // default). The transactional result email always sends; this gates the
+  // free→Kit nurture drip. Without it that whole sequence never enrolls.
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // Machine state
@@ -1276,6 +1280,7 @@ export function InvisibilityTestClient() {
           country,
           region,
           email: email.trim(),
+          marketing_consent: marketingConsent,
         }),
       });
 
@@ -1496,6 +1501,29 @@ export function InvisibilityTestClient() {
           style={emailErrorMessage ? inputErrorStyle : inputStyle}
         />
       </Field>
+
+      {/* Marketing opt-in (LGPD/GDPR affirmative consent) — gates the free→Kit
+          nurture drip. Unchecked by default; the result email sends regardless. */}
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "var(--space-2)",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-muted)",
+          fontFamily: "var(--font-family)",
+          lineHeight: 1.5,
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={marketingConsent}
+          onChange={(e) => setMarketingConsent(e.target.checked)}
+          style={{ marginTop: "0.2rem", width: "16px", height: "16px", flexShrink: 0, accentColor: "var(--color-primary)" }}
+        />
+        <span>Email me a few tips to get cited by AI. No spam, unsubscribe anytime.</span>
+      </label>
 
       {/* Collapsible "Add details" section — competitors, sector, country */}
       <div>
