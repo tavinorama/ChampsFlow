@@ -162,6 +162,24 @@ export default function BrandDetailPage() {
     return Math.round(a.score_brand * 0.3 + a.score_performance * 0.35 + a.score_ai * 0.35);
   }, []);
 
+  // Derive the three product-facing vectors from the raw sub-scores. Mirrors the
+  // server (audits.ts deriveCitationReadiness / computeThreeScores): visibility = AI,
+  // citationReadiness = round(clamp(performance*0.6 + brand*0.4)). executionProgress is
+  // plan-based (audit-independent) and backfilled from /score. Without this, viewing a
+  // specific audit (?audit=) left threeScores null and the scorecard fell back to the
+  // legacy AI/Performance/Brand layout — the marketing site + free test show the 3 vectors.
+  const deriveThreeScores = useCallback(
+    (a: AuditState, executionProgress: number | null = null): ThreeScores | null => {
+      if (a.score_ai == null || a.score_performance == null || a.score_brand == null) return null;
+      return {
+        visibility: a.score_ai,
+        citationReadiness: citationReadinessScore(a.score_performance, a.score_brand) ?? a.score_ai,
+        executionProgress,
+      };
+    },
+    []
+  );
+
   const loadBreakdown = useCallback(async (aId: string) => {
     try {
       const res = await apiFetch(`/api/audits/${aId}/breakdown`);
@@ -243,9 +261,25 @@ export default function BrandDetailPage() {
           setAudit(a);
           if (a.status === "complete") {
             setOverall(computeOverall(a));
+            // Show the 3 vectors (Visibility / Citation Readiness / Execution) instead of
+            // the legacy AI/Performance/Brand fallback when viewing a specific audit.
+            setThreeScores(deriveThreeScores(a));
             setStatusMsg("Audit complete.");
             setResolvedAuditId(auditId);
             void loadBreakdown(auditId);
+            // Backfill Execution (plan-based, not in the audit row) from the score endpoint.
+            void apiFetch(`/api/brands/${brandId}/score`)
+              .then(async (r) => {
+                if (!r.ok) return;
+                const d = (await r.json().catch(() => null)) as
+                  | { threeScores?: { executionProgress?: number | null } }
+                  | null;
+                const exec = d?.threeScores?.executionProgress ?? null;
+                if (exec != null) {
+                  setThreeScores((prev) => (prev ? { ...prev, executionProgress: exec } : deriveThreeScores(a, exec)));
+                }
+              })
+              .catch(() => {});
             return;
           }
           if (a.status === "failed") {
@@ -262,7 +296,7 @@ export default function BrandDetailPage() {
     }
     void poll();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [auditId, computeOverall, loadBreakdown]);
+  }, [auditId, brandId, computeOverall, deriveThreeScores, loadBreakdown]);
 
   // On load without ?audit, fetch latest score, then its breakdown.
   useEffect(() => {
@@ -4005,6 +4039,14 @@ function DeltaChip({ delta }: { delta: number | null }) {
   );
 }
 
+// Citation Readiness = blend of Performance (0.6) and Brand (0.4). Mirrors the
+// server (audits.ts deriveCitationReadiness). Shared by the scorecard derivation
+// and the history table so the formula lives in one place.
+function citationReadinessScore(performance: number | null, brand: number | null): number | null {
+  if (performance == null || brand == null) return null;
+  return Math.round(Math.max(0, Math.min(100, performance * 0.6 + brand * 0.4)));
+}
+
 function AuditHistoryCompare({ brandId }: { brandId: string }) {
   const [audits, setAudits] = useState<AuditHistoryEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -4076,7 +4118,7 @@ function AuditHistoryCompare({ brandId }: { brandId: string }) {
             <thead>
               <tr>
                 <th style={th}>Date</th><th style={th}>Run</th>
-                <th style={th}>AI</th><th style={th}>Perf</th><th style={th}>Brand</th><th style={th}>Overall</th>
+                <th style={th}>Visibility</th><th style={th}>Cite readiness</th><th style={th}>Overall</th>
                 <th style={th}>From</th><th style={th}>To</th>
               </tr>
             </thead>
@@ -4086,8 +4128,7 @@ function AuditHistoryCompare({ brandId }: { brandId: string }) {
                   <td style={td}>{fmtDate(a.created_at)}</td>
                   <td style={{ ...td, color: "var(--color-muted)" }}>{a.triggered_by ?? "—"}</td>
                   <td style={td}>{a.score_ai ?? "—"}</td>
-                  <td style={td}>{a.score_performance ?? "—"}</td>
-                  <td style={td}>{a.score_brand ?? "—"}</td>
+                  <td style={td}>{citationReadinessScore(a.score_performance, a.score_brand) ?? "—"}</td>
                   <td style={td}>{a.score_overall ?? "—"}</td>
                   <td style={td}>
                     <input type="radio" name="audit-from" aria-label={`Compare from ${fmtDate(a.created_at)}`}
