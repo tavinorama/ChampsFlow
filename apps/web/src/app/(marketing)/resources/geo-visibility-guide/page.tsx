@@ -42,7 +42,7 @@ const PARTS = [
     number: "Part 1",
     title: "The AI Search Shift",
     highlight:
-      "Why your SEO wins are going hollow — and the numbers proving it is already here.",
+      "Why your SEO wins are going hollow, and the numbers proving it is already here.",
     stat: "68% of US Google searches now end with no click (SparkToro, 2026)",
   },
   {
@@ -56,12 +56,12 @@ const PARTS = [
     number: "Part 3",
     title: "The Anatomy of a Citation-Worthy Post",
     highlight:
-      "The 5 traits the Princeton research proves — with before/after examples in real SMB verticals.",
+      "The 5 traits the Princeton research proves, with before/after examples in real SMB verticals.",
     stat: "Right tactics lift AI visibility by up to 40% (Princeton / KDD 2024)",
   },
   {
     number: "Part 4",
-    title: "Where AI Looks — Choosing Your Battlegrounds",
+    title: "Where AI Looks: Choosing Your Battlegrounds",
     highlight:
       "Source-authority pecking order, the great equalizer (LinkedIn), and per-business-type priority stacks.",
     stat: "Median cited LinkedIn post had just 15–25 reactions (Semrush, 2026)",
@@ -70,7 +70,7 @@ const PARTS = [
     number: "Part 5",
     title: "The 4-Week Posting Cadence That Works",
     highlight:
-      "A literal Monday-start calendar — posts, formats, and platforms — you can run this week.",
+      "A literal Monday-start calendar (posts, formats, and platforms) you can run this week.",
     stat: "AI-cited URLs are ~26% fresher than top organic results (Ahrefs, 2025)",
   },
   {
@@ -91,7 +91,7 @@ const PARTS = [
     number: "Part 8",
     title: "Your 90-Day GEO Roadmap",
     highlight:
-      "A week-by-week action plan from first audit to compounding citation share — and when to automate.",
+      "A week-by-week action plan from first audit to compounding citation share, and when to automate.",
     stat: "Only ~16% of brands systematically track AI visibility (HubSpot, 2025)",
   },
 ];
@@ -290,7 +290,7 @@ export default function GeoVisibilityGuidePage() {
               color: "var(--color-muted)",
             }}
           >
-            Included with every Growth ($99/mo) and Agency plan — yours to
+            Included with every Growth ($99/mo) and Agency plan, yours to
             download the moment you subscribe.
           </p>
         </header>
@@ -377,7 +377,7 @@ export default function GeoVisibilityGuidePage() {
               letterSpacing: "-0.01em",
             }}
           >
-            What&rsquo;s inside — 8 parts
+            What&rsquo;s inside: 8 parts
           </h2>
           <div
             style={{
@@ -487,9 +487,9 @@ export default function GeoVisibilityGuidePage() {
               marginBottom: "var(--space-4)",
             }}
           >
-            A new layer has been bolted on top of search. AI answer engines —
-            ChatGPT, Google&rsquo;s AI Overviews, Gemini, Perplexity, and
-            Claude — now read the web for your customer and hand back a finished
+            A new layer has been bolted on top of search. AI answer engines
+            (ChatGPT, Google&rsquo;s AI Overviews, Gemini, Perplexity, and
+            Claude) now read the web for your customer and hand back a finished
             answer <em>before</em> a single link is shown. The customer who used
             to type &ldquo;best plumber near me&rdquo; and scroll through a list
             now asks an AI the same question. And here is the part that should
@@ -542,9 +542,9 @@ export default function GeoVisibilityGuidePage() {
           >
             This is why &ldquo;we&rsquo;re ranking great!&rdquo; has become a
             dangerous thing to believe. Your SEO scoreboard can show a win while
-            the actual game is being played — and lost — one layer above it.
-            The full guide — the complete picture, the 5 citation traits proven
-            by peer-reviewed research, and a week-by-week plan to fix it — is
+            the actual game is being played (and lost) one layer above it.
+            The full guide (the complete picture, the 5 citation traits proven
+            by peer-reviewed research, and a week-by-week plan to fix it) is
             included with every Growth and Agency plan.
           </p>
 
@@ -609,7 +609,7 @@ export default function GeoVisibilityGuidePage() {
           >
             You can run every step yourself, by hand. At the end of the guide
             we show you where Ozvor automates the parts that quietly get
-            dropped — and how to start for free.
+            dropped, and how to start for free.
           </p>
           <p
             style={{
@@ -663,7 +663,7 @@ export default function GeoVisibilityGuidePage() {
           >
             Growth ($99/mo, or $831/yr with founder pricing) includes weekly
             automated monitoring across ChatGPT, Claude, Perplexity, Gemini,
-            and Google AI Overview — 1 brand, 10 competitors, 250 prompts per
+            and Google AI Overview: 1 brand, 10 competitors, 250 prompts per
             week, plus citation tracking and GEO content drafts. The guide is
             yours to keep either way.
           </p>
