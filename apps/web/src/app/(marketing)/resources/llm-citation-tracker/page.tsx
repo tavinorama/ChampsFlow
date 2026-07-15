@@ -796,8 +796,8 @@ export default function LlmCitationTrackerPage() {
             That&rsquo;s the line where you graduate to{" "}
             <strong>Ozvor</strong> — the AI Search Visibility
             platform this tracker comes from. Ozvor automates everything
-            above, computes your <strong>Ozvor AI Visibility Score</strong> (Brand 30% /
-            Performance 35% / AI 35%), benchmarks you against your competitors,
+            above, computes your <strong>Ozvor AI Visibility Score</strong> (across three
+            parts: Visibility, Citation Readiness, and Execution), benchmarks you against your competitors,
             and builds a <strong>GEO content plan</strong> so you&rsquo;re not
             guessing what to publish.
           </p>

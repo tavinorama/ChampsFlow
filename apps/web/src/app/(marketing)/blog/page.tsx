@@ -31,14 +31,14 @@ import { safeJsonLd } from "../../../lib/safe-json-ld";
 export const metadata: Metadata = {
   title: "Blog — Ozvor",
   description:
-    "Articles and videos about AI search visibility, GEO (Generative Engine Optimization), and building a brand that AI systems cite and recommend.",
+    "Articles about AI search visibility and GEO, and how to get your brand cited by ChatGPT, Claude, Perplexity and Gemini.",
   alternates: {
     canonical: "https://ozvor.com/blog",
   },
   openGraph: {
     title: "Blog — Ozvor",
     description:
-      "Articles and videos about AI search visibility, GEO, and building a brand that AI systems cite and recommend.",
+      "Articles about AI search visibility and GEO, and how to get your brand cited by ChatGPT, Claude, Perplexity and Gemini.",
     url: "https://ozvor.com/blog",
     siteName: "Ozvor",
     type: "website",
@@ -57,7 +57,7 @@ const blogIndexJsonLd = {
   "@type": "CollectionPage",
   name: "Blog — Ozvor",
   description:
-    "Articles and videos about AI search visibility, GEO (Generative Engine Optimization), and building a brand that AI systems cite and recommend.",
+    "Articles about AI search visibility and GEO, and how to get your brand cited by ChatGPT, Claude, Perplexity and Gemini.",
   url: "https://ozvor.com/blog",
   isPartOf: {
     "@type": "WebSite",
