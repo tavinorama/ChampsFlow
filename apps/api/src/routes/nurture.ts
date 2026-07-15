@@ -36,12 +36,19 @@ import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
 const FREE_TO_KIT_STEPS = 4;
 const KIT_TO_DFY_STEPS = 3;
+const KIT_TO_GROWTH_STEPS = 3;
+
+const SEQUENCE_STEPS: Record<Sequence, number> = {
+  free_to_kit: FREE_TO_KIT_STEPS,
+  kit_to_dfy: KIT_TO_DFY_STEPS,
+  kit_to_growth: KIT_TO_GROWTH_STEPS,
+};
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type Sequence = "free_to_kit" | "kit_to_dfy";
+type Sequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth";
 
 interface NurtureEnrollmentRow {
   id: string;
@@ -93,8 +100,7 @@ export async function enrollNurture(
 
   const id = randomUUID();
   const unsubscribeToken = randomUUID();
-  const totalSteps =
-    sequence === "free_to_kit" ? FREE_TO_KIT_STEPS : KIT_TO_DFY_STEPS;
+  const totalSteps = SEQUENCE_STEPS[sequence];
 
   // Build the INSERT. We use ON CONFLICT (email, sequence) DO NOTHING for idempotency.
   // Two branches for delayMs > 0 vs 0 keep all param positions explicit and unambiguous.

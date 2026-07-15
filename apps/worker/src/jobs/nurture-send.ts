@@ -43,6 +43,9 @@ import { sendNurtureFree4Email } from "../../../../packages/shared/src/emails/nu
 import { sendNurtureKit1Email } from "../../../../packages/shared/src/emails/nurture-kit-1";
 import { sendNurtureKit2Email } from "../../../../packages/shared/src/emails/nurture-kit-2";
 import { sendNurtureKit3Email } from "../../../../packages/shared/src/emails/nurture-kit-3";
+import { sendNurtureGrowth1Email } from "../../../../packages/shared/src/emails/nurture-growth-1";
+import { sendNurtureGrowth2Email } from "../../../../packages/shared/src/emails/nurture-growth-2";
+import { sendNurtureGrowth3Email } from "../../../../packages/shared/src/emails/nurture-growth-3";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -64,6 +67,12 @@ const KIT_TO_DFY_NEXT_STEP_DELAY_MS: Record<number, number> = {
   1: 3 * 24 * 60 * 60 * 1000, // step 1 done → step 2 in 3 days
 };
 
+// kit_to_growth: step0→step1=4d, step1→step2=3d
+const KIT_TO_GROWTH_NEXT_STEP_DELAY_MS: Record<number, number> = {
+  0: 4 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 4 days
+  1: 3 * 24 * 60 * 60 * 1000, // step 1 done → step 2 in 3 days
+};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -71,7 +80,7 @@ const KIT_TO_DFY_NEXT_STEP_DELAY_MS: Record<number, number> = {
 interface EnrollmentRow {
   id: string;
   email: string;
-  sequence: "free_to_kit" | "kit_to_dfy";
+  sequence: "free_to_kit" | "kit_to_dfy" | "kit_to_growth";
   current_step: number;
   total_steps: number;
   unsubscribe_token: string;
@@ -91,7 +100,7 @@ type NurtureEmailParams = {
 };
 
 async function dispatchEmail(
-  sequence: "free_to_kit" | "kit_to_dfy",
+  sequence: "free_to_kit" | "kit_to_dfy" | "kit_to_growth",
   step: number,
   params: NurtureEmailParams
 ): Promise<void> {
@@ -100,6 +109,10 @@ async function dispatchEmail(
     if (step === 1) return sendNurtureFree2Email(params);
     if (step === 2) return sendNurtureFree3Email(params);
     if (step === 3) return sendNurtureFree4Email(params);
+  } else if (sequence === "kit_to_growth") {
+    if (step === 0) return sendNurtureGrowth1Email(params);
+    if (step === 1) return sendNurtureGrowth2Email(params);
+    if (step === 2) return sendNurtureGrowth3Email(params);
   } else {
     // kit_to_dfy
     if (step === 0) return sendNurtureKit1Email(params);
@@ -148,10 +161,13 @@ async function advanceCursor(
     `;
   } else {
     // Calculate next_send_at delay
-    const delayMs =
+    const delayTable =
       row.sequence === "free_to_kit"
-        ? (FREE_TO_KIT_NEXT_STEP_DELAY_MS[row.current_step] ?? 2 * 24 * 60 * 60 * 1000)
-        : (KIT_TO_DFY_NEXT_STEP_DELAY_MS[row.current_step] ?? 3 * 24 * 60 * 60 * 1000);
+        ? FREE_TO_KIT_NEXT_STEP_DELAY_MS
+        : row.sequence === "kit_to_growth"
+          ? KIT_TO_GROWTH_NEXT_STEP_DELAY_MS
+          : KIT_TO_DFY_NEXT_STEP_DELAY_MS;
+    const delayMs = delayTable[row.current_step] ?? 3 * 24 * 60 * 60 * 1000;
 
     await sql`
       UPDATE nurture_enrollment
