@@ -248,8 +248,7 @@ export default function ResearchPage() {
           See where you stand in these numbers.
         </h2>
         <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 0 var(--space-6)", maxWidth: "480px", marginInline: "auto" }}>
-          The free test shows exactly how AI answers name you today — or
-          don&rsquo;t.
+          The free test shows how AI answers name your brand right now.
         </p>
         <Link
           href="/test"

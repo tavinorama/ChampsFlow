@@ -279,7 +279,7 @@ export default function HowWeMeasurePage() {
               margin: "0 0 var(--space-4) 0",
             }}
           >
-            Sourced entirely from live probes across 5 AI engines.
+            Sourced from live probes across 5 AI engines. AI answers vary by day and engine.
           </p>
 
           <div>
@@ -464,9 +464,9 @@ export default function HowWeMeasurePage() {
                 paddingLeft: "var(--space-1)",
               }}
             >
-              Are your pages marked up with standard structured data? Standard SEO hygiene
-              — Google&rsquo;s 2026 documentation confirms no &ldquo;special AI schema&rdquo;
-              is required.
+              Are your pages marked up with standard structured data? Standard schema markup
+              helps AI engines understand your pages. No special AI-only schema is required, per
+              current SEO guidance.
             </p>
 
             <div style={inputRowStyle}>
