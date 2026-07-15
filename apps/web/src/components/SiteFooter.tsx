@@ -37,7 +37,7 @@ const FOOTER_CSS = `
     font-weight: 400;
   }
   .mk-footer-link:hover { color: var(--color-text); }
-  .mk-social-link { transition: color 0.15s; }
+  .mk-social-link { color: var(--color-muted); display: inline-flex; transition: color 0.15s; }
   .mk-social-link:hover { color: var(--color-text); }
   .mk-footer { background: #080d0b; }
   html[data-theme="light"] .mk-footer { background: #e7e4d8; }
@@ -168,7 +168,6 @@ export function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mk-social-link"
-                  style={{ color: "var(--color-muted)", display: "inline-flex" }}
                 >
                   <SocialIcon path={s.path} />
                 </a>
