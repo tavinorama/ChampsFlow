@@ -818,7 +818,7 @@ export default function DashboardV3() {
 // ---------------------------------------------------------------------------
 
 function OverviewTab({
-  brandName, overall, threeScores, trend, tone, loading, onRunAudit, auditBusy, auditMsg,
+  brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditMsg,
 }: {
   brandName?: string;
   overall: number | null;
@@ -874,7 +874,7 @@ function OverviewTab({
       {trend.length >= 2 && (
         <>
           <div style={S.secH}>Your scores over time <span style={S.secN}>— every audit since you started</span></div>
-          <AnalyticsChart trend={trend} />
+          <AnalyticsChart trend={trend} brandId={brandId} />
         </>
       )}
 
@@ -905,35 +905,93 @@ const CHART_PERIODS: Array<{ key: string; label: string; days: number | null }> 
   { key: "7", label: "7d", days: 7 },
 ];
 
-function AnalyticsChart({ trend }: { trend: TrendPoint[] }) {
+interface CompetitorTrendPoint { audit_id: string; date: string; brand_rate: number; competitors: Record<string, number>; }
+interface CompetitorTrends { series: CompetitorTrendPoint[]; competitors: string[]; }
+const COMPETITOR_COLORS = ["#dc2626", "#ea580c", "#ca8a04", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#9333ea"];
+
+function AnalyticsChart({ trend, brandId }: { trend: TrendPoint[]; brandId: string }) {
   const [period, setPeriod] = useState("all");
   const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const [mode, setMode] = useState<"scores" | "compare">("scores");
+
+  // --- competitor overlay (lazy-loaded the first time "vs Competitors" opens) ---
+  const [comp, setComp] = useState<CompetitorTrends | null>(null);
+  const [compLoading, setCompLoading] = useState(false);
+  const [compVisible, setCompVisible] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (mode !== "compare" || comp) return;
+    setCompLoading(true);
+    void apiFetch(`/api/brands/${brandId}/competitor-trends`)
+      .then(async (r) => {
+        if (!r.ok) return;
+        const j = (await r.json()) as CompetitorTrends;
+        setComp(j);
+        setCompVisible(Object.fromEntries(j.competitors.map((name) => [name, true])));
+      })
+      .catch(() => {})
+      .finally(() => setCompLoading(false));
+  }, [mode, comp, brandId]);
 
   // trend arrives newest-first; work oldest→newest and filter by period.
   const asc = useMemo(() => [...trend].reverse(), [trend]);
+  const days = CHART_PERIODS.find((p) => p.key === period)?.days ?? null;
   const points = useMemo(() => {
-    const days = CHART_PERIODS.find((p) => p.key === period)?.days ?? null;
     if (days == null) return asc;
     const cutoff = asc.length ? new Date(asc[asc.length - 1].recorded_at).getTime() - days * 86400000 : 0;
     return asc.filter((t) => new Date(t.recorded_at).getTime() >= cutoff);
-  }, [asc, period]);
+  }, [asc, days]);
+  const compPoints = useMemo(() => {
+    const s = comp?.series ?? [];
+    if (days == null) return s;
+    const cutoff = s.length ? new Date(s[s.length - 1].date).getTime() - days * 86400000 : 0;
+    return s.filter((t) => new Date(t.date).getTime() >= cutoff);
+  }, [comp, days]);
 
   const W = 640, H = 200, padL = 30, padB = 22, padT = 10, padR = 10;
-  const n = points.length;
+  const n = mode === "compare" ? compPoints.length : points.length;
   const x = (i: number) => padL + (n <= 1 ? 0 : (i / (n - 1)) * (W - padL - padR));
   const y = (v: number) => padT + (1 - v / 100) * (H - padT - padB);
+  const firstDate = mode === "compare" ? compPoints[0]?.date : points[0]?.recorded_at;
+  const lastDate = mode === "compare" ? compPoints[n - 1]?.date : points[n - 1]?.recorded_at;
+  const trackedComps = comp?.competitors ?? [];
 
   return (
     <div style={{ ...S.card, padding: "var(--space-4)" }}>
+      {/* mode toggle */}
+      <div style={{ display: "flex", gap: "4px", marginBottom: "var(--space-3)" }}>
+        {([["scores", "Your scores"], ["compare", "vs Competitors"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setMode(key)}
+            style={{ border: "1px solid var(--color-border)", background: mode === key ? "var(--color-primary)" : "transparent", color: mode === key ? "#fff" : "var(--color-muted)", borderRadius: "var(--radius-pill)", padding: "4px 12px", font: "inherit", fontSize: "0.74rem", fontWeight: 700, cursor: "pointer" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
-        <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
-          {CHART_SERIES.map((s) => (
-            <button key={s.key} onClick={() => setHidden((h) => ({ ...h, [s.key]: !h[s.key] }))}
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px", border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: "0.8rem", fontWeight: 600, opacity: hidden[s.key] ? 0.4 : 1 }}>
-              <span style={{ width: 10, height: 10, borderRadius: "2px", background: s.color, display: "inline-block" }} />
-              {s.label}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap", alignItems: "center" }}>
+          {mode === "scores"
+            ? CHART_SERIES.map((s) => (
+                <button key={s.key} onClick={() => setHidden((h) => ({ ...h, [s.key]: !h[s.key] }))}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "6px", border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: "0.8rem", fontWeight: 600, opacity: hidden[s.key] ? 0.4 : 1 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "2px", background: s.color, display: "inline-block" }} />
+                  {s.label}
+                </button>
+              ))
+            : (
+              <>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", fontWeight: 700 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "2px", background: "var(--color-primary)", display: "inline-block" }} />
+                  Your brand
+                </span>
+                {trackedComps.map((name, i) => (
+                  <button key={name} onClick={() => setCompVisible((v) => ({ ...v, [name]: !v[name] }))}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: "0.8rem", fontWeight: 600, opacity: compVisible[name] ? 1 : 0.4 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "2px", background: COMPETITOR_COLORS[i % COMPETITOR_COLORS.length], display: "inline-block" }} />
+                    {name}
+                  </button>
+                ))}
+              </>
+            )}
         </div>
         <div style={{ display: "flex", gap: "4px" }}>
           {CHART_PERIODS.map((p) => (
@@ -944,25 +1002,47 @@ function AnalyticsChart({ trend }: { trend: TrendPoint[] }) {
           ))}
         </div>
       </div>
-      {n < 2 ? (
+
+      {mode === "compare" && (
+        <p style={{ ...S.muted, fontSize: "0.74rem", margin: "0 0 var(--space-2)" }}>
+          How often each brand is cited by AI, per audit — same questions, same denominator.
+        </p>
+      )}
+
+      {mode === "compare" && compLoading ? (
+        <div style={S.muted}>Loading competitor history…</div>
+      ) : mode === "compare" && trackedComps.length === 0 ? (
+        <div style={S.muted}>No competitors tracked yet. Add some in the Competitors tab to compare here.</div>
+      ) : n < 2 ? (
         <div style={S.muted}>Not enough audits in this range.</div>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Scores over time" style={{ display: "block" }}>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={mode === "compare" ? "Citation rate vs competitors over time" : "Scores over time"} style={{ display: "block" }}>
           {[0, 25, 50, 75, 100].map((g) => (
             <g key={g}>
               <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke="var(--color-border)" strokeWidth="1" />
               <text x={4} y={y(g) + 3} fontSize="9" fill="var(--color-muted)">{g}</text>
             </g>
           ))}
-          {CHART_SERIES.filter((s) => !hidden[s.key]).map((s) => {
-            const d = points.map((t, i) => { const v = s.get(t); return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
-            return <polyline key={s.key} points={d} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />;
-          })}
+          {mode === "scores"
+            ? CHART_SERIES.filter((s) => !hidden[s.key]).map((s) => {
+                const d = points.map((t, i) => { const v = s.get(t); return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
+                return <polyline key={s.key} points={d} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />;
+              })
+            : (
+              <>
+                <polyline points={compPoints.map((t, i) => `${x(i)},${y(t.brand_rate)}`).join(" ")} fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                {trackedComps.filter((name) => compVisible[name]).map((name) => {
+                  const idx = trackedComps.indexOf(name);
+                  const d = compPoints.map((t, i) => `${x(i)},${y(t.competitors[name] ?? 0)}`).join(" ");
+                  return <polyline key={name} points={d} fill="none" stroke={COMPETITOR_COLORS[idx % COMPETITOR_COLORS.length]} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="4 3" />;
+                })}
+              </>
+            )}
         </svg>
       )}
       <div style={{ display: "flex", justifyContent: "space-between", color: "var(--color-muted)", fontSize: "0.72rem", marginTop: "4px", paddingLeft: padL }}>
-        <span>{n >= 1 ? new Date(points[0].recorded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
-        <span>{n >= 1 ? new Date(points[n - 1].recorded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
+        <span>{firstDate ? new Date(firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
+        <span>{lastDate ? new Date(lastDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
       </div>
     </div>
   );
