@@ -194,10 +194,25 @@ export default async function RootLayout({
           // but STILL keep the compliance layer the old shell had: the CI-1 DPA
           // acknowledgment gate (blocking modal) and the CCPA California banner.
           // DpaGate renders only the modal or the children, no sidebar/topbar.
-          <>
-            <CaliforniaBanner country={country} />
-            <DpaGate>{children}</DpaGate>
-          </>
+          isDashboardV3 ? (
+            // v3 is a FIT-TO-VIEWPORT shell (its own height:100% grid). The
+            // banner must NOT stack on top of a 100vh shell — that pushes the
+            // sidebar footer (the client's email) below the fold. So give the
+            // viewport to a flex column: banner takes its own height, the shell
+            // fills the rest and its internal footer stays pinned + visible.
+            <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
+              <CaliforniaBanner country={country} />
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <DpaGate>{children}</DpaGate>
+              </div>
+            </div>
+          ) : (
+            // Pages builder scrolls naturally — the banner can sit above it.
+            <>
+              <CaliforniaBanner country={country} />
+              <DpaGate>{children}</DpaGate>
+            </>
+          )
         ) : isPublicLanding ? (
           // 0. Public tenant sites (/l/*): render ONLY the page. No Ozvor
           // chrome of any kind — the page's own PublicLandingChrome provides
