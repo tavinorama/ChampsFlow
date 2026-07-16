@@ -45,8 +45,8 @@
 > instead, here's the plan — wins the retainer.
 >
 > That's the gap we built Ozvor's agency tier for: audits across ChatGPT, Claude, Perplexity,
-> Gemini and Google AI Overview, white-label reports, and a portfolio view for up to 25 client
-> brands at $249/mo (~$10/brand).
+> Gemini and Google AI Overview, white-label reports, and a portfolio view for up to 15 client
+> brands at $549/mo (~$36.60/brand).
 >
 > The play that converts best: run the free test on the prospect *before* the meeting, and open
 > with their real gaps. Evidence beats promises.

@@ -48,7 +48,7 @@ export interface PlanCardProps {
 //   Charge = STRIPE_PRICE_ID_AGENCY (monthly) / STRIPE_PRICE_ID_AGENCY_ANNUAL
 //   env vars — must point to the $549/mo and $6,588/yr Stripe prices created by
 //   scripts/stripe-bootstrap.ts. Run that script and update the env vars or
-//   checkout will charge the old $149 amount regardless of what is displayed here.
+//   checkout will charge the old $549 amount regardless of what is displayed here.
 const PLAN_META: Record<
   PlanTier,
   {

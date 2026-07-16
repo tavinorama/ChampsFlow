@@ -221,7 +221,7 @@ export default function LocalPagesSalesPage() {
           <div style={{ padding: "var(--space-6)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)", background: "var(--color-surface)", boxShadow: "var(--shadow-card)" }}>
             <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--color-gold-ink)" }}>Agency</div>
             <div style={{ marginTop: "var(--space-2)", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em" }}>$549<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>/mo</span></div>
-            <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>Up to 25 sites &mdash; 1 per client brand. Same 5 regenerations/site/month.</p>
+            <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>Up to 15 sites &mdash; 1 per client brand. Same 5 regenerations/site/month.</p>
           </div>
         </div>
         <div style={{ marginTop: "var(--space-5)", padding: "var(--space-4)", backgroundColor: "var(--color-surface-muted)", borderRadius: "var(--radius-md)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, textAlign: "center" }}>

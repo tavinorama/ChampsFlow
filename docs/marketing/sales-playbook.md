@@ -15,7 +15,7 @@
 
 ## 1. Ideal Customer Profile (ICP)
 
-Ozvor sells through a self-serve value ladder: the free **AI Invisibility Test** is the wedge, the **$29 Get-Cited Kit** is the tripwire, and Growth (€99/mo) / Agency (€149/mo) / OrganicPosts are the expansion. The ICP below is ranked by how fast a segment moves from free test to paid, and how naturally they climb the ladder.
+Ozvor sells through a self-serve value ladder: the free **AI Invisibility Test** is the wedge, the **$29 Get-Cited Kit** is the tripwire, and Growth (€99/mo) / Agency ($549/mo) / OrganicPosts are the expansion. The ICP below is ranked by how fast a segment moves from free test to paid, and how naturally they climb the ladder.
 
 ---
 
@@ -58,7 +58,7 @@ Ozvor sells through a self-serve value ladder: the free **AI Invisibility Test**
 
 **Why GEO matters to them now.** GEO is an emerging service line their clients are actively requesting; whoever offers it credibly first wins retainers and differentiates against other agencies. The Agency tier's white-label + multi-brand structure turns Ozvor into their delivery engine, and the closed loop (we also draft the content with schema) compresses their production cost. Enterprise rivals are priced per-seat/per-brand in a way that breaks an agency's per-client economics — our SMB pricing is the unlock.
 
-**Ladder fit.** Free test → $29 Kit on one client as a trial → Agency tier (€149/mo, white-label, multi-brand). Strong OrganicPosts referral/partner potential when a client wants done-for-you at scale.
+**Ladder fit.** Free test → $29 Kit on one client as a trial → Agency tier ($549/mo, white-label, multi-brand). Strong OrganicPosts referral/partner potential when a client wants done-for-you at scale.
 
 ---
 

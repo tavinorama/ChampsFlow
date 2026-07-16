@@ -3,7 +3,7 @@
 > Owned by vp-sales. Read by ceo-agent (TL;DR only). Updated after every sales agent dispatch.
 
 ## TL;DR
-Launch week (target 2026-07-13). Self-serve checkout live (Kit $29 · Growth $99 · Agency $249 · OrganicPosts book-a-call). Week-1 CRM stood up — [crm-tracker.md](crm-tracker.md) + [week1-crm.csv](week1-crm.csv) — with the free-test-first motion and pipeline stages defined. **Top blocker:** cold outbound is founder-gated (needs approved template + sender identity + physical-address line + opt-out); metrics read "unknown" until GA4/attribution ships (#117). No paying customers confirmed yet; every prospect gets a real free-test finding or no outreach.
+Launch week (target 2026-07-13). Self-serve checkout live (Kit $29 · Growth $99 · Agency $549 · OrganicPosts book-a-call). Week-1 CRM stood up — [crm-tracker.md](crm-tracker.md) + [week1-crm.csv](week1-crm.csv) — with the free-test-first motion and pipeline stages defined. **Top blocker:** cold outbound is founder-gated (needs approved template + sender identity + physical-address line + opt-out); metrics read "unknown" until GA4/attribution ships (#117). No paying customers confirmed yet; every prospect gets a real free-test finding or no outreach.
 
 ## Department meta
 - **Head**: vp-sales

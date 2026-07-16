@@ -16,11 +16,11 @@ _Atualizado: 2026-06-26. Este é o documento único e completo: o que JÁ está 
 
 ## OVERVIEW — onde está
 
-**Produto: 100% construído e deployado.** Funil completo (free test → Kit $29 → Growth $99 / Agency $249 → DFY GEO Sprint/Managed), dashboard com trend, admin, blog, chat AI, nutrição (LGPD), cookie banner, legais, schema/SEO, emails branded. Banco 100% migrado.
+**Produto: 100% construído e deployado.** Funil completo (free test → Kit $29 → Growth $99 / Agency $549 → DFY GEO Sprint/Managed), dashboard com trend, admin, blog, chat AI, nutrição (LGPD), cookie banner, legais, schema/SEO, emails branded. Banco 100% migrado.
 
 **O que falta NÃO é código — é ligar config que só você controla:** as chaves de API (secretas), o webhook do Stripe, o DNS, e apontar 2 env vars do Stripe. Sem as chaves de engine a auditoria roda em **mock** (4 de 5 motores) — esse é o item nº 1.
 
-**Já resolvido por mim no Stripe:** catálogo correto (Kit $29, Growth $99/$1.188, **Agency $249/$2.988 criados**), cupom **FOUNDER30** ativo, **checkout de baixa fricção** (mostra card + Apple Pay + Google Pay + Link 1-clique).
+**Já resolvido por mim no Stripe:** catálogo correto (Kit $29, Growth $99/$1.188, **Agency $549/$6.588 criados**), cupom **FOUNDER30** ativo, **checkout de baixa fricção** (mostra card + Apple Pay + Google Pay + Link 1-clique).
 
 ---
 
@@ -99,7 +99,7 @@ NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 
 ## 2. STRIPE — o que falta (catálogo já resolvido por mim ✅)
 
-- ✅ **Preços corretos** (Kit $29, Growth $99/$1.188, Agency $249/$2.988) + cupom **FOUNDER30** (30%, anual). Os price IDs já estão no §1.1.
+- ✅ **Preços corretos** (Kit $29, Growth $99/$1.188, Agency $549/$6.588) + cupom **FOUNDER30** (30%, anual). Os price IDs já estão no §1.1.
 - ⚙️ **Criar o webhook:** dashboard.stripe.com/webhooks → **Add endpoint** → URL `https://api-production-2052.up.railway.app/api/billing/webhook` → eventos: `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed` → **Reveal signing secret** → colar em `STRIPE_WEBHOOK_SECRET` (§1.1). ⭐ A API exige isso.
 - ⚙️ **Ativar pagamento rápido:** Settings → Payments → **Payment methods** → garantir **Link**, **Apple Pay**, **Google Pay** ligados (na Hosted Checkout o Apple Pay funciona sem verificar domínio). Link já costuma vir ligado.
 - ⚙️ **Customer Portal:** dashboard.stripe.com/settings/billing/portal → **Activate**.

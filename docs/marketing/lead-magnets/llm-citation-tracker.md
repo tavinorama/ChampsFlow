@@ -159,7 +159,7 @@ Ozvor audits how your brand appears across ChatGPT, Claude, Perplexity, Gemini a
 | 1 | **Free AI Visibility Test** — ozvor.com/test | Free | See your citation status against one competitor in under 2 minutes. No credit card. |
 | 2 | **The Get-Cited Kit** | $29 one-time | A full audit, your top 3 fixes, and 3 ready-to-publish drafts (blog, LinkedIn, FAQ). |
 | 3 | **Growth** — ozvor.com/pricing | $99/mo | Automates this weekly tracking for you across all 5 engines — citation rate, position, sentiment, competitor share-of-voice, and a GEO content plan, with nothing to log by hand. |
-| 4 | **Agency** — ozvor.com/agencies | $249/mo | Growth's monitoring across up to 25 client brands, with white-label reports. |
+| 4 | **Agency** — ozvor.com/agencies | $549/mo | Growth's monitoring across up to 15 client brands (about $37 each), with white-label reports. |
 | 5 | **OrganicPosts by Ozvor** — ozvor.com/organicposts | Done-for-you | We write and publish the citation-worthy content for you. |
 
 ---

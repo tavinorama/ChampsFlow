@@ -174,14 +174,14 @@ They share the same plumbing:
 
 Everything above, a determined owner could do by hand — run the prompts, track who's named, fix the crawlers, publish consistently, and keep it current as the ground shifts. The hard part is *keeping it current*, across five engines, every week. That's the job Ozvor exists to do.
 
-**The path:** Free AI Visibility Test (ozvor.com/test) → The Get-Cited Kit — $29 → Growth — $99/mo (ozvor.com/pricing) → Agency — $249/mo (ozvor.com/agencies) → OrganicPosts by Ozvor (ozvor.com/organicposts, done-for-you).
+**The path:** Free AI Visibility Test (ozvor.com/test) → The Get-Cited Kit — $29 → Growth — $99/mo (ozvor.com/pricing) → Agency — $549/mo (ozvor.com/agencies) → OrganicPosts by Ozvor (ozvor.com/organicposts, done-for-you).
 
 | Step | What it is | Price |
 |---|---|---|
 | **Free AI Visibility Test** — [ozvor.com/test](https://ozvor.com/test) | See where you stand across 5 AI engines, benchmarked against up to 3 competitors | Free, no credit card |
 | **The Get-Cited Kit** | Prioritized fixes ranked by impact, plus 3 ready-to-publish drafts — a blog post, a LinkedIn post, and an FAQ entry with schema | $29 |
 | **Growth** — [ozvor.com/pricing](https://ozvor.com/pricing) | Weekly monitoring, citation tracking, and ongoing GEO content, up to 10 competitors | $99/mo |
-| **Agency** — [ozvor.com/agencies](https://ozvor.com/agencies) | Up to 25 brands, white-label reports, and client workflow | $249/mo |
+| **Agency** — [ozvor.com/agencies](https://ozvor.com/agencies) | Up to 15 brands, white-label reports, and client workflow | $549/mo |
 | **OrganicPosts by Ozvor** — [ozvor.com/organicposts](https://ozvor.com/organicposts) | Done-for-you: our team handles the publishing and optimization | Custom |
 
 Start free, see exactly where you stand, then decide how much of the ongoing work you want to do yourself versus hand to us.

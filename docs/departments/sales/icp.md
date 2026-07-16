@@ -12,7 +12,7 @@
 We sell AI-search visibility to two segments. **Segment A — digital-marketing/
 SEO agencies** (3–40 people, US/EU, 5–30 client brands): they are losing pitches
 because clients ask "why aren't we in ChatGPT answers?" and their tools show
-nothing; they buy **Agency $249/mo** (multi-brand + white-label) and resell GEO.
+nothing; they buy **Agency $549/mo** (multi-brand + white-label) and resell GEO.
 **Segment B — organic-dependent SMBs** (1–50 people, mostly US; SaaS, e-commerce,
 local services with 40%+ organic traffic): their organic is declining and their
 brand is absent when they ask AI "best [category] tool?"; they enter through the
@@ -25,7 +25,7 @@ lead outside both segments is a polite no — see disqualifiers below.
 
 | Segment | Entry | Core offer | Escalation |
 |---|---|---|---|
-| A — Agencies | Free test on a client brand | **Agency $249/mo** (multi-brand, white-label, pitch mode) | OrganicPosts Sprint (DFY for their client) |
+| A — Agencies | Free test on a client brand | **Agency $549/mo** (multi-brand, white-label, pitch mode) | OrganicPosts Sprint (DFY for their client) |
 | B — SMB SaaS / e-com | Free test → **Kit $29** | **Growth $99/mo** (includes Ozvor Pages builder) | OrganicPosts Sprint / Managed GEO |
 | B — Local services | Free test → **Ozvor Pages $99** (one-time site) | Growth $99/mo | OrganicPosts Sprint |
 
@@ -74,7 +74,7 @@ there · lost a named deal to an AI-visible competitor.
 ## Disqualifiers (do NOT pursue)
 
 - Enterprise procurement (security questionnaires, 6-month cycles) — we are
-  self-serve + $29–$249; revisit post-launch quarter.
+  self-serve + $29–$549; revisit post-launch quarter.
 - Paid-ads-only businesses (no organic dependence → no pain we solve).
 - Regulated verticals needing counsel review of AI claims (health/finance
   claims-heavy) until external counsel is retained (legal STATE R-L risk).

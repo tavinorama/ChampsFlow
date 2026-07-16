@@ -119,13 +119,13 @@ All five competitors are monitoring-first tools: they measure AI-search visibili
 | **Evidence transparency** | Public methodology page; audits fail honestly, never fabricate | Claims real-session queries (unverified detail) | Not publicly detailed | Not publicly detailed | Not publicly detailed | Not publicly detailed | Independent test alleges major undercount (unverified, see §5) |
 | **Action plan** | Yes — evidence-backed, per-vector recommendations | No | Limited ("Opportunities" panel, scope unverified) | No | Yes — content optimization agent | No | No |
 | **Content generation** | Yes — BYOK drafts (client controls model/cost) | No | Unverified ("Agent credits", scope unclear) | No | Unverified cost model | No | No |
-| **White-label** | Yes — Agency tier, $249/mo, 25 brands | Not found on public pages | Not found on public pages | Not found on public pages | Not found on public pages | No | No |
+| **White-label** | Yes — Agency tier, $549/mo, 15 brands | Not found on public pages | Not found on public pages | Not found on public pages | Not found on public pages | No | No |
 | **Done-for-you arm** | Yes — OrganicPosts Sprint from $1,500 | No | No | No | No | No | No |
 
 ## Universal Positioning — 5 Bullets
 
 - **We are the only one in this set that closes the loop.** Every competitor here stops at a dashboard; Ozvor turns the audit into a plan and the plan into content drafts in the same product, with a DFY arm (OrganicPosts) for teams that want it built for them.
 - **Radical measurement honesty is our wedge, not a slogan.** Our methodology is public and audits fail honestly rather than invent a number — a direct answer to accuracy concerns raised independently about at least one bolt-on competitor (Ahrefs Brand Radar, per third-party testing cited above).
-- **We are priced for the buyer this whole category ignores.** Every competitor's "real" tier — Profound's $399/mo Growth, AthenaHQ's $295/mo Starter, Ahrefs' ~$828/mo full-coverage stack — prices out solo founders and small agencies. Our $0 → $29 → $99 → $249 ladder does not.
+- **We are priced for the buyer this whole category ignores.** Every competitor's "real" tier — Profound's $399/mo Growth, AthenaHQ's $295/mo Starter, Ahrefs' ~$828/mo full-coverage stack — prices out solo founders and small agencies. Our $0 → $29 → $99 → $549 ladder does not.
 - **BYOK content generation is unique among the five.** No competitor reviewed publicly discloses a client-controlled model/cost mechanism for content generation; most don't generate content at all.
 - **We are not claiming to out-monitor the specialists.** Peec (5.0 G2, 9 reviews) and Profound (4.6 G2, 845 reviews) have real monitoring depth and enterprise trust signals we do not yet have — our pitch is completeness and accessibility, not raw engine-count superiority.

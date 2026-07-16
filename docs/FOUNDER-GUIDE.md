@@ -20,7 +20,7 @@ para quem não quer fazer sozinho.
 
 ### O modelo de negócio (ciclo sem fim)
 ```
-Auditoria GRÁTIS (isca) → Assinatura mensal (€99/€149 — monitoramento semanal)
+Auditoria GRÁTIS (isca) → Assinatura mensal (€99/$549 — monitoramento semanal)
                         → Consultoria OrganicPosts (alta margem)
 ```
 
@@ -85,7 +85,7 @@ exige taxa com confiança, não cara-ou-coroa). Nunca prometa "100% de precisão
 
 ### Fase B — Para COBRAR (paralelo, burocracia)
 - [x] Empresa no Brasil (CNPJ) — **FEITO**: Ozvor, MEI, CNPJ 67.609.444/0001-08 (ver `docs/compliance/ropa.md`)
-- [ ] Stripe: produtos/preços (Growth €99, Agency €149), Pix + boleto,
+- [ ] Stripe: produtos/preços (Growth €99, Agency $549), Pix + boleto,
       webhook, Stripe Tax
 - [ ] Chaves opcionais para auditoria mais rica: OpenAI, Perplexity, Gemini,
       DataForSEO (`SERP_API_KEY`)

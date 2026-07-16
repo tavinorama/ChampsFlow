@@ -41,7 +41,7 @@
 | Quem / Onde | Post | Sinal | Ângulo |
 |---|---|---|---|
 | u/SilentUniversity1304 · r/AskMarketing (1d, ↑21 💬45) | [Should we hire a GEO agency?](https://reddit.com/r/AskMarketing/comments/1ukdck6/should_we_hire_a_geo_agency/) | Empresa cotando GEO a **$2.5k/mês** e em dúvida | Sprint $1.500 one-off + self-serve $99 como alternativa de baixo risco |
-| u/Open-Cryptographer85 · r/aeo (12d, 💬12) | [AEO agencies](https://reddit.com/r/aeo/comments/1ub1ryp/aeo_agencies/) | Agência AEO com **US$25k/MRR** procurando pares | Alvo de Agency tier white-label ($249, 25 marcas) — DM pós-engajamento |
+| u/Open-Cryptographer85 · r/aeo (12d, 💬12) | [AEO agencies](https://reddit.com/r/aeo/comments/1ub1ryp/aeo_agencies/) | Agência AEO com **US$25k/MRR** procurando pares | Alvo de Agency tier white-label ($549, 15 marcas) — DM pós-engajamento |
 | u/indigocricket6789 · r/SEO_Marketing_Offers (2d, 💬6) | [Best AEO Agency for Enterprise — How to Choose](https://reddit.com/r/SEO_Marketing_Offers/comments/1ukbatd/best_aeo_agency_for_enterprise_how_to_choose_the/) | Critérios de escolha de agência AEO | Critério nº1: exigir medição transparente (nosso forte) |
 | u/wraithnet · r/aeo (hoje, ↑6 💬30) | [do you guys do AEO for your business?](https://reddit.com/r/aeo/comments/1ulc0s3/do_you_guys_do_aeo_for_your_business/) | Thread ativa de adoção AEO | Presença/educação com o guia GEO |
 
