@@ -160,7 +160,7 @@ rampa de entrada do flywheel.
 | 0 | **The AI Invisibility Test** | Grátis | 1 · VER | Lead magnet / hook — captura e revela a dor |
 | 1 | **The Get-Cited Kit** | **$29 one-time** | 2+3 · DIAGNOSTICAR + CORRIGIR | Tripwire — transforma lead em cliente |
 | 2 | **Growth** | €99/mo | 4 · MONITORAR | Core — flywheel semanal + mais conteúdo |
-| 3 | **Agency** | €149/mo | 4 · MONITORAR (multi-marca) | Core para agências |
+| 3 | **Agency** | $549/mo | 4 · MONITORAR (multi-marca) | Core para agências |
 | 4 | **OrganicPosts** | Sprint / Managed | 5 · ESCALAR | High-ticket feito-para-você |
 
 **A lógica Hormozi do funil:** o lead magnet maximiza leads; o tripwire de $29

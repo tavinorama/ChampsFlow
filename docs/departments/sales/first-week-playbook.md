@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-**Target:** US/EU digital-marketing and SEO agencies (Agency tier, $249/mo) and organic-dependent SMB SaaS/e-commerce brands (Growth tier, $99/mo). **Top 3 value props:** (1) Run your brand through every AI engine your buyers actually use and see exactly what they say — in minutes, free. (2) A scored, evidence-backed action plan, not another dashboard to ignore. (3) Priced for agencies and SMBs — not enterprise. **Primary objection:** "We already handle SEO." **Response:** GEO is not SEO. Traditional SEO tools show zero AI citation data. Ozvor audits the five AI surfaces where 31% of US buyers now search (EMARKETER 2026) — surfaces Semrush and Ahrefs are blind to.
+**Target:** US/EU digital-marketing and SEO agencies (Agency tier, $549/mo) and organic-dependent SMB SaaS/e-commerce brands (Growth tier, $99/mo). **Top 3 value props:** (1) Run your brand through every AI engine your buyers actually use and see exactly what they say — in minutes, free. (2) A scored, evidence-backed action plan, not another dashboard to ignore. (3) Priced for agencies and SMBs — not enterprise. **Primary objection:** "We already handle SEO." **Response:** GEO is not SEO. Traditional SEO tools show zero AI citation data. Ozvor audits the five AI surfaces where 31% of US buyers now search (EMARKETER 2026) — surfaces Semrush and Ahrefs are blind to.
 
 ---
 
@@ -36,10 +36,10 @@
 - Decision: agency owner or founding partner (≤15 employees); head of strategy or operations (15–40 employees)
 - Influencer: account manager who handles day-to-day client reporting
 - Champion: the person most embarrassed by not having an AI-search answer for their clients
-- Budget: most agency tools come from a software/tools line ($500–$2,000/mo total); Ozvor at $249/mo fits without procurement
+- Budget: most agency tools come from a software/tools line ($500–$2,000/mo total); Ozvor at $549/mo fits without procurement
 - Sales motion: self-serve trial via /test → async email or LinkedIn → demo call if Agency tier or OrganicPosts Sprint
 
-**White-label angle:** Agency tier ($249/mo) includes multi-brand and white-label reporting — this is an explicit upsell hook; agencies can resell GEO audit reports under their own brand.
+**White-label angle:** Agency tier ($549/mo) includes multi-brand and white-label reporting — this is an explicit upsell hook; agencies can resell GEO audit reports under their own brand.
 
 ---
 

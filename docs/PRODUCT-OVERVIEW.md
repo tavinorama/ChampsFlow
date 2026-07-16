@@ -25,7 +25,7 @@ Home: Brasil (LGPD). Clientes: EU (GDPR) + EUA (CCPA/FTC).
 | 0 | **The AI Invisibility Test** | Grátis | VER | 1 prompt × marca vs 1 concorrente → placar em 60s → captura e-mail → CTA p/ Kit |
 | 1 | **The Get-Cited Kit** | **US$29 one-time** | DIAGNOSTICAR + CORRIGIR | Checkout Stripe (mode `payment`, `STRIPE_PRICE_ID_KIT`) → auditoria completa + top-3 fixes + **3 posts prontos** (blog/LinkedIn/FAQ c/ schema) + checklist |
 | 2 | **Growth** | €99/mês | MONITORAR | 1 marca, 10 concorrentes, 250 prompts, monitoramento semanal |
-| 3 | **Agency** | €149/mês | MONITORAR | Multi-marca (25), white-label, workflow de aprovação |
+| 3 | **Agency** | $549/mês | MONITORAR | Multi-marca (15), white-label, workflow de aprovação |
 | 4 | **OrganicPosts** | Sprint / Managed | ESCALAR | Consultoria feito-para-você (alta margem) |
 
 Espinha: **VER → DIAGNOSTICAR → CORRIGIR → MONITORAR → ESCALAR.** Cada degrau é um

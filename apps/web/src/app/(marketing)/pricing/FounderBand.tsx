@@ -66,7 +66,7 @@ export function FounderBand() {
         </p>
       </div>
       <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>
-        $69/mo · $174/mo
+        Growth $69/mo · Agency $384/mo
       </div>
     </div>
   );

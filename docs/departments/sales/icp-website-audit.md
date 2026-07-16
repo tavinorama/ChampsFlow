@@ -3,7 +3,7 @@
 > **TL;DR (≤200 words).** Audited the live site (/, /pricing, /how-it-works, /organicposts) through
 > the eyes of the two playbook personas. **For the SMB owner (Growth $99) the site is strong**:
 > clear hero, sourced stats, visceral "search moved" narrative, low-friction free test, honest
-> guarantees. **For the agency owner (Agency $249) the site is nearly silent**: "agency" appears
+> guarantees. **For the agency owner (Agency $549) the site is nearly silent**: "agency" appears
 > once on the homepage and only inside the pricing card — yet agencies are Segment A of our ICP and
 > the white-label Agency OS already exists in-product. Biggest conversion gaps, in order:
 > **(P1)** no agency-facing page/section selling multi-client + white-label + pitch mode;
@@ -38,11 +38,11 @@
 
 ### P1 — Agencies (ICP Segment A) have no landing surface
 "Agency" appears **once** on the homepage and only inside the pricing card. The in-product
-**Agency OS** (25 brands, white-label reports, client approval workflow, pitch mode) is not sold
+**Agency OS** (15 brands, white-label reports, client approval workflow, pitch mode) is not sold
 anywhere on the marketing site. An agency owner landing from outreach has to infer the offer from
 a pricing bullet list.
 **Fix:** an `/agencies` page (or homepage block + nav link): multi-client dashboard screenshot,
-white-label story ("Ozvor under your brand"), per-client economics ($249 ÷ 25 brands ≈ $10/brand),
+white-label story ("Ozvor under your brand"), per-client economics ($549 ÷ 15 brands ≈ $36.60/brand),
 pitch-mode angle ("win the GEO line item before your competitor agency does"). ~½ day of code.
 
 ### P2 — Price-framing inconsistency (also an integrity risk)

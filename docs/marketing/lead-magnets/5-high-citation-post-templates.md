@@ -311,7 +311,7 @@ These five templates are the *doing* half of GEO. The other half is *measuring* 
 | **Free AI Visibility Test** | See who ChatGPT, Claude, Perplexity, and Gemini name instead of you, today | ozvor.com/test |
 | **The Get-Cited Kit — $29** | The full template and research library, one-time purchase | ozvor.com |
 | **Growth — $99/mo** | Weekly citation monitoring, competitor benchmarking, and a live GEO content plan | ozvor.com/pricing |
-| **Agency — $249/mo** | Multi-brand monitoring and white-label reporting for agencies and multi-location operators | ozvor.com/agencies |
+| **Agency — $549/mo** | Multi-brand monitoring and white-label reporting for agencies and multi-location operators | ozvor.com/agencies |
 | **OrganicPosts by Ozvor** | Done-for-you: we draft the posts, shaped around this research, and nothing publishes without your approval | ozvor.com/organicposts |
 
 ---

@@ -42,7 +42,7 @@ runs a test or buys.
 |---|---|
 | `company` | Prospect company name |
 | `website` | Domain (also what we audit) |
-| `icp_segment` | `agency` (Agency $249) or `smb` (Growth $99) — see playbook §1 |
+| `icp_segment` | `agency` (Agency $549) or `smb` (Growth $99) — see playbook §1 |
 | `lead_source` | Where they came from (Reddit thread, LinkedIn, referral, inbound free-test, community) |
 | `contact_name` | Point of contact |
 | `contact_role` | Title / authority level |
@@ -53,7 +53,7 @@ runs a test or buys.
 | `stage` | Pipeline stage (§3) |
 | `next_action` | The single next step + date |
 | `owner` | Who owns the next action (founder / Hermes) |
-| `est_value_usd_mo` | Plan value if won ($99 / $249 / Sprint / OrganicPosts) |
+| `est_value_usd_mo` | Plan value if won ($99 / $549 / Sprint / OrganicPosts) |
 | `last_touch` | Date of last contact |
 | `notes` | Objections, context, timing |
 
