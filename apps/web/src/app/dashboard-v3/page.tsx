@@ -48,6 +48,27 @@ interface ScorePayload {
   executionProgress: number | null;
 }
 
+interface PlanTask {
+  id: string;
+  vector: string;
+  gap: string;
+  action: string;
+  effort: string;
+  impact: string; // "high" | "medium" | "low"
+  priority: number;
+  status: string; // "proposed" | "accepted" | "rejected" | "done"
+  evidence: string | null;
+}
+
+interface ContentPiece {
+  id: string;
+  content_type: string; // "blog" | "linkedin" | "faq"
+  title: string | null;
+  body: string;
+  status: string; // "draft" | "approved" | "published" | "discarded"
+  created_at: string;
+}
+
 type TabId =
   | "overview"
   | "donext"
@@ -63,8 +84,8 @@ type TabId =
 const MIGRATED: Record<TabId, boolean> = {
   overview: true,
   brands: true,
-  donext: false,
-  content: false,
+  donext: true,
+  content: true,
   competitors: false,
   sources: false,
   pages: false,
@@ -151,6 +172,10 @@ export default function DashboardV3() {
   const [score, setScore] = useState<ScorePayload | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [planTier, setPlanTier] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<PlanTask[] | null>(null);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [content, setContent] = useState<ContentPiece[] | null>(null);
+  const [contentLoading, setContentLoading] = useState(false);
 
   const activeBrand = useMemo(() => brands.find((b) => b.id === activeBrandId) ?? null, [brands, activeBrandId]);
   const isAgency = planTier === "agency" || brands.length > 1;
@@ -198,9 +223,71 @@ export default function DashboardV3() {
     }
   }, []);
 
+  const loadTasks = useCallback(async (brandId: string) => {
+    setTasksLoading(true);
+    setTasks(null);
+    try {
+      const res = await apiFetch(`/api/brands/${brandId}/plan`);
+      if (res.ok) setTasks(((await res.json()) as { tasks?: PlanTask[] }).tasks ?? []);
+      else setTasks([]);
+    } catch {
+      setTasks([]);
+    } finally {
+      setTasksLoading(false);
+    }
+  }, []);
+
+  const loadContent = useCallback(async (brandId: string) => {
+    setContentLoading(true);
+    setContent(null);
+    try {
+      const res = await apiFetch(`/api/brands/${brandId}/content`);
+      if (res.ok) setContent(((await res.json()) as { content?: ContentPiece[] }).content ?? []);
+      else setContent([]);
+    } catch {
+      setContent([]);
+    } finally {
+      setContentLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (activeBrandId) void loadScore(activeBrandId);
+    if (activeBrandId) {
+      void loadScore(activeBrandId);
+      setTasks(null);
+      setContent(null);
+    }
   }, [activeBrandId, loadScore]);
+
+  // Lazy-load the fix list / content only when their tab is first opened.
+  useEffect(() => {
+    if (!activeBrandId) return;
+    if (tab === "donext" && tasks === null && !tasksLoading) void loadTasks(activeBrandId);
+    if (tab === "content" && content === null && !contentLoading) void loadContent(activeBrandId);
+  }, [tab, activeBrandId, tasks, content, tasksLoading, contentLoading, loadTasks, loadContent]);
+
+  // Optimistic mutations -----------------------------------------------------
+  const toggleTask = useCallback(async (taskId: string, done: boolean) => {
+    const next = done ? "done" : "accepted";
+    setTasks((prev) => (prev ? prev.map((t) => (t.id === taskId ? { ...t, status: next } : t)) : prev));
+    try {
+      const res = await apiFetch(`/api/plan-tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      // revert on failure
+      setTasks((prev) => (prev ? prev.map((t) => (t.id === taskId ? { ...t, status: done ? "accepted" : "done" } : t)) : prev));
+    }
+  }, []);
+
+  const setContentStatus = useCallback(async (id: string, status: "approved" | "discarded") => {
+    setContent((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, status } : c)) : prev));
+    try {
+      const res = await apiFetch(`/api/content/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      setContent((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, status: "draft" } : c)) : prev));
+    }
+  }, []);
 
   // ---- auth gate -----------------------------------------------------------
   useEffect(() => {
@@ -297,6 +384,10 @@ export default function DashboardV3() {
           />
         ) : tab === "brands" ? (
           <BrandsTab brands={brands} onOpen={(id) => { setActiveBrandId(id); setTab("overview"); }} />
+        ) : tab === "donext" ? (
+          <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId} />
+        ) : tab === "content" ? (
+          <ContentTab items={content} loading={contentLoading} onSet={setContentStatus} brandId={activeBrandId} />
         ) : (
           <MigratingTab tab={tab} brandId={activeBrandId} />
         )}
@@ -406,6 +497,144 @@ function MigratingTab({ tab, brandId }: { tab: TabId; brandId: string }) {
   );
 }
 
+function impactStyle(impact: string): React.CSSProperties {
+  const k = (impact || "").toLowerCase();
+  if (k === "high") return { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" };
+  if (k === "low") return { background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" };
+  return { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }; // medium/default
+}
+
+function DoNextTab({
+  tasks, loading, onToggle, brandId,
+}: {
+  tasks: PlanTask[] | null;
+  loading: boolean;
+  onToggle: (id: string, done: boolean) => void;
+  brandId: string;
+}) {
+  if (loading || tasks === null) return <div style={S.muted}>Loading your fix list…</div>;
+
+  const open = tasks.filter((t) => t.status !== "done" && t.status !== "rejected");
+  const done = tasks.filter((t) => t.status === "done");
+
+  if (tasks.length === 0) {
+    return (
+      <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
+        <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No action plan yet for this brand.</p>
+        <Link href={`/brands/${brandId}`} style={{ ...S.btnPri, display: "inline-block" }}>Run an audit to build your plan →</Link>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={S.secH}>
+        Your fix list <span style={S.secN}>— {open.length} to do, {done.length} done. Finish these and your base score climbs.</span>
+      </div>
+      {open.length === 0 ? (
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>All caught up — every fix is done. Nice work. 🎉</div>
+      ) : (
+        <div style={S.card}>
+          {open.map((t, i) => (
+            <div key={t.id} style={{ ...S.actRow, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+              <button
+                aria-label={`Mark "${t.action}" done`}
+                onClick={() => onToggle(t.id, true)}
+                style={S.chk}
+              />
+              <div>
+                <div style={S.actTitle}>{t.action}</div>
+                {(t.gap || t.evidence) && <div style={S.actWhy}>{t.gap || t.evidence}</div>}
+              </div>
+              <span style={{ ...S.imp, ...impactStyle(t.impact) }}>{t.impact ? `${t.impact[0].toUpperCase()}${t.impact.slice(1)} impact` : "Impact"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {done.length > 0 && (
+        <>
+          <div style={S.secH}>Done <span style={S.secN}>— nice work</span></div>
+          <div style={S.card}>
+            {done.map((t, i) => (
+              <div key={t.id} style={{ ...S.actRow, opacity: 0.7, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <button aria-label={`Reopen "${t.action}"`} onClick={() => onToggle(t.id, false)} style={{ ...S.chk, ...S.chkDone }}>✓</button>
+                <div><div style={{ ...S.actTitle, textDecoration: "line-through", color: "var(--color-muted)" }}>{t.action}</div></div>
+                <span style={{ ...S.imp, background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }}>Done</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <p style={S.note}>Checking a box marks it done here and updates your Execution score. Nothing is published from this list.</p>
+    </>
+  );
+}
+
+const CONTENT_TAG: Record<string, string> = { blog: "Blog post", linkedin: "LinkedIn post", faq: "FAQ answer" };
+
+function ContentTab({
+  items, loading, onSet, brandId,
+}: {
+  items: ContentPiece[] | null;
+  loading: boolean;
+  onSet: (id: string, status: "approved" | "discarded") => void;
+  brandId: string;
+}) {
+  if (loading || items === null) return <div style={S.muted}>Loading your drafts…</div>;
+
+  const drafts = items.filter((c) => c.status === "draft");
+  const live = items.filter((c) => c.status === "approved" || c.status === "published");
+
+  if (items.length === 0) {
+    return (
+      <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
+        <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No content drafts yet.</p>
+        <Link href={`/brands/${brandId}?section=content`} style={{ ...S.btnPri, display: "inline-block" }}>Open Content Studio →</Link>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={S.secH}>Ready to review <span style={S.secN}>— we drafted these. Review, then approve.</span></div>
+      {drafts.length === 0 ? (
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No drafts waiting. New drafts appear here after each audit.</div>
+      ) : (
+        <div style={S.drafts}>
+          {drafts.map((c) => (
+            <div key={c.id} style={{ ...S.card, ...S.draft }}>
+              <span style={S.draftTag}>◆ {CONTENT_TAG[c.content_type] ?? c.content_type}</span>
+              <div style={S.draftTitle}>{c.title || "Untitled draft"}</div>
+              <div style={S.draftPreview}>{c.body.slice(0, 220)}{c.body.length > 220 ? "…" : ""}</div>
+              <div style={S.draftRow}>
+                <button onClick={() => onSet(c.id, "approved")} style={S.btnPri}>Approve</button>
+                <Link href={`/brands/${brandId}?section=content`} style={S.btnGhost}>Edit</Link>
+                <button onClick={() => onSet(c.id, "discarded")} style={S.btnGhost}>Discard</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {live.length > 0 && (
+        <>
+          <div style={S.secH}>Approved &amp; published <span style={S.secN}>— {live.length}</span></div>
+          <div style={S.card}>
+            {live.map((c, i) => (
+              <div key={c.id} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <div><div style={S.actTitle}>{c.title || "Untitled"}</div><div style={S.actWhy}>{CONTENT_TAG[c.content_type] ?? c.content_type}</div></div>
+                <span style={{ ...S.imp, background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }}>{c.status === "published" ? "Published" : "Approved"}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <p style={S.note}>Everything here is AI-drafted and labelled. Nothing posts until you approve it.</p>
+    </>
+  );
+}
+
 function EmptyBrands() {
   return (
     <div style={{ ...S.card, padding: "var(--space-8, 40px) var(--space-6)", textAlign: "center" }}>
@@ -473,4 +702,21 @@ const S: Record<string, React.CSSProperties> = {
   frow: { display: "flex", alignItems: "center", gap: "var(--space-3)" },
   fscore: { fontSize: "2.1rem", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1, fontVariantNumeric: "tabular-nums" },
   fmeta: { color: "var(--color-muted)", fontSize: "0.82rem", fontWeight: 600 },
+
+  // Do next (fix list)
+  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "var(--space-3)", alignItems: "center" },
+  actTitle: { fontWeight: 700, fontSize: "0.96rem" },
+  actWhy: { color: "var(--color-muted)", fontSize: "0.84rem", marginTop: "2px", lineHeight: 1.5 },
+  chk: { width: 24, height: 24, borderRadius: "7px", border: "2px solid var(--color-border)", background: "transparent", cursor: "pointer", flex: "0 0 auto", padding: 0, color: "#fff", fontWeight: 800, fontSize: "0.8rem", lineHeight: 1 },
+  chkDone: { background: "var(--color-primary)", borderColor: "var(--color-primary)" },
+  imp: { padding: "3px 9px", borderRadius: "var(--radius-pill)", fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" },
+
+  // Content drafts
+  drafts: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "var(--space-4)" },
+  draft: { padding: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" },
+  draftTag: { display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "0.72rem", fontWeight: 700, color: "var(--color-accent-ink)", background: "var(--color-badge-ai-bg)", padding: "3px 9px", borderRadius: "var(--radius-pill)", alignSelf: "flex-start" },
+  draftTitle: { fontWeight: 700, fontSize: "0.98rem" },
+  draftPreview: { color: "var(--color-muted)", fontSize: "0.86rem", lineHeight: 1.5, borderLeft: "3px solid var(--color-border)", paddingLeft: "var(--space-3)" },
+  draftRow: { display: "flex", gap: "var(--space-2)", marginTop: "2px", flexWrap: "wrap" },
+  btnGhost: { border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "7px 13px", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", textDecoration: "none" },
 };
