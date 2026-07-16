@@ -60,7 +60,7 @@ function buildRedirectTarget(
   if (nextParam && nextParam.startsWith("/")) {
     return nextParam;
   }
-  return "/dashboard";
+  return "/dashboard-v3";
 }
 
 // ── Provider logo SVGs ───────────────────────────────────────────────────────

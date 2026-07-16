@@ -674,33 +674,37 @@ export default function DashboardV3() {
           <span style={S.v3tag}>v3</span>
         </div>
 
-        {isAgency && (
-          <>
-            <div style={S.navH}>Agency</div>
-            <nav style={S.nav}>
-              <NavItem label="Brands" active={tab === "brands"} badge={brands.length} onClick={() => setTab("brands")} />
-            </nav>
-          </>
-        )}
+        {/* Only the nav scrolls; the profile footer below stays pinned so the
+            client's email is never clipped, whatever the viewport height. */}
+        <div style={S.railScroll}>
+          {isAgency && (
+            <>
+              <div style={S.navH}>Agency</div>
+              <nav style={S.nav}>
+                <NavItem label="Brands" active={tab === "brands"} badge={brands.length} onClick={() => setTab("brands")} />
+              </nav>
+            </>
+          )}
 
-        <div style={S.navH}>{activeBrand?.name ?? "Brand"}</div>
-        <nav style={S.nav}>
-          <NavItem label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
-          <NavItem label="Do next" active={tab === "donext"} onClick={() => setTab("donext")} />
-          <NavItem label="Content" active={tab === "content"} onClick={() => setTab("content")} />
-          <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
-          <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
-          <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
-        </nav>
+          <div style={S.navH}>{activeBrand?.name ?? "Brand"}</div>
+          <nav style={S.nav}>
+            <NavItem label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
+            <NavItem label="Do next" active={tab === "donext"} onClick={() => setTab("donext")} />
+            <NavItem label="Content" active={tab === "content"} onClick={() => setTab("content")} />
+            <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
+            <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
+            <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
+          </nav>
 
-        <div style={S.navH}>Account</div>
-        <nav style={S.nav}>
-          <NavItem label="Connections" active={tab === "connections"} onClick={() => setTab("connections")} />
-          <NavItem label="Billing" active={tab === "billing"} onClick={() => setTab("billing")} />
-        </nav>
+          <div style={S.navH}>Account</div>
+          <nav style={S.nav}>
+            <NavItem label="Connections" active={tab === "connections"} onClick={() => setTab("connections")} />
+            <NavItem label="Billing" active={tab === "billing"} onClick={() => setTab("billing")} />
+          </nav>
+        </div>
 
-        {/* Footer: theme toggle + logged-in profile */}
-        <div style={{ marginTop: "auto", paddingTop: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        {/* Footer: theme toggle + logged-in profile — pinned, never scrolls off */}
+        <div style={{ flexShrink: 0, paddingTop: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           <button onClick={toggleTheme} style={S.themeBtn} aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}>
             <span aria-hidden="true">{theme === "light" ? "🌙" : "☀️"}</span>
             {theme === "light" ? "Dark mode" : "Light mode"}
@@ -2124,7 +2128,8 @@ const S: Record<string, React.CSSProperties> = {
   // page — the sidebar and the main area each scroll internally if their content
   // overflows. Grid columns shrink the rail on smaller screens.
   shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100vh", overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
-  rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflowY: "auto", minHeight: 0 },
+  rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
+  railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
   v3tag: { marginLeft: "auto", fontSize: "0.62rem", fontWeight: 700, color: "var(--color-primary)", border: "1px solid var(--color-primary)", borderRadius: "var(--radius-pill)", padding: "1px 6px" },
   navH: { fontSize: "0.66rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--color-muted)", margin: "var(--space-4) var(--space-2) var(--space-1)", fontWeight: 700 },

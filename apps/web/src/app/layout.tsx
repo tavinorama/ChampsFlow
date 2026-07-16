@@ -189,9 +189,15 @@ export default async function RootLayout({
         `}</style>
         {isBareApp ? (
           // 0b. Dashboard v3 + the Ozvor Pages builder: self-contained surfaces
-          // that own their chrome. Render bare so the old AppSidebar/AppTopBar
-          // don't double-render. Auth is enforced by the middleware.
-          children
+          // that own their visual chrome (own sidebar / back-links). Render
+          // without the old AppSidebar/AppTopBar so they don't double-render —
+          // but STILL keep the compliance layer the old shell had: the CI-1 DPA
+          // acknowledgment gate (blocking modal) and the CCPA California banner.
+          // DpaGate renders only the modal or the children, no sidebar/topbar.
+          <>
+            <CaliforniaBanner country={country} />
+            <DpaGate>{children}</DpaGate>
+          </>
         ) : isPublicLanding ? (
           // 0. Public tenant sites (/l/*): render ONLY the page. No Ozvor
           // chrome of any kind — the page's own PublicLandingChrome provides
