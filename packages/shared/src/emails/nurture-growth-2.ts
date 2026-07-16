@@ -41,7 +41,7 @@ export async function sendNurtureGrowth2Email(
   ].join("\n");
 
   const btnStyle =
-    "display:inline-block;padding:12px 24px;background:#0A7E5A;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;";
+    "display:inline-block;padding:12px 24px;background:#0c7d54;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;";
 
   const htmlBody = `<!DOCTYPE html>
 <html lang="en">
@@ -52,7 +52,7 @@ export async function sendNurtureGrowth2Email(
 </head>
 <body style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111827;background:#ffffff;">
   <div style="margin-bottom:24px;">
-    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#0A7E5A;">Ozvor Growth</p>
+    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#0c7d54;">Ozvor Growth</p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">What changes in 30 days</h1>
     <p style="font-size:14px;color:#6B7280;margin:0;">${params.brand} &middot; measure the movement</p>
   </div>

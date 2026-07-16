@@ -85,7 +85,7 @@ export async function sendDsrNoDataEmail(
   <p style="font-size: 14px; color: #6B7280;">
     If you believe we should hold data under a different email address, submit a new
     request from that address, or contact
-    <a href="mailto:privacy@ozvor.com" style="color: #2563EB;">privacy@ozvor.com</a>
+    <a href="mailto:privacy@ozvor.com" style="color: #0c7d54;">privacy@ozvor.com</a>
     with your request ID.
   </p>
 </body>

@@ -74,10 +74,10 @@ export async function sendDsrCompletedEmail(
   ].join("\n");
 
   const artifactHtml = hasArtifact
-    ? `<div style="background: #EFF6FF; border: 1px solid #2563EB; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
-    <p style="font-weight: 600; color: #1D4ED8; margin: 0 0 8px 0;">Your data export is ready</p>
+    ? `<div style="background: #EFF6FF; border: 1px solid #0c7d54; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+    <p style="font-weight: 600; color: #0c7d54; margin: 0 0 8px 0;">Your data export is ready</p>
     <p style="font-size: 14px; color: #374151; margin: 0;">
-      Contact <a href="mailto:privacy@ozvor.com" style="color: #2563EB;">privacy@ozvor.com</a>
+      Contact <a href="mailto:privacy@ozvor.com" style="color: #0c7d54;">privacy@ozvor.com</a>
       with your request ID to receive a secure, time-limited download link.
     </p>
   </div>`
@@ -99,7 +99,7 @@ export async function sendDsrCompletedEmail(
   </p>
   ${artifactHtml}
   <p style="font-size: 14px; color: #6B7280;">
-    Questions? Contact <a href="mailto:privacy@ozvor.com" style="color: #2563EB;">privacy@ozvor.com</a>
+    Questions? Contact <a href="mailto:privacy@ozvor.com" style="color: #0c7d54;">privacy@ozvor.com</a>
   </p>
 </body>
 </html>`;
