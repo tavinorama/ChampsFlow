@@ -303,6 +303,21 @@ async function ensureValidAccessToken(
 // Route registration
 // ---------------------------------------------------------------------------
 
+// Only these internal frontend paths may be used as the post-OAuth return
+// destination. Anything else (external URLs, protocol-relative //host, path
+// traversal, backslashes) falls back to the legacy connections page — an
+// open-redirect guard, since the raw value comes from a query param.
+const RETURN_ALLOWLIST = ["/dashboard-v3", "/account/connections"];
+function safeReturnPath(raw: string | undefined | null): string {
+  const fallback = "/account/connections";
+  if (!raw || typeof raw !== "string") return fallback;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\") || raw.includes("://")) {
+    return fallback;
+  }
+  const path = raw.split("?")[0];
+  return RETURN_ALLOWLIST.some((p) => path === p || path.startsWith(`${p}/`)) ? raw : fallback;
+}
+
 export function registerAttributionRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
   // GET /api/google/status
@@ -368,12 +383,17 @@ export function registerAttributionRoutes(app: Hono, db: PostgresClient): void {
         return c.json({ error: "Brand not found.", code: "NOT_FOUND" }, 404);
       }
 
+      // Where to send the user after Google's callback — allowlisted so a v3
+      // client returns to the v3 dashboard, legacy clients to the old page.
+      const returnTo = safeReturnPath(c.req.query("return"));
+
       // Generate CSRF state (256-bit random, stored in Redis, 10-min TTL)
       const state = await createGoogleOAuthState({
         userId,
         tenantId,
         brandId,
         kind: kind as Kind,
+        returnTo,
       });
 
       const authorizationUrl = buildGoogleAuthUrl(kind as Kind, state);
@@ -430,6 +450,13 @@ export function registerAttributionRoutes(app: Hono, db: PostgresClient): void {
     const { tenantId, userId, brandId, kind } = statePayload;
     const redirectUri = process.env["GOOGLE_OAUTH_REDIRECT_URI"] ?? "";
 
+    // Return the user to wherever they started the flow (v3 or legacy page).
+    const returnBase = safeReturnPath(statePayload.returnTo);
+    const withParam = (k: string, v: string): string => {
+      const sep = returnBase.includes("?") ? "&" : "?";
+      return `${frontendUrl}${returnBase}${sep}${k}=${encodeURIComponent(v)}`;
+    };
+
     // Exchange code for tokens
     let tokens;
     try {
@@ -437,7 +464,7 @@ export function registerAttributionRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       // Do NOT log the code or error details that might contain token hints
       logger.warn("google_oauth_code_exchange_failed", { kind, tenant_id: tenantId });
-      return errorRedirect("callback_failed");
+      return c.redirect(withParam("google_error", "callback_failed"), 302);
     }
 
     // Encrypt tokens before storage — NEVER write plaintext to DB
@@ -505,13 +532,10 @@ export function registerAttributionRoutes(app: Hono, db: PostgresClient): void {
         brand_id: brandId,
         // no token data in log
       });
-      return errorRedirect("callback_failed");
+      return c.redirect(withParam("google_error", "callback_failed"), 302);
     }
 
-    return c.redirect(
-      `${frontendUrl}/account/connections?google_connected=${encodeURIComponent(kind)}`,
-      302
-    );
+    return c.redirect(withParam("google_connected", kind), 302);
   });
 
   // -------------------------------------------------------------------------

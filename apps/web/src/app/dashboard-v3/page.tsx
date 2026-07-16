@@ -261,6 +261,14 @@ export default function DashboardV3() {
   const [brands, setBrands] = useState<BrandRow[]>([]);
   const [activeBrandId, setActiveBrandId] = useState<string>("");
   const [tab, setTab] = useState<TabId>("overview");
+  // Deep-link support: land on a specific tab via ?tab=… (e.g. the Google OAuth
+  // callback returns to /dashboard-v3?tab=connections).
+  useEffect(() => {
+    try {
+      const t = new URLSearchParams(window.location.search).get("tab");
+      if (t && Object.prototype.hasOwnProperty.call(TAB_TITLE, t)) setTab(t as TabId);
+    } catch { /* ignore */ }
+  }, []);
   const [score, setScore] = useState<ScorePayload | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [planTier, setPlanTier] = useState<string | null>(null);
@@ -1810,19 +1818,83 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
       </div>
 
       <div style={S.secH}>Optional: connect your data <span style={S.secN}>— to see clicks &amp; traffic from AI</span></div>
-      <div style={S.card}>
-        {[
-          { key: "SC", name: "Google Search Console", note: "See which AI answers send visits" },
-          { key: "GA", name: "Google Analytics", note: "Track visitors from AI tools" },
-        ].map((c, i) => (
-          <div key={c.key} style={{ ...S.actRow, gridTemplateColumns: "auto 1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
-            <span style={S.engIco}>{c.key}</span>
-            <div><div style={{ fontWeight: 600 }}>{c.name}</div><div style={S.actWhy}>{c.note}</div></div>
-            <Link href="/account/connections" style={S.btnGhost}>Connect</Link>
-          </div>
-        ))}
-      </div>
+      {brand ? <GoogleConnect brandId={brand.id} /> : <div style={{ ...S.card, padding: "var(--space-4)", color: "var(--color-muted)" }}>Add a brand first to connect its Google data.</div>}
     </>
+  );
+}
+
+interface GoogleConn { id: string; kind: "ga4" | "gsc"; ga4_property_id: string | null; gsc_site_url: string | null; revoked_at: string | null; }
+const GOOGLE_KINDS: Array<{ kind: "gsc" | "ga4"; key: string; name: string; note: string }> = [
+  { kind: "gsc", key: "SC", name: "Google Search Console", note: "See which AI answers send visits" },
+  { kind: "ga4", key: "GA", name: "Google Analytics", note: "Track visitors from AI tools" },
+];
+
+function GoogleConnect({ brandId }: { brandId: string }) {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [conns, setConns] = useState<GoogleConn[] | null>(null);
+  const [busyKind, setBusyKind] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/google/connections`);
+      setConns(r.ok ? (((await r.json()) as { connections?: GoogleConn[] }).connections ?? []) : []);
+    } catch { setConns([]); }
+  }, [brandId]);
+  useEffect(() => {
+    let live = true;
+    void apiFetch("/api/google/status")
+      .then(async (r) => { if (live && r.ok) setConfigured(((await r.json()) as { configured?: boolean }).configured ?? false); })
+      .catch(() => { if (live) setConfigured(false); });
+    void reload();
+    return () => { live = false; };
+  }, [reload]);
+
+  async function connect(kind: "ga4" | "gsc") {
+    setBusyKind(kind);
+    try {
+      const ret = encodeURIComponent("/dashboard-v3?tab=connections");
+      const r = await apiFetch(`/api/brands/${brandId}/google/connect/${kind}?return=${ret}`, { method: "POST" });
+      if (r.ok) {
+        const d = (await r.json()) as { authorizationUrl?: string; configured?: boolean };
+        if (d.authorizationUrl) { window.location.href = d.authorizationUrl; return; }
+      }
+    } catch { /* ignore */ }
+    setBusyKind(null); // only reached if we didn't redirect
+  }
+  async function disconnect(id: string) {
+    setConns((prev) => (prev ?? []).filter((x) => x.id !== id));
+    try { await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    void reload();
+  }
+
+  return (
+    <div style={S.card}>
+      {GOOGLE_KINDS.map((c, i) => {
+        const active = (conns ?? []).find((x) => x.kind === c.kind && !x.revoked_at);
+        const detail = active ? (active.gsc_site_url ?? active.ga4_property_id ?? null) : null;
+        return (
+          <div key={c.kind} style={{ ...S.actRow, gridTemplateColumns: "auto 1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+            <span style={S.engIco}>{c.key}</span>
+            <div>
+              <div style={{ fontWeight: 600 }}>{c.name}</div>
+              <div style={S.actWhy}>{active ? (detail ? `Connected · ${detail}` : "Connected") : c.note}</div>
+            </div>
+            {active ? (
+              <button onClick={() => void disconnect(active.id)} style={S.btnGhost}>Disconnect</button>
+            ) : (
+              <button onClick={() => void connect(c.kind)} disabled={busyKind === c.kind || configured === false}
+                title={configured === false ? "Google connection isn’t configured yet" : undefined}
+                style={{ ...S.btnPri, opacity: busyKind === c.kind || configured === false ? 0.55 : 1, cursor: configured === false ? "not-allowed" : "pointer" }}>
+                {busyKind === c.kind ? "Opening…" : "Connect"}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {configured === false && (
+        <p style={{ ...S.note, margin: "var(--space-3) var(--space-2) 0" }}>Google connections aren’t configured on this environment yet.</p>
+      )}
+    </div>
   );
 }
 
