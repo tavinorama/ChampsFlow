@@ -34,10 +34,11 @@ function renderInline(text: string): React.ReactNode[] {
       parts.push(<span key={last}>{text.slice(last, match.index)}</span>);
     }
     if (match[1] !== undefined) {
-      // **bold**
-      parts.push(<strong key={match.index}>{match[1]}</strong>);
+      // **bold** — recurse so a link nested inside bold (**[text](url)**) still
+      // renders as a real link instead of literal markdown.
+      parts.push(<strong key={match.index}>{renderInline(match[1])}</strong>);
     } else if (match[2] !== undefined && match[3] !== undefined) {
-      // [text](url)
+      // [text](url) — recurse so **bold** inside the link text renders too.
       parts.push(
         <a
           key={match.index}
@@ -48,7 +49,7 @@ function renderInline(text: string): React.ReactNode[] {
             textUnderlineOffset: "2px",
           }}
         >
-          {match[2]}
+          {renderInline(match[2])}
         </a>
       );
     }
