@@ -228,6 +228,28 @@ function scoreTone(score: number | null): { label: string; bg: string; fg: strin
   return { label: "Needs work", bg: "var(--color-badge-status-warn-bg)", fg: "var(--color-badge-status-warn-text)" };
 }
 
+// Resize a chosen image file to a square `size`px thumbnail and return a
+// compact data: URL. Cover-crops (center) so non-square photos aren't
+// distorted. WebP keeps a 96px avatar to a couple of KB — small enough to
+// live directly in a TEXT column, no storage bucket needed.
+async function resizeToDataUrl(file: File, size: number): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas unavailable");
+    const s = Math.min(bitmap.width, bitmap.height);
+    const sx = (bitmap.width - s) / 2;
+    const sy = (bitmap.height - s) / 2;
+    ctx.drawImage(bitmap, sx, sy, s, s, 0, 0, size, size);
+    return canvas.toDataURL("image/webp", 0.85);
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -577,6 +599,54 @@ export default function DashboardV3() {
     });
   }, []);
 
+  // ---- avatar (small profile photo, resized client-side to a thumbnail) ----
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    let live = true;
+    void apiFetch("/api/account/profile")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const j = (await res.json().catch(() => null)) as { email?: string; avatar_url?: string | null } | null;
+        if (!live || !j) return;
+        setAvatarUrl(j.avatar_url ?? null);
+        if (j.email) setUserEmail((e) => e ?? j.email ?? null);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const onPickAvatar = useCallback(async (file: File | null) => {
+    if (!file) return;
+    setAvatarBusy(true);
+    try {
+      const dataUrl = await resizeToDataUrl(file, 96);
+      const res = await apiFetch("/api/account/profile/avatar", {
+        method: "PUT",
+        body: JSON.stringify({ avatar_url: dataUrl }),
+      });
+      if (res.ok) {
+        const j = (await res.json().catch(() => null)) as { avatar_url?: string | null } | null;
+        setAvatarUrl(j?.avatar_url ?? dataUrl);
+      }
+    } catch { /* ignore — bad image, leave avatar unchanged */ } finally {
+      setAvatarBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, []);
+  const removeAvatar = useCallback(async () => {
+    setAvatarBusy(true);
+    try {
+      const res = await apiFetch("/api/account/profile/avatar", {
+        method: "PUT",
+        body: JSON.stringify({ avatar_url: null }),
+      });
+      if (res.ok) setAvatarUrl(null);
+    } catch { /* ignore */ } finally {
+      setAvatarBusy(false);
+    }
+  }, []);
+
   const overall = score?.latest?.score_overall ?? activeBrand?.latest_score ?? null;
   const tone = scoreTone(overall);
 
@@ -628,10 +698,33 @@ export default function DashboardV3() {
             {theme === "light" ? "Dark mode" : "Light mode"}
           </button>
           <div style={S.profile}>
-            <span style={S.avatar} aria-hidden="true">{(userEmail ?? "?").trim().charAt(0).toUpperCase()}</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              style={{ display: "none" }}
+              onChange={(e) => void onPickAvatar(e.target.files?.[0] ?? null)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={avatarBusy}
+              title="Change photo"
+              aria-label="Change profile photo"
+              style={{ ...S.avatar, padding: 0, border: "none", cursor: avatarBusy ? "wait" : "pointer", overflow: "hidden" }}
+            >
+              {avatarUrl
+                ? <img src={avatarUrl} alt="" width={30} height={30} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                : <span aria-hidden="true">{avatarBusy ? "…" : (userEmail ?? "?").trim().charAt(0).toUpperCase()}</span>}
+            </button>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={S.profileEmail} title={userEmail ?? undefined}>{userEmail ?? "Signed in"}</div>
-              <button onClick={() => setTab("billing")} style={{ ...S.profileLink, border: "none", background: "transparent", cursor: "pointer", font: "inherit", padding: 0, textAlign: "left" }}>Account &amp; billing</button>
+              <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+                <button onClick={() => setTab("billing")} style={{ ...S.profileLink, border: "none", background: "transparent", cursor: "pointer", font: "inherit", padding: 0, textAlign: "left" }}>Account &amp; billing</button>
+                {avatarUrl && (
+                  <button onClick={() => void removeAvatar()} disabled={avatarBusy} style={{ ...S.profileLink, border: "none", background: "transparent", cursor: "pointer", font: "inherit", padding: 0, opacity: 0.7 }}>· Remove photo</button>
+                )}
+              </div>
             </div>
           </div>
         </div>

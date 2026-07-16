@@ -127,6 +127,58 @@ export function registerSystemRoutes(app: Hono, db: PostgresClient): void {
     }
   );
 
+  // -------------------------------------------------------------------------
+  // GET /api/account/profile — the signed-in user's own profile (email +
+  // avatar). Read-only; the email comes from the users row, the avatar is the
+  // small data: URL they last uploaded (or null).
+  // -------------------------------------------------------------------------
+  app.get("/api/account/profile", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const res = await db.query<{ email: string; avatar_url: string | null }>(
+      `SELECT email, avatar_url FROM users
+        WHERE supabase_auth_uid = $1 AND tenant_id = $2
+        LIMIT 1`,
+      [auth.supabaseUid, auth.tenantId]
+    );
+    const row = res.rows[0];
+    return c.json({ email: row?.email ?? null, avatar_url: row?.avatar_url ?? null });
+  });
+
+  // -------------------------------------------------------------------------
+  // PUT /api/account/profile/avatar — set (or clear) the user's avatar.
+  // Body: { avatar_url }. Must be a data:image/ URL the client already resized
+  // to a small thumbnail; send null/"" to remove. Capped so a huge blob can't
+  // be smuggled into the column.
+  // -------------------------------------------------------------------------
+  const AVATAR_MAX = 300 * 1024; // ~300 KB of base64 — a 96px thumbnail is far smaller
+  app.put("/api/account/profile/avatar", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    let body: { avatar_url?: string | null };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ message: "Invalid JSON body." }, 400);
+    }
+    const raw = body.avatar_url;
+    let value: string | null;
+    if (raw == null || raw === "") {
+      value = null; // clear
+    } else if (typeof raw !== "string" || !/^data:image\/(png|jpeg|webp);base64,/.test(raw)) {
+      return c.json({ message: "Avatar must be a data:image/(png|jpeg|webp) URL." }, 400);
+    } else if (raw.length > AVATAR_MAX) {
+      return c.json({ message: "Avatar image is too large — resize it smaller." }, 413);
+    } else {
+      value = raw;
+    }
+    await db.setTenantId(auth.tenantId);
+    await db.query(
+      `UPDATE users SET avatar_url = $1 WHERE supabase_auth_uid = $2 AND tenant_id = $3`,
+      [value, auth.supabaseUid, auth.tenantId]
+    );
+    return c.json({ avatar_url: value });
+  });
+
   app.get("/api/system/capabilities", (c) => {
     // Anthropic is "connected" if a direct key OR Bedrock creds are present.
     const anthropic = present("ANTHROPIC_API_KEY") || present("AWS_ACCESS_KEY_ID");
