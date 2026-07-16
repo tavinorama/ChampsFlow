@@ -57,6 +57,9 @@ const PROFILE_FIELDS: Array<{ key: keyof BrandRow; label: string; hint: string }
 interface TrendPoint {
   recorded_at: string;
   score_overall: number | null;
+  score_ai?: number | null;
+  score_performance?: number | null;
+  score_brand?: number | null;
 }
 
 interface ScorePayload {
@@ -571,12 +574,6 @@ export default function DashboardV3() {
   }, []);
 
   const overall = score?.latest?.score_overall ?? activeBrand?.latest_score ?? null;
-  // /api/brands/:id/score returns trend ORDER BY recorded_at DESC (newest-first),
-  // so reverse() gives oldest→newest, left→right — the correct sparkline order.
-  const trendPoints = useMemo(
-    () => (score?.trend ?? []).map((t) => t.score_overall).filter((n): n is number => n != null).reverse(),
-    [score]
-  );
   const tone = scoreTone(overall);
 
   // ---- render --------------------------------------------------------------
@@ -667,7 +664,7 @@ export default function DashboardV3() {
             brandName={activeBrand?.name}
             overall={overall}
             threeScores={score?.threeScores ?? undefined}
-            trendPoints={trendPoints}
+            trend={score?.trend ?? []}
             tone={tone}
             loading={scoreLoading}
             brandId={activeBrandId}
@@ -725,12 +722,12 @@ export default function DashboardV3() {
 // ---------------------------------------------------------------------------
 
 function OverviewTab({
-  brandName, overall, threeScores, trendPoints, tone, loading, onRunAudit, auditBusy, auditMsg,
+  brandName, overall, threeScores, trend, tone, loading, onRunAudit, auditBusy, auditMsg,
 }: {
   brandName?: string;
   overall: number | null;
   threeScores?: ThreeScores;
-  trendPoints: number[];
+  trend: TrendPoint[];
   tone: { label: string; bg: string; fg: string };
   loading: boolean;
   brandId: string;
@@ -739,6 +736,7 @@ function OverviewTab({
   auditMsg: string | null;
 }) {
   const hasData = overall != null || (threeScores && threeScores.visibility != null);
+  const overallPts = trend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
   return (
     <>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "var(--space-3)" }}>
@@ -757,7 +755,7 @@ function OverviewTab({
         </div>
         <div style={S.heroRight}>
           <h2 style={S.heroH2}>Your AI Visibility Score</h2>
-          {trendPoints.length >= 2 ? <Sparkline points={trendPoints} /> : <div style={S.muted}>Run a couple of audits to see your trend.</div>}
+          {overallPts.length >= 2 ? <Sparkline points={overallPts} /> : <div style={S.muted}>Run a couple of audits to see your trend.</div>}
           <p style={S.heroCap}>
             AI answers change a little every day, so this number moves a few points on its own. What matters is the trend.
             Finish the actions in <b>Do next</b> and it climbs over the next few weeks.
@@ -777,11 +775,100 @@ function OverviewTab({
         </div>
       )}
 
+      {trend.length >= 2 && (
+        <>
+          <div style={S.secH}>Your scores over time <span style={S.secN}>— every audit since you started</span></div>
+          <AnalyticsChart trend={trend} />
+        </>
+      )}
+
       <p style={S.note}>
         Every number here comes from real questions run on real AI engines. When we can’t measure something, we say so —
         we never invent a score.
       </p>
     </>
+  );
+}
+
+// Derived Citation Readiness for a trend point (mirrors the server formula).
+function citationReadinessOf(t: TrendPoint): number | null {
+  if (t.score_performance == null || t.score_brand == null) return null;
+  return Math.round(Math.max(0, Math.min(100, t.score_performance * 0.6 + t.score_brand * 0.4)));
+}
+
+const CHART_SERIES = [
+  { key: "overall", label: "Overall", color: "var(--color-primary)", get: (t: TrendPoint) => t.score_overall ?? null },
+  { key: "visibility", label: "Visibility", color: "#2563eb", get: (t: TrendPoint) => t.score_ai ?? null },
+  { key: "citation", label: "Citation Readiness", color: "#7c3aed", get: citationReadinessOf },
+];
+
+const CHART_PERIODS: Array<{ key: string; label: string; days: number | null }> = [
+  { key: "all", label: "All", days: null },
+  { key: "90", label: "90d", days: 90 },
+  { key: "30", label: "30d", days: 30 },
+  { key: "7", label: "7d", days: 7 },
+];
+
+function AnalyticsChart({ trend }: { trend: TrendPoint[] }) {
+  const [period, setPeriod] = useState("all");
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+
+  // trend arrives newest-first; work oldest→newest and filter by period.
+  const asc = useMemo(() => [...trend].reverse(), [trend]);
+  const points = useMemo(() => {
+    const days = CHART_PERIODS.find((p) => p.key === period)?.days ?? null;
+    if (days == null) return asc;
+    const cutoff = asc.length ? new Date(asc[asc.length - 1].recorded_at).getTime() - days * 86400000 : 0;
+    return asc.filter((t) => new Date(t.recorded_at).getTime() >= cutoff);
+  }, [asc, period]);
+
+  const W = 640, H = 200, padL = 30, padB = 22, padT = 10, padR = 10;
+  const n = points.length;
+  const x = (i: number) => padL + (n <= 1 ? 0 : (i / (n - 1)) * (W - padL - padR));
+  const y = (v: number) => padT + (1 - v / 100) * (H - padT - padB);
+
+  return (
+    <div style={{ ...S.card, padding: "var(--space-4)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+        <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
+          {CHART_SERIES.map((s) => (
+            <button key={s.key} onClick={() => setHidden((h) => ({ ...h, [s.key]: !h[s.key] }))}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: "0.8rem", fontWeight: 600, opacity: hidden[s.key] ? 0.4 : 1 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "2px", background: s.color, display: "inline-block" }} />
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "4px" }}>
+          {CHART_PERIODS.map((p) => (
+            <button key={p.key} onClick={() => setPeriod(p.key)}
+              style={{ border: "1px solid var(--color-border)", background: period === p.key ? "var(--color-primary)" : "transparent", color: period === p.key ? "#fff" : "var(--color-muted)", borderRadius: "var(--radius-pill)", padding: "3px 10px", font: "inherit", fontSize: "0.72rem", fontWeight: 700, cursor: "pointer" }}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {n < 2 ? (
+        <div style={S.muted}>Not enough audits in this range.</div>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Scores over time" style={{ display: "block" }}>
+          {[0, 25, 50, 75, 100].map((g) => (
+            <g key={g}>
+              <line x1={padL} y1={y(g)} x2={W - padR} y2={y(g)} stroke="var(--color-border)" strokeWidth="1" />
+              <text x={4} y={y(g) + 3} fontSize="9" fill="var(--color-muted)">{g}</text>
+            </g>
+          ))}
+          {CHART_SERIES.filter((s) => !hidden[s.key]).map((s) => {
+            const d = points.map((t, i) => { const v = s.get(t); return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
+            return <polyline key={s.key} points={d} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />;
+          })}
+        </svg>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", color: "var(--color-muted)", fontSize: "0.72rem", marginTop: "4px", paddingLeft: padL }}>
+        <span>{n >= 1 ? new Date(points[0].recorded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
+        <span>{n >= 1 ? new Date(points[n - 1].recorded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
+      </div>
+    </div>
   );
 }
 
