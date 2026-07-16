@@ -2127,7 +2127,7 @@ const S: Record<string, React.CSSProperties> = {
   // Fit the viewport: the shell is exactly one screen tall and never scrolls the
   // page — the sidebar and the main area each scroll internally if their content
   // overflows. Grid columns shrink the rail on smaller screens.
-  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100%", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
   rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
   railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
@@ -2203,6 +2203,9 @@ const S: Record<string, React.CSSProperties> = {
   themeBtn: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "transparent", color: "var(--color-muted)", cursor: "pointer", font: "inherit", fontSize: "0.82rem", fontWeight: 600, width: "100%" },
   profile: { display: "flex", alignItems: "center", gap: "9px", padding: "8px 10px", borderRadius: "var(--radius-md)", background: "var(--color-surface-muted)" },
   avatar: { width: 30, height: 30, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.82rem", flex: "0 0 auto" },
-  profileEmail: { fontSize: "0.78rem", fontWeight: 600, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  // Wrap the email instead of truncating it — the sidebar column is narrower
+  // than a full address, so nowrap+ellipsis was cutting off ".com". break-word
+  // lets it wrap to a second line and show in full.
+  profileEmail: { fontSize: "0.78rem", fontWeight: 600, color: "var(--color-text)", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.25 },
   profileLink: { fontSize: "0.72rem", color: "var(--color-muted)", textDecoration: "none" },
 };
