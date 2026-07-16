@@ -58,7 +58,7 @@ export async function sendNurtureKit1Email(
 
   // ----- HTML body -----
   const btnStyle =
-    "display:inline-block;padding:12px 24px;background:#1D4ED8;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;";
+    "display:inline-block;padding:12px 24px;background:#0c7d54;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:15px;";
 
   const htmlBody = `<!DOCTYPE html>
 <html lang="en">
@@ -71,7 +71,7 @@ export async function sendNurtureKit1Email(
 
   <!-- Header -->
   <div style="margin-bottom:24px;">
-    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
+    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#0c7d54;">
       Ozvor &middot; OrganicPosts
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">

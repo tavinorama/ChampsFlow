@@ -89,7 +89,7 @@ export async function sendDsrOtpEmail(params: DsrOtpEmailParams): Promise<void> 
     If you did not submit this request, you can safely ignore this email.
   </p>
   <p style="font-size: 14px; color: #6B7280;">
-    Questions? Contact <a href="mailto:privacy@ozvor.com" style="color: #2563EB;">privacy@ozvor.com</a>
+    Questions? Contact <a href="mailto:privacy@ozvor.com" style="color: #0c7d54;">privacy@ozvor.com</a>
   </p>
 </body>
 </html>`;

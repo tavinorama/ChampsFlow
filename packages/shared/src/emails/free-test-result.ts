@@ -116,10 +116,10 @@ export async function sendFreeTestResultEmail(
     `"${params.prompt}"`,
     "",
     `YOUR SCORES`,
-    `  AI Visibility:  ${params.score.ai}/100`,
-    `  Performance:    ${params.score.performance}/100`,
-    `  Brand signals:  ${params.score.brand}/100`,
-    `  Overall:        ${params.score.overall}/100`,
+    `  Visibility:                     ${params.score.ai}/100`,
+    `  Citation Readiness (content):   ${params.score.performance}/100`,
+    `  Citation Readiness (presence):  ${params.score.brand}/100`,
+    `  Overall:                        ${params.score.overall}/100`,
     "",
     `VERDICT`,
     params.verdict,
@@ -148,7 +148,7 @@ export async function sendFreeTestResultEmail(
 
   // ----- HTML body -----
   const btnStyle =
-    "display:inline-block;padding:10px 20px;background:#1D4ED8;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;";
+    "display:inline-block;padding:10px 20px;background:#0c7d54;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;";
   const tdStyle = "padding:6px 10px;font-size:13px;color:#374151;border-bottom:1px solid #E5E7EB;";
   const thStyle = "padding:6px 10px;font-size:12px;font-weight:600;text-align:left;background:#F3F4F6;color:#6B7280;border-bottom:2px solid #E5E7EB;";
 
@@ -158,7 +158,7 @@ export async function sendFreeTestResultEmail(
         ? '<span style="color:#15803D;font-weight:600;">Yes</span>'
         : '<span style="color:#B91C1C;">No</span>';
       const mode = e.live
-        ? '<span style="color:#1D4ED8;font-size:11px;">Live</span>'
+        ? '<span style="color:#0c7d54;font-size:11px;">Live</span>'
         : '<span style="color:#9CA3AF;font-size:11px;">Mock</span>';
       return `<tr>
         <td style="${tdStyle}">${escapeHtml(e.engine)}</td>
@@ -196,7 +196,7 @@ export async function sendFreeTestResultEmail(
 
   <!-- Header -->
   <div style="margin-bottom:24px;">
-    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#2563EB;">
+    <p style="margin:0;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#0c7d54;">
       Ozvor
     </p>
     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px 0;color:#111827;">
@@ -206,11 +206,11 @@ export async function sendFreeTestResultEmail(
   </div>
 
   <!-- Section 1: The prompt we tested -->
-  <div style="background:#F8FAFC;border-left:4px solid #2563EB;border-radius:4px;padding:14px 16px;margin-bottom:24px;">
+  <div style="background:#F8FAFC;border-left:4px solid #0c7d54;border-radius:4px;padding:14px 16px;margin-bottom:24px;">
     <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#6B7280;margin:0 0 6px 0;">
       The prompt we tested
     </p>
-    <p style="font-size:14px;color:#1E3A5F;margin:0;font-style:italic;">
+    <p style="font-size:14px;color:#0c1310;margin:0;font-style:italic;">
       &ldquo;${escapeHtml(params.prompt)}&rdquo;
     </p>
   </div>
@@ -220,21 +220,21 @@ export async function sendFreeTestResultEmail(
   <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
     <tr>
       <td style="padding:10px;text-align:center;border:1px solid #E5E7EB;border-radius:6px 0 0 6px;background:#F9FAFB;">
-        <p style="font-size:11px;color:#6B7280;margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">AI</p>
+        <p style="font-size:11px;color:#6B7280;margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Visibility</p>
         <p style="font-size:26px;font-weight:700;margin:0;color:${scoreColor(params.score.ai)};">${params.score.ai}</p>
         <p style="font-size:11px;color:#9CA3AF;margin:2px 0 0 0;">/100</p>
       </td>
       <td style="padding:10px;text-align:center;border:1px solid #E5E7EB;border-left:none;background:#F9FAFB;">
-        <p style="font-size:11px;color:#6B7280;margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Performance</p>
+        <p style="font-size:11px;color:#6B7280;margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Content</p>
         <p style="font-size:26px;font-weight:700;margin:0;color:${scoreColor(params.score.performance)};">${params.score.performance}</p>
         <p style="font-size:11px;color:#9CA3AF;margin:2px 0 0 0;">/100</p>
       </td>
       <td style="padding:10px;text-align:center;border:1px solid #E5E7EB;border-left:none;background:#F9FAFB;">
-        <p style="font-size:11px;color:#6B7280;margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Brand</p>
+        <p style="font-size:11px;color:#6B7280;margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Presence</p>
         <p style="font-size:26px;font-weight:700;margin:0;color:${scoreColor(params.score.brand)};">${params.score.brand}</p>
         <p style="font-size:11px;color:#9CA3AF;margin:2px 0 0 0;">/100</p>
       </td>
-      <td style="padding:10px;text-align:center;border:1px solid #E5E7EB;border-left:none;border-radius:0 6px 6px 0;background:#1D4ED8;">
+      <td style="padding:10px;text-align:center;border:1px solid #E5E7EB;border-left:none;border-radius:0 6px 6px 0;background:#0c7d54;">
         <p style="font-size:11px;color:rgba(255,255,255,0.8);margin:0 0 4px 0;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Overall</p>
         <p style="font-size:26px;font-weight:700;margin:0;color:#FFFFFF;">${params.score.overall}</p>
         <p style="font-size:11px;color:rgba(255,255,255,0.7);margin:2px 0 0 0;">/100</p>
@@ -276,25 +276,25 @@ export async function sendFreeTestResultEmail(
   <div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:16px;margin-top:16px;margin-bottom:24px;">
     <p style="font-size:13px;font-weight:600;color:#0C4A6E;margin:0 0 10px 0;">Quick access</p>
     <p style="margin:0 0 8px 0;">
-      <a href="${absoluteHref("/kit")}" style="color:#1D4ED8;font-size:13px;text-decoration:none;font-weight:600;">
+      <a href="${absoluteHref("/kit")}" style="color:#0c7d54;font-size:13px;text-decoration:none;font-weight:600;">
         $29 Get-Cited Kit &rarr;
       </a>
       <span style="font-size:13px;color:#374151;"> — Prompt blueprint + top-3 fixes for your brand</span>
     </p>
     <p style="margin:0 0 8px 0;">
-      <a href="${absoluteHref("/login?plan=growth&next=checkout")}" style="color:#1D4ED8;font-size:13px;text-decoration:none;font-weight:600;">
+      <a href="${absoluteHref("/login?plan=growth&next=checkout")}" style="color:#0c7d54;font-size:13px;text-decoration:none;font-weight:600;">
         Growth plan &rarr;
       </a>
       <span style="font-size:13px;color:#374151;"> — Weekly AI citation monitoring</span>
     </p>
     <p style="margin:0 0 8px 0;">
-      <a href="${absoluteHref("/login?plan=agency&next=checkout")}" style="color:#1D4ED8;font-size:13px;text-decoration:none;font-weight:600;">
+      <a href="${absoluteHref("/login?plan=agency&next=checkout")}" style="color:#0c7d54;font-size:13px;text-decoration:none;font-weight:600;">
         Agency plan &rarr;
       </a>
       <span style="font-size:13px;color:#374151;"> — Full competitor benchmarking + team seats</span>
     </p>
     <p style="margin:0;">
-      <a href="${absoluteHref("/book")}" style="color:#1D4ED8;font-size:13px;text-decoration:none;font-weight:600;">
+      <a href="${absoluteHref("/book")}" style="color:#0c7d54;font-size:13px;text-decoration:none;font-weight:600;">
         Book a free 20-min GEO call &rarr;
       </a>
     </p>
@@ -304,11 +304,11 @@ export async function sendFreeTestResultEmail(
   <hr style="border:none;border-top:1px solid #E5E7EB;margin-bottom:16px;" />
   <p style="font-size:12px;color:#9CA3AF;margin:0 0 4px 0;">
     This is a transactional result email triggered by your AI Visibility Test at
-    <a href="https://ozvor.com" style="color:#2563EB;">ozvor.com</a>.
+    <a href="https://ozvor.com" style="color:#0c7d54;">ozvor.com</a>.
   </p>
   <p style="font-size:12px;color:#9CA3AF;margin:0;">
     This is a one-time result email. No subscription required to receive this message.
-    Questions? <a href="mailto:hello@ozvor.com" style="color:#2563EB;">hello@ozvor.com</a>
+    Questions? <a href="mailto:hello@ozvor.com" style="color:#0c7d54;">hello@ozvor.com</a>
   </p>
 
 </body>
