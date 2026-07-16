@@ -39,6 +39,10 @@ export interface GoogleOAuthStatePayload {
   tenantId: string;
   brandId: string | null;
   kind: "ga4" | "gsc";
+  // Internal path to return the user to after the callback (allowlisted at the
+  // call site). Lets the same OAuth flow serve both the legacy connections page
+  // and the v3 dashboard. Optional — defaults to the legacy page when absent.
+  returnTo?: string;
   createdAt: number;
 }
 
