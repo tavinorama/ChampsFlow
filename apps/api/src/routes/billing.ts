@@ -209,9 +209,14 @@ export function requireNotRestricted(db: PostgresClient) {
         plan_tier: string | null;
         current_period_end: string | null;
       }>(
+        // Prefer the ACTIVE subscription when a tenant has more than one row
+        // (e.g. a canceled Growth sub + an active Agency sub). Without ORDER BY
+        // this could read the canceled row and wrongly 402-block a paying
+        // customer — same class of bug fixed in GET /api/billing/plan (#17).
         `SELECT status, plan_tier, current_period_end
          FROM billing_subscriptions
          WHERE tenant_id = $1
+         ORDER BY (status = 'active') DESC, created_at DESC
          LIMIT 1`,
         [auth.tenantId]
       );

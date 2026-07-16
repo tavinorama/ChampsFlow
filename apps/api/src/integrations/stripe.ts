@@ -986,9 +986,18 @@ export function mapStripeStatusToInternal(
     case "trialing":
       return "trialing";
     case "incomplete":
+      // Genuinely pending its FIRST payment — no paid plan_tier granted yet, so
+      // the restriction gate's permissive branch is harmless here.
+      return "incomplete";
     case "incomplete_expired":
     case "unpaid":
     case "paused":
+      // TERMINAL non-paying states (first payment never completed / expired, or
+      // dunning exhausted, or paused). These must LOSE paid access. Map to
+      // "canceled" so requireNotRestricted blocks them after the 7-day grace —
+      // previously they collapsed to "incomplete" and kept full paid access for
+      // $0 (access-without-payment leak).
+      return "canceled";
     default:
       return "incomplete";
   }
