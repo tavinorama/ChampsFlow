@@ -87,6 +87,10 @@ interface BreakdownEvidence {
   engine: string;
   prompt: string | null;
   cited: boolean;
+  position?: number | null;
+  sources?: unknown[];
+  mentionRate?: number | null;
+  rawTextSnippet?: string | null;
 }
 
 interface Breakdown {
@@ -1313,60 +1317,185 @@ function SourcesTab({
   hasAudit: boolean;
   brandId: string;
 }) {
-  if (loading) return <div style={S.muted}>Loading your sources…</div>;
-  if (!hasAudit) return <NeedAudit msg="Run an audit to see where AI gets its answers about you." />;
-  if (!breakdown) return <NeedAudit msg="Couldn’t load the latest audit. Try running a fresh one." />;
+  const [deepOpen, setDeepOpen] = useState(false);
+  const sources = (breakdown?.offsite?.sources ?? []).filter((s) => s.label || s.domain);
 
-  const sources = (breakdown.offsite?.sources ?? []).filter((s) => s.label || s.domain);
-
-  // Group evidence prompts → how many engines named the brand for each.
-  const byPrompt = new Map<string, { cited: number; total: number }>();
-  for (const e of breakdown.evidence ?? []) {
+  // Group evidence per prompt → which engines named the brand vs which didn't.
+  const byPrompt = new Map<string, { cited: string[]; missed: string[] }>();
+  for (const e of breakdown?.evidence ?? []) {
     const q = (e.prompt ?? "").trim();
     if (!q) continue;
-    const cur = byPrompt.get(q) ?? { cited: 0, total: 0 };
-    cur.total += 1;
-    if (e.cited) cur.cited += 1;
+    const cur = byPrompt.get(q) ?? { cited: [], missed: [] };
+    const eng = ENGINE_LABEL[e.engine] ?? e.engine;
+    (e.cited ? cur.cited : cur.missed).push(eng);
     byPrompt.set(q, cur);
   }
-  const prompts = [...byPrompt.entries()].slice(0, 8);
+  const prompts = [...byPrompt.entries()].slice(0, 12);
 
   return (
     <>
-      <div style={S.secH}>Where AI gets its answers <span style={S.secN}>— the sources that decide who gets named</span></div>
-      {sources.length === 0 ? (
-        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No off-site sources measured in the last audit yet.</div>
+      <ManagePrompts brandId={brandId} />
+
+      {loading ? (
+        <div style={S.muted}>Loading your sources…</div>
+      ) : !hasAudit ? (
+        <NeedAudit msg="Run an audit to see where AI gets its answers about you." />
+      ) : !breakdown ? (
+        <NeedAudit msg="Couldn’t load the latest audit. Try running a fresh one." />
       ) : (
-        <div style={S.card}>
-          {sources.map((s, i) => (
-            <div key={(s.label ?? s.domain ?? "") + i} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
-              <div>
-                <div style={S.actTitle}>{s.label ?? s.domain}</div>
-                {s.domain && s.label && <div style={S.actWhy}>{s.domain}</div>}
-              </div>
-              <span style={{ ...S.imp, ...(s.present ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" } : { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }) }}>
-                {s.present ? `Present${s.count ? ` · ${s.count}` : ""}` : "Not found"}
-              </span>
+        <>
+          <div style={S.secH}>Where AI gets its answers <span style={S.secN}>— the sources that decide who gets named</span></div>
+          {sources.length === 0 ? (
+            <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No off-site sources measured in the last audit yet.</div>
+          ) : (
+            <div style={S.card}>
+              {sources.map((s, i) => (
+                <div key={(s.label ?? s.domain ?? "") + i} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                  <div>
+                    <div style={S.actTitle}>{s.label ?? s.domain}</div>
+                    {s.domain && s.label && <div style={S.actWhy}>{s.domain}</div>}
+                  </div>
+                  <span style={{ ...S.imp, ...(s.present ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" } : { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }) }}>
+                    {s.present ? `Present${s.count ? ` · ${s.count}` : ""}` : "Not found"}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", flexWrap: "wrap" }}>
+            <div style={S.secH}>What each AI answered <span style={S.secN}>— per prompt, who named you</span></div>
+            <button onClick={() => setDeepOpen(true)} style={S.btnGhost}>🔬 Deep dive — full audit</button>
+          </div>
+          {prompts.length === 0 ? (
+            <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No prompt evidence in the last audit.</div>
+          ) : (
+            <div style={S.card}>
+              {prompts.map(([q, s], i) => (
+                <div key={q} style={{ padding: "12px 18px", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                  <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{q}</div>
+                  <div style={{ ...S.actWhy, marginTop: "3px" }}>
+                    {s.cited.length > 0
+                      ? <span><b style={{ color: "var(--color-success)" }}>Cited by</b> {s.cited.join(", ")}{s.missed.length ? ` · not by ${s.missed.join(", ")}` : ""}</span>
+                      : <span><b style={{ color: "var(--color-badge-status-warn-text)" }}>Not cited</b> by {s.missed.join(", ") || "any engine"}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p style={S.note}>Same method every time, on real AI engines. The Deep dive shows every engine’s raw answer per prompt.</p>
+        </>
       )}
 
-      <div style={S.secH}>The questions we test <span style={S.secN}>— real buyer prompts run on each AI</span></div>
-      {prompts.length === 0 ? (
-        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No prompt evidence in the last audit.</div>
-      ) : (
-        <div style={S.card}>
-          {prompts.map(([q, s], i) => (
-            <div key={q} style={{ padding: "12px 18px", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
-              <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{q}</div>
-              <div style={S.actWhy}>You’re named by {s.cited} of {s.total} checks.</div>
+      {deepOpen && breakdown && <DeepDiveModal evidence={breakdown.evidence ?? []} onClose={() => setDeepOpen(false)} />}
+    </>
+  );
+}
+
+function ManagePrompts({ brandId }: { brandId: string }) {
+  const [defaults, setDefaults] = useState<Array<{ text: string }> | null>(null);
+  const [custom, setCustom] = useState<Array<{ id: string; text: string }>>([]);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/prompts`);
+      if (r.ok) {
+        const d = (await r.json()) as { defaults?: Array<{ text: string }>; custom?: Array<{ id: string; text: string }> };
+        setDefaults(d.defaults ?? []);
+        setCustom(d.custom ?? []);
+      } else setDefaults([]);
+    } catch { setDefaults([]); }
+  }, [brandId]);
+  useEffect(() => { void reload(); }, [reload]);
+
+  async function add() {
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/prompts`, { method: "POST", body: JSON.stringify({ text: t }) });
+      if (r.ok) { setText(""); await reload(); }
+      else { const d = (await r.json().catch(() => null)) as { error?: string; code?: string } | null; setErr(d?.code === "PROMPT_TOO_LONG" ? "Max 200 characters." : d?.error ?? "Couldn’t add (max 10 custom prompts)."); }
+    } catch { setErr("Couldn’t add. Try again."); }
+    finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    setCustom((prev) => prev.filter((p) => p.id !== id));
+    try { await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+  }
+
+  const total = (defaults?.length ?? 0) + custom.length;
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", flexWrap: "wrap" }}>
+        <div style={S.secH}>The questions we run <span style={S.secN}>— {total} prompt{total === 1 ? "" : "s"} on every audit; add your own</span></div>
+        <button onClick={() => setOpen((o) => !o)} style={S.btnGhost}>{open ? "Hide" : "Manage prompts"}</button>
+      </div>
+      {open && (
+        <div style={{ ...S.card, padding: "var(--space-4)", marginBottom: "var(--space-4)" }}>
+          <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+            <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Add a buyer question — e.g. “best CRM for small law firms”" style={{ ...S.input, flex: 1, minWidth: 240 }}
+              onKeyDown={(e) => { if (e.key === "Enter") void add(); }} maxLength={200} />
+            <button onClick={() => void add()} disabled={!text.trim() || busy} style={{ ...S.btnPri, opacity: !text.trim() || busy ? 0.6 : 1 }}>{busy ? "Adding…" : "Add prompt"}</button>
+          </div>
+          {err && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "var(--space-2)" }}>{err}</div>}
+          {custom.length > 0 && (
+            <div style={{ marginTop: "var(--space-3)" }}>
+              <div style={{ ...S.actWhy, marginBottom: "6px" }}>Your custom prompts ({custom.length}/10):</div>
+              {custom.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", padding: "6px 0", borderTop: "1px solid var(--color-border)" }}>
+                  <span style={{ fontSize: "0.86rem" }}>{p.text}</span>
+                  <button onClick={() => void remove(p.id)} aria-label="Remove" style={{ border: "none", background: "transparent", color: "var(--color-muted)", cursor: "pointer", fontSize: "1rem" }}>×</button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+          <p style={{ ...S.note, marginTop: "var(--space-2)" }}>Custom prompts are added to your default set and run on every future audit.</p>
         </div>
       )}
-      <p style={S.note}>Same method every time, on real AI engines. <Link href="/how-we-measure" style={{ color: "var(--color-primary)", fontWeight: 600 }}>See exactly how we measure →</Link></p>
     </>
+  );
+}
+
+function DeepDiveModal({ evidence, onClose }: { evidence: BreakdownEvidence[]; onClose: () => void }) {
+  // Group by prompt → list every engine's probe.
+  const byPrompt = new Map<string, BreakdownEvidence[]>();
+  for (const e of evidence) {
+    const q = (e.prompt ?? "").trim() || "(no prompt)";
+    const arr = byPrompt.get(q) ?? [];
+    arr.push(e);
+    byPrompt.set(q, arr);
+  }
+  return (
+    <div style={S.overlay} onClick={onClose} role="presentation">
+      <div style={{ ...S.modal, maxWidth: 760, maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Full audit">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-3)" }}>
+          <h2 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 800 }}>Full audit — every prompt × engine</h2>
+          <button onClick={onClose} aria-label="Close" style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: "1.3rem", color: "var(--color-muted)" }}>×</button>
+        </div>
+        {[...byPrompt.entries()].map(([q, rows]) => (
+          <div key={q} style={{ ...S.card, padding: "var(--space-4)", marginBottom: "var(--space-3)" }}>
+            <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: "var(--space-2)" }}>{q}</div>
+            {rows.map((r, i) => (
+              <div key={i} style={{ padding: "8px 0", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ ...S.engChip }}>{ENGINE_LABEL[r.engine] ?? r.engine}</span>
+                  <span style={{ ...S.imp, ...(r.cited ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" } : { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }) }}>
+                    {r.cited ? `Cited${r.position != null ? ` · #${r.position}` : ""}` : "Not cited"}
+                  </span>
+                </div>
+                {r.rawTextSnippet && <div style={{ ...S.actWhy, marginTop: "6px", borderLeft: "3px solid var(--color-border)", paddingLeft: "10px", lineHeight: 1.5 }}>{r.rawTextSnippet}</div>}
+              </div>
+            ))}
+          </div>
+        ))}
+        {byPrompt.size === 0 && <div style={S.muted}>No probe evidence in this audit.</div>}
+      </div>
+    </div>
   );
 }
 
