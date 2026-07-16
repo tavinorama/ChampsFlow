@@ -380,7 +380,7 @@ function LoadingPanel({ brand, domain }: { brand: string; domain: string | null 
             lineHeight: 1.6,
           }}
         >
-          This takes 20 to 40 seconds. We check 4 real AI engines.
+          This takes 20 to 40 seconds. We check the 5 AI engines your buyers use.
         </p>
       </div>
     </div>
@@ -664,10 +664,15 @@ function EngineBreakdown({
 // ---------------------------------------------------------------------------
 
 function VectorNotes({ breakdown }: { breakdown: ScoreBreakdown }) {
+  // Labels match the customer-facing 3-vector model shown in the scorecard above
+  // (Visibility / Citation Readiness / Execution). Citation Readiness is derived
+  // from the site (performance) + off-site presence (brand) signals, so those two
+  // notes are shown as its two facets. Execution isn't measured in the one-shot
+  // free test (there's no action plan yet), so it isn't shown here.
   const notes: Array<{ label: string; note: string }> = [
-    { label: "AI Visibility", note: breakdown.ai.note },
-    { label: "Site Performance", note: breakdown.performance.note },
-    { label: "Brand Authority", note: breakdown.brand.note },
+    { label: "Visibility", note: breakdown.ai.note },
+    { label: "Citation Readiness · Content", note: breakdown.performance.note },
+    { label: "Citation Readiness · Presence", note: breakdown.brand.note },
   ];
   return (
     <div

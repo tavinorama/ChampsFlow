@@ -109,7 +109,7 @@ export default function CookiePolicyPage() {
             <tbody>
               <tr>
                 <td style={cell}>
-                  <code>sb-[project]-auth-token</code>
+                  <code>sb-wdeabrzpgshnouvnfvml-auth-token</code>
                 </td>
                 <td style={cell}>
                   Supabase authentication session token. Set only after you
@@ -121,7 +121,7 @@ export default function CookiePolicyPage() {
               </tr>
               <tr>
                 <td style={cell}>
-                  <code>sb-[project]-refresh-token</code>
+                  <code>sb-wdeabrzpgshnouvnfvml-refresh-token</code>
                 </td>
                 <td style={cell}>
                   Supabase session refresh token. Allows the session to be

@@ -18,7 +18,7 @@
  * Reuses: OzvorScorecard (3-vector), apiFetch + ensureProvisioned, tokens.css.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned, isSupabaseConfigured } from "../../lib/supabase-browser";
@@ -228,6 +228,10 @@ export default function DashboardV3() {
   const [billing, setBilling] = useState<BillingPlan | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
 
+  // Guards against request races: the currently-selected brand. A per-brand
+  // loader compares against this after its await and drops a stale response, so
+  // switching brands fast never renders brand A's data under brand B.
+  const brandReqRef = useRef("");
   const activeBrand = useMemo(() => brands.find((b) => b.id === activeBrandId) ?? null, [brands, activeBrandId]);
   const isAgency = planTier === "agency" || brands.length > 1;
 
@@ -266,11 +270,13 @@ export default function DashboardV3() {
     setScore(null);
     try {
       const res = await apiFetch(`/api/brands/${brandId}/score`);
-      if (res.ok) setScore((await res.json()) as ScorePayload);
+      const data = res.ok ? ((await res.json()) as ScorePayload) : null;
+      if (brandReqRef.current !== brandId) return; // stale — brand switched
+      if (data) setScore(data);
     } catch {
       /* non-fatal — overview shows the empty state */
     } finally {
-      setScoreLoading(false);
+      if (brandReqRef.current === brandId) setScoreLoading(false);
     }
   }, []);
 
@@ -279,12 +285,13 @@ export default function DashboardV3() {
     setTasks(null);
     try {
       const res = await apiFetch(`/api/brands/${brandId}/plan`);
-      if (res.ok) setTasks(((await res.json()) as { tasks?: PlanTask[] }).tasks ?? []);
-      else setTasks([]);
+      const next = res.ok ? (((await res.json()) as { tasks?: PlanTask[] }).tasks ?? []) : [];
+      if (brandReqRef.current !== brandId) return; // stale — brand switched
+      setTasks(next);
     } catch {
-      setTasks([]);
+      if (brandReqRef.current === brandId) setTasks([]);
     } finally {
-      setTasksLoading(false);
+      if (brandReqRef.current === brandId) setTasksLoading(false);
     }
   }, []);
 
@@ -293,25 +300,28 @@ export default function DashboardV3() {
     setContent(null);
     try {
       const res = await apiFetch(`/api/brands/${brandId}/content`);
-      if (res.ok) setContent(((await res.json()) as { content?: ContentPiece[] }).content ?? []);
-      else setContent([]);
+      const next = res.ok ? (((await res.json()) as { content?: ContentPiece[] }).content ?? []) : [];
+      if (brandReqRef.current !== brandId) return; // stale — brand switched
+      setContent(next);
     } catch {
-      setContent([]);
+      if (brandReqRef.current === brandId) setContent([]);
     } finally {
-      setContentLoading(false);
+      if (brandReqRef.current === brandId) setContentLoading(false);
     }
   }, []);
 
-  const loadBreakdown = useCallback(async (auditId: string) => {
+  const loadBreakdown = useCallback(async (auditId: string, brandId: string) => {
     setBreakdownLoading(true);
     setBreakdown(null);
     try {
       const res = await apiFetch(`/api/audits/${auditId}/breakdown`);
-      if (res.ok) setBreakdown((await res.json()) as Breakdown);
+      const data = res.ok ? ((await res.json()) as Breakdown) : null;
+      if (brandReqRef.current !== brandId) return; // stale — brand switched
+      if (data) setBreakdown(data);
     } catch {
       /* non-fatal — tab shows empty state */
     } finally {
-      setBreakdownLoading(false);
+      if (brandReqRef.current === brandId) setBreakdownLoading(false);
     }
   }, []);
 
@@ -356,10 +366,12 @@ export default function DashboardV3() {
 
   useEffect(() => {
     if (activeBrandId) {
-      void loadScore(activeBrandId);
+      brandReqRef.current = activeBrandId; // mark the current brand for race guards
+      setScore(null); // clear synchronously so the prior brand's numbers never flash
       setTasks(null);
       setContent(null);
       setBreakdown(null);
+      void loadScore(activeBrandId);
     }
   }, [activeBrandId, loadScore]);
 
@@ -371,7 +383,7 @@ export default function DashboardV3() {
     if (tab === "content" && content === null && !contentLoading) void loadContent(activeBrandId);
     // Competitors + Sources both read the latest audit's breakdown.
     if ((tab === "competitors" || tab === "sources") && breakdown === null && !breakdownLoading && latestAuditId) {
-      void loadBreakdown(latestAuditId);
+      void loadBreakdown(latestAuditId, activeBrandId);
     }
     if (tab === "pages" && sites === null && !sitesLoading) void loadSites();
     if (tab === "billing" && billing === null && !billingLoading) void loadBilling();
@@ -380,23 +392,36 @@ export default function DashboardV3() {
   // Optimistic mutations -----------------------------------------------------
   const toggleTask = useCallback(async (taskId: string, done: boolean) => {
     const next = done ? "done" : "accepted";
-    setTasks((prev) => (prev ? prev.map((t) => (t.id === taskId ? { ...t, status: next } : t)) : prev));
+    let prevStatus: string | undefined; // snapshot the ACTUAL prior value to revert to
+    setTasks((prev) => (prev ? prev.map((t) => {
+      if (t.id !== taskId) return t;
+      prevStatus = t.status;
+      return { ...t, status: next };
+    }) : prev));
     try {
       const res = await apiFetch(`/api/plan-tasks/${taskId}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
       if (!res.ok) throw new Error();
     } catch {
-      // revert on failure
-      setTasks((prev) => (prev ? prev.map((t) => (t.id === taskId ? { ...t, status: done ? "accepted" : "done" } : t)) : prev));
+      if (prevStatus !== undefined) {
+        setTasks((prev) => (prev ? prev.map((t) => (t.id === taskId ? { ...t, status: prevStatus as string } : t)) : prev));
+      }
     }
   }, []);
 
   const setContentStatus = useCallback(async (id: string, status: "approved" | "discarded") => {
-    setContent((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, status } : c)) : prev));
+    let prevStatus: string | undefined; // snapshot the ACTUAL prior value to revert to
+    setContent((prev) => (prev ? prev.map((c) => {
+      if (c.id !== id) return c;
+      prevStatus = c.status;
+      return { ...c, status };
+    }) : prev));
     try {
       const res = await apiFetch(`/api/content/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
       if (!res.ok) throw new Error();
     } catch {
-      setContent((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, status: "draft" } : c)) : prev));
+      if (prevStatus !== undefined) {
+        setContent((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, status: prevStatus as string } : c)) : prev));
+      }
     }
   }, []);
 

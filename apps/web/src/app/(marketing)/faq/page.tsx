@@ -108,8 +108,8 @@ const GROUPS: FaqGroup[] = [
       {
         q: "What's included in Agency ($549/mo)?",
         aText:
-          "Agency covers up to 15 client brands, at about $37 each ($26 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
-        a: "Agency covers up to 15 client brands, at about $37 each ($26 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
+          "Agency covers up to 15 client brands, at $36.60 each ($25.62 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
+        a: "Agency covers up to 15 client brands, at $36.60 each ($25.62 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
       },
     ],
   },
