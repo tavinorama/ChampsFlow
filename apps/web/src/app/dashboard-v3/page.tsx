@@ -645,7 +645,8 @@ export default function DashboardV3() {
         ) : tab === "donext" ? (
           <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId} />
         ) : tab === "content" ? (
-          <ContentTab items={content} loading={contentLoading} onSet={setContentStatus} brandId={activeBrandId} />
+          <ContentTab items={content} loading={contentLoading} onSet={setContentStatus} brandId={activeBrandId}
+            onReload={() => loadContent(activeBrandId)} onGoConnections={() => setTab("connections")} />
         ) : tab === "competitors" ? (
           <CompetitorsTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "sources" ? (
@@ -882,32 +883,34 @@ function DoNextTab({
 const CONTENT_TAG: Record<string, string> = { blog: "Blog post", linkedin: "LinkedIn post", faq: "FAQ answer" };
 
 function ContentTab({
-  items, loading, onSet, brandId,
+  items, loading, onSet, brandId, onReload, onGoConnections,
 }: {
   items: ContentPiece[] | null;
   loading: boolean;
   onSet: (id: string, status: "approved" | "discarded") => void;
   brandId: string;
+  onReload: () => void;
+  onGoConnections: () => void;
 }) {
-  if (loading || items === null) return <div style={S.muted}>Loading your drafts…</div>;
-
-  const drafts = items.filter((c) => c.status === "draft");
-  const live = items.filter((c) => c.status === "approved" || c.status === "published");
-
-  if (items.length === 0) {
-    return (
-      <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
-        <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No content drafts yet.</p>
-        <Link href={`/brands/${brandId}?section=content`} style={{ ...S.btnPri, display: "inline-block" }}>Open Content Studio →</Link>
-      </div>
-    );
-  }
+  const drafts = (items ?? []).filter((c) => c.status === "draft");
+  const live = (items ?? []).filter((c) => c.status === "approved" || c.status === "published");
 
   return (
     <>
-      <div style={S.secH}>Ready to review <span style={S.secN}>— we drafted these. Review, then approve.</span></div>
+      <div style={{ ...S.card, padding: "12px 16px", marginBottom: "var(--space-3)", fontSize: "0.85rem", color: "var(--color-muted)", borderLeft: "3px solid var(--color-primary)" }}>
+        Drafts are generated with <b>your own AI API key</b> (BYOK). Add or check it in{" "}
+        <button onClick={onGoConnections} style={{ border: "none", background: "transparent", color: "var(--color-primary)", fontWeight: 600, cursor: "pointer", font: "inherit", padding: 0 }}>Connections →</button>
+      </div>
+
+      <GenerateDraft brandId={brandId} onDone={onReload} onNeedKey={onGoConnections} />
+
+      {loading || items === null ? (
+        <div style={S.muted}>Loading your drafts…</div>
+      ) : (
+    <>
+      <div style={S.secH}>Ready to review <span style={S.secN}>— review, then approve.</span></div>
       {drafts.length === 0 ? (
-        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No drafts waiting. New drafts appear here after each audit.</div>
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No drafts waiting. Generate one above, or new drafts appear here after each audit.</div>
       ) : (
         <div style={S.drafts}>
           {drafts.map((c) => (
@@ -917,7 +920,6 @@ function ContentTab({
               <div style={S.draftPreview}>{c.body.slice(0, 220)}{c.body.length > 220 ? "…" : ""}</div>
               <div style={S.draftRow}>
                 <button onClick={() => onSet(c.id, "approved")} style={S.btnPri}>Approve</button>
-                <Link href={`/brands/${brandId}?section=content`} style={S.btnGhost}>Edit</Link>
                 <button onClick={() => onSet(c.id, "discarded")} style={S.btnGhost}>Discard</button>
               </div>
             </div>
@@ -940,6 +942,52 @@ function ContentTab({
       )}
       <p style={S.note}>Everything here is AI-drafted and labelled. Nothing posts until you approve it.</p>
     </>
+      )}
+    </>
+  );
+}
+
+function GenerateDraft({ brandId, onDone, onNeedKey }: { brandId: string; onDone: () => void; onNeedKey: () => void }) {
+  const [type, setType] = useState("blog");
+  const [topic, setTopic] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function generate() {
+    const t = topic.trim();
+    if (!t || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/content`, { method: "POST", body: JSON.stringify({ content_type: type, topic: t }) });
+      const d = (await r.json().catch(() => null)) as { message?: string } | null;
+      if (r.ok) { setTopic(""); setMsg("Draft generated — it’s in your review list below."); onDone(); }
+      else if (r.status === 402 || r.status === 403 || (d?.message ?? "").toLowerCase().includes("key")) {
+        setMsg("Add your AI API key in Connections first — content is generated with your own key (BYOK)."); onNeedKey();
+      } else {
+        setMsg(d?.message ?? "Couldn’t generate the draft. Try again.");
+      }
+    } catch {
+      setMsg("Couldn’t generate the draft. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ ...S.card, padding: "var(--space-4)", marginBottom: "var(--space-4)" }}>
+      <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: "var(--space-2)" }}>Generate a draft</div>
+      <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+        <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...S.input, flex: "0 0 auto" }}>
+          <option value="blog">Blog post</option>
+          <option value="linkedin">LinkedIn post</option>
+          <option value="faq">FAQ answer</option>
+        </select>
+        <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Topic — e.g. “how to choose an emergency plumber”" style={{ ...S.input, flex: 1, minWidth: 220 }}
+          onKeyDown={(e) => { if (e.key === "Enter") void generate(); }} />
+        <button onClick={() => void generate()} disabled={!topic.trim() || busy} style={{ ...S.btnPri, opacity: !topic.trim() || busy ? 0.6 : 1 }}>{busy ? "Generating…" : "Generate"}</button>
+      </div>
+      {msg && <div style={{ marginTop: "var(--space-2)", fontSize: "0.82rem", color: "var(--color-muted)" }}>{msg}</div>}
+    </div>
   );
 }
 
