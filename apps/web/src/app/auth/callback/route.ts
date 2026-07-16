@@ -16,7 +16,7 @@ import { createSupabaseServerClient } from "../../../lib/supabase-server";
 function safeNext(next: string | null): string {
   // Only same-origin relative paths — never protocol-relative (`//evil.com`).
   if (next && next.startsWith("/") && !next.startsWith("//")) return next;
-  return "/dashboard";
+  return "/dashboard-v3";
 }
 
 /**
