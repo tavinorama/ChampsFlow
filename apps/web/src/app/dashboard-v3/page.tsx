@@ -208,6 +208,8 @@ export default function DashboardV3() {
   }, [authError, router]);
 
   const overall = score?.latest?.score_overall ?? activeBrand?.latest_score ?? null;
+  // /api/brands/:id/score returns trend ORDER BY recorded_at DESC (newest-first),
+  // so reverse() gives oldest→newest, left→right — the correct sparkline order.
   const trendPoints = useMemo(
     () => (score?.trend ?? []).map((t) => t.score_overall).filter((n): n is number => n != null).reverse(),
     [score]
@@ -358,7 +360,9 @@ function OverviewTab({
 }
 
 function BrandsTab({ brands, onOpen }: { brands: BrandRow[]; onOpen: (id: string) => void }) {
-  const needsWork = brands.filter((b) => (b.latest_score ?? 100) < 55).length;
+  // A brand with no score yet counts as needing attention (it needs its first
+  // audit) — null → 0, not a healthy 100. Keeps the "N need attention" badge honest.
+  const needsWork = brands.filter((b) => (b.latest_score ?? 0) < 55).length;
   return (
     <>
       <div style={S.secH}>

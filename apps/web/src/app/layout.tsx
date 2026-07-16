@@ -107,6 +107,11 @@ export default async function RootLayout({
   const isPublicLanding = isPublicLandingPath(pathname);
   const isMarketing = isMarketingPath(pathname);
   const isAuthedApp = isAuthedAppPath(pathname);
+  // Dashboard v3 (staging): a self-contained full-page shell that provides its
+  // OWN sidebar + top bar. It is auth-protected by the middleware (routes.ts)
+  // but must NOT inherit the app chrome (AppSidebar/AppTopBar) or it would
+  // double-render. Render its children bare, like a public tenant site does.
+  const isDashboardV3 = pathname === "/dashboard-v3" || pathname.startsWith("/dashboard-v3/");
 
   return (
     <html lang="en" className={`${schibsted.variable} ${jetbrainsMono.variable}`}>
@@ -176,7 +181,12 @@ export default async function RootLayout({
             @keyframes atmo-drift { from, to { transform: none; } }
           }
         `}</style>
-        {isPublicLanding ? (
+        {isDashboardV3 ? (
+          // 0b. Dashboard v3 (staging): self-contained shell owns its own
+          // sidebar + top bar. Render bare so the old AppSidebar/AppTopBar
+          // don't double-render. Auth is enforced by the middleware.
+          children
+        ) : isPublicLanding ? (
           // 0. Public tenant sites (/l/*): render ONLY the page. No Ozvor
           // chrome of any kind — the page's own PublicLandingChrome provides
           // the client's header + footer with a minimal "Made with Ozvor"

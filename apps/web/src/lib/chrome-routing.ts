@@ -29,7 +29,6 @@ export const MARKETING_PREFIXES = [
 
 export const AUTHED_APP_PREFIXES = [
   "/dashboard",
-  "/dashboard-v3",
   "/brands",
   "/account",
   "/admin",
