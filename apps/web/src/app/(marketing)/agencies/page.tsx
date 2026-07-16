@@ -20,7 +20,7 @@ import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNo
 export const metadata: Metadata = {
   title: "Ozvor for agencies — white-label AI-visibility for every client",
   description:
-    "Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to 15 client brands. $549/mo, about $37 per brand ($26 on founder annual). Win the GEO line item before your competitor agency does.",
+    "Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to 15 client brands. $549/mo, $36.60 per brand ($25.62 on founder annual). Win the GEO line item before your competitor agency does.",
   alternates: { canonical: "https://ozvor.com/agencies" },
   openGraph: {
     title: "Ozvor for agencies — white-label AI visibility",
