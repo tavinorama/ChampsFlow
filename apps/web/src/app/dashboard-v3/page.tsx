@@ -34,7 +34,25 @@ interface BrandRow {
   domain: string | null;
   monitoring_enabled: boolean;
   latest_score: number | null;
+  // Public profile URLs — measured by the off-site GEO signal (editable in Connections).
+  linkedin_url?: string | null;
+  reddit_url?: string | null;
+  wikipedia_url?: string | null;
+  g2_url?: string | null;
+  trustpilot_url?: string | null;
+  crunchbase_url?: string | null;
+  youtube_url?: string | null;
 }
+
+const PROFILE_FIELDS: Array<{ key: keyof BrandRow; label: string; hint: string }> = [
+  { key: "reddit_url", label: "Reddit", hint: "reddit.com/r/… or a profile/thread" },
+  { key: "g2_url", label: "G2", hint: "g2.com/products/…" },
+  { key: "trustpilot_url", label: "Trustpilot", hint: "trustpilot.com/review/…" },
+  { key: "crunchbase_url", label: "Crunchbase", hint: "crunchbase.com/organization/…" },
+  { key: "linkedin_url", label: "LinkedIn", hint: "linkedin.com/company/…" },
+  { key: "wikipedia_url", label: "Wikipedia", hint: "en.wikipedia.org/wiki/…" },
+  { key: "youtube_url", label: "YouTube", hint: "youtube.com/@…" },
+];
 
 interface TrendPoint {
   recorded_at: string;
@@ -654,7 +672,7 @@ export default function DashboardV3() {
         ) : tab === "pages" ? (
           <PagesTab sites={sites} loading={sitesLoading} />
         ) : tab === "connections" ? (
-          <ConnectionsTab />
+          <ConnectionsTab brand={activeBrand} onProfilesSaved={() => reloadBrands()} />
         ) : tab === "billing" ? (
           <BillingTab billing={billing} loading={billingLoading} onManage={openPortal} />
         ) : (
@@ -1256,7 +1274,7 @@ const BYOK_PROVIDERS = [
 
 interface OzvorApiKey { id: string; name: string; prefix: string; last_used_at: string | null; revoked_at: string | null; created_at: string; }
 
-function ConnectionsTab() {
+function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; onProfilesSaved: () => void }) {
   const [connected, setConnected] = useState<string[] | null>(null);
   const [apiKeys, setApiKeys] = useState<OzvorApiKey[] | null>(null);
   const [minted, setMinted] = useState<string | null>(null); // plaintext shown once
@@ -1305,6 +1323,8 @@ function ConnectionsTab() {
         ))}
       </div>
 
+      {brand && <ProfilesSection brand={brand} onSaved={onProfilesSaved} />}
+
       <div style={S.secH}>Your content keys (BYOK) <span style={S.secN}>— content drafts are generated with YOUR API key</span></div>
       <div style={S.card}>
         {BYOK_PROVIDERS.map((p, i) => (
@@ -1351,6 +1371,52 @@ function ConnectionsTab() {
           </div>
         ))}
       </div>
+    </>
+  );
+}
+
+function ProfilesSection({ brand, onSaved }: { brand: BrandRow; onSaved: () => void }) {
+  const initial = useCallback(() => {
+    const v: Record<string, string> = {};
+    for (const f of PROFILE_FIELDS) v[f.key as string] = ((brand[f.key] as string | null | undefined) ?? "");
+    return v;
+  }, [brand]);
+  const [vals, setVals] = useState<Record<string, string>>(initial);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // Reset the form when the active brand changes.
+  useEffect(() => { setVals(initial()); setMsg(null); }, [initial]);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    const body: Record<string, string | null> = {};
+    for (const f of PROFILE_FIELDS) body[f.key as string] = (vals[f.key as string] ?? "").trim() || null;
+    try {
+      const r = await apiFetch(`/api/brands/${brand.id}/profiles`, { method: "PATCH", body: JSON.stringify(body) });
+      if (r.ok) { setMsg("Saved — these feed your off-site GEO signal on the next audit."); onSaved(); }
+      else { const d = (await r.json().catch(() => null)) as { message?: string } | null; setMsg(d?.message ?? "Couldn’t save."); }
+    } catch { setMsg("Couldn’t save. Try again."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <>
+      <div style={S.secH}>Your public profiles <span style={S.secN}>— for {brand.name}; measured as off-site GEO signal</span></div>
+      <div style={{ ...S.card, padding: "var(--space-4)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "var(--space-3)" }}>
+          {PROFILE_FIELDS.map((f) => (
+            <label key={f.key as string} style={S.label}>{f.label}
+              <input value={vals[f.key as string] ?? ""} onChange={(e) => setVals((p) => ({ ...p, [f.key as string]: e.target.value }))} placeholder={f.hint} style={S.input} />
+            </label>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginTop: "var(--space-1)" }}>
+          <button onClick={() => void save()} disabled={busy} style={{ ...S.btnPri, opacity: busy ? 0.6 : 1 }}>{busy ? "Saving…" : "Save profiles"}</button>
+          {msg && <span style={{ fontSize: "0.82rem", color: "var(--color-muted)" }}>{msg}</span>}
+        </div>
+      </div>
+      <p style={S.note}>These connect your SEO presence to your GEO visibility — AI engines lean on Reddit, G2, Wikipedia and the like when they decide who to name.</p>
     </>
   );
 }
