@@ -199,17 +199,13 @@ export default async function RootLayout({
           // acknowledgment gate (blocking modal) and the CCPA California banner.
           // DpaGate renders only the modal or the children, no sidebar/topbar.
           isDashboardV3 ? (
-            // v3 is a FIT-TO-VIEWPORT shell (its own height:100% grid). The
-            // banner must NOT stack on top of a 100vh shell — that pushes the
-            // sidebar footer (the client's email) below the fold. So give the
-            // viewport to a flex column: banner takes its own height, the shell
-            // fills the rest and its internal footer stays pinned + visible.
-            <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
-              <CaliforniaBanner country={country} />
-              <div style={{ flex: 1, minHeight: 0 }}>
-                <DpaGate>{children}</DpaGate>
-              </div>
-            </div>
+            // v3 is a FIT-TO-VIEWPORT shell that owns the full 100dvh itself
+            // (grid → rail → pinned footer). Nothing may sit ABOVE it in flow,
+            // or the sidebar footer (the client's email) is pushed off-screen —
+            // so NO CCPA banner here (it's a US informational notice; the CCPA
+            // control stays reachable via /ccpa + account settings). The DPA
+            // acknowledgment gate stays (fragment, adds no height).
+            <DpaGate>{children}</DpaGate>
           ) : isNativePagesBuilder ? (
             // Pages builder scrolls naturally — the banner can sit above it.
             <>
