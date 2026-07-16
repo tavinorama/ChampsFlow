@@ -2621,7 +2621,10 @@ function CadenceTab({ cadence }: { cadence: CadenceData | null }) {
 // ---------------------------------------------------------------------------
 
 const AS: Record<string, React.CSSProperties> = {
-  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  // gridTemplateRows minmax(0,1fr) is load-bearing — same clip bug as the v3
+  // client shell: an implicit `auto` row is content-sized, so tall tab content
+  // grew the row past 100dvh and overflow:hidden cut the sidebar footer.
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
   rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
   railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "8px", padding: "0 8px var(--space-4)" },
