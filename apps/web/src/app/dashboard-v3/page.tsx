@@ -2127,7 +2127,12 @@ const S: Record<string, React.CSSProperties> = {
   // Fit the viewport: the shell is exactly one screen tall and never scrolls the
   // page — the sidebar and the main area each scroll internally if their content
   // overflows. Grid columns shrink the rail on smaller screens.
-  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  // gridTemplateRows minmax(0,1fr) is load-bearing: an implicit `auto` row is
+  // CONTENT-sized, so tall tab content grew the row past 100dvh and the shell's
+  // overflow:hidden clipped the bottom of the sidebar (the email). minmax(0,1fr)
+  // clamps the single row to exactly the shell height; panes scroll internally.
+  // Measured live in prod: aside 1008px in a 960px shell before, 960px after.
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
   rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
   railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
