@@ -361,6 +361,21 @@ export default function DashboardV3() {
 
   const atBrandLimit = maxBrands != null && brands.length >= maxBrands;
 
+  const deleteBrand = useCallback(async (id: string) => {
+    // Optimistic: drop it locally, move selection off it.
+    setBrands((prev) => {
+      const next = prev.filter((b) => b.id !== id);
+      setActiveBrandId((cur) => (cur === id ? (next[0]?.id ?? "") : cur));
+      return next;
+    });
+    try {
+      const res = await apiFetch(`/api/brands/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    } catch {
+      await reloadBrands(); // failed — resync from server
+    }
+  }, [reloadBrands]);
+
   const loadTasks = useCallback(async (brandId: string) => {
     setTasksLoading(true);
     setTasks(null);
@@ -390,6 +405,15 @@ export default function DashboardV3() {
       if (brandReqRef.current === brandId) setContentLoading(false);
     }
   }, []);
+
+  const addTask = useCallback(async (brandId: string, action: string) => {
+    const res = await apiFetch(`/api/brands/${brandId}/tasks`, { method: "POST", body: JSON.stringify({ action }) });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(d?.message ?? "Couldn't add that item.");
+    }
+    await loadTasks(brandId);
+  }, [loadTasks]);
 
   const loadBreakdown = useCallback(async (auditId: string, brandId: string) => {
     setBreakdownLoading(true);
@@ -659,9 +683,11 @@ export default function DashboardV3() {
             atLimit={atBrandLimit}
             maxBrands={maxBrands}
             onAdd={() => setAddBrandOpen(true)}
+            onDelete={deleteBrand}
           />
         ) : tab === "donext" ? (
-          <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId} />
+          <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId}
+            onAddTask={(action) => addTask(activeBrandId, action)} />
         ) : tab === "content" ? (
           <ContentTab items={content} loading={contentLoading} onSet={setContentStatus} brandId={activeBrandId}
             onReload={() => loadContent(activeBrandId)} onGoConnections={() => setTab("connections")} />
@@ -759,13 +785,14 @@ function OverviewTab({
   );
 }
 
-function BrandsTab({ brands, onOpen, canAdd, atLimit, maxBrands, onAdd }: {
+function BrandsTab({ brands, onOpen, canAdd, atLimit, maxBrands, onAdd, onDelete }: {
   brands: BrandRow[];
   onOpen: (id: string) => void;
   canAdd: boolean;
   atLimit: boolean;
   maxBrands: number | null;
   onAdd: () => void;
+  onDelete: (id: string) => void;
 }) {
   // A brand with no score yet counts as needing attention (it needs its first
   // audit) — null → 0, not a healthy 100. Keeps the "N need attention" badge honest.
@@ -790,14 +817,24 @@ function BrandsTab({ brands, onOpen, canAdd, atLimit, maxBrands, onAdd }: {
         {brands.map((b) => {
           const tone = scoreTone(b.latest_score);
           return (
-            <button key={b.id} onClick={() => onOpen(b.id)} style={{ ...S.card, ...S.fcard }}>
+            <div key={b.id} onClick={() => onOpen(b.id)} role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter") onOpen(b.id); }}
+              style={{ ...S.card, ...S.fcard, position: "relative" }}>
+              <button
+                aria-label={`Delete ${b.name}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Delete “${b.name}” and all its audits, competitors and content? This can’t be undone.`)) onDelete(b.id);
+                }}
+                style={{ position: "absolute", top: 8, right: 8, border: "none", background: "transparent", color: "var(--color-muted)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: 4 }}
+              >×</button>
               <div style={S.fname}>{b.name}</div>
               <div style={S.frow}>
                 <b style={S.fscore}>{b.latest_score ?? "—"}</b>
                 <span style={{ ...S.pill, background: tone.bg, color: tone.fg }}>● {tone.label}</span>
               </div>
               <div style={S.fmeta}>{b.monitoring_enabled ? "Weekly monitoring on" : "Monitoring off"}</div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -832,28 +869,28 @@ function impactStyle(impact: string): React.CSSProperties {
 }
 
 function DoNextTab({
-  tasks, loading, onToggle, brandId,
+  tasks, loading, onToggle, brandId, onAddTask,
 }: {
   tasks: PlanTask[] | null;
   loading: boolean;
   onToggle: (id: string, done: boolean) => void;
   brandId: string;
+  onAddTask: (action: string) => Promise<void>;
 }) {
-  if (loading || tasks === null) return <div style={S.muted}>Loading your fix list…</div>;
-
-  const open = tasks.filter((t) => t.status !== "done" && t.status !== "rejected");
-  const done = tasks.filter((t) => t.status === "done");
-
-  if (tasks.length === 0) {
-    return (
-      <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
-        <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No action plan yet for this brand.</p>
-        <Link href={`/brands/${brandId}`} style={{ ...S.btnPri, display: "inline-block" }}>Run an audit to build your plan →</Link>
-      </div>
-    );
-  }
+  const open = (tasks ?? []).filter((t) => t.status !== "done" && t.status !== "rejected");
+  const done = (tasks ?? []).filter((t) => t.status === "done");
 
   return (
+    <>
+      <AddTodo onAdd={onAddTask} />
+
+      {loading || tasks === null ? (
+        <div style={S.muted}>Loading your fix list…</div>
+      ) : tasks.length === 0 ? (
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>
+          No plan yet — add your own to-dos above, or <Link href={`/brands/${brandId}`} style={{ color: "var(--color-primary)", fontWeight: 600 }}>run an audit</Link> to generate one.
+        </div>
+      ) : (
     <>
       <div style={S.secH}>
         Your fix list <span style={S.secN}>— {open.length} to do, {done.length} done. Finish these and your base score climbs.</span>
@@ -895,6 +932,33 @@ function DoNextTab({
       )}
       <p style={S.note}>Checking a box marks it done here and updates your Execution score. Nothing is published from this list.</p>
     </>
+      )}
+    </>
+  );
+}
+
+function AddTodo({ onAdd }: { onAdd: (action: string) => Promise<void> }) {
+  const [action, setAction] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function add() {
+    const a = action.trim();
+    if (!a || busy) return;
+    setBusy(true); setErr(null);
+    try { await onAdd(a); setAction(""); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Couldn’t add that item."); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div style={{ ...S.card, padding: "var(--space-4)", marginBottom: "var(--space-4)" }}>
+      <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: "var(--space-2)" }}>Add your own to-do</div>
+      <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+        <input value={action} onChange={(e) => setAction(e.target.value)} placeholder="e.g. “Claim our Google Business Profile”" style={{ ...S.input, flex: 1, minWidth: 220 }}
+          onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
+        <button onClick={() => void add()} disabled={!action.trim() || busy} style={{ ...S.btnPri, opacity: !action.trim() || busy ? 0.6 : 1 }}>{busy ? "Adding…" : "Add"}</button>
+      </div>
+      {err && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "var(--space-2)" }}>{err}</div>}
+    </div>
   );
 }
 

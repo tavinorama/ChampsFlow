@@ -1509,6 +1509,66 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   );
 
   // -------------------------------------------------------------------------
+  // DELETE /api/brands/:id — remove a brand and all its data (owner only).
+  // Every brand_id FK is ON DELETE CASCADE, so audits, scores, competitors,
+  // content, plans, pages, etc. are cleaned up. Tenant-scoped (RLS + predicate).
+  // -------------------------------------------------------------------------
+  app.delete("/api/brands/:id", requireAuth, requireRole(["owner"]), async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+    const res = await db.query<{ id: string }>(
+      `DELETE FROM brands WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [brandId, auth.tenantId]
+    );
+    if (!res.rows[0]) return c.json({ message: "Brand not found." }, 404);
+    logger.warn("brand_deleted", { tenant_id: auth.tenantId, brand_id: brandId });
+    return c.json({ deleted: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/brands/:id/tasks — add a custom "do next" item (owner/editor).
+  // Body: { action }. Attaches to the brand's latest strategy_plan (creating a
+  // user plan if none exists yet); status 'accepted' so it shows as open.
+  // -------------------------------------------------------------------------
+  app.post("/api/brands/:id/tasks", requireAuth, requireRole(["owner", "editor"]), async (c) => {
+    const auth = c.get("auth");
+    const brandId = c.req.param("id");
+    let body: { action?: string };
+    try { body = await c.req.json(); } catch { return c.json({ message: "Invalid JSON body." }, 400); }
+    const action = (body.action ?? "").trim();
+    if (!action) return c.json({ message: "action is required." }, 400);
+    if (action.length > 500) return c.json({ message: "action is too long (max 500 chars)." }, 400);
+    await db.setTenantId(auth.tenantId);
+    const brandRes = await db.query<{ id: string }>(
+      `SELECT id FROM brands WHERE id = $1 AND tenant_id = $2`,
+      [brandId, auth.tenantId]
+    );
+    if (!brandRes.rows[0]) return c.json({ message: "Brand not found." }, 404);
+    let planId: string;
+    const planRes = await db.query<{ id: string }>(
+      `SELECT id FROM strategy_plan WHERE brand_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [brandId]
+    );
+    if (planRes.rows[0]) {
+      planId = planRes.rows[0].id;
+    } else {
+      const created = await db.query<{ id: string }>(
+        `INSERT INTO strategy_plan (tenant_id, brand_id, generated_by) VALUES ($1, $2, 'user') RETURNING id`,
+        [auth.tenantId, brandId]
+      );
+      planId = created.rows[0].id;
+    }
+    const taskRes = await db.query<{ id: string }>(
+      `INSERT INTO plan_task (tenant_id, plan_id, vector, gap, action, effort, impact, priority, owner, status, created_at)
+       VALUES ($1, $2, 'custom', $3, $3, 'medium', 'medium', 50, 'you', 'accepted', NOW())
+       RETURNING id`,
+      [auth.tenantId, planId, action]
+    );
+    return c.json({ id: taskRes.rows[0].id, action, status: "accepted" }, 201);
+  });
+
+  // -------------------------------------------------------------------------
   // GET /api/brands/:id/plan — latest plan + its tasks
   // -------------------------------------------------------------------------
   app.get("/api/brands/:id/plan", requireAuth, async (c) => {
