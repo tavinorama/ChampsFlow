@@ -266,6 +266,9 @@ export default function LandingPagesHubPage() {
         color: "var(--color-text)",
       }}
     >
+      <a href="/dashboard-v3?tab=pages" style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--color-muted)", textDecoration: "none", fontSize: "var(--font-size-body-sm)", fontWeight: 600, marginBottom: "var(--space-4)" }}>
+        ← Back to dashboard
+      </a>
       <h1 style={{ fontSize: "var(--font-size-h1)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-2) 0" }}>
         Ozvor Pages
       </h1>

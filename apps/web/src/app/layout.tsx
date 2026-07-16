@@ -112,6 +112,12 @@ export default async function RootLayout({
   // but must NOT inherit the app chrome (AppSidebar/AppTopBar) or it would
   // double-render. Render its children bare, like a public tenant site does.
   const isDashboardV3 = pathname === "/dashboard-v3" || pathname.startsWith("/dashboard-v3/");
+  // Ozvor Pages builder: reached natively from the v3 dashboard, so it must NOT
+  // inherit the legacy AppSidebar/AppTopBar (that was the "jumps to the old
+  // dashboard" complaint). Render bare like v3; still auth-gated by middleware.
+  // The builder pages provide their own "← Back to dashboard" link.
+  const isNativePagesBuilder = pathname === "/landing-pages" || pathname.startsWith("/landing-pages/");
+  const isBareApp = isDashboardV3 || isNativePagesBuilder;
 
   return (
     <html lang="en" className={`${schibsted.variable} ${jetbrainsMono.variable}`}>
@@ -181,9 +187,9 @@ export default async function RootLayout({
             @keyframes atmo-drift { from, to { transform: none; } }
           }
         `}</style>
-        {isDashboardV3 ? (
-          // 0b. Dashboard v3 (staging): self-contained shell owns its own
-          // sidebar + top bar. Render bare so the old AppSidebar/AppTopBar
+        {isBareApp ? (
+          // 0b. Dashboard v3 + the Ozvor Pages builder: self-contained surfaces
+          // that own their chrome. Render bare so the old AppSidebar/AppTopBar
           // don't double-render. Auth is enforced by the middleware.
           children
         ) : isPublicLanding ? (
