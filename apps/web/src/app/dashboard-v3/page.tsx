@@ -1198,10 +1198,55 @@ const CHECK_ENGINES = [
   { key: "AIO", name: "Google AI Overviews", by: "Google Search" },
 ];
 
+const BYOK_PROVIDERS = [
+  { id: "openai", label: "OpenAI (ChatGPT)", hint: "sk-…" },
+  { id: "anthropic", label: "Anthropic (Claude)", hint: "sk-ant-…" },
+  { id: "gemini", label: "Google Gemini", hint: "AI…" },
+  { id: "perplexity", label: "Perplexity", hint: "pplx-…" },
+  { id: "serp", label: "Google AI Overview (DataForSEO)", hint: "login:password" },
+];
+
+interface OzvorApiKey { id: string; name: string; prefix: string; last_used_at: string | null; revoked_at: string | null; created_at: string; }
+
 function ConnectionsTab() {
+  const [connected, setConnected] = useState<string[] | null>(null);
+  const [apiKeys, setApiKeys] = useState<OzvorApiKey[] | null>(null);
+  const [minted, setMinted] = useState<string | null>(null); // plaintext shown once
+  const [newKeyName, setNewKeyName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const reloadProviders = useCallback(async () => {
+    try {
+      const r = await apiFetch("/api/account/provider-keys");
+      if (r.ok) setConnected(((await r.json()) as { providers?: string[] }).providers ?? []);
+      else setConnected([]);
+    } catch { setConnected([]); }
+  }, []);
+  const reloadApiKeys = useCallback(async () => {
+    try {
+      const r = await apiFetch("/api/account/api-keys");
+      if (r.ok) setApiKeys(((await r.json()) as { data?: OzvorApiKey[] }).data ?? []);
+      else setApiKeys([]);
+    } catch { setApiKeys([]); }
+  }, []);
+  useEffect(() => { void reloadProviders(); void reloadApiKeys(); }, [reloadProviders, reloadApiKeys]);
+
+  async function generateKey() {
+    if (busy) return;
+    setBusy(true); setMinted(null);
+    try {
+      const r = await apiFetch("/api/account/api-keys", { method: "POST", body: JSON.stringify({ name: newKeyName.trim() || "Dashboard key" }) });
+      if (r.ok) { const d = (await r.json()) as { key?: string }; if (d.key) setMinted(d.key); setNewKeyName(""); await reloadApiKeys(); }
+    } catch { /* ignore */ } finally { setBusy(false); }
+  }
+  async function revokeKey(id: string) {
+    setApiKeys((prev) => (prev ?? []).filter((k) => k.id !== id));
+    try { await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+  }
+
   return (
     <>
-      <div style={S.secH}>Which AIs we check for you <span style={S.secN}>— run on every audit</span></div>
+      <div style={S.secH}>Which AIs we check for you <span style={S.secN}>— run on every audit, on our keys</span></div>
       <div style={S.card}>
         {CHECK_ENGINES.map((e, i) => (
           <div key={e.key} style={{ ...S.actRow, gridTemplateColumns: "auto 1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
@@ -1211,6 +1256,40 @@ function ConnectionsTab() {
           </div>
         ))}
       </div>
+
+      <div style={S.secH}>Your content keys (BYOK) <span style={S.secN}>— content drafts are generated with YOUR API key</span></div>
+      <div style={S.card}>
+        {BYOK_PROVIDERS.map((p, i) => (
+          <ByokRow key={p.id} provider={p} connected={(connected ?? []).includes(p.id)} loading={connected === null}
+            onSaved={reloadProviders} onRemoved={reloadProviders} first={i === 0} />
+        ))}
+      </div>
+      <p style={S.note}>Keys are encrypted at rest and never shown again. Audits always run on Ozvor’s keys; only content generation uses yours.</p>
+
+      <div style={S.secH}>Your Ozvor API key <span style={S.secN}>— call the audit API from your own terminal or code</span></div>
+      <div style={{ ...S.card, padding: "var(--space-4)" }}>
+        {minted && (
+          <div style={{ ...S.card, padding: "12px 14px", marginBottom: "var(--space-3)", borderLeft: "3px solid var(--color-primary)" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: 700, marginBottom: "4px" }}>Copy your key now — it won’t be shown again:</div>
+            <code style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "0.82rem", wordBreak: "break-all" }}>{minted}</code>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name (e.g. CI, my-script)" style={{ ...S.input, flex: 1, minWidth: 180 }} />
+          <button onClick={() => void generateKey()} disabled={busy} style={{ ...S.btnPri, opacity: busy ? 0.6 : 1 }}>{busy ? "Generating…" : "Generate API key"}</button>
+        </div>
+        {apiKeys && apiKeys.filter((k) => !k.revoked_at).length > 0 && (
+          <div style={{ marginTop: "var(--space-3)" }}>
+            {apiKeys.filter((k) => !k.revoked_at).map((k) => (
+              <div key={k.id} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", padding: "10px 0", borderTop: "1px solid var(--color-border)" }}>
+                <div><div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{k.name}</div><div style={S.actWhy}><code>{k.prefix}…</code> · added {new Date(k.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div></div>
+                <button onClick={() => void revokeKey(k.id)} style={S.btnGhost}>Revoke</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div style={S.secH}>Optional: connect your data <span style={S.secN}>— to see clicks &amp; traffic from AI</span></div>
       <div style={S.card}>
         {[
@@ -1224,8 +1303,62 @@ function ConnectionsTab() {
           </div>
         ))}
       </div>
-      <p style={S.note}>Manage engines, API keys and public profiles in <Link href="/account/connections" style={{ color: "var(--color-primary)", fontWeight: 600 }}>full connection settings →</Link></p>
     </>
+  );
+}
+
+function ByokRow({ provider, connected, loading, onSaved, onRemoved, first }: {
+  provider: { id: string; label: string; hint: string };
+  connected: boolean;
+  loading: boolean;
+  onSaved: () => void;
+  onRemoved: () => void;
+  first: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const k = key.trim();
+    if (k.length < 8 || busy) return;
+    setBusy(true);
+    try {
+      const r = await apiFetch("/api/account/provider-keys", { method: "POST", body: JSON.stringify({ provider: provider.id, key: k }) });
+      if (r.ok) { setKey(""); setEditing(false); onSaved(); }
+    } catch { /* ignore */ } finally { setBusy(false); }
+  }
+  async function remove() {
+    setBusy(true);
+    try {
+      const r = await apiFetch(`/api/account/provider-keys/${provider.id}`, { method: "DELETE" });
+      if (r.ok) onRemoved();
+    } catch { /* ignore */ } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ ...S.actRow, gridTemplateColumns: "1fr auto", alignItems: editing ? "start" : "center", borderTop: first ? "none" : "1px solid var(--color-border)" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{provider.label}</div>
+        {editing ? (
+          <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "6px", flexWrap: "wrap" }}>
+            <input value={key} onChange={(e) => setKey(e.target.value)} placeholder={provider.hint} autoFocus
+              style={{ ...S.input, flex: 1, minWidth: 200 }} onKeyDown={(e) => { if (e.key === "Enter") void save(); }} />
+            <button onClick={() => void save()} disabled={key.trim().length < 8 || busy} style={{ ...S.btnPri, opacity: key.trim().length < 8 || busy ? 0.6 : 1 }}>Save</button>
+            <button onClick={() => { setEditing(false); setKey(""); }} style={S.btnGhost}>Cancel</button>
+          </div>
+        ) : (
+          <div style={S.actWhy}>{loading ? "…" : connected ? "Key saved — used for your content generation" : "No key yet — add yours to generate content"}</div>
+        )}
+      </div>
+      {!editing && (
+        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+          {connected && <span style={{ ...S.imp, background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }}>Connected</span>}
+          <button onClick={() => setEditing(true)} style={S.btnGhost}>{connected ? "Replace" : "Add key"}</button>
+          {connected && <button onClick={() => void remove()} disabled={busy} style={S.btnGhost}>Remove</button>}
+        </div>
+      )}
+    </div>
   );
 }
 
