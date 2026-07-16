@@ -208,3 +208,36 @@ describe("parseCitation — whole-word matching (no false positives)", () => {
     expect(parseCitation("see acme-crm-software.example", "Acme CRM").mentioned).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// No-knowledge disclaimers are NOT citations (anti-score-inflation, honesty)
+// ---------------------------------------------------------------------------
+
+describe("parseCitation — no-knowledge disclaimers do not count as citations", () => {
+  it("does NOT count \"I don't have specific information about <brand>\" (observed live)", () => {
+    const raw = `# Ozvor vs Competitors I don't have specific information about "Ozvor" in my training data.`;
+    const r = parseCitation(raw, "Ozvor");
+    expect(r.mentioned).toBe(false);
+    expect(r.position).toBeNull();
+  });
+
+  it("does NOT count 'not familiar with' / 'couldn't find' phrasings", () => {
+    expect(parseCitation("I'm not familiar with Acme CRM.", "Acme CRM").mentioned).toBe(false);
+    expect(parseCitation("I couldn't find Acme CRM in any directory.", "Acme CRM").mentioned).toBe(false);
+    expect(parseCitation("I do not have reliable information about Acme CRM.", "Acme CRM").mentioned).toBe(false);
+    expect(parseCitation("As of my knowledge cutoff there is no company called Acme CRM.", "Acme CRM").mentioned).toBe(false);
+  });
+
+  it("still counts a REAL mention later in the same answer", () => {
+    const raw = "I don't have detailed information about Acme CRM's pricing. That said, Acme CRM is frequently recommended for small teams.";
+    const r = parseCitation(raw, "Acme CRM");
+    expect(r.mentioned).toBe(true);
+    expect(r.position).toBe(2); // the disclaimer sentence is skipped, not the answer
+  });
+
+  it("does not over-trigger: a normal recommendation still counts", () => {
+    const r = parseCitation("Acme CRM is a great option. You can find their pricing online.", "Acme CRM");
+    expect(r.mentioned).toBe(true);
+    expect(r.position).toBe(1);
+  });
+});
