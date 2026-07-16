@@ -20,7 +20,7 @@
  *   7. Opportunities (lazy — on tab click)
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { apiFetch, getSupabase, isSupabaseConfigured } from "../../lib/supabase-browser";
 
 // ---------------------------------------------------------------------------
@@ -2615,6 +2615,45 @@ function CadenceTab({ cadence }: { cadence: CadenceData | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// v3-frame styling for the admin console (mirrors the client dashboard shell:
+// bare, left sidebar, fit-to-viewport, tokens.css). No banner sits above this
+// shell, so it can own the full 100dvh directly.
+// ---------------------------------------------------------------------------
+
+const AS: Record<string, React.CSSProperties> = {
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
+  railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
+  brand: { display: "flex", alignItems: "center", gap: "8px", padding: "0 8px var(--space-4)" },
+  v3tag: { fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--color-primary)", border: "1px solid var(--color-primary)", borderRadius: "var(--radius-pill)", padding: "1px 6px" },
+  navH: { fontSize: "0.66rem", fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-muted)", padding: "var(--space-3) 8px 4px" },
+  navItem: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", padding: "7px 10px", borderRadius: "var(--radius-md)", border: "none", background: "transparent", color: "var(--color-text)", cursor: "pointer", font: "inherit", fontSize: "0.86rem", fontWeight: 600, textAlign: "left", width: "100%" },
+  main: { overflowY: "auto", minHeight: 0, padding: "var(--space-6) var(--space-7)" },
+  top: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-3)", marginBottom: "var(--space-5)", flexWrap: "wrap" },
+  h1: { fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.02em", margin: 0 },
+  themeBtn: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "transparent", color: "var(--color-muted)", cursor: "pointer", font: "inherit", fontSize: "0.82rem", fontWeight: 600, width: "100%" },
+  profile: { display: "flex", alignItems: "center", gap: "9px", padding: "8px 10px", borderRadius: "var(--radius-md)", background: "var(--color-surface-muted)" },
+  avatar: { width: 30, height: 30, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.82rem", flex: "0 0 auto" },
+  profileEmail: { fontSize: "0.78rem", fontWeight: 600, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+};
+
+function AdminNavItem({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button role="tab" aria-selected={active} onClick={onClick}
+      style={{ ...AS.navItem, background: active ? "var(--color-badge-connected-bg)" : "transparent", color: active ? "var(--color-primary)" : "var(--color-text)" }}>
+      {label}
+    </button>
+  );
+}
+
+// Sidebar grouping of the admin tabs (labels come from the `tabs` array).
+const ADMIN_NAV_GROUPS: { heading: string; ids: TabId[] }[] = [
+  { heading: "Overview", ids: ["today", "system-health", "analytics"] },
+  { heading: "Business", ids: ["clients", "leads", "revenue", "pipeline", "opportunities"] },
+  { heading: "Library", ids: ["assets"] },
+];
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -2639,6 +2678,33 @@ export default function AdminPage() {
   const [loadingTab, setLoadingTab] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("today");
   const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // v3-frame chrome: theme toggle + signed-in email (same convention as the
+  // client dashboard shell).
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("op-theme") === "light" ? "light" : "dark";
+      setTheme(stored);
+      if (stored === "light") document.documentElement.setAttribute("data-theme", "light");
+      else document.documentElement.removeAttribute("data-theme");
+    } catch { /* ignore */ }
+    if (isSupabaseConfigured()) {
+      void getSupabase().auth.getSession().then(({ data }) => setUserEmail(data.session?.user?.email ?? null)).catch(() => {});
+    }
+  }, []);
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === "light" ? "dark" : "light";
+      try {
+        if (next === "light") document.documentElement.setAttribute("data-theme", "light");
+        else document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem("op-theme", next);
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Tracks which tabs have already fetched data (to avoid re-fetching)
   const [fetchedTabs, setFetchedTabs] = useState<Set<TabId>>(new Set());
@@ -2953,7 +3019,7 @@ export default function AdminPage() {
   ];
 
   return (
-    <>
+    <div style={AS.shell}>
       <style>{`
         button[role="tab"]:focus-visible {
           outline: var(--focus-outline-width) solid var(--color-focus-outline);
@@ -2968,25 +3034,52 @@ export default function AdminPage() {
           .admin-clients-cards { display: none !important; }
         }
       `}</style>
-      <main
-        style={{
-          maxWidth: "1100px",
-          margin: "0 auto",
-          padding: "var(--space-8) var(--space-4) var(--space-12)",
-          fontFamily: "var(--font-family)",
-          color: "var(--color-text)",
-        }}
-      >
-        <h1
-          style={{
-            fontSize: "var(--font-size-h1)",
-            fontWeight: 800,
-            letterSpacing: "-0.02em",
-            margin: "0 0 var(--space-6) 0",
-          }}
-        >
-          Admin
-        </h1>
+
+      {/* Sidebar — v3 frame */}
+      <aside style={AS.rail}>
+        <div style={AS.brand}>
+          <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden="true">
+            <circle cx="13" cy="13" r="10.5" fill="none" stroke="var(--color-primary)" strokeWidth="3" />
+            <circle cx="13" cy="13" r="3.6" fill="var(--color-primary)" />
+          </svg>
+          <b style={{ fontWeight: 800, fontSize: "1.1rem", letterSpacing: "-0.02em" }}>Ozvor</b>
+          <span style={AS.v3tag}>admin</span>
+        </div>
+
+        <div style={AS.railScroll} role="tablist" aria-label="Admin sections">
+          {ADMIN_NAV_GROUPS.map((group) => (
+            <Fragment key={group.heading}>
+              <div style={AS.navH}>{group.heading}</div>
+              {group.ids.map((id) => {
+                const t = tabs.find((x) => x.id === id);
+                if (!t) return null;
+                return <AdminNavItem key={id} label={t.label} active={activeTab === id} onClick={() => handleTabChange(id)} />;
+              })}
+            </Fragment>
+          ))}
+        </div>
+
+        {/* Footer: theme toggle + signed-in email (pinned, never clipped) */}
+        <div style={{ flexShrink: 0, paddingTop: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          <button onClick={toggleTheme} style={AS.themeBtn} aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}>
+            <span aria-hidden="true">{theme === "light" ? "🌙" : "☀️"}</span>
+            {theme === "light" ? "Dark mode" : "Light mode"}
+          </button>
+          <div style={AS.profile}>
+            <span style={AS.avatar} aria-hidden="true">{(userEmail ?? "?").trim().charAt(0).toUpperCase()}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={AS.profileEmail} title={userEmail ?? undefined}>{userEmail ?? "Signed in"}</div>
+              <div style={{ fontSize: "0.72rem", color: "var(--color-muted)" }}>Founder console</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <main style={AS.main}>
+        <div style={AS.top}>
+          <h1 style={AS.h1}>{tabs.find((t) => t.id === activeTab)?.label ?? "Admin"}</h1>
+        </div>
 
         {/* Global error banner */}
         {globalError && (
@@ -3050,76 +3143,6 @@ export default function AdminPage() {
           )}
         </section>
 
-        {/* ── Tab navigation ── */}
-        <nav
-          aria-label="Admin sections"
-          style={{ marginBottom: "var(--space-6)" }}
-        >
-          <div
-            role="tablist"
-            style={{
-              display: "flex",
-              gap: "var(--space-2)",
-              borderBottom: "2px solid var(--color-border)",
-              flexWrap: "wrap",
-            }}
-            onKeyDown={(e) => {
-              const currentIndex = tabs.findIndex((t) => t.id === activeTab);
-              let nextIndex: number | null = null;
-              if (e.key === "ArrowRight") {
-                e.preventDefault();
-                nextIndex = (currentIndex + 1) % tabs.length;
-              } else if (e.key === "ArrowLeft") {
-                e.preventDefault();
-                nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-              } else if (e.key === "Home") {
-                e.preventDefault();
-                nextIndex = 0;
-              } else if (e.key === "End") {
-                e.preventDefault();
-                nextIndex = tabs.length - 1;
-              }
-              if (nextIndex !== null) {
-                const nextTab = tabs[nextIndex];
-                handleTabChange(nextTab.id);
-                document.getElementById(`tab-${nextTab.id}`)?.focus();
-              }
-            }}
-          >
-            {tabs.map((tab) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={`tabpanel-${tab.id}`}
-                  id={`tab-${tab.id}`}
-                  tabIndex={isActive ? 0 : -1}
-                  onClick={() => handleTabChange(tab.id)}
-                  style={{
-                    padding: "var(--space-3) var(--space-4)",
-                    background: "none",
-                    border: "none",
-                    borderBottom: isActive
-                      ? "2px solid var(--color-primary)"
-                      : "2px solid transparent",
-                    marginBottom: "-2px",
-                    fontFamily: "var(--font-family)",
-                    fontSize: "var(--font-size-body-sm)",
-                    fontWeight: isActive ? 700 : 400,
-                    color: isActive ? "var(--color-primary)" : "var(--color-muted)",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    borderRadius: "var(--radius-sm) var(--radius-sm) 0 0",
-                  }}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </nav>
 
         {/* ── Tab loading indicator ── */}
         {(loadingTab || (activeTab === "system-health" && loadingHealth)) && (
@@ -3650,6 +3673,6 @@ export default function AdminPage() {
           <OpportunitiesTab opportunities={opportunities} />
         </section>
       </main>
-    </>
+    </div>
   );
 }
