@@ -627,10 +627,9 @@ export default function DashboardV3() {
             <span style={S.avatar} aria-hidden="true">{(userEmail ?? "?").trim().charAt(0).toUpperCase()}</span>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={S.profileEmail} title={userEmail ?? undefined}>{userEmail ?? "Signed in"}</div>
-              <Link href="/account/data-privacy" style={S.profileLink}>Account &amp; profile</Link>
+              <button onClick={() => setTab("billing")} style={{ ...S.profileLink, border: "none", background: "transparent", cursor: "pointer", font: "inherit", padding: 0, textAlign: "left" }}>Account &amp; billing</button>
             </div>
           </div>
-          <Link href="/dashboard" style={S.backLink}>← Back to current dashboard</Link>
         </div>
       </aside>
 
@@ -975,7 +974,7 @@ function DoNextTab({
         <div style={S.muted}>Loading your fix list…</div>
       ) : tasks.length === 0 ? (
         <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>
-          No plan yet — add your own to-dos above, or <Link href={`/brands/${brandId}`} style={{ color: "var(--color-primary)", fontWeight: 600 }}>run an audit</Link> to generate one.
+          No plan yet — add your own to-dos above, or run an audit from the <b>Overview</b> tab to generate one.
         </div>
       ) : (
     <>
@@ -1165,11 +1164,10 @@ const ENGINE_LABEL: Record<string, string> = {
   gemini: "Gemini", google: "Gemini", serp: "Google AI",
 };
 
-function NeedAudit({ brandId, msg }: { brandId: string; msg: string }) {
+function NeedAudit({ msg }: { msg: string }) {
   return (
     <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
-      <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>{msg}</p>
-      <Link href={`/brands/${brandId}`} style={{ ...S.btnPri, display: "inline-block" }}>Run an audit →</Link>
+      <p style={{ margin: 0, color: "var(--color-muted)" }}>{msg} Run one from the <b>Overview</b> tab.</p>
     </div>
   );
 }
@@ -1254,9 +1252,9 @@ function CompetitorsTab({
       {loading ? (
         <div style={S.muted}>Loading the latest audit…</div>
       ) : !hasAudit ? (
-        <NeedAudit brandId={brandId} msg="Run an audit to see who AI names instead of you." />
+        <NeedAudit msg="Run an audit to see who AI names instead of you." />
       ) : !breakdown ? (
-        <NeedAudit brandId={brandId} msg="Couldn’t load the latest audit. Try running a fresh one." />
+        <NeedAudit msg="Couldn’t load the latest audit. Try running a fresh one." />
       ) : comps.length === 0 ? (
         <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No competitors surfaced in the last audit — AI didn’t name a rival ahead of you.</div>
       ) : (
@@ -1316,8 +1314,8 @@ function SourcesTab({
   brandId: string;
 }) {
   if (loading) return <div style={S.muted}>Loading your sources…</div>;
-  if (!hasAudit) return <NeedAudit brandId={brandId} msg="Run an audit to see where AI gets its answers about you." />;
-  if (!breakdown) return <NeedAudit brandId={brandId} msg="Couldn’t load the latest audit. Try running a fresh one." />;
+  if (!hasAudit) return <NeedAudit msg="Run an audit to see where AI gets its answers about you." />;
+  if (!breakdown) return <NeedAudit msg="Couldn’t load the latest audit. Try running a fresh one." />;
 
   const sources = (breakdown.offsite?.sources ?? []).filter((s) => s.label || s.domain);
 
@@ -1748,8 +1746,11 @@ function NavItem({ label, active, badge, onClick }: { label: string; active: boo
 // ---------------------------------------------------------------------------
 
 const S: Record<string, React.CSSProperties> = {
-  shell: { display: "grid", gridTemplateColumns: "232px 1fr", minHeight: "100vh", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
-  rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)" },
+  // Fit the viewport: the shell is exactly one screen tall and never scrolls the
+  // page — the sidebar and the main area each scroll internally if their content
+  // overflows. Grid columns shrink the rail on smaller screens.
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", height: "100vh", overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
   v3tag: { marginLeft: "auto", fontSize: "0.62rem", fontWeight: 700, color: "var(--color-primary)", border: "1px solid var(--color-primary)", borderRadius: "var(--radius-pill)", padding: "1px 6px" },
   navH: { fontSize: "0.66rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--color-muted)", margin: "var(--space-4) var(--space-2) var(--space-1)", fontWeight: 700 },
@@ -1760,7 +1761,7 @@ const S: Record<string, React.CSSProperties> = {
   badge: { background: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-pill)", fontSize: "0.66rem", fontWeight: 700, padding: "1px 7px" },
   backLink: { marginTop: "auto", paddingTop: "var(--space-4)", color: "var(--color-muted)", fontSize: "0.8rem", textDecoration: "none" },
 
-  main: { padding: "var(--space-6)", maxWidth: 1120, width: "100%" },
+  main: { padding: "var(--space-6)", maxWidth: 1120, width: "100%", height: "100vh", overflowY: "auto", minHeight: 0 },
   top: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-5)" },
   h1: { margin: 0, fontSize: "var(--font-size-h2)", fontWeight: 800, letterSpacing: "-0.02em" },
   sub: { color: "var(--color-muted)", fontSize: "0.9rem", marginTop: "3px" },
