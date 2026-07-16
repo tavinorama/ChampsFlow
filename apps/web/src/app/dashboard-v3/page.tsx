@@ -508,7 +508,12 @@ export default function DashboardV3() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   useEffect(() => {
     try {
-      setTheme(localStorage.getItem("op-theme") === "light" ? "light" : "dark");
+      const stored = localStorage.getItem("op-theme") === "light" ? "light" : "dark";
+      setTheme(stored);
+      // The root layout's anti-FOUC script already applies this at boot; re-assert
+      // here so the button label and the actual <html> attribute never desync.
+      if (stored === "light") document.documentElement.setAttribute("data-theme", "light");
+      else document.documentElement.removeAttribute("data-theme");
     } catch { /* ignore */ }
   }, []);
   const toggleTheme = useCallback(() => {
