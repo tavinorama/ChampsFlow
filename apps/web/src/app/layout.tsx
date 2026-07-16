@@ -117,7 +117,11 @@ export default async function RootLayout({
   // dashboard" complaint). Render bare like v3; still auth-gated by middleware.
   // The builder pages provide their own "← Back to dashboard" link.
   const isNativePagesBuilder = pathname === "/landing-pages" || pathname.startsWith("/landing-pages/");
-  const isBareApp = isDashboardV3 || isNativePagesBuilder;
+  // Admin console: the founder's internal cockpit, now on the v3 shell frame.
+  // Renders bare like v3 (its own sidebar), but as an INTERNAL tool it skips the
+  // customer-facing CCPA banner + DPA gate (its own shell owns 100dvh).
+  const isAdminConsole = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isBareApp = isDashboardV3 || isNativePagesBuilder || isAdminConsole;
 
   return (
     <html lang="en" className={`${schibsted.variable} ${jetbrainsMono.variable}`}>
@@ -206,12 +210,16 @@ export default async function RootLayout({
                 <DpaGate>{children}</DpaGate>
               </div>
             </div>
-          ) : (
+          ) : isNativePagesBuilder ? (
             // Pages builder scrolls naturally — the banner can sit above it.
             <>
               <CaliforniaBanner country={country} />
               <DpaGate>{children}</DpaGate>
             </>
+          ) : (
+            // Admin console: internal founder tool. Bare — its own v3 shell owns
+            // the viewport; no customer-facing CCPA banner or DPA gate.
+            children
           )
         ) : isPublicLanding ? (
           // 0. Public tenant sites (/l/*): render ONLY the page. No Ozvor
