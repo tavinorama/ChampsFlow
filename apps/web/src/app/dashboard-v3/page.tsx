@@ -42,10 +42,38 @@ interface TrendPoint {
 }
 
 interface ScorePayload {
-  latest: { score_overall: number | null } | null;
+  latest: { score_overall: number | null; audit_id: string | null } | null;
   trend: TrendPoint[];
   threeScores: ThreeScores | null;
   executionProgress: number | null;
+}
+
+interface BreakdownCompetitor {
+  name: string;
+  mentions: number;
+  displacement: number;
+  providers?: Array<{ provider: string; mentions: number; displacement: number }>;
+}
+
+interface OffsiteSource {
+  domain?: string;
+  label?: string;
+  count?: number;
+  present?: boolean;
+}
+
+interface BreakdownEvidence {
+  engine: string;
+  prompt: string | null;
+  cited: boolean;
+}
+
+interface Breakdown {
+  competitors: BreakdownCompetitor[];
+  offsite: { sources?: OffsiteSource[] } | null;
+  evidence: BreakdownEvidence[];
+  probes_total?: number;
+  probes_cited?: number | null;
 }
 
 interface PlanTask {
@@ -86,8 +114,8 @@ const MIGRATED: Record<TabId, boolean> = {
   brands: true,
   donext: true,
   content: true,
-  competitors: false,
-  sources: false,
+  competitors: true,
+  sources: true,
   pages: false,
   connections: false,
   billing: false,
@@ -176,6 +204,8 @@ export default function DashboardV3() {
   const [tasksLoading, setTasksLoading] = useState(false);
   const [content, setContent] = useState<ContentPiece[] | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
+  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
 
   const activeBrand = useMemo(() => brands.find((b) => b.id === activeBrandId) ?? null, [brands, activeBrandId]);
   const isAgency = planTier === "agency" || brands.length > 1;
@@ -251,20 +281,39 @@ export default function DashboardV3() {
     }
   }, []);
 
+  const loadBreakdown = useCallback(async (auditId: string) => {
+    setBreakdownLoading(true);
+    setBreakdown(null);
+    try {
+      const res = await apiFetch(`/api/audits/${auditId}/breakdown`);
+      if (res.ok) setBreakdown((await res.json()) as Breakdown);
+    } catch {
+      /* non-fatal — tab shows empty state */
+    } finally {
+      setBreakdownLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeBrandId) {
       void loadScore(activeBrandId);
       setTasks(null);
       setContent(null);
+      setBreakdown(null);
     }
   }, [activeBrandId, loadScore]);
 
-  // Lazy-load the fix list / content only when their tab is first opened.
+  // Lazy-load per-tab data only when a tab is first opened.
+  const latestAuditId = score?.latest?.audit_id ?? null;
   useEffect(() => {
     if (!activeBrandId) return;
     if (tab === "donext" && tasks === null && !tasksLoading) void loadTasks(activeBrandId);
     if (tab === "content" && content === null && !contentLoading) void loadContent(activeBrandId);
-  }, [tab, activeBrandId, tasks, content, tasksLoading, contentLoading, loadTasks, loadContent]);
+    // Competitors + Sources both read the latest audit's breakdown.
+    if ((tab === "competitors" || tab === "sources") && breakdown === null && !breakdownLoading && latestAuditId) {
+      void loadBreakdown(latestAuditId);
+    }
+  }, [tab, activeBrandId, tasks, content, breakdown, tasksLoading, contentLoading, breakdownLoading, latestAuditId, loadTasks, loadContent, loadBreakdown]);
 
   // Optimistic mutations -----------------------------------------------------
   const toggleTask = useCallback(async (taskId: string, done: boolean) => {
@@ -388,6 +437,10 @@ export default function DashboardV3() {
           <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId} />
         ) : tab === "content" ? (
           <ContentTab items={content} loading={contentLoading} onSet={setContentStatus} brandId={activeBrandId} />
+        ) : tab === "competitors" ? (
+          <CompetitorsTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
+        ) : tab === "sources" ? (
+          <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : (
           <MigratingTab tab={tab} brandId={activeBrandId} />
         )}
@@ -635,6 +688,148 @@ function ContentTab({
   );
 }
 
+const ENGINE_LABEL: Record<string, string> = {
+  openai: "ChatGPT", anthropic: "Claude", perplexity: "Perplexity",
+  gemini: "Gemini", google: "Gemini", serp: "Google AI",
+};
+
+function NeedAudit({ brandId, msg }: { brandId: string; msg: string }) {
+  return (
+    <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
+      <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>{msg}</p>
+      <Link href={`/brands/${brandId}`} style={{ ...S.btnPri, display: "inline-block" }}>Run an audit →</Link>
+    </div>
+  );
+}
+
+function CompetitorsTab({
+  breakdown, loading, hasAudit, brandId,
+}: {
+  breakdown: Breakdown | null;
+  loading: boolean;
+  hasAudit: boolean;
+  brandId: string;
+}) {
+  if (loading) return <div style={S.muted}>Loading your competitors…</div>;
+  if (!hasAudit) return <NeedAudit brandId={brandId} msg="Run an audit to see who AI names instead of you." />;
+  if (!breakdown) return <NeedAudit brandId={brandId} msg="Couldn’t load the latest audit. Try running a fresh one." />;
+
+  const comps = [...(breakdown.competitors ?? [])].sort((a, b) => b.displacement - a.displacement || b.mentions - a.mentions);
+  if (comps.length === 0) {
+    return <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No competitors surfaced in the last audit — AI didn’t name a rival ahead of you. Add competitors to track them directly.</div>;
+  }
+  const maxDisp = Math.max(...comps.map((c) => c.displacement), 1);
+
+  return (
+    <>
+      <div style={S.secH}>Who AI names when buyers ask <span style={S.secN}>— across the engines we check</span></div>
+      <div style={S.card}>
+        {comps.map((c, i) => {
+          const engines = (c.providers ?? []).filter((p) => p.mentions > 0);
+          return (
+            <div key={c.name} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+              <div>
+                <div style={S.actTitle}>{c.name}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
+                  {engines.length === 0 ? (
+                    <span style={S.actWhy}>Named in {c.mentions} answer{c.mentions === 1 ? "" : "s"}</span>
+                  ) : engines.map((p) => (
+                    <span key={p.provider} style={{ ...S.engChip, ...(p.displacement > 0 ? S.engChipRed : null) }}>
+                      {ENGINE_LABEL[p.provider] ?? p.provider}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <span style={{ ...S.imp, background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }}>
+                {c.mentions} mention{c.mentions === 1 ? "" : "s"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={S.secH}>How often AI picks them over you <span style={S.secN}>— prompts where they were cited and you weren’t</span></div>
+      <div style={S.card}>
+        {comps.filter((c) => c.displacement > 0).length === 0 ? (
+          <div style={{ padding: "var(--space-5)", color: "var(--color-muted)" }}>None displaced you in the last audit. Keep it up.</div>
+        ) : comps.filter((c) => c.displacement > 0).map((c, i) => (
+          <div key={c.name} style={{ ...S.compRow, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+            <span style={S.actTitle}>{c.name}</span>
+            <div style={S.compTrack}><i style={{ display: "block", height: "100%", borderRadius: "99px", background: "var(--color-error)", width: `${(c.displacement / maxDisp) * 100}%` }} /></div>
+            <span style={{ textAlign: "right", color: "var(--color-muted)", fontWeight: 700, fontSize: "0.82rem" }}>{c.displacement}</span>
+          </div>
+        ))}
+      </div>
+      <p style={S.note}>Chips show which engines named each competitor; a red chip means they were cited there without you.</p>
+    </>
+  );
+}
+
+function SourcesTab({
+  breakdown, loading, hasAudit, brandId,
+}: {
+  breakdown: Breakdown | null;
+  loading: boolean;
+  hasAudit: boolean;
+  brandId: string;
+}) {
+  if (loading) return <div style={S.muted}>Loading your sources…</div>;
+  if (!hasAudit) return <NeedAudit brandId={brandId} msg="Run an audit to see where AI gets its answers about you." />;
+  if (!breakdown) return <NeedAudit brandId={brandId} msg="Couldn’t load the latest audit. Try running a fresh one." />;
+
+  const sources = (breakdown.offsite?.sources ?? []).filter((s) => s.label || s.domain);
+
+  // Group evidence prompts → how many engines named the brand for each.
+  const byPrompt = new Map<string, { cited: number; total: number }>();
+  for (const e of breakdown.evidence ?? []) {
+    const q = (e.prompt ?? "").trim();
+    if (!q) continue;
+    const cur = byPrompt.get(q) ?? { cited: 0, total: 0 };
+    cur.total += 1;
+    if (e.cited) cur.cited += 1;
+    byPrompt.set(q, cur);
+  }
+  const prompts = [...byPrompt.entries()].slice(0, 8);
+
+  return (
+    <>
+      <div style={S.secH}>Where AI gets its answers <span style={S.secN}>— the sources that decide who gets named</span></div>
+      {sources.length === 0 ? (
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No off-site sources measured in the last audit yet.</div>
+      ) : (
+        <div style={S.card}>
+          {sources.map((s, i) => (
+            <div key={(s.label ?? s.domain ?? "") + i} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+              <div>
+                <div style={S.actTitle}>{s.label ?? s.domain}</div>
+                {s.domain && s.label && <div style={S.actWhy}>{s.domain}</div>}
+              </div>
+              <span style={{ ...S.imp, ...(s.present ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" } : { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }) }}>
+                {s.present ? `Present${s.count ? ` · ${s.count}` : ""}` : "Not found"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={S.secH}>The questions we test <span style={S.secN}>— real buyer prompts run on each AI</span></div>
+      {prompts.length === 0 ? (
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No prompt evidence in the last audit.</div>
+      ) : (
+        <div style={S.card}>
+          {prompts.map(([q, s], i) => (
+            <div key={q} style={{ padding: "12px 18px", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+              <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{q}</div>
+              <div style={S.actWhy}>You’re named by {s.cited} of {s.total} checks.</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p style={S.note}>Same method every time, on real AI engines. <Link href="/how-we-measure" style={{ color: "var(--color-primary)", fontWeight: 600 }}>See exactly how we measure →</Link></p>
+    </>
+  );
+}
+
 function EmptyBrands() {
   return (
     <div style={{ ...S.card, padding: "var(--space-8, 40px) var(--space-6)", textAlign: "center" }}>
@@ -719,4 +914,10 @@ const S: Record<string, React.CSSProperties> = {
   draftPreview: { color: "var(--color-muted)", fontSize: "0.86rem", lineHeight: 1.5, borderLeft: "3px solid var(--color-border)", paddingLeft: "var(--space-3)" },
   draftRow: { display: "flex", gap: "var(--space-2)", marginTop: "2px", flexWrap: "wrap" },
   btnGhost: { border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "7px 13px", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", textDecoration: "none" },
+
+  // Competitors + sources
+  engChip: { fontSize: "0.7rem", fontWeight: 700, padding: "2px 8px", borderRadius: "var(--radius-pill)", background: "var(--color-surface-muted)", color: "var(--color-muted)" },
+  engChipRed: { background: "var(--color-badge-status-error-bg)", color: "var(--color-badge-status-error-text)" },
+  compRow: { display: "grid", gridTemplateColumns: "150px 1fr 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
+  compTrack: { height: "9px", borderRadius: "99px", background: "var(--color-border)", overflow: "hidden" },
 };
