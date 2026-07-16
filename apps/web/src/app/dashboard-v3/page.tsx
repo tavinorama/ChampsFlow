@@ -217,6 +217,10 @@ export default function DashboardV3() {
   const [score, setScore] = useState<ScorePayload | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [planTier, setPlanTier] = useState<string | null>(null);
+  const [maxBrands, setMaxBrands] = useState<number | null>(null); // plan brand limit; null = unknown/unlimited
+  const [addBrandOpen, setAddBrandOpen] = useState(false);
+  const [auditMsg, setAuditMsg] = useState<string | null>(null);
+  const [auditBusy, setAuditBusy] = useState(false);
   const [tasks, setTasks] = useState<PlanTask[] | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [content, setContent] = useState<ContentPiece[] | null>(null);
@@ -252,8 +256,13 @@ export default function DashboardV3() {
         setBrands(list);
         if (list[0]) setActiveBrandId(list[0].id);
         void apiFetch("/api/billing/plan")
-          .then(async (r) => (r.ok ? ((await r.json()) as { plan?: string }) : null))
-          .then((d) => { if (!cancelled && d?.plan) setPlanTier(d.plan); })
+          .then(async (r) => (r.ok ? ((await r.json()) as { plan?: string; usage?: { max_brands?: number | null } }) : null))
+          .then((d) => {
+            if (cancelled || !d) return;
+            if (d.plan) setPlanTier(d.plan);
+            // max_brands: number = hard limit; null = unlimited (super_admin).
+            setMaxBrands(d.usage && "max_brands" in d.usage ? d.usage.max_brands ?? null : null);
+          })
           .catch(() => {});
       } catch {
         if (!cancelled) setAuthError(true);
@@ -279,6 +288,60 @@ export default function DashboardV3() {
       if (brandReqRef.current === brandId) setScoreLoading(false);
     }
   }, []);
+
+  // ---- actions (Stage A): add brand, run audit ----------------------------
+  const reloadBrands = useCallback(async (selectId?: string) => {
+    try {
+      const res = await apiFetch("/api/brands");
+      if (!res.ok) return;
+      const list = ((await res.json()) as { brands?: BrandRow[] }).brands ?? [];
+      setBrands(list);
+      if (selectId) setActiveBrandId(selectId);
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
+
+  const addBrand = useCallback(async (input: { name: string; domain: string; region: string }): Promise<string | null> => {
+    const body: Record<string, unknown> = { name: input.name.trim(), region: input.region };
+    if (input.domain.trim()) body.domain = input.domain.trim();
+    const res = await apiFetch("/api/brands", { method: "POST", body: JSON.stringify(body) });
+    if (!res.ok) {
+      const d = (await res.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(d?.message ?? "Couldn't add the brand.");
+    }
+    const created = (await res.json()) as { id: string };
+    await reloadBrands(created.id);
+    return created.id;
+  }, [reloadBrands]);
+
+  const runAudit = useCallback(async (brandId: string) => {
+    setAuditBusy(true);
+    setAuditMsg(null);
+    try {
+      const res = await apiFetch(`/api/brands/${brandId}/audit`, { method: "POST" });
+      const d = (await res.json().catch(() => null)) as { message?: string; next_allowed_at?: string } | null;
+      if (res.ok) {
+        setAuditMsg("Audit started — running across the AI engines. Your score updates here in ~30–60s.");
+        // Re-poll the score a few times so the new run surfaces without a manual refresh.
+        for (const wait of [15000, 20000, 25000]) {
+          await new Promise((r) => setTimeout(r, wait));
+          if (brandReqRef.current !== brandId) return;
+          await loadScore(brandId);
+        }
+      } else if (res.status === 429) {
+        setAuditMsg(d?.message ?? "You've already run a manual audit for this brand recently. Scheduled monitoring keeps running.");
+      } else {
+        setAuditMsg(d?.message ?? "Couldn't start the audit. Try again in a moment.");
+      }
+    } catch {
+      setAuditMsg("Couldn't start the audit. Check your connection and try again.");
+    } finally {
+      setAuditBusy(false);
+    }
+  }, [loadScore]);
+
+  const atBrandLimit = maxBrands != null && brands.length >= maxBrands;
 
   const loadTasks = useCallback(async (brandId: string) => {
     setTasksLoading(true);
@@ -517,9 +580,19 @@ export default function DashboardV3() {
             tone={tone}
             loading={scoreLoading}
             brandId={activeBrandId}
+            onRunAudit={() => runAudit(activeBrandId)}
+            auditBusy={auditBusy}
+            auditMsg={auditMsg}
           />
         ) : tab === "brands" ? (
-          <BrandsTab brands={brands} onOpen={(id) => { setActiveBrandId(id); setTab("overview"); }} />
+          <BrandsTab
+            brands={brands}
+            onOpen={(id) => { setActiveBrandId(id); setTab("overview"); }}
+            canAdd={!atBrandLimit}
+            atLimit={atBrandLimit}
+            maxBrands={maxBrands}
+            onAdd={() => setAddBrandOpen(true)}
+          />
         ) : tab === "donext" ? (
           <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId} />
         ) : tab === "content" ? (
@@ -538,6 +611,17 @@ export default function DashboardV3() {
           <MigratingTab tab={tab} brandId={activeBrandId} />
         )}
       </main>
+
+      {addBrandOpen && (
+        <AddBrandModal
+          onClose={() => setAddBrandOpen(false)}
+          onSubmit={async (input) => {
+            const id = await addBrand(input);
+            setAddBrandOpen(false);
+            if (id) { setActiveBrandId(id); setTab("overview"); }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -547,7 +631,7 @@ export default function DashboardV3() {
 // ---------------------------------------------------------------------------
 
 function OverviewTab({
-  brandName, overall, threeScores, trendPoints, tone, loading, brandId,
+  brandName, overall, threeScores, trendPoints, tone, loading, onRunAudit, auditBusy, auditMsg,
 }: {
   brandName?: string;
   overall: number | null;
@@ -556,10 +640,21 @@ function OverviewTab({
   tone: { label: string; bg: string; fg: string };
   loading: boolean;
   brandId: string;
+  onRunAudit: () => void;
+  auditBusy: boolean;
+  auditMsg: string | null;
 }) {
   const hasData = overall != null || (threeScores && threeScores.visibility != null);
   return (
     <>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "var(--space-3)" }}>
+        <button onClick={onRunAudit} disabled={auditBusy} style={{ ...S.btnPri, opacity: auditBusy ? 0.6 : 1, cursor: auditBusy ? "wait" : "pointer" }}>
+          {auditBusy ? "Running…" : "Run audit now"}
+        </button>
+      </div>
+      {auditMsg && (
+        <div style={{ ...S.card, padding: "12px 16px", marginBottom: "var(--space-3)", fontSize: "0.86rem", color: "var(--color-text)", borderLeft: "3px solid var(--color-primary)" }}>{auditMsg}</div>
+      )}
       <div style={{ ...S.card, ...S.hero }}>
         <div style={S.scoreCol}>
           <div style={S.scoreBig}>{overall ?? "—"}</div>
@@ -583,8 +678,8 @@ function OverviewTab({
         <OzvorScorecard overall={overall} threeScores={threeScores} brandName={brandName} />
       ) : (
         <div style={{ ...S.card, padding: "var(--space-6)" }}>
-          <p style={{ margin: 0, color: "var(--color-muted)" }}>No audit yet for this brand.</p>
-          <Link href={`/brands/${brandId}`} style={{ ...S.btnPri, marginTop: "var(--space-4)", display: "inline-block" }}>Run the first audit →</Link>
+          <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No audit yet for this brand. Run the first one — it takes ~30–60 seconds across the AI engines.</p>
+          <button onClick={onRunAudit} disabled={auditBusy} style={{ ...S.btnPri, opacity: auditBusy ? 0.6 : 1 }}>{auditBusy ? "Running…" : "Run the first audit"}</button>
         </div>
       )}
 
@@ -596,15 +691,33 @@ function OverviewTab({
   );
 }
 
-function BrandsTab({ brands, onOpen }: { brands: BrandRow[]; onOpen: (id: string) => void }) {
+function BrandsTab({ brands, onOpen, canAdd, atLimit, maxBrands, onAdd }: {
+  brands: BrandRow[];
+  onOpen: (id: string) => void;
+  canAdd: boolean;
+  atLimit: boolean;
+  maxBrands: number | null;
+  onAdd: () => void;
+}) {
   // A brand with no score yet counts as needing attention (it needs its first
   // audit) — null → 0, not a healthy 100. Keeps the "N need attention" badge honest.
   const needsWork = brands.filter((b) => (b.latest_score ?? 0) < 55).length;
   return (
     <>
-      <div style={S.secH}>
-        Your client brands <span style={S.secN}>— {brands.length} brand{brands.length === 1 ? "" : "s"}{needsWork ? ` · ${needsWork} need${needsWork === 1 ? "s" : ""} attention` : ""}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", flexWrap: "wrap" }}>
+        <div style={{ ...S.secH, margin: "var(--space-2) 2px var(--space-2)" }}>
+          Your brands <span style={S.secN}>— {brands.length}{maxBrands != null ? ` of ${maxBrands}` : ""}{needsWork ? ` · ${needsWork} need${needsWork === 1 ? "s" : ""} attention` : ""}</span>
+        </div>
+        <button onClick={onAdd} disabled={!canAdd} title={atLimit ? "You've reached your plan's brand limit" : undefined}
+          style={{ ...S.btnPri, opacity: canAdd ? 1 : 0.5, cursor: canAdd ? "pointer" : "not-allowed" }}>
+          + Add brand
+        </button>
       </div>
+      {atLimit && (
+        <div style={{ ...S.card, padding: "12px 16px", marginBottom: "var(--space-3)", fontSize: "0.85rem", color: "var(--color-muted)", borderLeft: "3px solid var(--color-badge-status-warn-text)" }}>
+          You’ve reached your plan’s limit of {maxBrands} brand{maxBrands === 1 ? "" : "s"}. <Link href="/pricing" style={{ color: "var(--color-primary)", fontWeight: 600 }}>Upgrade</Link> to add more.
+        </div>
+      )}
       <div style={S.folio}>
         {brands.map((b) => {
           const tone = scoreTone(b.latest_score);
@@ -1030,6 +1143,58 @@ function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | nul
   );
 }
 
+function AddBrandModal({ onClose, onSubmit }: {
+  onClose: () => void;
+  onSubmit: (input: { name: string; domain: string; region: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [domain, setDomain] = useState("");
+  const [region, setRegion] = useState("US");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSubmit({ name, domain, region });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add the brand.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={S.overlay} onClick={onClose} role="presentation">
+      <div style={S.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Add a brand">
+        <h2 style={{ margin: "0 0 var(--space-1)", fontSize: "var(--font-size-h3)", fontWeight: 800 }}>Add a brand</h2>
+        <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)", fontSize: "0.86rem" }}>We’ll check how AI engines describe it and build your plan.</p>
+        <label style={S.label}>Brand name
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Plumbing" style={S.input}
+            onKeyDown={(e) => { if (e.key === "Enter") void submit(); }} />
+        </label>
+        <label style={S.label}>Website <span style={{ color: "var(--color-faint, var(--color-muted))", fontWeight: 400 }}>(optional)</span>
+          <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="acmeplumbing.com" style={S.input} />
+        </label>
+        <label style={S.label}>Primary market
+          <select value={region} onChange={(e) => setRegion(e.target.value)} style={S.input}>
+            <option value="US">United States / global</option>
+            <option value="EU">European Union</option>
+          </select>
+        </label>
+        {error && <div style={{ color: "var(--color-error)", fontSize: "0.82rem", marginBottom: "var(--space-3)" }}>{error}</div>}
+        <div style={{ display: "flex", gap: "var(--space-2)", justifyContent: "flex-end", marginTop: "var(--space-2)" }}>
+          <button onClick={onClose} style={S.btnGhost}>Cancel</button>
+          <button onClick={() => void submit()} disabled={!name.trim() || busy} style={{ ...S.btnPri, opacity: !name.trim() || busy ? 0.6 : 1 }}>
+            {busy ? "Adding…" : "Add brand"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyBrands() {
   return (
     <div style={{ ...S.card, padding: "var(--space-8, 40px) var(--space-6)", textAlign: "center" }}>
@@ -1121,4 +1286,10 @@ const S: Record<string, React.CSSProperties> = {
   compRow: { display: "grid", gridTemplateColumns: "150px 1fr 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
   compTrack: { height: "9px", borderRadius: "99px", background: "var(--color-border)", overflow: "hidden" },
   engIco: { width: 30, height: 30, borderRadius: "8px", background: "var(--color-surface-muted)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.72rem", color: "var(--color-text)", flex: "0 0 auto" },
+
+  // Modal
+  overlay: { position: "fixed", inset: 0, background: "rgba(8,14,11,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: "var(--space-4)", zIndex: 50 },
+  modal: { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-modal, var(--shadow-card))", padding: "var(--space-6)", width: "100%", maxWidth: 420 },
+  label: { display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text)", marginBottom: "var(--space-3)" },
+  input: { border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "9px 12px", font: "inherit", fontSize: "0.9rem", fontWeight: 400 },
 };
