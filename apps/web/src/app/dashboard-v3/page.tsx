@@ -957,6 +957,68 @@ function NeedAudit({ brandId, msg }: { brandId: string; msg: string }) {
   );
 }
 
+function TrackedCompetitors({ brandId }: { brandId: string }) {
+  const [list, setList] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void apiFetch(`/api/brands/${brandId}/competitors`)
+      .then(async (r) => (r.ok ? (((await r.json()) as { competitors?: Array<{ id: string; name: string }> }).competitors ?? []) : []))
+      .then((l) => { if (live) setList(l); })
+      .catch(() => { if (live) setList([]); });
+    return () => { live = false; };
+  }, [brandId]);
+
+  async function add() {
+    const n = name.trim();
+    if (!n || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/competitors`, { method: "POST", body: JSON.stringify({ name: n }) });
+      if (!r.ok) { const d = (await r.json().catch(() => null)) as { message?: string } | null; throw new Error(d?.message ?? "Couldn't add that competitor."); }
+      const created = (await r.json()) as { id: string; name?: string };
+      setList((prev) => [...(prev ?? []), { id: created.id, name: created.name ?? n }]);
+      setName("");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't add that competitor.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(id: string) {
+    setList((prev) => (prev ?? []).filter((c) => c.id !== id));
+    try { await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+  }
+
+  return (
+    <>
+      <div style={S.secH}>Competitors you track <span style={S.secN}>— added here, they’re measured in every future audit</span></div>
+      <div style={{ ...S.card, padding: "var(--space-4)" }}>
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Competitor name" style={{ ...S.input, flex: 1, minWidth: 180 }}
+            onKeyDown={(e) => { if (e.key === "Enter") void add(); }} />
+          <button onClick={() => void add()} disabled={!name.trim() || busy} style={{ ...S.btnPri, opacity: !name.trim() || busy ? 0.6 : 1 }}>{busy ? "Adding…" : "Track"}</button>
+        </div>
+        {err && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "var(--space-2)" }}>{err}</div>}
+        {list && list.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "var(--space-3)" }}>
+            {list.map((c) => (
+              <span key={c.id} style={{ ...S.engChip, display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px" }}>
+                {c.name}
+                <button onClick={() => void remove(c.id)} aria-label={`Remove ${c.name}`} style={{ border: "none", background: "transparent", color: "var(--color-muted)", cursor: "pointer", font: "inherit", padding: 0, lineHeight: 1, fontSize: "1rem" }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {list && list.length === 0 && <div style={{ ...S.actWhy, marginTop: "var(--space-2)" }}>No tracked competitors yet. The audit still auto-discovers rivals — add your own to always measure them.</div>}
+      </div>
+    </>
+  );
+}
+
 function CompetitorsTab({
   breakdown, loading, hasAudit, brandId,
 }: {
@@ -965,17 +1027,22 @@ function CompetitorsTab({
   hasAudit: boolean;
   brandId: string;
 }) {
-  if (loading) return <div style={S.muted}>Loading your competitors…</div>;
-  if (!hasAudit) return <NeedAudit brandId={brandId} msg="Run an audit to see who AI names instead of you." />;
-  if (!breakdown) return <NeedAudit brandId={brandId} msg="Couldn’t load the latest audit. Try running a fresh one." />;
-
-  const comps = [...(breakdown.competitors ?? [])].sort((a, b) => b.displacement - a.displacement || b.mentions - a.mentions);
-  if (comps.length === 0) {
-    return <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No competitors surfaced in the last audit — AI didn’t name a rival ahead of you. Add competitors to track them directly.</div>;
-  }
+  const comps = [...(breakdown?.competitors ?? [])].sort((a, b) => b.displacement - a.displacement || b.mentions - a.mentions);
   const maxDisp = Math.max(...comps.map((c) => c.displacement), 1);
 
   return (
+    <>
+      <TrackedCompetitors brandId={brandId} />
+
+      {loading ? (
+        <div style={S.muted}>Loading the latest audit…</div>
+      ) : !hasAudit ? (
+        <NeedAudit brandId={brandId} msg="Run an audit to see who AI names instead of you." />
+      ) : !breakdown ? (
+        <NeedAudit brandId={brandId} msg="Couldn’t load the latest audit. Try running a fresh one." />
+      ) : comps.length === 0 ? (
+        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>No competitors surfaced in the last audit — AI didn’t name a rival ahead of you.</div>
+      ) : (
     <>
       <div style={S.secH}>Who AI names when buyers ask <span style={S.secN}>— across the engines we check</span></div>
       <div style={S.card}>
@@ -1017,9 +1084,12 @@ function CompetitorsTab({
       </div>
       <p style={S.note}>Chips show which engines named each competitor; a red chip means they were cited there without you.</p>
     </>
+      )}
+    </>
   );
 }
 
+// Sources tab — where AI gets its answers + the prompts we test.
 function SourcesTab({
   breakdown, loading, hasAudit, brandId,
 }: {
@@ -1176,8 +1246,17 @@ function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | nul
           </div>
         </div>
         <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          {billing.plan !== "agency" && (
+            <Link href="/pricing" style={S.btnPri}>Upgrade</Link>
+          )}
           {billing.managed_by_stripe ? (
-            <button onClick={onManage} style={S.btnPri}>Manage plan &amp; invoices</button>
+            <>
+              <button onClick={onManage} style={billing.plan === "agency" ? S.btnPri : S.btnGhost}>Manage plan &amp; payment</button>
+              <button onClick={onManage} style={S.btnGhost}>Invoices</button>
+              <button onClick={onManage} style={S.btnGhost}>Cancel</button>
+            </>
+          ) : billing.plan === "agency" ? (
+            <span style={{ ...S.imp, background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)", alignSelf: "center" }}>Granted plan — contact support to change</span>
           ) : (
             <Link href="/pricing" style={S.btnPri}>See plans</Link>
           )}
@@ -1185,7 +1264,7 @@ function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | nul
       </div>
       <p style={S.note}>
         {billing.managed_by_stripe
-          ? "Payments, invoices and cancellation run in the Stripe billing portal — cancel anytime, no lock-in."
+          ? "Update your card, download invoices, or cancel — all in the secure Stripe billing portal. Cancel anytime, no lock-in; your plan stays active until the end of the paid period."
           : "This plan isn’t billed through Stripe. Contact support to change it."}
       </p>
     </>
