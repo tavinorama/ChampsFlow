@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { apiFetch, ensureProvisioned, isSupabaseConfigured } from "../../lib/supabase-browser";
+import { apiFetch, ensureProvisioned, isSupabaseConfigured, getSupabase } from "../../lib/supabase-browser";
 import { OzvorScorecard, type ThreeScores } from "../../components/OzvorScorecard";
 
 // ---------------------------------------------------------------------------
@@ -493,6 +493,36 @@ export default function DashboardV3() {
     if (authError && isSupabaseConfigured()) router.replace("/login");
   }, [authError, router]);
 
+  // ---- session email (profile footer) --------------------------------------
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+    let live = true;
+    void getSupabase().auth.getSession().then(({ data }) => {
+      if (live) setUserEmail(data.session?.user?.email ?? null);
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  // ---- light/dark theme (same op-theme convention as the landing) ----------
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  useEffect(() => {
+    try {
+      setTheme(localStorage.getItem("op-theme") === "light" ? "light" : "dark");
+    } catch { /* ignore */ }
+  }, []);
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === "light" ? "dark" : "light";
+      try {
+        if (next === "light") document.documentElement.setAttribute("data-theme", "light");
+        else document.documentElement.removeAttribute("data-theme");
+        localStorage.setItem("op-theme", next);
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
   const overall = score?.latest?.score_overall ?? activeBrand?.latest_score ?? null;
   // /api/brands/:id/score returns trend ORDER BY recorded_at DESC (newest-first),
   // so reverse() gives oldest→newest, left→right — the correct sparkline order.
@@ -543,7 +573,21 @@ export default function DashboardV3() {
           <NavItem label="Billing" active={tab === "billing"} onClick={() => setTab("billing")} />
         </nav>
 
-        <Link href="/dashboard" style={S.backLink}>← Back to current dashboard</Link>
+        {/* Footer: theme toggle + logged-in profile */}
+        <div style={{ marginTop: "auto", paddingTop: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          <button onClick={toggleTheme} style={S.themeBtn} aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}>
+            <span aria-hidden="true">{theme === "light" ? "🌙" : "☀️"}</span>
+            {theme === "light" ? "Dark mode" : "Light mode"}
+          </button>
+          <div style={S.profile}>
+            <span style={S.avatar} aria-hidden="true">{(userEmail ?? "?").trim().charAt(0).toUpperCase()}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={S.profileEmail} title={userEmail ?? undefined}>{userEmail ?? "Signed in"}</div>
+              <Link href="/account/data-privacy" style={S.profileLink}>Account &amp; profile</Link>
+            </div>
+          </div>
+          <Link href="/dashboard" style={S.backLink}>← Back to current dashboard</Link>
+        </div>
       </aside>
 
       {/* Main */}
@@ -1292,4 +1336,11 @@ const S: Record<string, React.CSSProperties> = {
   modal: { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-modal, var(--shadow-card))", padding: "var(--space-6)", width: "100%", maxWidth: 420 },
   label: { display: "flex", flexDirection: "column", gap: "6px", fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text)", marginBottom: "var(--space-3)" },
   input: { border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "9px 12px", font: "inherit", fontSize: "0.9rem", fontWeight: 400 },
+
+  // Sidebar footer (theme + profile)
+  themeBtn: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border)", background: "transparent", color: "var(--color-muted)", cursor: "pointer", font: "inherit", fontSize: "0.82rem", fontWeight: 600, width: "100%" },
+  profile: { display: "flex", alignItems: "center", gap: "9px", padding: "8px 10px", borderRadius: "var(--radius-md)", background: "var(--color-surface-muted)" },
+  avatar: { width: 30, height: 30, borderRadius: "50%", background: "var(--color-primary)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.82rem", flex: "0 0 auto" },
+  profileEmail: { fontSize: "0.78rem", fontWeight: 600, color: "var(--color-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  profileLink: { fontSize: "0.72rem", color: "var(--color-muted)", textDecoration: "none" },
 };
