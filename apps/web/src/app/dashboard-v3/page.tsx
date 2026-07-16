@@ -76,6 +76,23 @@ interface Breakdown {
   probes_cited?: number | null;
 }
 
+interface LandingSite {
+  id: string;
+  slug: string;
+  status: string;
+  business: { name?: string } | null;
+  page_count: number;
+  open_fixes: number;
+}
+
+interface BillingPlan {
+  plan: string;
+  status: string;
+  renewal_date: string | null;
+  cancel_at_period_end: boolean;
+  managed_by_stripe: boolean;
+}
+
 interface PlanTask {
   id: string;
   vector: string;
@@ -116,9 +133,9 @@ const MIGRATED: Record<TabId, boolean> = {
   content: true,
   competitors: true,
   sources: true,
-  pages: false,
-  connections: false,
-  billing: false,
+  pages: true,
+  connections: true,
+  billing: true,
 };
 
 // For not-yet-migrated tabs: where the working version lives today.
@@ -206,6 +223,10 @@ export default function DashboardV3() {
   const [contentLoading, setContentLoading] = useState(false);
   const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [sites, setSites] = useState<LandingSite[] | null>(null);
+  const [sitesLoading, setSitesLoading] = useState(false);
+  const [billing, setBilling] = useState<BillingPlan | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   const activeBrand = useMemo(() => brands.find((b) => b.id === activeBrandId) ?? null, [brands, activeBrandId]);
   const isAgency = planTier === "agency" || brands.length > 1;
@@ -294,6 +315,45 @@ export default function DashboardV3() {
     }
   }, []);
 
+  // Tenant-level (not per-brand) — load once, on first tab open.
+  const loadSites = useCallback(async () => {
+    setSitesLoading(true);
+    try {
+      const res = await apiFetch("/api/landing/sites");
+      if (res.ok) setSites(((await res.json()) as { sites?: LandingSite[] }).sites ?? []);
+      else setSites([]);
+    } catch {
+      setSites([]);
+    } finally {
+      setSitesLoading(false);
+    }
+  }, []);
+
+  const loadBilling = useCallback(async () => {
+    setBillingLoading(true);
+    try {
+      const res = await apiFetch("/api/billing/plan");
+      if (res.ok) setBilling((await res.json()) as BillingPlan);
+    } catch {
+      /* non-fatal */
+    } finally {
+      setBillingLoading(false);
+    }
+  }, []);
+
+  const openPortal = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/billing/portal", { method: "POST" });
+      if (res.ok) {
+        const d = (await res.json()) as { url?: string; portal_url?: string };
+        const url = d.url ?? d.portal_url;
+        if (url) window.location.href = url;
+      }
+    } catch {
+      /* ignore — button stays */
+    }
+  }, []);
+
   useEffect(() => {
     if (activeBrandId) {
       void loadScore(activeBrandId);
@@ -313,7 +373,9 @@ export default function DashboardV3() {
     if ((tab === "competitors" || tab === "sources") && breakdown === null && !breakdownLoading && latestAuditId) {
       void loadBreakdown(latestAuditId);
     }
-  }, [tab, activeBrandId, tasks, content, breakdown, tasksLoading, contentLoading, breakdownLoading, latestAuditId, loadTasks, loadContent, loadBreakdown]);
+    if (tab === "pages" && sites === null && !sitesLoading) void loadSites();
+    if (tab === "billing" && billing === null && !billingLoading) void loadBilling();
+  }, [tab, activeBrandId, tasks, content, breakdown, sites, billing, tasksLoading, contentLoading, breakdownLoading, sitesLoading, billingLoading, latestAuditId, loadTasks, loadContent, loadBreakdown, loadSites, loadBilling]);
 
   // Optimistic mutations -----------------------------------------------------
   const toggleTask = useCallback(async (taskId: string, done: boolean) => {
@@ -441,6 +503,12 @@ export default function DashboardV3() {
           <CompetitorsTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "sources" ? (
           <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
+        ) : tab === "pages" ? (
+          <PagesTab sites={sites} loading={sitesLoading} />
+        ) : tab === "connections" ? (
+          <ConnectionsTab />
+        ) : tab === "billing" ? (
+          <BillingTab billing={billing} loading={billingLoading} onManage={openPortal} />
         ) : (
           <MigratingTab tab={tab} brandId={activeBrandId} />
         )}
@@ -830,6 +898,113 @@ function SourcesTab({
   );
 }
 
+const PUBLIC_SITE_BASE = "https://ozvor.com/l/";
+
+function PagesTab({ sites, loading }: { sites: LandingSite[] | null; loading: boolean }) {
+  if (loading || sites === null) return <div style={S.muted}>Loading your sites…</div>;
+  if (sites.length === 0) {
+    return (
+      <div style={{ ...S.card, padding: "var(--space-6)", textAlign: "center" }}>
+        <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No AI-ready sites yet.</p>
+        <Link href="/landing-pages" style={{ ...S.btnPri, display: "inline-block" }}>Build a 5-page site →</Link>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div style={S.secH}>Your AI-ready sites <span style={S.secN}>— built to be easy for AI to read and cite</span></div>
+      <div style={S.card}>
+        {sites.map((s, i) => {
+          const live = s.status === "live" || s.status === "published";
+          return (
+            <div key={s.id} style={{ ...S.actRow, gridTemplateColumns: "1fr auto auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+              <div>
+                <div style={S.actTitle}>{s.business?.name || s.slug}</div>
+                <div style={S.actWhy}>{PUBLIC_SITE_BASE}{s.slug} · {s.page_count} page{s.page_count === 1 ? "" : "s"}{s.open_fixes ? ` · ${s.open_fixes} fix${s.open_fixes === 1 ? "" : "es"} to apply` : ""}</div>
+              </div>
+              <span style={{ ...S.imp, ...(live ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" } : { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }) }}>{live ? "Live" : "Draft"}</span>
+              <Link href={`/landing-pages/${s.id}`} style={S.btnGhost}>Edit</Link>
+            </div>
+          );
+        })}
+      </div>
+      <p style={S.note}>These pages carry the structured data (hours, reviews, service area) that AI engines read when they decide who to name.</p>
+    </>
+  );
+}
+
+const CHECK_ENGINES = [
+  { key: "GPT", name: "ChatGPT", by: "OpenAI" },
+  { key: "C", name: "Claude", by: "Anthropic" },
+  { key: "Px", name: "Perplexity", by: "Perplexity AI" },
+  { key: "G", name: "Gemini", by: "Google" },
+  { key: "AIO", name: "Google AI Overviews", by: "Google Search" },
+];
+
+function ConnectionsTab() {
+  return (
+    <>
+      <div style={S.secH}>Which AIs we check for you <span style={S.secN}>— run on every audit</span></div>
+      <div style={S.card}>
+        {CHECK_ENGINES.map((e, i) => (
+          <div key={e.key} style={{ ...S.actRow, gridTemplateColumns: "auto 1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+            <span style={S.engIco}>{e.key}</span>
+            <div><div style={{ fontWeight: 600 }}>{e.name}</div><div style={S.actWhy}>{e.by}</div></div>
+            <span style={{ ...S.imp, background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }}>On</span>
+          </div>
+        ))}
+      </div>
+      <div style={S.secH}>Optional: connect your data <span style={S.secN}>— to see clicks &amp; traffic from AI</span></div>
+      <div style={S.card}>
+        {[
+          { key: "SC", name: "Google Search Console", note: "See which AI answers send visits" },
+          { key: "GA", name: "Google Analytics", note: "Track visitors from AI tools" },
+        ].map((c, i) => (
+          <div key={c.key} style={{ ...S.actRow, gridTemplateColumns: "auto 1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+            <span style={S.engIco}>{c.key}</span>
+            <div><div style={{ fontWeight: 600 }}>{c.name}</div><div style={S.actWhy}>{c.note}</div></div>
+            <Link href="/account/connections" style={S.btnGhost}>Connect</Link>
+          </div>
+        ))}
+      </div>
+      <p style={S.note}>Manage engines, API keys and public profiles in <Link href="/account/connections" style={{ color: "var(--color-primary)", fontWeight: 600 }}>full connection settings →</Link></p>
+    </>
+  );
+}
+
+const PLAN_LABEL: Record<string, string> = { free: "Free", growth: "Growth — $99/mo", agency: "Agency — $549/mo" };
+
+function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | null; loading: boolean; onManage: () => void }) {
+  if (loading || billing === null) return <div style={S.muted}>Loading your plan…</div>;
+  const renews = billing.renewal_date ? new Date(billing.renewal_date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : null;
+  return (
+    <>
+      <div style={S.secH}>Your plan</div>
+      <div style={{ ...S.card, padding: "var(--space-6)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--space-4)", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: "1.3rem", fontWeight: 800 }}>{PLAN_LABEL[billing.plan] ?? billing.plan}</div>
+          <div style={{ color: "var(--color-muted)", fontSize: "0.86rem", marginTop: "3px" }}>
+            {billing.status === "active" ? "Active" : billing.status}
+            {renews ? ` · ${billing.cancel_at_period_end ? "ends" : "renews"} ${renews}` : ""}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          {billing.managed_by_stripe ? (
+            <button onClick={onManage} style={S.btnPri}>Manage plan &amp; invoices</button>
+          ) : (
+            <Link href="/pricing" style={S.btnPri}>See plans</Link>
+          )}
+        </div>
+      </div>
+      <p style={S.note}>
+        {billing.managed_by_stripe
+          ? "Payments, invoices and cancellation run in the Stripe billing portal — cancel anytime, no lock-in."
+          : "This plan isn’t billed through Stripe. Contact support to change it."}
+      </p>
+    </>
+  );
+}
+
 function EmptyBrands() {
   return (
     <div style={{ ...S.card, padding: "var(--space-8, 40px) var(--space-6)", textAlign: "center" }}>
@@ -920,4 +1095,5 @@ const S: Record<string, React.CSSProperties> = {
   engChipRed: { background: "var(--color-badge-status-error-bg)", color: "var(--color-badge-status-error-text)" },
   compRow: { display: "grid", gridTemplateColumns: "150px 1fr 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
   compTrack: { height: "9px", borderRadius: "99px", background: "var(--color-border)", overflow: "hidden" },
+  engIco: { width: 30, height: 30, borderRadius: "8px", background: "var(--color-surface-muted)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.72rem", color: "var(--color-text)", flex: "0 0 auto" },
 };
