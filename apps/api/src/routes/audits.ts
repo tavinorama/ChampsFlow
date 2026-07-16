@@ -482,6 +482,90 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     return c.json({ competitors: res.rows });
   });
 
+  // -------------------------------------------------------------------------
+  // GET /api/brands/:id/competitor-trends — AI-mention rate over time, so the
+  // client can overlay competitor lines on the Overview chart. Everything is a
+  // rate on the SAME denominator (probes in that audit), so the brand's line
+  // and each competitor's line are directly comparable, 0–100%:
+  //   brand_rate      = brand-cited probes / total probes
+  //   competitor_rate = competitor mentions / total probes
+  // No fabricated data — if an audit has no probes it is skipped; a competitor
+  // absent from an audit is simply 0 that period.
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id/competitor-trends", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+
+    // Per completed audit: total probes + how many cited the brand, with a date.
+    const auditsRes = await db.query<{
+      audit_id: string;
+      date: string;
+      total: string;
+      brand_cited: string;
+    }>(
+      `SELECT ga.id AS audit_id,
+              COALESCE(ga.completed_at, ga.created_at) AS date,
+              COUNT(cc.id) AS total,
+              COUNT(cc.id) FILTER (WHERE cc.cited) AS brand_cited
+         FROM geo_audit ga
+         JOIN citation_check cc ON cc.audit_id = ga.id
+        WHERE ga.brand_id = $1 AND ga.status = 'complete'
+        GROUP BY ga.id, ga.completed_at, ga.created_at
+       HAVING COUNT(cc.id) > 0
+        ORDER BY COALESCE(ga.completed_at, ga.created_at) ASC`,
+      [brandId]
+    );
+
+    // Currently-tracked competitors — these drive the chips on the chart.
+    const trackedRes = await db.query<{ name: string }>(
+      `SELECT name FROM competitor WHERE brand_id = $1 ORDER BY created_at ASC`,
+      [brandId]
+    );
+    const tracked = trackedRes.rows.map((r) => r.name);
+
+    // Per-audit competitor mentions (only for the tracked set).
+    const compRes = await db.query<{
+      audit_id: string;
+      competitor_name: string;
+      mentions: string;
+    }>(
+      `SELECT cci.audit_id, cci.competitor_name, SUM(cci.mention_count) AS mentions
+         FROM competitor_citation cci
+         JOIN geo_audit ga ON ga.id = cci.audit_id
+        WHERE ga.brand_id = $1 AND ga.status = 'complete'
+        GROUP BY cci.audit_id, cci.competitor_name`,
+      [brandId]
+    );
+    const mentionsByAudit = new Map<string, Map<string, number>>();
+    for (const row of compRes.rows) {
+      if (!tracked.includes(row.competitor_name)) continue;
+      let m = mentionsByAudit.get(row.audit_id);
+      if (!m) { m = new Map(); mentionsByAudit.set(row.audit_id, m); }
+      m.set(row.competitor_name, parseInt(row.mentions, 10) || 0);
+    }
+
+    const rate = (num: number, total: number): number =>
+      total > 0 ? Math.min(100, Math.round((num / total) * 100)) : 0;
+
+    const series = auditsRes.rows.map((a) => {
+      const total = parseInt(a.total, 10) || 0;
+      const competitors: Record<string, number> = {};
+      const m = mentionsByAudit.get(a.audit_id);
+      for (const name of tracked) {
+        competitors[name] = rate(m?.get(name) ?? 0, total);
+      }
+      return {
+        audit_id: a.audit_id,
+        date: a.date,
+        brand_rate: rate(parseInt(a.brand_cited, 10) || 0, total),
+        competitors,
+      };
+    });
+
+    return c.json({ series, competitors: tracked });
+  });
+
   app.post(
     "/api/brands/:id/competitors",
     requireAuth,
