@@ -653,12 +653,25 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       }
 
       const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
-      const returnUrl = `${webOrigin}/account/billing`;
+      // The live dashboard is v3 — return the customer to its Billing tab.
+      const returnUrl = `${webOrigin}/dashboard-v3?tab=billing`;
+
+      // Optional deep-link: { flow: "payment_method_update" } lands directly on
+      // Stripe's update-card screen. Allowlisted — anything else is ignored and
+      // opens the generic portal (view invoices, change/cancel plan, etc.).
+      let flow: "payment_method_update" | undefined;
+      try {
+        const body = (await ctx.req.json()) as { flow?: string };
+        if (body?.flow === "payment_method_update") flow = body.flow;
+      } catch {
+        /* no body — generic portal */
+      }
 
       try {
         const { url } = await createBillingPortalSession(
           stripeCustomerId,
-          returnUrl
+          returnUrl,
+          flow
         );
 
         // Audit log (no customer ID in metadata per hard rule)
