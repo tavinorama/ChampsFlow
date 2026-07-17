@@ -96,6 +96,19 @@ export class SharedRedis {
     return (await this.client.get(key)) as unknown as T | null;
   }
 
+  /**
+   * Ownership-safe compare-and-delete (atomic, Lua): deletes `key` ONLY when
+   * its current value equals `value`. Returns 1 when deleted, 0 otherwise.
+   * Used to RELEASE short claim locks: a caller whose lock already expired
+   * can never delete a newer owner's claim (the classic delete-after-expiry
+   * race a plain DEL would allow).
+   */
+  async delIfEquals(key: string, value: string): Promise<number> {
+    const script =
+      'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end';
+    return (await this.client.eval(script, 1, key, value)) as number;
+  }
+
   async del(key: string): Promise<number> {
     return this.client.del(key);
   }
