@@ -846,6 +846,30 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         );
       }
 
+      // Serialize concurrent offers per subscription (Hermes review #357
+      // blocker 1): a short Redis NX claim makes the check-then-apply race
+      // window single-flight. Fail-open on Redis outage (same posture as the
+      // billing rate limiter) — the Stripe idempotency key inside
+      // applyRetentionDiscount still collapses duplicates to one mutation.
+      try {
+        const redis = getRedis();
+        const claimed = await redis.set(
+          `billing:retention:lock:${stripeSubscriptionId}`,
+          "1",
+          { ex: 60, nx: true }
+        );
+        if (claimed === null) {
+          return ctx.json(
+            { applied: false, reason: "in_progress", message: "An offer request is already being processed." },
+            409
+          );
+        }
+      } catch (err) {
+        logger.warn("billing_retention_lock_redis_failed", {
+          message: (err as Error).message,
+        });
+      }
+
       try {
         const result = await applyRetentionDiscount(stripeSubscriptionId);
         await writeBillingAuditLog(db, {
@@ -856,8 +880,12 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           planTier: null,
         });
         if (!result.applied) {
+          const message =
+            result.reason === "not_monthly"
+              ? "This offer applies to monthly billing only."
+              : "This subscription already has a discount.";
           return ctx.json(
-            { applied: false, reason: result.reason ?? "not_eligible", message: "This subscription already has a discount." },
+            { applied: false, reason: result.reason ?? "not_eligible", message },
             409
           );
         }

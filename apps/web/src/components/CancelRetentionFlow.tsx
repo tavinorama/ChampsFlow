@@ -52,7 +52,7 @@ export function CancelRetentionFlow({
   // 2026-07-17). One per subscription — the API refuses (409) when a discount
   // is already attached; we then hide the button and keep the other options.
   const [offerSubmitting, setOfferSubmitting] = useState(false);
-  const [offerUnavailable, setOfferUnavailable] = useState(false);
+  const [offerUnavailable, setOfferUnavailable] = useState<false | "already_discounted" | "not_monthly">(false);
 
   async function acceptOffer(): Promise<void> {
     if (offerSubmitting) return;
@@ -61,7 +61,8 @@ export function CancelRetentionFlow({
     try {
       const res = await apiFetch("/api/billing/retention-offer", { method: "POST" });
       if (res.status === 409) {
-        setOfferUnavailable(true);
+        const d = (await res.json().catch(() => ({}))) as { reason?: string };
+        setOfferUnavailable(d.reason === "not_monthly" ? "not_monthly" : "already_discounted");
         return;
       }
       if (!res.ok) {
@@ -201,8 +202,9 @@ export function CancelRetentionFlow({
               </>
             ) : (
               <p style={mutedStyle}>
-                Your subscription already has a discount, so the 30% offer can&apos;t stack.
-                A free 15-minute call often fixes what&apos;s not working.
+                {offerUnavailable === "not_monthly"
+                  ? "Your plan bills annually, so the 3-month offer doesn't apply here. A free 15-minute call often fixes what's not working."
+                  : "Your subscription already has a discount, so the 30% offer can't stack. A free 15-minute call often fixes what's not working."}
               </p>
             )}
             <a

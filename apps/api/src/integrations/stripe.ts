@@ -785,27 +785,20 @@ export async function retrieveDisputeCharge(chargeId: string): Promise<Stripe.Ch
 
 // Founder decision 2026-07-17: 30% off the next 3 MONTHLY invoices, then back
 // to list price. Offered once per subscription (already-discounted subs are
-// refused). The coupon self-provisions on first use so no manual Stripe step
-// is required; STRIPE_RETENTION_COUPON_ID overrides the id if ever needed.
+// refused) and ONLY to monthly billing — a "3 months" coupon on an annual
+// subscription would expire before the next invoice and deliver nothing.
+// STRIPE_RETENTION_COUPON_ID overrides the coupon id if ever needed.
 const RETENTION_COUPON_ID = process.env.STRIPE_RETENTION_COUPON_ID ?? "RETENTION30";
 
-export async function applyRetentionDiscount(
-  stripeSubscriptionId: string
-): Promise<{ applied: boolean; reason?: "already_discounted" }> {
+/**
+ * Provision the retention coupon (30% / repeating / 3 months) if it doesn't
+ * exist. Idempotent (fixed id; a concurrent create loses harmlessly with
+ * resource_already_exists). Called from the API BOOT path — the controlled
+ * provisioning route (Hermes review #357 blocker 3) — with the request-time
+ * call in applyRetentionDiscount kept only as a self-healing fallback.
+ */
+export async function ensureRetentionCoupon(): Promise<void> {
   const stripe = getStripe();
-
-  // One offer per subscription: refuse when ANY discount is already attached
-  // (retention already used, founder coupon, promo code…). Prevents
-  // cancel→discount farming.
-  const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
-  const hasDiscount =
-    (Array.isArray(sub.discounts) && sub.discounts.length > 0) ||
-    // older API shape
-    (sub as unknown as { discount?: unknown }).discount != null;
-  if (hasDiscount) return { applied: false, reason: "already_discounted" };
-
-  // Self-provision the coupon (idempotent: fixed id; concurrent create loses
-  // harmlessly with resource_already_exists).
   try {
     await stripe.coupons.retrieve(RETENTION_COUPON_ID);
   } catch (err) {
@@ -818,6 +811,7 @@ export async function applyRetentionDiscount(
           duration_in_months: 3,
           name: "Retention 30% — 3 months",
         });
+        logger.info("stripe_retention_coupon_provisioned", { coupon: RETENTION_COUPON_ID });
       } catch (createErr) {
         if (
           !(createErr instanceof Stripe.errors.StripeError) ||
@@ -830,10 +824,42 @@ export async function applyRetentionDiscount(
       throw err;
     }
   }
+}
 
-  await stripe.subscriptions.update(stripeSubscriptionId, {
-    discounts: [{ coupon: RETENTION_COUPON_ID }],
-  });
+export async function applyRetentionDiscount(
+  stripeSubscriptionId: string
+): Promise<{ applied: boolean; reason?: "already_discounted" | "not_monthly" }> {
+  const stripe = getStripe();
+
+  const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+
+  // Monthly-only (Hermes review #357 blocker 2): the coupon lasts 3 months, so
+  // on annual billing it would expire before the next invoice — a hollow
+  // offer. Refuse; the UI falls back to the book-a-call save-offer.
+  const interval = sub.items?.data?.[0]?.price?.recurring?.interval ?? null;
+  if (interval !== "month") return { applied: false, reason: "not_monthly" };
+
+  // One offer per subscription: refuse when ANY discount is already attached
+  // (retention already used, founder coupon, promo code…). Prevents
+  // cancel→discount farming. Concurrency is handled by the caller's Redis
+  // claim + the idempotency key below.
+  const hasDiscount =
+    (Array.isArray(sub.discounts) && sub.discounts.length > 0) ||
+    // older API shape
+    (sub as unknown as { discount?: unknown }).discount != null;
+  if (hasDiscount) return { applied: false, reason: "already_discounted" };
+
+  // Self-healing fallback only — primary provisioning happens at API boot.
+  await ensureRetentionCoupon();
+
+  // Fixed idempotency key per subscription: a concurrent duplicate replays the
+  // same Stripe response instead of producing a second mutation (Hermes review
+  // #357 blocker 1; outcome is a single RETENTION30 discount either way).
+  await stripe.subscriptions.update(
+    stripeSubscriptionId,
+    { discounts: [{ coupon: RETENTION_COUPON_ID }] },
+    { idempotencyKey: `retention30-apply-${stripeSubscriptionId}` }
+  );
   logger.info("stripe_retention_discount_applied", {
     // subscription id only — no customer id (hard rule)
     subscription_id: stripeSubscriptionId,

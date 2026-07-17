@@ -35,6 +35,7 @@ import postgres from "postgres";
 import Redis from "ioredis";
 import { config } from "./config";
 import { logger } from "../../../packages/shared/src/logger";
+import { ensureRetentionCoupon } from "./integrations/stripe";
 import { createPostgresClient, assertAppDbRoleSafe } from "./db/client";
 import { registerSocialAccountRoutes } from "./routes/social-accounts";
 import { registerDraftRoutes } from "./routes/drafts";
@@ -320,6 +321,18 @@ registerDsrRoutes(app, db);
 // does not accidentally match any auth middleware applied globally (there is none —
 // auth is per-route in this app's design pattern).
 registerBillingRoutes(app, db);
+
+// Retention coupon (RETENTION30 — 30% / 3 monthly invoices): provision at BOOT
+// as the controlled path (Hermes review #357), so a customer request never has
+// to create Stripe config. Non-fatal: on failure the request-time fallback in
+// applyRetentionDiscount self-heals. Skipped when Stripe isn't configured.
+if (process.env.STRIPE_SECRET_KEY) {
+  void ensureRetentionCoupon().catch((err: unknown) => {
+    logger.warn("retention_coupon_boot_provision_failed", {
+      message: (err as Error).message,
+    });
+  });
+}
 
 // Marketing / Landing Page — waitlist signup
 // POST /api/waitlist (PUBLIC — no auth, rate limited 5/hour per IP)
