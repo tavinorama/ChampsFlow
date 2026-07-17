@@ -116,6 +116,13 @@ interface BillingPlan {
   renewal_date: string | null;
   cancel_at_period_end: boolean;
   managed_by_stripe: boolean;
+  usage?: {
+    connected_accounts?: number | null;
+    max_brands?: number | null;
+    max_competitors?: number | null;
+    prompts_per_audit?: number | null;
+    weekly_monitoring?: boolean | null;
+  };
 }
 
 interface PlanTask {
@@ -2038,6 +2045,26 @@ function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | nul
           )}
         </div>
       </div>
+
+      {billing.usage && (
+        <>
+          <div style={S.secH}>What’s included <span style={S.secN}>— your plan’s real limits, live from the API</span></div>
+          <div style={S.card}>
+            {[
+              { label: "Client brands", value: billing.usage.max_brands == null ? "Unlimited" : `Up to ${billing.usage.max_brands}` },
+              { label: "Competitors per brand", value: billing.usage.max_competitors == null ? "Unlimited" : `Up to ${billing.usage.max_competitors}` },
+              { label: "Prompts per audit", value: billing.usage.prompts_per_audit != null ? String(billing.usage.prompts_per_audit) : "—" },
+              { label: "Weekly monitoring", value: billing.usage.weekly_monitoring ? "On" : "Manual audits only" },
+              { label: "Connected accounts", value: billing.usage.connected_accounts != null ? String(billing.usage.connected_accounts) : "—" },
+            ].map((row, i) => (
+              <div key={row.label} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <span style={{ color: "var(--color-muted)", fontSize: "0.88rem" }}>{row.label}</span>
+                <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {billing.managed_by_stripe && (
         <>
