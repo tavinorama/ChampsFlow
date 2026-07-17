@@ -779,6 +779,68 @@ export async function retrieveDisputeCharge(chargeId: string): Promise<Stripe.Ch
 // Throws:
 //   Error with code 'stripe_api_error' on SDK errors
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Retention discount — the save-offer in the cancellation flow
+// ---------------------------------------------------------------------------
+
+// Founder decision 2026-07-17: 30% off the next 3 MONTHLY invoices, then back
+// to list price. Offered once per subscription (already-discounted subs are
+// refused). The coupon self-provisions on first use so no manual Stripe step
+// is required; STRIPE_RETENTION_COUPON_ID overrides the id if ever needed.
+const RETENTION_COUPON_ID = process.env.STRIPE_RETENTION_COUPON_ID ?? "RETENTION30";
+
+export async function applyRetentionDiscount(
+  stripeSubscriptionId: string
+): Promise<{ applied: boolean; reason?: "already_discounted" }> {
+  const stripe = getStripe();
+
+  // One offer per subscription: refuse when ANY discount is already attached
+  // (retention already used, founder coupon, promo code…). Prevents
+  // cancel→discount farming.
+  const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  const hasDiscount =
+    (Array.isArray(sub.discounts) && sub.discounts.length > 0) ||
+    // older API shape
+    (sub as unknown as { discount?: unknown }).discount != null;
+  if (hasDiscount) return { applied: false, reason: "already_discounted" };
+
+  // Self-provision the coupon (idempotent: fixed id; concurrent create loses
+  // harmlessly with resource_already_exists).
+  try {
+    await stripe.coupons.retrieve(RETENTION_COUPON_ID);
+  } catch (err) {
+    if (err instanceof Stripe.errors.StripeError && err.code === "resource_missing") {
+      try {
+        await stripe.coupons.create({
+          id: RETENTION_COUPON_ID,
+          percent_off: 30,
+          duration: "repeating",
+          duration_in_months: 3,
+          name: "Retention 30% — 3 months",
+        });
+      } catch (createErr) {
+        if (
+          !(createErr instanceof Stripe.errors.StripeError) ||
+          createErr.code !== "resource_already_exists"
+        ) {
+          throw createErr;
+        }
+      }
+    } else {
+      throw err;
+    }
+  }
+
+  await stripe.subscriptions.update(stripeSubscriptionId, {
+    discounts: [{ coupon: RETENTION_COUPON_ID }],
+  });
+  logger.info("stripe_retention_discount_applied", {
+    // subscription id only — no customer id (hard rule)
+    subscription_id: stripeSubscriptionId,
+  });
+  return { applied: true };
+}
+
 export async function createBillingPortalSession(
   stripeCustomerId: string,
   returnUrl: string,

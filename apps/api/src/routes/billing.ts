@@ -56,6 +56,7 @@ import {
   createCheckoutSession,
   createBillingPortalSession,
   cancelSubscriptionAtPeriodEnd,
+  applyRetentionDiscount,
   retrieveCustomerEmail,
   verifyWebhookSignature,
   mapStripeStatusToInternal,
@@ -796,6 +797,77 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           message: (err as Error).message,
         });
         return ctx.json({ error: "cancel_failed", code: "CANCEL_ERROR" }, 500);
+      }
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /api/billing/retention-offer
+  // The save-offer in the cancellation flow: applies the 30%-for-3-months
+  // retention coupon to the tenant's active subscription. Founder decision
+  // 2026-07-17. One offer per subscription — refused when any discount is
+  // already attached (prevents cancel→discount farming). The offer is never a
+  // gate: the cancel endpoint stays one request away regardless.
+  // Auth: requireAuth + requireRole(['owner']).
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/billing/retention-offer",
+    requireAuth,
+    requireRole(["owner"]),
+    async (ctx: Context) => {
+      const auth = ctx.get("auth");
+
+      let stripeSubscriptionId: string | null = null;
+      try {
+        await db.setTenantId(auth.tenantId);
+        const { rows } = await db.query<{ stripe_subscription_id: string | null }>(
+          `SELECT stripe_subscription_id
+             FROM billing_subscriptions
+            WHERE tenant_id = $1
+              AND stripe_subscription_id IS NOT NULL
+              AND status NOT IN ('canceled')
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [auth.tenantId]
+        );
+        stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
+      } catch (err) {
+        logger.error("billing_retention_lookup_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "internal_error", code: "RETENTION_LOOKUP_ERROR" }, 500);
+      }
+
+      if (!stripeSubscriptionId) {
+        return ctx.json(
+          { error: "no_subscription", code: "NO_ACTIVE_SUBSCRIPTION", message: "No active subscription found." },
+          404
+        );
+      }
+
+      try {
+        const result = await applyRetentionDiscount(stripeSubscriptionId);
+        await writeBillingAuditLog(db, {
+          tenantId: auth.tenantId,
+          eventType: result.applied
+            ? "billing_retention_discount_applied"
+            : "billing_retention_discount_refused",
+          planTier: null,
+        });
+        if (!result.applied) {
+          return ctx.json(
+            { applied: false, reason: result.reason ?? "not_eligible", message: "This subscription already has a discount." },
+            409
+          );
+        }
+        return ctx.json({ applied: true, percent_off: 30, months: 3 });
+      } catch (err) {
+        logger.error("billing_retention_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "retention_failed", code: "RETENTION_ERROR" }, 500);
       }
     }
   );
