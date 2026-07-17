@@ -48,6 +48,7 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { getSharedRedis, type SharedRedis } from "../shared-redis";
+import { acquireRetentionLock, releaseRetentionLock } from "../lib/retention-lock";
 import { requireAuth, requireRole, requireNotProcessingRestricted } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -846,28 +847,29 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         );
       }
 
-      // Serialize concurrent offers per subscription (Hermes review #357
-      // blocker 1): a short Redis NX claim makes the check-then-apply race
-      // window single-flight. Fail-open on Redis outage (same posture as the
-      // billing rate limiter) — the Stripe idempotency key inside
-      // applyRetentionDiscount still collapses duplicates to one mutation.
+      // Serialize concurrent offers per subscription (Hermes reviews #357/#358):
+      // a short Redis NX claim makes the check-then-apply race single-flight.
+      // The claim holds an OWNERSHIP TOKEN and is RELEASED in `finally` on every
+      // exit (applied, refused, or thrown) via atomic compare-and-delete — so a
+      // finished request never blocks the next one, and a request whose claim
+      // already expired can never delete a newer owner's claim. Fail-open on
+      // Redis outage (same posture as the billing rate limiter) — the Stripe
+      // idempotency key inside applyRetentionDiscount still collapses
+      // duplicates to one mutation.
+      let lockRedis: SharedRedis | null = null;
       try {
-        const redis = getRedis();
-        const claimed = await redis.set(
-          `billing:retention:lock:${stripeSubscriptionId}`,
-          "1",
-          { ex: 60, nx: true }
-        );
-        if (claimed === null) {
-          return ctx.json(
-            { applied: false, reason: "in_progress", message: "An offer request is already being processed." },
-            409
-          );
-        }
+        lockRedis = getRedis();
       } catch (err) {
         logger.warn("billing_retention_lock_redis_failed", {
           message: (err as Error).message,
         });
+      }
+      const lockToken = await acquireRetentionLock(lockRedis, stripeSubscriptionId);
+      if (lockToken === null) {
+        return ctx.json(
+          { applied: false, reason: "in_progress", message: "An offer request is already being processed." },
+          409
+        );
       }
 
       try {
@@ -896,6 +898,8 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
           message: (err as Error).message,
         });
         return ctx.json({ error: "retention_failed", code: "RETENTION_ERROR" }, 500);
+      } finally {
+        await releaseRetentionLock(lockRedis, stripeSubscriptionId, lockToken);
       }
     }
   );
