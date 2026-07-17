@@ -130,6 +130,33 @@ NEXT_PUBLIC_CALENDLY_URL=PASTE_SEU_LINK_CALENDLY   (opcional — ativa /book)
 
 ---
 
+## 5b. GOOGLE — "Connect your data" (GA4 + Search Console no dashboard)
+
+O conector nativo já está no ar (aba **Connections** do dashboard), mas mostra
+"não configurado" porque faltam 3 variáveis. É 1 OAuth client no Google Cloud
+(~10 min), sem custo:
+
+1. **console.cloud.google.com** → criar/usar um projeto → **APIs & Services**:
+   - **Enable APIs**: "Google Analytics Data API" e "Google Search Console API".
+   - **OAuth consent screen**: External → nome "Ozvor", domínio `ozvor.com`,
+     scopes: `analytics.readonly` + `webmasters.readonly` (read-only, nada de escrita).
+2. **Credentials → Create credentials → OAuth client ID** → tipo **Web application**:
+   - Authorized redirect URI (exatamente): `https://ozvor.com/api/google/callback`
+3. **Railway (serviço `api`)** — colar as 3 variáveis:
+   | Variável | Valor |
+   |---|---|
+   | `GOOGLE_OAUTH_CLIENT_ID` | do passo 2 |
+   | `GOOGLE_OAUTH_CLIENT_SECRET` | do passo 2 |
+   | `GOOGLE_OAUTH_REDIRECT_URI` | `https://ozvor.com/api/google/callback` |
+4. Prova: `curl https://ozvor.com/api/google/status` → `{"configured":true}`.
+   No dashboard, Connections → "Optional: connect your data" → **Connect** vira
+   1 clique (o cliente autoriza no Google e volta pro dashboard conectado).
+
+Tokens ficam criptografados (AES) no banco; escopo só-leitura; o callback
+valida state anti-CSRF de uso único.
+
+---
+
 ## 6. CONTEÚDO / OPCIONAL
 - **Vídeos do blog:** os slots de vídeo estão escondidos até você publicar. Grave (ex.: seus vídeos de case study), suba no YouTube, e troque os `youtubeId` em `apps/web/src/app/(marketing)/blog/posts.ts` (eu posso fazer essa troca quando você me passar os IDs). A plataforma NÃO gera vídeo — gera texto.
 - **Calendly:** `NEXT_PUBLIC_CALENDLY_URL` no web → ativa `/book` e os botões "Book a call".

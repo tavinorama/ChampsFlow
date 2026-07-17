@@ -781,13 +781,19 @@ export async function retrieveDisputeCharge(chargeId: string): Promise<Stripe.Ch
 // ---------------------------------------------------------------------------
 export async function createBillingPortalSession(
   stripeCustomerId: string,
-  returnUrl: string
+  returnUrl: string,
+  // Optional portal deep-link. "payment_method_update" lands the customer
+  // directly on the update-card screen (the "atualizar dados de pagamento"
+  // path) instead of the generic portal home. Card data itself is only ever
+  // entered on Stripe's page — never touches our surfaces.
+  flowType?: "payment_method_update"
 ): Promise<{ url: string }> {
   try {
     const stripe = getStripe();
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
       return_url: returnUrl,
+      ...(flowType ? { flow_data: { type: flowType } } : {}),
     });
 
     logger.info("stripe_portal_session_created", {

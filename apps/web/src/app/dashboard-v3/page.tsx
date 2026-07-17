@@ -493,9 +493,15 @@ export default function DashboardV3() {
     }
   }, []);
 
-  const openPortal = useCallback(async () => {
+  // Opens the Stripe Billing Portal. With flow="payment_method_update" the
+  // customer lands DIRECTLY on the update-card screen (view + update payment
+  // data); without it, the generic portal (invoices, plan changes, cancel).
+  const openPortal = useCallback(async (flow?: "payment_method_update") => {
     try {
-      const res = await apiFetch("/api/billing/portal", { method: "POST" });
+      const res = await apiFetch("/api/billing/portal", {
+        method: "POST",
+        ...(flow ? { body: JSON.stringify({ flow }) } : {}),
+      });
       if (res.ok) {
         const d = (await res.json()) as { url?: string; portal_url?: string };
         const url = d.url ?? d.portal_url;
@@ -2005,7 +2011,7 @@ function ByokRow({ provider, connected, loading, onSaved, onRemoved, first }: {
 
 const PLAN_LABEL: Record<string, string> = { free: "Free", growth: "Growth — $99/mo", agency: "Agency — $549/mo" };
 
-function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | null; loading: boolean; onManage: () => void }) {
+function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | null; loading: boolean; onManage: (flow?: "payment_method_update") => void }) {
   if (loading || billing === null) return <div style={S.muted}>Loading your plan…</div>;
   const renews = billing.renewal_date ? new Date(billing.renewal_date).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : null;
   return (
@@ -2024,11 +2030,7 @@ function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | nul
             <Link href="/pricing" style={S.btnPri}>Upgrade</Link>
           )}
           {billing.managed_by_stripe ? (
-            <>
-              <button onClick={onManage} style={billing.plan === "agency" ? S.btnPri : S.btnGhost}>Manage plan &amp; payment</button>
-              <button onClick={onManage} style={S.btnGhost}>Invoices</button>
-              <button onClick={onManage} style={S.btnGhost}>Cancel</button>
-            </>
+            <Link href="/pricing" style={S.btnGhost}>Compare plans</Link>
           ) : billing.plan === "agency" ? (
             <span style={{ ...S.imp, background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)", alignSelf: "center" }}>Granted plan — contact support to change</span>
           ) : (
@@ -2036,9 +2038,31 @@ function BillingTab({ billing, loading, onManage }: { billing: BillingPlan | nul
           )}
         </div>
       </div>
+
+      {billing.managed_by_stripe && (
+        <>
+          <div style={S.secH}>Payment &amp; billing data <span style={S.secN}>— view and update, all in the secure Stripe portal</span></div>
+          <div style={S.card}>
+            {([
+              { label: "Update payment method", note: "Change the card or payment method on file", cta: "Update", primary: true, flow: "payment_method_update" },
+              { label: "Invoices & billing history", note: "Every charge, receipt and invoice — view or download", cta: "View" },
+              { label: "Manage or cancel plan", note: "Change plan, billing interval, or cancel — active until period end, no lock-in", cta: "Manage" },
+            ] as Array<{ label: string; note: string; cta: string; primary?: boolean; flow?: "payment_method_update" }>).map((row, i) => (
+              <div key={row.label} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{row.label}</div>
+                  <div style={S.actWhy}>{row.note}</div>
+                </div>
+                <button onClick={() => onManage(row.flow)} style={row.primary ? S.btnPri : S.btnGhost}>{row.cta}</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       <p style={S.note}>
         {billing.managed_by_stripe
-          ? "Update your card, download invoices, or cancel — all in the secure Stripe billing portal. Cancel anytime, no lock-in; your plan stays active until the end of the paid period."
+          ? "Card details are entered only on Stripe’s secure page — Ozvor never sees or stores them. Cancel anytime; your plan stays active until the end of the paid period."
           : "This plan isn’t billed through Stripe. Contact support to change it."}
       </p>
     </>
