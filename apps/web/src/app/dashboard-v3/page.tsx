@@ -42,6 +42,10 @@ interface BrandRow {
   trustpilot_url?: string | null;
   crunchbase_url?: string | null;
   youtube_url?: string | null;
+  x_url?: string | null;
+  instagram_url?: string | null;
+  facebook_url?: string | null;
+  tiktok_url?: string | null;
 }
 
 const PROFILE_FIELDS: Array<{ key: keyof BrandRow; label: string; hint: string }> = [
@@ -52,6 +56,10 @@ const PROFILE_FIELDS: Array<{ key: keyof BrandRow; label: string; hint: string }
   { key: "linkedin_url", label: "LinkedIn", hint: "linkedin.com/company/…" },
   { key: "wikipedia_url", label: "Wikipedia", hint: "en.wikipedia.org/wiki/…" },
   { key: "youtube_url", label: "YouTube", hint: "youtube.com/@…" },
+  { key: "x_url", label: "X (Twitter)", hint: "x.com/…" },
+  { key: "instagram_url", label: "Instagram", hint: "instagram.com/…" },
+  { key: "facebook_url", label: "Facebook", hint: "facebook.com/…" },
+  { key: "tiktok_url", label: "TikTok", hint: "tiktok.com/@…" },
 ];
 
 interface TrendPoint {
@@ -1836,6 +1844,40 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
 
       <div style={S.secH}>Optional: connect your data <span style={S.secN}>— to see clicks &amp; traffic from AI</span></div>
       {brand ? <GoogleConnect brandId={brand.id} /> : <div style={{ ...S.card, padding: "var(--space-4)", color: "var(--color-muted)" }}>Add a brand first to connect its Google data.</div>}
+
+      {/* Social accounts — added as public profile URLs (no OAuth needed; this
+          is what the audit actually reads). Status is live from the brand row;
+          Add/Change jumps to the profiles form above. */}
+      {brand && (
+        <div style={{ ...S.card, marginTop: "var(--space-3)" }}>
+          {([
+            { key: "x_url", ico: "X", name: "X (Twitter)", note: "Your brand's X profile — a top AI-cited social source" },
+            { key: "instagram_url", ico: "IG", name: "Instagram", note: "Your brand's Instagram profile" },
+            { key: "facebook_url", ico: "FB", name: "Facebook", note: "Your brand's Facebook page" },
+            { key: "tiktok_url", ico: "TT", name: "TikTok", note: "Your brand's TikTok profile" },
+          ] as Array<{ key: keyof BrandRow; ico: string; name: string; note: string }>).map((n, i) => {
+            const url = (brand[n.key] as string | null | undefined) ?? null;
+            return (
+              <div key={n.key as string} style={{ ...S.actRow, gridTemplateColumns: "auto 1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <span style={S.engIco}>{n.ico}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{n.name}</div>
+                  <div style={{ ...S.actWhy, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url ?? n.note}</div>
+                </div>
+                <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+                  {url && <span style={{ ...S.imp, background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }}>Added</span>}
+                  <button
+                    onClick={() => document.getElementById("brand-profiles")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    style={url ? S.btnGhost : S.btnPri}
+                  >
+                    {url ? "Change" : "Add profile"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
@@ -1942,7 +1984,7 @@ function ProfilesSection({ brand, onSaved }: { brand: BrandRow; onSaved: () => v
 
   return (
     <>
-      <div style={S.secH}>Your public profiles <span style={S.secN}>— for {brand.name}; measured as off-site GEO signal</span></div>
+      <div id="brand-profiles" style={S.secH}>Your public profiles <span style={S.secN}>— for {brand.name}; measured as off-site GEO signal</span></div>
       <div style={{ ...S.card, padding: "var(--space-4)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "var(--space-3)" }}>
           {PROFILE_FIELDS.map((f) => (

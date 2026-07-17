@@ -1,0 +1,4 @@
+ALTER TABLE brands DROP COLUMN IF EXISTS x_url;
+ALTER TABLE brands DROP COLUMN IF EXISTS instagram_url;
+ALTER TABLE brands DROP COLUMN IF EXISTS facebook_url;
+ALTER TABLE brands DROP COLUMN IF EXISTS tiktok_url;

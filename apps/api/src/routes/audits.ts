@@ -392,6 +392,10 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       trustpilot_url?: string;
       crunchbase_url?: string;
       youtube_url?: string;
+      x_url?: string;
+      instagram_url?: string;
+      facebook_url?: string;
+      tiktok_url?: string;
     };
     try {
       body = await c.req.json();
@@ -411,6 +415,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const profileUrlFields = [
       "linkedin_url", "reddit_url", "wikipedia_url", "g2_url",
       "trustpilot_url", "crunchbase_url", "youtube_url",
+      "x_url", "instagram_url", "facebook_url", "tiktok_url",
     ] as const;
     for (const field of profileUrlFields) {
       const val = body[field];
@@ -441,8 +446,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const id = randomUUID();
     await db.query(
       `INSERT INTO brands (id, tenant_id, name, domain, category, market, region,
-         linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
+         linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+         x_url, instagram_url, facebook_url, tiktok_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())`,
       [
         id,
         tenantId,
@@ -458,6 +464,10 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         body.trustpilot_url?.trim() || null,
         body.crunchbase_url?.trim() || null,
         body.youtube_url?.trim() || null,
+        body.x_url?.trim() || null,
+        body.instagram_url?.trim() || null,
+        body.facebook_url?.trim() || null,
+        body.tiktok_url?.trim() || null,
       ]
     );
 
@@ -645,11 +655,15 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       trustpilot_url: string | null;
       crunchbase_url: string | null;
       youtube_url: string | null;
+      x_url: string | null;
+      instagram_url: string | null;
+      facebook_url: string | null;
+      tiktok_url: string | null;
     }>(
       // geo_score stores the overall in provider_breakdown->>'overall' (applied
       // schema has no dedicated score_overall column on geo_score).
       `SELECT b.id, b.name, b.domain, b.category, b.region, b.monitoring_enabled,
-              b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url,
+              b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url, b.x_url, b.instagram_url, b.facebook_url, b.tiktok_url,
               b.trustpilot_url, b.crunchbase_url, b.youtube_url,
               (s.provider_breakdown->>'overall')::int AS latest_score
          FROM brands b
@@ -695,9 +709,14 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         trustpilot_url: string | null;
         crunchbase_url: string | null;
         youtube_url: string | null;
+        x_url: string | null;
+        instagram_url: string | null;
+        facebook_url: string | null;
+        tiktok_url: string | null;
       }>(
         `SELECT id, name, domain, category, region, monitoring_enabled, tracked_models, tracking_frequency,
-                linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+                linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+                x_url, instagram_url, facebook_url, tiktok_url
            FROM brands WHERE id = $1`,
         [brandId]
       );
@@ -724,9 +743,14 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           trustpilot_url: string | null;
           crunchbase_url: string | null;
           youtube_url: string | null;
+          x_url: string | null;
+          instagram_url: string | null;
+          facebook_url: string | null;
+          tiktok_url: string | null;
         }>(
           `SELECT id, name, domain, category, region, monitoring_enabled,
-                  linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+                  linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+                x_url, instagram_url, facebook_url, tiktok_url
              FROM brands WHERE id = $1`,
           [brandId]
         );
@@ -924,6 +948,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const profileUrlFields = [
         "linkedin_url", "reddit_url", "wikipedia_url", "g2_url",
         "trustpilot_url", "crunchbase_url", "youtube_url",
+        "x_url", "instagram_url", "facebook_url", "tiktok_url",
       ] as const;
 
       // At least one field must be provided.
@@ -982,11 +1007,15 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         trustpilot_url: string | null;
         crunchbase_url: string | null;
         youtube_url: string | null;
+        x_url: string | null;
+        instagram_url: string | null;
+        facebook_url: string | null;
+        tiktok_url: string | null;
       }>(
         `UPDATE brands
             SET ${setClauses.join(", ")}
           WHERE id = $1
-          RETURNING id, linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url`,
+          RETURNING id, linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url, x_url, instagram_url, facebook_url, tiktok_url`,
         params
       );
 
