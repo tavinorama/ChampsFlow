@@ -392,15 +392,19 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
 
       const sub = subRows[0] ?? null;
       const planTier = ((sub?.plan_tier as PlanTier | undefined) ?? tenantTier) ?? "free";
-      const base = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
 
-      // super_admin (platform operator) is never plan-limited: unlimited brands
-      // and competitors (null → UI renders "unlimited") + top-tier audit depth.
+      // super_admin (platform operator) bypasses plan ENFORCEMENT elsewhere
+      // (planLimitsFor). But "What's included" is the PLAN's storefront — it
+      // must always show the plan's real limits (Agency = 15 brands, 10
+      // competitors…), never the operator bypass (founder rule 2026-07-17:
+      // "isso é com base nos planos"). A super_admin on a free tenant is
+      // presented as agency, with agency's limits, consistently.
       const unlimited = auth.isSuperAdmin === true;
-      const agency = PLAN_LIMITS.agency ?? base;
+      const displayTier: PlanTier = unlimited && planTier === "free" ? "agency" : planTier;
+      const base = PLAN_LIMITS[displayTier] ?? PLAN_LIMITS.free;
 
       return ctx.json({
-        plan: unlimited && planTier === "free" ? "agency" : planTier,
+        plan: displayTier,
         status: sub?.status ?? "active",
         renewal_date: sub?.current_period_end ?? null,
         cancel_at_period_end: sub?.cancel_at_period_end ?? false,
@@ -411,10 +415,10 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         managed_by_stripe: sub !== null,
         usage: {
           connected_accounts: connectedAccounts,
-          max_brands: unlimited ? null : base.max_brands,
-          max_competitors: unlimited ? null : base.max_competitors,
-          prompts_per_audit: unlimited ? agency.prompts_per_audit : base.prompts_per_audit,
-          weekly_monitoring: unlimited ? true : base.weekly_monitoring,
+          max_brands: base.max_brands,
+          max_competitors: base.max_competitors,
+          prompts_per_audit: base.prompts_per_audit,
+          weekly_monitoring: base.weekly_monitoring,
         },
       });
     } catch (err) {
