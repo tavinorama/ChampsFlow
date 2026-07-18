@@ -185,6 +185,7 @@ export function SiteFooter() {
                 ["Research", "/research"],
                 ["FAQ", "/faq"],
                 ["Blog", "/blog"],
+                ["Play the game", "/play"],
               ]}
             />
             <FooterCol
@@ -362,6 +363,11 @@ function FooterCol({
   );
 }
 
+// Paths that are served as static files via a next.config rewrite (no Next
+// route), so next/link's client navigation can't resolve them — render a plain
+// <a> for a full page load instead. Currently just the /play game.
+const STATIC_PATHS = new Set<string>(["/play"]);
+
 function FooterLink({
   href,
   children,
@@ -369,6 +375,13 @@ function FooterLink({
   href: string;
   children: React.ReactNode;
 }) {
+  if (STATIC_PATHS.has(href) || href.startsWith("http")) {
+    return (
+      <a href={href} className="mk-footer-link">
+        {children}
+      </a>
+    );
+  }
   return (
     <Link href={href} className="mk-footer-link">
       {children}
