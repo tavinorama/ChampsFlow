@@ -22,7 +22,7 @@ import { measureOffsiteSignal } from "./offsite-signal";
 import { analyzeContentGeo } from "./content-geo";
 import { analyzeSentiment } from "./sentiment";
 import { analyzeRedditPresence } from "./reddit-signal";
-import { analyzeEntityGraph } from "./entity-graph";
+import { analyzeEntityGraph, pickEntityCompleteness } from "./entity-graph";
 import { generateStrategy, type Recommendation } from "./strategy-generator";
 import { generateContent, templateDraft, type ContentDraft, type ContentType } from "./content-studio";
 import type { InvisibilityTestResult } from "./invisibility-test";
@@ -224,7 +224,9 @@ export async function buildKitDeliverable(input: KitInput): Promise<KitDeliverab
   const eeaBlended = crawl.reachable
     ? crawl.brand.eeaSignal * 0.4 + offsite.offsiteScore * 0.4 + reddit.redditScore * 0.2
     : offsite.offsiteScore * 0.7 + reddit.redditScore * 0.3;
-  const entityCompleteness = entity.found ? entity.entityCompleteness : crawl.brand.entityCompleteness;
+  // Entity graph measure when usable, else the on-site estimate — see
+  // pickEntityCompleteness (shared with apps/worker/src/jobs/audit-run.ts).
+  const entityCompleteness = pickEntityCompleteness(entity, crawl.brand.entityCompleteness);
 
   const scoreInputs = {
     brand: {
