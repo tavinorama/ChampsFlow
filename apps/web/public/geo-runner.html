@@ -147,7 +147,15 @@
     cursor:pointer;
   }
   #leadSend{ background:var(--green); color:#06120d; } #leadSkip{ background:#17332a; color:#bfe6d4; }
-  #leadGate button:hover{ filter:brightness(1.1); }
+  #leadGate button:disabled{ opacity:.45; cursor:not-allowed; filter:none; }
+  #leadGate button:hover:not(:disabled){ filter:brightness(1.1); }
+  .gate-consent{
+    display:flex; align-items:flex-start; gap:8px; text-align:left; margin:0 2px 12px;
+    color:var(--muted); font-size:10.5px; line-height:1.6; cursor:pointer;
+  }
+  .gate-consent input[type=checkbox]{ margin-top:2px; width:15px; height:15px; flex:0 0 auto; accent-color:var(--green); cursor:pointer; }
+  .gate-consent a{ color:var(--green); text-decoration:underline; }
+  #leadConsentHint{ color:var(--gold); font-size:10px; margin:0 2px 10px; min-height:0; }
   .gate-cta{ display:block; margin-top:16px; font-family:var(--mono); font-size:11px; color:var(--gold); text-decoration:none; }
   .gate-cta:hover{ text-decoration:underline; }
   .gate-thanks{ font-family:var(--mono); color:var(--green); font-size:12px; line-height:1.8; }
@@ -196,12 +204,17 @@
         </div>
         <div class="gate-title" id="gateTitle">NICE RUN!</div>
         <div class="gate-sub" id="gateScore">You scored 0 AI Visibility.</div>
-        <div class="gate-msg">Is AI recommending you — or your competitor? Drop your email for GEO tips + new levels. Totally optional.</div>
+        <div class="gate-msg">Is AI recommending you — or your competitor? Want GEO tips + new levels by email? Tick the box below. Or just hit SKIP — the game plays on either way.</div>
         <form id="leadForm">
             <p style="display:none"><label>Don't fill this: <input name="bot-field" /></label></p>
           <input type="email" name="email" id="leadEmail" placeholder="you@brand.com" autocomplete="email" required />
           <input type="hidden" name="ai-visibility" id="leadScore" value="" />
           <input type="hidden" name="engine-reached" id="leadRole" value="" />
+          <label class="gate-consent">
+            <input type="checkbox" id="leadConsent" name="marketing_consent" />
+            <span>Email me GEO tips + product updates from Ozvor. Unsubscribe in one click. See our <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.</span>
+          </label>
+          <div id="leadConsentHint" role="alert" aria-live="polite"></div>
           <div class="gate-actions">
             <button type="submit" id="leadSend">GET GEO TIPS</button>
             <button type="button" id="leadSkip">SKIP &raquo;</button>
@@ -1014,7 +1027,8 @@ requestAnimationFrame(frame);
     skip=document.getElementById("leadSkip"), thanks=document.getElementById("gateThanks"),
     titleEl=document.getElementById("gateTitle"), scoreEl=document.getElementById("gateScore"),
     scoreIn=document.getElementById("leadScore"), roleIn=document.getElementById("leadRole"),
-    emailIn=document.getElementById("leadEmail");
+    emailIn=document.getElementById("leadEmail"),
+    consentIn=document.getElementById("leadConsent"), consentHint=document.getElementById("leadConsentHint");
   const submitted=()=>{ try{ return localStorage.getItem("geo_lead")==="1"; }catch(e){ return false; } };
   const skippedThisRun=()=>{ try{ return sessionStorage.getItem("geo_lead_skip")==="1"; }catch(e){ return false; } };
   function openGate(d){
@@ -1031,11 +1045,20 @@ requestAnimationFrame(frame);
   document.addEventListener("geo:start", closeGate);
   skip.addEventListener("click",()=>{ try{ sessionStorage.setItem("geo_lead_skip","1"); }catch(e){} closeGate(); });
   document.addEventListener("keydown",(e)=>{ if(e.code==="Escape" && gate && !gate.hidden){ try{ sessionStorage.setItem("geo_lead_skip","1"); }catch(e){} closeGate(); } });
+  if(consentIn){ consentIn.addEventListener("change",()=>{ if(consentIn.checked && consentHint) consentHint.textContent=""; }); }
   form.addEventListener("submit",(e)=>{
     e.preventDefault();
     // Honeypot: a filled bot-field means a bot — silently drop.
     const hp=form.querySelector('[name="bot-field"]'); if(hp && hp.value){ form.hidden=true; thanks.hidden=false; return; }
-    const payload={ email: emailIn.value.trim(), score: Number(scoreIn.value)||0, engine: roleIn.value||"" };
+    // Explicit marketing consent is REQUIRED (LGPD Art. 7(I) / GDPR Art. 6(1)(a)).
+    // The email is captured ONLY for marketing tips, so without the ticked box
+    // there's no lawful basis to send it — block and prompt. SKIP is always there.
+    if(!consentIn || !consentIn.checked){
+      if(consentHint) consentHint.textContent="Tick the box to get tips by email — or hit SKIP to keep playing.";
+      try{ consentIn && consentIn.focus(); }catch(e){}
+      return;
+    }
+    const payload={ email: emailIn.value.trim(), score: Number(scoreIn.value)||0, engine: roleIn.value||"", marketing_consent: true };
     fetch("/api/game-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
       .catch(()=>{})
       .finally(()=>{ try{ localStorage.setItem("geo_lead","1"); }catch(e){} form.hidden=true; thanks.hidden=false; window.__geoGateOpen=false; setTimeout(closeGate,1900); });
