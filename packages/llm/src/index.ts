@@ -205,7 +205,7 @@ export { analyzeRedditPresence, subredditFromUrl } from "./reddit-signal";
 // Entity graph (C7) — cross-source consistency (Wikidata/Wikipedia); closes the
 // last BRAND baseline (entityCompleteness).
 export type { EntityGraphResult } from "./entity-graph";
-export { analyzeEntityGraph } from "./entity-graph";
+export { analyzeEntityGraph, pickEntityCompleteness } from "./entity-graph";
 
 // "The AI Invisibility Test" — free lead magnet (1 prompt × brand vs competitor).
 export type { FreeTestResult, InvisibilityTestResult, EngineResult } from "./invisibility-test";

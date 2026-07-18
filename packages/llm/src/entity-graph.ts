@@ -49,6 +49,28 @@ export interface EntityGraphResult {
   findings: string[];
 }
 
+/**
+ * Pick the entityCompleteness that feeds the BRAND vector.
+ *
+ * Trust the entity graph's own measure whenever it produced a usable signal —
+ * it either resolved a Wikidata entity (`found`) or ran live and honestly found
+ * none (`live`, returning its 0.3 "present-but-unverified" floor). Only fall back
+ * to the on-site crawl estimate when the graph could NOT run at all (Wikidata
+ * unreachable: `!found && !live`), so an infra blip never punishes the brand.
+ *
+ * Keying on `found` alone (the earlier bug) let a brand with NO Wikidata entity
+ * but a well-marked-up site keep the on-site estimate (often 1.0) — inflating the
+ * Brand score and contradicting the audit's own "AI can't resolve you as an
+ * entity" finding. The `|| live` branch also keeps deterministic mock results
+ * (live:false, found:true) on their synthetic value.
+ */
+export function pickEntityCompleteness(
+  entity: Pick<EntityGraphResult, "found" | "live" | "entityCompleteness">,
+  onSiteEstimate: number
+): number {
+  return entity.found || entity.live ? entity.entityCompleteness : onSiteEstimate;
+}
+
 function emptyResult(live: boolean, findings: string[]): EntityGraphResult {
   return {
     live,
