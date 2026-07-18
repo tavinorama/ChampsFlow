@@ -113,6 +113,13 @@ const nextConfig = {
         source: "/api/:path*",
         destination: `${apiUrl}/api/:path*`,
       },
+      // /play serves the GEO Search Runner game (a self-contained static HTML
+      // in public/) under a clean URL. The game posts its optional email lead
+      // to /api/game-lead (proxied to Hono above).
+      {
+        source: "/play",
+        destination: "/geo-runner.html",
+      },
     ];
   },
 

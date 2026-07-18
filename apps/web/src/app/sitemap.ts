@@ -61,6 +61,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/organicposts", "monthly", 0.8],
     ["/results", "monthly", 0.4],
 
+    // GEO Search Runner — interactive game + lead magnet (top-of-funnel hook)
+    ["/play", "monthly", 0.6],
+
     // Satellite pages (nav simplification) — friendly indexes that carry the
     // complexity moved off the home page.
     ["/compare", "monthly", 0.7],
