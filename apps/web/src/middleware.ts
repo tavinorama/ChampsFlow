@@ -42,10 +42,15 @@ export async function middleware(request: NextRequest) {
   const gameCsp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
+    // The game's <link> pulls its 8-bit fonts (Press Start 2P + Schibsted
+    // Grotesk + JetBrains Mono) from Google Fonts: the stylesheet from
+    // fonts.googleapis.com (style-src) and the font files from fonts.gstatic.com
+    // (font-src). Without these the page falls back to system fonts and loses
+    // its arcade look (Hermes #364).
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data:",
     "connect-src 'self'",
-    "font-src 'self'",
+    "font-src 'self' https://fonts.gstatic.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
