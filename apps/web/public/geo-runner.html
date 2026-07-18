@@ -161,6 +161,44 @@
   .gate-thanks{ font-family:var(--mono); color:var(--green); font-size:12px; line-height:1.8; }
   .gate-fine{ color:#6d8378; font-size:10px; margin-top:12px; line-height:1.7; }
   a.raw{ color:inherit; }
+
+  /* ---- Theme toggle button ---- */
+  #themeBtn{
+    position:fixed; top:12px; right:14px; z-index:60;
+    width:38px; height:38px; border-radius:10px; cursor:pointer;
+    font-size:17px; line-height:1; display:flex; align-items:center; justify-content:center;
+    background:rgba(14,23,20,.82); color:var(--ink);
+    border:1.5px solid rgba(39,201,138,.35);
+    font-family:var(--mono);
+  }
+  #themeBtn:hover{ border-color:var(--green); }
+
+  /* ---- Light theme (page chrome; the canvas re-skins itself in JS via SK) ---- */
+  html[data-theme="light"]{
+    --bg:#eef7f2; --surface:#ffffff; --deep:#e6f4ec;
+    --ink:#0b1a14; --muted:#4e635b;
+  }
+  html[data-theme="light"] body{
+    background:radial-gradient(1200px 620px at 50% -12%, #cdeadb 0%, #eef7f2 62%);
+  }
+  html[data-theme="light"] #hint{ color:#123c2c; background:rgba(255,255,255,.9); }
+  html[data-theme="light"] #themeBtn{ background:rgba(255,255,255,.9); color:#0b1a14; }
+  html[data-theme="light"] #btnMenu{ color:#0b1a14; background:rgba(255,255,255,.92); }
+  html[data-theme="light"] .mp-b{ color:#0b1a14; background:#ffffff; border-color:rgba(39,201,138,.45); }
+  html[data-theme="light"] .mp-b.gold{ color:#a06f13; border-color:rgba(230,169,63,.6); }
+  html[data-theme="light"] #modBar{ background:rgba(255,255,255,.9); }
+  html[data-theme="light"] #touchMenu{ background:rgba(230,244,236,.94); }
+  html[data-theme="light"] .tm-card,
+  html[data-theme="light"] .gate-card{ background:#ffffff; border-color:rgba(39,201,138,.4); }
+  html[data-theme="light"] .tm-title,
+  html[data-theme="light"] .gate-title{ color:#0f7a52; }
+  html[data-theme="light"] .gate-msg,
+  html[data-theme="light"] .gate-consent,
+  html[data-theme="light"] .tm-b[data-act=modules]{ color:#3f5951; }
+  html[data-theme="light"] #leadGate input[type=email]{ background:#f3faf6; color:#0b1a14; border-color:rgba(39,201,138,.4); }
+  html[data-theme="light"] #leadSkip{ background:#dceee5; color:#0b1a14; }
+  html[data-theme="light"] .gate-fine{ color:#6d8378; }
+  html[data-theme="light"] #rotate{ background:#eef7f2; color:#0b1a14; }
 </style>
 </head>
 <body>
@@ -168,6 +206,8 @@
     <canvas id="game" width="960" height="540"></canvas>
     <div id="tapJump" class="touch"></div>
     <div id="tapDuck" class="touch"></div>
+
+    <button id="themeBtn" type="button" aria-label="Switch theme">☀</button>
 
     <a id="brand" href="https://ozvor.com" target="_blank" rel="noopener" aria-label="Ozvor">
       <svg width="20" height="20" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0a0f0d"/><circle cx="16" cy="16" r="10.5" fill="none" stroke="#27c98a" stroke-width="3" stroke-dasharray="18.85 3.13" stroke-linecap="round" transform="rotate(-84 16 16)"/><circle cx="16" cy="16" r="2.4" fill="#27c98a"/></svg>
@@ -277,6 +317,51 @@ const C = {
   deep:"#06140e", surface:"#0e1714",
   shadow:"rgba(0,0,0,.4)",
 };
+
+/* ---- Skin (light/dark theme) ---------------------------------------------
+   The canvas is painted every frame from C.* and the SK.* environment colors,
+   so flipping these live re-themes the whole game on the next frame. Brand
+   accents (green/gold/red) stay constant — they read on both grounds. The
+   flippable C keys (ui/uiDim text, deep/surface) are MUTATED in place so the
+   ~40 existing C.ui / C.uiDim reads pick up the new value with no other edits. */
+const SKINS = {
+  dark: {
+    sky0:"#0a0f0d", sky1:"#06120d", ground:"#05100b", grid:"rgba(39,201,138,0.05)",
+    panel:"#08130e", panelBar:"#0e1714", rack:"#0b1611", dimRGB:"6,15,11",
+    ui:"#f6faf7", uiDim:"#a6b4ac", deep:"#06140e", surface:"#0e1714",
+  },
+  light: {
+    sky0:"#e6f4ec", sky1:"#f3faf6", ground:"#cbe4d8", grid:"rgba(18,80,58,0.10)",
+    panel:"#ffffff", panelBar:"#dcefe6", rack:"#e3efe8", dimRGB:"228,242,236",
+    ui:"#0b1a14", uiDim:"#4e635b", deep:"#eef7f2", surface:"#ffffff",
+  },
+};
+let SK = SKINS.dark;
+function applySkin(mode){
+  SK = SKINS[mode] || SKINS.dark;
+  C.ui = SK.ui; C.uiDim = SK.uiDim; C.deep = SK.deep; C.surface = SK.surface;
+  document.documentElement.setAttribute("data-theme", mode);
+  try{ localStorage.setItem("geo_theme", mode); }catch(e){}
+  const tb = document.getElementById("themeBtn");
+  if(tb){ tb.textContent = mode === "light" ? "☾" : "☀"; tb.setAttribute("aria-label", mode === "light" ? "Switch to dark theme" : "Switch to light theme"); }
+}
+(function initSkin(){
+  let mode = "dark";
+  try{
+    const saved = localStorage.getItem("geo_theme");
+    if(saved === "light" || saved === "dark") mode = saved;
+    else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) mode = "light";
+  }catch(e){}
+  applySkin(mode);
+})();
+(function bindThemeBtn(){
+  const tb = document.getElementById("themeBtn");
+  if(!tb) return;
+  tb.addEventListener("click", ()=>{
+    const now = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    applySkin(now);
+  });
+})();
 
 /* --------------------------- PHASES = os 5 engines ------------------------ */
 /* Cada fase = um mecanismo de busca de IA. Fica mais difícil a cada um.
@@ -717,10 +802,10 @@ function tri(cx,cy,s){ ctx.beginPath(); ctx.moveTo(cx,cy-s); ctx.lineTo(cx-s,cy+
 
 function drawBackground(){
   const g=ctx.createLinearGradient(0,0,0,CONFIG.GROUND_Y);
-  g.addColorStop(0,"#0a0f0d"); g.addColorStop(1,"#06120d");
+  g.addColorStop(0,SK.sky0); g.addColorStop(1,SK.sky1);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,CONFIG.GROUND_Y);
   // grade de circuito
-  ctx.strokeStyle="rgba(39,201,138,0.05)"; ctx.lineWidth=1;
+  ctx.strokeStyle=SK.grid; ctx.lineWidth=1;
   const gx=80, ox=((bgFar*0.5%gx)+gx)%gx; ctx.beginPath();
   for(let x=-ox;x<W;x+=gx){ ctx.moveTo(x,0); ctx.lineTo(x,CONFIG.GROUND_Y); }
   for(let y=54;y<CONFIG.GROUND_Y;y+=68){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
@@ -728,9 +813,9 @@ function drawBackground(){
   // painéis "AI answer" (paralaxe far)
   const winW=176, gap=270, off=((bgFar%gap)+gap)%gap;
   for(let x=-off; x<W+winW; x+=gap){
-    R(x, 44, winW, 152, "#08130e");
+    R(x, 44, winW, 152, SK.panel);
     ctx.strokeStyle="rgba(39,201,138,0.18)"; ctx.strokeRect((x|0)+0.5, 44.5, winW, 152);
-    R(x, 44, winW, 16, "#0e1714");
+    R(x, 44, winW, 16, SK.panelBar);
     R(x+8, 49, 34, 6, T.accent);                 // chip "AI"
     // barras de citação
     const bars=[120,86,138,70,104,54];
@@ -742,13 +827,13 @@ function drawBackground(){
   const dgap=300, doff=((bgMid%dgap)+dgap)%dgap, tblink=Math.floor(performance.now()/280);
   for(let x=-doff; x<W+dgap; x+=dgap){
     const ry=CONFIG.GROUND_Y-124, rw=92, rh=124;
-    R(x+30, ry, rw, rh, "#0b1611"); R(x+30, ry, rw, 6, "#123c2c"); R(x+30, ry+rh-4, rw, 4, "#05100b");
+    R(x+30, ry, rw, rh, SK.rack); R(x+30, ry, rw, 6, "#123c2c"); R(x+30, ry+rh-4, rw, 4, SK.ground);
     for(let r=0;r<7;r++){ const yy=ry+13+r*15; R(x+38, yy, rw-16, 9, "#04120c");
       for(let c=0;c<5;c++){ const on=((tblink+r*2+c)%4!==0); R(x+42+c*13, yy+2, 6,5, on?(c%2?C.gold:T.accent):"#0e2019"); } }
   }
 }
 function drawFloor(){
-  R(0,CONFIG.GROUND_Y,W,H-CONFIG.GROUND_Y,"#05100b");
+  R(0,CONFIG.GROUND_Y,W,H-CONFIG.GROUND_Y,SK.ground);
   R(0,CONFIG.GROUND_Y,W,4,T.accent);
   R(0,CONFIG.GROUND_Y+4,W,2,"rgba(39,201,138,.22)");
   const gap=70, off=((bgNear%gap)+gap)%gap;
@@ -882,7 +967,7 @@ function drawHUD(){
 }
 
 /* ------------------------------- TELAS ------------------------------------ */
-function dim(a){ ctx.fillStyle="rgba(6,15,11,"+a+")"; ctx.fillRect(0,0,W,H); }
+function dim(a){ ctx.fillStyle="rgba("+SK.dimRGB+","+a+")"; ctx.fillRect(0,0,W,H); }
 function blink(){ return Math.floor(performance.now()/500)%2===0; }
 function brandLine(y){ ctx.font='13px "Schibsted Grotesk", sans-serif'; ctx.fillStyle=C.uiDim; ctx.textAlign="center"; ctx.fillText("by OZVOR  ·  ozvor.com", W/2, y); }
 function drawTrophy(cx,ty){
