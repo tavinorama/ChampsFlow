@@ -27,7 +27,33 @@ export async function middleware(request: NextRequest) {
   // Edge-runtime-safe nonce (no Node Buffer available here).
   const nonce = btoa(crypto.randomUUID());
 
-  const csp = [
+  // The GEO Search Runner game (/play → static public/geo-runner.html) is a
+  // self-contained page whose ENTIRE engine is one big inline <script>. The
+  // nonce + 'strict-dynamic' app CSP below blocks any inline script without the
+  // per-request nonce — and a STATIC file can't be stamped with it — so the game
+  // never ran in prod ("not playable"), only locally where there's no CSP. Serve
+  // that one trusted, self-contained page a scoped CSP that allows its inline
+  // script/style. It renders no server-side or user data into scripts, so there
+  // is no injection surface; the relaxation is confined to this exact path.
+  const gamePath =
+    request.nextUrl.pathname === "/play" ||
+    request.nextUrl.pathname === "/geo-runner.html";
+
+  const gameCsp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+
+  const appCsp = [
     "default-src 'self'",
     // Nonce + strict-dynamic for Next.js inline + chunk scripts.
     // Host allowlist (js.stripe.com) is a fallback for browsers that ignore
@@ -58,6 +84,8 @@ export async function middleware(request: NextRequest) {
     "frame-ancestors 'none'",
     "upgrade-insecure-requests",
   ].join("; ");
+
+  const csp = gamePath ? gameCsp : appCsp;
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
