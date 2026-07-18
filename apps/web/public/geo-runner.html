@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0f0d" />
+<meta name="description" content="GEO Search Runner by Ozvor — an 8-bit game about getting your brand cited by AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overviews)." />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230a0f0d'/%3E%3Ccircle cx='16' cy='16' r='10.5' fill='none' stroke='%2327c98a' stroke-width='3' stroke-dasharray='18.85 3.13' stroke-linecap='round' transform='rotate(-84 16 16)'/%3E%3Ccircle cx='16' cy='16' r='2.4' fill='%2327c98a'/%3E%3C/svg%3E" />
+<title>GEO Search Runner — by Ozvor (8-bit)</title>
+<link rel="canonical" href="https://ozvor.com/play" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Ozvor" />
+<meta property="og:title" content="GEO Search Runner — get cited by AI (8-bit game)" />
+<meta property="og:description" content="Dodge the 404s, get cited by all 5 AI engines. A free 8-bit game by Ozvor. Play it — then see if AI really cites YOUR brand." />
+<meta property="og:url" content="https://ozvor.com/play" />
+<meta property="og:image" content="https://ozvor.com/og-default.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="GEO Search Runner — get cited by AI (8-bit game)" />
+<meta name="twitter:description" content="Play the free 8-bit GEO game by Ozvor — then check if AI cites your real brand." />
+<meta name="twitter:image" content="https://ozvor.com/og-default.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Schibsted+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0f0d; --surface:#0e1714; --deep:#06140e;
+    --ink:#f6faf7; --muted:#a6b4ac;
+    --green:#27c98a; --green-hi:#2de09a; --mint:#5fdfa8; --gold:#e6a93f;
+    --border:rgba(180,214,198,0.14);
+    --brand:"Schibsted Grotesk", -apple-system, "Segoe UI", sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);}
+  body{
+    display:flex;align-items:center;justify-content:center;min-height:100%;
+    font-family:var(--brand); color:var(--ink);
+    background:radial-gradient(1200px 620px at 50% -12%, #123c2c 0%, #0a0f0d 62%);
+    overflow:hidden; -webkit-user-select:none; user-select:none; touch-action:none;
+  }
+  #wrap{
+    width:min(96vw, calc(94vh * 16 / 9), 980px); aspect-ratio:16/9; position:relative;
+    border:3px solid rgba(39,201,138,.28); border-radius:14px;
+    box-shadow:0 0 0 3px #06120d, 0 30px 90px rgba(0,0,0,.6), 0 0 70px rgba(39,201,138,.08);
+    background:#000; overflow:hidden;
+  }
+  canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}
+  /* zonas de toque: metade esquerda = pular, metade direita = abaixar */
+  .touch{
+    position:absolute;bottom:0;height:100%;width:50%;display:none;z-index:5;
+    align-items:flex-end;justify-content:center;padding-bottom:7%;
+    font-family:var(--mono);font-size:10px;color:#bfe6d4;text-align:center;line-height:1.6;white-space:pre;pointer-events:auto;
+  }
+  #tapJump{left:0;border-right:2px dashed rgba(39,201,138,.10);}
+  #tapDuck{right:0;}
+  #tapJump::after{content:"TAP = JUMP\Ahold = higher\Atap again = double";}
+  #tapDuck::after{content:"HOLD = DUCK";}
+  @media (pointer:coarse){
+    .touch{display:flex; animation:tapHint 6s ease-out forwards;}
+    #hint{display:none;}
+  }
+  @keyframes tapHint{ 0%,55%{opacity:.5;} 100%{opacity:0;} }
+  #hint{
+    position:absolute;left:50%;bottom:8px;transform:translateX(-50%);
+    font-family:var(--mono);font-size:10px;color:#7fbfa2;opacity:0;transition:opacity .3s;pointer-events:none;text-align:center;width:92%;
+  }
+  #wrap:hover #hint{opacity:.75;}
+  /* selo/link da marca no canto */
+  #brand{
+    position:absolute;top:9px;left:11px;z-index:6;display:flex;align-items:center;gap:7px;
+    text-decoration:none;color:var(--muted);font-family:var(--brand);font-weight:600;font-size:12px;letter-spacing:.3px;
+    opacity:.9;
+  }
+  #brand svg{display:block;filter:drop-shadow(0 0 6px rgba(39,201,138,.4));}
+  #brand:hover{color:var(--ink);}
+  @media (pointer:coarse){ #brand{ top:8px; left:9px; } }
+
+  /* ---- Botões de toque (mobile) ---- */
+  #btnMenu{
+    position:absolute; top:7px; right:8px; z-index:14;
+    font-family:var(--mono); font-weight:700; font-size:14px; line-height:1;
+    padding:9px 12px; color:#eafff6; background:rgba(14,23,20,.92);
+    border:2px solid rgba(39,201,138,.4); border-radius:9px; cursor:pointer;
+  }
+  #btnMenu:active{ filter:brightness(1.25); }
+  #modBar{ position:absolute; left:50%; top:56%; transform:translate(-50%,-50%);
+    width:94%; z-index:14; flex-wrap:wrap; gap:8px; justify-content:center; align-items:center; }
+  #modBar:not([hidden]){ display:flex; }
+  .mp-b{
+    font-family:var(--mono); font-weight:700; font-size:11px; line-height:1.2;
+    padding:12px 12px; color:#d7f5e7; background:#0e1714; border:2px solid rgba(39,201,138,.35);
+    border-radius:9px; cursor:pointer;
+  }
+  .mp-b.gold{ border-color:rgba(230,169,63,.55); color:var(--gold); }
+  .mp-b.locked{ opacity:.4; }
+  .mp-b:active{ filter:brightness(1.3); }
+  #touchMenu{ position:absolute; inset:0; z-index:22; align-items:center; justify-content:center;
+    background:rgba(6,18,13,.86); }
+  #touchMenu:not([hidden]){ display:flex; }
+  .tm-card{ background:#0e1714; border:2px solid rgba(39,201,138,.3); border-radius:16px; padding:22px;
+    display:flex; flex-direction:column; gap:11px; min-width:220px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .tm-title{ font-family:var(--brand); font-weight:800; color:var(--ink); font-size:18px; margin-bottom:4px; }
+  .tm-b{ font-family:var(--mono); font-weight:700; font-size:12px; padding:14px 14px; border:none;
+    border-radius:10px; background:var(--green); color:#06120d; cursor:pointer; }
+  .tm-b[data-act=sound]{ background:var(--gold); }
+  .tm-b[data-act=modules]{ background:#17332a; color:#d7f5e7; }
+  .tm-b:active{ filter:brightness(1.12); }
+
+  /* gire o celular */
+  #rotate{
+    position:fixed; inset:0; z-index:50; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:#0a0f0d; color:var(--ink); text-align:center; padding:24px;
+  }
+  #rotate .ico{ font-size:46px; animation:spin 2.4s ease-in-out infinite; }
+  #rotate .t1{ font-family:var(--brand); font-weight:800; color:var(--green); font-size:18px; }
+  #rotate .t2{ font-family:var(--mono); color:var(--muted); font-size:11px; line-height:1.8; }
+  @keyframes spin{ 0%,40%{transform:rotate(0)} 60%,100%{transform:rotate(-90deg)} }
+  @media (orientation:portrait) and (pointer:coarse){ #rotate{ display:flex; } }
+
+  /* ---- Email capture (lead magnet Ozvor) ---- */
+  #leadGate{
+    position:absolute; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+    background:rgba(6,15,11,.9); padding:14px; touch-action:auto; overflow:auto;
+  }
+  #leadGate[hidden]{ display:none; }
+  #leadGate, #leadGate *{ -webkit-user-select:auto; user-select:auto; }
+  .gate-card{
+    width:min(94%,580px); background:#0e1714; border:2px solid rgba(39,201,138,.28); border-radius:18px;
+    box-shadow:0 24px 70px rgba(0,0,0,.6), 0 0 60px rgba(39,201,138,.08); padding:24px 22px; text-align:center;
+  }
+  .gate-logo{ display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:12px; color:var(--muted); font-weight:600; font-size:13px; }
+  .gate-title{ font-family:var(--brand); font-weight:800; color:var(--green); font-size:20px; line-height:1.3; margin-bottom:8px; }
+  .gate-sub{ font-family:var(--mono); color:var(--mint); font-size:11px; line-height:1.7; margin-bottom:12px; }
+  .gate-msg{ color:var(--muted); font-size:13px; line-height:1.6; margin-bottom:16px; }
+  #leadGate input[type=email]{
+    width:100%; font-family:var(--mono); font-weight:500; font-size:16px; padding:14px 13px; margin-bottom:12px;
+    background:#06140e; border:2px solid rgba(39,201,138,.3); border-radius:10px; color:var(--ink); outline:none;
+  }
+  #leadGate input[type=email]:focus{ border-color:var(--green); }
+  .gate-actions{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  #leadGate button{
+    font-family:var(--mono); font-weight:700; font-size:12px; padding:14px 18px; border:none; border-radius:10px;
+    cursor:pointer;
+  }
+  #leadSend{ background:var(--green); color:#06120d; } #leadSkip{ background:#17332a; color:#bfe6d4; }
+  #leadGate button:hover{ filter:brightness(1.1); }
+  .gate-cta{ display:block; margin-top:16px; font-family:var(--mono); font-size:11px; color:var(--gold); text-decoration:none; }
+  .gate-cta:hover{ text-decoration:underline; }
+  .gate-thanks{ font-family:var(--mono); color:var(--green); font-size:12px; line-height:1.8; }
+  .gate-fine{ color:#6d8378; font-size:10px; margin-top:12px; line-height:1.7; }
+  a.raw{ color:inherit; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="960" height="540"></canvas>
+    <div id="tapJump" class="touch"></div>
+    <div id="tapDuck" class="touch"></div>
+
+    <a id="brand" href="https://ozvor.com" target="_blank" rel="noopener" aria-label="Ozvor">
+      <svg width="20" height="20" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0a0f0d"/><circle cx="16" cy="16" r="10.5" fill="none" stroke="#27c98a" stroke-width="3" stroke-dasharray="18.85 3.13" stroke-linecap="round" transform="rotate(-84 16 16)"/><circle cx="16" cy="16" r="2.4" fill="#27c98a"/></svg>
+      <span>OZVOR</span>
+    </a>
+
+    <div id="hint">SPACE / click / ↑ = jump (hold = higher, again = double) &nbsp;•&nbsp; ↓ = duck &nbsp;•&nbsp; P = pause &nbsp;•&nbsp; M = sound</div>
+
+    <!-- Controles de toque (mobile) -->
+    <button id="btnMenu" aria-label="Menu" hidden>&#9776;</button>
+    <div id="modBar" hidden>
+      <button class="mp-b" data-mod="0">1&middot;AI OVERVIEWS</button>
+      <button class="mp-b" data-mod="1">2&middot;PERPLEXITY</button>
+      <button class="mp-b" data-mod="2">3&middot;GEMINI</button>
+      <button class="mp-b" data-mod="3">4&middot;CHATGPT</button>
+      <button class="mp-b" data-mod="4">5&middot;CLAUDE</button>
+      <button class="mp-b gold" data-mod="5">&#9733; AUTOPILOT</button>
+    </div>
+    <div id="touchMenu" hidden>
+      <div class="tm-card">
+        <div class="tm-title">PAUSED</div>
+        <button class="tm-b" data-act="resume">RESUME</button>
+        <button class="tm-b" data-act="sound">SOUND: ON</button>
+        <button class="tm-b" data-act="modules">ENGINES</button>
+      </div>
+    </div>
+
+    <!-- Email capture (lead magnet) — posts to /api/game-lead (Ozvor lead funnel). -->
+    <div id="leadGate" hidden>
+      <div class="gate-card">
+        <div class="gate-logo">
+          <svg width="18" height="18" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0a0f0d"/><circle cx="16" cy="16" r="10.5" fill="none" stroke="#27c98a" stroke-width="3" stroke-dasharray="18.85 3.13" stroke-linecap="round" transform="rotate(-84 16 16)"/><circle cx="16" cy="16" r="2.4" fill="#27c98a"/></svg>
+          <span>OZVOR</span>
+        </div>
+        <div class="gate-title" id="gateTitle">NICE RUN!</div>
+        <div class="gate-sub" id="gateScore">You scored 0 AI Visibility.</div>
+        <div class="gate-msg">Is AI recommending you — or your competitor? Drop your email for GEO tips + new levels. Totally optional.</div>
+        <form id="leadForm">
+            <p style="display:none"><label>Don't fill this: <input name="bot-field" /></label></p>
+          <input type="email" name="email" id="leadEmail" placeholder="you@brand.com" autocomplete="email" required />
+          <input type="hidden" name="ai-visibility" id="leadScore" value="" />
+          <input type="hidden" name="engine-reached" id="leadRole" value="" />
+          <div class="gate-actions">
+            <button type="submit" id="leadSend">GET GEO TIPS</button>
+            <button type="button" id="leadSkip">SKIP &raquo;</button>
+          </div>
+        </form>
+        <div class="gate-thanks" id="gateThanks" hidden>You're in. 🎉<br/>Press SPACE / click to play again.</div>
+        <a class="gate-cta" href="/test">Real brand? See if AI actually cites you — free 60s check &raquo;</a>
+        <div class="gate-fine">No spam. Unsubscribe anytime.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Em retrato no celular: peça pra girar -->
+  <div id="rotate">
+    <div class="ico">📱</div>
+    <div class="t1">ROTATE YOUR PHONE</div>
+    <div class="t2">GEO Search Runner plays in landscape.<br/>Turn your device sideways to play.</div>
+  </div>
+<script>
+/* ============================================================================
+   GEO SEARCH RUNNER — by Ozvor (ozvor.com)
+   Um endless runner 8-bit sobre GEO (Generative Engine Optimization):
+   faça sua marca ser CITADA pelas IAs (ChatGPT, Claude, Perplexity, Gemini,
+   Google AI Overviews) — ou seja enterrada.
+
+   Controles:
+     ESPAÇO / seta-cima / W / clique / tap-esquerda = pular
+        - segurar = pulo mais alto | apertar de novo no ar = PULO DUPLO
+     seta-baixo / S / segurar-tap-direita = abaixar (queda rápida no ar)
+     P = pausar | M = som | 1-5 = engine | 6 = AUTOPILOT | ESC = menu
+
+   Editar: CONFIG (física) e PHASES (os 5 engines de IA).
+============================================================================ */
+(() => {
+"use strict";
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width, H = canvas.height;
+
+/* ----------------------------- CONFIG (física) ---------------------------- */
+const CONFIG = {
+  GROUND_Y: 470, PLAYER_X: 165,
+  GRAVITY: 2200, FALL_GRAVITY: 3050, FAST_FALL: 4400,
+  JUMP_V: -915, JUMP_V2: -820, MIN_JUMP_VY: -560, MAX_FALL: 2000,
+  JUMP_BUFFER: 0.13, COYOTE: 0.10,
+  ENERGY_DRAIN: 5.5, GHOST_CHANCE: 0.24,
+};
+
+/* Cores — paleta da marca Ozvor */
+const C = {
+  ink:"#04120c", paper:"#f6faf7",
+  red:"#f0584e", redDark:"#7c2a26",
+  gold:"#e6a93f", goldInk:"#e6c07a",
+  green:"#27c98a", greenHi:"#2de09a", mint:"#5fdfa8",
+  ui:"#f6faf7", uiDim:"#a6b4ac",
+  greenUi:"#27c98a",      // alias (HUD/telas)
+  coffeeFoam:"#5fdfa8",   // partículas do boost
+  calGreen:"#27c98a",     // partículas da citação
+  ghost:"#5fdfa8",        // partículas do bônus
+  deep:"#06140e", surface:"#0e1714",
+  shadow:"rgba(0,0,0,.4)",
+};
+
+/* --------------------------- PHASES = os 5 engines ------------------------ */
+/* Cada fase = um mecanismo de busca de IA. Fica mais difícil a cada um.
+   goal = "metros" (impressões) até o próximo engine. */
+const PHASES = [
+  {
+    title:"AI OVERVIEWS", role:"Google AI Overviews", tag:"Classic search is dying",
+    blurb:"Ten blue links are fading. Show up in the AI Overview or vanish. Get crawled, get quotable.",
+    goal:340, speedStart:330, speedMax:560, accel:5.5,
+    spawnMin:1.10, spawnMax:1.95, flyerChance:0.28, bossEvery:23,
+    energyLabel:"READINESS", countLabel:"CITATIONS",
+    boost:"SCHEMA", deal:"CITED", dealMin:1500, dealMax:3200,
+    bonus:"TOP OF OVERVIEW", bonusMin:4000, bonusMax:6500,
+    bossTitle:"GOOGLE AI OVERVIEW",
+    ground:["THIN CONTENT","NO SCHEMA","KEYWORD STUFFING","SLOW PAGE","DUPLICATE"],
+    flyer:["POP-UP AD","COOKIE WALL","CLICKBAIT"],
+    boss:["SHOW YOUR SOURCES!","EARN THE OVERVIEW!","WHO SAYS SO?!"],
+    accent:"#27c98a",
+    attire:{ chassis:"#155041", trim:"#27c98a", screen:"#04140e" },
+  },
+  {
+    title:"PERPLEXITY", role:"The citation engine", tag:"No source, no mention",
+    blurb:"Perplexity lives on citations. If you're not a source, you don't exist. Rack up references.",
+    goal:420, speedStart:380, speedMax:620, accel:6.5,
+    spawnMin:1.00, spawnMax:1.75, flyerChance:0.33, bossEvery:21,
+    energyLabel:"AUTHORITY", countLabel:"CITATIONS",
+    boost:"CITATION-READY", deal:"CITED [1]", dealMin:6000, dealMax:14000,
+    bonus:"TOP SOURCE", bonusMin:18000, bonusMax:32000,
+    bossTitle:"PERPLEXITY",
+    ground:["NO CITATION","LOW AUTHORITY","OUTDATED INFO","BROKEN LINK","NO E-E-A-T"],
+    flyer:["AI SLOP","FAKE STAT","THIN AI PAGE"],
+    boss:["CITE OR DIE!","LINK YOUR CLAIM!","SOURCE IT!"],
+    accent:"#5fdfa8",
+    attire:{ chassis:"#0e4238", trim:"#5fdfa8", screen:"#062018" },
+  },
+  {
+    title:"GEMINI", role:"Google's assistant", tag:"Grounded or skipped",
+    blurb:"Gemini wants grounded, structured, fresh. Feed it clean data or get skipped.",
+    goal:500, speedStart:430, speedMax:680, accel:7.5,
+    spawnMin:0.95, spawnMax:1.65, flyerChance:0.37, bossEvery:19,
+    energyLabel:"FRESHNESS", countLabel:"MENTIONS",
+    boost:"STRUCTURED DATA", deal:"GROUNDED", dealMin:12000, dealMax:26000,
+    bonus:"GEMINI PICK", bonusMin:30000, bonusMax:55000,
+    bossTitle:"GEMINI",
+    ground:["UNGROUNDED CLAIM","MESSY DATA","NO FAQ","STALE PAGE","VAGUE QUERY"],
+    flyer:["AUTOPLAY VIDEO","NEWSLETTER POPUP","AD BANNER"],
+    boss:["GROUND YOUR ANSWER!","STRUCTURE IT!","STAY FRESH!"],
+    accent:"#2de09a",
+    attire:{ chassis:"#0f4a34", trim:"#2de09a", screen:"#052018" },
+  },
+  {
+    title:"CHATGPT", role:"The big one", tag:"Be the name it says",
+    blurb:"Everyone asks ChatGPT who to buy from. Be the name it says — not your competitor.",
+    goal:560, speedStart:470, speedMax:730, accel:8.5,
+    spawnMin:0.90, spawnMax:1.55, flyerChance:0.40, bossEvery:18,
+    energyLabel:"TRUST", countLabel:"MENTIONS",
+    boost:"FRESH CONTENT", deal:"NAMED YOU", dealMin:25000, dealMax:48000,
+    bonus:"THE RECOMMENDATION", bonusMin:60000, bonusMax:95000,
+    bossTitle:"CHATGPT",
+    ground:["MODEL CUTOFF","NOT IN TRAINING","BLOCKED CRAWLER","ROBOTS.TXT","PAYWALL"],
+    flyer:["PROMPT NOISE","HALLUCINATION","ZERO-CLICK"],
+    boss:["WHO DO I RECOMMEND?!","EARN THE MENTION!","BE THE ANSWER!"],
+    accent:"#e6a93f",
+    attire:{ chassis:"#4a3a14", trim:"#e6a93f", screen:"#241c08" },
+  },
+  {
+    title:"CLAUDE", role:"The frontier", tag:"Prove you're trustworthy",
+    blurb:"Claude reads carefully and cites the trustworthy. Prove E-E-A-T. Become the default answer.",
+    goal:640, speedStart:510, speedMax:820, accel:9.5,
+    spawnMin:0.85, spawnMax:1.45, flyerChance:0.44, bossEvery:16,
+    energyLabel:"E-E-A-T", countLabel:"CITATIONS",
+    boost:"EXPERTISE PROOF", deal:"CLAUDE CITED YOU", dealMin:50000, dealMax:90000,
+    bonus:"THE DEFAULT ANSWER", bonusMin:120000, bonusMax:200000,
+    bossTitle:"CLAUDE",
+    ground:["NO EXPERTISE","UNTRUSTWORTHY","THIN SOURCES","AI BIAS","CONTEXT OVERFLOW"],
+    flyer:["DEEPFAKE","MODEL DRIFT","TOKEN LIMIT"],
+    boss:["PROVE E-E-A-T!","SHOW EXPERTISE!","EARN THE DEFAULT!"],
+    accent:"#e6c07a",
+    attire:{ chassis:"#4a3f1e", trim:"#e6c07a", screen:"#241f0c" },
+  },
+];
+const LAST = PHASES.length-1;
+
+/* ------------------------------- ÁUDIO ------------------------------------ */
+const Audio8 = (() => {
+  let actx=null, muted=false, musicTimer=null;
+  function ensure(){ if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } if(actx && actx.state==="suspended") actx.resume(); }
+  function blip(freq,dur,type="square",vol=0.18,slideTo=null){
+    if(!actx||muted) return;
+    const t=actx.currentTime, o=actx.createOscillator(), g=actx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo,t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t+dur+0.02);
+  }
+  const sfx = {
+    jump(){ blip(430,0.12,"square",0.16,780); },
+    jump2(){ blip(620,0.11,"square",0.15,980); },
+    coffee(){ blip(880,0.07,"square",0.18,1320); setTimeout(()=>blip(1180,0.08,"square",0.16),60); },
+    meeting(){ blip(740,0.07,"square",0.18,990); setTimeout(()=>blip(990,0.10,"square",0.16,1480),70); },
+    hit(){ blip(220,0.30,"sawtooth",0.22,70); },
+    boss(){ blip(180,0.18,"square",0.2,120); setTimeout(()=>blip(150,0.22,"square",0.2,90),160); },
+    duck(){ blip(300,0.06,"square",0.12,240); },
+    over(){ [660,520,400,300,200].forEach((f,i)=>setTimeout(()=>blip(f,0.16,"square",0.2),i*120)); },
+    start(){ [400,520,660,880].forEach((f,i)=>setTimeout(()=>blip(f,0.12,"square",0.18),i*90)); },
+    promote(){ [523,659,784,1047,1319].forEach((f,i)=>setTimeout(()=>blip(f,0.14,"square",0.2),i*90)); },
+    win(){ [523,659,784,1047,784,1047,1319,1568].forEach((f,i)=>setTimeout(()=>blip(f,0.16,"square",0.2),i*130)); },
+  };
+  const bass=[130.8,130.8,98,110], arp=[261.6,329.6,392.0,329.6]; let step=0, interval=240;
+  function music(){ if(!actx||muted) return; const i=step%4; blip(bass[i],0.18,"triangle",0.10); blip(arp[i],0.12,"square",0.05); if(step%2===0) blip(arp[(i+2)%4]*2,0.06,"square",0.03); step++; }
+  function startMusic(ms){ interval=ms||interval; if(musicTimer) clearInterval(musicTimer); ensure(); musicTimer=setInterval(music,interval); }
+  function setTempo(ms){ interval=ms; if(musicTimer){ clearInterval(musicTimer); musicTimer=setInterval(music,interval); } }
+  function stopMusic(){ if(musicTimer){ clearInterval(musicTimer); musicTimer=null; } }
+  function toggleMute(){ muted=!muted; if(muted) stopMusic(); return muted; }
+  return { ensure, sfx, startMusic, setTempo, stopMusic, toggleMute, isMuted:()=>muted };
+})();
+
+/* ------------------------------- INPUT ------------------------------------ */
+const input = { jumpBuf:0, jumpHeld:false, duckHeld:false };
+const held = { space:false, up:false, w:false, mouse:false, touch:false };
+function refreshHeld(){ input.jumpHeld = held.space||held.up||held.w||held.mouse||held.touch; }
+const gateOpen = ()=> window.__geoGateOpen===true;
+const typing = (e)=>{ const t=e.target; return t && (t.tagName==="INPUT"||t.tagName==="TEXTAREA"); };
+
+function queueJump(){
+  Audio8.ensure();
+  if((game.state==="over"||game.state==="win") && gateOpen()) return;
+  if(game.state==="menu"){ startGame(0); return; }
+  if(game.state==="over"||game.state==="win"){ if(game.overCooldown<=0) startGame(0); return; }
+  if(game.state==="paused"){ game.state="playing"; return; }
+  if(game.state==="promo"){ game.promoTimer=Math.min(game.promoTimer,0.15); return; }
+  if(game.state==="playing"){ input.jumpBuf=CONFIG.JUMP_BUFFER; }
+}
+function setDuck(v){ if(game.state==="playing") input.duckHeld=v; }
+function selectModule(idx){
+  if(gateOpen()) return;
+  if(game.state==="playing"||game.state==="promo") return;
+  if(idx===5){ if(autopilotUnlocked) startGame(0,true); else Audio8.sfx.hit(); return; }
+  if(idx<0||idx>LAST) return;
+  if(idx<=unlockedMax){ startGame(idx); } else { Audio8.sfx.hit(); }
+}
+
+addEventListener("keydown",(e)=>{
+  if(typing(e)) return;
+  if(["Space","ArrowUp","ArrowDown","KeyP","KeyM","Enter","KeyS","KeyW"].includes(e.code)) e.preventDefault();
+  if(e.code==="Space"){ if(!e.repeat){ held.space=true; refreshHeld(); queueJump(); } }
+  else if(e.code==="ArrowUp"){ if(!e.repeat){ held.up=true; refreshHeld(); queueJump(); } }
+  else if(e.code==="KeyW"){ if(!e.repeat){ held.w=true; refreshHeld(); queueJump(); } }
+  else if(e.code==="Enter"){ if(!e.repeat) queueJump(); }
+  else if(e.code==="ArrowDown"||e.code==="KeyS"){ if(!e.repeat){ setDuck(true); Audio8.sfx.duck(); } }
+  else if(e.code==="KeyP" && !e.repeat){ if(game.state==="playing") game.state="paused"; else if(game.state==="paused") game.state="playing"; }
+  else if(e.code==="KeyM" && !e.repeat){ const m=Audio8.toggleMute(); if(!m && game.state==="playing") Audio8.startMusic(); }
+  else if((e.code==="Escape"||e.code==="Backspace") && !e.repeat){ if(!gateOpen() && game.state!=="menu"){ Audio8.stopMusic(); game.state="menu"; } }
+  else if(/^Digit[1-6]$/.test(e.code) && !e.repeat){ selectModule(+e.code.charAt(5)-1); }
+  else if(/^Numpad[1-6]$/.test(e.code) && !e.repeat){ selectModule(+e.code.charAt(6)-1); }
+});
+addEventListener("keyup",(e)=>{
+  if(typing(e)) return;
+  if(e.code==="Space"){ held.space=false; refreshHeld(); }
+  else if(e.code==="ArrowUp"){ held.up=false; refreshHeld(); }
+  else if(e.code==="KeyW"){ held.w=false; refreshHeld(); }
+  else if(e.code==="ArrowDown"||e.code==="KeyS"){ setDuck(false); }
+});
+canvas.addEventListener("mousedown",()=>{ held.mouse=true; refreshHeld(); queueJump(); });
+addEventListener("mouseup",()=>{ held.mouse=false; refreshHeld(); });
+
+const tapJump=document.getElementById("tapJump"), tapDuck=document.getElementById("tapDuck");
+tapJump.addEventListener("touchstart",(e)=>{ e.preventDefault(); held.touch=true; refreshHeld(); queueJump(); },{passive:false});
+tapJump.addEventListener("touchend",(e)=>{ e.preventDefault(); held.touch=false; refreshHeld(); },{passive:false});
+tapDuck.addEventListener("touchstart",(e)=>{ e.preventDefault(); Audio8.ensure(); setDuck(true); Audio8.sfx.duck(); },{passive:false});
+tapDuck.addEventListener("touchend",(e)=>{ e.preventDefault(); setDuck(false); },{passive:false});
+
+const portraitMQ = (typeof matchMedia==="function") ? matchMedia("(orientation:portrait) and (pointer:coarse)") : null;
+function onOrient(){ if(portraitMQ && portraitMQ.matches && game.state==="playing"){ input.duckHeld=false; game.state="paused"; } }
+addEventListener("resize", onOrient);
+addEventListener("orientationchange", onOrient);
+
+/* ---- botões de toque (mobile) ---- */
+const IS_TOUCH = (typeof matchMedia==="function") && matchMedia("(pointer:coarse)").matches;
+const elBtnMenu=document.getElementById("btnMenu"), elModBar=document.getElementById("modBar"), elTouchMenu=document.getElementById("touchMenu");
+const elBrand=document.getElementById("brand");
+const modBtns = elModBar ? [...elModBar.querySelectorAll("button[data-mod]")] : [];
+function syncSoundLabel(){ const b=elTouchMenu&&elTouchMenu.querySelector('[data-act=sound]'); if(b) b.textContent="SOUND: "+(Audio8.isMuted()?"OFF":"ON"); }
+function refreshModBar(){ for(const b of modBtns){ const i=+b.dataset.mod; const locked=(i===5)?!autopilotUnlocked:(i>unlockedMax); b.classList.toggle("locked",locked); } }
+if(IS_TOUCH){
+  for(const b of modBtns){ b.addEventListener("click",()=>{ Audio8.ensure(); selectModule(+b.dataset.mod); }); }
+  if(elBtnMenu) elBtnMenu.addEventListener("click",()=>{
+    Audio8.ensure();
+    if(game.state==="playing"||game.state==="paused"){ game.state="paused"; syncSoundLabel(); elTouchMenu.hidden=false; }
+    else if((game.state==="over"||game.state==="win") && !gateOpen()){ Audio8.stopMusic(); game.state="menu"; }
+  });
+  if(elTouchMenu){
+    elTouchMenu.addEventListener("click",(e)=>{ if(e.target===elTouchMenu){ elTouchMenu.hidden=true; if(game.state==="paused") game.state="playing"; } });
+    for(const b of elTouchMenu.querySelectorAll("button[data-act]")){
+      b.addEventListener("click",()=>{
+        const a=b.dataset.act;
+        if(a==="resume"){ elTouchMenu.hidden=true; if(game.state==="paused") game.state="playing"; }
+        else if(a==="modules"){ elTouchMenu.hidden=true; Audio8.stopMusic(); game.state="menu"; }
+        else if(a==="sound"){ const m=Audio8.toggleMute(); if(!m && game.state==="playing") Audio8.startMusic(); syncSoundLabel(); }
+      });
+    }
+  }
+}
+function syncTouchUI(){
+  if(!IS_TOUCH) return;
+  const st=game.state;
+  if(elModBar){ elModBar.hidden=(st!=="menu"); if(st==="menu") refreshModBar(); }
+  if(elBtnMenu) elBtnMenu.hidden=!(st==="playing"||st==="paused"||st==="over"||st==="win");
+  if(elTouchMenu && !elTouchMenu.hidden && st!=="paused" && st!=="playing") elTouchMenu.hidden=true;
+}
+
+/* ------------------------------- ESTADO ----------------------------------- */
+let best=0; try{ best=+localStorage.getItem("geo_best")||0; }catch(e){}
+let bestRole=""; try{ bestRole=localStorage.getItem("geo_best_role")||""; }catch(e){}
+let unlockedMax=0; try{ unlockedMax=Math.max(0,Math.min(LAST,+localStorage.getItem("geo_unlocked")||0)); }catch(e){}
+function unlock(idx){ if(idx>unlockedMax){ unlockedMax=idx; try{ localStorage.setItem("geo_unlocked",String(idx)); }catch(e){} } }
+let autopilotUnlocked=false; try{ autopilotUnlocked=localStorage.getItem("geo_autopilot")==="1"; }catch(e){}
+let bestAuto=0; try{ bestAuto=+localStorage.getItem("geo_best_auto")||0; }catch(e){}
+
+const game = {
+  state:"menu", phaseIdx:0, speed:330, dist:0, phaseDist:0,
+  pipeline:0, deals:0, energy:60, energyLabel:"READINESS", energized:0,
+  lives:3, invuln:0, combo:0, flash:0,
+  spawnTimer:1.0, coffeeTimer:1.2, bossTimer:23, bossWarn:0, shake:0,
+  overCooldown:0, promoTimer:0, tip:"", endRole:"",
+  master:false, loop:0, masterNext:false,
+};
+const player = { x:CONFIG.PLAYER_X, y:CONFIG.GROUND_Y-66, vy:0, w:46, hStand:66, hDuck:38, onGround:true, jumps:0, ducking:false, runT:0, coyote:0 };
+let obstacles=[], pickups=[], particles=[], floats=[], trail=[];
+let bgFar=0, bgMid=0, bgNear=0;
+let T = PHASES[0], ATT = PHASES[0].attire;
+
+/* ------------------------------- HELPERS ---------------------------------- */
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rndi=(a,b)=>Math.floor(rnd(a,b+1));
+const pick=(arr)=>arr[rndi(0,arr.length-1)];
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const money=(n)=>Math.floor(n).toLocaleString("en-US");
+function aabb(ax,ay,aw,ah,bx,by,bw,bh){ return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by; }
+function addFloat(x,y,txt,color){ floats.push({x,y,vy:-50,life:1.2,txt,color}); }
+function burst(x,y,color,n=10){ for(let i=0;i<n;i++) particles.push({x,y,vx:rnd(-160,160),vy:rnd(-240,40),life:rnd(.4,.85),color,size:rndi(3,6)}); }
+
+const TIPS = [
+  "Tip: hold JUMP to jump higher — tap again mid-air for a DOUBLE JUMP.",
+  "Tip: duck under the pop-ups and ad walls (down arrow / hold right side).",
+  "Tip: chain CITATIONS without getting hit to grow your EXECUTION combo.",
+  "Tip: the glowing star is a TOP ANSWER — it flees. Chase it with a double jump.",
+  "Tip: SCHEMA / structured data refills readiness AND doubles your points.",
+  "Tip: reach the goal to level up to the next AI engine.",
+  "Tip: Ozvor checks if ChatGPT, Claude, Perplexity, Gemini & Google cite you.",
+];
+
+/* ------------------------------- FASE ------------------------------------- */
+function masterMul(){ return game.master ? (1 + 0.14*game.loop) : 1; }
+function applyPhase(idx){
+  const ph=PHASES[idx], mm=masterMul();
+  T=ph; ATT=ph.attire;
+  game.speed=ph.speedStart*mm; game.energyLabel=ph.energyLabel;
+  game.bossTimer=Math.max(8, ph.bossEvery/mm); game.bossWarn=0;
+  game.spawnTimer=1.1; game.coffeeTimer=1.0;
+  if(!Audio8.isMuted()) Audio8.setTempo(Math.max(150,(240-idx*14)/mm));
+}
+
+/* ------------------------------- SPAWN ------------------------------------ */
+function spawnObstacle(){
+  const ph=PHASES[game.phaseIdx];
+  const canFly = game.phaseIdx>0 || game.phaseDist>60;
+  const flyer = canFly && Math.random()<ph.flyerChance;
+  if(flyer){ const h=34, w=rndi(104,140); obstacles.push({type:"flyer", x:W+40, y:CONFIG.GROUND_Y-92, w, h, label:pick(ph.flyer), t:0}); }
+  else { const h=rndi(44,60), w=rndi(42,60); obstacles.push({type:"ground", x:W+40, y:CONFIG.GROUND_Y-h, w, h, label:pick(ph.ground)}); }
+}
+function spawnBoss(){ const ph=PHASES[game.phaseIdx]; obstacles.push({type:"boss", x:W+60, y:CONFIG.GROUND_Y-118, w:96, h:118, label:pick(ph.boss), t:0}); }
+function spawnPickup(){
+  const kind = Math.random()<0.60 ? "coffee" : (Math.random()<CONFIG.GHOST_CHANCE ? "ghost":"meeting");
+  const yArc = CONFIG.GROUND_Y - rndi(120,205);
+  if(kind==="coffee") pickups.push({type:"coffee", x:W+30, y:yArc, w:32, h:32, bob:rnd(0,6)});
+  else if(kind==="meeting") pickups.push({type:"meeting", x:W+30, y:yArc, w:36, h:32, bob:rnd(0,6)});
+  else pickups.push({type:"ghost", x:W+30, y:yArc, w:34, h:34, bob:rnd(0,6), ghostVy:-30, flee:0});
+}
+
+/* ------------------------------- START / FIM ------------------------------ */
+function startGame(start, master){
+  const s=Math.max(0,Math.min(LAST,(start|0)));
+  game.master=!!master; game.loop=0; game.masterNext=false;
+  game.state="playing"; game.phaseIdx=s; game.dist=0; game.phaseDist=0;
+  game.pipeline=0; game.deals=0; game.energy=65; game.energized=0; game.shake=0;
+  game.lives=3; game.invuln=0; game.combo=0; game.flash=0;
+  obstacles=[]; pickups=[]; particles=[]; floats=[]; trail=[];
+  player.y=CONFIG.GROUND_Y-player.hStand; player.vy=0; player.onGround=true; player.jumps=0; player.ducking=false; player.coyote=0;
+  input.jumpBuf=0; input.duckHeld=false; held.touch=false; refreshHeld();
+  game.tip = game.master ? "AUTOPILOT: endless re-checks. Stay cited across every engine — forever." : pick(TIPS);
+  applyPhase(s);
+  Audio8.sfx.start(); if(!Audio8.isMuted()) Audio8.startMusic(240-s*14);
+  try{ document.dispatchEvent(new CustomEvent("geo:start")); }catch(e){}
+}
+function promote(){ game.state="promo"; game.promoTimer=2.9; game.shake=0; burst(player.x+player.w/2, player.y+20, T.accent, 26); Audio8.sfx.promote(); }
+function finishPromotion(){
+  if(game.masterNext){ game.masterNext=false; game.phaseIdx=0; } else { game.phaseIdx++; unlock(game.phaseIdx); }
+  game.phaseDist=0; obstacles=[]; pickups=[];
+  game.energy=clamp(game.energy+30,0,100);
+  player.y=CONFIG.GROUND_Y-player.hStand; player.vy=0; player.onGround=true; player.jumps=0; input.jumpBuf=0;
+  applyPhase(game.phaseIdx); game.state="playing";
+}
+function masterLoop(){ game.loop++; game.masterNext=true; game.state="promo"; game.promoTimer=2.6; game.shake=0; burst(player.x+player.w/2, player.y+20, T.accent, 26); Audio8.sfx.promote(); }
+function loseLife(){
+  game.lives--; game.combo=0; Audio8.sfx.hit(); game.shake=15;
+  burst(player.x+player.w/2, player.y+player.hStand/2, C.red, 18);
+  if(game.lives<=0){ gameOver(); return; }
+  obstacles=[]; game.invuln=1.7; game.bossWarn=0; game.spawnTimer=Math.max(game.spawnTimer,1.2);
+  player.y=CONFIG.GROUND_Y-player.hStand; player.vy=0; player.onGround=true; player.jumps=0;
+  addFloat(player.x+player.w/2, player.y-12, "DE-RANKED  ("+game.lives+" LEFT)", C.red);
+}
+function gameOver(){
+  game.state="over"; game.overCooldown=0.9; game.shake=18;
+  game.endRole=PHASES[game.phaseIdx].title; Audio8.stopMusic(); Audio8.sfx.over();
+  if(game.master){ saveAuto(); } else saveBest(PHASES[game.phaseIdx].role);
+  game.tip=pick(TIPS); burst(player.x+player.w/2, player.y+player.hStand/2, C.red, 24);
+  try{ document.dispatchEvent(new CustomEvent("geo:end",{detail:{score:Math.floor(game.pipeline), role:(game.master?"Autopilot":PHASES[game.phaseIdx].title), won:false, master:game.master}})); }catch(e){}
+}
+function win(){
+  game.state="win"; game.overCooldown=1.1; game.shake=0;
+  game.endRole="ALL 5 AIs"; Audio8.stopMusic(); Audio8.sfx.win();
+  saveBest("Cited by all 5 AIs");
+  autopilotUnlocked=true; try{ localStorage.setItem("geo_autopilot","1"); }catch(e){}
+  burst(W/2,H/2,T.accent,40);
+  try{ document.dispatchEvent(new CustomEvent("geo:end",{detail:{score:Math.floor(game.pipeline), role:"All 5 AIs", won:true}})); }catch(e){}
+}
+function saveBest(roleNote){ if(game.pipeline>best){ best=game.pipeline; bestRole=roleNote; try{ localStorage.setItem("geo_best",String(Math.floor(best))); localStorage.setItem("geo_best_role",bestRole); }catch(e){} } }
+function saveAuto(){ if(game.pipeline>bestAuto){ bestAuto=game.pipeline; try{ localStorage.setItem("geo_best_auto",String(Math.floor(bestAuto))); }catch(e){} } }
+
+/* ------------------------------- UPDATE ----------------------------------- */
+function update(dt){
+  if(game.state==="over"||game.state==="win"){ game.overCooldown=Math.max(0,game.overCooldown-dt); updateParticles(dt); updateFloats(dt); game.shake*=0.9; if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2); return; }
+  if(game.state==="promo"){ game.promoTimer-=dt; updateParticles(dt); updateFloats(dt); if(game.promoTimer<=0) finishPromotion(); return; }
+  if(game.state!=="playing") return;
+
+  const ph=PHASES[game.phaseIdx], mm=masterMul();
+  game.speed=Math.min(ph.speedMax*mm, game.speed+ph.accel*mm*dt);
+  const spd=game.speed*(game.energized>0?1.18:1)*(game.energy<=0?0.80:1);
+  game.dist+=spd*dt*0.05; game.phaseDist+=spd*dt*0.05;
+
+  game.energy=clamp(game.energy-CONFIG.ENERGY_DRAIN*dt,0,100);
+  if(game.energized>0) game.energized=Math.max(0,game.energized-dt);
+  if(game.invuln>0) game.invuln=Math.max(0,game.invuln-dt);
+  if(game.flash>0) game.flash=Math.max(0,game.flash-dt*2);
+
+  bgFar-=spd*0.15*dt; bgMid-=spd*0.45*dt; bgNear-=spd*dt;
+
+  // ---- player ----
+  player.runT+=dt*(spd/300);
+  player.ducking = input.duckHeld && player.onGround;
+  if(input.jumpBuf>0){
+    if(player.onGround||player.coyote>0){ player.vy=CONFIG.JUMP_V; player.onGround=false; player.coyote=0; player.jumps=1; input.jumpBuf=0; Audio8.sfx.jump(); }
+    else if(player.jumps<2){ player.vy=CONFIG.JUMP_V2; player.jumps=2; input.jumpBuf=0; Audio8.sfx.jump2(); burst(player.x+player.w/2, player.y+player.hStand, C.mint, 7); }
+  }
+  input.jumpBuf=Math.max(0,input.jumpBuf-dt);
+  player.coyote=Math.max(0,player.coyote-dt);
+  if(!input.jumpHeld && player.vy<CONFIG.MIN_JUMP_VY) player.vy=CONFIG.MIN_JUMP_VY;
+  let g = player.vy<0 ? CONFIG.GRAVITY : CONFIG.FALL_GRAVITY;
+  if(input.duckHeld && !player.onGround && player.vy>0) g=CONFIG.FAST_FALL;
+  player.vy=Math.min(CONFIG.MAX_FALL, player.vy+g*dt);
+  const curH=player.ducking?player.hDuck:player.hStand;
+  player.y+=player.vy*dt;
+  const floorTop=CONFIG.GROUND_Y-curH;
+  if(player.y>=floorTop){ if(!player.onGround) burst(player.x+player.w/2, CONFIG.GROUND_Y, C.mint, 7); player.y=floorTop; player.vy=0; player.onGround=true; player.jumps=0; }
+  else player.onGround=false;
+  if(player.onGround) player.coyote=CONFIG.COYOTE;
+  trail.push({x:player.x, y:player.y}); if(trail.length>8) trail.shift();
+
+  // ---- spawn ----
+  game.spawnTimer-=dt;
+  if(game.spawnTimer<=0){ spawnObstacle(); const f=clamp((game.speed-ph.speedStart*mm)/(ph.speedMax*mm-ph.speedStart*mm),0,1); game.spawnTimer=rnd(ph.spawnMin,ph.spawnMax)*(1-0.25*f)/mm; }
+  game.coffeeTimer-=dt;
+  if(game.coffeeTimer<=0){ spawnPickup(); game.coffeeTimer=rnd(1.3,2.6); }
+
+  // ---- boss ----
+  game.bossTimer-=dt;
+  if(game.bossTimer<=2 && game.bossWarn<=0 && game.bossTimer>0){ game.bossWarn=2; Audio8.sfx.boss(); }
+  if(game.bossWarn>0) game.bossWarn-=dt;
+  if(game.bossTimer<=0){ spawnBoss(); game.bossTimer=ph.bossEvery+rnd(-3,4); }
+
+  // ---- obstáculos ----
+  const hbX=player.x+9, hbW=player.w-18, hbY=player.y+6, hbH=curH-8;
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i]; o.x-=spd*dt; o.t=(o.t||0)+dt;
+    if(o.type==="flyer") o.y=CONFIG.GROUND_Y-92+Math.sin(o.t*4)*5;
+    const ox=o.x+5, oy=o.y+5, ow=o.w-10, oh=o.h-10;
+    if(game.invuln<=0 && aabb(hbX,hbY,hbW,hbH, ox,oy,ow,oh)){ loseLife(); return; }
+    if(o.x+o.w<-20) obstacles.splice(i,1);
+  }
+  // ---- prêmios ----
+  for(let i=pickups.length-1;i>=0;i--){
+    const p=pickups[i]; p.x-=spd*dt; p.bob=(p.bob||0)+dt*6;
+    if(p.type==="ghost"){ const near=Math.abs(p.x-player.x)<230; if(near){ p.flee=(p.flee||0)+dt; p.y+=p.ghostVy*dt*(1+p.flee); p.x-=42*dt; } }
+    const py=p.y+Math.sin(p.bob)*3;
+    if(aabb(hbX,hbY,hbW,hbH, p.x+4,py+4,p.w-8,p.h-8)){ collect(p); pickups.splice(i,1); continue; }
+    if(p.x+p.w<-20 || p.y<-60){ if(p.type==="ghost" && p.flee>0) addFloat(120,130,"MISSED IT!", C.mint); pickups.splice(i,1); }
+  }
+
+  updateParticles(dt); updateFloats(dt);
+  if(game.shake>0) game.shake*=0.86;
+
+  if(game.phaseDist>=ph.goal){
+    if(game.phaseIdx>=LAST){ if(game.master){ masterLoop(); } else { saveBest("Cited by all 5 AIs"); win(); } }
+    else promote();
+  }
+}
+function collect(p){
+  const ph=PHASES[game.phaseIdx], cx=p.x+p.w/2, cy=p.y+p.h/2;
+  if(p.type==="coffee"){
+    game.energy=clamp(game.energy+34,0,100); game.energized=4.0;
+    addFloat(cx,cy,"+"+ph.boost+"  2x", C.mint); burst(cx,cy,C.mint,12); Audio8.sfx.coffee();
+  } else {
+    game.combo++; game.flash=0.55;
+    const cmb=1+Math.min(game.combo,12)*0.08, boost2=game.energized>0?2:1;
+    if(p.type==="meeting"){
+      const val=Math.round(rndi(ph.dealMin,ph.dealMax)*boost2*cmb); game.deals++; game.pipeline+=val;
+      addFloat(cx,cy,ph.deal+" +"+money(val), C.green); burst(cx,cy,C.green,12); Audio8.sfx.meeting();
+    } else {
+      const val=Math.round(rndi(ph.bonusMin,ph.bonusMax)*boost2*cmb); game.deals++; game.pipeline+=val;
+      addFloat(cx,cy,ph.bonus+"! +"+money(val), C.gold); burst(cx,cy,C.gold,16); Audio8.sfx.meeting();
+    }
+    if(game.combo>=3 && game.combo%3===0) addFloat(player.x+22, player.y-16, "EXECUTION x"+game.combo, T.accent);
+  }
+}
+function updateParticles(dt){ for(let i=particles.length-1;i>=0;i--){ const p=particles[i]; p.life-=dt; if(p.life<=0){ particles.splice(i,1); continue; } p.vy+=900*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; } }
+function updateFloats(dt){ for(let i=floats.length-1;i>=0;i--){ const f=floats[i]; f.life-=dt; f.y+=f.vy*dt; f.vy*=0.96; if(f.life<=0) floats.splice(i,1); } }
+
+/* ------------------------------- RENDER ----------------------------------- */
+function R(x,y,w,h,col){ ctx.fillStyle=col; ctx.fillRect(x|0,y|0,Math.ceil(w),Math.ceil(h)); }
+function ozvorMark(cx,cy,r,col,lw){
+  ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=lw||3; ctx.lineCap="round";
+  const gap=0.55; ctx.beginPath(); ctx.arc(cx,cy,r, -Math.PI/2+gap*0.5, -Math.PI/2-gap*0.5+Math.PI*2); ctx.stroke();
+  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(cx,cy,Math.max(2,r*0.22),0,Math.PI*2); ctx.fill(); ctx.restore();
+}
+function star(cx,cy,rOut,rIn,points){ ctx.beginPath(); for(let i=0;i<points*2;i++){ const r=i%2?rIn:rOut, a=-Math.PI/2+i*Math.PI/points; ctx.lineTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r); } ctx.closePath(); ctx.fill(); }
+function tri(cx,cy,s){ ctx.beginPath(); ctx.moveTo(cx,cy-s); ctx.lineTo(cx-s,cy+s); ctx.lineTo(cx+s,cy+s); ctx.closePath(); ctx.fill(); }
+
+function drawBackground(){
+  const g=ctx.createLinearGradient(0,0,0,CONFIG.GROUND_Y);
+  g.addColorStop(0,"#0a0f0d"); g.addColorStop(1,"#06120d");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,CONFIG.GROUND_Y);
+  // grade de circuito
+  ctx.strokeStyle="rgba(39,201,138,0.05)"; ctx.lineWidth=1;
+  const gx=80, ox=((bgFar*0.5%gx)+gx)%gx; ctx.beginPath();
+  for(let x=-ox;x<W;x+=gx){ ctx.moveTo(x,0); ctx.lineTo(x,CONFIG.GROUND_Y); }
+  for(let y=54;y<CONFIG.GROUND_Y;y+=68){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+  ctx.stroke();
+  // painéis "AI answer" (paralaxe far)
+  const winW=176, gap=270, off=((bgFar%gap)+gap)%gap;
+  for(let x=-off; x<W+winW; x+=gap){
+    R(x, 44, winW, 152, "#08130e");
+    ctx.strokeStyle="rgba(39,201,138,0.18)"; ctx.strokeRect((x|0)+0.5, 44.5, winW, 152);
+    R(x, 44, winW, 16, "#0e1714");
+    R(x+8, 49, 34, 6, T.accent);                 // chip "AI"
+    // barras de citação
+    const bars=[120,86,138,70,104,54];
+    for(let i=0;i<6;i++){ R(x+12, 70+i*17, bars[i], 7, i%2?"rgba(166,180,172,0.35)":"rgba(39,201,138,0.5)"); }
+    // "CITED ✓"
+    R(x+winW-40, 172, 30, 12, "rgba(39,201,138,0.18)"); R(x+winW-36, 175, 7,6, T.accent);
+  }
+  // racks de servidor (paralaxe mid)
+  const dgap=300, doff=((bgMid%dgap)+dgap)%dgap, tblink=Math.floor(performance.now()/280);
+  for(let x=-doff; x<W+dgap; x+=dgap){
+    const ry=CONFIG.GROUND_Y-124, rw=92, rh=124;
+    R(x+30, ry, rw, rh, "#0b1611"); R(x+30, ry, rw, 6, "#123c2c"); R(x+30, ry+rh-4, rw, 4, "#05100b");
+    for(let r=0;r<7;r++){ const yy=ry+13+r*15; R(x+38, yy, rw-16, 9, "#04120c");
+      for(let c=0;c<5;c++){ const on=((tblink+r*2+c)%4!==0); R(x+42+c*13, yy+2, 6,5, on?(c%2?C.gold:T.accent):"#0e2019"); } }
+  }
+}
+function drawFloor(){
+  R(0,CONFIG.GROUND_Y,W,H-CONFIG.GROUND_Y,"#05100b");
+  R(0,CONFIG.GROUND_Y,W,4,T.accent);
+  R(0,CONFIG.GROUND_Y+4,W,2,"rgba(39,201,138,.22)");
+  const gap=70, off=((bgNear%gap)+gap)%gap;
+  for(let x=-off;x<W+gap;x+=gap){ R(x, CONFIG.GROUND_Y+16, 40, 3, "rgba(39,201,138,.16)"); R(x+22, CONFIG.GROUND_Y+42, 40, 3, "rgba(95,223,168,.12)"); }
+}
+/* jogador = search-bot da Ozvor */
+function drawPlayer(){
+  const x=player.x, baseY=CONFIG.GROUND_Y, curH=player.ducking?player.hDuck:player.hStand, top=player.y;
+  const air=clamp((baseY-(player.y+curH))/170,0,1);
+  ctx.save(); ctx.globalAlpha=1-0.65*air; ctx.fillStyle=C.shadow; ctx.beginPath(); ctx.ellipse(x+23, baseY+2, 27*(1-0.45*air), 7*(1-0.45*air), 0,0,Math.PI*2); ctx.fill(); ctx.restore();
+  const ch=ATT.chassis, tr=ATT.trim, scr=ATT.screen;
+  if(player.ducking){
+    R(x+2, top+2, 44, 24, ch); R(x+2, top+2, 44, 5, tr);
+    R(x+9, top+8, 30, 14, "#03130c"); R(x+10, top+9, 28, 12, scr);
+    R(x+30, top+12, 6, 6, C.green);
+    R(x+7, top+24, 11, 6, C.ink); R(x+29, top+24, 11, 6, C.ink);
+    return;
+  }
+  // pernas
+  const f=Math.floor(player.runT*12)%2;
+  if(player.onGround){ if(f===0){ R(x+12, top+52, 10,14, C.ink); R(x+26, top+46, 10,18, C.ink); } else { R(x+12, top+46, 10,18, C.ink); R(x+26, top+52, 10,14, C.ink); } }
+  else { R(x+13, top+50, 10,12, C.ink); R(x+25, top+48, 10,14, C.ink); }
+  R(x+9, top+62, 15,5, "#02110b"); R(x+24, top+62, 15,5, "#02110b");
+  // corpo
+  R(x+6, top+18, 38, 40, ch); R(x+6, top+18, 38, 6, tr); R(x+6, top+52, 38, 6, "#03130c");
+  // tela/rosto
+  R(x+10, top+24, 30, 22, "#03130c"); R(x+11, top+25, 28, 20, scr);
+  const blinkEye = Math.floor(performance.now()/700)%6===0;
+  if(!blinkEye){ R(x+16, top+30, 6,9, C.green); R(x+27, top+30, 6,9, C.green); } else { R(x+16, top+36, 6,2, C.green); R(x+27, top+36, 6,2, C.green); }
+  R(x+18, top+42, 12,2, "#1a6b4a");
+  // antena com LED verde
+  R(x+22, top+9, 3, 11, tr);
+  ctx.fillStyle=C.green; ctx.beginPath(); ctx.arc(x+23, top+7, 3.2, 0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=0.35; ctx.beginPath(); ctx.arc(x+23, top+7, 6, 0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+  // braço
+  if(player.onGround && f===0) R(x+40, top+30, 8, 15, ch); else R(x+2, top+30, 8, 15, ch);
+}
+function drawObstacle(o){
+  if(o.type==="boss"){ drawBoss(o); return; }
+  const x=o.x, y=o.y, w=o.w, h=o.h;
+  if(o.type==="flyer"){
+    R(x, y, w, h, "#0e1714"); R(x, y, w, 12, C.red);
+    R(x+w-12, y+2, 9, 8, "#f6faf7");
+    ctx.fillStyle=C.red; ctx.font='8px "Press Start 2P", monospace'; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("x", x+w-7, y+6);
+    ctx.textAlign="left"; ctx.textBaseline="top";
+    speech(x-2, y-26, o.label, "#f6faf7", C.redDark, 10);
+    return;
+  }
+  R(x, y, w, h, C.red); R(x, y, w, 5, "#ff8079"); R(x, y+h-5, w, 5, C.redDark);
+  R(x+4, y+4, w-8, h-8, "#c23a33");
+  ctx.fillStyle=C.gold; tri(x+w/2, y+h/2-9, 10);
+  R(x+w/2-1, y+h/2-6, 2, 6, "#0a0f0d"); R(x+w/2-1, y+h/2+2, 2, 2, "#0a0f0d");
+  speech(x-10, y-26, o.label, "#f6faf7", C.redDark, 9);
+}
+function drawBoss(o){
+  const x=o.x, y=o.y, w=o.w, cx=x+w/2;
+  ctx.fillStyle=C.shadow; ctx.beginPath(); ctx.ellipse(cx, CONFIG.GROUND_Y+2, 44,8,0,0,Math.PI*2); ctx.fill();
+  R(cx-28, y+84, 56, 28, "#0b1611"); R(cx-32, y+108, 64, 8, "#0e1714");
+  R(x+18, y+8, w-36, 78, "#0b1611"); R(x+18, y+8, w-36, 8, T.accent);
+  R(x+26, y+18, w-52, 54, "#03130c");
+  // orbit ring (marca Ozvor) escaneando
+  ctx.save(); ctx.translate(cx, y+43); ctx.rotate((o.t||0)*1.6); ozvorMark(0,0,30,T.accent,3); ctx.restore();
+  // olho central
+  ctx.fillStyle=T.accent; ctx.beginPath(); ctx.arc(cx, y+43, 12, 0,Math.PI*2); ctx.fill();
+  ctx.fillStyle="#03130c"; ctx.beginPath(); ctx.arc(cx, y+43, 5, 0,Math.PI*2); ctx.fill();
+  R(cx-2, y-2, 4, 12, T.accent);
+  speech(x-30, y-42, "AI ENGINE", T.accent, "#0a0f0d", 8);
+  speech(x-30, y-27, o.label, "#f6faf7", "#0e1714", 10);
+}
+function drawPickup(p){
+  const y=p.y+Math.sin(p.bob)*3;
+  if(p.type==="coffee"){ // SCHEMA / structured data
+    R(p.x, y+2, 32, 26, "#0e1714"); R(p.x, y+2, 32, 5, T.accent);
+    ctx.strokeStyle="rgba(39,201,138,.5)"; ctx.strokeRect((p.x|0)+0.5, y+2.5, 32, 26);
+    ctx.fillStyle=T.accent; ctx.font='13px "Press Start 2P", monospace'; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("{ }", p.x+16, y+17);
+    ctx.textAlign="left"; ctx.textBaseline="top";
+    ctx.globalAlpha=0.25; ctx.fillStyle=T.accent; ctx.beginPath(); ctx.arc(p.x+16, y+16, 20, 0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+  } else if(p.type==="meeting"){ // CITATION card
+    R(p.x, y, 36, 32, C.paper); R(p.x, y, 36, 8, T.accent);
+    R(p.x+5, y+13, 20, 3, "#8fa79a"); R(p.x+5, y+19, 26, 3, "#8fa79a"); R(p.x+5, y+25, 14, 3, "#8fa79a");
+    R(p.x+23, y+17, 10, 11, T.accent);
+    ctx.fillStyle="#04120c"; ctx.font='7px "Press Start 2P", monospace'; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("1", p.x+28, y+23);
+    ctx.textAlign="left"; ctx.textBaseline="top";
+  } else { // TOP ANSWER (star, flees)
+    const cx=p.x+17, cy=y+17;
+    ctx.globalAlpha=0.28; ctx.fillStyle=T.accent; ctx.beginPath(); ctx.arc(cx,cy,18,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+    ctx.fillStyle=C.gold; star(cx,cy,15,7,5);
+    ctx.fillStyle="#fff6df"; star(cx,cy,7,3,5);
+  }
+}
+function speech(x,y,txt,fg,bg,size){
+  ctx.font=size+'px "Press Start 2P", monospace'; ctx.textAlign="left";
+  const tw=ctx.measureText(txt).width, pad=6, bw=tw+pad*2; let bx=clamp(x,4,W-bw-4);
+  R(bx,y,bw,size+pad*2,bg); R(bx,y,bw,3,"rgba(39,201,138,.35)");
+  ctx.fillStyle=fg; ctx.textBaseline="top"; ctx.fillText(txt, bx+pad, y+pad);
+}
+function drawParticles(){ for(const p of particles){ ctx.globalAlpha=clamp(p.life*1.4,0,1); R(p.x,p.y,p.size,p.size,p.color); } ctx.globalAlpha=1; }
+function drawFloats(){
+  ctx.textBaseline="top"; ctx.textAlign="left";
+  for(const f of floats){ ctx.globalAlpha=clamp(f.life,0,1); ctx.font='12px "Press Start 2P", monospace';
+    const tw=ctx.measureText(f.txt).width; ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillText(f.txt, f.x-tw/2+1, f.y+1); ctx.fillStyle=f.color; ctx.fillText(f.txt, f.x-tw/2, f.y); }
+  ctx.globalAlpha=1;
+}
+function rightText(txt,y,color,size){ ctx.font=size+'px "Press Start 2P", monospace'; ctx.fillStyle=color; ctx.textAlign="left"; ctx.fillText(txt, W-16-ctx.measureText(txt).width, y); }
+function drawHeart(x,y,col){ R(x+2,y,4,3,col); R(x+8,y,4,3,col); R(x,y+3,14,4,col); R(x+1,y+7,12,3,col); R(x+3,y+10,8,3,col); R(x+5,y+13,4,2,col); }
+function drawHUD(){
+  const ph=PHASES[game.phaseIdx];
+  ctx.textBaseline="top"; ctx.textAlign="left";
+  ctx.font='11px "Press Start 2P", monospace'; ctx.fillStyle=C.green; ctx.fillText("AI VISIBILITY", 16, 14);
+  ctx.font='17px "Press Start 2P", monospace'; ctx.fillStyle=C.ui; ctx.fillText(money(game.pipeline), 16, 31);
+  ctx.font='11px "Press Start 2P", monospace'; ctx.fillStyle=C.mint; ctx.fillText(ph.countLabel, 16, 58);
+  ctx.font='15px "Press Start 2P", monospace'; ctx.fillStyle=C.ui; ctx.fillText(String(game.deals), 16, 74);
+
+  rightText(game.master ? ("AUTOPILOT • WEEK "+(game.loop+1)+" • "+ph.title) : ("ENGINE "+(game.phaseIdx+1)+"/"+PHASES.length+"  "+ph.title), 14, T.accent, 11);
+  rightText(Math.floor(game.dist)+" impressions", 32, C.uiDim, 10);
+  const pw=180, px=W-16-pw, py=52;
+  R(px,py,pw,8,"#06140e"); ctx.strokeStyle="rgba(39,201,138,.3)"; ctx.strokeRect(px,py,pw,8);
+  R(px+1,py+1,(pw-2)*clamp(game.phaseDist/ph.goal,0,1),6, T.accent);
+  rightText(game.master ? "NEXT RE-CHECK" : "NEXT ENGINE", 64, C.uiDim, 8);
+
+  const bw=220, bx=(W-bw)/2, by=18;
+  ctx.font='10px "Press Start 2P", monospace'; ctx.fillStyle=C.green; ctx.textAlign="left"; ctx.fillText(game.energyLabel, bx, by-2);
+  R(bx,by+14,bw,16,"#06140e"); ctx.strokeStyle="rgba(39,201,138,.3)"; ctx.strokeRect(bx,by+14,bw,16);
+  R(bx+2,by+16,(bw-4)*(game.energy/100),12, game.energy>30?C.green:C.red);
+  if(game.combo>=2){ ctx.fillStyle=T.accent; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText("EXEC x"+game.combo, bx+bw+12, by-2); }
+  if(game.energized>0){ ctx.fillStyle=C.gold; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText("2x", bx+bw+12, by+18); }
+
+  const hx0=W/2-30, hy=by+36; for(let i=0;i<3;i++) drawHeart(hx0+i*22, hy, i<game.lives?C.green:"#2a4438");
+
+  if(game.bossWarn>0 && Math.floor(game.bossWarn*6)%2===0){ ctx.font='16px "Press Start 2P", monospace'; ctx.fillStyle=C.red; ctx.textAlign="center"; ctx.fillText("!! "+ph.bossTitle+" IS CHECKING !!", W/2, 92); ctx.textAlign="left"; }
+}
+
+/* ------------------------------- TELAS ------------------------------------ */
+function dim(a){ ctx.fillStyle="rgba(6,15,11,"+a+")"; ctx.fillRect(0,0,W,H); }
+function blink(){ return Math.floor(performance.now()/500)%2===0; }
+function brandLine(y){ ctx.font='13px "Schibsted Grotesk", sans-serif'; ctx.fillStyle=C.uiDim; ctx.textAlign="center"; ctx.fillText("by OZVOR  ·  ozvor.com", W/2, y); }
+function drawTrophy(cx,ty){
+  const G=C.gold, GD="#c79a1f", B="#a07a2f", BD="#7a5a22", SH="#fff0a8";
+  R(cx-46,ty+6,6,22,G); R(cx-46,ty+6,12,6,G); R(cx-46,ty+24,12,6,G);
+  R(cx+40,ty+6,6,22,G); R(cx+34,ty+6,12,6,G); R(cx+34,ty+24,12,6,G);
+  R(cx-32,ty,64,8,G); R(cx-30,ty+8,60,8,G); R(cx-25,ty+16,50,8,G); R(cx-19,ty+24,38,8,G); R(cx-11,ty+32,22,7,G);
+  R(cx-25,ty+4,6,24,SH); R(cx+15,ty+8,8,22,GD);
+  R(cx-3,ty+11,6,12,SH); R(cx-8,ty+15,16,4,SH);
+  R(cx-5,ty+39,10,12,GD); R(cx-17,ty+51,34,8,B); R(cx-23,ty+59,46,8,BD);
+}
+function drawMenu(){
+  dim(.82);
+  ctx.textAlign="center"; ctx.textBaseline="top";
+  ozvorMark(W/2, 58, 16, C.green, 4);
+  ctx.fillStyle=C.green; ctx.font='34px "Press Start 2P", monospace'; ctx.fillText("GEO SEARCH", W/2, 82);
+  ctx.fillStyle=C.ui; ctx.font='20px "Press Start 2P", monospace'; ctx.fillText("RUNNER", W/2, 122);
+  brandLine(150);
+  ctx.fillStyle=C.mint; ctx.font='11px "Press Start 2P", monospace'; ctx.fillText("Get cited by the AI — or get buried.", W/2, 168);
+
+  if(IS_TOUCH){
+    ctx.fillStyle=C.green; ctx.font='12px "Press Start 2P", monospace'; ctx.fillText("TAP AN AI ENGINE TO PLAY", W/2, 196);
+    ctx.fillStyle=C.gold; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("3 LIVES  •  tap-left = JUMP (hold=higher)  •  hold-right = DUCK", W/2, 336);
+    if(best>0){ ctx.fillStyle=C.uiDim; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("BEST VISIBILITY: "+money(best), W/2, 388); }
+    ctx.textAlign="left"; return;
+  }
+
+  ctx.font='9px "Press Start 2P", monospace'; ctx.fillStyle=C.uiDim;
+  ctx.fillText("PICK AN AI ENGINE — PRESS 1-6  (unlock by leveling up)", W/2, 192);
+  PHASES.forEach((p,i)=>{ const locked=i>unlockedMax; ctx.fillStyle=locked?"#4f6157":C.mint; ctx.fillText((locked?"[x] ":"["+(i+1)+"] ")+p.title, W/2, 214+i*17); });
+  if(autopilotUnlocked){ ctx.fillStyle=C.gold; ctx.fillText("[6] AUTOPILOT — endless weekly re-check", W/2, 214+5*17); }
+  else { ctx.fillStyle="#4f6157"; ctx.fillText("[?] AUTOPILOT — cite all 5 AIs to unlock", W/2, 214+5*17); }
+
+  ctx.fillStyle=C.gold; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText("3 LIVES — a hit de-ranks you, not your progress", W/2, 320);
+  ctx.fillStyle=C.ui; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText("JUMP space/click/up (hold=higher, again=DOUBLE)  •  DUCK down", W/2, 338);
+  ctx.fillStyle=C.uiDim; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("ESC = engines   •   P = pause   •   M = sound", W/2, 354);
+  ctx.fillStyle=C.green; ctx.font='14px "Press Start 2P", monospace'; if(blink()) ctx.fillText("> SPACE / CLICK TO START <", W/2, 374);
+  if(best>0){ ctx.fillStyle=C.uiDim; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("BEST VISIBILITY: "+money(best)+(bestRole?("  ("+bestRole+")"):""), W/2, 402); }
+  ctx.textAlign="left";
+}
+function drawPause(){ dim(.78); ctx.textAlign="center"; ctx.fillStyle=C.green; ctx.font='26px "Press Start 2P", monospace'; ctx.fillText("PAUSED", W/2, H/2-40); ctx.fillStyle=C.ui; ctx.font='12px "Press Start 2P", monospace'; ctx.fillText("P / click to resume", W/2, H/2+10); ctx.textAlign="left"; }
+function drawPromo(){
+  dim(.84); ctx.textAlign="center"; ctx.textBaseline="top";
+  if(game.masterNext){
+    ctx.fillStyle=T.accent; ctx.font='28px "Press Start 2P", monospace'; ctx.fillText("RE-CHECKED!", W/2, 132);
+    ctx.fillStyle=C.ui; ctx.font='20px "Press Start 2P", monospace'; ctx.fillText("WEEK "+(game.loop+1), W/2, 186);
+    ctx.fillStyle=C.mint; ctx.font='11px "Press Start 2P", monospace'; ctx.fillText("Stay cited — the engines got harder.", W/2, 226);
+    ctx.fillStyle=C.uiDim; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText("AI Visibility: "+money(game.pipeline), W/2, 262);
+    ctx.fillStyle=C.green; ctx.font='11px "Press Start 2P", monospace'; if(blink()) ctx.fillText("> press to continue <", W/2, 300); ctx.textAlign="left"; return;
+  }
+  const next=PHASES[Math.min(game.phaseIdx+1,LAST)];
+  ctx.fillStyle=T.accent; ctx.font='26px "Press Start 2P", monospace'; ctx.fillText("LEVELED UP!", W/2, 116);
+  ctx.fillStyle=C.uiDim; ctx.font='11px "Press Start 2P", monospace'; ctx.fillText("Next AI engine:", W/2, 176);
+  ctx.fillStyle=C.ui; ctx.font='22px "Press Start 2P", monospace'; ctx.fillText(next.title, W/2, 202);
+  ctx.fillStyle=C.mint; ctx.font='11px "Press Start 2P", monospace'; ctx.fillText(next.tag, W/2, 240);
+  ctx.fillStyle=C.uiDim; ctx.font='9px "Press Start 2P", monospace'; wrapText(next.blurb, W/2, 274, 780, 16);
+  ctx.fillStyle=C.uiDim; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText("AI Visibility: "+money(game.pipeline), W/2, 344);
+  ctx.fillStyle=C.green; ctx.font='11px "Press Start 2P", monospace'; if(blink()) ctx.fillText("> press to continue <", W/2, 378); ctx.textAlign="left";
+}
+function drawOver(){
+  dim(.82); const ph=PHASES[game.phaseIdx]; ctx.textAlign="center"; ctx.textBaseline="top";
+  if(game.master){
+    ctx.fillStyle=C.red; ctx.font='26px "Press Start 2P", monospace'; ctx.fillText("AUTOPILOT ENDED", W/2, 62);
+    ctx.fillStyle=C.gold; ctx.font='15px "Press Start 2P", monospace'; ctx.fillText("WEEK "+(game.loop+1)+" — "+ph.title, W/2, 112);
+    ctx.fillStyle=C.ui; ctx.font='14px "Press Start 2P", monospace';
+    ctx.fillText("AI VISIBILITY:  "+money(game.pipeline), W/2, 156);
+    ctx.fillText(ph.countLabel+":  "+game.deals, W/2, 184);
+    ctx.fillText("IMPRESSIONS:  "+Math.floor(game.dist), W/2, 212);
+    ctx.fillStyle=(game.pipeline>=bestAuto)?C.green:C.uiDim; ctx.font='11px "Press Start 2P", monospace'; ctx.fillText((game.pipeline>=bestAuto)?"NEW BEST!":"BEST AUTOPILOT: "+money(bestAuto), W/2, 246);
+    ctx.fillStyle=C.green; ctx.font='12px "Press Start 2P", monospace'; if(game.overCooldown<=0 && blink()) ctx.fillText("> PRESS 6 FOR AUTOPILOT AGAIN <", W/2, 292);
+    ctx.fillStyle=C.uiDim; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("SPACE = full run   •   1-5 = an engine   •   ESC = menu", W/2, 328);
+    brandLine(360); ctx.textAlign="left"; return;
+  }
+  ctx.fillStyle=C.red; ctx.font='30px "Press Start 2P", monospace'; ctx.fillText("BURIED", W/2, 58);
+  ctx.fillStyle=C.gold; ctx.font='15px "Press Start 2P", monospace'; ctx.fillText("REACHED: "+ph.title, W/2, 108);
+  ctx.fillStyle=C.uiDim; ctx.font='9px "Press Start 2P", monospace'; ctx.fillText(ph.role, W/2, 132);
+  ctx.fillStyle=C.ui; ctx.font='14px "Press Start 2P", monospace';
+  ctx.fillText("AI VISIBILITY:  "+money(game.pipeline), W/2, 168);
+  ctx.fillText(ph.countLabel+":  "+game.deals, W/2, 196);
+  ctx.fillText("IMPRESSIONS:  "+Math.floor(game.dist), W/2, 224);
+  ctx.fillStyle=(game.pipeline>=best&&best>0)?C.green:C.uiDim; ctx.font='11px "Press Start 2P", monospace'; ctx.fillText((game.pipeline>=best&&best>0)?"NEW RECORD!":"BEST: "+money(best), W/2, 256);
+  ctx.fillStyle=C.uiDim; ctx.font='9px "Press Start 2P", monospace'; wrapText(game.tip, W/2, 288, 810, 15);
+  ctx.fillStyle=C.green; ctx.font='13px "Press Start 2P", monospace'; if(game.overCooldown<=0 && blink()) ctx.fillText("> SPACE / CLICK TO PLAY AGAIN <", W/2, 338);
+  ctx.fillStyle=C.uiDim; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("1-5 = an engine   •   ESC = menu", W/2, 366);
+  brandLine(388); ctx.textAlign="left";
+}
+function drawWin(){
+  dim(.86); ctx.textAlign="center"; ctx.textBaseline="top";
+  drawTrophy(W/2, 30);
+  ctx.fillStyle=C.gold; ctx.font='19px "Press Start 2P", monospace'; ctx.fillText("CITED BY ALL 5 AIs", W/2, 110);
+  ctx.fillStyle=C.mint; ctx.font='10px "Press Start 2P", monospace'; ctx.fillText("ChatGPT · Claude · Perplexity · Gemini · Google. The default answer.", W/2, 142);
+  ctx.fillStyle=T.accent; ctx.font='14px "Press Start 2P", monospace'; if(blink()) ctx.fillText("* AUTOPILOT UNLOCKED *", W/2, 172);
+  ctx.fillStyle=C.uiDim; ctx.font='8px "Press Start 2P", monospace'; ctx.fillText("Endless weekly re-check — press 6 (or [6] on the menu).", W/2, 196);
+  ctx.fillStyle=C.ui; ctx.font='13px "Press Start 2P", monospace';
+  ctx.fillText("AI VISIBILITY:  "+money(game.pipeline), W/2, 224);
+  ctx.fillText(PHASES[game.phaseIdx].countLabel+":  "+game.deals+"     IMPRESSIONS:  "+Math.floor(game.dist), W/2, 250);
+  ctx.fillStyle=(game.pipeline>=best&&best>0)?C.green:C.uiDim; ctx.font='10px "Press Start 2P", monospace'; ctx.fillText((game.pipeline>=best&&best>0)?"NEW RECORD!":"BEST: "+money(best), W/2, 278);
+  ctx.fillStyle=C.gold; ctx.font='12px "Press Start 2P", monospace'; if(game.overCooldown<=0 && blink()) ctx.fillText("> PRESS 6 FOR AUTOPILOT (endless) <", W/2, 308);
+  ctx.fillStyle=C.green; ctx.font='10px "Press Start 2P", monospace'; if(game.overCooldown<=0) ctx.fillText("SPACE / CLICK = run it again", W/2, 336);
+  brandLine(362); ctx.textAlign="left";
+}
+function wrapText(txt,cx,y,maxw,lh){ const words=txt.split(" "); let line="", yy=y; for(const w of words){ const test=line?line+" "+w:w; if(ctx.measureText(test).width>maxw && line){ ctx.fillText(line,cx,yy); line=w; yy+=lh; } else line=test; } if(line) ctx.fillText(line,cx,yy); }
+
+function render(){
+  ctx.save();
+  if(game.shake>0.4){ ctx.translate(rnd(-game.shake,game.shake), rnd(-game.shake,game.shake)); }
+  drawBackground(); drawFloor();
+  for(const p of pickups) drawPickup(p);
+  for(const o of obstacles) drawObstacle(o);
+  if(game.state!=="menu"){ for(let i=0;i<trail.length;i++){ const t=trail[i]; ctx.globalAlpha=(i/trail.length)*0.18; R(t.x+13, t.y+20, 20, 36, T.accent); } ctx.globalAlpha=1; }
+  const blinkOff = game.invuln>0 && Math.floor(performance.now()/80)%2===0;
+  if(game.state!=="menu" && !blinkOff) drawPlayer();
+  drawParticles(); drawFloats();
+  ctx.restore();
+  if(game.flash>0){ ctx.fillStyle="rgba(39,201,138,"+(game.flash*0.12)+")"; ctx.fillRect(0,0,W,H); }
+
+  if(game.state==="playing"||game.state==="paused"||game.state==="promo") drawHUD();
+  if(game.state==="menu") drawMenu();
+  else if(game.state==="paused") drawPause();
+  else if(game.state==="promo") drawPromo();
+  else if(game.state==="over") drawOver();
+  else if(game.state==="win") drawWin();
+
+  // selo OZVOR só nas telas (some no jogo p/ não cobrir o HUD)
+  if(elBrand){ const show=(game.state==="menu"||game.state==="over"||game.state==="win"); elBrand.style.display = show?"flex":"none"; }
+  syncTouchUI();
+}
+
+/* ------------------------------- LOOP ------------------------------------- */
+let last=performance.now();
+function frame(now){ let dt=(now-last)/1000; last=now; if(dt>0.05) dt=0.05; update(dt); render(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+})();
+</script>
+
+<script>
+/* ============================================================================
+   Lead magnet — captura de e-mail OPCIONAL, enviada pro funil da Ozvor (/api/game-lead).
+============================================================================ */
+(function(){
+  const gate=document.getElementById("leadGate"), form=document.getElementById("leadForm"),
+    skip=document.getElementById("leadSkip"), thanks=document.getElementById("gateThanks"),
+    titleEl=document.getElementById("gateTitle"), scoreEl=document.getElementById("gateScore"),
+    scoreIn=document.getElementById("leadScore"), roleIn=document.getElementById("leadRole"),
+    emailIn=document.getElementById("leadEmail");
+  const submitted=()=>{ try{ return localStorage.getItem("geo_lead")==="1"; }catch(e){ return false; } };
+  const skippedThisRun=()=>{ try{ return sessionStorage.getItem("geo_lead_skip")==="1"; }catch(e){ return false; } };
+  function openGate(d){
+    if(submitted()||skippedThisRun()) return;
+    const n=(d.score||0).toLocaleString("en-US");
+    titleEl.textContent = d.won ? "CITED BY ALL 5 AIs! 🏆" : "NICE RUN!";
+    scoreEl.textContent = (d.won ? "You hit "+n+" AI Visibility." : "You scored "+n+" AI Visibility.");
+    scoreIn.value=String(d.score||0); roleIn.value=d.role||"";
+    thanks.hidden=true; form.hidden=false; gate.hidden=false; window.__geoGateOpen=true;
+    setTimeout(()=>{ try{ emailIn.focus(); }catch(e){} }, 60);
+  }
+  function closeGate(){ gate.hidden=true; window.__geoGateOpen=false; }
+  document.addEventListener("geo:end",(e)=>openGate(e.detail||{}));
+  document.addEventListener("geo:start", closeGate);
+  skip.addEventListener("click",()=>{ try{ sessionStorage.setItem("geo_lead_skip","1"); }catch(e){} closeGate(); });
+  document.addEventListener("keydown",(e)=>{ if(e.code==="Escape" && gate && !gate.hidden){ try{ sessionStorage.setItem("geo_lead_skip","1"); }catch(e){} closeGate(); } });
+  form.addEventListener("submit",(e)=>{
+    e.preventDefault();
+    // Honeypot: a filled bot-field means a bot — silently drop.
+    const hp=form.querySelector('[name="bot-field"]'); if(hp && hp.value){ form.hidden=true; thanks.hidden=false; return; }
+    const payload={ email: emailIn.value.trim(), score: Number(scoreIn.value)||0, engine: roleIn.value||"" };
+    fetch("/api/game-lead",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+      .catch(()=>{})
+      .finally(()=>{ try{ localStorage.setItem("geo_lead","1"); }catch(e){} form.hidden=true; thanks.hidden=false; window.__geoGateOpen=false; setTimeout(closeGate,1900); });
+  });
+})();
+</script>
+</body>
+</html>
