@@ -366,13 +366,18 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/game-lead — lead capture from the GEO Search Runner game (/play).
   //
   // The game (apps/web/public/geo-runner.html) shows an OPTIONAL email gate on
-  // "game over". Submitting the email IS the marketing opt-in ("GET GEO TIPS"),
-  // so marketing_consent = true. Email is the only PII; the score/engine are
-  // stored in result jsonb. No auth — this is a pre-account top-of-funnel hook.
-  // Skipping the email never reaches here (client only POSTs when email given).
+  // "game over" with an UNCHECKED marketing-consent checkbox (privacy-policy
+  // link + unsubscribe language). Consent is EXPLICIT: this route stores the
+  // email and enrolls nurture ONLY when body.marketing_consent === true — it
+  // never infers consent from the email's presence or from the CTA click
+  // (Hermes #361; matches WaitlistForm's unchecked-opt-in convention;
+  // LGPD Art. 7(I) / GDPR Art. 6(1)(a)). Email is the only PII; the game has no
+  // transactional email, so without consent there's no lawful basis to store it
+  // — we respond {captured:false} and persist nothing. Score/engine live in
+  // result jsonb. No auth — pre-account top-of-funnel hook.
   // -------------------------------------------------------------------------
   app.post("/api/game-lead", async (c) => {
-    let body: { email?: string; score?: number; engine?: string; website?: string };
+    let body: { email?: string; score?: number; engine?: string; website?: string; marketing_consent?: boolean };
     try {
       body = await c.req.json();
     } catch {
@@ -385,6 +390,12 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     const email = (body.email ?? "").trim() || null;
     if (!email) return c.json({ captured: false });
     if (!EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
+
+    // Explicit opt-in gate: no consent → store nothing, enroll nothing. The
+    // game still flows (the client shows its own "tick the box" prompt).
+    if (body.marketing_consent !== true) {
+      return c.json({ captured: false, reason: "consent_required" });
+    }
 
     const score =
       typeof body.score === "number" && Number.isFinite(body.score)
@@ -415,7 +426,8 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       logger.warn("game_lead_rate_limit_failed_open", { message: (err as Error).message });
     }
 
-    // Best-effort insert. Marketing opt-in is explicit (they chose "GET GEO TIPS").
+    // Best-effort insert. marketing_consent is true here by the explicit gate
+    // above (the player ticked the unchecked consent box) — never inferred.
     try {
       await db.query(
         `INSERT INTO lead_capture (id, email, brand, category, region, result, source, ip_truncated, marketing_consent, created_at)
