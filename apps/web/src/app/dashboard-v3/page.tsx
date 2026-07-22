@@ -1942,7 +1942,15 @@ function ProfilesSection({ brand, onSaved }: { brand: BrandRow; onSaved: () => v
   async function save() {
     setBusy(true); setMsg(null);
     const body: Record<string, string | null> = {};
-    for (const f of PROFILE_FIELDS) body[f.key as string] = (vals[f.key as string] ?? "").trim() || null;
+    // Profile fields are URLs; the field hints show scheme-less examples
+    // (e.g. "linkedin.com/company/…"). The API requires a parseable URL, so
+    // prepend https:// when the user omitted the scheme instead of erroring.
+    const withScheme = (raw: string): string | null => {
+      const t = raw.trim();
+      if (!t) return null;
+      return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    };
+    for (const f of PROFILE_FIELDS) body[f.key as string] = withScheme(vals[f.key as string] ?? "");
     try {
       const r = await apiFetch(`/api/brands/${brand.id}/profiles`, { method: "PATCH", body: JSON.stringify(body) });
       if (r.ok) { setMsg("Saved — these feed your off-site GEO signal on the next audit."); onSaved(); }

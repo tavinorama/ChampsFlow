@@ -73,6 +73,7 @@ import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
 import Stripe from "stripe";
+import { asStr } from "../lib/coerce";
 
 // ---------------------------------------------------------------------------
 // Redis client (lazy singleton — same pattern as other route modules)
@@ -925,7 +926,7 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       } catch {
         return ctx.json({ error: "bad_request", code: "INVALID_JSON" }, 400);
       }
-      const email = (body.email ?? "").trim();
+      const email = asStr(body.email);
       const plan = body.plan;
       if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         return ctx.json({ error: "bad_request", code: "INVALID_EMAIL" }, 400);

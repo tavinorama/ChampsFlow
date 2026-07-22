@@ -41,6 +41,7 @@ import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/
 import { signedDownloadUrl } from "../../../../packages/shared/src/download-token";
 import { clientIp } from "../lib/client-ip";
 import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
+import { asStr } from "../lib/coerce";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,19 +142,19 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
-    const brand = (body.brand ?? "").trim();
-    const category = (body.category ?? "").trim();
+    const brand = asStr(body.brand);
+    const category = asStr(body.category);
     // Accept competitors[] (mockup: up to 3); the free test uses the primary one
     // for the head-to-head. Fall back to the single `competitor` field.
     const competitorList = Array.isArray(body.competitors)
-      ? body.competitors.map((x) => (x ?? "").trim()).filter(Boolean)
+      ? body.competitors.map((x) => asStr(x)).filter(Boolean)
       : [];
-    const competitor = (competitorList[0] ?? (body.competitor ?? "").trim()) || null;
-    const sector = (body.sector ?? "").trim() || null;
-    const country = (body.country ?? "").trim() || null;
+    const competitor = (competitorList[0] ?? asStr(body.competitor)) || null;
+    const sector = asStr(body.sector) || null;
+    const country = asStr(body.country) || null;
     const region = normRegion(body.region);
-    const email = (body.email ?? "").trim() || null;
-    const domain = (body.domain ?? "").trim() || null;
+    const email = asStr(body.email) || null;
+    const domain = asStr(body.domain) || null;
     // LGPD Art. 7(I) / GDPR Art. 6(1)(a): marketing consent must be explicitly true
     const marketingConsent = body.marketing_consent === true;
 
@@ -385,9 +386,9 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
 
     // Honeypot: bots fill hidden fields. Pretend success, store nothing.
-    if ((body.website ?? "").trim()) return c.json({ captured: true });
+    if (asStr(body.website)) return c.json({ captured: true });
 
-    const email = (body.email ?? "").trim() || null;
+    const email = asStr(body.email) || null;
     if (!email) return c.json({ captured: false });
     if (!EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
 
@@ -401,7 +402,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       typeof body.score === "number" && Number.isFinite(body.score)
         ? Math.max(0, Math.min(100000, Math.round(body.score)))
         : null;
-    const engine = (body.engine ?? "").trim().slice(0, 40) || null;
+    const engine = asStr(body.engine).slice(0, 40) || null;
 
     const ip = clientIp(c);
     const ipTruncated = ip ? truncateIpForRateLimit(ip) : "unknown";
@@ -473,11 +474,11 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
-    const brand = (body.brand ?? "").trim();
-    const category = (body.category ?? "").trim();
-    const domain = (body.domain ?? "").trim() || null;
+    const brand = asStr(body.brand);
+    const category = asStr(body.category);
+    const domain = asStr(body.domain) || null;
     const region = normRegion(body.region);
-    const email = (body.email ?? "").trim();
+    const email = asStr(body.email);
 
     if (!brand) return c.json({ message: "Brand name is required." }, 400);
     if (!category) return c.json({ message: "Category is required." }, 400);
@@ -486,7 +487,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     // Optional link to the free test that led here. Only honour it if it's a
     // valid UUID that points to a real lead_capture row — otherwise null, so a
     // stale/forged testId can never break checkout (FK) and never links blindly.
-    const testId = (body.testId ?? "").trim();
+    const testId = asStr(body.testId);
     let leadCaptureId: string | null = null;
     if (UUID_RE.test(testId)) {
       try {
@@ -548,7 +549,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
-    const email = (body.email ?? "").trim();
+    const email = asStr(body.email);
     if (!email || !EMAIL_RE.test(email)) {
       return c.json({ message: "A valid email is required." }, 400);
     }
