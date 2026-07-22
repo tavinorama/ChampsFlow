@@ -989,9 +989,12 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
       for (const field of profileUrlFields) {
         if (field in body) {
-          const val = (body as Record<string, string | undefined>)[field];
+          // The client sends `null` for cleared fields (empty input → null), so
+          // guard against null/undefined before trim() — `null.trim()` would
+          // throw and surface to the user as a generic "couldn't save".
+          const val = (body as Record<string, string | null | undefined>)[field];
           setClauses.push(`${field} = $${paramIndex}`);
-          const trimmed = val !== undefined ? val.trim() : "";
+          const trimmed = typeof val === "string" ? val.trim() : "";
           params.push(trimmed !== "" ? trimmed : null);
           paramIndex += 1;
         }
