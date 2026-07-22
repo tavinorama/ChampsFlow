@@ -574,7 +574,11 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
     });
   });
 
-  // GET /api/v1/operator/audits/recent — last 20 audits, PII-free
+  // GET /api/v1/operator/audits/recent — last 20 audits, PII-free.
+  // `is_internal` is a non-PII boolean: true when the audit belongs to the
+  // founder/dogfood workspace (the tenant that owns the live operator key),
+  // so downstream watchers can distinguish "we tested our own brand" from a
+  // real customer audit — without ever exposing tenant/brand/user.
   app.get("/api/v1/operator/audits/recent", operatorKey, async (c) => {
     const { rows } = await db.query<{
       id: string;
@@ -583,16 +587,21 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       score_performance: number | null;
       score_ai: number | null;
       created_at: string;
+      is_internal: boolean;
     }>(
-      `SELECT id, status, score_brand, score_performance, score_ai, created_at
-         FROM geo_audit
-        ORDER BY created_at DESC
+      `SELECT a.id, a.status, a.score_brand, a.score_performance, a.score_ai, a.created_at,
+              (a.tenant_id IN (
+                 SELECT tenant_id FROM api_key
+                  WHERE revoked_at IS NULL AND 'operator' = ANY(scopes)
+               )) AS is_internal
+         FROM geo_audit a
+        ORDER BY a.created_at DESC
         LIMIT 20`,
       []
     );
     return c.json({
       audits: rows.map(withOverall),
-      note: "PII-free by design: no tenant, brand, or user fields.",
+      note: "PII-free by design: no tenant, brand, or user fields. is_internal flags the founder/dogfood workspace.",
     });
   });
 
