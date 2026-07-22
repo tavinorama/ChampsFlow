@@ -214,7 +214,25 @@ interface Opportunities {
   note: string;
 }
 
-type TabId = "today" | "system-health" | "analytics" | "clients" | "leads" | "revenue" | "pipeline" | "opportunities" | "assets";
+type TabId = "today" | "system-health" | "analytics" | "clients" | "leads" | "audits" | "revenue" | "pipeline" | "opportunities" | "assets";
+
+// A geo_audit row for the admin Audits tab (GET /api/admin/audits). Unlike the
+// PII-free operator feed, this super-admin panel may show brand/domain, and
+// flags the founder's own dogfood runs via is_internal.
+type Audit = {
+  id: string;
+  status: string;
+  score_brand: number | null;
+  score_performance: number | null;
+  score_ai: number | null;
+  created_at: string;
+  triggered_by: string | null;
+  brand: string | null;
+  domain: string | null;
+  tenant_name: string | null;
+  plan_tier: string | null;
+  is_internal: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Helper — date formatting
@@ -2652,7 +2670,7 @@ function AdminNavItem({ label, active, onClick }: { label: string; active: boole
 // Sidebar grouping of the admin tabs (labels come from the `tabs` array).
 const ADMIN_NAV_GROUPS: { heading: string; ids: TabId[] }[] = [
   { heading: "Overview", ids: ["today", "system-health", "analytics"] },
-  { heading: "Business", ids: ["clients", "leads", "revenue", "pipeline", "opportunities"] },
+  { heading: "Business", ids: ["clients", "leads", "audits", "revenue", "pipeline", "opportunities"] },
   { heading: "Library", ids: ["assets"] },
 ];
 
@@ -2667,6 +2685,7 @@ export default function AdminPage() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [audits, setAudits] = useState<Audit[]>([]);
   const [kitOrders, setKitOrders] = useState<KitOrder[]>([]);
   const [resendState, setResendState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
   const [engagements, setEngagements] = useState<Engagement[]>([]);
@@ -2878,6 +2897,12 @@ export default function AdminPage() {
             const data = (await res.json()) as { leads: Lead[] };
             setLeads(data.leads ?? []);
           }
+        } else if (tab === "audits") {
+          const res = await apiFetch("/api/admin/audits");
+          if (res.ok) {
+            const data = (await res.json()) as { audits: Audit[] };
+            setAudits(data.audits ?? []);
+          }
         } else if (tab === "revenue") {
           const [ordersRes, revRes] = await Promise.all([
             apiFetch("/api/admin/kit-orders"),
@@ -3015,6 +3040,7 @@ export default function AdminPage() {
     { id: "analytics",     label: "Analytics" },
     { id: "clients",       label: "Clients" },
     { id: "leads",         label: "Leads" },
+    { id: "audits",        label: "Audits" },
     { id: "revenue",       label: "Revenue" },
     { id: "pipeline",      label: "Pipeline" },
     { id: "opportunities", label: "Opportunities" },
@@ -3453,6 +3479,108 @@ export default function AdminPage() {
                     onSave={patchCrm}
                   />
                 ))
+              )}
+            </tbody>
+          </TableWrapper>
+        </section>
+
+        {/* ── Audits tab ── */}
+        <section
+          id="tabpanel-audits"
+          role="tabpanel"
+          aria-labelledby="tab-audits"
+          hidden={activeTab !== "audits"}
+        >
+          <h2
+            style={{
+              fontSize: "var(--font-size-h3)",
+              fontWeight: 700,
+              margin: "0 0 var(--space-4) 0",
+            }}
+          >
+            Recent audits ({audits.length})
+          </h2>
+          <p
+            style={{
+              margin: "0 0 var(--space-4) 0",
+              color: "var(--color-muted)",
+              fontSize: "var(--font-size-caption)",
+            }}
+          >
+            Every completed audit, newest first — including your own workspace (dogfood)
+            runs, which are flagged <strong>Own workspace</strong>. A <strong>Customer</strong>{" "}
+            row is a real tenant that is not your workspace.
+          </p>
+
+          <TableWrapper>
+            <thead>
+              <tr>
+                <th scope="col" style={TH_STYLE}>Brand</th>
+                <th scope="col" style={TH_STYLE}>Domain</th>
+                <th scope="col" style={TH_STYLE}>Score</th>
+                <th scope="col" style={TH_STYLE}>B / P / AI</th>
+                <th scope="col" style={TH_STYLE}>Source</th>
+                <th scope="col" style={TH_STYLE}>Type</th>
+                <th scope="col" style={TH_STYLE}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audits.length === 0 && !loadingTab ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      ...TD_STYLE,
+                      color: "var(--color-muted)",
+                      textAlign: "center",
+                      padding: "var(--space-8)",
+                    }}
+                  >
+                    No audits yet.
+                  </td>
+                </tr>
+              ) : (
+                audits.map((a) => {
+                  const overall =
+                    a.score_brand != null && a.score_performance != null && a.score_ai != null
+                      ? Math.round(
+                          a.score_brand * 0.3 + a.score_performance * 0.35 + a.score_ai * 0.35
+                        )
+                      : null;
+                  return (
+                    <tr key={a.id}>
+                      <td style={TD_STYLE}>{a.brand ?? "—"}</td>
+                      <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{a.domain ?? "—"}</td>
+                      <td style={{ ...TD_STYLE, fontWeight: 700 }}>{overall ?? "—"}</td>
+                      <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>
+                        {a.score_brand ?? "–"} / {a.score_performance ?? "–"} / {a.score_ai ?? "–"}
+                      </td>
+                      <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>
+                        {a.triggered_by ?? "—"}
+                      </td>
+                      <td style={TD_STYLE}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "2px 8px",
+                            borderRadius: "var(--radius-sm)",
+                            fontSize: "var(--font-size-caption)",
+                            fontWeight: 600,
+                            backgroundColor: a.is_internal
+                              ? "var(--color-surface-muted)"
+                              : "var(--color-success-surface, rgba(18,160,95,0.12))",
+                            color: a.is_internal ? "var(--color-muted)" : "var(--color-success)",
+                          }}
+                        >
+                          {a.is_internal ? "Own workspace" : "Customer"}
+                        </span>
+                      </td>
+                      <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>
+                        {a.created_at ? String(a.created_at).slice(0, 10) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </TableWrapper>
