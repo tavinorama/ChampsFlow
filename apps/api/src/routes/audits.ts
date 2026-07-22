@@ -1193,6 +1193,22 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const brand = brandRes.rows[0];
       if (!brand) return c.json({ message: "Brand not found." }, 404);
 
+      // Plan gate: weekly monitoring is a paid feature. Enabling it on a plan
+      // that doesn't include it would give a paid capability away for free AND
+      // schedule real recurring audit spend. Disabling is always allowed.
+      if (enabled) {
+        const limits = await planLimitsFor(db, tenantId, auth.isSuperAdmin);
+        if (!limits.weekly_monitoring) {
+          return c.json(
+            {
+              message: "Weekly monitoring is a paid feature. Upgrade your plan to enable it.",
+              code: "PLAN_LIMIT_MONITORING",
+            },
+            403
+          );
+        }
+      }
+
       // Persist the flag.
       await db.query(`UPDATE brands SET monitoring_enabled = $2 WHERE id = $1`, [
         brandId,

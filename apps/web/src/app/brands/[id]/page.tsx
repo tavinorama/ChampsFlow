@@ -3466,6 +3466,16 @@ function AiModelsPanel({ brandId, settings, planTier, onSettingsSaved }: AiModel
         );
         return;
       }
+      // Choosing a monitoring cadence means the user wants monitoring ON. The
+      // frequency PATCH does NOT flip monitoring_enabled (that's what left the
+      // sold "weekly monitoring" feature never actually running), so enable it
+      // here. Plan-gated server-side; a 403 on a non-paid plan is expected and
+      // safely ignored (frequency still saved).
+      void apiFetch(`/api/brands/${brandId}/monitoring`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      }).catch(() => {});
       onSettingsSaved({ tracked_models: localModels, tracking_frequency: localFreq });
       setSavedOk(true);
       // Reset savedOk after 2s
