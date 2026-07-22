@@ -3456,7 +3456,16 @@ function AiModelsPanel({ brandId, settings, planTier, onSettingsSaved }: AiModel
         );
         return;
       }
-      if (!res.ok) throw new Error("Save failed");
+      if (!res.ok) {
+        // Surface the API's real reason instead of a generic "couldn't save".
+        const d = (await res.json().catch(() => null)) as
+          | { message?: string; error?: { message?: string } }
+          | null;
+        setSaveError(
+          d?.message ?? d?.error?.message ?? "Could not save settings. Please try again."
+        );
+        return;
+      }
       onSettingsSaved({ tracked_models: localModels, tracking_frequency: localFreq });
       setSavedOk(true);
       // Reset savedOk after 2s

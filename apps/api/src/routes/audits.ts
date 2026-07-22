@@ -37,6 +37,7 @@ import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
 import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
+import { asStr } from "../lib/coerce";
 
 // ---------------------------------------------------------------------------
 // topSources helper — aggregates citation URLs from evidence rows and offsite
@@ -403,7 +404,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
 
-    const name = (body.name ?? "").trim();
+    const name = asStr(body.name);
     if (!name) return c.json({ message: "Brand name is required." }, 400);
 
     const region = (body.region ?? "EU").toUpperCase();
@@ -419,7 +420,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     ] as const;
     for (const field of profileUrlFields) {
       const val = body[field];
-      if (val && val.trim() !== "") {
+      if (typeof val === "string" && val.trim() !== "") {
         try {
           await assertPublicUrl(new URL(val.trim()));
         } catch {
@@ -589,7 +590,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       } catch {
         return c.json({ message: "Invalid JSON body." }, 400);
       }
-      const name = (body.name ?? "").trim();
+      const name = asStr(body.name);
       if (!name) return c.json({ message: "Competitor name is required." }, 400);
 
       await db.setTenantId(auth.tenantId);
@@ -960,7 +961,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       // Validate each non-empty URL via SSRF guard.
       for (const field of providedFields) {
         const val = (body as Record<string, string | undefined>)[field];
-        if (val && val.trim() !== "") {
+        if (typeof val === "string" && val.trim() !== "") {
           try {
             await assertPublicUrl(new URL(val.trim()));
           } catch {
@@ -1649,7 +1650,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const brandId = c.req.param("id");
     let body: { action?: string };
     try { body = await c.req.json(); } catch { return c.json({ message: "Invalid JSON body." }, 400); }
-    const action = (body.action ?? "").trim();
+    const action = asStr(body.action);
     if (!action) return c.json({ message: "action is required." }, 400);
     if (action.length > 500) return c.json({ message: "action is too long (max 500 chars)." }, 400);
     await db.setTenantId(auth.tenantId);
@@ -1829,7 +1830,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       if (!["blog", "linkedin", "faq"].includes(ct)) {
         return c.json({ message: "content_type must be blog|linkedin|faq." }, 400);
       }
-      const topic = (body.topic ?? "").trim();
+      const topic = asStr(body.topic);
       if (!topic) return c.json({ message: "topic is required." }, 400);
 
       await db.setTenantId(auth.tenantId);
@@ -1946,8 +1947,8 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           category: brand.category,
           topic,
           sourceUrl: body.source_url ?? null,
-          instructions: body.instructions ? body.instructions.slice(0, 500) : undefined,
-          tone: body.tone ? body.tone.slice(0, 50) : undefined,
+          instructions: typeof body.instructions === "string" ? body.instructions.slice(0, 500) : undefined,
+          tone: typeof body.tone === "string" ? body.tone.slice(0, 50) : undefined,
           length: (["short", "medium", "long"] as const).includes(body.length as "short" | "medium" | "long")
             ? (body.length as "short" | "medium" | "long")
             : undefined,
@@ -2177,9 +2178,16 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const h = head.rows[0];
       if (!h) return null;
 
-      const bd = (typeof h.provider_breakdown === "string"
-        ? JSON.parse(h.provider_breakdown)
-        : h.provider_breakdown ?? {}) as Record<string, unknown>;
+      const bd = ((): Record<string, unknown> => {
+        const v = h.provider_breakdown;
+        if (typeof v !== "string") return (v ?? {}) as Record<string, unknown>;
+        // Guard: a malformed/legacy DB row must not 500 the whole audit fetch.
+        try {
+          return JSON.parse(v) as Record<string, unknown>;
+        } catch {
+          return {};
+        }
+      })();
 
       const probes = await db.query<{
         provider: string;
