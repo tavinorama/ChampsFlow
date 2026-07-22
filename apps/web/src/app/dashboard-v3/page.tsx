@@ -2069,7 +2069,7 @@ function BillingTab({ billing, loading, onManage, onReload }: { billing: Billing
               { label: "Client brands", value: billing.usage.max_brands == null ? "Unlimited" : `Up to ${billing.usage.max_brands}` },
               { label: "Competitors per brand", value: billing.usage.max_competitors == null ? "Unlimited" : `Up to ${billing.usage.max_competitors}` },
               { label: "Prompts per audit", value: billing.usage.prompts_per_audit != null ? String(billing.usage.prompts_per_audit) : "—" },
-              { label: "Weekly monitoring", value: billing.usage.weekly_monitoring ? "On" : "Manual audits only" },
+              { label: "Weekly monitoring", value: billing.usage.weekly_monitoring ? "Included — turn on per brand" : "Manual audits only" },
               { label: "Connected accounts", value: billing.usage.connected_accounts != null ? String(billing.usage.connected_accounts) : "—" },
             ].map((row, i) => (
               <div key={row.label} style={{ ...S.actRow, gridTemplateColumns: "1fr auto", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
