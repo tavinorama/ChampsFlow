@@ -39,6 +39,7 @@ import { resolvePlace, googlePlacesConfigured, PlacesError } from "../lib/google
 // it without dragging this route file (and `hono`) into its build. Re-exported
 // here for existing importers/tests.
 import { computeLandingAllowance } from "../lib/landing-allowance";
+import { asStr } from "../lib/coerce";
 export { computeLandingAllowance };
 
 const VERSION_CAP = 20;
@@ -482,7 +483,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       const name = (body.name ?? "").trim();
       if (!name) return c.json({ message: "Business name is required." }, 400);
 
-      const slug = (body.slug ?? "").trim() || slugify(name);
+      const slug = asStr(body.slug) || slugify(name);
       const slugError = validateSiteSlug(slug);
       if (slugError) return c.json({ message: slugError, code: "INVALID_SLUG" }, 400);
 
@@ -1195,8 +1196,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       if (!PAGE_TYPES.has(pageType)) {
         return c.json({ message: `page_type must be one of: ${[...PAGE_TYPES].join(", ")}.` }, 400);
       }
-      const title = (body.title ?? "").trim();
-      const slug = (body.slug ?? "").trim() || slugify(title || pageType);
+      const title = asStr(body.title);
+      const slug = asStr(body.slug) || slugify(title || pageType);
       if (!PAGE_SLUG_RE.test(slug)) {
         return c.json({ message: "Invalid page slug.", code: "INVALID_SLUG" }, 400);
       }
@@ -1285,7 +1286,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         return c.json({ message: "sections must be an array." }, 400);
       }
       if (body.slug !== undefined) {
-        const s = body.slug.trim();
+        const s = asStr(body.slug);
         // '' stays valid only for the home page — checked against the row below.
         if (s !== "" && !PAGE_SLUG_RE.test(s)) {
           return c.json({ message: "Invalid page slug.", code: "INVALID_SLUG" }, 400);
@@ -1305,7 +1306,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       );
       const row = current.rows[0];
       if (!row) return c.json({ message: "Page not found." }, 404);
-      if (body.slug !== undefined && body.slug.trim() === "" && row.slug !== "") {
+      if (body.slug !== undefined && asStr(body.slug) === "" && row.slug !== "") {
         return c.json({ message: "Only the home page can use the root slug." }, 400);
       }
 
@@ -1358,8 +1359,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
           [
             pageId,
             auth.tenantId,
-            body.title !== undefined ? body.title.trim() : null,
-            body.slug !== undefined ? body.slug.trim() : null,
+            body.title !== undefined ? asStr(body.title) : null,
+            body.slug !== undefined ? asStr(body.slug) : null,
             body.sections !== undefined ? jsonbParam(body.sections) : null,
             body.seo !== undefined ? jsonbParam(body.seo) : null,
             body.status ?? null,

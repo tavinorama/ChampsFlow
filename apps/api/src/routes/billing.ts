@@ -73,6 +73,7 @@ import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
 import Stripe from "stripe";
+import { asStr } from "../lib/coerce";
 
 // ---------------------------------------------------------------------------
 // Redis client (lazy singleton — same pattern as other route modules)
@@ -925,7 +926,7 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       } catch {
         return ctx.json({ error: "bad_request", code: "INVALID_JSON" }, 400);
       }
-      const email = (body.email ?? "").trim();
+      const email = asStr(body.email);
       const plan = body.plan;
       if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         return ctx.json({ error: "bad_request", code: "INVALID_EMAIL" }, 400);
@@ -1685,11 +1686,28 @@ async function handleSubscriptionUpdated(
 
   const internalStatus = mapStripeStatusToInternal(subscription.status);
 
-  // Resolve plan tier from the first subscription item's price ID
+  // Resolve plan tier from the first subscription item's price ID.
   const priceId = subscription.items.data[0]?.price?.id ?? null;
-  const planTier: PlanTier = priceId
-    ? (mapPriceIdToPlanTier(priceId) ?? "free")
-    : "free";
+  const mappedTier = priceId ? mapPriceIdToPlanTier(priceId) : null;
+  let planTier: PlanTier;
+  if (mappedTier) {
+    planTier = mappedTier;
+  } else {
+    // Unknown/legacy/live-vs-test price on an otherwise-valid subscription:
+    // do NOT downgrade a paying customer to free. Keep their current tier and
+    // log for reconciliation instead of silently stripping entitlements.
+    const cur = await db.query<{ plan_tier: string | null }>(
+      `SELECT plan_tier FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    planTier = (cur.rows[0]?.plan_tier as PlanTier | null) ?? "free";
+    logger.warn("billing_unknown_price_kept_tier", {
+      tenantId,
+      priceIdPresent: priceId !== null,
+      status: internalStatus,
+      keptTier: planTier,
+    });
+  }
 
   // Stripe timestamps are Unix seconds
   const periodStart = subscription.current_period_start

@@ -274,6 +274,7 @@ export default function DashboardV3() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [brands, setBrands] = useState<BrandRow[]>([]);
   const [activeBrandId, setActiveBrandId] = useState<string>("");
   const [tab, setTab] = useState<TabId>("overview");
@@ -321,6 +322,12 @@ export default function DashboardV3() {
           if (!cancelled) setAuthError(true);
           return;
         }
+        if (!res.ok) {
+          // A transient 5xx (or a 403) must NOT log the user out — only a real
+          // 401 does. Surface a retry banner and keep the session.
+          if (!cancelled) setLoadError("Couldn’t load your dashboard.");
+          return;
+        }
         const data = (await res.json()) as { brands?: BrandRow[] };
         if (cancelled) return;
         const list = data.brands ?? [];
@@ -336,7 +343,8 @@ export default function DashboardV3() {
           })
           .catch(() => {});
       } catch {
-        if (!cancelled) setAuthError(true);
+        // Network / parse failure is transient — surface a retry, never logout.
+        if (!cancelled) setLoadError("Couldn’t load your dashboard.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -425,7 +433,10 @@ export default function DashboardV3() {
       const res = await apiFetch(`/api/brands/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
     } catch {
-      await reloadBrands(); // failed — resync from server
+      // Delete failed — the optimistic removal is wrong, so resync AND tell the
+      // user (otherwise the brand silently reappears with no explanation).
+      setLoadError("Couldn’t delete that brand — restored it.");
+      await reloadBrands();
     }
   }, [reloadBrands]);
 
@@ -685,6 +696,24 @@ export default function DashboardV3() {
 
   return (
     <div style={S.shell}>
+      {loadError && (
+        <div
+          role="alert"
+          style={{
+            position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
+            background: "var(--color-error, #d0433c)", color: "#fff",
+            padding: "8px 14px", fontSize: "0.85rem", textAlign: "center",
+          }}
+        >
+          {loadError}{" "}
+          <button
+            onClick={() => { setLoadError(null); void reloadBrands(); }}
+            style={{ marginLeft: 8, background: "none", border: "none", color: "#fff", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
       {/* Sidebar */}
       <aside style={S.rail}>
         <div style={S.brand}>
@@ -1942,7 +1971,15 @@ function ProfilesSection({ brand, onSaved }: { brand: BrandRow; onSaved: () => v
   async function save() {
     setBusy(true); setMsg(null);
     const body: Record<string, string | null> = {};
-    for (const f of PROFILE_FIELDS) body[f.key as string] = (vals[f.key as string] ?? "").trim() || null;
+    // Profile fields are URLs; the field hints show scheme-less examples
+    // (e.g. "linkedin.com/company/…"). The API requires a parseable URL, so
+    // prepend https:// when the user omitted the scheme instead of erroring.
+    const withScheme = (raw: string): string | null => {
+      const t = raw.trim();
+      if (!t) return null;
+      return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    };
+    for (const f of PROFILE_FIELDS) body[f.key as string] = withScheme(vals[f.key as string] ?? "");
     try {
       const r = await apiFetch(`/api/brands/${brand.id}/profiles`, { method: "PATCH", body: JSON.stringify(body) });
       if (r.ok) { setMsg("Saved — these feed your off-site GEO signal on the next audit."); onSaved(); }
