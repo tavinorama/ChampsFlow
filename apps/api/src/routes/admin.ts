@@ -617,9 +617,11 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       );
       const totalLeads = parseInt(leadsRes.rows[0]?.count ?? "0", 10);
 
-      // 2. Kit orders total count
+      // 2. Kit orders — count ONLY paid/delivered. Pending, failed and
+      //    refunded orders are not revenue; counting them all inflated the
+      //    reported Kit revenue (kitCount * $29). Matches lib/cockpit.ts.
       const kitRes = await db.query<{ count: string }>(
-        `SELECT COUNT(*) AS count FROM kit_order`
+        `SELECT COUNT(*) FILTER (WHERE status IN ('paid', 'delivered')) AS count FROM kit_order`
       );
       const kitCount = parseInt(kitRes.rows[0]?.count ?? "0", 10);
 
