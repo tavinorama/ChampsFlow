@@ -209,6 +209,52 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
   });
 
   // -------------------------------------------------------------------------
+  // GET /api/admin/audits — recent geo_audit rows (cross-tenant), joined to
+  // brand + tenant so the founder can see WHOSE audit each was — including
+  // their own dogfood runs (is_internal). Super-admin only; this panel is
+  // behind auth, so unlike the PII-free operator feed it may show brand/domain.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/audits", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const result = await db.query<{
+        id: string;
+        status: string;
+        score_brand: number | null;
+        score_performance: number | null;
+        score_ai: number | null;
+        created_at: string;
+        triggered_by: string | null;
+        brand: string | null;
+        domain: string | null;
+        tenant_name: string | null;
+        plan_tier: string | null;
+        is_internal: boolean;
+      }>(
+        `SELECT a.id, a.status, a.score_brand, a.score_performance, a.score_ai,
+                a.created_at, a.triggered_by,
+                b.name AS brand, b.domain,
+                t.name AS tenant_name, t.plan_tier,
+                (a.tenant_id IN (
+                   SELECT tenant_id FROM api_key
+                    WHERE revoked_at IS NULL AND 'operator' = ANY(scopes)
+                 )) AS is_internal
+           FROM geo_audit a
+           LEFT JOIN brands b ON b.id = a.brand_id
+           LEFT JOIN tenants t ON t.id = a.tenant_id
+          ORDER BY a.created_at DESC
+          LIMIT 100`
+      );
+
+      logger.info("admin_audits_fetched", { count: result.rows.length });
+
+      return c.json({ audits: result.rows });
+    } catch (err) {
+      logger.error("admin_audits_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "AUDITS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
   // GET /api/admin/kit-orders — kit_order rows (cross-tenant)
   //
   // Actual kit_order columns (from migration 20260611000001_products):
