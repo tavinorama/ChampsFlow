@@ -266,6 +266,20 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
+/**
+ * Non-throwing accessor for the Stripe client. Returns the shared singleton, or
+ * null when Stripe isn't configured (STRIPE_SECRET_KEY unset). Reporting paths
+ * that must degrade gracefully (e.g. received-value MRR) use this so a missing
+ * key falls back to list-price math instead of throwing. NEVER throws.
+ */
+export function tryGetStripe(): Stripe | null {
+  try {
+    return getStripe();
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Plan tier definitions (v1)
 // These limits are enforced by requirePlanLimit middleware in billing.ts.

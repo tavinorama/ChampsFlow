@@ -21,6 +21,56 @@ export const LIST_PRICE_USD = {
   managedGeo: 1900,
 } as const;
 
+/**
+ * Annual (yearly) list prices (USD) — one charge per year. These already bake in
+ * the annual-vs-monthly discount ($831/yr < $99×12=$1,188/yr), so amortizing them
+ * back to a monthly figure yields the TRUE monthly recurring value of an annual
+ * subscriber — which is LOWER than the monthly sticker price. Source of truth for
+ * received-value MRR (see receivedMonthlyUsd + apps/api/src/lib/received-mrr.ts).
+ */
+export const LIST_PRICE_ANNUAL_USD: Record<string, number> = {
+  growth: 831,
+  agency: 4611,
+};
+
+/** Months per Stripe billing interval — used to amortize a charge to monthly. */
+function monthsPerInterval(interval: "month" | "year"): number {
+  return interval === "year" ? 12 : 1;
+}
+
+/**
+ * Apply a Stripe-style discount to a gross charge (in cents) and return the NET
+ * cents actually paid. Handles either a percentage coupon (percent_off, e.g. the
+ * 30% founder coupon) or a fixed-amount coupon (amount_off, in cents). Clamped at
+ * 0 (a 100%-off coupon → $0 received, the honest number). Pure — unit-tested.
+ */
+export function applyDiscountCents(
+  grossCents: number,
+  discount?: { percentOff?: number | null; amountOffCents?: number | null } | null
+): number {
+  if (!Number.isFinite(grossCents) || grossCents <= 0) return 0;
+  let net = grossCents;
+  const pct = discount?.percentOff;
+  if (typeof pct === "number" && pct > 0) net = net * (1 - Math.min(pct, 100) / 100);
+  const amt = discount?.amountOffCents;
+  if (typeof amt === "number" && amt > 0) net = net - amt;
+  return Math.max(0, net);
+}
+
+/**
+ * Amortize a per-invoice NET charge (cents) to a monthly USD figure. An annual
+ * charge is divided across 12 months; a monthly charge passes through. This is
+ * the "received value" a subscription contributes to MRR — NOT its sticker price.
+ * Pure — unit-tested.
+ */
+export function receivedMonthlyUsd(
+  netInvoiceCents: number,
+  interval: "month" | "year"
+): number {
+  if (!Number.isFinite(netInvoiceCents) || netInvoiceCents <= 0) return 0;
+  return netInvoiceCents / 100 / monthsPerInterval(interval);
+}
+
 /** Monthly recurring price by subscription plan_tier (USD). free/starter = $0. */
 export const PLAN_MRR_USD: Record<string, number> = {
   free: 0,

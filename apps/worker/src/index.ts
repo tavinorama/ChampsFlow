@@ -28,12 +28,13 @@
  */
 
 import Redis from "ioredis";
-import { Worker } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import { logger } from "../../../packages/shared/src/logger";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
+import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
 import {
   createWorkerDb,
   withRlsContext,
@@ -260,6 +261,66 @@ void processDailyMonitoredBrands(getDailyMonitorSql()).catch((err: Error) => {
 });
 
 // ---------------------------------------------------------------------------
+// Weekly monitoring reconcile — makes the sold "weekly monitoring" feature
+// full-auto. For every brand whose tenant has an ACTIVE paid subscription on a
+// plan that includes weekly_monitoring, it ensures monitoring_enabled=TRUE and
+// the weekly repeatable ("monitor:${brandId}", "0 6 * * 1") is registered. Fully
+// idempotent (see apps/worker/src/jobs/monitor-reconcile.ts) — safe to run every
+// week and once at boot.
+//
+// Wired as a weekly BullMQ repeatable on its own 'monitor-reconcile' queue,
+// consumed by a dedicated Worker below. Scheduled for 05:00 Monday — ONE HOUR
+// BEFORE the 06:00 audit repeatables it registers — so a paying customer's
+// monitoring is enabled in time for that same morning's run. Uses its own raw
+// (privileged, RLS-bypassing) client, same pattern as the daily monitor loop.
+// ---------------------------------------------------------------------------
+
+let _reconcileSql: import("postgres").Sql | null = null;
+function getReconcileSql(): import("postgres").Sql {
+  if (_reconcileSql) return _reconcileSql;
+  _reconcileSql = createWorkerDb();
+  return _reconcileSql;
+}
+
+const monitorReconcileQueue = new Queue("monitor-reconcile", { connection });
+
+const monitorReconcileWorker = new Worker(
+  "monitor-reconcile",
+  async () => {
+    await reconcileWeeklyMonitoring(getReconcileSql());
+  },
+  {
+    connection,
+    concurrency: 1, // a single cross-tenant sweep — never fan out
+    autorun: true,
+  }
+);
+
+monitorReconcileWorker.on("failed", (job, err) => {
+  logger.error("monitor_reconcile_job_failed", { job_id: job?.id, message: err?.message });
+});
+
+// Register the weekly repeatable (idempotent — stable jobId + fixed pattern, so
+// re-adding on every boot is a no-op). Best-effort: a Redis hiccup here must not
+// crash the worker; the boot-time catch-up run below still reconciles.
+void monitorReconcileQueue
+  .add(
+    "weekly-reconcile",
+    {},
+    { jobId: "monitor-reconcile:weekly", repeat: { pattern: "0 5 * * 1" } } // Monday 05:00 UTC
+  )
+  .then(() => logger.info("monitor_reconcile_schedule_registered", { pattern: "0 5 * * 1" }))
+  .catch((err: Error) => {
+    logger.error("monitor_reconcile_schedule_register_failed", { message: err.message });
+  });
+
+// Run once at boot so a fresh deploy reconciles immediately instead of waiting
+// for the next Monday (catches customers who paid since the last sweep).
+void reconcileWeeklyMonitoring(getReconcileSql()).catch((err: Error) => {
+  logger.error("monitor_reconcile_boot_error", { message: err.message });
+});
+
+// ---------------------------------------------------------------------------
 // Worker event listeners for structured logging
 // ---------------------------------------------------------------------------
 
@@ -323,6 +384,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await worker.close();
     await auditWorker.close();
     await landingWorker.close();
+    await monitorReconcileWorker.close();
+    await monitorReconcileQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,
@@ -349,6 +412,12 @@ const shutdown = async (signal: string): Promise<void> => {
 
   try {
     if (_dailyMonitorSql) await _dailyMonitorSql.end({ timeout: 5 }).catch(() => {});
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    if (_reconcileSql) await _reconcileSql.end({ timeout: 5 }).catch(() => {});
   } catch {
     // Best-effort
   }
