@@ -37,6 +37,7 @@ import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
 import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
+import { asStr } from "../lib/coerce";
 
 // ---------------------------------------------------------------------------
 // topSources helper — aggregates citation URLs from evidence rows and offsite
@@ -392,6 +393,10 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       trustpilot_url?: string;
       crunchbase_url?: string;
       youtube_url?: string;
+      x_url?: string;
+      instagram_url?: string;
+      facebook_url?: string;
+      tiktok_url?: string;
     };
     try {
       body = await c.req.json();
@@ -399,7 +404,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
 
-    const name = (body.name ?? "").trim();
+    const name = asStr(body.name);
     if (!name) return c.json({ message: "Brand name is required." }, 400);
 
     const region = (body.region ?? "EU").toUpperCase();
@@ -411,10 +416,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const profileUrlFields = [
       "linkedin_url", "reddit_url", "wikipedia_url", "g2_url",
       "trustpilot_url", "crunchbase_url", "youtube_url",
+      "x_url", "instagram_url", "facebook_url", "tiktok_url",
     ] as const;
     for (const field of profileUrlFields) {
       const val = body[field];
-      if (val && val.trim() !== "") {
+      if (typeof val === "string" && val.trim() !== "") {
         try {
           await assertPublicUrl(new URL(val.trim()));
         } catch {
@@ -441,8 +447,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     const id = randomUUID();
     await db.query(
       `INSERT INTO brands (id, tenant_id, name, domain, category, market, region,
-         linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())`,
+         linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+         x_url, instagram_url, facebook_url, tiktok_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())`,
       [
         id,
         tenantId,
@@ -458,6 +465,10 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         body.trustpilot_url?.trim() || null,
         body.crunchbase_url?.trim() || null,
         body.youtube_url?.trim() || null,
+        body.x_url?.trim() || null,
+        body.instagram_url?.trim() || null,
+        body.facebook_url?.trim() || null,
+        body.tiktok_url?.trim() || null,
       ]
     );
 
@@ -482,6 +493,90 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
     return c.json({ competitors: res.rows });
   });
 
+  // -------------------------------------------------------------------------
+  // GET /api/brands/:id/competitor-trends — AI-mention rate over time, so the
+  // client can overlay competitor lines on the Overview chart. Everything is a
+  // rate on the SAME denominator (probes in that audit), so the brand's line
+  // and each competitor's line are directly comparable, 0–100%:
+  //   brand_rate      = brand-cited probes / total probes
+  //   competitor_rate = competitor mentions / total probes
+  // No fabricated data — if an audit has no probes it is skipped; a competitor
+  // absent from an audit is simply 0 that period.
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id/competitor-trends", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+
+    // Per completed audit: total probes + how many cited the brand, with a date.
+    const auditsRes = await db.query<{
+      audit_id: string;
+      date: string;
+      total: string;
+      brand_cited: string;
+    }>(
+      `SELECT ga.id AS audit_id,
+              COALESCE(ga.completed_at, ga.created_at) AS date,
+              COUNT(cc.id) AS total,
+              COUNT(cc.id) FILTER (WHERE cc.cited) AS brand_cited
+         FROM geo_audit ga
+         JOIN citation_check cc ON cc.audit_id = ga.id
+        WHERE ga.brand_id = $1 AND ga.status = 'complete'
+        GROUP BY ga.id, ga.completed_at, ga.created_at
+       HAVING COUNT(cc.id) > 0
+        ORDER BY COALESCE(ga.completed_at, ga.created_at) ASC`,
+      [brandId]
+    );
+
+    // Currently-tracked competitors — these drive the chips on the chart.
+    const trackedRes = await db.query<{ name: string }>(
+      `SELECT name FROM competitor WHERE brand_id = $1 ORDER BY created_at ASC`,
+      [brandId]
+    );
+    const tracked = trackedRes.rows.map((r) => r.name);
+
+    // Per-audit competitor mentions (only for the tracked set).
+    const compRes = await db.query<{
+      audit_id: string;
+      competitor_name: string;
+      mentions: string;
+    }>(
+      `SELECT cci.audit_id, cci.competitor_name, SUM(cci.mention_count) AS mentions
+         FROM competitor_citation cci
+         JOIN geo_audit ga ON ga.id = cci.audit_id
+        WHERE ga.brand_id = $1 AND ga.status = 'complete'
+        GROUP BY cci.audit_id, cci.competitor_name`,
+      [brandId]
+    );
+    const mentionsByAudit = new Map<string, Map<string, number>>();
+    for (const row of compRes.rows) {
+      if (!tracked.includes(row.competitor_name)) continue;
+      let m = mentionsByAudit.get(row.audit_id);
+      if (!m) { m = new Map(); mentionsByAudit.set(row.audit_id, m); }
+      m.set(row.competitor_name, parseInt(row.mentions, 10) || 0);
+    }
+
+    const rate = (num: number, total: number): number =>
+      total > 0 ? Math.min(100, Math.round((num / total) * 100)) : 0;
+
+    const series = auditsRes.rows.map((a) => {
+      const total = parseInt(a.total, 10) || 0;
+      const competitors: Record<string, number> = {};
+      const m = mentionsByAudit.get(a.audit_id);
+      for (const name of tracked) {
+        competitors[name] = rate(m?.get(name) ?? 0, total);
+      }
+      return {
+        audit_id: a.audit_id,
+        date: a.date,
+        brand_rate: rate(parseInt(a.brand_cited, 10) || 0, total),
+        competitors,
+      };
+    });
+
+    return c.json({ series, competitors: tracked });
+  });
+
   app.post(
     "/api/brands/:id/competitors",
     requireAuth,
@@ -495,7 +590,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       } catch {
         return c.json({ message: "Invalid JSON body." }, 400);
       }
-      const name = (body.name ?? "").trim();
+      const name = asStr(body.name);
       if (!name) return c.json({ message: "Competitor name is required." }, 400);
 
       await db.setTenantId(auth.tenantId);
@@ -561,11 +656,15 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       trustpilot_url: string | null;
       crunchbase_url: string | null;
       youtube_url: string | null;
+      x_url: string | null;
+      instagram_url: string | null;
+      facebook_url: string | null;
+      tiktok_url: string | null;
     }>(
       // geo_score stores the overall in provider_breakdown->>'overall' (applied
       // schema has no dedicated score_overall column on geo_score).
       `SELECT b.id, b.name, b.domain, b.category, b.region, b.monitoring_enabled,
-              b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url,
+              b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url, b.x_url, b.instagram_url, b.facebook_url, b.tiktok_url,
               b.trustpilot_url, b.crunchbase_url, b.youtube_url,
               (s.provider_breakdown->>'overall')::int AS latest_score
          FROM brands b
@@ -611,9 +710,14 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         trustpilot_url: string | null;
         crunchbase_url: string | null;
         youtube_url: string | null;
+        x_url: string | null;
+        instagram_url: string | null;
+        facebook_url: string | null;
+        tiktok_url: string | null;
       }>(
         `SELECT id, name, domain, category, region, monitoring_enabled, tracked_models, tracking_frequency,
-                linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+                linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+                x_url, instagram_url, facebook_url, tiktok_url
            FROM brands WHERE id = $1`,
         [brandId]
       );
@@ -640,9 +744,14 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           trustpilot_url: string | null;
           crunchbase_url: string | null;
           youtube_url: string | null;
+          x_url: string | null;
+          instagram_url: string | null;
+          facebook_url: string | null;
+          tiktok_url: string | null;
         }>(
           `SELECT id, name, domain, category, region, monitoring_enabled,
-                  linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+                  linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+                x_url, instagram_url, facebook_url, tiktok_url
              FROM brands WHERE id = $1`,
           [brandId]
         );
@@ -840,6 +949,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const profileUrlFields = [
         "linkedin_url", "reddit_url", "wikipedia_url", "g2_url",
         "trustpilot_url", "crunchbase_url", "youtube_url",
+        "x_url", "instagram_url", "facebook_url", "tiktok_url",
       ] as const;
 
       // At least one field must be provided.
@@ -851,7 +961,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       // Validate each non-empty URL via SSRF guard.
       for (const field of providedFields) {
         const val = (body as Record<string, string | undefined>)[field];
-        if (val && val.trim() !== "") {
+        if (typeof val === "string" && val.trim() !== "") {
           try {
             await assertPublicUrl(new URL(val.trim()));
           } catch {
@@ -880,9 +990,12 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
       for (const field of profileUrlFields) {
         if (field in body) {
-          const val = (body as Record<string, string | undefined>)[field];
+          // The client sends `null` for cleared fields (empty input → null), so
+          // guard against null/undefined before trim() — `null.trim()` would
+          // throw and surface to the user as a generic "couldn't save".
+          const val = (body as Record<string, string | null | undefined>)[field];
           setClauses.push(`${field} = $${paramIndex}`);
-          const trimmed = val !== undefined ? val.trim() : "";
+          const trimmed = typeof val === "string" ? val.trim() : "";
           params.push(trimmed !== "" ? trimmed : null);
           paramIndex += 1;
         }
@@ -898,11 +1011,15 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         trustpilot_url: string | null;
         crunchbase_url: string | null;
         youtube_url: string | null;
+        x_url: string | null;
+        instagram_url: string | null;
+        facebook_url: string | null;
+        tiktok_url: string | null;
       }>(
         `UPDATE brands
             SET ${setClauses.join(", ")}
           WHERE id = $1
-          RETURNING id, linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url`,
+          RETURNING id, linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url, x_url, instagram_url, facebook_url, tiktok_url`,
         params
       );
 
@@ -1075,6 +1192,22 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       );
       const brand = brandRes.rows[0];
       if (!brand) return c.json({ message: "Brand not found." }, 404);
+
+      // Plan gate: weekly monitoring is a paid feature. Enabling it on a plan
+      // that doesn't include it would give a paid capability away for free AND
+      // schedule real recurring audit spend. Disabling is always allowed.
+      if (enabled) {
+        const limits = await planLimitsFor(db, tenantId, auth.isSuperAdmin);
+        if (!limits.weekly_monitoring) {
+          return c.json(
+            {
+              message: "Weekly monitoring is a paid feature. Upgrade your plan to enable it.",
+              code: "PLAN_LIMIT_MONITORING",
+            },
+            403
+          );
+        }
+      }
 
       // Persist the flag.
       await db.query(`UPDATE brands SET monitoring_enabled = $2 WHERE id = $1`, [
@@ -1509,6 +1642,66 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   );
 
   // -------------------------------------------------------------------------
+  // DELETE /api/brands/:id — remove a brand and all its data (owner only).
+  // Every brand_id FK is ON DELETE CASCADE, so audits, scores, competitors,
+  // content, plans, pages, etc. are cleaned up. Tenant-scoped (RLS + predicate).
+  // -------------------------------------------------------------------------
+  app.delete("/api/brands/:id", requireAuth, requireRole(["owner"]), async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+    const res = await db.query<{ id: string }>(
+      `DELETE FROM brands WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [brandId, auth.tenantId]
+    );
+    if (!res.rows[0]) return c.json({ message: "Brand not found." }, 404);
+    logger.warn("brand_deleted", { tenant_id: auth.tenantId, brand_id: brandId });
+    return c.json({ deleted: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/brands/:id/tasks — add a custom "do next" item (owner/editor).
+  // Body: { action }. Attaches to the brand's latest strategy_plan (creating a
+  // user plan if none exists yet); status 'accepted' so it shows as open.
+  // -------------------------------------------------------------------------
+  app.post("/api/brands/:id/tasks", requireAuth, requireRole(["owner", "editor"]), async (c) => {
+    const auth = c.get("auth");
+    const brandId = c.req.param("id");
+    let body: { action?: string };
+    try { body = await c.req.json(); } catch { return c.json({ message: "Invalid JSON body." }, 400); }
+    const action = asStr(body.action);
+    if (!action) return c.json({ message: "action is required." }, 400);
+    if (action.length > 500) return c.json({ message: "action is too long (max 500 chars)." }, 400);
+    await db.setTenantId(auth.tenantId);
+    const brandRes = await db.query<{ id: string }>(
+      `SELECT id FROM brands WHERE id = $1 AND tenant_id = $2`,
+      [brandId, auth.tenantId]
+    );
+    if (!brandRes.rows[0]) return c.json({ message: "Brand not found." }, 404);
+    let planId: string;
+    const planRes = await db.query<{ id: string }>(
+      `SELECT id FROM strategy_plan WHERE brand_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [brandId]
+    );
+    if (planRes.rows[0]) {
+      planId = planRes.rows[0].id;
+    } else {
+      const created = await db.query<{ id: string }>(
+        `INSERT INTO strategy_plan (tenant_id, brand_id, generated_by) VALUES ($1, $2, 'user') RETURNING id`,
+        [auth.tenantId, brandId]
+      );
+      planId = created.rows[0].id;
+    }
+    const taskRes = await db.query<{ id: string }>(
+      `INSERT INTO plan_task (tenant_id, plan_id, vector, gap, action, effort, impact, priority, owner, status, created_at)
+       VALUES ($1, $2, 'custom', $3, $3, 'medium', 'medium', 50, 'you', 'accepted', NOW())
+       RETURNING id`,
+      [auth.tenantId, planId, action]
+    );
+    return c.json({ id: taskRes.rows[0].id, action, status: "accepted" }, 201);
+  });
+
+  // -------------------------------------------------------------------------
   // GET /api/brands/:id/plan — latest plan + its tasks
   // -------------------------------------------------------------------------
   app.get("/api/brands/:id/plan", requireAuth, async (c) => {
@@ -1656,7 +1849,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       if (!["blog", "linkedin", "faq"].includes(ct)) {
         return c.json({ message: "content_type must be blog|linkedin|faq." }, 400);
       }
-      const topic = (body.topic ?? "").trim();
+      const topic = asStr(body.topic);
       if (!topic) return c.json({ message: "topic is required." }, 400);
 
       await db.setTenantId(auth.tenantId);
@@ -1773,8 +1966,8 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
           category: brand.category,
           topic,
           sourceUrl: body.source_url ?? null,
-          instructions: body.instructions ? body.instructions.slice(0, 500) : undefined,
-          tone: body.tone ? body.tone.slice(0, 50) : undefined,
+          instructions: typeof body.instructions === "string" ? body.instructions.slice(0, 500) : undefined,
+          tone: typeof body.tone === "string" ? body.tone.slice(0, 50) : undefined,
           length: (["short", "medium", "long"] as const).includes(body.length as "short" | "medium" | "long")
             ? (body.length as "short" | "medium" | "long")
             : undefined,
@@ -2004,9 +2197,16 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const h = head.rows[0];
       if (!h) return null;
 
-      const bd = (typeof h.provider_breakdown === "string"
-        ? JSON.parse(h.provider_breakdown)
-        : h.provider_breakdown ?? {}) as Record<string, unknown>;
+      const bd = ((): Record<string, unknown> => {
+        const v = h.provider_breakdown;
+        if (typeof v !== "string") return (v ?? {}) as Record<string, unknown>;
+        // Guard: a malformed/legacy DB row must not 500 the whole audit fetch.
+        try {
+          return JSON.parse(v) as Record<string, unknown>;
+        } catch {
+          return {};
+        }
+      })();
 
       const probes = await db.query<{
         provider: string;

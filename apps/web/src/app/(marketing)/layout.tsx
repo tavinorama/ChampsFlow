@@ -546,6 +546,24 @@ function PublicNavbar() {
               {label}
             </Link>
           ))}
+          {/* Play — the GEO Search Runner game (/play). A plain <a> (full page
+              load), NOT next/link: /play is a static HTML served via a rewrite,
+              so it has no Next route to client-navigate to. */}
+          <a
+            href="/play"
+            className="mk-navlink mk-navlink-hide-sm"
+            style={{
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              color: "var(--color-muted)",
+              textDecoration: "none",
+              fontFamily: "var(--font-family)",
+              padding: "0.4rem 0.55rem",
+              borderRadius: "var(--radius-sm)",
+            }}
+          >
+            Play
+          </a>
         </div>
 
         {/* Right: theme toggle + Log in (quiet text link) + "Check my brand — free" (the one highlighted CTA) */}

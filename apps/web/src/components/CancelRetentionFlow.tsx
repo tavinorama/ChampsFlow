@@ -19,7 +19,7 @@
 import React, { useState } from "react";
 import { apiFetch } from "../lib/supabase-browser";
 
-type Step = "survey" | "offer" | "confirm" | "done";
+type Step = "survey" | "offer" | "confirm" | "done" | "saved";
 
 // Friendly reason → Stripe cancellation_details.feedback enum.
 const REASONS: { value: string; label: string }[] = [
@@ -47,6 +47,37 @@ export function CancelRetentionFlow({
   const [comment, setComment] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Save-offer: 30% off the next 3 monthly invoices (founder decision
+  // 2026-07-17). One per subscription — the API refuses (409) when a discount
+  // is already attached; we then hide the button and keep the other options.
+  const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [offerUnavailable, setOfferUnavailable] = useState<false | "already_discounted" | "not_monthly">(false);
+
+  async function acceptOffer(): Promise<void> {
+    if (offerSubmitting) return;
+    setOfferSubmitting(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/billing/retention-offer", { method: "POST" });
+      if (res.status === 409) {
+        const d = (await res.json().catch(() => ({}))) as { reason?: string };
+        setOfferUnavailable(d.reason === "not_monthly" ? "not_monthly" : "already_discounted");
+        return;
+      }
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { message?: string };
+        throw new Error(e.message ?? `HTTP ${res.status}`);
+      }
+      setStep("saved");
+    } catch {
+      setError(
+        "We couldn't apply the discount right now. Please try again, or email support@ozvor.com."
+      );
+    } finally {
+      setOfferSubmitting(false);
+    }
+  }
 
   async function confirmCancel(): Promise<void> {
     if (submitting) return;
@@ -153,24 +184,58 @@ export function CancelRetentionFlow({
         {step === "offer" && (
           <>
             <h2 id="cancel-flow-title" style={titleStyle}>Can we help before you cancel?</h2>
-            <p style={mutedStyle}>
-              A 15-minute call with us often fixes what's not working — and it's free.
-              You can also keep your plan and pick this up later.
-            </p>
+            {!offerUnavailable ? (
+              <>
+                <p style={mutedStyle}>
+                  Stay and take <strong>30% off your next 3 months</strong> — applied
+                  instantly, no code needed. Or book a free 15-minute call; it often
+                  fixes what&apos;s not working.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void acceptOffer()}
+                  disabled={offerSubmitting}
+                  style={{ ...primaryBtn, display: "block", width: "100%" }}
+                >
+                  {offerSubmitting ? "Applying…" : "Keep my plan with 30% off (3 months)"}
+                </button>
+              </>
+            ) : (
+              <p style={mutedStyle}>
+                {offerUnavailable === "not_monthly"
+                  ? "Your plan bills annually, so the 3-month offer doesn't apply here. A free 15-minute call often fixes what's not working."
+                  : "Your subscription already has a discount, so the 30% offer can't stack. A free 15-minute call often fixes what's not working."}
+              </p>
+            )}
             <a
               href="/book"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ ...primaryBtn, textAlign: "center", textDecoration: "none", display: "block" }}
+              style={{ ...(offerUnavailable ? primaryBtn : ghostBtn), textAlign: "center", textDecoration: "none", display: "block" }}
             >
               Talk to us (book a call)
             </a>
+            {error && <p role="alert" style={errorStyle}>{error}</p>}
             <div style={rowStyle}>
               <button type="button" onClick={onKeep} style={ghostBtn}>Keep my plan</button>
               <button type="button" onClick={() => setStep("confirm")} style={dangerBtn}>
                 Cancel anyway
               </button>
             </div>
+          </>
+        )}
+
+        {/* ---------- Saved: discount applied, plan kept ---------- */}
+        {step === "saved" && (
+          <>
+            <h2 id="cancel-flow-title" style={titleStyle}>Done — 30% off applied 🎉</h2>
+            <p style={mutedStyle}>
+              Your next 3 monthly invoices are 30% off, starting with the next one.
+              No code, nothing else to do. Thanks for staying with us.
+            </p>
+            <button type="button" onClick={onKeep} style={{ ...primaryBtn, display: "block", width: "100%" }}>
+              Back to my plan
+            </button>
           </>
         )}
 

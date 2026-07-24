@@ -112,6 +112,16 @@ export default async function RootLayout({
   // but must NOT inherit the app chrome (AppSidebar/AppTopBar) or it would
   // double-render. Render its children bare, like a public tenant site does.
   const isDashboardV3 = pathname === "/dashboard-v3" || pathname.startsWith("/dashboard-v3/");
+  // Ozvor Pages builder: reached natively from the v3 dashboard, so it must NOT
+  // inherit the legacy AppSidebar/AppTopBar (that was the "jumps to the old
+  // dashboard" complaint). Render bare like v3; still auth-gated by middleware.
+  // The builder pages provide their own "← Back to dashboard" link.
+  const isNativePagesBuilder = pathname === "/landing-pages" || pathname.startsWith("/landing-pages/");
+  // Admin console: the founder's internal cockpit, now on the v3 shell frame.
+  // Renders bare like v3 (its own sidebar), but as an INTERNAL tool it skips the
+  // customer-facing CCPA banner + DPA gate (its own shell owns 100dvh).
+  const isAdminConsole = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isBareApp = isDashboardV3 || isNativePagesBuilder || isAdminConsole;
 
   return (
     <html lang="en" className={`${schibsted.variable} ${jetbrainsMono.variable}`}>
@@ -181,11 +191,32 @@ export default async function RootLayout({
             @keyframes atmo-drift { from, to { transform: none; } }
           }
         `}</style>
-        {isDashboardV3 ? (
-          // 0b. Dashboard v3 (staging): self-contained shell owns its own
-          // sidebar + top bar. Render bare so the old AppSidebar/AppTopBar
-          // don't double-render. Auth is enforced by the middleware.
-          children
+        {isBareApp ? (
+          // 0b. Dashboard v3 + the Ozvor Pages builder: self-contained surfaces
+          // that own their visual chrome (own sidebar / back-links). Render
+          // without the old AppSidebar/AppTopBar so they don't double-render —
+          // but STILL keep the compliance layer the old shell had: the CI-1 DPA
+          // acknowledgment gate (blocking modal) and the CCPA California banner.
+          // DpaGate renders only the modal or the children, no sidebar/topbar.
+          isDashboardV3 ? (
+            // v3 is a FIT-TO-VIEWPORT shell that owns the full 100dvh itself
+            // (grid → rail → pinned footer). Nothing may sit ABOVE it in flow,
+            // or the sidebar footer (the client's email) is pushed off-screen —
+            // so NO CCPA banner here (it's a US informational notice; the CCPA
+            // control stays reachable via /ccpa + account settings). The DPA
+            // acknowledgment gate stays (fragment, adds no height).
+            <DpaGate>{children}</DpaGate>
+          ) : isNativePagesBuilder ? (
+            // Pages builder scrolls naturally — the banner can sit above it.
+            <>
+              <CaliforniaBanner country={country} />
+              <DpaGate>{children}</DpaGate>
+            </>
+          ) : (
+            // Admin console: internal founder tool. Bare — its own v3 shell owns
+            // the viewport; no customer-facing CCPA banner or DPA gate.
+            children
+          )
         ) : isPublicLanding ? (
           // 0. Public tenant sites (/l/*): render ONLY the page. No Ozvor
           // chrome of any kind — the page's own PublicLandingChrome provides

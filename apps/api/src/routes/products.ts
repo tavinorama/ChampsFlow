@@ -41,6 +41,7 @@ import { sendFreeTestResultEmail } from "../../../../packages/shared/src/emails/
 import { signedDownloadUrl } from "../../../../packages/shared/src/download-token";
 import { clientIp } from "../lib/client-ip";
 import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
+import { asStr } from "../lib/coerce";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,19 +142,19 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
-    const brand = (body.brand ?? "").trim();
-    const category = (body.category ?? "").trim();
+    const brand = asStr(body.brand);
+    const category = asStr(body.category);
     // Accept competitors[] (mockup: up to 3); the free test uses the primary one
     // for the head-to-head. Fall back to the single `competitor` field.
     const competitorList = Array.isArray(body.competitors)
-      ? body.competitors.map((x) => (x ?? "").trim()).filter(Boolean)
+      ? body.competitors.map((x) => asStr(x)).filter(Boolean)
       : [];
-    const competitor = (competitorList[0] ?? (body.competitor ?? "").trim()) || null;
-    const sector = (body.sector ?? "").trim() || null;
-    const country = (body.country ?? "").trim() || null;
+    const competitor = (competitorList[0] ?? asStr(body.competitor)) || null;
+    const sector = asStr(body.sector) || null;
+    const country = asStr(body.country) || null;
     const region = normRegion(body.region);
-    const email = (body.email ?? "").trim() || null;
-    const domain = (body.domain ?? "").trim() || null;
+    const email = asStr(body.email) || null;
+    const domain = asStr(body.domain) || null;
     // LGPD Art. 7(I) / GDPR Art. 6(1)(a): marketing consent must be explicitly true
     const marketingConsent = body.marketing_consent === true;
 
@@ -363,6 +364,107 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   });
 
   // -------------------------------------------------------------------------
+  // POST /api/game-lead — lead capture from the GEO Search Runner game (/play).
+  //
+  // The game (apps/web/public/geo-runner.html) shows an OPTIONAL email gate on
+  // "game over" with an UNCHECKED marketing-consent checkbox (privacy-policy
+  // link + unsubscribe language). Consent is EXPLICIT: this route stores the
+  // email and enrolls nurture ONLY when body.marketing_consent === true — it
+  // never infers consent from the email's presence or from the CTA click
+  // (Hermes #361; matches WaitlistForm's unchecked-opt-in convention;
+  // LGPD Art. 7(I) / GDPR Art. 6(1)(a)). Email is the only PII; the game has no
+  // transactional email, so without consent there's no lawful basis to store it
+  // — we respond {captured:false} and persist nothing. Score/engine live in
+  // result jsonb. No auth — pre-account top-of-funnel hook.
+  // -------------------------------------------------------------------------
+  app.post("/api/game-lead", async (c) => {
+    let body: { email?: string; score?: number; engine?: string; website?: string; marketing_consent?: boolean };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ message: "Invalid JSON body." }, 400);
+    }
+
+    // Honeypot: bots fill hidden fields. Pretend success, store nothing.
+    if (asStr(body.website)) return c.json({ captured: true });
+
+    const email = asStr(body.email) || null;
+    if (!email) return c.json({ captured: false });
+    if (!EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
+
+    // Explicit opt-in gate: no consent → store nothing, enroll nothing. The
+    // game still flows (the client shows its own "tick the box" prompt).
+    if (body.marketing_consent !== true) {
+      return c.json({ captured: false, reason: "consent_required" });
+    }
+
+    const score =
+      typeof body.score === "number" && Number.isFinite(body.score)
+        ? Math.max(0, Math.min(100000, Math.round(body.score)))
+        : null;
+    const engine = asStr(body.engine).slice(0, 40) || null;
+
+    const ip = clientIp(c);
+    const ipTruncated = ip ? truncateIpForRateLimit(ip) : "unknown";
+
+    // Light rate limit: 20 submissions / hour / IP (sliding window). Fail-open
+    // on any Redis issue so a transient blip never blocks a genuine player.
+    try {
+      const redis = getTestRedis();
+      const key = `game_rl:${ipTruncated}`;
+      const now = Date.now();
+      const pipeline = redis.pipeline();
+      pipeline.zremrangebyscore(key, 0, now - TEST_RATE_WINDOW_MS);
+      pipeline.zadd(key, { score: now, member: String(now) });
+      pipeline.zcard(key);
+      pipeline.expire(key, TEST_RATE_WINDOW_S);
+      const results = await pipeline.exec();
+      const count = results[2] as number;
+      if (count > 20) {
+        return c.json({ message: "Too many submissions. Try again later." }, 429);
+      }
+    } catch (err) {
+      logger.warn("game_lead_rate_limit_failed_open", { message: (err as Error).message });
+    }
+
+    // Best-effort insert. marketing_consent is true here by the explicit gate
+    // above (the player ticked the unchecked consent box) — never inferred.
+    try {
+      await db.query(
+        `INSERT INTO lead_capture (id, email, brand, category, region, result, source, ip_truncated, marketing_consent, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,'geo-runner-game',$7,true, NOW())`,
+        [
+          randomUUID(),
+          email,
+          "GEO Search Runner (game)",
+          "geo-runner-game",
+          "US",
+          jsonbParam({ score, engine }),
+          ip ? truncateIp(ip) : null,
+        ]
+      );
+    } catch (err) {
+      logger.warn("game_lead_insert_failed", { message: (err as Error).message });
+      // best-effort — never fail the player's submission on a DB blip.
+    }
+
+    // Enroll into the same free→kit nurture (LGPD Art. 7(I): consent given here).
+    try {
+      await enrollNurture(db, {
+        email,
+        sequence: "free_to_kit",
+        brand: "GEO Search Runner",
+        metadata: { source: "geo-runner-game", score, engine },
+        delayMs: 0,
+      });
+    } catch (err) {
+      logger.warn("game_lead_nurture_enroll_failed", { message: (err as Error).message });
+    }
+
+    return c.json({ captured: true });
+  });
+
+  // -------------------------------------------------------------------------
   // POST /api/kit/checkout — create order + checkout (or dev unlock)
   // -------------------------------------------------------------------------
   app.post("/api/kit/checkout", async (c) => {
@@ -372,11 +474,11 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
-    const brand = (body.brand ?? "").trim();
-    const category = (body.category ?? "").trim();
-    const domain = (body.domain ?? "").trim() || null;
+    const brand = asStr(body.brand);
+    const category = asStr(body.category);
+    const domain = asStr(body.domain) || null;
     const region = normRegion(body.region);
-    const email = (body.email ?? "").trim();
+    const email = asStr(body.email);
 
     if (!brand) return c.json({ message: "Brand name is required." }, 400);
     if (!category) return c.json({ message: "Category is required." }, 400);
@@ -385,7 +487,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     // Optional link to the free test that led here. Only honour it if it's a
     // valid UUID that points to a real lead_capture row — otherwise null, so a
     // stale/forged testId can never break checkout (FK) and never links blindly.
-    const testId = (body.testId ?? "").trim();
+    const testId = asStr(body.testId);
     let leadCaptureId: string | null = null;
     if (UUID_RE.test(testId)) {
       try {
@@ -447,7 +549,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     } catch {
       return c.json({ message: "Invalid JSON body." }, 400);
     }
-    const email = (body.email ?? "").trim();
+    const email = asStr(body.email);
     if (!email || !EMAIL_RE.test(email)) {
       return c.json({ message: "A valid email is required." }, 400);
     }

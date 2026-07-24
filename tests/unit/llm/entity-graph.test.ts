@@ -3,7 +3,7 @@
  * Uses mockMode to stay deterministic and offline.
  */
 import { describe, it, expect } from "vitest";
-import { analyzeEntityGraph } from "../../../packages/llm/src/entity-graph";
+import { analyzeEntityGraph, pickEntityCompleteness } from "../../../packages/llm/src/entity-graph";
 
 describe("analyzeEntityGraph (mock mode)", () => {
   it("is deterministic for a given brand", async () => {
@@ -43,5 +43,31 @@ describe("analyzeEntityGraph (mock mode)", () => {
     expect(r.wikidataId).toMatch(/^Q\d+$/);
     expect(typeof r.properties.officialWebsite).toBe("boolean");
     expect(typeof r.hasWikipedia).toBe("boolean");
+  });
+});
+
+describe("pickEntityCompleteness (Brand-vector entity signal)", () => {
+  const onSite = 1.0; // a well-marked-up site that would otherwise inflate Brand
+
+  it("trusts the entity value when a Wikidata entity was resolved (found)", () => {
+    const entity = { found: true, live: true, entityCompleteness: 0.7 };
+    expect(pickEntityCompleteness(entity, onSite)).toBe(0.7);
+  });
+
+  it("trusts the honest low value when the graph ran but found NO entity (the fix)", () => {
+    // live:true, found:false → the 0.3 floor. Must NOT fall back to the on-site 1.0.
+    const entity = { found: false, live: true, entityCompleteness: 0.3 };
+    expect(pickEntityCompleteness(entity, onSite)).toBe(0.3);
+  });
+
+  it("falls back to the on-site estimate only when Wikidata was unreachable", () => {
+    // live:false && found:false → genuine infra failure; don't punish the brand.
+    const entity = { found: false, live: false, entityCompleteness: 0.3 };
+    expect(pickEntityCompleteness(entity, onSite)).toBe(onSite);
+  });
+
+  it("keeps deterministic mock results (live:false, found:true) on their synthetic value", () => {
+    const entity = { found: true, live: false, entityCompleteness: 0.62 };
+    expect(pickEntityCompleteness(entity, onSite)).toBe(0.62);
   });
 });

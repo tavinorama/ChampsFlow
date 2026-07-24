@@ -48,6 +48,7 @@
 import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { getSharedRedis, type SharedRedis } from "../shared-redis";
+import { acquireRetentionLock, releaseRetentionLock } from "../lib/retention-lock";
 import { requireAuth, requireRole, requireNotProcessingRestricted } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -56,6 +57,7 @@ import {
   createCheckoutSession,
   createBillingPortalSession,
   cancelSubscriptionAtPeriodEnd,
+  applyRetentionDiscount,
   retrieveCustomerEmail,
   verifyWebhookSignature,
   mapStripeStatusToInternal,
@@ -71,6 +73,7 @@ import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
 import Stripe from "stripe";
+import { asStr } from "../lib/coerce";
 
 // ---------------------------------------------------------------------------
 // Redis client (lazy singleton — same pattern as other route modules)
@@ -392,15 +395,19 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
 
       const sub = subRows[0] ?? null;
       const planTier = ((sub?.plan_tier as PlanTier | undefined) ?? tenantTier) ?? "free";
-      const base = PLAN_LIMITS[planTier] ?? PLAN_LIMITS.free;
 
-      // super_admin (platform operator) is never plan-limited: unlimited brands
-      // and competitors (null → UI renders "unlimited") + top-tier audit depth.
+      // super_admin (platform operator) bypasses plan ENFORCEMENT elsewhere
+      // (planLimitsFor). But "What's included" is the PLAN's storefront — it
+      // must always show the plan's real limits (Agency = 15 brands, 10
+      // competitors…), never the operator bypass (founder rule 2026-07-17:
+      // "isso é com base nos planos"). A super_admin on a free tenant is
+      // presented as agency, with agency's limits, consistently.
       const unlimited = auth.isSuperAdmin === true;
-      const agency = PLAN_LIMITS.agency ?? base;
+      const displayTier: PlanTier = unlimited && planTier === "free" ? "agency" : planTier;
+      const base = PLAN_LIMITS[displayTier] ?? PLAN_LIMITS.free;
 
       return ctx.json({
-        plan: unlimited && planTier === "free" ? "agency" : planTier,
+        plan: displayTier,
         status: sub?.status ?? "active",
         renewal_date: sub?.current_period_end ?? null,
         cancel_at_period_end: sub?.cancel_at_period_end ?? false,
@@ -411,10 +418,10 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         managed_by_stripe: sub !== null,
         usage: {
           connected_accounts: connectedAccounts,
-          max_brands: unlimited ? null : base.max_brands,
-          max_competitors: unlimited ? null : base.max_competitors,
-          prompts_per_audit: unlimited ? agency.prompts_per_audit : base.prompts_per_audit,
-          weekly_monitoring: unlimited ? true : base.weekly_monitoring,
+          max_brands: base.max_brands,
+          max_competitors: base.max_competitors,
+          prompts_per_audit: base.prompts_per_audit,
+          weekly_monitoring: base.weekly_monitoring,
         },
       });
     } catch (err) {
@@ -653,12 +660,25 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       }
 
       const webOrigin = process.env.WEB_ORIGIN ?? "http://localhost:3000";
-      const returnUrl = `${webOrigin}/account/billing`;
+      // The live dashboard is v3 — return the customer to its Billing tab.
+      const returnUrl = `${webOrigin}/dashboard-v3?tab=billing`;
+
+      // Optional deep-link: { flow: "payment_method_update" } lands directly on
+      // Stripe's update-card screen. Allowlisted — anything else is ignored and
+      // opens the generic portal (view invoices, change/cancel plan, etc.).
+      let flow: "payment_method_update" | undefined;
+      try {
+        const body = (await ctx.req.json()) as { flow?: string };
+        if (body?.flow === "payment_method_update") flow = body.flow;
+      } catch {
+        /* no body — generic portal */
+      }
 
       try {
         const { url } = await createBillingPortalSession(
           stripeCustomerId,
-          returnUrl
+          returnUrl,
+          flow
         );
 
         // Audit log (no customer ID in metadata per hard rule)
@@ -784,6 +804,108 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
   );
 
   // -------------------------------------------------------------------------
+  // POST /api/billing/retention-offer
+  // The save-offer in the cancellation flow: applies the 30%-for-3-months
+  // retention coupon to the tenant's active subscription. Founder decision
+  // 2026-07-17. One offer per subscription — refused when any discount is
+  // already attached (prevents cancel→discount farming). The offer is never a
+  // gate: the cancel endpoint stays one request away regardless.
+  // Auth: requireAuth + requireRole(['owner']).
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/billing/retention-offer",
+    requireAuth,
+    requireRole(["owner"]),
+    async (ctx: Context) => {
+      const auth = ctx.get("auth");
+
+      let stripeSubscriptionId: string | null = null;
+      try {
+        await db.setTenantId(auth.tenantId);
+        const { rows } = await db.query<{ stripe_subscription_id: string | null }>(
+          `SELECT stripe_subscription_id
+             FROM billing_subscriptions
+            WHERE tenant_id = $1
+              AND stripe_subscription_id IS NOT NULL
+              AND status NOT IN ('canceled')
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [auth.tenantId]
+        );
+        stripeSubscriptionId = rows[0]?.stripe_subscription_id ?? null;
+      } catch (err) {
+        logger.error("billing_retention_lookup_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "internal_error", code: "RETENTION_LOOKUP_ERROR" }, 500);
+      }
+
+      if (!stripeSubscriptionId) {
+        return ctx.json(
+          { error: "no_subscription", code: "NO_ACTIVE_SUBSCRIPTION", message: "No active subscription found." },
+          404
+        );
+      }
+
+      // Serialize concurrent offers per subscription (Hermes reviews #357/#358):
+      // a short Redis NX claim makes the check-then-apply race single-flight.
+      // The claim holds an OWNERSHIP TOKEN and is RELEASED in `finally` on every
+      // exit (applied, refused, or thrown) via atomic compare-and-delete — so a
+      // finished request never blocks the next one, and a request whose claim
+      // already expired can never delete a newer owner's claim. Fail-open on
+      // Redis outage (same posture as the billing rate limiter) — the Stripe
+      // idempotency key inside applyRetentionDiscount still collapses
+      // duplicates to one mutation.
+      let lockRedis: SharedRedis | null = null;
+      try {
+        lockRedis = getRedis();
+      } catch (err) {
+        logger.warn("billing_retention_lock_redis_failed", {
+          message: (err as Error).message,
+        });
+      }
+      const lockToken = await acquireRetentionLock(lockRedis, stripeSubscriptionId);
+      if (lockToken === null) {
+        return ctx.json(
+          { applied: false, reason: "in_progress", message: "An offer request is already being processed." },
+          409
+        );
+      }
+
+      try {
+        const result = await applyRetentionDiscount(stripeSubscriptionId);
+        await writeBillingAuditLog(db, {
+          tenantId: auth.tenantId,
+          eventType: result.applied
+            ? "billing_retention_discount_applied"
+            : "billing_retention_discount_refused",
+          planTier: null,
+        });
+        if (!result.applied) {
+          const message =
+            result.reason === "not_monthly"
+              ? "This offer applies to monthly billing only."
+              : "This subscription already has a discount.";
+          return ctx.json(
+            { applied: false, reason: result.reason ?? "not_eligible", message },
+            409
+          );
+        }
+        return ctx.json({ applied: true, percent_off: 30, months: 3 });
+      } catch (err) {
+        logger.error("billing_retention_failed", {
+          tenant_id: auth.tenantId,
+          message: (err as Error).message,
+        });
+        return ctx.json({ error: "retention_failed", code: "RETENTION_ERROR" }, 500);
+      } finally {
+        await releaseRetentionLock(lockRedis, stripeSubscriptionId, lockToken);
+      }
+    }
+  );
+
+  // -------------------------------------------------------------------------
   // POST /api/billing/resend-deliverables
   // Founder/operator recovery: re-send the Growth/Agency bonus-deliverables
   // email to a given address. Covers the case where the original webhook send
@@ -804,7 +926,7 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       } catch {
         return ctx.json({ error: "bad_request", code: "INVALID_JSON" }, 400);
       }
-      const email = (body.email ?? "").trim();
+      const email = asStr(body.email);
       const plan = body.plan;
       if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
         return ctx.json({ error: "bad_request", code: "INVALID_EMAIL" }, 400);
@@ -1564,11 +1686,28 @@ async function handleSubscriptionUpdated(
 
   const internalStatus = mapStripeStatusToInternal(subscription.status);
 
-  // Resolve plan tier from the first subscription item's price ID
+  // Resolve plan tier from the first subscription item's price ID.
   const priceId = subscription.items.data[0]?.price?.id ?? null;
-  const planTier: PlanTier = priceId
-    ? (mapPriceIdToPlanTier(priceId) ?? "free")
-    : "free";
+  const mappedTier = priceId ? mapPriceIdToPlanTier(priceId) : null;
+  let planTier: PlanTier;
+  if (mappedTier) {
+    planTier = mappedTier;
+  } else {
+    // Unknown/legacy/live-vs-test price on an otherwise-valid subscription:
+    // do NOT downgrade a paying customer to free. Keep their current tier and
+    // log for reconciliation instead of silently stripping entitlements.
+    const cur = await db.query<{ plan_tier: string | null }>(
+      `SELECT plan_tier FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    planTier = (cur.rows[0]?.plan_tier as PlanTier | null) ?? "free";
+    logger.warn("billing_unknown_price_kept_tier", {
+      tenantId,
+      priceIdPresent: priceId !== null,
+      status: internalStatus,
+      keptTier: planTier,
+    });
+  }
 
   // Stripe timestamps are Unix seconds
   const periodStart = subscription.current_period_start

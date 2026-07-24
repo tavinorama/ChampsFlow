@@ -35,6 +35,7 @@ import {
   analyzeSentiment,
   analyzeRedditPresence,
   analyzeEntityGraph,
+  pickEntityCompleteness,
   type SentimentProbeInput,
   type ProbeQuery,
   type GeoLLMProvider,
@@ -492,10 +493,12 @@ export async function processAuditJob(
     const eeaBlended =
       eeaWeight > 0 ? eeaParts.reduce((s, p) => s + p.v * p.w, 0) / eeaWeight : 0.5;
 
-    // entityCompleteness now comes from the cross-source entity graph (C7) when an
-    // entity was resolved — this is the measured signal that closes the last Brand
-    // baseline. Falls back to the on-site crawl estimate otherwise.
-    const entityCompleteness = entity.found ? entity.entityCompleteness : crawl.brand.entityCompleteness;
+    // entityCompleteness from the cross-source entity graph (C7) when usable, else
+    // the on-site crawl estimate — see pickEntityCompleteness. Previously keyed on
+    // entity.found alone, which let a brand with NO Wikidata entity but a well-
+    // marked-up site keep the on-site estimate (often 1.0), inflating Brand and
+    // contradicting the audit's own "AI can't resolve you as an entity" finding.
+    const entityCompleteness = pickEntityCompleteness(entity, crawl.brand.entityCompleteness);
 
     const scoreInputs = {
       brand: {

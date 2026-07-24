@@ -72,6 +72,36 @@ function splitSentences(text: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// No-knowledge disclaimers — NOT citations
+// ---------------------------------------------------------------------------
+
+/**
+ * Sentences where the model disclaims knowledge of the subject. A brand token
+ * inside one of these is the opposite of being cited, so it must not count.
+ * Deliberately CONSERVATIVE: only unambiguous "I don't know it" phrasings.
+ * A hedged-but-real mention ("I don't have pricing details for X, but X is a
+ * solid tool") loses only that sentence — later genuine mentions still count.
+ */
+const NO_KNOWLEDGE_PATTERN = new RegExp(
+  [
+    // "don't/do not/doesn't/didn't have (any|specific|much|detailed|reliable|verified) information/details/data/knowledge"
+    "\\b(?:do(?:es)?\\s*n[o']t|did\\s*n[o']t|don't|doesn't|didn't)\\s+have\\s+(?:any\\s+|specific\\s+|much\\s+|detailed\\s+|reliable\\s+|verified\\s+)*(?:information|details|data|knowledge)\\b",
+    // "no (specific/reliable/verified) information/details/data about/on/regarding"
+    "\\bno\\s+(?:specific\\s+|reliable\\s+|verified\\s+)*(?:information|details|data)\\s+(?:about|on|regarding|available)\\b",
+    // "not familiar with" / "not aware of" / "unfamiliar with" / "haven't heard of"
+    "\\b(?:not\\s+familiar\\s+with|not\\s+aware\\s+of|unfamiliar\\s+with|haven'?t\\s+heard\\s+of)\\b",
+    // "couldn't/can't/cannot/could not/unable to find|locate|verify|confirm"
+    "\\b(?:couldn'?t|can'?t|cannot|could\\s+not|unable\\s+to)\\s+(?:find|locate|verify|confirm)\\b",
+    // "does not appear in my (training) data / to exist" · "no results for"
+    "\\bdoes\\s+not\\s+appear\\s+(?:in\\s+my|to\\s+exist)\\b",
+    "\\bno\\s+results\\s+for\\b",
+    // "as of my knowledge cutoff ... (no|not) ..." style disclaimers
+    "\\bknowledge\\s+cutoff\\b[^.?!]*\\b(?:no|not|never)\\b",
+  ].join("|"),
+  "i"
+);
+
+// ---------------------------------------------------------------------------
 // Core parse function
 // ---------------------------------------------------------------------------
 
@@ -116,6 +146,14 @@ export function parseCitation(raw: string, brandName: string): CitationParseResu
   for (let i = 0; i < sentences.length; i++) {
     const sentence = sentences[i];
     if (sentence !== undefined && brandPattern.test(sentence)) {
+      // Honesty guard: a sentence where the model says it DOESN'T know the
+      // brand ("I don't have specific information about Ozvor") contains the
+      // brand token but is the opposite of a citation. Counting it inflated
+      // the Visibility score with data that isn't real (observed live: an
+      // engine disclaiming knowledge was displayed as "Cited · #1"). Skip the
+      // disclaimer sentence and keep scanning — a genuine mention later in
+      // the same answer still counts.
+      if (NO_KNOWLEDGE_PATTERN.test(sentence)) continue;
       firstMentionPosition = i + 1; // 1-based
       break;
     }
