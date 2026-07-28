@@ -66,6 +66,7 @@ import { crawlSite } from "./site-crawl";
 import { computeGeoScore } from "./scoring";
 import { createHash } from "node:crypto";
 import type { LLMProvider, UserRegion } from "./providers/types";
+import { webSearchEnabled } from "./providers/types";
 
 export interface EngineResult {
   engine: LLMProvider;
@@ -411,7 +412,9 @@ export async function runInvisibilityTest(
         citationRate,
         avgPosition,
         sentiment,
-        note: `Tested ${prompts.length} buyer prompts across ${totalEngines} AI engine${totalEngines !== 1 ? "s" : ""} (${enginesLive} live). Cited on ${brandEngineCount}/${totalEngines} engines (${Math.round(citationRate * 100)}% of prompt·engine checks).`,
+        // B2 surface note: when web search is on (default), say so — the score
+        // was measured on the search-enabled surface real buyers see.
+        note: `Tested ${prompts.length} buyer prompts across ${totalEngines} AI engine${totalEngines !== 1 ? "s" : ""} (${enginesLive} live). Cited on ${brandEngineCount}/${totalEngines} engines (${Math.round(citationRate * 100)}% of prompt·engine checks).${webSearchEnabled() ? " Engines answered with live web search on — the same surface real buyers see." : ""}`,
       },
       performance: {
         schemaCoverage,

@@ -134,7 +134,7 @@ export type {
   ProbeCallOptions,
   ProviderErrorKind,
 } from "./providers/types";
-export { ProviderError, mockAllowed } from "./providers/types";
+export { ProviderError, mockAllowed, webSearchEnabled, providerSurface } from "./providers/types";
 
 // Routing gate — single chokepoint for EU/US provider access control (GEO-A3)
 export { routeProvider, permittedProviders } from "./providers/routing";
@@ -149,6 +149,38 @@ export { SerpProbeAdapter } from "./providers/serp";
 // Gateway — fan-out orchestration
 export type { RunProbesOptions, RunProbesResult } from "./providers/gateway";
 export { runProbes } from "./providers/gateway";
+
+// B1 — Wilson 95% intervals + intent×engine aggregation
+export type { WilsonInterval, FormulationTally, IntentEngineStat } from "./wilson";
+export { wilson95, aggregateIntentEngine } from "./wilson";
+
+// B1 — intent-classified default prompt portfolio (single source of truth)
+export type { PortfolioPrompt, PortfolioIntent } from "./prompt-portfolio";
+export { buildIntentPortfolio, PORTFOLIO_INTENTS } from "./prompt-portfolio";
+
+// B1 — sequential sampling protocol (lean base + escalate-on-ambiguity)
+export type {
+  SamplingQuery,
+  SequentialSamplingOptions,
+  SequentialSamplingResult,
+  SamplingEscalation,
+} from "./sampling";
+export {
+  runProbesSequential,
+  mergeProbeResponses,
+  responseSuccesses,
+  GEO_METHODOLOGY_VERSION,
+} from "./sampling";
+
+// B8 — 24h aggregated probe cache (store injected by the worker)
+export type { ProbeCacheStore } from "./probe-cache";
+export {
+  probeCacheEnabled,
+  probeCacheKey,
+  getCachedProbe,
+  setCachedProbe,
+  PROBE_CACHE_TTL_SECONDS,
+} from "./probe-cache";
 
 // Citation parser — deterministic mention + position + source extraction
 export type { CitationParseResult } from "./citation-parser";
