@@ -225,7 +225,11 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     // to retry instead of spending blind. (The per-IP RATE limit above stays
     // fail-open — a Redis blip there shouldn't block legitimate sign-ups.)
     const budgetCents = Math.round(Number(process.env["MONTHLY_BUDGET_USD"] ?? 100) * 100);
-    const freeTestCostCents = Number(process.env["FREE_TEST_COST_CENTS"] ?? 3);
+    // Default estimate WITH web search, jul/2026 (B2): 3 prompts × 5 engines at
+    // ≈ OpenAI 1.3¢ + Claude 1.8¢ + Gemini 1.7¢ + Perplexity 0.6¢ + SERP 0.5¢
+    // per call ≈ 18¢. Pre-B2 (no search) this was 3¢. Env-overridable;
+    // GEO_WEB_SEARCH=0 rollback should also set this back.
+    const freeTestCostCents = Number(process.env["FREE_TEST_COST_CENTS"] ?? 18);
     try {
       const spendRows = await db.query<{ c: number }>(
         `SELECT COALESCE(SUM(est_cost_cents), 0)::int AS c FROM api_spend WHERE created_at >= date_trunc('month', NOW())`

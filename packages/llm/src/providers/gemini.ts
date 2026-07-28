@@ -1,6 +1,10 @@
 /**
  * providers/gemini.ts — Google Gemini adapter for GEO probe queries
  *
+ * Surface (B2): generateContent with Google Search grounding
+ * (`tools: [{ google_search: {} }]`) — measures the search-enabled Gemini
+ * consumer surface. GEO_WEB_SEARCH=0 rolls back to the legacy no-grounding call.
+ *
  * Architecture refs:
  *  - docs/03-architecture.md §12 GEO-1 (probe query execution)
  *  - docs/03-architecture.md §11 — Gemini DPA: PENDING Gate 3→4 (EU BLOCKED)
@@ -28,7 +32,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -84,8 +88,12 @@ export class GeminiProbeAdapter implements ProviderAdapter {
     // NOTE: 1.5 models are retired for new projects (HTTP 404 seen in prod).
     const model =
       process.env["AUDIT_GEMINI_MODEL"] ?? process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash-lite";
+    // B2 surface honesty: Google Search grounding ON by default so the probe
+    // measures the search-enabled Gemini surface. GEO_WEB_SEARCH=0 rolls back
+    // to the legacy no-grounding behavior (parametric memory only).
+    const webSearch = webSearchEnabled();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), 30_000);
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
       const res = await fetch(url, {
@@ -94,6 +102,7 @@ export class GeminiProbeAdapter implements ProviderAdapter {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: query.queryText }] }],
+          ...(webSearch ? { tools: [{ google_search: {} }] } : {}),
         }),
       });
       if (!res.ok) {
@@ -101,18 +110,29 @@ export class GeminiProbeAdapter implements ProviderAdapter {
         throw new ProviderError("gemini", kind, res.status, `gemini HTTP ${res.status}`);
       }
       const data = (await res.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        candidates?: Array<{
+          content?: { parts?: Array<{ text?: string }> };
+          // Grounding metadata (present when Google Search grounding ran):
+          // groundingChunks[].web.uri are the pages the answer is grounded on.
+          groundingMetadata?: {
+            groundingChunks?: Array<{ web?: { uri?: string } }>;
+          };
+        }>;
       };
-      const rawText = (data.candidates?.[0]?.content?.parts ?? [])
+      const candidate = data.candidates?.[0];
+      const rawText = (candidate?.content?.parts ?? [])
         .map((p) => p.text ?? "")
         .join("\n");
+      const searchSources = (candidate?.groundingMetadata?.groundingChunks ?? [])
+        .map((c) => c.web?.uri)
+        .filter((u): u is string => typeof u === "string");
       const parsed = parseCitation(rawText, query.brandName);
       return {
         provider: "gemini",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
-        sources: parsed.sources,
+        sources: [...new Set([...parsed.sources, ...searchSources])],
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;
