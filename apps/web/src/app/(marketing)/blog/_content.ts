@@ -92,6 +92,10 @@ const S = {
     "Search Engine Land — repeated ChatGPT runs & brand visibility (~5 brands surface per category) — searchengineland.com/repeated-chatgpt-runs-brand-visibility-468552",
   forrester:
     "Forrester — 2026 Buyer Insights: zero-click is only half the AI story — forrester.com/blogs/",
+  geoSurvey2026:
+    'Survey of 45 generative engine optimization studies (July 2026), arxiv.org/abs/2607.14035',
+  marketingProfsJul2026:
+    '"AI Update, July 24, 2026: AI News and Views From the Past Week," MarketingProfs, marketingprofs.com/opinions/2026/55345/ai-update-july-24-2026-ai-news-and-views-from-the-past-week',
 };
 
 // ---------------------------------------------------------------------------
@@ -100,6 +104,47 @@ const S = {
 
 export const BLOG_CONTENT: BlogContent[] = [
   // 0 ───────────────────────────────────────────────────────────────────────
+  {
+    slug: "geo-number-everyone-quotes-measures-wrong-thing",
+    title: "The GEO Number Everyone Quotes Measures the Wrong Thing",
+    dek: "A new survey of 45 GEO studies says the famous 40% visibility boost measures prominence after retrieval, not whether AI discovers you at all. Here is what that changes about your strategy.",
+    category: "Research",
+    datePublished: "2026-07-27",
+    dateDisplay: "27 July 2026",
+    readTime: "4 min read",
+    keywords: ["GEO research", "generative engine optimization", "AI retrieval", "AI citations", "GEO survey", "AI search visibility"],
+    takeaways: [
+      "The widely quoted 40% visibility boost from the KDD 2024 study measures prominence: how visibly a source gets used once it is already in the model's context window.",
+      "A new survey of 45 GEO studies found no technique that consistently improves retrieval, the earlier step where AI decides whether to read your content at all.",
+      "Topical relevance and context position are what seem to move retrieval. Generic checklist tactics mostly do not transfer across platforms or queries.",
+      "Content rewritten to sound quotable can actually hurt its odds of getting retrieved in the first place. Measure whether you are retrieved before optimizing for prominence.",
+    ],
+    body: [
+      { t: "p", text: "You've probably seen the stat. Add a credible quote to your page and get roughly a 40% bump in AI visibility. Cite an authoritative source and see another double-digit jump. It comes from a real, peer-reviewed study out of Princeton, Georgia Tech and the Allen Institute for AI (KDD 2024), and it's been repeated in nearly every GEO pitch deck since. Ours included." },
+      { t: "cite", text: S.geoPaper },
+      { t: "p", text: "A new survey, posted this month, went back and read the actual evidence behind that number. It reviewed 45 studies on generative engine optimization published between late 2023 and now. Its conclusion is blunt: no technique it evaluated consistently improves whether your content gets discovered by an AI system in the first place. What that famous 40% figure actually measures is narrower than that. It's how prominently a source gets used once it has already been pulled into the model's context window. That's a real effect. It's just not the effect most people building GEO strategies think it is." },
+      { t: "cite", text: `${S.geoSurvey2026}; ${S.marketingProfsJul2026}` },
+
+      { t: "h2", id: "two-fights", text: "Two different fights" },
+      { t: "p", text: "There are two separate contests happening whenever someone asks ChatGPT, Claude, Perplexity or Google's AI Overview a question about your industry." },
+      { t: "p", text: "Fight one: does the system pull your page into its context at all. This is retrieval. It happens before generation, decided by relevance signals the model's search layer uses to figure out what's even worth reading." },
+      { t: "p", text: "Fight two: once your page is sitting in that context, how does the model use it. Does it name you, quote you, link you. This is prominence, and it's what the widely cited study actually tested. Researchers fed content directly into a fixed context and measured how different tactics changed the output." },
+      { t: "p", text: "Most of the industry has been selling fight two as if it were fight one. Add a stat, add a quote, cite a source, watch your visibility climb. Except if you were never going to be retrieved, none of that helps you. You don't get a turn to be prominent." },
+
+      { t: "h2", id: "moves-needle", text: "What actually moves the needle" },
+      { t: "p", text: "The survey does point to what seems to affect retrieval: topical relevance, and where your content sits in relation to the query, what it calls context position. That's just being the genuinely right, well organized answer to the question someone is asking. Generic checklist tactics, the kind promising identical results on every platform for every query, mostly don't transfer well. And here's the part that should sting anyone running GEO off a template: content rewritten specifically to sound quotable, tuned hard for citation, can actually hurt its odds of getting retrieved in the first place. Optimizing for the wrong stage can cost you the stage that matters more." },
+      { t: "cite", text: S.geoSurvey2026 },
+      { t: "p", text: "None of this means the earlier research was wrong. It means it answered a narrower question than the industry has been asking on its behalf. If you're already in the room, sounding credible and citable still helps you get named over your competitor. But getting into the room is the harder problem, and it's the one almost nobody measures honestly." },
+
+      { t: "h2", id: "what-to-do", text: "What to do with this" },
+      { t: "p", text: "Stop treating GEO like an SEO checklist with new vocabulary. Keyword stuffing never worked and still doesn't. Stuffing quotes and stats into pages with no real topical authority is heading the same direction. Build the thing that would genuinely be the correct answer to your customer's question, live it on the platforms AI systems already treat as trustworthy sources for your category, and let prominence tactics do their smaller, real job once you've earned the retrieval." },
+      { t: "p", text: "The honest first step isn't a tactic. It's a measurement. Before you optimize for prominence, find out if you're even being retrieved. Ask ChatGPT, Claude, Perplexity and Gemini about your category today and check whether you show up at all, not just how you're described when you do." },
+      { t: "p", text: "I built Ozvor's audit around exactly that question. Run it free at [ozvor.com/test](https://ozvor.com/test) and see what AI already knows, or doesn't, about your business before you spend another dollar on tactics built for the wrong half of the funnel." },
+    ],
+    sources: [S.geoSurvey2026, S.marketingProfsJul2026, S.geoPaper],
+  },
+
+  // 1 ───────────────────────────────────────────────────────────────────────
   {
     slug: "why-your-business-isnt-in-chatgpt-answers",
     title: "Why Your Business Isn't in ChatGPT's Answers (And the 3 Places It Actually Looks)",
