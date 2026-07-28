@@ -4,6 +4,7 @@
 > Originally populated at Gate 3→4 (2026-05-02) from architecture §4 + §11 + PRD §7.
 > Updated 2026-06-09: entity changed to TrustIndex AI Ltda (Brazil); LGPD Art. 37 framing added; GEO platform processing activities added; prior social-scheduling activities archived.
 > Updated 2026-07-08: entity identity CORRECTED — controller trades as Ozvor, a Brazilian MEI (Microempreendedor Individual), CNPJ 67.609.444/0001-08 (the holder's civil name is not reproduced here at the controller's instruction; the CNPJ is the unique public identifier); registered office Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD. This corrects the 2026-06-09 entry, which incorrectly stated the entity type as Sociedade Limitada (Ltda) and left CNPJ/address as pending/TBC. See `docs/compliance/regulatory-map.md` (2026-05-30 Brazil home-jurisdiction section) for the jurisdiction/entity-change record; the P5 legal-gate verdict for this identity correction is pending and will be logged in `docs/compliance/gate-log.md`.
+> Updated 2026-07-28: new processing activity G16 added — Evidence Store (raw engine responses, 12-month retention, Product Decision 4-A, founder-approved). See `docs/compliance/dpia.md` Section 11-GEO for the full DPIA assessment and `docs/compliance/gate-log.md` 2026-07-28 entry for the gate verdict and conditions (EV-1 through EV-9).
 > Update on every material change in processing, sub-processor list, or retention policy.
 
 ---
@@ -44,6 +45,7 @@
 | G13 | Data subject rights (DSR) handling | Legal obligation — GDPR Art. 15–22; LGPD Art. 18; CCPA § 1798.100 et seq.; US state laws | Art. 6(1)(c) — legal obligation | Art. 7(II) — legal obligation | All users | DSR request record (email, request type, identity verification status); full personal data scope for access/portability fulfillment | Supabase (DB), Resend (acknowledgment and fulfillment delivery) | Same as G1 | Same as G1 | DSR record: closed_at + 30 days, then deleted. Fulfillment package delivered before deletion. |
 | G14 | Security monitoring and audit logging | Legal obligation (GDPR Art. 32; LGPD Art. 46) + legitimate interests | Art. 6(1)(c) + (f) | Art. 7(II) + (IX) | All users | Hashed user/tenant IDs in operational logs; IP address and event type in audit log (account creation, audit run, content approval, DSR events, billing events, admin actions) | Supabase (DB) | Same as G1 | Same as G1 | Audit log: 3 years. Operational logs: 90 days hot, 1 year archive. |
 | G15 | Scheduled/weekly audit monitoring | Contract performance — automated weekly GEO re-audit for monitoring-enabled brands | Art. 6(1)(b) — contract | Art. 7(V) — contract | B2B customers | Brand domain; audit results (same as G3/G7); triggered_by = 'cron' flag | Same as G3 + Upstash (Redis, BullMQ scheduled job) | Same as G3 | Same as G3 | Audit records: 12 months rolling; superseded by newer audit |
+| G16 | Evidence store — raw engine response retention (NEW 2026-07-28, Product Decision 4-A) | Accountability / dispute-resolution — persist full-text raw AI engine responses for COMMERCIAL/buyer-category probe queries only, as an evidence asset backing each citation claim in a delivered report; each claim links to the original generation via a short-lived signed URL | Art. 6(1)(f) — legitimate interests (LIA in dpia.md Section 11-GEO) | Art. 7(IX) — legítimo interesse (Art. 10 balancing test) | B2B customers (report recipients); incidentally, named individuals appearing in commercial-query AI responses (e.g., named professionals/business owners recommended by an AI engine) | Full-text raw engine response for commercial/buyer-category queries only (no client PII in prompts, per GEO-A2; no PII in the Storage object key, per condition EV-2); private Supabase Storage object; signed-URL access only | Supabase Storage (private bucket; region-routing to be confirmed — condition EV-7) | EU: no transfer if EU-bucket routing is confirmed (EV-7 open). US/BR: no mechanism required for US; LGPD basis inherits GEO-D3 (unchanged). | DPA must be confirmed to explicitly cover Supabase Storage, not only Postgres/Auth (condition EV-9) | 12 months from generation, then hard delete via Storage lifecycle rule; targeted delete-by-evidence-id available before expiry on a data-subject request (condition EV-6; see "Activity G16 — Evidence Store: Third-Party DSR Handling" below) |
 
 ---
 
@@ -73,11 +75,24 @@
 
 ---
 
+### Activity G16 — Evidence Store: Third-Party DSR Handling (NEW 2026-07-28)
+
+> Full assessment in `docs/compliance/dpia.md` Section 11-GEO. Summarised here for the ROPA record.
+
+- **Scope**: a named individual appearing in a raw engine response (e.g., a professional or business owner recommended in a "best X in [city]" commercial query) is typically NOT an Ozvor account holder. Standard email-OTP identity verification (used for account-holder DSRs, Activity G13) does not apply to this scenario.
+- **Intake**: `/legal/dsr-request` must accept a request identifying the specific report/business/generation concerned, from a requester who is not a platform account holder.
+- **Verification**: manual/admin-reviewed identity check (no OTP available for non-account requesters). Operational procedure not yet finalized — condition EV-8 in dpia.md Section 11-GEO; external counsel review recommended given the novel fact pattern.
+- **Fulfillment**: targeted delete-by-evidence-id (single-object deletion from the private Storage bucket), distinct from the full-account erasure cascade in Activity G13. The associated report claim degrades gracefully ("source evidence removed per data-subject request") rather than breaking.
+- **Default posture**: honor deletion requests for third-party evidence unless a documented, compelling overriding interest exists — because the processing basis is Art. 6(1)(f) legitimate interests (not contract or legal obligation), an Art. 21(1) objection from the named third party generally prevails.
+- **Legal basis reference**: Art. 6(1)(f) GDPR / Art. 7(IX) LGPD (Activity G16 row above); LIA in dpia.md Section 11-GEO.
+
+---
+
 ## Data Subject Rights — Operational Handling
 
 - **Intake portal**: `/legal/dsr-request` (public, no login required). Legacy `/privacy/dsr` permanently redirects here (next.config.js).
 - **SLA**: 30 days from receipt (GDPR Art. 12(3)); extendable to 60 days with notice. CCPA: 45 days. LGPD: ANPD has not specified a statutory deadline beyond "without undue delay" — align to GDPR 30-day standard.
-- **Identity verification**: Email OTP (10-minute expiry). Proportionate for service type.
+- **Identity verification**: Email OTP (10-minute expiry). Proportionate for service type. **Does not cover third-party (non-account-holder) requesters against the Activity G16 evidence store — see "Activity G16 — Evidence Store: Third-Party DSR Handling" above.**
 - **ANPD complaint right**: Disclosed in Privacy Policy and DSR intake page (Gate 7 action).
 - **Workflow**: receive → identity-verify (OTP) → fulfill (cascade query/delete/export) → deliver (Resend email) → log (audit event) → close.
 - **LGPD Art. 18 coverage**: All nine rights mapped in Activity G13 table above.
@@ -100,7 +115,7 @@
 
 ## Archived: Processing Activities — Social-Scheduling Product (Organic Posts v1 — superseded 2026-05-30)
 
-> The activities below were documented at Gate 3→4 (2026-05-02) for the archived social-scheduling product under the Organic Posts, Lda (Portugal) entity. They are preserved as a historical record only. All active processing is under the GEO Platform activities (G1–G15) above.
+> The activities below were documented at Gate 3→4 (2026-05-02) for the archived social-scheduling product under the Organic Posts, Lda (Portugal) entity. They are preserved as a historical record only. All active processing is under the GEO Platform activities (G1–G16) above.
 
 | # | Activity | Purpose | Lawful basis (Art. 6) | Data subjects | Personal data | Sub-processors | Third-country transfer | Mechanism | Retention |
 |---|---|---|---|---|---|---|---|---|---|
@@ -125,4 +140,5 @@
 - Reviewed by (human): _____ (required before EU/BR launch)
 - Update log: 2026-07-10 — brand-name fix in live activity G7 ("TrustIndex Score" → "Ozvor AI Visibility Score"; founder rebrand rule 2026-06-27) as part of the issue #213 stale-docs sweep. No processing-activity change.
 - Update log: 2026-07-08 — entity identity corrected (MEI confirmed in place of the prior Ltda reference; CNPJ 67.609.444/0001-08 and registered office populated; "TrustIndex AI" active references replaced with "Ozvor"). Razão social kept as the on-file civil name under CNPJ 67.609.444/0001-08 (not reproduced, at the controller's instruction); the public identity is the trade name Ozvor. P5 legal-gate verdict pending. Historical Archived section (Organic Posts, Lda) preserved unedited per append-only convention.
+- Update log: 2026-07-28 — new processing activity G16 added (Evidence Store — raw engine responses, 12-month retention) under founder-approved Product Decision 4-A; "Activity G16 — Evidence Store: Third-Party DSR Handling" subsection added; Data Subject Rights — Operational Handling section cross-referenced. Corresponding DPIA update in `docs/compliance/dpia.md` Section 11-GEO (new risk GEO-R13, conditions EV-1 through EV-9). Gate verdict in `docs/compliance/gate-log.md` 2026-07-28 entry. Does not alter the 90-day `citation_check` retention (unchanged, separate data category) or any other existing G1–G15 activity.
 - Next review: annual (2027-06) or on material change in processing, sub-processor list, applicable law, or entity identity
