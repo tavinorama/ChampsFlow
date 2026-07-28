@@ -104,6 +104,13 @@ export interface ProbeResponse {
    * Empty array when the provider does not return inline citations.
    */
   sources: string[];
+  /**
+   * B8: true when this AGGREGATED multi-run result was served from the 24h
+   * probe cache instead of live provider calls. Cached results are frozen
+   * units — the sampler never escalates them and the worker never re-caches
+   * them or logs an ai_generation for them.
+   */
+  fromCache?: boolean;
 }
 
 // ---------------------------------------------------------------------------

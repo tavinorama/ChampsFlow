@@ -4,8 +4,12 @@
  * Job payload: { audit_id, tenant_id, brand_id, region }  — no PII.
  *
  * Flow:
- *   1. Set RLS tenant context; load the brand + a buyer-prompt portfolio.
- *   2. runProbes() across permitted providers (routing gate: EU excludes Perplexity).
+ *   1. Set RLS tenant context; load the brand + the intent-classified
+ *      buyer-prompt portfolio (B1: 5 intents × 2 formulations).
+ *   2. Probe-cache read (B8: whole aggregated probes only, 24h TTL), then
+ *      runProbesSequential() across permitted providers (routing gate: EU
+ *      excludes Perplexity): 2-run base, escalate ONLY ambiguous intent×engine
+ *      pairs, GEO_MAX_GENS ceiling. Wilson 95% CIs per intent×engine.
  *      Mock-mode adapters return deterministic results when API keys are absent.
  *   3. Parse each probe → citation_check rows (aggregate only; raw text discarded).
  *   4. Derive AI sub-score inputs from probe aggregates; brand/performance use
@@ -24,11 +28,17 @@ import IORedis from "ioredis";
 import postgres from "postgres";
 import { createHash } from "crypto";
 import {
-  runProbes,
+  runProbesSequential,
+  responseSuccesses,
+  GEO_METHODOLOGY_VERSION,
+  buildIntentPortfolio,
+  type PortfolioPrompt,
+  wilson95,
   computeGeoScore,
   parseCitation,
   crawlSite,
   tallyCompetitors,
+  detectCompetitors,
   type CompetitorProbe,
   measureOffsiteSignal,
   analyzeContentGeo,
@@ -37,9 +47,14 @@ import {
   analyzeEntityGraph,
   pickEntityCompleteness,
   type SentimentProbeInput,
-  type ProbeQuery,
+  type SamplingQuery,
   type GeoLLMProvider,
+  type ProbeResponse,
   providerSurface,
+  permittedProviders,
+  probeCacheEnabled,
+  getCachedProbe,
+  setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
@@ -60,22 +75,30 @@ function randomUuid(): string {
   return (globalThis.crypto as Crypto).randomUUID();
 }
 
-// Default buyer-prompt portfolio. A later slice generates these per brand/category;
-// for now a representative set so the audit produces a real signal.
-function buildPromptPortfolio(brandName: string, category: string | null): string[] {
-  const cat = category && category.trim() ? category.trim() : "solution";
-  return [
-    `What is the best ${cat} for small businesses?`,
-    `Top ${cat} providers in 2026`,
-    `${cat} alternatives worth considering`,
-    `Which ${cat} do experts recommend?`,
-    `Most trusted ${cat} companies`,
-    `Best ${cat} for SMBs on a budget`,
-    `${brandName} vs competitors`,
-    `Is ${brandName} a good choice?`,
-    `Pros and cons of leading ${cat} options`,
-    `How to choose a ${cat} vendor`,
-  ];
+// Default buyer-prompt portfolio — B1: the canonical, intent-classified list
+// now lives in packages/llm/src/prompt-portfolio.ts (same texts, same order;
+// shared with the API's Prompt Library route). 5 intents × 2 formulations.
+
+// ---------------------------------------------------------------------------
+// B8 — probe-cache Redis client (lazy singleton, same pattern as the daily
+// monitor queue below). The cache is fail-open everywhere: any Redis error is
+// a cache miss / no-op, never an audit failure.
+// ---------------------------------------------------------------------------
+let _probeCacheRedis: IORedis | null = null;
+
+function getProbeCacheRedis(): IORedis {
+  if (_probeCacheRedis) return _probeCacheRedis;
+  const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+  _probeCacheRedis = new IORedis(redisUrl, { maxRetriesPerRequest: 2 });
+  _probeCacheRedis.on("error", (err: Error) => {
+    logger.warn("probe_cache_redis_error", { message: err.message?.slice(0, 160) });
+  });
+  return _probeCacheRedis;
+}
+
+/** Round to 4 decimals for breakdown JSON readability. */
+function round4(x: number): number {
+  return Math.round(x * 10_000) / 10_000;
 }
 
 const REQUESTED_PROVIDERS: GeoLLMProvider[] = [
@@ -188,8 +211,10 @@ export async function processAuditJob(
       throw new Error("brand_not_found");
     }
 
-    // Build probe portfolio.
-    const prompts = buildPromptPortfolio(brand.name, brand.category);
+    // Build probe portfolio (B1: intent-classified — 5 intents × 2 formulations,
+    // texts unchanged from the legacy portfolio; shared with the API's Prompt
+    // Library route via packages/llm/src/prompt-portfolio.ts).
+    const prompts: PortfolioPrompt[] = buildIntentPortfolio(brand.name, brand.category);
 
     // Append custom prompts from the audit_prompt table (Prompt Library capability).
     // CRITICAL: any error here MUST NOT propagate — the audit must always complete
@@ -204,14 +229,18 @@ export async function processAuditJob(
       `;
       if (customRows.length > 0) {
         // Normalise defaults for dedup comparison (lowercase trim).
-        const defaultsNorm = new Set(prompts.map((p) => p.toLowerCase().trim()));
+        const defaultsNorm = new Set(prompts.map((p) => p.text.toLowerCase().trim()));
         let added = 0;
         for (const row of customRows) {
           if (added >= 10) break;
           const norm = row.text.toLowerCase().trim();
           if (!defaultsNorm.has(norm)) {
-            prompts.push(row.text);
             added += 1;
+            // B1: each custom prompt is its OWN single-formulation intent
+            // (custom_1, custom_2, …). Grouping unrelated custom questions
+            // under one shared intent would sum runs of different questions
+            // and fabricate a tighter confidence interval than the data has.
+            prompts.push({ text: row.text, intentId: `custom_${added}`, formulationIx: 0 });
           }
         }
       }
@@ -277,11 +306,21 @@ export async function processAuditJob(
     const promptCap = PLAN_LIMITS[planTier]?.prompts_per_audit ?? PLAN_LIMITS.free.prompts_per_audit;
     if (prompts.length > promptCap) prompts.length = promptCap;
 
-    const queries: ProbeQuery[] = prompts.map((t) => ({
-      queryHash: sha256(t),
-      queryText: t,
+    const queries: SamplingQuery[] = prompts.map((p) => ({
+      queryHash: sha256(p.text),
+      queryText: p.text,
       brandName: brand.name,
+      intentId: p.intentId,
+      formulationIx: p.formulationIx,
     }));
+    // Intent classification lookup for evidence rows + breakdown (by hash so
+    // sanitizer rewrites inside the gateway can't break the join).
+    const intentByHash = new Map(
+      queries.map((q) => [
+        q.queryHash,
+        { intentId: q.intentId ?? null, formulationIx: q.formulationIx ?? null },
+      ])
+    );
 
     // Filter probes to brand's tracked models (graceful fallback if column missing or empty).
     // Any error here MUST NOT propagate — fall back to all supported providers.
@@ -302,21 +341,80 @@ export async function processAuditJob(
     }
 
     // In LIVE mode, repeat each probe to capture AI non-determinism as a mention
-    // RATE with confidence. Mock adapters are deterministic, so repeat=1 there.
+    // RATE with confidence. B1 lean protocol: base = 2 runs per formulation
+    // (GEO_PROBE_REPEAT still overrides, clamped 1–5), then SEQUENTIAL
+    // escalation adds runs only where the intent×engine signal is ambiguous.
+    // Mock adapters are deterministic, so 1 run and no escalation there.
     const liveMode =
       !!process.env["ANTHROPIC_API_KEY"] ||
       !!process.env["OPENAI_API_KEY"] ||
       !!process.env["PERPLEXITY_API_KEY"] ||
       !!process.env["GEMINI_API_KEY"];
-    const repeat = liveMode ? Number(process.env["GEO_PROBE_REPEAT"] ?? 3) : 1;
+    const envBaseRuns = Number(process.env["GEO_PROBE_REPEAT"] ?? 2);
+    const baseRuns = liveMode
+      ? Math.max(1, Math.min(5, Number.isFinite(envBaseRuns) ? Math.floor(envBaseRuns) : 2))
+      : 1;
 
-    // Fan out across permitted providers (routing gate applied inside).
-    // requestedProviders respects brand's tracked_models setting (filtered above).
-    const result = await runProbes(queries, {
+    // B8 — probe cache read. A cache entry is a WHOLE aggregated multi-run
+    // probe (never individual generations — that would falsify the Wilson
+    // interval). Only providers permitted for this region are looked up, so a
+    // routing-gate-blocked provider can never be served from cache. Disabled
+    // in mock mode (deterministic fabricated answers must not persist) and by
+    // GEO_PROBE_CACHE=0. Fail-open: any Redis error is a miss.
+    const cacheEnabled = probeCacheEnabled() && liveMode;
+    const cachedResponses: ProbeResponse[] = [];
+    let cacheLookups = 0;
+    if (cacheEnabled) {
+      try {
+        const redis = getProbeCacheRedis();
+        const allowedForCache = permittedProviders(userRegion, requestedProviders);
+        const lookups: Array<Promise<void>> = [];
+        for (const q of queries) {
+          for (const p of allowedForCache) {
+            cacheLookups += 1;
+            lookups.push(
+              getCachedProbe(redis, q.queryHash, p, GEO_METHODOLOGY_VERSION).then((hit) => {
+                if (hit) cachedResponses.push(hit);
+              })
+            );
+          }
+        }
+        await Promise.all(lookups);
+      } catch (err) {
+        logger.warn("probe_cache_read_failed", {
+          message: (err as Error).message?.slice(0, 160),
+        });
+      }
+    }
+
+    // B1 — sequential sampling across permitted providers (routing gate applied
+    // inside). Cached pairs are frozen seed units; escalation (max +2 runs per
+    // ambiguous intent×engine) respects the GEO_MAX_GENS ceiling (default 220).
+    const result = await runProbesSequential(queries, {
       region: userRegion,
       requestedProviders,
-      repeat,
+      baseRuns,
+      escalate: liveMode,
+      seedResponses: cachedResponses,
     });
+
+    // B8 — cache write: persist each LIVE aggregated probe (escalations already
+    // folded in) as one unit for 24h. Cached hits are never re-cached (no TTL
+    // renewal — data older than 24h must be re-measured). Fail-open.
+    if (cacheEnabled) {
+      try {
+        const redis = getProbeCacheRedis();
+        await Promise.all(
+          result.responses
+            .filter((r) => !r.fromCache)
+            .map((r) => setCachedProbe(redis, r, GEO_METHODOLOGY_VERSION))
+        );
+      } catch (err) {
+        logger.warn("probe_cache_write_failed", {
+          message: (err as Error).message?.slice(0, 160),
+        });
+      }
+    }
 
     // INTEGRITY: if EVERY provider returned nothing (all keys out of
     // credits/quota, all errored, or none permitted), we measured zero AI
@@ -388,6 +486,18 @@ export async function processAuditJob(
     let positionScoreN = 0;
     // Sentiment inputs — answer text + mention flag per probe (analysed after loop).
     const sentimentProbes: SentimentProbeInput[] = [];
+    // B1 — per intent×engine share-of-voice accumulator (client mention mass vs
+    // competitor mentions, mirroring the audit-level shareOfVoice formula).
+    const sovAcc = new Map<
+      string, // `${intentId}|${dbEngine}`
+      { client: number; comp: number; byComp: Map<string, number> }
+    >();
+    // B8 — cache accounting for the breakdown.
+    let cacheHits = 0;
+    // Graceful degradation: if the B1 migration hasn't been applied yet
+    // (42703 undefined_column), fall back to the legacy citation_check insert
+    // so an old-schema deploy never fails audits.
+    let citationSchemaHasB1 = true;
 
     for (const resp of result.responses) {
       const rate = typeof resp.mentionRate === "number" ? resp.mentionRate : (resp.mentioned ? 1 : 0);
@@ -399,6 +509,9 @@ export async function processAuditJob(
         positionScoreSum += 1 / position;
         positionScoreN += 1;
       }
+      if (resp.fromCache) cacheHits += 1;
+
+      const intentMeta = resp.queryHash ? intentByHash.get(resp.queryHash) : undefined;
 
       // Collect for sentiment classification (how the brand is portrayed).
       sentimentProbes.push({ text: resp.rawText ?? "", mentioned });
@@ -413,28 +526,82 @@ export async function processAuditJob(
         });
       }
 
+      // B1 — per intent×engine share-of-voice inputs. Client side uses the
+      // mention RATE (expected cited answers); competitor side counts mentions
+      // detected in this answer's text (same units as the audit-level formula).
+      if (intentMeta?.intentId) {
+        const key = `${intentMeta.intentId}|${dbProvider(resp.provider)}`;
+        const acc = sovAcc.get(key) ?? { client: 0, comp: 0, byComp: new Map<string, number>() };
+        acc.client += rate;
+        if (competitorNames.length > 0) {
+          for (const cName of detectCompetitors(resp.rawText ?? "", competitorNames)) {
+            acc.comp += 1;
+            acc.byComp.set(cName, (acc.byComp.get(cName) ?? 0) + 1);
+          }
+        }
+        sovAcc.set(key, acc);
+      }
+
       // citation_check stores the buyer prompt + cited sources as audit evidence
       // (the prompt is a synthetic category question, not PII; purged after 90d).
-      await sql`
-        INSERT INTO citation_check
-          (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
-           mention_rate, runs_count, raw_text_snippet, processed_at)
-        VALUES
-          (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
-           ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
-           ${resp.queryText ?? null},
-           ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
-           ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)}, NOW())
-      `;
+      // B1 adds intent_id / formulation_ix / methodology_version (migration
+      // 20260728000001); on an old schema we fall back to the legacy insert.
+      let citationInserted = false;
+      if (citationSchemaHasB1) {
+        try {
+          await sql`
+            INSERT INTO citation_check
+              (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
+               mention_rate, runs_count, raw_text_snippet, intent_id, formulation_ix, methodology_version, processed_at)
+            VALUES
+              (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
+               ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
+               ${resp.queryText ?? null},
+               ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
+               ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)},
+               ${intentMeta?.intentId ?? null}, ${intentMeta?.formulationIx ?? null},
+               ${GEO_METHODOLOGY_VERSION}, NOW())
+          `;
+          citationInserted = true;
+        } catch (err: unknown) {
+          if ((err as { code?: string }).code === "42703") {
+            citationSchemaHasB1 = false;
+            logger.warn("citation_check_b1_columns_missing", {
+              message: "intent/methodology columns absent — migration 20260728000001 pending; using legacy insert",
+            });
+          } else {
+            throw err;
+          }
+        }
+      }
+      if (!citationInserted) {
+        await sql`
+          INSERT INTO citation_check
+            (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
+             mention_rate, runs_count, raw_text_snippet, processed_at)
+          VALUES
+            (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
+             ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
+             ${resp.queryText ?? null},
+             ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
+             ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)}, NOW())
+        `;
+      }
 
-      await sql`
-        INSERT INTO ai_generation_log
-          (tenant_id, feature_id, input_hash, provider, model_version, output_hash, zdr_confirmed, latency_ms, timestamp)
-        VALUES
-          (${tenant_id}, 'GEO-1', ${sha256(resp.provider + "|" + brand.name)},
-           ${dbProvider(resp.provider)}, ${"mock-or-live"}, ${sha256(resp.rawText ?? "")},
-           ${userRegion === "EU"}, ${0}, NOW())
-      `;
+      // B8: a cached probe made NO generation calls — logging one would
+      // fabricate an inference event (ai_generation_log is an audit trail of
+      // real provider calls, GEO-A6). Skip it; the citation evidence row above
+      // still records the (cached) measurement.
+      if (!resp.fromCache) {
+        await sql`
+          INSERT INTO ai_generation_log
+            (tenant_id, feature_id, input_hash, provider, model_version, output_hash, zdr_confirmed, latency_ms, timestamp)
+          VALUES
+            (${tenant_id}, 'GEO-1', ${sha256(resp.provider + "|" + brand.name)},
+             ${dbProvider(resp.provider)}, ${"mock-or-live"}, ${sha256(resp.rawText ?? "")},
+             ${userRegion === "EU"}, ${0}, NOW())
+        `;
+      }
     }
 
     // Persist the competitor benchmark + build a ranked list for the breakdown.
@@ -470,6 +637,81 @@ export async function processAuditJob(
           : 0;
 
     const aioPresence = result.responses.some((r) => r.provider === "serp" && r.mentioned);
+
+    // -----------------------------------------------------------------------
+    // B1 — intent×engine aggregates with Wilson 95% intervals.
+    // HONESTY RULE: the interval width ships with every rate ("cited in 12%
+    // ± 9%") — a rate is never surfaced without its n and CI.
+    // -----------------------------------------------------------------------
+    const totalRunsAll = result.responses.reduce((s, r) => s + (r.runs ?? 1), 0);
+    const totalSuccessesAll = result.responses.reduce((s, r) => s + responseSuccesses(r), 0);
+    // Audit-level run-weighted citation rate + CI (basis of the scorecard "±").
+    const citationCI = wilson95(totalSuccessesAll, totalRunsAll);
+
+    const intentGroups = new Map<
+      string,
+      {
+        engines: Array<{
+          engine: string;
+          n: number;
+          successes: number;
+          formulations: number;
+          citationRate: number;
+          ciLow: number;
+          ciHigh: number;
+          shareOfVoice: number;
+          topCompetitors: Array<{ name: string; mentions: number }>;
+        }>;
+        successes: number;
+        n: number;
+      }
+    >();
+    for (const s of result.intentStats) {
+      const engine = dbProvider(s.provider);
+      const sov = sovAcc.get(`${s.intentId}|${engine}`);
+      // Same semantics as the audit-level shareOfVoice: no competitors
+      // configured → your own citation rate; nobody cited → 0.
+      const shareOfVoiceIntent =
+        competitorNames.length === 0
+          ? round4(s.citationRate)
+          : sov && sov.client + sov.comp > 0
+            ? round4(sov.client / (sov.client + sov.comp))
+            : 0;
+      const topCompetitors = sov
+        ? [...sov.byComp.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([name, mentions]) => ({ name, mentions }))
+        : [];
+      const g = intentGroups.get(s.intentId) ?? { engines: [], successes: 0, n: 0 };
+      g.engines.push({
+        engine,
+        n: s.n,
+        successes: s.successes,
+        formulations: s.formulations,
+        citationRate: round4(s.citationRate),
+        ciLow: round4(s.ciLow),
+        ciHigh: round4(s.ciHigh),
+        shareOfVoice: shareOfVoiceIntent,
+        topCompetitors,
+      });
+      g.successes += s.successes;
+      g.n += s.n;
+      intentGroups.set(s.intentId, g);
+    }
+    const intentBreakdown = [...intentGroups.entries()].map(([intentId, g]) => {
+      const w = wilson95(g.successes, g.n);
+      return {
+        intent: intentId,
+        overall: {
+          citationRate: round4(w.rate),
+          ciLow: round4(w.low),
+          ciHigh: round4(w.high),
+          n: w.n,
+        },
+        engines: g.engines,
+      };
+    });
 
     // Sentiment — how the brand is PORTRAYED in answers where it is mentioned.
     // analyzed=false (no mentions) → neutral 0.5 (honest baseline).
@@ -559,7 +801,35 @@ export async function processAuditJob(
       baseline,
       probesTotal: result.responses.length,
       probesCited: citedAnyCount,
-      probeRepeat: repeat,
+      probeRepeat: result.baseRuns,
+      // B1 — protocol identity + audit-level citation rate with Wilson 95% CI.
+      methodologyVersion: GEO_METHODOLOGY_VERSION,
+      citationCI: {
+        rate: round4(citationCI.rate),
+        low: round4(citationCI.low),
+        high: round4(citationCI.high),
+        n: citationCI.n,
+      },
+      // B1 — per-intent breakdown: rate ± CI and share of voice per engine.
+      intents: intentBreakdown,
+      // B1/B8 — sampling telemetry: what was escalated, what the ceiling did,
+      // and how the 24h probe cache behaved. All additive (old readers ignore).
+      sampling: {
+        baseRuns: result.baseRuns,
+        maxGenerations: result.maxGenerations,
+        generationsUsed: result.generationsUsed,
+        capReached: result.capReached,
+        escalations: result.escalations.map((e) => ({
+          intent: e.intentId,
+          engine: dbProvider(e.provider),
+          extraRuns: e.extraRuns,
+        })),
+        cache: {
+          enabled: cacheEnabled,
+          hits: cacheHits,
+          misses: Math.max(0, cacheLookups - cacheHits),
+        },
+      },
       // B2 surface note — which surface each engine was actually probed on
       // (search-enabled consumer surface vs no-search fallback GEO_WEB_SEARCH=0).
       // Keyed by DB provider name, matching providers_used.
@@ -645,14 +915,37 @@ export async function processAuditJob(
        WHERE id = ${audit_id}
     `;
 
+    // B1 — stamp the sampling protocol version on the audit. Separate,
+    // fault-tolerant statement so an old schema (migration 20260728000001
+    // pending → 42703) can never fail the audit finalize above.
+    try {
+      await sql`
+        UPDATE geo_audit
+           SET methodology_version = ${GEO_METHODOLOGY_VERSION}
+         WHERE id = ${audit_id}
+      `;
+    } catch (err: unknown) {
+      logger.warn("geo_audit_methodology_version_skipped", {
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+
     // Record estimated audit spend in the monthly budget ledger (visibility only
     // — audits are NOT hard-capped, so paying customers are never cut off).
     try {
-      // Default estimate WITH web search, jul/2026 (B2): ~10 prompts × 3 repeats
-      // × 5 engines at ≈ OpenAI 1.3¢ + Claude 1.8¢ + Gemini 1.7¢ + Perplexity
-      // 0.6¢ + SERP 0.5¢ per call ≈ $1.80. Pre-B2 (no search) this was 80¢.
-      // Env-overridable; GEO_WEB_SEARCH=0 rollback should also set this back.
-      const auditCostCents = Number(process.env["AUDIT_COST_CENTS"] ?? 180);
+      // B1/B8: the estimate now scales with the generations ACTUALLY consumed
+      // by this run (sequential sampling shrinks it, escalation grows it, cache
+      // hits remove it) instead of a flat per-audit constant. Rate ≈ 1.2¢ per
+      // generation — the B2 search-enabled blend across the 5 engines (OpenAI
+      // 1.3¢ + Claude 1.8¢ + Gemini 1.7¢ + Perplexity 0.6¢ + SERP 0.5¢ ≈ 5.9¢
+      // per prompt-round / 5 engines). AUDIT_COST_CENTS still overrides with a
+      // flat per-audit value; AUDIT_COST_PER_GEN_CENTS tunes the rate.
+      const perGenRaw = Number(process.env["AUDIT_COST_PER_GEN_CENTS"] ?? 1.2);
+      const perGenCents = Number.isFinite(perGenRaw) && perGenRaw > 0 ? perGenRaw : 1.2;
+      const flatOverride = Number(process.env["AUDIT_COST_CENTS"] ?? NaN);
+      const auditCostCents = Number.isFinite(flatOverride)
+        ? flatOverride
+        : Math.max(1, Math.round(result.generationsUsed * perGenCents));
       await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });
@@ -663,6 +956,11 @@ export async function processAuditJob(
       overall: score.overall,
       providers_used: providersUsed.length,
       blocked: result.blockedProviders.length,
+      methodology: GEO_METHODOLOGY_VERSION,
+      generations_used: result.generationsUsed,
+      gens_cap_reached: result.capReached,
+      escalations: result.escalations.length,
+      cache_hits: cacheHits,
     });
 
     return { audit_id, overall: score.overall };
