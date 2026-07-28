@@ -1,5 +1,9 @@
 /**
- * providers/openai.ts — OpenAI GPT-4o adapter for GEO probe queries
+ * providers/openai.ts — OpenAI adapter for GEO probe queries
+ *
+ * Surface (B2): Responses API (/v1/responses) with the `web_search` tool —
+ * measures the search-enabled ChatGPT consumer surface. GEO_WEB_SEARCH=0
+ * rolls back to the legacy no-search Chat Completions call.
  *
  * Architecture refs:
  *  - docs/03-architecture.md §12 GEO-1 (probe query execution)
@@ -29,7 +33,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -79,38 +83,87 @@ export class OpenAIProbeAdapter implements ProviderAdapter {
       return mockResponse(query);
     }
 
-    // ---- LIVE mode: OpenAI Chat Completions API over HTTPS ----
+    // ---- LIVE mode ----
     // Cheap tier by design for audit/free-test probes (AUDIT_OPENAI_MODEL overrides).
     const model = process.env["AUDIT_OPENAI_MODEL"] ?? process.env["OPENAI_MODEL"] ?? "gpt-4o-mini";
+    // B2 surface honesty: default path is the Responses API with the web_search
+    // tool, so the probe measures what a ChatGPT user actually sees (browsing
+    // on), not the model's parametric memory. GEO_WEB_SEARCH=0 rolls back to
+    // the legacy no-search Chat Completions call.
+    const webSearch = webSearchEnabled();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), 30_000);
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const url = webSearch
+        ? "https://api.openai.com/v1/responses"
+        : "https://api.openai.com/v1/chat/completions";
+      const body = webSearch
+        ? {
+            model,
+            max_output_tokens: 1024,
+            input: query.queryText,
+            tools: [{ type: "web_search" }],
+          }
+        : {
+            model,
+            max_tokens: 1024,
+            messages: [{ role: "user", content: query.queryText }],
+          };
+      const res = await fetch(url, {
         method: "POST",
         signal: controller.signal,
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          max_tokens: 1024,
-          messages: [{ role: "user", content: query.queryText }],
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const kind = res.status === 429 || res.status >= 500 ? "retryable" : "permanent";
         throw new ProviderError("openai", kind, res.status, `openai HTTP ${res.status}`);
       }
-      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-      const rawText = data.choices?.[0]?.message?.content ?? "";
+      const data = (await res.json()) as {
+        // Chat Completions shape (GEO_WEB_SEARCH=0 fallback)
+        choices?: Array<{ message?: { content?: string } }>;
+        // Responses API shape: output[] carries web_search_call + message items;
+        // message content blocks are output_text with url_citation annotations.
+        output?: Array<{
+          type?: string;
+          content?: Array<{
+            type?: string;
+            text?: string;
+            annotations?: Array<{ type?: string; url?: string }>;
+          }>;
+        }>;
+      };
+
+      let rawText: string;
+      const searchSources: string[] = [];
+      if (webSearch) {
+        const messageBlocks = (data.output ?? [])
+          .filter((item) => item.type === "message")
+          .flatMap((item) => item.content ?? []);
+        rawText = messageBlocks
+          .filter((c) => c.type === "output_text" && typeof c.text === "string")
+          .map((c) => c.text)
+          .join("\n");
+        // url_citation annotations = the pages the search-enabled answer cites.
+        for (const c of messageBlocks) {
+          for (const a of c.annotations ?? []) {
+            if (a.type === "url_citation" && typeof a.url === "string") searchSources.push(a.url);
+          }
+        }
+      } else {
+        rawText = data.choices?.[0]?.message?.content ?? "";
+      }
+
       const parsed = parseCitation(rawText, query.brandName);
       return {
         provider: "openai",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
-        sources: parsed.sources,
+        sources: [...new Set([...parsed.sources, ...searchSources])],
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;

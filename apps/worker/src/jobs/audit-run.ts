@@ -39,6 +39,7 @@ import {
   type SentimentProbeInput,
   type ProbeQuery,
   type GeoLLMProvider,
+  providerSurface,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
@@ -559,6 +560,15 @@ export async function processAuditJob(
       probesTotal: result.responses.length,
       probesCited: citedAnyCount,
       probeRepeat: repeat,
+      // B2 surface note — which surface each engine was actually probed on
+      // (search-enabled consumer surface vs no-search fallback GEO_WEB_SEARCH=0).
+      // Keyed by DB provider name, matching providers_used.
+      surfaces: Object.fromEntries(
+        Array.from(new Set(result.responses.map((r) => r.provider))).map((p) => [
+          dbProvider(p),
+          providerSurface(p),
+        ])
+      ),
       // Site-crawl evidence shown under Brand/Performance in the breakdown UI.
       siteCrawl: {
         reachable: crawl.reachable,
@@ -638,7 +648,11 @@ export async function processAuditJob(
     // Record estimated audit spend in the monthly budget ledger (visibility only
     // — audits are NOT hard-capped, so paying customers are never cut off).
     try {
-      const auditCostCents = Number(process.env["AUDIT_COST_CENTS"] ?? 80);
+      // Default estimate WITH web search, jul/2026 (B2): ~10 prompts × 3 repeats
+      // × 5 engines at ≈ OpenAI 1.3¢ + Claude 1.8¢ + Gemini 1.7¢ + Perplexity
+      // 0.6¢ + SERP 0.5¢ per call ≈ $1.80. Pre-B2 (no search) this was 80¢.
+      // Env-overridable; GEO_WEB_SEARCH=0 rollback should also set this back.
+      const auditCostCents = Number(process.env["AUDIT_COST_CENTS"] ?? 180);
       await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });
