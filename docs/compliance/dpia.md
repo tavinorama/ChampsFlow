@@ -12,6 +12,8 @@
 
 Ozvor (Brazilian MEI, CNPJ 67.609.444/0001-08; formerly referred to in this document as "TrustIndex AI (Brazil Ltda)" — see Section 1-GEO correction) is a GEO audit platform for SMBs. Jurisdictions: Brazil (LGPD RIPD, Section 10), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5). Data processed: customer account email, BYOK provider keys (AES-256-GCM), per-audit citation evidence (synthetic probe prompts, no personal data by design, purged 90 days), brand/domain data, Stripe billing identifiers. Data subjects: B2B customers and staff emails. High-risk processing confirmed on three GDPR Art. 35(3) triggers: (a) systematic large-scale processing of publicly available data; (b) innovative technology (multi-LLM audit mechanism); (c) cross-border transfers to multiple LLM providers. After mitigations — synthetic-only probe prompts (GEO-A2), EU/Perplexity routing gate (GEO-A3), AES-256-GCM BYOK key storage, forced RLS multi-tenant Postgres, append-only ai_generation_log (GEO-A6), GDPR Art. 27 EU representative required before EU user onboarding — residual risk is **LOW to MEDIUM**. Three open conditions remain: GEO-D1 (LLM provider EU routing confirmations), GEO-D2 (citation_check.sources incidental personal data review), GEO-D3 (LGPD international transfer basis). No GDPR Art. 36 or ANPD consultation required. Next mandatory review: before new LLM provider activation or EU/BR paid launch.
 
+**Update 2026-07-28**: A new Evidence Store category (raw engine responses linked to citation claims via signed URLs, 12-month retention, commercial-query-only) has been added under founder-approved Product Decision 4-A — see Section 11-GEO. This does NOT alter the existing 90-day purge for `citation_check` metadata (URLs/position/cited flag), which is a separate, already-closed data category (GEO-A2/GEO-D2) and remains unchanged.
+
 ---
 
 ## SECTION A — ARCHIVED: Social-Scheduling Product (Organic Posts v1 — 2026-05-02)
@@ -338,11 +340,12 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 13. Billing — Stripe for EU/US (cards); Brazil Pix/boleto planned (contract performance)
 14. DSR handling — GDPR Art. 15–22, LGPD Art. 18, US state privacy law rights (legal obligation)
 15. Breach notification preparation — GDPR Art. 33, LGPD Art. 48, US state notification laws (legal obligation)
+16. Evidence store — retaining full-text raw responses from AI search engines for commercial/buyer-category probe queries as an accountability record backing each citation claim in a delivered report, linked via short-lived signed URL (contract performance / legitimate interests). **Added 2026-07-28, Product Decision 4-A — see Section 11-GEO for the full assessment.**
 
 ### Data Subjects
 
 - **Primary**: Business customers (B2B) — SMB operators, their staff who access the platform; email addresses are account identifiers
-- **Secondary (incidental, minimised)**: Named individuals appearing in LLM probe response snippets, SERP results, or public source profiles (competitor executives, Reddit post authors, Wikidata persons) — not collected purposefully; stored only as aggregate citation metrics where possible
+- **Secondary (incidental, minimised)**: Named individuals appearing in LLM probe response snippets, SERP results, or public source profiles (competitor executives, Reddit post authors, Wikidata persons) — not collected purposefully; stored only as aggregate citation metrics where possible. **Also secondary (incidental, from 2026-07-28): named individuals appearing in the full-text raw commercial-query responses persisted to the Evidence Store (Section 11-GEO) — e.g., a professional or business owner recommended by an AI engine.**
 
 ### Personal Data Categories
 
@@ -358,6 +361,7 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | ai_generation_log | SHA-256 hashes of generation inputs/outputs only; append-only | Low |
 | Content drafts | AI-generated text awaiting human approval; ai_generated flag | Low |
 | Third-party personal data (incidental) | Named individuals in SERP snippets or LLM citation passages (e.g. competitor CEO names); minimised — aggregate metrics preferred; not exported to clients in personal-data form | Medium (GDPR Art. 14 obligation) |
+| Evidence store — raw engine response text (NEW 2026-07-28) | Full-text AI engine responses to commercial/buyer-category probe queries only; may incidentally name a real professional/business owner in a commercial-recommendation context; retained 12 months in a private Storage bucket, accessed only via short-lived signed URL | Medium (GDPR Art. 14 obligation; see Section 11-GEO) |
 
 ### Recipients and Sub-Processors
 
@@ -373,6 +377,7 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Railway | Application traffic | EU-west (EU) / varies (US/BR) | DPA in ToS. EU path: no Art. 44 transfer. |
 | Upstash Redis | Job queue payloads (audit job IDs, no content) | EU endpoint | DPA available. No Art. 44 transfer on EU path. |
 | Resend | Account email + notification content | EU infrastructure | DPA available. Verify EU infrastructure at account level (Gate 7). |
+| Supabase Storage (evidence store, NEW 2026-07-28) | Full-text raw engine responses (commercial queries only), private bucket, signed-URL access | eu-central-1 (EU tenants, to be confirmed — EV-7) / us-east-1 (US/BR tenants) | Region-routing mirroring the existing Postgres split must be confirmed (EV-7, Section 11-GEO). DPA must be confirmed to cover Storage specifically, not only Postgres/Auth (EV-9). |
 
 ### Retention Periods
 
@@ -382,13 +387,16 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Brand and domain records | Account life + 30-day grace |
 | Audit records (geo_audit, geo_score) | 12 months rolling (configurable), then aggregated summary only |
 | Citation evidence (citation_check) | 90 days, then purged (GEO-A2 design intent) |
+| Evidence store — raw engine response text (commercial queries only; Product Decision 4-A) | 12 months from generation, then hard delete (Storage lifecycle rule); targeted delete-by-evidence-id available before expiry on DSR request — see Section 11-GEO |
 | ai_generation_log (hashes only) | 3 years (accountability obligation, GDPR Art. 5(2); LGPD Art. 37) |
 | Content drafts (approved or discarded) | Account life + 30-day grace |
 | Strategy plan tasks | Account life + 30-day grace |
 | BYOK keys | Until key rotation or account deletion |
-| Billing identifiers (Stripe IDs) | Account life; Stripe governs payment data |
+| Billing identifiers (Stripe IDs) | Account life; Stripe governs card data |
 | DSR records | Closed_at + 30 days, then deleted |
 | Audit log (compliance events) | 3 years |
+
+> **Note (2026-07-28)**: the Evidence Store row above is a NEW, separate data category (raw full-text model responses) added under founder-approved Product Decision 4-A. It does NOT alter the Citation evidence (`citation_check`) row's 90-day purge, which continues to cover only URLs/position/cited-flag metadata per GEO-A2/GEO-D2 and remains unchanged. See Section 11-GEO for the full assessment.
 
 ---
 
@@ -410,6 +418,7 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Billing | Art. 6(1)(b) — contract | Subscription SaaS billing |
 | DSR handling | Art. 6(1)(c) — legal obligation | GDPR Art. 15–22; LGPD Art. 18; US state laws |
 | Security monitoring / audit log | Art. 6(1)(c) — legal obligation | GDPR Art. 32; LGPD Art. 46 |
+| Evidence store — raw engine response retention (NEW 2026-07-28) | Art. 6(1)(f) — legitimate interests | Controller's and customer's shared interest in auditable, tamper-evident evidence backing a paid report deliverable. Full LIA in Section 11-GEO. |
 
 ### LGPD Legal Bases (Art. 7)
 
@@ -422,16 +431,17 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | DSR handling | Art. 7(II) — compliance with legal obligation | LGPD Art. 18 rights |
 | Security / audit log | Art. 7(II) — compliance with legal obligation | LGPD Art. 46 security obligations |
 | Billing (Stripe) | Art. 7(V) — execution of contract | |
+| Evidence store — raw engine response retention (NEW 2026-07-28) | Art. 7(IX) — legítimo interesse | Subject to LGPD Art. 10 balancing test; see Section 11-GEO |
 
 No LGPD Art. 11 sensitive data (dados sensíveis) identified: no health, racial, religious, biometric, genetic, sexual orientation, or political data processed.
 
 ### CCPA/CPRA Basis
 
-All processing is for service delivery (business purpose under CCPA § 1798.140(e)). No sale or sharing of personal information for targeted advertising. BYOK keys are not "personal information" under CCPA when encrypted and used solely for the customer's own service delivery. The "Do Not Sell or Share" opt-out obligation applies from launch for California residents accessing the platform.
+All processing is for service delivery (business purpose under CCPA § 1798.140(e)). No sale or sharing of personal information for targeted advertising. BYOK keys are not "personal information" under CCPA when encrypted and used solely for the customer's own service delivery. The "Do Not Sell or Share" opt-out obligation applies from launch for California residents accessing the platform. The evidence store (Section 11-GEO) is likewise an internal business-purpose use (providing the contracted service; audit/security) and does not constitute a sale or share.
 
 ### Special-Category Basis (GDPR Art. 9)
 
-Not applicable. No special-category data is intentionally processed. If LLM probe responses incidentally contain health, political, or religious content about named individuals at competitor brands, the data minimisation obligation (Art. 5(1)(c)) requires that such content not be stored or exported — only aggregate citation metrics are retained.
+Not applicable. No special-category data is intentionally processed. If LLM probe responses incidentally contain health, political, or religious content about named individuals at competitor brands, the data minimisation obligation (Art. 5(1)(c)) requires that such content not be stored or exported — only aggregate citation metrics are retained. The same principle applies to the evidence store (Section 11-GEO condition EV-3: pre-persistence content screen).
 
 ### Data Minimization Assessment (GDPR Art. 5(1)(c); LGPD Art. 6(III))
 
@@ -440,6 +450,7 @@ Not applicable. No special-category data is intentionally processed. If LLM prob
 - **Third-party personal data**: Named individuals in SERP snippets and off-site source results are not individually stored in the database. Off-site signal measurement records per-source presence/absence and weighted score only. The off-site signal module (packages/llm/offsite-signal.ts) stores source chips (present/absent) and aggregate score — not individual post author names or profile data.
 - **BYOK keys**: Only ciphertext stored; presence-only API response; no plaintext ever returned or logged.
 - **Competitor benchmark**: competitor_citation table stores mention_count and displacement_count per competitor entity, not named individuals at those competitors. The competitor-detect module uses word-boundary-safe name matching on returned text, not stored text of the full LLM response.
+- **Evidence store (NEW 2026-07-28)**: minimisation is enforced by (a) a commercial-query-only write-gate (EV-1) — the evidence store never persists a response to any query type other than a buyer-category commercial probe; (b) no client PII in the object key (EV-2); (c) an automated pre-persistence content screen (EV-3) for high-risk incidental categories. Full detail in Section 11-GEO.
 
 **Overall data minimisation assessment: SUBSTANTIALLY COMPLIANT.** One open point: full LLM response text is stored in citation_check.sources (per implementation as of 2026-05-31 site-crawl slice); this field may contain incidental named-individual references. Condition GEO-D2 below requires that citation_check.sources content be reviewed and pseudonymised or truncated if it contains personal data.
 
@@ -456,7 +467,7 @@ The GEO platform inherits the DSR workflow designed for the social-scheduling pr
 - **Right to portability**: JSON export of brand profiles, audit scores (numerical), content drafts (approved text), strategy plan tasks. Source URLs from citation evidence included. No export of third-party personal data (off-site snippets, competitor citation text).
 - **Right to rectification**: Account email via account settings. Brand name and domain editable by customer. No correction rights over audit results (these are computed metrics from public data, not stored personal data about the requesting data subject).
 - **Right to restriction**: Processing restriction applies to active audit jobs. If a restriction request is received, no new audit jobs may be triggered for the restricted account; scheduled (cron) jobs must be paused. BullMQ job cancellation for scheduled repeatable jobs required.
-- **Right to object (Art. 21)**: Applies to processing on legitimate-interests basis (off-site signal measurement, competitor detection). Object request must be assessed; if the objection is upheld, those processing activities cease for the customer's account. Given B2B context, Art. 21 objections are expected to be rare.
+- **Right to object (Art. 21)**: Applies to processing on legitimate-interests basis (off-site signal measurement, competitor detection, and — as of 2026-07-28 — the evidence store). Object request must be assessed; if the objection is upheld, those processing activities cease for the customer's account (or, for evidence-store objections raised by a named THIRD PARTY rather than the account holder, the specific evidence object is deleted — see Section 11-GEO). Given B2B context, Art. 21 objections from account holders are expected to be rare; third-party evidence-erasure requests are a new, separate scenario (Section 11-GEO).
 - **Right against automated decisions (Art. 22)**: The GEO Score is an automated computation about a brand's commercial visibility — not a decision about a natural person with legal or similarly significant effects. Art. 22 is NOT triggered. The score is presented with full explainability (provider_breakdown, per-vector breakdown, per-prompt evidence table) consistent with Art. 22(3) transparency even though Art. 22 does not technically apply.
 
 ### LGPD Art. 18 Rights
@@ -493,12 +504,13 @@ LGPD Art. 18 rights mirror GDPR substantially. Specific LGPD additions:
 | DataForSEO | EU-hosted option available | No (if EU path used) | No Art. 44 transfer | Confirm EU hosting configuration at Gate 7. |
 | Stripe | US-hosted | Yes | SCCs + DPF certified | Must execute Stripe DPA before launch. |
 | Supabase | eu-central-1 for EU users | No | No Art. 44 transfer | DPA must be executed. |
+| Supabase Storage (evidence store, NEW 2026-07-28) | eu-central-1 for EU users — to be confirmed | No, if EU-bucket routing confirmed | No Art. 44 transfer, pending confirmation | CONDITION EV-7 (Section 11-GEO): region-routing for Storage has not yet been confirmed to mirror the Postgres EU/US-BR split. |
 
 **BR users (Brazil → US/EU transfers under LGPD Arts. 33–36):**
 
 LGPD international transfer requires one of: (a) transfer to country with adequate protection level recognised by ANPD; (b) ANPD-approved standard contractual clauses; (c) specific and highlighted consent; (d) binding corporate rules; (e) regulatory cooperation agreements. As of 2026-06, ANPD has not published a comprehensive adequacy list or approved standard contractual clauses that would provide a general LGPD SCC mechanism (the process was ongoing as of early 2025). This creates an open gap: in the absence of ANPD-approved clauses, the most practical LGPD basis for BR-to-US provider transfers is **Art. 33(IX) — specific consent from the data subject** or **Art. 33(II) — co-operation based on international instruments** where applicable.
 
-**LGPD transfer condition (GEO-D3)**: Before Brazilian users' data is transferred to US-hosted sub-processors (Anthropic direct API, OpenAI standard API, Perplexity — if cleared, Stripe, SerpAPI), the LGPD transfer basis must be documented. Until ANPD publishes approved standard clauses, use: (a) specific highlighted consent disclosed in the Privacy Policy for each sub-processor transfer; or (b) verify whether current ANPD guidance recognises DPF or GDPR SCCs as an equivalent mechanism (this is an evolving area — external counsel review recommended). **This does not block the EU or US market launch, but must be resolved before Brazilian users who are natural persons (as opposed to the business entity itself) are onboarded onto the live SaaS platform.**
+**LGPD transfer condition (GEO-D3)**: Before Brazilian users' data is transferred to US-hosted sub-processors (Anthropic direct API, OpenAI standard API, Perplexity — if cleared, Stripe, SerpAPI), the LGPD transfer basis must be documented. Until ANPD publishes approved standard clauses, use: (a) specific highlighted consent disclosed in the Privacy Policy for each sub-processor transfer; or (b) verify whether current ANPD guidance recognises DPF or GDPR SCCs as an equivalent mechanism (this is an evolving area — external counsel review recommended). **This does not block the EU or US market launch, but must be resolved before Brazilian users who are natural persons (as opposed to the business entity itself) are onboarded onto the live SaaS platform.** The same GEO-D3 basis applies to any BR-tenant data flowing into the evidence store (Section 11-GEO) — no separate LGPD transfer condition is created by the evidence store; it inherits GEO-D3.
 
 ### Transfer Impact Assessment (TIA)
 
@@ -519,12 +531,13 @@ A TIA covering Anthropic, OpenAI, and Stripe (the three US-hosted providers most
 - **BYOK key lifecycle**: Encrypted at storage; presence-only API response; key never returned in plaintext; encryption verified end-to-end (saved key is ciphertext in DB, confirmed in /account/integrations implementation).
 - **DEV_AUTH_BYPASS**: Gated to NODE_ENV !== production. Must be confirmed disabled in production at Gate 7.
 - **Content draft human approval gate**: No auto-publish. content_piece.status transitions require explicit human approve action (PATCH /api/content/:id). approved_at and approved_by logged. EU AI Act Art. 50 label (ai_generated: true) non-removable.
+- **Evidence store technical controls (NEW 2026-07-28)**: private bucket ACL, short-TTL signed URLs, tenant-ownership check before signed-URL minting, no client PII in object key, targeted delete-by-evidence-id capability. Full detail and open conditions (EV-1 through EV-9) in Section 11-GEO.
 
 ### Organizational Measures
 
 - **EU Art. 27 representative**: Required before EU users onboard. Not yet appointed. This is a Gate 7 hard stop.
 - **Encarregado de Dados (LGPD Art. 41)**: Required. Must be appointed and contact published in Privacy Policy before BR launch. Can be same person as GDPR privacy contact.
-- **Sub-processor DPAs**: All sub-processors in Section 1-GEO recipients table require executed DPAs before launch.
+- **Sub-processor DPAs**: All sub-processors in Section 1-GEO recipients table require executed DPAs before launch, including confirmation that the Supabase DPA explicitly covers Storage (EV-9, NEW 2026-07-28).
 - **ANPD registration**: LGPD does not mandate controller registration with ANPD (unlike GDPR Art. 30 registration thresholds); ROPA-equivalent records required internally (see ropa.md update).
 - **Breach notification**:
   - GDPR Art. 33: 72-hour notification to lead supervisory authority (DPA in EU — since controller is Brazilian, the "lead" DPA for EU operations is the authority of the data subjects' member states; all EU DPAs with jurisdiction may need notification until a lead is determined; Art. 27 representative appointment should include guidance on this).
@@ -549,8 +562,11 @@ A TIA covering Anthropic, OpenAI, and Stripe (the three US-hosted providers most
 | GEO-R10 | LGPD Art. 41 Encarregado not appointed at BR launch | M | M | 4 | Required before BR launch; Gate 7 hard stop | Medium (4) — blocked until appointed |
 | GEO-R11 | DEV_AUTH_BYPASS enabled in production | L | H | 3 | NODE_ENV gating confirmed in code; Gate 7 devops verification required | Low (1) — gating confirmed; devops verifies in prod |
 | GEO-R12 | Off-site SERP queries identify individual Reddit/LinkedIn users — stored personal data without Art. 14 notice | M | M | 4 | Off-site signal stores per-source presence score only (not individual user profiles); offsiteScore is aggregated; minimisation confirmed in offsite-signal.ts | Low (2) — aggregation minimises personal data; residual risk in live SERP query result handling |
+| GEO-R13 | Evidence store (raw engine responses, 12-month retention, Product Decision 4-A) contains incidental third-party personal data — named individuals (e.g. professionals, business owners) in commercial-query AI responses, retained in a private bucket for 12 months | M | M | 4 | Commercial-query-only write-gate (EV-1); no PII in object key (EV-2); pre-persistence content screen (EV-3); private bucket + short-TTL signed URLs (EV-4); tenant-ownership check on URL minting (EV-5); targeted delete-by-evidence-id DSR pathway (EV-6) — full detail in Section 11-GEO | Medium (4) — open until EV-1 through EV-6 close before the evidence-store slice ships to production |
 
 **Overall residual risk (GEO platform): LOW to MEDIUM.** Three open conditions (GEO-D1 through GEO-D3) reduce to LOW once closed. Gate 7 hard stops (EU Art. 27 representative, Encarregado) are deployment prerequisites.
+
+**Addendum (2026-07-28)**: GEO-R13 (Evidence Store) is newly added under Product Decision 4-A and does not change the LOW-to-MEDIUM overall characterization above; it carries its own Medium (4) residual pending closure of conditions EV-1 through EV-6 (Section 11-GEO), tracked separately from GEO-D1/D2/D3.
 
 ---
 
@@ -577,8 +593,9 @@ The GEO platform processes publicly available personal data about third parties 
 1. Individual LLM probe query returns that mention a named executive or founder of a competitor brand: these are transient query results; citation_check stores source URLs and presence/position metadata, not the named individual's data. The name does not reach the persistent data layer except potentially in citation_check.sources. Condition GEO-D2 addresses this.
 2. Off-site signal measurement (Reddit, Wikipedia, LinkedIn, G2, Trustpilot, Crunchbase, YouTube): stores per-source aggregate score only; no individual profiles or names stored. Art. 14 Art. 14(5)(b) exemption applies to this aggregate signal processing.
 3. SERP query results for brand presence: individual author names or titles in SERP snippets may appear in raw query results but are not persisted in the data model; offsiteScore is computed and stored without underlying personal data. Minimisation is effective.
+4. **Evidence store (NEW 2026-07-28)**: unlike (1)–(3), the evidence store DOES persist the full-text raw response, which may name a real individual. The Art. 14(5)(b) "publicly available source" limb (the LLM's training/retrieval corpus is broadly public-derived) provides a partial argument, but EDPB Opinion 6/2018's limit on indefinite retention is directly relevant to a 12-month store. Mitigations in Section 11-GEO (query-type gate, minimisation, deletion pathway) are the primary compliance posture rather than reliance on the Art. 14(5)(b) exemption alone.
 
-**Overall Art. 14 assessment**: SUBSTANTIALLY COMPLIANT with data minimisation design. GEO-D2 condition closes the residual gap in citation_check.sources.
+**Overall Art. 14 assessment**: SUBSTANTIALLY COMPLIANT with data minimisation design for the pre-existing categories. GEO-D2 condition closes the residual gap in citation_check.sources. The evidence store (Section 11-GEO) is a materially higher-risk category than (1)–(3) and is assessed on its own terms rather than folded into the Art. 14(5)(b) exemption.
 
 ---
 
@@ -591,7 +608,7 @@ High-risk processing confirmed under GDPR Art. 35(1), EDPB Guidelines 4/2019 tri
 **Gate 7 hard stops (must complete before EU/BR user onboarding):**
 1. GDPR Art. 27 EU representative appointed and named in Privacy Policy before any EU user onboards.
 2. LGPD Art. 41 Encarregado de Dados appointed and contact published in Privacy Policy before BR launch.
-3. DPAs executed with all sub-processors: Supabase, Anthropic, OpenAI, Google Gemini, DataForSEO/SerpAPI, Stripe, Resend, Railway, Upstash.
+3. DPAs executed with all sub-processors: Supabase (incl. Storage — EV-9), Anthropic, OpenAI, Google Gemini, DataForSEO/SerpAPI, Stripe, Resend, Railway, Upstash.
 4. Perplexity DPA + SCC/DPF mechanism confirmed before EU user traffic is allowed to Perplexity; until then GEO-A3 routing gate must remain active.
 5. LGPD transfer basis documented and Privacy Policy updated before BR natural-person users onboarded (GEO-D3).
 6. DEV_AUTH_BYPASS verified disabled in production.
@@ -604,6 +621,9 @@ High-risk processing confirmed under GDPR Art. 35(1), EDPB Guidelines 4/2019 tri
 - **GEO-D1** [HIGH]: Confirm EU routing configuration for OpenAI (Azure EU) and Google Gemini (Vertex AI EU) is active in production environment. If standard API endpoints are used for EU users, SCCs (Module 2) must be executed before EU launch. Owner: devops-engineer + legal. Due: Gate 7.
 - **GEO-D2** [MEDIUM]: Review `citation_check.sources` field in production data. Confirm that stored values are limited to source URLs and citation metadata (no full LLM response text containing named individuals). If full response text is stored, implement a stripping/truncation step before persistence. Owner: backend-coder. Due: Gate 7.
 - **GEO-D3** [MEDIUM]: Document LGPD international transfer basis for BR-to-US sub-processor data flows. Until ANPD publishes approved standard clauses, the preferred basis is specific highlighted consent in the Privacy Policy per Art. 33(IX), or confirm with external counsel whether ANPD guidance recognises an alternative mechanism. This does not block EU or US market launch. Owner: legal-privacy-officer + external counsel. Due: before BR user onboarding.
+
+**New evidence-store conditions (Product Decision 4-A, 2026-07-28) — see Section 11-GEO for full detail:**
+- **EV-1** through **EV-9** — commercial-query-only write-gate, no-PII object keys, pre-persistence content screen, private bucket + short-TTL signed URLs, tenant-ownership check, targeted delete-by-evidence-id, Storage region-routing confirmation, third-party DSR procedure, Supabase Storage DPA coverage confirmation.
 
 **Art. 36 supervisory authority consultation:** Not required under GDPR — residual risk is LOW to MEDIUM after mitigations; no irreducible high-risk finding remains. Art. 36 consultation would be required only if GEO-R9 (EU Art. 27 representative) or GEO-R4 (Perplexity routing gate) were to fail in production.
 
@@ -631,6 +651,67 @@ High-risk processing confirmed under GDPR Art. 35(1), EDPB Guidelines 4/2019 tri
 
 ---
 
+## 11-GEO. Product Decision 4-A — Evidence Store (Raw Engine Responses, 12-Month Retention) — 2026-07-28
+
+> Founder-approved product decision (Decision 4-A, 2026-07-28): the AI Visibility Engine (B10) will persist the RAW, full-text responses returned by each AI search engine (ChatGPT/OpenAI, Claude/Anthropic, Gemini, Perplexity, Google AI Overview) as a distinct "evidence asset," retained for 12 months, with every citation claim in a client report deep-linking to the original generation via a short-lived signed URL served from a private Supabase Storage bucket. This is ADDITIVE to, and does NOT replace, the existing `citation_check` metadata (source URLs, cited flag, position) which remains on its 90-day purge cycle per GEO-A2/GEO-D2 (Section 1-GEO Retention Periods table; Section 2-GEO Data Minimization Assessment). The evidence store is a new, separate data category with its own purpose, basis, and safeguards, assessed below.
+
+### Purpose and necessity
+
+The evidence store's purpose is accountability and dispute-resolution: each claim in a delivered GEO report ("cited in position #2 by Claude") must be independently verifiable by the paying customer against the actual model output that produced it, for the full period the customer is reasonably expected to reference or dispute a report — a window materially longer than the prior 90-day operational cycle. Aligning the evidence window to the already-existing 12-month rolling retention applied to `geo_audit`/`geo_score` records (Section 1-GEO Retention Periods table) is a proportionate, internally-consistent choice: it does not extend retention beyond what the platform already keeps for the audit/score records the evidence supports.
+
+### Lawful basis
+
+- **GDPR Art. 6(1)(f) — legitimate interests.** Legitimate Interest Assessment (LIA):
+  - *Purpose test*: PASS — evidence-backed reporting is a legitimate commercial/accountability purpose, consistent with the product's "measured, not fabricated" transparency stance (docs/system-transparency.md).
+  - *Necessity test*: PASS, conditioned on the safeguards below — 12 months is necessary to cover a full reporting/renewal cycle; a shorter window would not support quarterly/annual dispute or audit needs.
+  - *Balancing test*: The interests of any incidentally-named third party (e.g., a dentist or business owner named in a commercial-query answer) must be weighed against the controller/customer's evidentiary interest. Mitigating factors: (a) the content is a commercial opinion about a business/professional in a public buyer-research context, not private information about the individual's personal life; (b) the store is never public — private bucket, tenant-scoped, short-TTL signed URLs only; (c) a targeted deletion pathway is available on request. On balance, legitimate interest is sustainable SUBJECT TO the conditions in this section being implemented before the retention change ships to production.
+- **LGPD Art. 7(IX) — legítimo interesse**, subject to the Art. 10 balancing test — same reasoning; ANPD may request this LIA documentation on request.
+- **CCPA/CPRA**: internal business purpose (§ 1798.140(e) — providing the contracted service; audit/security). Not a "sale" or "share." No new opt-out obligation beyond the existing DNSS control (Section 3-GEO).
+- **Special-category data (GDPR Art. 9)**: not intentionally processed. A professional's name in a commercial-recommendation context is ordinary personal data, not Art. 9 health/special-category data about that professional. Residual risk that a raw response incidentally surfaces sensitive context is addressed by the content-screen condition EV-3.
+
+### Data minimization safeguards (founder-approved safeguards + new conditions)
+
+1. **Commercial-query-only gate (EV-1)**: only responses to COMMERCIAL/buyer-category probe queries (e.g., "best dentist in Austin") are eligible for evidence-store persistence — never any query type carrying customer-supplied free text. Enforced at the same gateway chokepoint already used for GEO-A2/GEO-SEC-2, extended with a write-gate keyed on query type before any object is persisted.
+2. **No PII in object key (EV-2)**: the Storage object key/path must be a non-identifying composite (tenant_id/audit_id/probe_id hash) — never a customer email, brand-owner name, or any personal identifier.
+3. **Content screen before persistence (EV-3, NEW condition)**: raw natural-language model output is materially higher-risk than the existing URL/position/cited metadata. A lightweight automated pre-persistence screen must reject or flag responses containing high-risk patterns (government ID numbers, financial account numbers, explicit health/medical specifics unrelated to the "best provider" framing) before the object is written. Defensive control, not a full DLP system, given the commercial-query-only gate already limits exposure.
+4. **Private bucket + short-TTL signed URLs (EV-4)**: bucket ACL private (no public read); signed URLs time-boxed to the shortest practical TTL for the report-viewing use case (recommend ≤15 minutes per view, minted on demand — not embedded as long-lived links in exported/emailed reports).
+5. **Tenant-scoped access control (EV-5)**: the signed-URL minting endpoint must verify the requesting session's `tenant_id` owns the underlying `audit_id`/`brand_id` before issuing a URL — mirrors the existing forced-RLS tenant isolation pattern (Section 5-GEO) applied to the Storage layer, which is not natively RLS-covered like Postgres and needs an explicit application-layer check.
+
+### Data subject rights — third-party evidence erasure (NEW, novel scenario)
+
+The named individual in a raw engine response (e.g., the dentist) is typically not an Ozvor account holder and may have no email on file — this is a genuine **third-party DSR** scenario, distinct from the account-holder erasure cascade already documented in Section 3-GEO.
+
+- **Intake**: the existing public `/legal/dsr-request` portal must accept a request from a non-customer who identifies the specific report/business/generation the request concerns (the requester cannot use email-OTP against an account they don't hold).
+- **Identity verification**: email OTP is not available for non-account requesters. Recommend manual/admin-reviewed verification (reasonable link between the requester and the named individual/business) — this is an operational gap, not a legal determination; **recommend external counsel input** given the case-by-case judgment required (see novel-question flag below).
+- **Fulfillment mechanism (EV-6, NEW backend requirement)**: a targeted, single-object deletion capability (delete-by-evidence-id) distinct from the full-account erasure cascade must exist, so a specific evidence blob can be removed without deleting the surrounding audit/score/report record. On deletion, the report's citation claim should degrade gracefully (e.g., "source evidence removed per data-subject request") rather than break the report.
+- **Balancing outcome**: because the basis is Art. 6(1)(f) (not contract or legal obligation), an Art. 21(1) objection from the named third party generally prevails unless Ozvor can demonstrate compelling overriding legitimate grounds — expected to be rare for a single incidental evidence blob. Default operational posture: **honor deletion requests** for third-party evidence unless a specific, documented overriding interest exists.
+
+### Cross-border transfer
+
+Bucket region should mirror the existing tenant-routing pattern already applied to Postgres (EU tenants → eu-central-1; US/BR tenants → us-east-1) (Section 4-GEO). This has NOT yet been confirmed for Supabase Storage specifically (only the database region-split is confirmed) — flagged as condition EV-7 below.
+
+### Risk register addition
+
+See Section 6-GEO, new row GEO-R13.
+
+### Open conditions (must close before the evidence-store slice ships to production)
+
+- **EV-1** [HIGH]: commercial-query-only write-gate enforced at the gateway chokepoint before any object is persisted. Owner: backend-coder.
+- **EV-2** [HIGH]: object key/path contains no client PII (hash-based composite key only). Owner: backend-coder / database-agent.
+- **EV-3** [MEDIUM]: automated pre-persistence content screen for high-risk incidental PII (gov-ID, financial, explicit health specifics). Owner: backend-coder.
+- **EV-4** [HIGH]: bucket private; signed URLs short-TTL (≤15 min recommended), minted on demand, not embedded as long-lived links. Owner: backend-coder / devops-engineer.
+- **EV-5** [HIGH]: tenant-ownership check on the signed-URL minting endpoint (Storage is not natively RLS-covered like Postgres). Owner: backend-coder.
+- **EV-6** [HIGH]: targeted delete-by-evidence-id endpoint + graceful report degradation on deletion, separate from the full-account erasure cascade. Owner: backend-coder.
+- **EV-7** [MEDIUM]: confirm Supabase Storage bucket region-routing mirrors the existing Postgres EU/US-BR tenant split; document in Section 4-GEO sub-processor table. Owner: devops-engineer.
+- **EV-8** [MEDIUM]: third-party (non-account-holder) DSR verification procedure for evidence-erasure requests — operational procedure, not yet designed. **Recommend external counsel review** given the novel balancing question (see below). Owner: legal-privacy-officer + external counsel.
+- **EV-9** [LOW]: confirm the Supabase DPA / storage terms explicitly cover Storage (not only Postgres/Auth) — founder to confirm with Supabase account terms or request written confirmation. Owner: founder.
+
+### Novel-question flag (not legal advice)
+
+The third-party DSR-against-AI-evidence scenario (a non-customer natural person requesting deletion of a raw AI-generated commercial opinion about them, retained as evidence for a paying customer's audit) is a genuinely novel fact pattern without established regulatory guidance as of 2026-07. This assessment is legal-privacy-officer's best-effort application of GDPR Art. 6(1)(f)/17/21 and LGPD Art. 7(IX)/18 principles, not legal advice. **External counsel review is recommended** before EV-8 is finalized, particularly on: (a) whether the evidentiary/accountability interest can ever override a third party's erasure request, and (b) whether Brazilian and EU counsel would reach the same balancing outcome.
+
+---
+
 ## Approval (GEO Platform)
 
 - DPIA/RIPD author: legal-privacy-officer agent
@@ -641,3 +722,4 @@ High-risk processing confirmed under GDPR Art. 35(1), EDPB Guidelines 4/2019 tri
 - Next mandatory review trigger: new LLM provider activation, new geographic market, >50% change in data volume/categories, or annual cycle (2027-06)
 - **Update log**: 2026-07-10 — brand/entity naming alignment in the live Section B (TL;DR sentence, Art. 14 assessment heading) and a superseded-marker under the Section B heading, per issue #213. Substantive DPIA content unchanged; the controlling identity statement remains the Section 1-GEO block (2026-07-09).
 - **Update log**: 2026-07-09 — Controller / Processor Identity block (Section 1-GEO) corrected by legal-privacy-officer to align with the confirmed entity identity in `docs/compliance/ropa.md` (2026-07-08) and the live legal pages: Ozvor, Brazilian MEI, CNPJ 67.609.444/0001-08, registered office Rua José Borges Abrantes nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD. This supersedes the prior "TrustIndex AI Ltda / CNPJ pending incorporation" statement in this section. No other DPIA content was changed. See gate-log.md 2026-07-09 entry for the ratifying verdict.
+- **Update log**: 2026-07-28 — new Section 11-GEO added (Evidence Store — raw engine responses, 12-month retention, Product Decision 4-A, founder-approved); Retention Periods table (Section 1-GEO), Personal Data Categories table (Section 1-GEO), Sub-Processors table (Section 1-GEO), Processing Purposes list (Section 1-GEO), Lawful Basis tables (Section 2-GEO), Data Minimization Assessment (Section 2-GEO), DSR design (Section 3-GEO), Art. 44-46 assessment (Section 4-GEO), Security Measures (Section 5-GEO), Risk Assessment table (Section 6-GEO, new row GEO-R13), and Art. 14 assessment (Section 8-GEO) all updated with cross-references. TL;DR addendum appended. Nine new conditions issued (EV-1 through EV-9); EV-8 flagged for external counsel review as a novel question. This does NOT alter the existing 90-day citation_check purge (GEO-A2/GEO-D2), which is unchanged. Gate verdict: see gate-log.md 2026-07-28 entry.
