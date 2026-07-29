@@ -19,6 +19,7 @@ import { OzvorScorecard, VECTOR_COLORS, type ThreeScores } from "../../../compon
 import { ScoreTrend } from "../../../components/ScoreTrend";
 import { PromptsPanel } from "./PromptsPanel";
 import { confidenceLabel } from "../../../lib/confidence";
+import { VerifiedCitations, type ExtractionTelemetry } from "../../../components/VerifiedCitations";
 
 interface AuditState {
   id?: string;
@@ -96,6 +97,11 @@ interface Breakdown {
     completeness: number;
     findings: string[];
   } | null;
+  /**
+   * B3 — two-pass extraction telemetry. Null on audits older than B3 and when
+   * extraction ran disabled; VerifiedCitations renders nothing in both cases.
+   */
+  extraction: ExtractionTelemetry | null;
   evidence: Evidence[];
   topSources: Array<{ domain: string; label: string; type?: string; usedPct?: number; avgCitations?: number; isYou?: boolean; count?: number }>;
 }
@@ -536,6 +542,10 @@ export default function BrandDetailPage() {
           <ExportCsvButton auditId={resolvedAuditId} />
         </div>
       </div>
+
+      {/* D1 — what the two-pass extraction refused to count. The proof that the
+          number above is smaller than a competitor's because it is cleaner. */}
+      <VerifiedCitations extraction={breakdown?.extraction} />
 
       {/* Score trend chart — shown prominently when history exists */}
       {trend.length >= 2 && (
