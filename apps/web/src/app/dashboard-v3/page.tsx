@@ -75,7 +75,12 @@ interface TrendPoint {
 }
 
 interface ScorePayload {
-  latest: { score_overall: number | null; audit_id: string | null } | null;
+  latest: {
+    score_overall: number | null;
+    audit_id: string | null;
+    /** Engines this run actually reached. Null on audits from before the field. */
+    coverage?: PanelCoverageData | null;
+  } | null;
   trend: TrendPoint[];
   threeScores: ThreeScores | null;
   executionProgress: number | null;
@@ -843,6 +848,7 @@ export default function DashboardV3() {
             extraction={(breakdown as { extraction?: ExtractionTelemetry | null } | null)?.extraction ?? null}
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
+            coverage={score?.latest?.coverage ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
           />
         ) : tab === "brands" ? (
@@ -890,13 +896,70 @@ export default function DashboardV3() {
   );
 }
 
+/** Engine coverage for one audit, as written by the worker into
+ *  provider_breakdown.coverage. Absent on audits that predate the field. */
+interface PanelCoverageData {
+  requested?: number;
+  answered?: number;
+  missing?: string[];
+  comparable?: boolean;
+}
+
+const ENGINE_NAME: Record<string, string> = {
+  anthropic: "Claude",
+  openai: "ChatGPT",
+  gemini: "Gemini",
+  google: "Gemini",
+  perplexity: "Perplexity",
+  serp: "Google AI Overviews",
+  dataforseo: "Google AI Overviews",
+};
+
+/**
+ * Says when a run did not reach every engine it was asked to.
+ *
+ * The score is a rate over the probes that ran, so a run missing two engines is
+ * a different measurement from the one before it — not a lower one. Drawn on
+ * the same trend line without a word, it reads as "you lost ground", which is
+ * the single most damaging thing this product can say wrongly.
+ *
+ * Silent when coverage is unknown (older audits) or complete. A badge that says
+ * "5 of 5" on every healthy run trains people to stop reading it.
+ */
+function PanelCoverage({ coverage }: { coverage?: PanelCoverageData | null }) {
+  if (!coverage || coverage.comparable !== false) return null;
+  const missing = (coverage.missing ?? []).map((e) => ENGINE_NAME[e] ?? e);
+  if (missing.length === 0) return null;
+
+  return (
+    <p
+      style={{
+        margin: "var(--space-3) 0 0",
+        padding: "var(--space-3) var(--space-4)",
+        borderLeft: "3px solid var(--color-badge-status-warn-text, #b9781a)",
+        background: "var(--color-surface-alt, transparent)",
+        fontSize: "var(--font-size-caption)",
+        color: "var(--color-muted)",
+        lineHeight: 1.55,
+      }}
+    >
+      <b style={{ color: "var(--color-text)" }}>
+        This run reached {coverage.answered} of {coverage.requested} engines.
+      </b>{" "}
+      {missing.join(" and ")} did not answer, so this number is not comparable
+      to your earlier audits — a smaller panel is a different measurement, not a
+      worse result. Run it again once the engines are back.
+    </p>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tabs
 // ---------------------------------------------------------------------------
 
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditMsg,
-  auditId, extraction, methodologyVersion, citationCI, intents,
+  auditId, extraction, methodologyVersion, citationCI, intents, coverage,
 }: {
   brandName?: string;
   overall: number | null;
@@ -918,6 +981,8 @@ function OverviewTab({
   citationCI?: { rate: number; low: number; high: number; n: number } | null;
   /** B1 per-intent rates, share of voice and rivals. Empty on pre-B1 audits. */
   intents?: IntentRow[] | null;
+  /** Which engines this run actually reached. Null on audits that predate it. */
+  coverage?: PanelCoverageData | null;
 }) {
   // The hero shows Visibility now, so "has data" follows Visibility. Keying it
   // on the composite would print a big "—" next to a filled three-score card.
@@ -978,6 +1043,7 @@ function OverviewTab({
             number could honestly sit in. When it changes, look for the reason
             underneath before reading it as your doing.
           </p>
+          <PanelCoverage coverage={coverage} />
         </div>
       </div>
 

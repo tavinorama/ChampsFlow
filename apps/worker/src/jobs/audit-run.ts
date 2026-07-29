@@ -494,17 +494,17 @@ export async function processAuditJob(
     //     than no number.
     //   - partial but over the bar    → runs, and records what was missing so
     //     the UI can say the run is not comparable instead of implying it is.
-    const answered = new Set(result.responses.map((r) => r.provider));
-    const missingProviders = requestedProviders.filter((p) => !answered.has(p));
+    const answeredProviders = new Set(result.responses.map((r) => r.provider));
+    const missingProviders = requestedProviders.filter((p) => !answeredProviders.has(p));
     const coverage = requestedProviders.length
-      ? answered.size / requestedProviders.length
+      ? answeredProviders.size / requestedProviders.length
       : 0;
 
     if (result.responses.length === 0 || coverage < MIN_ENGINE_COVERAGE) {
       logger.warn("audit_insufficient_engine_coverage", {
         audit_id,
         requested: requestedProviders.length,
-        answered: answered.size,
+        answered: answeredProviders.size,
         missing: missingProviders.join(","),
         failed: result.failedProviders.length,
         blocked: result.blockedProviders.length,
@@ -514,7 +514,7 @@ export async function processAuditJob(
         UPDATE geo_audit
            SET status = 'failed',
                error_message = ${
-                 `Only ${answered.size} of ${requestedProviders.length} AI engines answered ` +
+                 `Only ${answeredProviders.size} of ${requestedProviders.length} AI engines answered ` +
                  `(missing: ${missingProviders.join(", ") || "none"}). ` +
                  `We did not score this run — a partial panel is not comparable to your history.`
                }
@@ -528,7 +528,7 @@ export async function processAuditJob(
       // dip that we caused.
       logger.warn("audit_partial_engine_coverage", {
         audit_id,
-        answered: answered.size,
+        answered: answeredProviders.size,
         requested: requestedProviders.length,
         missing: missingProviders.join(","),
       });
@@ -998,6 +998,21 @@ export async function processAuditJob(
     const breakdown = {
       overall: score.overall,
       providers: providersUsed,
+      // Engine coverage for THIS run. Persisted in provider_breakdown rather
+      // than new geo_audit columns on purpose: nothing runs db:migrate on
+      // deploy, so a new column would be missing in production and this would
+      // ship dead — which is the exact failure this field exists to expose.
+      //
+      // `comparable` is false when any requested engine went unanswered. A
+      // score is a rate over the probes that ran, so a smaller panel is a
+      // different measurement, not a lower one, and the UI must not draw it on
+      // the same trend line as a full-panel run without saying so.
+      coverage: {
+        requested: requestedProviders.length,
+        answered: answeredProviders.size,
+        missing: missingProviders,
+        comparable: missingProviders.length === 0,
+      },
       inputs: scoreInputs,
       measured,
       baseline,
