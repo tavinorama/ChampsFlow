@@ -52,6 +52,8 @@ interface Breakdown {
   probes_total: number;
   probes_cited: number | null;
   probe_repeat: number | null;
+  /** B1 — audit-level citation rate with its Wilson 95% interval (null on pre-B1 audits). */
+  citation_ci: { rate: number; low: number; high: number; n: number } | null;
   site_crawl: { reachable: boolean; domain: string | null; findings: string[] } | null;
   competitors: Array<{ name: string; mentions: number; displacement: number }>;
   offsite: {
@@ -499,7 +501,20 @@ export default function BrandDetailPage() {
           }
           probeSummary={
             breakdown?.probes_total
-              ? `${breakdown.probes_total} AI probes${audit?.providers_used?.length ? ` · ${audit.providers_used.length} engines` : ""}`
+              ? `${breakdown.probes_total} AI probes${audit?.providers_used?.length ? ` · ${audit.providers_used.length} engines` : ""}${
+                  // B1 honesty rule: the citation rate is never shown without its
+                  // Wilson 95% interval width ("cited in 12% ± 9% of runs").
+                  // ± uses the LARGER side of the (asymmetric) interval, rounded
+                  // up — never understate the uncertainty.
+                  breakdown.citation_ci && breakdown.citation_ci.n > 0
+                    ? ` · cited in ${Math.round(breakdown.citation_ci.rate * 100)}% ± ${Math.ceil(
+                        Math.max(
+                          breakdown.citation_ci.rate - breakdown.citation_ci.low,
+                          breakdown.citation_ci.high - breakdown.citation_ci.rate
+                        ) * 100
+                      )}% of runs`
+                    : ""
+                }`
               : undefined
           }
           brandName={brandName}
@@ -3466,6 +3481,16 @@ function AiModelsPanel({ brandId, settings, planTier, onSettingsSaved }: AiModel
         );
         return;
       }
+      // Choosing a monitoring cadence means the user wants monitoring ON. The
+      // frequency PATCH does NOT flip monitoring_enabled (that's what left the
+      // sold "weekly monitoring" feature never actually running), so enable it
+      // here. Plan-gated server-side; a 403 on a non-paid plan is expected and
+      // safely ignored (frequency still saved).
+      void apiFetch(`/api/brands/${brandId}/monitoring`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      }).catch(() => {});
       onSettingsSaved({ tracked_models: localModels, tracking_frequency: localFreq });
       setSavedOk(true);
       // Reset savedOk after 2s

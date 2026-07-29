@@ -1174,6 +1174,13 @@ export function InvisibilityTestClient() {
   // Collapsible "Add details" state
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // Progressive disclosure: the visitor first sees two boxes only (website and
+  // email). Brand and category appear once those two are valid. Both stay
+  // REQUIRED in the payload — /api/test cannot run a real audit without them,
+  // and we never guess a brand or a category. This only stages WHEN they are
+  // asked, so the first impression is two fields instead of five.
+  const [stepTwoOpen, setStepTwoOpen] = useState(false);
+
   // Stable IDs for accessible label wiring
   const brandId = useId();
   const domainId = useId();
@@ -1260,6 +1267,14 @@ export function InvisibilityTestClient() {
     category.trim().length > 0 &&
     email.trim().length > 0 &&
     isValidEmail(email);
+
+  // Step one is done once website and email are both valid. The reveal latches
+  // open so editing a field afterwards never yanks the rest of the form away.
+  // A restored draft (the home page hands one over) opens it on mount.
+  const stepOneDone = isValidDomain(cleanDomain) && isValidEmail(email);
+  useEffect(() => {
+    if (stepOneDone) setStepTwoOpen(true);
+  }, [stepOneDone]);
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
@@ -1413,10 +1428,10 @@ export function InvisibilityTestClient() {
     >
       {/* Helper paragraph — reduces perceived friction */}
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
-        Takes about 60 seconds. Just your website and email to start.
+        Takes about 60 seconds. Start with two boxes.
       </p>
 
-      {/* Primary fields — always visible */}
+      {/* ── Step one: the only two fields a cold visitor sees ─────────── */}
       <Field
         label="Your website"
         required
@@ -1437,39 +1452,6 @@ export function InvisibilityTestClient() {
           aria-describedby={domainErrorMessage ? domainErrorId : undefined}
           aria-invalid={domainErrorMessage ? "true" : undefined}
           style={domainErrorMessage ? inputErrorStyle : inputStyle}
-        />
-      </Field>
-
-      <Field
-        label="Your brand"
-        required
-        fieldId={brandId}
-      >
-        <input
-          id={brandId}
-          value={brand}
-          onChange={(e) => setBrand(e.target.value)}
-          placeholder="Acme CRM"
-          required
-          autoComplete="organization"
-          style={inputStyle}
-        />
-      </Field>
-
-      <Field
-        label="Your category"
-        required
-        hint="how buyers describe what you sell"
-        fieldId={categoryId}
-      >
-        <input
-          id={categoryId}
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="CRM, accounting software, law firm…"
-          required
-          autoComplete="off"
-          style={inputStyle}
         />
       </Field>
 
@@ -1507,31 +1489,90 @@ export function InvisibilityTestClient() {
         />
       </Field>
 
-      {/* Marketing opt-in (LGPD/GDPR affirmative consent) — gates the free→Kit
-          nurture drip. Unchecked by default; the result email sends regardless. */}
-      <label
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "var(--space-2)",
-          fontSize: "var(--font-size-body-sm)",
-          color: "var(--color-muted)",
-          fontFamily: "var(--font-family)",
-          lineHeight: 1.5,
-          cursor: "pointer",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={marketingConsent}
-          onChange={(e) => setMarketingConsent(e.target.checked)}
-          style={{ marginTop: "0.2rem", width: "16px", height: "16px", flexShrink: 0, accentColor: "var(--color-primary)" }}
-        />
-        <span>Email me a few tips to get cited by AI. No spam, unsubscribe anytime.</span>
-      </label>
+      {/* ── Step two: revealed once the two boxes above are valid ──────── */}
+      {stepTwoOpen ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-4)",
+            paddingTop: "var(--space-4)",
+            borderTop: "1px solid var(--color-border)",
+          }}
+        >
+          <p
+            aria-live="polite"
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-body-sm)",
+              fontWeight: 700,
+              color: "var(--color-accent-ink, var(--color-primary))",
+            }}
+          >
+            Two more, so we ask AI the right question.
+          </p>
+
+          <Field
+            label="Your brand"
+            required
+            fieldId={brandId}
+          >
+            <input
+              id={brandId}
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              placeholder="Acme CRM"
+              required
+              autoComplete="organization"
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field
+            label="Your category"
+            required
+            hint="how buyers describe what you sell"
+            fieldId={categoryId}
+          >
+            <input
+              id={categoryId}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="CRM, accounting software, law firm…"
+              required
+              autoComplete="off"
+              style={inputStyle}
+            />
+          </Field>
+
+          {/* Marketing opt-in (LGPD/GDPR affirmative consent) — gates the
+              free→Kit nurture drip. Unchecked by default; the result email
+              sends regardless. */}
+          <label
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "var(--space-2)",
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              fontFamily: "var(--font-family)",
+              lineHeight: 1.5,
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={marketingConsent}
+              onChange={(e) => setMarketingConsent(e.target.checked)}
+              style={{ marginTop: "0.2rem", width: "16px", height: "16px", flexShrink: 0, accentColor: "var(--color-primary)" }}
+            />
+            <span>Email me a few tips to get cited by AI. No spam, unsubscribe anytime.</span>
+          </label>
+        </div>
+      ) : null}
 
       {/* Collapsible "Add details" section — competitors, sector, country */}
-      <div>
+      <div hidden={!stepTwoOpen} aria-hidden={!stepTwoOpen}>
         <button
           type="button"
           aria-expanded={detailsOpen}
@@ -1551,11 +1592,13 @@ export function InvisibilityTestClient() {
         >
           {detailsOpen ? "Hide details ▲" : "Add details (optional) ▼"}
         </button>
+        {/* The inline display:flex beats the UA rule for [hidden], so the panel
+            was staying open no matter what the toggle said. Drive display from
+            the state instead: collapsed means collapsed. */}
         <div
           id={detailsPanelId}
           aria-hidden={!detailsOpen}
-          hidden={!detailsOpen}
-          style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", marginTop: "var(--space-2)" }}
+          style={{ display: detailsOpen ? "flex" : "none", flexDirection: "column", gap: "var(--space-4)", marginTop: "var(--space-2)" }}
         >
           <Field
             label="Competitors"
@@ -1659,13 +1702,75 @@ export function InvisibilityTestClient() {
           {(() => {
             const missing: string[] = [];
             if (!isValidDomain(cleanDomain)) missing.push("website");
-            if (!brand.trim()) missing.push("brand");
-            if (!category.trim()) missing.push("category");
             if (!email.trim() || !isValidEmail(email)) missing.push("email");
+            if (stepTwoOpen && !brand.trim()) missing.push("brand");
+            if (stepTwoOpen && !category.trim()) missing.push("category");
             return `Add your ${missing.join(", ")} to run the test.`;
           })()}
         </p>
       )}
+
+      {/* Safety line + guarantee, right under the button where the doubt is */}
+      <p
+        style={{
+          margin: "var(--space-3) 0 0",
+          textAlign: "center",
+          fontSize: "var(--font-size-body-sm)",
+          color: "var(--color-text)",
+          fontWeight: 600,
+        }}
+      >
+        No card. Results in 60 seconds.
+      </p>
+      <a
+        href="/refund"
+        style={{
+          display: "inline-flex",
+          alignSelf: "center",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          marginTop: "var(--space-2)",
+          padding: "7px 13px",
+          borderRadius: "var(--radius-pill)",
+          border: "1px solid var(--color-border)",
+          color: "var(--color-muted)",
+          textDecoration: "none",
+          fontSize: "var(--font-size-caption)",
+          fontWeight: 600,
+        }}
+      >
+        <ShieldIcon />
+        30 day money back on any paid plan
+      </a>
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Guarantee shield — same mark the film scenes use
+// ---------------------------------------------------------------------------
+
+function ShieldIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ width: 14, height: 14, color: "var(--color-primary)", flex: "none" }}
+    >
+      <path
+        d="M8 1.5 3 3.4v4.1c0 3 2.1 5.7 5 6.6 2.9-.9 5-3.6 5-6.6V3.4L8 1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m5.9 7.8 1.5 1.6 2.8-3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

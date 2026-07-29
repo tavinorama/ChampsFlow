@@ -1417,3 +1417,44 @@ No Critical findings. No secret literals in source code or bundles. No PII in lo
 **Next action**: No pipeline phase change. This closes the "P5 legal-gate verdict for this identity correction is pending" note referenced in `docs/compliance/ropa.md`'s Approval/Update-log section (2026-07-08 entry). Gate 7 hard stops (EU Art. 27 representative, LGPD Encarregado appointment) and open DPIA conditions (GEO-D1, GEO-D2, GEO-D3) remain tracked and unaffected.
 
 **Signed**: legal-privacy-officer — 2026-07-09
+
+---
+
+## Gate — Product Decision 4-A — Evidence Store (Raw Engine Responses, 12-Month Retention) — 2026-07-28 — legal-privacy-officer
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+**Entry type**: Ad hoc compliance-gate verdict for a founder-approved product/retention change (B10 AI Visibility Engine), reviewed outside the normal phase-gate sequence at the current point in the product lifecycle (post Gate 6→7 / pre Gate 7 go-live), consistent with the entity-identity correction precedent (2026-07-09 entry above).
+
+**Inputs reviewed**:
+- `docs/compliance/dpia.md` (Section B GEO Platform DPIA, esp. Sections 1-GEO/2-GEO Retention & Minimization, 6-GEO Risk Assessment, new Section 11-GEO produced by this verdict)
+- `docs/compliance/ropa.md` (Processing Activities G1–G15, new G16 produced by this verdict)
+- Founder-approved Decision 4-A brief (raw engine response retention 12 months, signed-URL evidence linking, private Supabase Storage bucket, commercial-queries-only + no-client-PII-in-key safeguards, region eu-central-1 for the Supabase project)
+
+**Scope**: This verdict assesses ONLY the new 12-month raw-engine-response evidence store (Product Decision 4-A). It does NOT reopen or alter the existing 90-day `citation_check` purge (GEO-A2/GEO-D2), which is a separate, already-closed data category and remains unchanged.
+
+**Conditions / Blockers**:
+1. [HIGH] EV-1 — GDPR Art. 5(1)(c)/6(1)(f); LGPD Art. 6(III) — Commercial-query-only write-gate: only responses to commercial/buyer-category probe queries may be persisted to the evidence store; enforce at the gateway chokepoint before persistence. Owner: backend-coder. Due: before the evidence-store slice ships to production.
+2. [HIGH] EV-2 — GDPR Art. 5(1)(c) — Storage object key/path must contain no client PII (hash-based composite key only: tenant_id/audit_id/probe_id). Owner: backend-coder / database-agent. Due: same.
+3. [MEDIUM] EV-3 — GDPR Art. 5(1)(c); Art. 9 defensive control — automated pre-persistence content screen rejecting/flagging high-risk incidental PII (government ID, financial account numbers, explicit health specifics) before an object is written. Owner: backend-coder. Due: Gate 5→6 checkpoint for this slice.
+4. [HIGH] EV-4 — GDPR Art. 32 — bucket must be private (no public ACL); signed URLs short-TTL (recommend ≤15 minutes), minted on demand, never embedded as long-lived links in exported/emailed reports. Owner: backend-coder / devops-engineer. Due: before the evidence-store slice ships to production.
+5. [HIGH] EV-5 — GDPR Art. 32; multi-tenant isolation — signed-URL minting endpoint must verify the requester's `tenant_id` owns the underlying `audit_id`/`brand_id` before issuing a URL (Supabase Storage has no native RLS equivalent to Postgres — this is an explicit application-layer check). Owner: backend-coder. Due: before the evidence-store slice ships to production.
+6. [HIGH] EV-6 — GDPR Art. 17/21; LGPD Art. 18(IV) — targeted delete-by-evidence-id endpoint, separate from the account-level erasure cascade, with graceful report degradation on deletion ("source evidence removed per data-subject request" rather than a broken link). Owner: backend-coder. Due: before the evidence-store slice ships to production.
+7. [MEDIUM] EV-7 — GDPR Art. 44–46 — confirm the Supabase Storage bucket region-routing mirrors the existing Postgres EU/US-BR tenant split (eu-central-1 for EU tenants); document the confirmed routing in dpia.md Section 4-GEO. Owner: devops-engineer. Due: Gate 5→6 checkpoint for this slice.
+8. [MEDIUM] EV-8 — GDPR Art. 12(3)/15–22; LGPD Art. 18 — design and document a third-party (non-account-holder) DSR verification procedure for evidence-erasure requests. This is a novel fact pattern without settled regulatory guidance; **recommend external counsel review** before finalizing. Owner: legal-privacy-officer + external counsel. Due: before the evidence store is exposed to EU/BR users, and in any case before the first third-party deletion request is received.
+9. [LOW] EV-9 — GDPR Art. 28 — confirm the Supabase DPA / storage terms explicitly cover Supabase Storage, not only Postgres/Auth. Owner: founder. Due: before Gate 7.
+
+**Founder-decision items** (not resolvable by this agent — routed to founder):
+1. Confirm whether the existing Supabase DPA already covers Storage, or whether an addendum / separate written confirmation from Supabase is needed (EV-9).
+2. Confirm the exact signed-URL TTL and whether URLs are single-use or reusable within the TTL window (recommendation in this verdict: ≤15 minutes, minted per view) — this is a product/UX tradeoff as well as a compliance one, and the founder should set the final number.
+3. Approve external counsel engagement for EV-8 — third-party DSR against AI-generated evidence (a non-customer natural person named in a raw AI response, asking for it to be deleted from a paying customer's evidence store) is a genuinely novel area without established regulatory guidance as of 2026-07; this assessment is legal-privacy-officer's best-effort application of GDPR Art. 6(1)(f)/17/21 and LGPD Art. 7(IX)/18 principles, not legal advice.
+4. Confirm the Supabase Storage bucket region strategy for EU tenants (eu-central-1) referenced in the founder brief is what will actually be provisioned (feeds EV-7 — devops-engineer's confirmation still requires the founder's infra decision to be locked first).
+
+**Artifacts updated**:
+- `docs/compliance/dpia.md` — new Section 11-GEO ("Product Decision 4-A — Evidence Store (Raw Engine Responses, 12-Month Retention) — 2026-07-28"); Retention Periods table row added (Section 1-GEO); Personal Data Categories, Sub-Processors, and Processing Purposes updated (Section 1-GEO); Lawful Basis tables and Data Minimization Assessment updated (Section 2-GEO); DSR design updated (Section 3-GEO); Art. 44–46 assessment updated (Section 4-GEO); Security Measures updated (Section 5-GEO); Risk Assessment table new row GEO-R13 (Section 6-GEO); Art. 14 assessment updated (Section 8-GEO); TL;DR addendum; Approval section update-log entry. The pre-existing 90-day `citation_check` purge and all other GEO-A/GEO-D conditions are unchanged.
+- `docs/compliance/ropa.md` — new Activity G16 ("Evidence store — raw engine response retention") added to the Processing Activities table; new "Activity G16 — Evidence Store: Third-Party DSR Handling" subsection added; header update note added; Data Subject Rights — Operational Handling section cross-referenced; Approval section update-log entry. All G1–G15 activities and the archived social-scheduling table are unchanged.
+- `docs/compliance/gate-log.md` — this entry (appended)
+
+**Next action**: B10 (AI Visibility Engine evidence-store slice) may proceed to implementation, but the code may NOT ship to production until EV-1, EV-2, EV-4, EV-5, and EV-6 (all HIGH) are closed by backend-coder/devops-engineer; EV-3 and EV-7 (MEDIUM) should close at the same Gate 5→6-equivalent checkpoint for this slice. EV-8 (third-party DSR procedure) does not block engineering start but MUST close before the evidence store is exposed to EU/BR users or before any third-party deletion request is received — founder should engage external counsel per EV-8. EV-9 is a founder action item (confirm Supabase Storage DPA coverage) with no fixed deadline but should close before Gate 7. No other Gate 7 hard stop (EU Art. 27 representative, LGPD Encarregado, GEO-D1/D2/D3) is affected by this decision.
+
+**Signed**: legal-privacy-officer — 2026-07-28

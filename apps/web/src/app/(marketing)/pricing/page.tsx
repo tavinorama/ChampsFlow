@@ -13,6 +13,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { UpsellLadder } from "../../../components/UpsellLadder";
 import { PricingPlans } from "./PricingPlans";
+import { PricingFilmHero } from "./PricingFilmHero";
 import { FounderBand } from "./FounderBand";
 
 export const metadata: Metadata = {
@@ -45,8 +46,11 @@ const COMPARE_ROWS: { f: string; vals: string[]; us: string }[] = [
 
 const PAGE_CSS = `
   .pr-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-ink); font-weight: 600; }
-  .pr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); align-items: start; }
-  @media (max-width: 860px) { .pr-grid { grid-template-columns: 1fr; } }
+  /* Four tiers now: Free · Kit $29 · Growth · Agency. The Kit is the tripwire
+     of the funnel, so it belongs in the grid, not only on its own page. */
+  .pr-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+  @media (max-width: 1000px) { .pr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 620px) { .pr-grid { grid-template-columns: 1fr; } }
   .pr-cta { display:block; text-align:center; width:100%; box-sizing:border-box; font-weight:700; text-decoration:none; border-radius:var(--radius-md); padding:0.8rem 1rem; margin-top:var(--space-4); }
   .pr-cta-emerald { background:linear-gradient(135deg,#27c98a,#0c7d54); color:#06140e; box-shadow:0 10px 32px rgba(39,201,138,0.28); }
   .pr-cta-gold { background:linear-gradient(135deg,#e6a93f,#b9791f); color:#1a1206; box-shadow:0 10px 32px rgba(230,169,63,0.26); }
@@ -77,15 +81,19 @@ const PAGE_CSS = `
 
 export default function PricingPage() {
   return (
-    <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+    <>
+      {/* One scene: the turn, so /pricing continues the film the home starts */}
+      <PricingFilmHero />
+
+      <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
 
       {/* Hero */}
-      <div style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto" }}>
+      <div id="plans" style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto", scrollMarginTop: "72px" }}>
         <span className="pr-eyebrow">Plans</span>
-        <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.5rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
+        <h2 style={{ fontSize: "clamp(2.25rem, 6vw, 3.5rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
           Replace a $30k/yr specialist for under $100/mo.
-        </h1>
+        </h2>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: 0 }}>
           Start free, climb when you&rsquo;re ready. 30-day money-back guarantee · cancel any time · no lock-in.
         </p>
@@ -95,7 +103,7 @@ export default function PricingPage() {
           when the first-100 cohort fills, via /api/founder-status). */}
       <FounderBand />
 
-      {/* Plan cards — annual default with an in-card Monthly toggle (client) */}
+      {/* Plan cards — monthly default with an in-place Annual toggle (client) */}
       <PricingPlans />
 
       {/* "This is for you / not for you" — two-column fit guide */}
@@ -222,6 +230,7 @@ export default function PricingPage() {
         recommendations are evidence-based, directional estimates &mdash; not a guarantee of citation,
         ranking, traffic, or revenue.
       </p>
-    </main>
+      </main>
+    </>
   );
 }

@@ -407,3 +407,311 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     ).rejects.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Operator (non-tenant) tables — PostgREST surface closed
+// (20260728000001_operator_tables_rls)
+// ---------------------------------------------------------------------------
+//
+// These tables carry no tenant_id (pre-account / founder-ops data). The
+// migration enables RLS with a `service_only` policy TO postgres, so the
+// privileged runtime paths (free test, kit/pages checkout, Stripe webhooks,
+// nurture worker, admin CRM) keep working, while the Supabase PostgREST roles
+// (anon / authenticated) are denied even when they hold table grants — that
+// is exactly the advisor's "RLS disabled in public" exposure. lead_capture and
+// kit_order additionally allow app_user to SELECT rows claimed to the current
+// tenant (GET /api/account/claimed-history).
+//
+// The anon/authenticated roles are created here if missing (CI runs plain
+// Postgres, not Supabase) and given worst-case grants to prove RLS alone
+// blocks them.
+
+const TENANT_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const TENANT_D = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+const OPERATOR_TABLES = [
+  "waitlist",
+  "lead_capture",
+  "kit_order",
+  "nurture_enrollment",
+  "nurture_send_log",
+  "pages_order",
+  "crm_contact",
+  "schema_migrations",
+];
+
+skipIfNoDb("Operator tables RLS — service paths work, PostgREST roles denied", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sql: any;
+
+  /** Mirror of apps/api/src/db/client.ts per-query scoping (app_user + GUC). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function asTenant<T>(tenantId: string, fn: (tx: any) => Promise<T>): Promise<T> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return sql.begin(async (tx: any) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      await tx`SELECT set_config('role', ${APP_DB_ROLE}, true)`;
+      return fn(tx);
+    });
+  }
+
+  /** Run `fn` as the given role (no tenant GUC) — simulates PostgREST access. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function asRole<T>(role: string, fn: (tx: any) => Promise<T>): Promise<T> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return sql.begin(async (tx: any) => {
+      await tx`SELECT set_config('role', ${role}, true)`;
+      return fn(tx);
+    });
+  }
+
+  async function cleanupFixtures(): Promise<void> {
+    await sql.unsafe(
+      `DELETE FROM nurture_send_log WHERE enrollment_id IN
+         (SELECT id FROM nurture_enrollment WHERE email LIKE '%@rls-op.test')`
+    );
+    await sql.unsafe(`DELETE FROM nurture_enrollment WHERE email LIKE '%@rls-op.test'`);
+    await sql.unsafe(`DELETE FROM crm_contact WHERE email LIKE '%@rls-op.test'`);
+    await sql.unsafe(`DELETE FROM pages_order WHERE email LIKE '%@rls-op.test'`);
+    await sql.unsafe(`DELETE FROM kit_order WHERE email LIKE '%@rls-op.test'`);
+    await sql.unsafe(`DELETE FROM lead_capture WHERE email LIKE '%@rls-op.test'`);
+    await sql.unsafe(`DELETE FROM waitlist WHERE email LIKE '%@rls-op.test'`);
+    await sql.unsafe(`DELETE FROM tenants WHERE id IN ($1, $2)`, [TENANT_C, TENANT_D]);
+  }
+
+  beforeAll(async () => {
+    const { default: postgres } = await import("postgres");
+    sql = postgres(POSTGRES_TEST_URL as string, { max: 4, idle_timeout: 5 });
+
+    // Supabase PostgREST roles — created here when absent (plain-Postgres CI)
+    // and granted worst-case privileges, so the tests prove RLS alone denies
+    // them (the migration also revokes grants on real Supabase; this simulates
+    // the default-privilege grants coming back).
+    await sql.unsafe(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+          CREATE ROLE anon NOLOGIN;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+          CREATE ROLE authenticated NOLOGIN;
+        END IF;
+      END $$;
+    `);
+    for (const t of OPERATOR_TABLES) {
+      await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${t} TO anon, authenticated`);
+    }
+
+    await cleanupFixtures();
+    await sql.unsafe(
+      `INSERT INTO tenants (id, name, plan, created_at)
+       VALUES ($1, 'Tenant C', 'solo', NOW()), ($2, 'Tenant D', 'solo', NOW())`,
+      [TENANT_C, TENANT_D]
+    );
+
+    // The write paths below run exactly as production does: the privileged,
+    // unscoped connection (free test, kit/pages checkout, waitlist signup,
+    // nurture worker, founder CRM).
+    await sql.unsafe(
+      `INSERT INTO lead_capture (email, brand, category, claimed_by_tenant_id)
+       VALUES ('lead-c@rls-op.test', 'Brand C', 'cafe', $1),
+              ('lead-d@rls-op.test', 'Brand D', 'cafe', $2),
+              ('lead-unclaimed@rls-op.test', 'Brand U', 'cafe', NULL)`,
+      [TENANT_C, TENANT_D]
+    );
+    await sql.unsafe(
+      `INSERT INTO kit_order (order_token, email, brand, category, status, claimed_by_tenant_id)
+       VALUES ('rls-op-kit-c', 'kit-c@rls-op.test', 'Brand C', 'cafe', 'paid', $1),
+              ('rls-op-kit-d', 'kit-d@rls-op.test', 'Brand D', 'cafe', 'paid', $2),
+              ('rls-op-kit-pending', 'kit-pending@rls-op.test', 'Brand P', 'cafe', 'pending', NULL)`,
+      [TENANT_C, TENANT_D]
+    );
+    await sql.unsafe(
+      `INSERT INTO waitlist (email, opted_in, source)
+       VALUES ('wait@rls-op.test', TRUE, 'landing')`
+    );
+    await sql.unsafe(
+      `INSERT INTO pages_order (email, status) VALUES ('pages@rls-op.test', 'pending')`
+    );
+    await sql.unsafe(
+      `INSERT INTO crm_contact (email, stage, note)
+       VALUES ('crm@rls-op.test', 'contacted', 'rls fixture')`
+    );
+    await sql.unsafe(
+      `INSERT INTO nurture_enrollment (email, sequence, current_step, total_steps, brand, next_send_at)
+       VALUES ('nurture@rls-op.test', 'free_to_kit', 0, 4, 'Brand N', NOW())`
+    );
+  });
+
+  afterAll(async () => {
+    if (!sql) return;
+    await cleanupFixtures();
+    // Restore the migration's end state (grants revoked from PostgREST roles).
+    for (const t of OPERATOR_TABLES) {
+      await sql.unsafe(`REVOKE ALL ON ${t} FROM anon, authenticated`);
+    }
+    await sql.end({ timeout: 5 });
+  });
+
+  // -- Service paths (privileged role) keep working --------------------------
+
+  it("CONTROL: privileged inserts landed for every product flow", async () => {
+    const counts = await sql.unsafe(`
+      SELECT (SELECT COUNT(*) FROM lead_capture WHERE email LIKE '%@rls-op.test') AS leads,
+             (SELECT COUNT(*) FROM kit_order WHERE email LIKE '%@rls-op.test') AS kits,
+             (SELECT COUNT(*) FROM waitlist WHERE email LIKE '%@rls-op.test') AS waits,
+             (SELECT COUNT(*) FROM pages_order WHERE email LIKE '%@rls-op.test') AS pages,
+             (SELECT COUNT(*) FROM crm_contact WHERE email LIKE '%@rls-op.test') AS crm,
+             (SELECT COUNT(*) FROM nurture_enrollment WHERE email LIKE '%@rls-op.test') AS nurt
+    `);
+    expect(Number(counts[0].leads)).toBe(3);
+    expect(Number(counts[0].kits)).toBe(3);
+    expect(Number(counts[0].waits)).toBe(1);
+    expect(Number(counts[0].pages)).toBe(1);
+    expect(Number(counts[0].crm)).toBe(1);
+    expect(Number(counts[0].nurt)).toBe(1);
+  });
+
+  it("privileged webhook path still transitions kit_order pending → paid", async () => {
+    const res = await sql.unsafe(
+      `UPDATE kit_order SET status = 'paid', paid_at = NOW()
+        WHERE order_token = 'rls-op-kit-pending' AND status = 'pending'`
+    );
+    expect(res.count).toBe(1);
+  });
+
+  it("privileged nurture worker still advances the cursor and logs the send", async () => {
+    const enr = await sql.unsafe(
+      `SELECT id FROM nurture_enrollment WHERE email = 'nurture@rls-op.test'`
+    );
+    const logRes = await sql.unsafe(
+      `INSERT INTO nurture_send_log (enrollment_id, step) VALUES ($1, 1)
+       ON CONFLICT DO NOTHING`,
+      [enr[0].id]
+    );
+    expect(logRes.count).toBe(1);
+    const advRes = await sql.unsafe(
+      `UPDATE nurture_enrollment SET current_step = 1 WHERE id = $1`,
+      [enr[0].id]
+    );
+    expect(advRes.count).toBe(1);
+  });
+
+  // -- Claimed-history (the one app_user path) keeps working -----------------
+
+  it("app_user reads its own claimed lead_capture rows (claimed-history query)", async () => {
+    const rows = await asTenant(TENANT_C, (tx) =>
+      tx.unsafe(`SELECT email FROM lead_capture WHERE claimed_by_tenant_id = $1`, [TENANT_C])
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].email).toBe("lead-c@rls-op.test");
+  });
+
+  it("app_user unfiltered SELECT on lead_capture is scoped to claimed rows only", async () => {
+    const rows = await asTenant(TENANT_C, (tx) =>
+      tx.unsafe(`SELECT email FROM lead_capture WHERE email LIKE '%@rls-op.test'`)
+    );
+    // Only tenant C's claimed row — not D's, not the unclaimed (NULL) lead.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].email).toBe("lead-c@rls-op.test");
+  });
+
+  it("app_user cannot read another tenant's claimed kit_order even explicitly", async () => {
+    const rows = await asTenant(TENANT_C, (tx) =>
+      tx.unsafe(`SELECT * FROM kit_order WHERE claimed_by_tenant_id = $1`, [TENANT_D])
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it("app_user gets zero rows from the backend-only operator tables it can query", async () => {
+    // waitlist / nurture_enrollment: app_user holds legacy SELECT grants, so
+    // the query runs — but with no RLS policy it returns nothing.
+    for (const table of ["waitlist", "nurture_enrollment"]) {
+      const rows = await asTenant(TENANT_C, (tx) => tx.unsafe(`SELECT * FROM ${table}`));
+      expect(rows).toHaveLength(0);
+    }
+  });
+
+  it("app_user is denied outright on crm_contact and pages_order (no grants at all)", async () => {
+    // These tables never granted app_user anything — denial happens at the
+    // privilege layer, before RLS is even consulted.
+    for (const table of ["crm_contact", "pages_order"]) {
+      await expect(
+        asTenant(TENANT_C, (tx) => tx.unsafe(`SELECT * FROM ${table}`))
+      ).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("app_user cannot INSERT into waitlist (no write policy)", async () => {
+    await expect(
+      asTenant(TENANT_C, (tx) =>
+        tx.unsafe(`INSERT INTO waitlist (email) VALUES ('hijack@rls-op.test')`)
+      )
+    ).rejects.toThrow();
+  });
+
+  // -- PostgREST roles (anon / authenticated) are denied ---------------------
+
+  it("anon sees zero rows in every operator table, even holding table grants", async () => {
+    for (const table of OPERATOR_TABLES) {
+      const rows = await asRole("anon", (tx) => tx.unsafe(`SELECT * FROM ${table} LIMIT 5`));
+      expect(rows).toHaveLength(0);
+    }
+  });
+
+  it("anon cannot INSERT into lead_capture (RLS write denial)", async () => {
+    await expect(
+      asRole("anon", (tx) =>
+        tx.unsafe(`INSERT INTO lead_capture (email, brand, category)
+                   VALUES ('anon@rls-op.test', 'X', 'cafe')`)
+      )
+    ).rejects.toThrow();
+  });
+
+  it("authenticated sees zero rows in lead_capture and kit_order", async () => {
+    for (const table of ["lead_capture", "kit_order"]) {
+      const rows = await asRole("authenticated", (tx) =>
+        tx.unsafe(`SELECT * FROM ${table} LIMIT 5`)
+      );
+      expect(rows).toHaveLength(0);
+    }
+  });
+
+  // -- Metadata: advisor finding closed, migration tool not locked out -------
+
+  it("all 8 operator tables have RLS enabled (advisor finding closed)", async () => {
+    const rows = await sql.unsafe(
+      `SELECT relname FROM pg_class
+       JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+       WHERE nspname = 'public' AND relkind = 'r'
+         AND relname = ANY($1) AND NOT relrowsecurity`,
+      [OPERATOR_TABLES]
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  it("RLS is FORCEd on the app tables but NOT on schema_migrations (owner = migrate.js)", async () => {
+    const rows = await sql.unsafe(
+      `SELECT relname, relforcerowsecurity FROM pg_class
+       JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
+       WHERE nspname = 'public' AND relkind = 'r' AND relname = ANY($1)`,
+      [OPERATOR_TABLES]
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const byName = new Map(rows.map((r: any) => [r.relname, r.relforcerowsecurity]));
+    for (const t of OPERATOR_TABLES) {
+      expect(byName.get(t)).toBe(t !== "schema_migrations");
+    }
+  });
+
+  it("pending_subscription service_all policy no longer applies to PUBLIC", async () => {
+    const rows = await sql.unsafe(
+      `SELECT roles FROM pg_policies
+       WHERE schemaname = 'public' AND tablename = 'pending_subscription'
+         AND policyname = 'service_all'`
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].roles).toContain("postgres");
+    expect(rows[0].roles).toContain("app_user");
+    expect(rows[0].roles).not.toContain("public");
+  });
+});

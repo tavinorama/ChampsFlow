@@ -4,8 +4,8 @@
 
 - **A análise externa está desatualizada.** Das 10 coisas que ela diz estarem "faltando/404", 7 já estão construídas (checkout Stripe, dashboard, blog, OAuth social, onboarding backend, fluxo de upgrade, conteúdo). Só 2 faltam de fato (case studies/depoimentos e sequência de nutrição por e-mail) e 1 é parcial. Não trate as alegações dela como verdade.
 - **O verdadeiro gargalo de receita não é o que ela aponta:** os CTAs de pricing na landing apontam para a **waitlist**, não para o checkout. O Stripe está pronto, mas só é alcançável depois do login em `/account/billing`. Ninguém consegue comprar sozinho a partir da landing. **Esse é o conserto nº 1.**
-- **$100k em 90 dias NÃO é viável com assinaturas $99/$149 sozinhas** (cenário realista chega a ~$8,6k). É viável com **DFY high-ticket (GEO Sprint $2.400 + Managed) + pré-pagamento anual**, com a assinatura rodando por baixo como volante de longo prazo. Esse é o Cenário C (recomendado): ~$92k–$100k em caixa, ~70% vindo de high-ticket.
-- **Posicionamento vencedor: "auditoria + execução".** Todo concorrente diz que você está invisível; nós te tornamos citado. **Mantenha o $29 como tripwire one-time** (não mensal) e **alargue Growth→Agency de $99/$149 para $99/$249**. Rejeite a escada $29/$79/$199 da análise.
+- **$100k em 90 dias NÃO é viável com assinaturas $99/$549 sozinhas** (cenário realista chega a ~$8,6k). É viável com **DFY high-ticket (GEO Sprint $2.400 + Managed) + pré-pagamento anual**, com a assinatura rodando por baixo como volante de longo prazo. Esse é o Cenário C (recomendado): ~$92k–$100k em caixa, ~70% vindo de high-ticket.
+- **Posicionamento vencedor: "auditoria + execução".** Todo concorrente diz que você está invisível; nós te tornamos citado. **Mantenha o $29 como tripwire one-time** (não mensal) e **alargue Growth→Agency de $99 para $549**. Rejeite a escada $29/$79/$199 da análise.
 - **O ativo de maior alavancagem é o dogfooding do fundador** (subir o próprio TrustIndex Score em público) + as 5–6 estatísticas de mercado mais defensáveis. Vire isso em prova na home, em vídeos de case e na sequência de nutrição.
 
 ---
@@ -27,7 +27,7 @@
   - "Integração social faltando" — **FALSO.** OAuth completo (LinkedIn/Instagram/Facebook) em `social-accounts.ts`.
   - "Onboarding faltando" — **PARCIALMENTE FALSO.** Provisionamento de tenant no backend existe (`onboarding.ts`); falta só o wizard guiado de UI.
   - "Results page com dados reais faltando" — **PARCIAL.** O fluxo real existe (`/test` → `/api/test` → Scorecard ao vivo; dashboard logado). Só a página de marketing `/results` é ilustrativa com dados fake.
-- **A escada de preços proposta ($29/$79/$199; founding $19/$49/$129) contradiz o que está shipado** ($99/$149 + tripwire $29). Adotá-la seria um retrocesso de posicionamento (veja Seção 6).
+- **A escada de preços proposta ($29/$79/$199; founding $19/$49/$129) contradiz o que está shipado** ($99/$549 + tripwire $29). Adotá-la seria um retrocesso de posicionamento (veja Seção 6).
 - **Vários números de mercado estão inflados ou trocados** ("$110B até 2028", "89% das marcas B2B invisíveis", zero-click "58,5%"). Veja Seção 4.
 - **A projeção de "$15.7K MRR em 90 dias" responde a uma pergunta diferente da do fundador** (MRR ≠ caixa coletado). Veja Seção 5.
 
@@ -41,7 +41,7 @@ Reconciliação real — já-construído vs. parcial vs. genuinamente-faltando:
 
 | Alegação da análise ("FALTANDO/404") | Veredito | Evidência |
 |---|---|---|
-| Página de pricing dedicada | **PARCIAL** | Não há rota `/pricing`. MAS há seção `#pricing` completa na landing (`page.tsx:1660-1900`): Free / Growth $99 ($831/ano founder) / Agency $149 ($1.251/ano founder) + tripwire Kit $29. Falta só a rota standalone. |
+| Página de pricing dedicada | **PARCIAL** | Não há rota `/pricing`. MAS há seção `#pricing` completa na landing (`page.tsx:1660-1900`): Free / Growth $99 ($831/ano founder) / Agency $549 ($4.611,60/ano founder) + tripwire Kit $29. Falta só a rota standalone. |
 | Checkout / Stripe | **JÁ EXISTE** | `billing.ts`: `POST /checkout`, `/portal`, `/webhook` (assinatura Stripe verificada, idempotente). Kit one-time em `stripe.ts:299`. |
 | Fluxo de upgrade | **JÁ EXISTE** | `account/billing/page.tsx` → checkout Stripe; tratamento de `?checkout=success/cancelled`; portal; `PLAN_LIMITS` no servidor. |
 | Nutrição por e-mail | **GENUINAMENTE FALTANDO** | Existe e-mail transacional (Resend): confirmação de waitlist, entrega de bônus, DSR/CCPA. **Não há drip/sequência multi-etapas** — sem cron, sem lógica dia-1/3/7. |
@@ -127,8 +127,8 @@ A análise externa respondeu silenciosamente a uma pergunta diferente: "$15.7K M
 | Get-Cited Kit | Tripwire one-time | $29 | $29 integral |
 | Growth mensal | Sub | $99/mo | ~$99–$297 na janela |
 | Growth anual (founder) | Pré-pago | $831/ano | **$831 integral upfront** |
-| Agency mensal | Sub | $149/mo | ~$149–$447 |
-| Agency anual (founder) | Pré-pago | $1.251/ano | **$1.251 integral** |
+| Agency mensal | Sub | $549/mo | ~$549–$1.647 |
+| Agency anual (founder) | Pré-pago | $4.611,60/ano | **$4.611,60 integral** |
 | GEO Sprint | DFY one-time | $2.400 | **$2.400 integral** |
 | Managed GEO | DFY retainer | $1.900/mo | ~$1.900–$5.700 |
 
@@ -160,11 +160,11 @@ Tráfego realista para marca nova em 90 dias (conteúdo do fundador + pouco pago
 | GEO Sprint | 14 × $2.400 | $33.600 |
 | Managed GEO (~1,8 mês na janela) | 9 × $1.900 × 1,8 | $30.780 |
 | Growth anual (pré-pago) | 18 × $831 | $14.958 |
-| Agency anual (pré-pago) | 4 × $1.251 | $5.004 |
+| Agency anual (pré-pago) | 4 × $4.611,60 | $18.446 |
 | Growth mensal (~1,5 mês) | 20 × $99 × 1,5 | $2.970 |
-| Agency mensal (~1,5 mês) | 5 × $149 × 1,5 | $1.118 |
+| Agency mensal (~1,5 mês) | 5 × $549 × 1,5 | $4.118 |
 | Get-Cited Kit | 120 × $29 | $3.480 |
-| **TOTAL** | | **~$91.910** |
+| **TOTAL** | | **~$108.470** |
 
 Mais um empurrão de urgência founder em anual (+6 anuais) ou +3 Sprints → **$100k**. O número que prende é **~1.700 testes grátis ≈ 28.000 visitantes** (2,3x a base) — exige esforço real de topo de funil (motor de conteúdo do fundador + ~$3–5k de pago + outbound). Se o tráfego só atingir 12k, as linhas self-serve caem ~metade e você compensa com mais DFY (que é leve em tráfego, pesado em esforço do fundador).
 
@@ -210,7 +210,7 @@ O moat não é a auditoria (vira commodity em 12 meses — Otterly, Promptmonito
 | 0. Gancho | Teste grátis de visibilidade IA | $0 | Roda uma auditoria, mostra o score + lacunas. Aquisição pura. |
 | 1. Tripwire | TrustIndex Kit | **$29 one-time** | Auditoria completa + benchmark + plano GEO. Converte navegador em comprador *carded*; qualifica para DFY. |
 | 2. Assinatura | Growth | **$99/mo** | Monitoramento + tracking de score + créditos de conteúdo GEO (DWY). O volante. |
-| 3. Assinatura | Agency / Multi-brand | **$249/mo** (subir de $149) | Múltiplas marcas, relatórios white-label, prioridade. Alargar o gap. |
+| 3. Assinatura | Agency / Multi-brand | **$549/mo** | Múltiplas marcas, relatórios white-label, prioridade. Alargar o gap. |
 | 4. High-ticket | OrganicPosts DFY | **$1.500–3.000/mo** retainer ou projeto | Executamos o plano todo. O motor de margem. |
 
 **Decisão crítica: mantenha o $29 como tripwire ONE-TIME, rejeite a escada mensal $29/$79/$199 da análise.** Um $29 *mensal* ancora o produto como ferramenta de monitoramento barata — exatamente a categoria da qual queremos escapar — e canibaliza o motor de margem (DFY). Um $29 *one-time* é uma mão levantada por um resultado: lead DFY quente, não passivo de churn.
@@ -219,7 +219,7 @@ O moat não é a auditoria (vira commodity em 12 meses — Otterly, Promptmonito
 - **Free → $29:** o teste termina na lacuna, não no conserto. CTA: "Pegue o benchmark completo + seu plano GEO por $29." Este é o evento de conversão real (cartão na ficha).
 - **$29 → $99:** o plano do Kit é um roteiro de N itens. CTA dentro do entregável: "Acompanhe seu score enquanto executa — Growth mantém a auditoria viva e dá M créditos/mês."
 - **$29 / $99 → DFY:** quem abre o plano e não age em ~14 dias é o alvo DFY. "Sem tempo de fazer você mesmo? A OrganicPosts faz, e você vê o score subir." Os compradores de $29 que *não* fazem DIY são os melhores leads DFY.
-- **$99 → $249:** disparado por uso (2ª marca, exportar relatórios para cliente).
+- **$99 → $549:** disparado por uso (2ª marca, exportar relatórios para cliente).
 
 **Recomendação de packaging de maior alavancagem:** produtizar o GEO Sprint em **3 tiers fixos** ($1.500 starter / $2.400 standard / $4.500 plus) para o comprador se auto-selecionar para cima, **vender o Sprint direto da página de resultado do teste grátis** (no momento de maior intenção), e **vender Managed como continuação padrão pré-paga trimestralmente** ($5.700 upfront = 3x o caixa na janela vs. mensal e trava retenção).
 
@@ -250,7 +250,7 @@ Prioridade: ligar o que já está construído e só precisa ser ativado. Marcado
 ### Semana 3 — Nutrição + oferta no momento de intenção
 - **[CÓDIGO] Construir a sequência de nutrição multi-etapas** (lacuna real; só existe transacional). Drip Free→$29 e $29→DFY, reaproveitando os vídeos de case. Precisa de cron + lógica dia-1/3/7 (não existe hoje).
 - **[CÓDIGO] Conectar a oferta de Sprint produtizada na página de resultado do teste grátis** — quando o score volta ruim, apresentar "Get Cited in 30 Days" com o case do fundador. Placement de maior conversão.
-- **[CÓDIGO] (Se aprovado na Seção 6) Subir Agency de $149 para $249** e produtizar GEO Sprint em 3 tiers.
+- **[CÓDIGO] Manter Agency em $549** e produtizar GEO Sprint em 3 tiers.
 
 ### Semana 4 — Pico de tráfego + recorrência
 - **[FUNDADOR] Lançar no Product Hunt** alinhado à janela de founding members.

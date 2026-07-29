@@ -80,6 +80,16 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "geo-number-everyone-quotes-measures-wrong-thing",
+    title: "The GEO Number Everyone Quotes Measures the Wrong Thing",
+    excerpt:
+      "A new survey of 45 GEO studies says the famous 40% visibility boost measures prominence after retrieval, not whether AI discovers you at all. Here is what that changes about your strategy.",
+    readTime: "4 min read",
+    publishedAt: "2026-07-27",
+    publishedAtDisplay: "27 July 2026",
+  },
+  {
+    type: "article",
     slug: "why-your-business-isnt-in-chatgpt-answers",
     title: "Why Your Business Isn't in ChatGPT's Answers (And the 3 Places It Actually Looks)",
     excerpt:

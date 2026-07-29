@@ -30,8 +30,10 @@
 import Redis from "ioredis";
 import { Queue, Worker } from "bullmq";
 import { logger } from "../../../packages/shared/src/logger";
+import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
+import { processDriftControlJob } from "./jobs/drift-control";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -155,6 +157,99 @@ auditWorker.on("completed", (job, result) => {
 });
 auditWorker.on("failed", (job, err) => {
   logger.error("audit_job_failed", { job_id: job?.id, message: err?.message });
+});
+
+// ---------------------------------------------------------------------------
+// B4 — anti-drift control battery worker + daily schedule, queue 'geo-drift'.
+//
+// Runs the known-answer control battery against all 5 engines once a day, so we
+// can tell "this brand lost visibility" from "this engine changed". Uses the
+// same BullMQ repeatable-job pattern as weekly monitoring (routes/audits.ts:
+// stable jobId + repeat.pattern → re-adding is idempotent, no duplicates).
+//
+// Own postgres client (same lazy pattern as the other loops). Concurrency 1 and
+// autorun deferred until the first platform-key refresh settles: the battery
+// calls the same provider keys the audits use, and measuring with a stale key
+// would record a false "failing" verdict that pauses a healthy engine.
+// ---------------------------------------------------------------------------
+
+let _driftSql: import("postgres").Sql | null = null;
+function getDriftSql(): import("postgres").Sql {
+  if (_driftSql) return _driftSql;
+  _driftSql = createWorkerDb();
+  return _driftSql;
+}
+
+// Unscoped (privileged) client on purpose: engine_drift_check is a platform-
+// global, PII-free table with no tenant_id — there is no tenant context to set.
+const driftWorker = new Worker(
+  "geo-drift",
+  async (job) => {
+    return processDriftControlJob(
+      job as Parameters<typeof processDriftControlJob>[0],
+      getDriftSql()
+    );
+  },
+  {
+    connection,
+    concurrency: 1,
+    autorun: false, // started below, after the first platform-key refresh
+  }
+);
+
+const driftQueue = new Queue("geo-drift", { connection });
+
+// Register the daily schedule at boot. jobId is stable, so a restart re-uses
+// the same repeatable job instead of stacking a new one. 03:30 UTC: off-peak,
+// and comfortably before the 06:00 UTC weekly monitoring audits — the day's
+// audits should read a verdict measured that same morning.
+const DRIFT_CRON = process.env["GEO_DRIFT_CRON"] ?? "30 3 * * *";
+
+async function registerDriftSchedule(): Promise<void> {
+  const repeatJobId = "drift-control-daily";
+  if (!driftControlEnabled()) {
+    // Flag off → remove any schedule left over from a previous deploy, so
+    // turning the flag off actually stops the spend.
+    const repeatables = await driftQueue.getRepeatableJobs();
+    for (const r of repeatables) {
+      if (r.id === repeatJobId) await driftQueue.removeRepeatableByKey(r.key);
+    }
+    logger.info("drift_schedule_disabled", { flag: "GEO_DRIFT_CONTROL=0" });
+    return;
+  }
+  await driftQueue.add(
+    "drift-control",
+    {},
+    {
+      jobId: repeatJobId,
+      repeat: { pattern: DRIFT_CRON },
+      removeOnComplete: 30,
+      removeOnFail: 30,
+    }
+  );
+  logger.info("drift_schedule_registered", { cron: DRIFT_CRON });
+}
+
+void platformKeysReady.finally(() => {
+  void driftWorker.run();
+  void registerDriftSchedule().catch((err: Error) => {
+    // Non-fatal: the worker keeps serving audits without the drift schedule.
+    logger.error("drift_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+});
+
+driftWorker.on("active", (job) => {
+  logger.info("drift_job_started", { job_id: job.id, attempt: job.attemptsMade + 1 });
+});
+driftWorker.on("completed", (job, result) => {
+  logger.info("drift_job_succeeded", {
+    job_id: job.id,
+    engines_checked: (result as { engines_checked?: number } | undefined)?.engines_checked,
+    failing: (result as { failing?: string[] } | undefined)?.failing?.join(",") ?? "",
+  });
+});
+driftWorker.on("failed", (job, err) => {
+  logger.error("drift_job_failed", { job_id: job?.id, message: err?.message?.slice(0, 200) });
 });
 
 // ---------------------------------------------------------------------------
@@ -383,6 +478,8 @@ const shutdown = async (signal: string): Promise<void> => {
     // Close workers — waits for in-flight jobs to complete
     await worker.close();
     await auditWorker.close();
+    await driftWorker.close();
+    await driftQueue.close();
     await landingWorker.close();
     await monitorReconcileWorker.close();
     await monitorReconcileQueue.close();
@@ -400,6 +497,12 @@ const shutdown = async (signal: string): Promise<void> => {
 
   try {
     if (_landingSql) await _landingSql.end({ timeout: 5 });
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    if (_driftSql) await _driftSql.end({ timeout: 5 });
   } catch {
     // Best-effort
   }

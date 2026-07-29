@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import { InvisibilityTestClient } from "./InvisibilityTestClient";
+import { TestFilmHero } from "./TestFilmHero";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 
 // ---------------------------------------------------------------------------
@@ -83,60 +84,135 @@ const testJsonLd = {
 // Page
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Honest proof strip — the five engines we really check. That is the only
+// social proof on this page: no customer count, no logo wall, no testimonial.
+// ---------------------------------------------------------------------------
+
+const ENGINES = [
+  "ChatGPT",
+  "Claude",
+  "Perplexity",
+  "Gemini",
+  "Google AI Overviews",
+];
+
+function EngineCoverage() {
+  return (
+    <section
+      aria-label="AI engines we check"
+      style={{ margin: "0 0 var(--space-6)" }}
+    >
+      <p
+        style={{
+          margin: "0 0 var(--space-3)",
+          fontSize: "var(--font-size-caption)",
+          fontWeight: 800,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "var(--color-muted)",
+        }}
+      >
+        We ask all 5 engines your buyers use
+      </p>
+      <ul
+        style={{
+          listStyle: "none",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "var(--space-2)",
+          margin: 0,
+          padding: 0,
+        }}
+      >
+        {ENGINES.map((name) => (
+          <li
+            key={name}
+            style={{
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-pill)",
+              padding: "6px 12px",
+              fontSize: "var(--font-size-body-sm)",
+              fontWeight: 600,
+              color: "var(--color-text)",
+              background: "var(--color-surface)",
+            }}
+          >
+            {name}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
 export default function InvisibilityTestPage() {
   return (
-    <main
-      style={{
-        maxWidth: "760px",
-        margin: "0 auto",
-        padding: "var(--space-12) var(--space-4) var(--space-20)",
-        fontFamily: "var(--font-family)",
-        color: "var(--color-text)",
-      }}
-    >
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(testJsonLd) }}
       />
 
-      <span
-        style={{
-          display: "inline-block",
-          fontSize: "var(--font-size-caption)",
-          fontWeight: 800,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "var(--color-primary)",
-          marginBottom: "var(--space-2)",
-        }}
-      >
-        Free &middot; 60 seconds &middot; no credit card
-      </span>
-      <h1
-        style={{
-          fontSize: "clamp(2rem, 5vw, 3rem)",
-          fontWeight: 800,
-          letterSpacing: "-0.03em",
-          lineHeight: 1.05,
-          margin: "0 0 var(--space-3) 0",
-        }}
-      >
-        Find out if AI picks you &mdash; or your competitor.
-      </h1>
-      <p
-        style={{
-          fontSize: "var(--font-size-body)",
-          color: "var(--color-muted)",
-          lineHeight: 1.7,
-          margin: "0 0 var(--space-6) 0",
-        }}
-      >
-        People ask ChatGPT, Claude, Perplexity, and Gemini who to buy from. See what they say
-        about <strong>you</strong>. Free &mdash; takes 60 seconds.
-      </p>
+      {/* Act one: the answer that named someone else */}
+      <TestFilmHero />
 
-      {/* Interactive form + scorecard — client component */}
-      <InvisibilityTestClient />
-    </main>
+      <main
+        id="start"
+        style={{
+          maxWidth: "760px",
+          margin: "0 auto",
+          padding: "var(--space-12) var(--space-4) var(--space-20)",
+          fontFamily: "var(--font-family)",
+          color: "var(--color-text)",
+          scrollMarginTop: "72px",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-block",
+            fontSize: "var(--font-size-caption)",
+            fontWeight: 800,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            color: "var(--color-primary)",
+            marginBottom: "var(--space-2)",
+          }}
+        >
+          Free &middot; 60 seconds &middot; no credit card
+        </span>
+        <h2
+          style={{
+            fontSize: "clamp(1.75rem, 4.5vw, 2.5rem)",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.05,
+            margin: "0 0 var(--space-3) 0",
+          }}
+        >
+          Run your test. Start with two boxes.
+        </h2>
+        <p
+          style={{
+            fontSize: "var(--font-size-body)",
+            color: "var(--color-muted)",
+            lineHeight: 1.7,
+            margin: "0 0 var(--space-6) 0",
+          }}
+        >
+          Your website and your email. That is all we need to begin. We ask the
+          engines what your buyers ask, then send you the result.
+        </p>
+
+        <EngineCoverage />
+
+        {/* Interactive form + scorecard — client component */}
+        <InvisibilityTestClient />
+      </main>
+    </>
   );
 }

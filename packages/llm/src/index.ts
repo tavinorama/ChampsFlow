@@ -134,7 +134,7 @@ export type {
   ProbeCallOptions,
   ProviderErrorKind,
 } from "./providers/types";
-export { ProviderError, mockAllowed } from "./providers/types";
+export { ProviderError, mockAllowed, webSearchEnabled, providerSurface } from "./providers/types";
 
 // Routing gate — single chokepoint for EU/US provider access control (GEO-A3)
 export { routeProvider, permittedProviders } from "./providers/routing";
@@ -150,9 +150,92 @@ export { SerpProbeAdapter } from "./providers/serp";
 export type { RunProbesOptions, RunProbesResult } from "./providers/gateway";
 export { runProbes } from "./providers/gateway";
 
+// B1 — Wilson 95% intervals + intent×engine aggregation
+export type { WilsonInterval, FormulationTally, IntentEngineStat } from "./wilson";
+export { wilson95, aggregateIntentEngine } from "./wilson";
+
+// B1 — intent-classified default prompt portfolio (single source of truth)
+export type { PortfolioPrompt, PortfolioIntent } from "./prompt-portfolio";
+export { buildIntentPortfolio, PORTFOLIO_INTENTS } from "./prompt-portfolio";
+
+// B1 — sequential sampling protocol (lean base + escalate-on-ambiguity)
+export type {
+  SamplingQuery,
+  SequentialSamplingOptions,
+  SequentialSamplingResult,
+  SamplingEscalation,
+} from "./sampling";
+export {
+  runProbesSequential,
+  mergeProbeResponses,
+  responseSuccesses,
+  GEO_METHODOLOGY_VERSION,
+} from "./sampling";
+
+// B8 — 24h aggregated probe cache (store injected by the worker)
+export type { ProbeCacheStore } from "./probe-cache";
+export {
+  probeCacheEnabled,
+  probeCacheKey,
+  getCachedProbe,
+  setCachedProbe,
+  PROBE_CACHE_TTL_SECONDS,
+} from "./probe-cache";
+
 // Citation parser — deterministic mention + position + source extraction
 export type { CitationParseResult } from "./citation-parser";
 export { parseCitation } from "./citation-parser";
+
+// B4 — daily anti-drift control battery (positive + negative controls)
+export type {
+  DriftControl,
+  DriftControlKind,
+  DriftControlResult,
+  DriftBatteryOutcome,
+  DriftEvaluation,
+  DriftStatus,
+  DriftEngine,
+  DriftCallInput,
+  DriftLLMCaller,
+  RunDriftBatteryOptions,
+} from "./drift-control";
+export {
+  DRIFT_CONTROLS,
+  DRIFT_THRESHOLDS,
+  DRIFT_BATTERY_VERSION,
+  DRIFT_POSITIVE_EXPECTED_RATE,
+  driftControlEnabled,
+  detectMention,
+  runDriftBattery,
+  evaluateDrift,
+  estimateDriftCostCents,
+} from "./drift-control";
+
+// B3 — two-pass citation extraction (extractor + blind verifier). Removes the
+// false positives single-pass matching produced (negation, homonym, source-only).
+export type {
+  Mention,
+  VerifiedMention,
+  ExtractionResult,
+  ExtractionInput,
+  ExtractionOptions,
+  ExtractionLLM,
+  ExtractionLLMRequest,
+  ExtractionMode,
+  MentionKind,
+  MentionVerdict,
+} from "./extraction";
+export {
+  extractMentions,
+  extractMentionsBatch,
+  twoPassExtractionEnabled,
+  countsAsCitation,
+  isBrandMention,
+  defaultExtractionLLM,
+  ExtractionUnavailableError,
+  EXTRACTION_METHODOLOGY_VERSION,
+  MAX_VERIFIED_MENTIONS,
+} from "./extraction";
 
 // Scoring engine — deterministic GEO Score computation (GEO-2)
 export type {

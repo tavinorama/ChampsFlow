@@ -1,6 +1,10 @@
 /**
  * providers/anthropic.ts — Anthropic Claude adapter for GEO probe queries
  *
+ * Surface (B2): Messages API (/v1/messages) with the server-side web search
+ * tool — measures the search-enabled Claude consumer surface. GEO_WEB_SEARCH=0
+ * rolls back to the legacy no-search call.
+ *
  * Architecture refs:
  *  - docs/03-architecture.md §12 GEO-1 (probe query execution)
  *  - docs/03-architecture.md §8 EU: Bedrock eu-central-1 / US: direct Anthropic API
@@ -23,8 +27,20 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled } from "./types";
 import { parseCitation } from "../citation-parser";
+
+/**
+ * Anthropic web search tool version matrix (B2):
+ *  - `web_search_20260209` (dynamic filtering) requires the newer models —
+ *    Opus 4.6+/Sonnet 4.6+ generation and later.
+ *  - `web_search_20250305` is the basic variant supported by older models,
+ *    INCLUDING our audit default `claude-haiku-4-5`.
+ * Since the audit runs on haiku-4-5 by design (cheap tier), we pin the basic
+ * variant. If AUDIT_ANTHROPIC_MODEL is ever bumped to a 4.6+/5 model, this can
+ * be upgraded to `web_search_20260209` — revisit this constant then.
+ */
+const ANTHROPIC_WEB_SEARCH_TOOL = { type: "web_search_20250305", name: "web_search", max_uses: 3 } as const;
 
 // ---------------------------------------------------------------------------
 // Deterministic mock helper
@@ -96,8 +112,12 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
     // model. AUDIT_ANTHROPIC_MODEL overrides. (The chatbot and Content Studio
     // pick their models elsewhere — this only affects audit/free-test probes.)
     const model = process.env["AUDIT_ANTHROPIC_MODEL"] ?? process.env["ANTHROPIC_MODEL"] ?? "claude-haiku-4-5";
+    // B2 surface honesty: web search tool ON by default so the probe measures
+    // the search-enabled Claude surface. GEO_WEB_SEARCH=0 rolls back to the
+    // legacy no-search behavior (parametric memory only).
+    const webSearch = webSearchEnabled();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -111,24 +131,45 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
           model,
           max_tokens: 1024,
           messages: [{ role: "user", content: query.queryText }],
+          ...(webSearch ? { tools: [ANTHROPIC_WEB_SEARCH_TOOL] } : {}),
         }),
       });
       if (!res.ok) {
         const kind = res.status === 429 || res.status >= 500 ? "retryable" : "permanent";
         throw new ProviderError("anthropic", kind, res.status, `anthropic HTTP ${res.status}`);
       }
-      const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-      const rawText = (data.content ?? [])
+      // With web search on, content interleaves `server_tool_use` (the query),
+      // `web_search_tool_result` (the results) and `text` blocks (the answer).
+      // The final answer text is still just the concatenation of text blocks;
+      // web_search_tool_result carries the cited pages' URLs.
+      const data = (await res.json()) as {
+        content?: Array<{
+          type: string;
+          text?: string;
+          // Array on success; an error OBJECT on tool failure — must check.
+          content?: Array<{ type?: string; url?: string }> | { type?: string };
+        }>;
+      };
+      const blocks = data.content ?? [];
+      const rawText = blocks
         .filter((b) => b.type === "text" && typeof b.text === "string")
         .map((b) => b.text)
         .join("\n");
+      const searchSources: string[] = [];
+      for (const b of blocks) {
+        if (b.type === "web_search_tool_result" && Array.isArray(b.content)) {
+          for (const r of b.content) {
+            if (r.type === "web_search_result" && typeof r.url === "string") searchSources.push(r.url);
+          }
+        }
+      }
       const parsed = parseCitation(rawText, query.brandName);
       return {
         provider: "anthropic",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
-        sources: parsed.sources,
+        sources: [...new Set([...parsed.sources, ...searchSources])],
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;

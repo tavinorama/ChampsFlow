@@ -1193,6 +1193,22 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const brand = brandRes.rows[0];
       if (!brand) return c.json({ message: "Brand not found." }, 404);
 
+      // Plan gate: weekly monitoring is a paid feature. Enabling it on a plan
+      // that doesn't include it would give a paid capability away for free AND
+      // schedule real recurring audit spend. Disabling is always allowed.
+      if (enabled) {
+        const limits = await planLimitsFor(db, tenantId, auth.isSuperAdmin);
+        if (!limits.weekly_monitoring) {
+          return c.json(
+            {
+              message: "Weekly monitoring is a paid feature. Upgrade your plan to enable it.",
+              code: "PLAN_LIMIT_MONITORING",
+            },
+            403
+          );
+        }
+      }
+
       // Persist the flag.
       await db.query(`UPDATE brands SET monitoring_enabled = $2 WHERE id = $1`, [
         brandId,
@@ -1340,6 +1356,22 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       probes_total: (bd as { probesTotal?: number }).probesTotal ?? evidenceRes.rows.length,
       probes_cited: (bd as { probesCited?: number }).probesCited ?? null,
       probe_repeat: (bd as { probeRepeat?: number }).probeRepeat ?? null,
+      // B1 — additive fields (null/[] on pre-B1 audits; old clients ignore).
+      // methodology_version: '1.0' flat-repeat legacy · '2.0' intent portfolio
+      // + sequential Wilson sampling · '2.1' B3 two-pass verified citations
+      // (neutral/negative mentions no longer count as a citation).
+      methodology_version: (bd as { methodologyVersion?: string }).methodologyVersion ?? null,
+      // Audit-level run-weighted citation rate with its Wilson 95% interval —
+      // the honesty rule: the rate always travels with its ± width.
+      citation_ci: (bd as { citationCI?: unknown }).citationCI ?? null,
+      // Per-intent breakdown: rate ± CI, n, share of voice per engine.
+      intents: (bd as { intents?: unknown }).intents ?? [],
+      // Sampling telemetry: base runs, escalations, generation ceiling, cache.
+      sampling: (bd as { sampling?: unknown }).sampling ?? null,
+      // B3 — two-pass citation extraction: mode, verified/rejected counts,
+      // kinds, and sample false positives this audit refused to count.
+      // null on pre-B3 audits (additive; old clients ignore it).
+      extraction: (bd as { extraction?: unknown }).extraction ?? null,
       // Site-crawl evidence shown under Brand/Performance.
       site_crawl: (bd as { siteCrawl?: unknown }).siteCrawl ?? null,
       // Competitor benchmark — who AI recommends instead of you (ranked).

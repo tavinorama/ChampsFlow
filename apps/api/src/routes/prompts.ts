@@ -25,27 +25,17 @@ import { Hono } from "hono";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { buildIntentPortfolio } from "../../../../packages/llm/src/prompt-portfolio";
 
 // ---------------------------------------------------------------------------
-// Default prompt portfolio — same logic as apps/worker/src/jobs/audit-run.ts
-// buildPromptPortfolio(). Kept inline so this route module has zero worker
-// dependency and stays independently deployable.
+// Default prompt portfolio — B1: the canonical, intent-classified list lives
+// in packages/llm/src/prompt-portfolio.ts (shared with the audit worker, so
+// the Prompt Library and the audit can never drift apart). Same texts and
+// order as the pre-B1 inline list.
 // ---------------------------------------------------------------------------
 
 function buildPromptPortfolio(brandName: string, category: string | null): string[] {
-  const cat = category && category.trim() ? category.trim() : "solution";
-  return [
-    `What is the best ${cat} for small businesses?`,
-    `Top ${cat} providers in 2026`,
-    `${cat} alternatives worth considering`,
-    `Which ${cat} do experts recommend?`,
-    `Most trusted ${cat} companies`,
-    `Best ${cat} for SMBs on a budget`,
-    `${brandName} vs competitors`,
-    `Is ${brandName} a good choice?`,
-    `Pros and cons of leading ${cat} options`,
-    `How to choose a ${cat} vendor`,
-  ];
+  return buildIntentPortfolio(brandName, category).map((p) => p.text);
 }
 
 // ---------------------------------------------------------------------------

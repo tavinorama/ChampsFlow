@@ -104,6 +104,13 @@ export interface ProbeResponse {
    * Empty array when the provider does not return inline citations.
    */
   sources: string[];
+  /**
+   * B8: true when this AGGREGATED multi-run result was served from the 24h
+   * probe cache instead of live provider calls. Cached results are frozen
+   * units — the sampler never escalates them and the worker never re-caches
+   * them or logs an ai_generation for them.
+   */
+  fromCache?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,5 +216,55 @@ export function assertLiveOrThrow(provider: LLMProvider): void {
       undefined,
       `${provider}: API key absent in production — refusing to fabricate a probe answer`
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Web-search surfaces (B2) — probe what the consumer actually sees
+// ---------------------------------------------------------------------------
+
+/**
+ * webSearchEnabled — B2 rollback flag for the web-search surfaces.
+ *
+ * Default ON: OpenAI/Anthropic/Gemini probes run with web search / grounding
+ * enabled, so the audit measures the REAL consumer surface (ChatGPT with
+ * browsing, Claude with web search, Gemini with Google Search grounding) —
+ * not the models' parametric memory. Perplexity (sonar) and SERP/DataForSEO
+ * are search-native and unaffected by this flag.
+ *
+ * Set GEO_WEB_SEARCH=0 to fall back to the pre-B2 behavior (no tools —
+ * parametric memory only) if search breaks or costs spike. Founder decision:
+ * all 5 search-enabled engines run everywhere, including the free test —
+ * "we sell this and we have to deliver this".
+ */
+export function webSearchEnabled(): boolean {
+  return process.env["GEO_WEB_SEARCH"] !== "0";
+}
+
+/**
+ * providerSurface — human-readable description of the surface a probe actually
+ * tested. Written into audit reports (breakdown.surfaces) so a reader can see
+ * whether a score was measured against the search-enabled consumer surface or
+ * the no-search fallback (GEO_WEB_SEARCH=0).
+ */
+export function providerSurface(provider: LLMProvider): string {
+  const ws = webSearchEnabled();
+  switch (provider) {
+    case "openai":
+      return ws
+        ? "OpenAI Responses API + web_search tool (live web results)"
+        : "OpenAI Chat Completions — no search (parametric memory only)";
+    case "anthropic":
+      return ws
+        ? "Claude Messages API + web search tool (live web results)"
+        : "Claude Messages API — no search (parametric memory only)";
+    case "gemini":
+      return ws
+        ? "Gemini generateContent + Google Search grounding (live web results)"
+        : "Gemini generateContent — no grounding (parametric memory only)";
+    case "perplexity":
+      return "Perplexity Sonar (search-native)";
+    case "serp":
+      return "Google AI Overview via DataForSEO SERP (search-native)";
   }
 }
