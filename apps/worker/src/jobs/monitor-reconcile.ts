@@ -100,6 +100,14 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
     // Brands whose tenant has an ACTIVE paid subscription on a monitoring-
     // eligible tier. EXISTS keeps it to one row per brand regardless of how many
     // subscription rows the tenant has.
+    //
+    // The tier list is passed as a plain parameter with an explicit ::text[]
+    // cast. It used to go through sql.array(), which serialized to something
+    // Postgres refused with "op ANY/ALL (array) requires array on right side" —
+    // on EVERY worker boot, since the day #372 merged. The catch below ate it,
+    // so the sold "full-auto weekly monitoring" feature was dead in production
+    // and nothing ever said so. Found only because the 2026-07-29 silent-failure
+    // sweep read the boot logs.
     rows = await sql<EligibleBrandRow[]>`
       SELECT b.id, b.tenant_id, b.region, b.monitoring_enabled
         FROM brands b
@@ -108,7 +116,7 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
                  FROM billing_subscriptions bs
                 WHERE bs.tenant_id = b.tenant_id
                   AND bs.status = 'active'
-                  AND bs.plan_tier = ANY(${sql.array(tiers as string[])})
+                  AND bs.plan_tier = ANY(${tiers as string[]}::text[])
              )
     `;
   } catch (err: unknown) {
