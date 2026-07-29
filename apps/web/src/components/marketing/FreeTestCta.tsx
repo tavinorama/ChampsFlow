@@ -30,7 +30,7 @@ interface FreeTestCtaProps {
 
 export function FreeTestCta({
   className,
-  label = "Check my brand — free →",
+  label = "Check my brand, free →",
   shortLabel = "Free test →",
   ariaLabel = "Check my brand — run the free AI visibility test",
 }: FreeTestCtaProps) {
