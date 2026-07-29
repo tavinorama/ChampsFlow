@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { verifySupabaseToken } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { publicRateLimit } from "../lib/public-rate-limit";
 
 // ---------------------------------------------------------------------------
 // pendingEmailMatches — pure helper for case-insensitive email comparison
@@ -303,6 +304,15 @@ async function setSupabaseAppMetadata(uid: string, tenantId: string): Promise<bo
 export function registerOnboardingRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/account/bootstrap — provision tenant + user on first login.
   app.post("/api/account/bootstrap", async (c) => {
+    // Creates the tenant on first login. Cheap to call, expensive to have
+    // called a thousand times, so it is capped per IP.
+    const limited = await publicRateLimit(c, {
+      bucket: "bootstrap",
+      limit: 10,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limited) return limited;
+
     const authHeader = c.req.header("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return c.json({ error: "Unauthorized", code: "MISSING_TOKEN" }, 401);
