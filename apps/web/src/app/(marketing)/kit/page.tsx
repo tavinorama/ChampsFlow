@@ -15,6 +15,7 @@ import { KitCheckoutForm } from "./KitCheckoutForm";
 import { UpsellLadder } from "../../../components/UpsellLadder";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
+import { KitFilmHero } from "./KitFilmHero";
 
 export const metadata: Metadata = {
   title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29) | Ozvor",
@@ -56,15 +57,22 @@ const PAGE_CSS = `
 
 export default function KitPage() {
   return (
-    <main style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+    <>
+      {/* One scene: what the $29 buys, before the price */}
+      <KitFilmHero />
+
+      {/* A plain div, not a <main>: (marketing)/layout.tsx already owns the
+          main landmark, and a second one nested inside it breaks landmark
+          navigation for screen readers. */}
+      <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(kitJsonLd) }} />
 
       {/* Hero */}
       <span className="kit-eyebrow">Step 2 · $29 one-time</span>
-      <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
+      <h2 style={{ fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
         The Get-Cited Kit. Your audit plus 3 fixes, $29.
-      </h1>
+      </h2>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: 0 }}>
         The Kit gives you a full audit and your Ozvor AI Visibility Score. You get your top 3 citation fixes. You also get 3 ready-to-publish drafts: a blog post, a LinkedIn post, and an FAQ, each with your top fixes baked in. Plus a plain-English GEO guide and a 30-day re-test plan. No subscription. We guarantee the deliverable, never AI outcomes. If your 3 drafts aren&rsquo;t ready to finish in about 10 minutes, we refund the $29.
       </p>
@@ -126,8 +134,9 @@ export default function KitPage() {
         </div>
       </section>
 
-      {/* $29 price card + checkout (client widget — preserved) */}
-      <div style={{ marginTop: "var(--space-12)" }}>
+      {/* $29 price card + checkout (client widget — preserved).
+          id="buy" is the target of the film hero's jump link. */}
+      <div id="buy" style={{ marginTop: "var(--space-12)", scrollMarginTop: "72px" }}>
         <KitCheckoutForm />
       </div>
 
@@ -167,6 +176,7 @@ export default function KitPage() {
         suffix="No guaranteed citations."
         style={{ marginTop: "var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}
       />
-    </main>
+      </div>
+    </>
   );
 }
