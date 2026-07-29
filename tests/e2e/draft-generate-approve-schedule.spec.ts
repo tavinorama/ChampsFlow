@@ -63,12 +63,12 @@ async function setupApiMocks(page: Page): Promise<void> {
     });
   });
 
-  // Mock billing plan (active starter)
+  // Mock billing plan (active paid tier)
   await page.route("**/api/billing/plan", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ plan: "starter", status: "active", usage: { drafts_used: 5, posts_limit: 30 } }),
+      body: JSON.stringify({ plan: "growth", status: "active", usage: { drafts_used: 5, posts_limit: 30 } }),
     });
   });
 
@@ -150,7 +150,17 @@ async function setupApiMocks(page: Page): Promise<void> {
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("Draft Generate → Approve → Schedule (golden path)", () => {
+// BLOCKED (2026-07-29): every test below needs a signed-in user, and E2E has no
+// way to sign one in. The helper sets a "test_session" cookie that appears
+// nowhere in apps/ — the web app authenticates through Supabase cookie
+// sessions, and CI points SUPABASE_URL at a placeholder with no key, so no
+// session can exist. These specs have been asserting against a login redirect,
+// which is why every locator missed. They are marked fixme rather than deleted:
+// the flows they cover are real and worth testing. Unblocking them needs a
+// test-only session shim in the web app, gated on NODE_ENV=test the way the API
+// already gates DEV_AUTH_BYPASS. That is auth code and a HIGH-risk change, so it
+// is a founder-approved PR of its own, not a drive-by.
+test.describe.fixme("Draft Generate → Approve → Schedule (golden path)", () => {
   test.beforeEach(async ({ page }) => {
     await loginAsTestUser(page);
     await setupApiMocks(page);

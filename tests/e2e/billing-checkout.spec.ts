@@ -1,7 +1,7 @@
 /**
  * E2E — Billing checkout (C6)
  *
- * Tests Free → Starter upgrade via Stripe Checkout test mode.
+ * Tests the Free → Growth upgrade via Stripe Checkout test mode.
  * When STRIPE_TEST_MODE=true (set in CI .env), Stripe test card
  * 4242-4242-4242-4242 is used for payment. Without STRIPE_TEST_MODE,
  * this spec skips to avoid hitting real Stripe.
@@ -24,7 +24,17 @@ const STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"] === "true";
 // Skip guard for non-Stripe test environments
 // ---------------------------------------------------------------------------
 
-test.describe("Billing — Stripe Checkout (C6)", () => {
+// BLOCKED (2026-07-29): every test below needs a signed-in user, and E2E has no
+// way to sign one in. The helper sets a "test_session" cookie that appears
+// nowhere in apps/ — the web app authenticates through Supabase cookie
+// sessions, and CI points SUPABASE_URL at a placeholder with no key, so no
+// session can exist. These specs have been asserting against a login redirect,
+// which is why every locator missed. They are marked fixme rather than deleted:
+// the flows they cover are real and worth testing. Unblocking them needs a
+// test-only session shim in the web app, gated on NODE_ENV=test the way the API
+// already gates DEV_AUTH_BYPASS. That is auth code and a HIGH-risk change, so it
+// is a founder-approved PR of its own, not a drive-by.
+test.describe.fixme("Billing — Stripe Checkout (C6)", () => {
   test.beforeEach(async ({ page }) => {
     // Seed test session as Owner on free plan
     await page.context().addCookies([
@@ -48,14 +58,15 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
 
     await page.goto("/account/billing");
 
-    // Three plan cards should be visible (Free, Starter, Pro)
-    const planCards = page.getByTestId(/plan-card/i);
+    // Three plan cards: Free, Growth, Agency. The ladder was renamed away from
+    // Starter/Pro long ago, and the cards never carried a data-testid — each is
+    // a role="group" labelled by its own heading, which is the durable hook.
+    const planCards = page.getByRole("group", { name: /free|growth|agency/i });
     await expect(planCards).toHaveCount(3);
 
-    // Upgrade button on Starter card
-    const upgradeButton = page.getByRole("button", { name: /upgrade to starter/i }).or(
-      page.getByRole("button", { name: /choose starter/i })
-    );
+    // The paid CTA. Its accessible name is built from the plan name and price,
+    // so matching "Choose Growth" holds even when the price moves.
+    const upgradeButton = page.getByRole("button", { name: /choose growth/i });
     await expect(upgradeButton).toBeVisible();
   });
 
@@ -81,8 +92,8 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
 
     await page.goto("/account/billing");
 
-    // Click upgrade on the Starter plan card
-    const upgradeButton = page.getByRole("button", { name: /upgrade to starter|choose starter/i }).first();
+    // Click the paid plan's CTA. Growth is the first paid rung.
+    const upgradeButton = page.getByRole("button", { name: /choose growth/i }).first();
     if (await upgradeButton.isVisible()) {
       // Intercept navigation to Stripe (don't follow external redirect in tests)
       const [request] = await Promise.all([
@@ -97,13 +108,16 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
   });
 
   test("?checkout=success → subscription activated toast is visible", async ({ page }) => {
-    // Mock billing plan returning active starter after successful checkout
+    // Mock billing plan returning an active paid plan after checkout. It has to
+    // be a tier the app knows — free, growth or agency. The old mock said
+    // "starter", a tier that stopped existing when the ladder was renamed, so
+    // the page never reached the state that renders the toast.
     await page.route("**/api/billing/plan", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          plan: "starter",
+          plan: "growth",
           status: "active",
           usage: { drafts_used: 0, drafts_limit: 30 },
         }),
@@ -115,7 +129,7 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
 
     // Toast or success message should appear (C6 AC)
     const successMessage = page
-      .getByText(/subscription activated|payment successful|welcome to starter/i)
+      .getByText(/subscription activated|payment successful/i)
       .first();
     await expect(successMessage).toBeVisible({ timeout: 5_000 });
   });
@@ -131,7 +145,7 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
     // This test uses real Stripe test mode (no mock)
     await page.goto("/account/billing");
 
-    const upgradeButton = page.getByRole("button", { name: /upgrade to starter|choose starter/i }).first();
+    const upgradeButton = page.getByRole("button", { name: /choose growth/i }).first();
     await upgradeButton.click();
 
     // Wait for Stripe Checkout page
@@ -195,7 +209,7 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
     await page.goto("/account/billing");
 
     // Upgrade button should either be hidden or show an error when clicked
-    const upgradeButton = page.getByRole("button", { name: /upgrade|choose starter/i }).first();
+    const upgradeButton = page.getByRole("button", { name: /choose growth|upgrade/i }).first();
     if (await upgradeButton.isVisible()) {
       await upgradeButton.click();
       // Should show error or be disabled
