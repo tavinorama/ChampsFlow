@@ -298,10 +298,11 @@ export default function HowWeMeasurePage() {
                 paddingLeft: "var(--space-1)",
               }}
             >
-              Fraction of buyer prompts where an AI engine mentioned your brand.
-              We run each prompt 3&times; per engine and compute a{" "}
-              <em>mention rate</em> — not a single coin flip — so results are more
-              reliable despite AI non-determinism.
+              Fraction of buyer questions where an AI engine mentioned your brand.
+              We ask each buyer question in 2 different wordings, and we run each
+              wording 2 times per engine. That is 4 runs per question, per engine,
+              before we add anything. From those runs we compute a{" "}
+              <em>mention rate</em>, not a single coin flip.
             </p>
 
             <div style={inputRowStyle}>
@@ -351,24 +352,48 @@ export default function HowWeMeasurePage() {
 
           <div style={honestNoteStyle}>
             <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700 }}>
-              Why we run each question multiple times
+              Why we run each question more than once
+            </p>
+            <p style={{ margin: "0 0 var(--space-2) 0", lineHeight: 1.7 }}>
+              AI engines are not consistent. The same question can get a different
+              answer on the next request. So we never judge your brand on one run.
+            </p>
+            <p style={{ margin: "0 0 var(--space-2) 0", lineHeight: 1.7 }}>
+              <strong>We start lean.</strong> Each buyer question is asked in 2
+              wordings, and each wording runs 2 times per engine. That is a base of
+              4 runs per question, per engine.
+            </p>
+            <p style={{ margin: "0 0 var(--space-2) 0", lineHeight: 1.7 }}>
+              <strong>Then we only spend more where the answer is unclear.</strong>{" "}
+              If a question lands in the grey zone on an engine, meaning your brand
+              is cited in 25% to 75% of the runs, we add 1 more run per wording. We
+              do that for at most 2 extra rounds, and we stop once that question
+              reaches 6 runs on that engine. A clean 0 of 4 or 4 of 4 stays at 4
+              runs. Paying for more runs would not tell you anything new.
+            </p>
+            <p style={{ margin: "0 0 var(--space-2) 0", lineHeight: 1.7 }}>
+              <strong>Every audit has a ceiling.</strong> There is a hard limit on
+              how many AI runs one audit can spend (220 by default). If an extra
+              round would cross it, we stop adding runs instead of cutting corners
+              elsewhere. The base 4 runs always finish.
             </p>
             <p style={{ margin: 0, lineHeight: 1.7 }}>
-              AI engines are non-deterministic: the same question can get different
-              answers on different requests. We probe each buyer question N times per
-              engine (typically 3) and report a citation <em>rate</em> — not a single
-              coin flip. A brand mentioned in 3/3 runs has high confidence; a brand
-              mentioned in 1/3 runs is volatile and needs more work. When only 1 run
-              exists (older audits), we show &ldquo;single sample&rdquo; honestly.
+              <strong>Every rate ships with its margin of error.</strong> We report
+              a 95% Wilson confidence interval next to each rate, so you can see how
+              solid it is. 4 of 4 runs gives a tight range. 2 of 4 gives a wide one,
+              and that width is the honest part. When only 1 run exists (older
+              audits), we show &ldquo;single sample&rdquo; instead of claiming
+              confidence we do not have.
             </p>
           </div>
 
           <p style={{ ...honestNoteStyle, marginTop: "var(--space-3)" }}>
-            <strong>Honest note:</strong> AI outputs are non-deterministic — the same
-            prompt can produce different answers on different days. We probe 3&times;
-            per engine and use mention <em>rates</em> for confidence, but this is
-            still a directional snapshot. Re-audit weekly to track trends rather than
-            treating any single score as absolute.
+            <strong>Honest note:</strong> AI outputs are not deterministic. The same
+            prompt can produce different answers on different days. We run each
+            buyer question at least 4 times per engine, add runs where the signal is
+            unclear, and publish a confidence interval with every rate. It is still
+            a snapshot. Re-audit weekly to track the trend, rather than treating any
+            single score as absolute.
           </p>
         </article>
       </section>
