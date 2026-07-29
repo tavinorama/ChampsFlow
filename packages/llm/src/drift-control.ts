@@ -188,9 +188,14 @@ export const DRIFT_CONTROLS: readonly DriftControl[] = [
  * line is not yet a problem; only crossing it is):
  *
  *   degraded : positive_rate < 0.75  OR  negative_rate > 0.10
- *   failing  : positive_rate < 0.50  OR  negative_rate > 0.25
+ *   failing  : positive_rate < 0.50
  *
  * failing wins over degraded.
+ *
+ * The negative side is ADVISORY: it can raise 'degraded' and is always
+ * reported, but it never raises 'failing' and therefore never pauses an
+ * engine. See the note at the negative-side check for the measurement that
+ * forced this.
  */
 export const DRIFT_THRESHOLDS = {
   positiveDegradedBelow: 0.75,
@@ -472,11 +477,30 @@ export function evaluateDrift(
     }
 
     // Negative side — is the engine inventing entities?
+    //
+    // ADVISORY ONLY. The negative controls can raise 'degraded', never
+    // 'failing', which means they are reported and never pause an engine.
+    //
+    // Why, measured on 2026-07-29: the first real battery marked four of five
+    // engines 'failing' on negative controls alone, while their positive
+    // controls were a perfect 1.00 — the engines were naming known brands
+    // correctly every single time. Asked about a company that does not exist,
+    // a chat model usually describes one; that is ordinary model behaviour,
+    // not the engine breaking. With negative_runs = 3, a single such answer is
+    // a rate of 0.33 and cleared the 0.25 failing line on its own.
+    //
+    // The consequence was not academic. Failing engines are dropped from new
+    // audits, so a paid five-engine audit was about to run on one. A control
+    // that fires on normal behaviour and silently removes 80% of the product
+    // is worse than no control.
+    //
+    // A collapsed POSITIVE rate is what actually means an engine can no longer
+    // be measured, and that still pauses it.
     if (counts.negative_usable > 0) {
       if (negative_rate > DRIFT_THRESHOLDS.negativeFailingAbove) {
-        status = "failing";
+        if (status !== "failing") status = "degraded";
         reasons.push(
-          `negative controls at ${negative_rate.toFixed(2)} (failing above ${DRIFT_THRESHOLDS.negativeFailingAbove.toFixed(2)}) — the engine described entities that do not exist, so its citations today cannot be trusted`
+          `negative controls at ${negative_rate.toFixed(2)} (advisory ceiling ${DRIFT_THRESHOLDS.negativeFailingAbove.toFixed(2)}) — the engine described entities that do not exist; treat its citations with more caution today`
         );
       } else if (negative_rate > DRIFT_THRESHOLDS.negativeDegradedAbove) {
         if (status !== "failing") status = "degraded";
