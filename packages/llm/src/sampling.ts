@@ -42,8 +42,15 @@ import {
  *  - "1.0": flat repeat (GEO_PROBE_REPEAT, default 3) per prompt×engine.
  *  - "2.0": intent-classified portfolio, 2-run base, sequential escalation,
  *           Wilson 95% intervals per intent×engine (B1).
+ *  - "2.1": B3 two-pass citation extraction. A citation now REQUIRES a mention
+ *           that survives a blind verifier AND is a direct recommendation or a
+ *           cited source. Neutral mentions, negative mentions ("I would not
+ *           recommend X"), homonyms and hallucinated mentions no longer count.
+ *           Rates from 2.0 and 2.1 are NOT comparable (2.1 is strictly stricter),
+ *           so the bump also invalidates every 2.0 probe-cache entry.
+ *           GEO_TWO_PASS_EXTRACTION=0 rolls the behaviour back to 2.0 semantics.
  */
-export const GEO_METHODOLOGY_VERSION = "2.0";
+export const GEO_METHODOLOGY_VERSION = "2.1";
 
 /** A probe query carrying its intent classification. */
 export interface SamplingQuery extends ProbeQuery {
