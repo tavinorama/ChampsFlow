@@ -17,6 +17,7 @@
  * Architecture refs: C6 PRD ACs, US-07
  */
 import { test, expect, type Page } from "@playwright/test";
+import { signIn } from "./session";
 
 const STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"] === "true";
 
