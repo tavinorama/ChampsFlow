@@ -186,6 +186,31 @@ export {
 export type { CitationParseResult } from "./citation-parser";
 export { parseCitation } from "./citation-parser";
 
+// B4 — daily anti-drift control battery (positive + negative controls)
+export type {
+  DriftControl,
+  DriftControlKind,
+  DriftControlResult,
+  DriftBatteryOutcome,
+  DriftEvaluation,
+  DriftStatus,
+  DriftEngine,
+  DriftCallInput,
+  DriftLLMCaller,
+  RunDriftBatteryOptions,
+} from "./drift-control";
+export {
+  DRIFT_CONTROLS,
+  DRIFT_THRESHOLDS,
+  DRIFT_BATTERY_VERSION,
+  DRIFT_POSITIVE_EXPECTED_RATE,
+  driftControlEnabled,
+  detectMention,
+  runDriftBattery,
+  evaluateDrift,
+  estimateDriftCostCents,
+} from "./drift-control";
+
 // Scoring engine — deterministic GEO Score computation (GEO-2)
 export type {
   BrandInputs,

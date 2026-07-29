@@ -27,6 +27,13 @@ describe("worker boot deps smoke", () => {
     expect(typeof mod.processDailyMonitoredBrands).toBe("function");
   });
 
+  it("imports the B4 drift-control job processor", async () => {
+    const mod = await import("../../apps/worker/src/jobs/drift-control");
+    expect(typeof mod.processDriftControlJob).toBe("function");
+    expect(typeof mod.pausedDriftEngines).toBe("function");
+    expect(mod.DRIFT_ENGINES).toHaveLength(5);
+  });
+
   it("imports the landing-generate job processor", async () => {
     const mod = await import("../../apps/worker/src/jobs/landing-generate");
     expect(typeof mod.processLandingGenerateJob).toBe("function");

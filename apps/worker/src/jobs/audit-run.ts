@@ -57,6 +57,7 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+import { pausedDriftEngines } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 
@@ -338,6 +339,44 @@ export async function processAuditJob(
       // else: empty/null → fall back to all supported (already set above)
     } catch {
       // Column missing or parse error → fall back to all (current behavior)
+    }
+
+    // B4 — anti-drift pause. An engine whose latest control-battery verdict is
+    // 'failing' (it stopped naming dominant brands, or it described entities
+    // that do not exist) is dropped from this audit: a hallucinating engine
+    // produces fiction, not citations, and folding that into a customer's score
+    // would hand them a number we already know is wrong.
+    //
+    // Two guards, both deliberate:
+    //   - fail-open: pausedDriftEngines() never throws and returns [] when the
+    //     history is missing/stale/disabled (GEO_DRIFT_PAUSE=0 is the override).
+    //   - never pause everything: if every requested engine is failing, the
+    //     problem is almost certainly on OUR side. Keep them all and shout —
+    //     a silently empty audit is worse than a loud suspicious one.
+    try {
+      const paused = await pausedDriftEngines(sql);
+      if (paused.length > 0) {
+        const kept = requestedProviders.filter((p) => !paused.includes(p));
+        if (kept.length === 0) {
+          logger.error("audit_drift_pause_all_engines", {
+            audit_id,
+            paused: paused.join(","),
+            note: "every requested engine is drift-failing — running anyway; investigate our side first",
+          });
+        } else if (kept.length < requestedProviders.length) {
+          logger.warn("audit_drift_engines_paused", {
+            audit_id,
+            paused: requestedProviders.filter((p) => paused.includes(p)).join(","),
+            remaining: kept.length,
+          });
+          requestedProviders = kept;
+        }
+      }
+    } catch (err) {
+      // Belt and braces — the pause check must never fail an audit.
+      logger.warn("audit_drift_pause_check_error", {
+        message: (err as Error).message?.slice(0, 160),
+      });
     }
 
     // In LIVE mode, repeat each probe to capture AI non-determinism as a mention

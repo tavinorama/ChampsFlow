@@ -65,7 +65,11 @@ WHERE nspname = 'public'
     'nurture_send_log',
     'pages_order',
     'crm_contact',
-    'schema_migrations'
+    'schema_migrations',
+    -- B4 anti-drift control battery (20260729000001_engine_drift_check).
+    -- Platform-global, PII-free; RLS on with a permissive policy (api_spend
+    -- pattern) so both the unscoped worker and app_user can use it.
+    'engine_drift_check'
   )
   AND NOT relrowsecurity;
 
