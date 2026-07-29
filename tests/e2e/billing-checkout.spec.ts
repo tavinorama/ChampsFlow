@@ -175,11 +175,13 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
   });
 
   test("Editor role cannot initiate checkout (Owner-only)", async ({ page }) => {
-    // Seed editor session
+    // Seed editor session. clearCookies() drops the owner seeded in beforeEach,
+    // so this has to sign in again — and with e2e_session, not the old
+    // test_session, which the app never read. (Caught in review of #397: this
+    // one line would have kept the editor test on the login redirect while the
+    // rest of the file ran authenticated, which is the worst kind of green.)
     await page.context().clearCookies();
-    await page.context().addCookies([
-      { name: "test_session", value: "e2e-editor-1:e2e-tenant-free:editor", domain: "localhost", path: "/" },
-    ]);
+    await signIn(page, "e2e-editor-1:e2e-tenant-free:editor");
 
     await page.route("**/api/billing/checkout", async (route) => {
       // API returns 403 for editor role
