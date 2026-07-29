@@ -1,18 +1,21 @@
 /**
- * /how-it-works — Ozvor mockup: "From invisible to cited, in four moves."
+ * /how-it-works — "From invisible to cited, in four moves."
  *
- * Server component (static, SSR, real <a href>).
- *  1. Hero
- *  2. Four-move walkthrough — 01/02/03 emerald (Audit · Benchmark · Plan & publish)
- *     + 04 GOLD "Monitor — or hand it to us" → OrganicPosts (the ladder summit)
- *  3. "What your Ozvor AI Visibility Score is made of" — Visibility / Citation Readiness / Execution sub-scores
- *  4. CTA → free test
+ * Server shell. The four moves are told as a scroll film (HowItWorksFilm.tsx)
+ * so this page speaks the same language as the home page — the founder asked
+ * for every sales and product page to carry the landing's dynamic, and a
+ * visitor who clicks How it works should not fall out of the story.
+ *
+ * What stays server rendered here, on purpose:
+ *  - metadata and the HowTo JSON-LD
+ *  - the score breakdown, which is the method, not decoration
+ *  - the CTA links, so they work with JavaScript off
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { StepGlyph } from "../../../components/marketing/illustrations";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
+import { HowItWorksFilm } from "./HowItWorksFilm";
 
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
@@ -48,6 +51,13 @@ const howToJsonLd = {
   ],
 };
 
+/**
+ * The same four moves the film tells, in plain server-rendered text.
+ *
+ * This is not a duplicate for its own sake: the film needs JavaScript and a
+ * scroll, and a crawler has neither. Keeping the moves here means the page
+ * still explains itself to a reader, a screen reader, and an AI engine.
+ */
 const STEPS: { num: string; title: string; body: string }[] = [
   {
     num: "01",
@@ -64,6 +74,11 @@ const STEPS: { num: string; title: string; body: string }[] = [
     title: "Plan & publish",
     body: "Get a GEO content plan, ranked by impact. Content Studio drafts posts and schema built to earn citations. Results are not guaranteed. You review and publish. Nothing goes live without your say-so.",
   },
+  {
+    num: "04",
+    title: "Monitor, or hand it to us",
+    body: "Growth and Agency re-run your audit every week and track your Ozvor AI Visibility Score over time. Don't want to run it yourself? OrganicPosts handles the whole thing for you.",
+  },
 ];
 
 const VECTORS: { label: string; score: number; body: string }[] = [
@@ -74,129 +89,95 @@ const VECTORS: { label: string; score: number; body: string }[] = [
 
 const PAGE_CSS = `
   .hiw-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-ink); font-weight: 600; }
-  .hiw-num { font-family: var(--font-mono); font-weight: 700; font-size: 0.875rem; }
-  .hiw-steps { position: relative; }
+  .hiw-wrap { max-width: 880px; margin: 0 auto; padding: var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16)); }
   .hiw-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
   @media (max-width: 860px) { .hiw-grid { grid-template-columns: 1fr; } }
+  .hiw-moves { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); margin-top: var(--space-8); }
+  @media (max-width: 720px) { .hiw-moves { grid-template-columns: 1fr; } }
+  .hiw-move { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); box-shadow: var(--shadow-card); }
+  .hiw-move h3 { margin: var(--space-2) 0 0; font-size: var(--font-size-h3); font-weight: 800; letter-spacing: -0.01em; }
+  .hiw-move p { margin: var(--space-3) 0 0; color: var(--color-muted); line-height: 1.7; font-size: var(--font-size-body-sm); }
+  .hiw-move-num { font-family: var(--font-mono); font-weight: 700; font-size: 0.8125rem; color: var(--color-accent-ink); }
   .hiw-cta-primary { display:inline-flex; align-items:center; justify-content:center; font-weight:700; color:#06140e; text-decoration:none; background:linear-gradient(135deg,#27c98a,#0c7d54); border-radius:var(--radius-md); padding:0.8rem 1.5rem; box-shadow:0 10px 32px rgba(39,201,138,0.32); }
   .hiw-cta-ghost { display:inline-flex; align-items:center; justify-content:center; font-weight:600; color:var(--color-accent-ink); text-decoration:none; border:1px solid var(--color-border); border-radius:var(--radius-md); padding:0.8rem 1.5rem; }
 `;
 
-function StepRow({ num, title, body, gold = false, variant }: { num: string; title: string; body: string; gold?: boolean; variant: "audit" | "benchmark" | "plan" | "monitor" }) {
-  const accent = gold ? "var(--color-gold)" : "var(--color-primary)";
-  return (
-    <div style={{ display: "flex", gap: "var(--space-5)", alignItems: "flex-start" }}>
-      <div
-        aria-hidden="true"
-        style={{
-          flexShrink: 0,
-          width: "44px",
-          height: "44px",
-          borderRadius: "var(--radius-pill)",
-          display: "grid",
-          placeItems: "center",
-          color: gold ? "#1a1206" : "#06140e",
-          background: gold
-            ? "linear-gradient(135deg,#e6a93f,#b9791f)"
-            : "linear-gradient(135deg,#27c98a,#0c7d54)",
-          fontFamily: "var(--font-mono)",
-          fontWeight: 700,
-          fontSize: "0.9375rem",
-        }}
-      >
-        {num}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          background: "var(--color-surface)",
-          border: `1px solid ${gold ? "var(--color-gold)" : "var(--color-border)"}`,
-          borderRadius: "var(--radius-lg)",
-          padding: "var(--space-6)",
-          boxShadow: "var(--shadow-card)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          <StepGlyph variant={variant} size={40} />
-          <h2 style={{ margin: 0, fontSize: "var(--font-size-h2)", fontWeight: 800, letterSpacing: "-0.02em", color: gold ? "var(--color-gold-ink)" : "var(--color-text)" }}>
-            {title}
-          </h2>
-        </div>
-        <p style={{ margin: "var(--space-3) 0 0", color: "var(--color-muted)", lineHeight: 1.7, fontSize: "var(--font-size-body)" }}>{body}</p>
-      </div>
-    </div>
-  );
-}
-
 export default function HowItWorksPage() {
   return (
-    <main style={{ maxWidth: "880px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+    <>
       <style>{PAGE_CSS}</style>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(howToJsonLd) }} />
 
-      {/* Hero */}
-      <span className="hiw-eyebrow">How it works</span>
-      <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
-        From invisible to cited, in four moves.
-      </h1>
-      <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "620px", margin: 0 }}>
-        No GEO degree needed. You run the audit. We surface the gaps. The platform writes your fix — you publish it.
-      </p>
+      {/* The four moves, as four scenes. */}
+      <HowItWorksFilm />
 
-      {/* Four-move walkthrough */}
-      <div className="hiw-steps" style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)", marginTop: "var(--space-12)" }}>
-        {STEPS.map((s, i) => (
-          <StepRow key={s.num} num={s.num} title={s.title} body={s.body} variant={(["audit", "benchmark", "plan"] as const)[i] ?? "audit"} />
-        ))}
-        <StepRow
-          num="04"
-          gold
-          variant="monitor"
-          title="Monitor — or hand it to us"
-          body="Growth and Agency re-run your audit every week. We track your Ozvor AI Visibility Score over time. Don't want to run it yourself? OrganicPosts handles the whole thing for you."
-        />
-        <div style={{ paddingLeft: "calc(44px + var(--space-5))" }}>
-          <Link href="/organicposts" style={{ color: "var(--color-gold-ink)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}>
-            Meet OrganicPosts — done with you →
-          </Link>
-        </div>
-      </div>
+      {/* A plain div, not a <main>: (marketing)/layout.tsx already owns the
+          main landmark, and nesting a second one breaks the page for screen
+          readers that navigate by landmark. */}
+      <div className="hiw-wrap" style={{ fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+        {/* The same four moves in text, for readers, screen readers and crawlers. */}
+        <section aria-labelledby="four-moves">
+          <span className="hiw-eyebrow">The short version</span>
+          <h2 id="four-moves" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-3) 0 0" }}>
+            From invisible to cited, in four moves.
+          </h2>
+          <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "620px", margin: "var(--space-4) 0 0" }}>
+            No GEO degree needed. You run the audit. We surface the gaps. The platform writes your fix, and you publish it.
+          </p>
+          <div className="hiw-moves">
+            {STEPS.map((s) => (
+              <div key={s.num} className="hiw-move">
+                <span className="hiw-move-num">{s.num}</span>
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+              </div>
+            ))}
+          </div>
+          <p style={{ margin: "var(--space-5) 0 0" }}>
+            <Link href="/organicposts" style={{ color: "var(--color-gold-ink)", fontWeight: 700, textDecoration: "none", fontSize: "var(--font-size-body-sm)" }}>
+              Meet OrganicPosts, done with you &rarr;
+            </Link>
+          </p>
+        </section>
 
-      {/* Score breakdown */}
-      <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="score-made-of">
-        <span className="hiw-eyebrow">The Ozvor method · Visibility × Citation Readiness × Execution</span>
-        <h2 id="score-made-of" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-3) 0 var(--space-6)" }}>
-          What your Ozvor AI Visibility Score is made of.
-        </h2>
-        <div className="hiw-grid">
-          {VECTORS.map((v) => (
-            <div key={v.label} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        {/* Score breakdown */}
+        <section style={{ marginTop: "var(--space-20)" }} aria-labelledby="score-made-of">
+          <span className="hiw-eyebrow">The Ozvor method &middot; Visibility &times; Citation Readiness &times; Execution</span>
+          <h2 id="score-made-of" style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "var(--space-3) 0 var(--space-6)" }}>
+            What your Ozvor AI Visibility Score is made of.
+          </h2>
+          <div className="hiw-grid">
+            {VECTORS.map((v) => (
+              <div key={v.label} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
                 <h3 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 800, color: "var(--color-text)" }}>{v.label}</h3>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)", margin: "var(--space-3) 0" }}>
+                  <span style={{ fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.03em" }}>{v.score}</span>
+                  <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>/ 100</span>
+                </div>
+                <div role="presentation" style={{ height: "8px", borderRadius: "var(--radius-pill)", background: "var(--color-surface-muted)", overflow: "hidden" }}>
+                  <div style={{ width: `${v.score}%`, height: "100%", background: "linear-gradient(90deg,#27c98a,#0c7d54)", borderRadius: "var(--radius-pill)" }} />
+                </div>
+                <p style={{ margin: "var(--space-3) 0 0", color: "var(--color-muted)", lineHeight: 1.6, fontSize: "var(--font-size-body-sm)" }}>{v.body}</p>
               </div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-2)", margin: "var(--space-3) 0" }}>
-                <span style={{ fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.03em" }}>{v.score}</span>
-                <span style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>/ 100</span>
-              </div>
-              <div role="presentation" style={{ height: "8px", borderRadius: "var(--radius-pill)", background: "var(--color-surface-muted)", overflow: "hidden" }}>
-                <div style={{ width: `${v.score}%`, height: "100%", background: "linear-gradient(90deg,#27c98a,#0c7d54)", borderRadius: "var(--radius-pill)" }} />
-              </div>
-              <p style={{ margin: "var(--space-3) 0 0", color: "var(--color-muted)", lineHeight: 1.6, fontSize: "var(--font-size-body-sm)" }}>{v.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+          <p style={{ margin: "var(--space-4) 0 0", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6 }}>
+            The numbers above are an example of the shape of a score, not anyone&apos;s result. Yours comes from a live check.{" "}
+            <Link href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600 }}>See how we measure</Link>.
+          </p>
+        </section>
 
-      {/* CTA */}
-      <section style={{ marginTop: "var(--space-20)", textAlign: "center" }}>
-        <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-5)" }}>
-          See your own score in 60 seconds.
-        </h2>
-        <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", flexWrap: "wrap" }}>
-          <Link href="/test" className="hiw-cta-primary">Run the free AI test →</Link>
-          <Link href="/pricing" className="hiw-cta-ghost">See plans</Link>
-        </div>
-      </section>
-    </main>
+        {/* CTA */}
+        <section style={{ marginTop: "var(--space-20)", textAlign: "center" }}>
+          <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-5)" }}>
+            See your own score in 60 seconds.
+          </h2>
+          <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/test" className="hiw-cta-primary">Check my brand, free &rarr;</Link>
+            <Link href="/pricing" className="hiw-cta-ghost">See plans</Link>
+          </div>
+        </section>
+      </div>
+    </>
   );
 }
