@@ -8,8 +8,15 @@
  * dev-unlock URL and the delivery page builds the kit without payment.
  */
 import { test, expect } from "@playwright/test";
+import { seedConsent } from "./consent";
 
 test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () => {
+  // The consent scrim intercepts clicks until the visitor chooses. Seed an
+  // accepted record so the form is reachable.
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
+  });
+
   test("free test runs and shows a scorecard with a Kit CTA", async ({ page }) => {
     await page.goto("/test");
     // The page opens on a film scene now. Its h1 is the scene headline; the

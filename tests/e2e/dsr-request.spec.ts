@@ -16,6 +16,7 @@
  * Architecture refs: TB-7 (DSR trust boundary), S-11 (OTP brute-force), S-14 (rate limit)
  */
 import { test, expect, type Page } from "@playwright/test";
+import { seedConsent } from "./consent";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,6 +73,13 @@ async function mockDsrApi(page: Page): Promise<void> {
 // ---------------------------------------------------------------------------
 // GDPR Art. 17 — Right to Erasure (Cond 7)
 // ---------------------------------------------------------------------------
+
+// The consent scrim intercepts every click until the visitor chooses, so the
+// whole file seeds an accepted record before each page load. Without this the
+// failures read as broken selectors and are not.
+test.beforeEach(async ({ page }) => {
+  await seedConsent(page);
+});
 
 test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]", () => {
   test("public user submits erasure → OTP email → enters OTP → confirmation shown", async ({ page }) => {
