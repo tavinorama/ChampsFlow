@@ -29,10 +29,18 @@ test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () =
     // category triple — the free test was cut to two required fields to stop
     // losing people in the form.
     await expect(page.getByRole("heading", { name: /named someone else/i })).toBeVisible();
+    // Step one: the two boxes the page opens with.
     await page.getByLabel(/your website/i).fill("demo-crm.com");
     await page.getByLabel(/your email/i).fill("e2e-ladder@example.com");
-    // Submit stays disabled until both fields validate, so wait for it rather
-    // than clicking a disabled button and blaming the selector.
+
+    // Step two reveals itself once both are valid, and it is where the last
+    // two required fields live. Submit stays disabled until all four are in —
+    // that is the form working, not a broken selector.
+    const brand = page.getByLabel(/your brand/i);
+    await expect(brand).toBeVisible({ timeout: 10_000 });
+    await brand.fill("Demo CRM");
+    await page.getByLabel(/your category/i).fill("CRM");
+
     const run = page.getByRole("button", { name: /run my test/i });
     await expect(run).toBeEnabled({ timeout: 10_000 });
     await run.click();
