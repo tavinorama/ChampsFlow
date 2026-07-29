@@ -10,6 +10,11 @@
 import { test, expect } from "@playwright/test";
 import { seedConsent } from "./consent";
 
+// The film scenes animate on scroll, so a button can still be moving when
+// Playwright tries to click it ("element is not stable"). Ask for reduced
+// motion: the kit honours it (see useScrollFilm) and the layout settles.
+test.use({ reducedMotion: "reduce" });
+
 test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () => {
   // The consent scrim intercepts clicks until the visitor chooses. Seed an
   // accepted record so the form is reachable.
@@ -26,7 +31,11 @@ test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () =
     await expect(page.getByRole("heading", { name: /named someone else/i })).toBeVisible();
     await page.getByLabel(/your website/i).fill("demo-crm.com");
     await page.getByLabel(/your email/i).fill("e2e-ladder@example.com");
-    await page.getByRole("button", { name: /run my test/i }).click();
+    // Submit stays disabled until both fields validate, so wait for it rather
+    // than clicking a disabled button and blaming the selector.
+    const run = page.getByRole("button", { name: /run my test/i });
+    await expect(run).toBeEnabled({ timeout: 10_000 });
+    await run.click();
 
     // Scorecard: a verdict + the per-engine table + the Kit CTA.
     await expect(page.locator("body")).toContainText(/cited|invisible/i, { timeout: 30_000 });

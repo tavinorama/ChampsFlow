@@ -298,9 +298,12 @@ test.describe("DSR rate limit (S-14)", () => {
     await page.goto("/legal/dsr-request");
     const emailInput = page.locator("#pub-dsr-email");
 
-    // Submit 6 times
+    // Submit 6 times. The form is replaced by the OTP step after each submit,
+    // so the email field only exists on a fresh load — the old loop typed into
+    // an element that had already been unmounted.
     for (let i = 0; i < 6; i++) {
-      await emailInput.fill(`rate-test-${i}@example.com`);
+      await page.goto("/legal/dsr-request");
+      await page.locator("#pub-dsr-email").fill(`rate-test-${i}@example.com`);
       await page.getByRole("button", { name: /submit|request/i }).click();
       await page.waitForTimeout(200);
     }
