@@ -4,6 +4,7 @@
 > Originally populated at Gate 3→4 (2026-05-02) from architecture §4 + §11 + PRD §7.
 > Updated 2026-06-09: entity changed to TrustIndex AI Ltda (Brazil); LGPD Art. 37 framing added; GEO platform processing activities added; prior social-scheduling activities archived.
 > Updated 2026-07-08: entity identity CORRECTED — controller trades as Ozvor, a Brazilian MEI (Microempreendedor Individual), CNPJ 67.609.444/0001-08 (the holder's civil name is not reproduced here at the controller's instruction; the CNPJ is the unique public identifier); registered office Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD. This corrects the 2026-06-09 entry, which incorrectly stated the entity type as Sociedade Limitada (Ltda) and left CNPJ/address as pending/TBC. See `docs/compliance/regulatory-map.md` (2026-05-30 Brazil home-jurisdiction section) for the jurisdiction/entity-change record; the P5 legal-gate verdict for this identity correction is pending and will be logged in `docs/compliance/gate-log.md`.
+> Updated 2026-07-24 (merged 2026-07-29): added DPO/Encarregado (LGPD Art. 41) + EU representative (GDPR Art. 27) appointment record templates and founder-decision list; added Processing Activities G17–G20 for internal operations/marketing tooling (Postiz, HeyGen, n8n cloud, Google Workspace) — drafted 2026-07-24 as G16–G19 and renumbered at merge because G16 was assigned to the Evidence Store (2026-07-28 entry below) in the interim; added a master Sub-Processor Register (SP-1–SP-14) as the Gate 7 DPA execution checklist. See `docs/compliance/gate-log.md` (2026-07-24 entry) for the corresponding Gate 7 verdict.
 > Updated 2026-07-28: new processing activity G16 added — Evidence Store (raw engine responses, 12-month retention, Product Decision 4-A, founder-approved). See `docs/compliance/dpia.md` Section 11-GEO for the full DPIA assessment and `docs/compliance/gate-log.md` 2026-07-28 entry for the gate verdict and conditions (EV-1 through EV-9).
 > Update on every material change in processing, sub-processor list, or retention policy.
 
@@ -15,12 +16,58 @@
 - **Registered office (sede)**: Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil. Replaces the prior "TBC" placeholder.
 - **Entity-type note (MEI)**: As a Microempreendedor Individual, the controller is a natural person operating as an individual entrepreneur under CNPJ 67.609.444/0001-08, without a separate legal personality distinct from the founder (unlike a Ltda). This does not change any GDPR/LGPD/CCPA obligation already documented in this ROPA — a natural-person-operated business is still a "controller" / "controlador" / "business" under GDPR Art. 4(7), LGPD Art. 5(VI), and CCPA § 1798.140(d) respectively. Corporate-structure and liability implications of the MEI form are a tax/corporate matter for the founder and external (Brazilian) counsel, not a data-protection classification change.
 - **LGPD establishment**: Ozvor (the MEI, CNPJ 67.609.444/0001-08) is established in Brazil. LGPD applies in full as the controller (controlador) is Brazil-domiciled. Regulator: **ANPD (Autoridade Nacional de Proteção de Dados)**.
-- **EU extraterritorial scope (GDPR Art. 3(2))**: Ozvor offers services to EU data subjects. As a non-EU-established controller, **GDPR Art. 27 EU representative must be appointed** before EU users are onboarded. This appointment is a Gate 7 hard stop, unchanged by the entity-type correction. The appointed representative's name and contact details must be added to this ROPA and the Privacy Policy at appointment.
+- **EU extraterritorial scope (GDPR Art. 3(2))**: Ozvor offers services to EU data subjects. As a non-EU-established controller, **GDPR Art. 27 EU representative must be appointed** before EU users are onboarded. This appointment is a Gate 7 hard stop, unchanged by the entity-type correction. The appointed representative's name and contact details must be added to this ROPA and the Privacy Policy at appointment. **See "Appointment Records" subsection below for the template and founder decisions still required (added 2026-07-24).**
 - **US scope**: CCPA/CPRA (CA), TDPSA (TX), VCDPA (VA), and other applicable state laws based on consumer residency and thresholds.
 - **DPO contact**: Not mandatory at this scale under GDPR (no large-scale systematic monitoring, no Art. 9 processing; non-EU controller, so DPO is not mandated under Art. 37 at current scale). Reassess at Series A or if >250 employees.
-- **Encarregado de Dados (LGPD Art. 41)**: Required before BR launch. Appointment pending. Contact to be published in Privacy Policy. Can be the same natural person as the GDPR/privacy contact — note LGPD Art. 41 requires the Encarregado to be a natural person in any case, which aligns naturally with the MEI structure. **This is a Gate 7 hard stop.**
-- **EU representative (GDPR Art. 27)**: Required before EU launch. **Not yet appointed.** To be named here when appointed. **This is a Gate 7 hard stop.**
+- **Encarregado de Dados (LGPD Art. 41)**: Required before BR launch. Appointment pending. Contact to be published in Privacy Policy. Can be the same natural person as the GDPR/privacy contact — note LGPD Art. 41 requires the Encarregado to be a natural person in any case, which aligns naturally with the MEI structure. **This is a Gate 7 hard stop.** **See "Appointment Records" subsection below — the live Privacy Policy currently states this has been appointed; that statement is not yet backed by an actual appointment record and must be corrected (see gate-log.md 2026-07-24 finding).**
+- **EU representative (GDPR Art. 27)**: Required before EU launch. **Not yet appointed.** To be named here when appointed. **This is a Gate 7 hard stop.** **See "Appointment Records" subsection below.**
 - **Joint controllers**: Not applicable in v1. Ozvor (the MEI) is sole controller for its own account/operations data. It acts as operador/processor for SMB customer-directed processing.
+
+### Appointment Records — DPO (LGPD Art. 41 Encarregado) & EU Representative (GDPR Art. 27)
+
+> Added 2026-07-24 by `legal-privacy-officer`. This subsection provides the appointment record **templates** and the founder decisions required to close the two Gate 7 hard stops referenced above. **No appointment has been executed as of this update** — the fields below are blank templates, not completed records. Do not treat any name in this subsection as appointed until the founder has filled in, signed, and dated it. See `docs/compliance/gate-log.md` (2026-07-24 entry) for the full decision list and current verdict.
+
+**A. LGPD Art. 41 — Encarregado de Dados (Data Protection Officer) appointment record**
+
+| Field | Value |
+|---|---|
+| Appointing entity | Ozvor (Brazilian MEI, CNPJ 67.609.444/0001-08) |
+| Appointee (must be a natural person — LGPD Art. 41 does not permit a legal entity for a Brazilian controller) | **[FOUNDER TO FILL: full name of the natural person]** |
+| Contact channel to be published (LGPD Art. 41 §1) | dpo@ozvor.com (already live on the Privacy Policy page) |
+| Scope of role | Receive data-subject and ANPD communications; interface with data subjects; orient staff/contractors on LGPD practices; receive breach reports and coordinate the 2-business-day ANPD notification (ANPD Resolution CD/ANPD 02/2022) |
+| Date of appointment | **[FOUNDER TO FILL]** |
+| Signature | **[FOUNDER TO SIGN]** |
+
+**Founder decision required (A1)**: Who is the Encarregado? Given Ozvor is a solo-founder MEI, the natural default is the founder himself. ANPD has not published a small-business exemption from Art. 41; a natural person must be named. The founder must decide and provide the name to insert above.
+
+**Founder decision required (A2)**: Does the founder want the Encarregado's **personal name** published on the Privacy Policy (a literal reading of LGPD Art. 41 §1 — "identidade e informações de contato" — favours this), or should the founder's civil name remain unpublished (consistent with the standing instruction that the razão social is not reproduced anywhere) with only the role-based email (dpo@ozvor.com) published? **This is a live tension with the founder's standing instruction.** ANPD enforcement practice for micro-entrepreneurs publishing only a functional contact channel (no personal name) is not settled. **Recommend external counsel (Brazilian LGPD specialist) confirm whether a functional contact channel alone satisfies Art. 41 §1 for an MEI controller**, or whether a name (even a first name / trade-facing name, not necessarily the full civil name) must accompany it.
+
+**Exact text to publish on Privacy Policy §1 once A1/A2 are resolved** (replaces the current "has been appointed" sentence — see gate-log.md 2026-07-24 finding, condition 1):
+> "Ozvor's Encarregado de Dados (LGPD Art. 41) is [NAME OR ROLE DESCRIPTOR PER A2], reachable at dpo@ozvor.com."
+
+**Interim honest text (recommended immediate fix to the live page, until A1/A2 are resolved)**:
+> "Ozvor's Encarregado de Dados (LGPD Art. 41) appointment is in progress. Contact dpo@ozvor.com for all privacy inquiries in the meantime."
+
+**B. GDPR Art. 27 — EU Representative designation**
+
+| Field | Value |
+|---|---|
+| Designating controller | Ozvor (Brazilian MEI, CNPJ 67.609.444/0001-08) — non-EU-established, GDPR Art. 3(2) extraterritorial scope |
+| Representative (natural or legal person established in the EU/EEA, in a Member State where a relevant share of the data subjects are located) | **[FOUNDER TO FILL: name of appointed representative or commercial EU-rep service]** |
+| Registered EU address | **[FOUNDER TO FILL]** |
+| Contact channel to be published | **[FOUNDER TO FILL]** |
+| Written mandate (Art. 27(3) requires a written mandate authorising the representative to be addressed by supervisory authorities and data subjects in addition to or instead of the controller) | **[FOUNDER TO ATTACH / REFERENCE CONTRACT]** |
+| Date of designation | **[FOUNDER TO FILL]** |
+
+**Founder decision required (B1)**: Who/where is the EU representative? Two practical routes: (a) engage a commercial GDPR Art. 27 representative service (several exist commercially and provide the mandate + a published EU address as a paid subscription — this is the common route for non-EU-established solo/small controllers); or (b) appoint an EU-based individual or entity Ozvor already has a relationship with, who is willing to accept the Art. 27 role (this carries real visibility to supervisory authorities and liability exposure — it is not a nominal role). **Recommend route (a)** given Ozvor's solo-founder structure and the absence of an existing EU entity/contact.
+
+**Founder decision required (B2)**: Which EU member state should the representative be established in? GDPR Art. 27(3) directs this toward "one of the Member States where the data subjects... are." If EU customer-concentration data exists (or once it does), pick the state with the largest EU user base; absent that data, a commercial EU-rep provider will typically offer a default jurisdiction (commonly Ireland or Germany).
+
+**Exact text to publish on Privacy Policy §1 once B1/B2 are resolved** (replaces the current "is appointed before serving the EU/EEA market" sentence — see gate-log.md 2026-07-24 finding, condition 2):
+> "Ozvor's GDPR Article 27 representative in the European Union is [REPRESENTATIVE NAME / ENTITY], [EU ADDRESS], reachable at [EU CONTACT]."
+
+**Interim honest text (recommended immediate fix to the live page, until B1/B2 are resolved)**:
+> "Ozvor has not yet onboarded users based in the EU/EEA. A GDPR Article 27 EU representative will be appointed and named here before the Service is offered to EU/EEA users."
 
 ---
 
@@ -88,6 +135,23 @@
 
 ---
 
+## Processing Activities — Internal Operations & Marketing (New — 2026-07-24)
+
+> Added by `legal-privacy-officer`. GDPR Art. 30 / LGPD Art. 37 record-keeping obligations extend to ALL processing activities of the controller, not only the customer-facing GEO platform activities (G1–G16). The four activities below were identified from the founder's tool stack (marketing/ops automation) and had not previously been entered in this ROPA. None of these currently touch the customer audit-data pipeline; they are lower-risk than G1–G16 but still require sub-processor DPAs/data-processing terms (see Sub-Processor Register below) and, for n8n and Google Workspace, a workflow-level data-minimisation check before any customer-derived personal data is routed through them. (Numbering note: these four activities were drafted 2026-07-24 as G16–G19 and renumbered G17–G20 at merge, because G16 was assigned to the Evidence Store — Product Decision 4-A, 2026-07-28 — in the interim.)
+
+| # | Activity | Purpose | Lawful basis GDPR (Art. 6) | Lawful basis LGPD (Art. 7) | Data subjects | Personal data | Sub-processor | Region | Retention |
+|---|---|---|---|---|---|---|---|---|---|
+| G17 | Marketing social content scheduling | Schedule and publish Ozvor's own marketing/brand posts across social platforms | Art. 6(1)(f) — legitimate interests (audience engagement for the controller's own marketing) | Art. 7(IX) | Ozvor staff (founder) as poster; social-platform audience members who comment/DM (incidental) | Post content, scheduling metadata, engagement metrics; incidental commenter/DM personal data if any | Postiz | TBC — confirm hosting region at DPA review | Per Postiz account retention + underlying platform (LinkedIn/Instagram/etc.) retention |
+| G18 | Marketing video production (AI presenter / "digital twin") | Generate presenter-style marketing video and voice-over using the founder's own likeness and voice for brand content | Art. 6(1)(a)/(f) — founder's own consent as the data subject, and legitimate interest in marketing content production | Art. 7(I)/(IX) | Founder (data subject = controller himself in this activity) | Video recordings, audio/voice recordings, synthetic likeness/voice output | HeyGen | US (typical HeyGen hosting — confirm at DPA review) | Per HeyGen account retention; founder to set explicit review/deletion cadence |
+| G19 | Internal workflow automation (agent-org orchestration) | Orchestrate operational agent workflows (e.g. daily brief, incident watch) across internal tools and APIs | Art. 6(1)(f) — legitimate interest in internal operations; Art. 6(1)(c) where a workflow touches legal-obligation data (e.g. incident/breach handling) | Art. 7(IX)/(II) | Ozvor staff (founder); potentially customers if a workflow ingests customer-derived data (e.g. audit/incident metadata, support content) | Varies by workflow — **not yet inventoried at the workflow level**; may include operational metadata, API payloads, and (if configured) customer-derived identifiers | n8n cloud | TBC — confirm hosting region (EU/US) at DPA review | Per workflow — not yet standardised |
+| G20 | Business correspondence and document storage | Email correspondence (including customer support threads) and internal document storage | Art. 6(1)(b)/(c) — contract performance (support) and legal obligation (recordkeeping) for support-related mail; Art. 6(1)(f) for general business correspondence | Art. 7(V)/(II)/(IX) | Customers/leads (if support or sales email flows through Gmail); staff (founder) | Email content and attachments, contact details, any customer-submitted content forwarded by email | Google (Gmail/Drive — Google Workspace) | Google global infrastructure; Google Workspace Data Processing Amendment (DPA) available with SCC/DPF coverage | Per mailbox/Drive retention policy — **founder has not yet set an explicit retention or deletion cadence; recommend setting one at Gate 7** |
+
+**Open condition GEO-D4 [MEDIUM]**: Before any customer-derived personal data (support-ticket content, DSR request content, audit alerts referencing a customer's brand/domain, etc.) is routed through n8n cloud workflows, produce a workflow-level data inventory (which workflows touch which data categories) and confirm n8n cloud's hosting region and DPA coverage. Until that inventory exists, treat n8n as **internal-metadata-only** — no customer PII should be configured to flow through it. Owner: founder + devops-engineer. Due: before any n8n workflow is connected to a customer-data source (email, CRM, support inbox).
+
+**Open condition GEO-D5 [LOW]**: HeyGen processes the founder's own likeness and voice for marketing video generation. This is the founder's own personal data, and the founder is both controller and data subject for this specific activity — no third-party data subject exposure. No GDPR Art. 9 issue arises (video/voice content is not itself "biometric data" under Art. 9 unless processed through specific technical means for the purpose of uniquely identifying a natural person, which is not HeyGen's function here). Flagged for completeness only; no action required beyond the standard sub-processor DPA.
+
+---
+
 ## Data Subject Rights — Operational Handling
 
 - **Intake portal**: `/legal/dsr-request` (public, no login required). Legacy `/privacy/dsr` permanently redirects here (next.config.js).
@@ -113,9 +177,39 @@
 
 ---
 
+## Sub-Processor Register (Master List — Gate 7 DPA Checklist)
+
+> Added 2026-07-24 by `legal-privacy-officer`. Consolidates every sub-processor referenced across `regulatory-map.md`, `dpia.md`, this ROPA's G1–G20 activities, and the founder's current tool stack, into a single Gate 7 DPA-execution checklist. **DPA/data-processing-terms status below reflects what is documented in the compliance artifact set as of this update — it does NOT assert that any DPA has been executed.** Per the hard rule against fabricating signed agreements, every row marked "required" or "not yet executed" must be confirmed and closed by the founder (or devops-engineer under founder direction) before the corresponding data flow goes live for real users, and evidence (executed DPA, DPF certification screenshot, or equivalent) should be filed and referenced here once done.
+
+| # | Sub-processor | Category | Purpose | Data shared | Region / hosting | Customer data or internal-ops only | Transfer mechanism | DPA / data-processing-terms status |
+|---|---|---|---|---|---|---|---|---|
+| SP-1 | Supabase | Database + Auth | Core account, brand, audit, billing data storage | All product personal data categories (G1–G15) | eu-central-1 (EU users) / us-east-1 (US/BR users) | Customer-facing (core) | EU: no Art. 44 transfer. US/BR: no mechanism required for US destination; LGPD BR→US basis = GEO-D3 (open) | **NOT YET EXECUTED — required before launch** (Gate 7 hard stop, dpia.md §9-GEO) |
+| SP-2 | Railway | Hosting/compute | Application hosting (web, API, worker) | Application traffic, operational logs | EU-west (EU) / varies (US/BR) | Customer-facing (core) | DPA referenced in Railway ToS | **CONFIRM DPA ACCEPTANCE AT ACCOUNT LEVEL** — required before launch |
+| SP-3 | Stripe | Payments | Subscription billing | Name, email, Stripe customer ID, subscription tier, billing region | US-hosted | Customer-facing (core) | SCCs (Module 2) + Stripe DPF certification | **NOT YET EXECUTED — required before launch** (Gate 7 hard stop) |
+| SP-4 | Resend | Transactional email | Account notifications, DSR/CCPA acknowledgments, breach notices | Email address, notification content | EU infrastructure (to verify at account level) | Customer-facing (core) | DPA available from Resend | **CONFIRM EU INFRA + DPA ACCEPTANCE** — required before launch |
+| SP-5 | Anthropic (Claude) | AI inference | GEO audit probes, content/strategy generation | Synthetic probe prompts (no personal data by design); no-training/ZDR terms | Bedrock eu-central-1 (EU) / direct API (US/BR) | Customer-facing (core) | EU: no Art. 44 transfer. US/BR: DPA + ZDR. DPF certified | **NOT YET EXECUTED — required before launch** (Gate 7 hard stop) |
+| SP-6 | OpenAI (GPT-4o) | AI inference | GEO audit probes | Synthetic probe prompts | Azure EU (EU, path to confirm) / standard API (US/BR) | Customer-facing (core) | DPA + ZDR/enterprise terms; DPF certified | **EU-path confirmation open (GEO-D1); DPA NOT YET EXECUTED** |
+| SP-7 | Google Gemini | AI inference | GEO audit probes | Synthetic probe prompts | Vertex AI EU (EU, path to confirm) / standard (US/BR) | Customer-facing (core) | DPA required; DPF certified | **EU-path confirmation open (GEO-D1); DPA NOT YET EXECUTED** |
+| SP-8 | Perplexity | AI inference | GEO audit probes (US/BR only) | Synthetic probe prompts | US-hosted only | Customer-facing (core) | **EU users excluded by GEO-A3 routing gate** until DPA/SCC confirmed | **NOT YET EXECUTED — EU traffic must remain blocked until closed** |
+| SP-9 | DataForSEO / SerpAPI | SERP/off-site data | Off-site brand-presence signal, AI-Overview capture | Brand + domain query parameters | DataForSEO: EU-hosted option; SerpAPI: US-hosted | Customer-facing (core) | DPA required for whichever provider is active in production | **CONFIRM ACTIVE PROVIDER + EXECUTE DPA** — required before launch |
+| SP-10 | Cloudflare | DNS / CDN | Network edge, DNS, CDN in front of ozvor.com | Visitor IP addresses, request metadata | Global edge network | Customer-facing (core, infrastructure-layer) | Standard Cloudflare DPA (SCCs + DPF) | **CONFIRM DPA ACCEPTANCE AT ACCOUNT LEVEL** — required before launch |
+| SP-11 | Postiz | Social scheduling (Ozvor's own marketing) | Schedule/publish Ozvor's own brand social content (Activity G17) | Post content, scheduling metadata, incidental commenter data | TBC | Internal-ops / marketing only — not customer product data | TBC | **NOT ASSESSED — add to DPA checklist; confirm hosting region and data-processing terms** |
+| SP-12 | HeyGen | AI video generation (marketing) | Generate founder-presenter marketing video/voice (Activity G18) | Founder's own video/audio/likeness | US (typical — confirm) | Internal-ops / marketing only — founder's own data | TBC | **NOT ASSESSED — add to DPA checklist; lower priority given founder-only data subject (GEO-D5)** |
+| SP-13 | n8n cloud | Workflow automation | Internal agent-org orchestration (Activity G19) | Varies by workflow — not yet inventoried | TBC | Internal-ops — **must remain internal-metadata-only until GEO-D4 closed** | TBC | **NOT ASSESSED — do not connect to any customer-data source before GEO-D4 workflow inventory + DPA review** |
+| SP-14 | Google Workspace (Gmail/Drive) | Business email + document storage | Correspondence incl. support email, document storage (Activity G20) | Email content/attachments, contact details | Google global infrastructure | Mixed — internal-ops, but may carry customer/lead personal data via support email | Google Workspace Data Processing Amendment (SCCs + DPF) — standard, self-serve acceptance in Admin Console | **NOT YET ACCEPTED IN ADMIN CONSOLE (to confirm) — accept the standard Google Workspace DPA; low friction to close** |
+
+**DPA execution checklist (Gate 7)** — for each row above marked "NOT YET EXECUTED" or "NOT ASSESSED":
+1. Locate or request the provider's standard DPA / Data Processing Addendum (most SP-1 through SP-10 providers publish one; accept or countersign per their process).
+2. For SP-11–SP-14 (newly added), first confirm hosting region and whether any customer-derived personal data is or will be routed through the tool; if yes, request/accept the provider's DPA before that data flow is enabled.
+3. File the accepted/executed DPA (PDF or Admin-Console confirmation) in the founder's records; update this table's status column to "EXECUTED — [date] — [evidence reference]" once done. This document does not assert execution on the founder's behalf.
+4. For SP-6 (OpenAI) and SP-7 (Gemini): additionally confirm in the production environment configuration that EU-tenant traffic is actually routed to the EU-hosted path (Azure EU / Vertex AI EU) before closing GEO-D1 — a DPA alone does not close GEO-D1 without the routing confirmation.
+5. For SP-8 (Perplexity): do not lift the GEO-A3 EU-exclusion routing gate until the DPA/SCC status is confirmed and closed.
+
+---
+
 ## Archived: Processing Activities — Social-Scheduling Product (Organic Posts v1 — superseded 2026-05-30)
 
-> The activities below were documented at Gate 3→4 (2026-05-02) for the archived social-scheduling product under the Organic Posts, Lda (Portugal) entity. They are preserved as a historical record only. All active processing is under the GEO Platform activities (G1–G16) above.
+> The activities below were documented at Gate 3→4 (2026-05-02) for the archived social-scheduling product under the Organic Posts, Lda (Portugal) entity. They are preserved as a historical record only. All active processing is under the GEO Platform activities (G1–G16) and Internal Operations & Marketing activities (G17–G20) above.
 
 | # | Activity | Purpose | Lawful basis (Art. 6) | Data subjects | Personal data | Sub-processors | Third-country transfer | Mechanism | Retention |
 |---|---|---|---|---|---|---|---|---|---|
@@ -135,10 +229,11 @@
 ## Approval
 
 - Author: legal-privacy-officer agent
-- Gate: 3→4 (original 2026-05-02); updated at Gate 3→4 DPIA + LGPD ratification (2026-06-09); entity-identity correction (2026-07-08)
+- Gate: 3→4 (original 2026-05-02); updated at Gate 3→4 DPIA + LGPD ratification (2026-06-09); entity-identity correction (2026-07-08); Gate 7 appointment records + sub-processor register (2026-07-24)
 - Jurisdictions: Brazil (LGPD Art. 37 records), EU (GDPR Art. 30), US (CCPA/CPRA informing data inventory)
 - Reviewed by (human): _____ (required before EU/BR launch)
+- Update log: 2026-07-28 — new processing activity G16 added (Evidence Store — raw engine responses, 12-month retention) under founder-approved Product Decision 4-A; "Activity G16 — Evidence Store: Third-Party DSR Handling" subsection added; Data Subject Rights — Operational Handling section cross-referenced. Corresponding DPIA update in `docs/compliance/dpia.md` Section 11-GEO (new risk GEO-R13, conditions EV-1 through EV-9). Gate verdict in `docs/compliance/gate-log.md` 2026-07-28 entry. Does not alter the 90-day `citation_check` retention (unchanged, separate data category) or any other existing G1–G15 activity.
+- Update log: 2026-07-24 (merged 2026-07-29) — added Appointment Records templates (LGPD Art. 41 Encarregado + GDPR Art. 27 EU representative — both still unappointed as of this update; see `docs/compliance/gate-log.md` 2026-07-24 entry for the founder-decision list and the finding that the live Privacy Policy currently overstates appointment status); added Processing Activities G17–G20 (internal operations/marketing: Postiz, HeyGen, n8n cloud, Google Workspace; drafted 2026-07-24 as G16–G19 and renumbered at merge because G16 was assigned to the Evidence Store on 2026-07-28); added the Sub-Processor Register (master DPA checklist, SP-1–SP-14). New conditions: GEO-D4 (n8n workflow data inventory before any customer-derived data is routed through it) and GEO-D5 (HeyGen — informational only, no action required). No existing G1–G16 activity or Archived-section content modified.
 - Update log: 2026-07-10 — brand-name fix in live activity G7 ("TrustIndex Score" → "Ozvor AI Visibility Score"; founder rebrand rule 2026-06-27) as part of the issue #213 stale-docs sweep. No processing-activity change.
 - Update log: 2026-07-08 — entity identity corrected (MEI confirmed in place of the prior Ltda reference; CNPJ 67.609.444/0001-08 and registered office populated; "TrustIndex AI" active references replaced with "Ozvor"). Razão social kept as the on-file civil name under CNPJ 67.609.444/0001-08 (not reproduced, at the controller's instruction); the public identity is the trade name Ozvor. P5 legal-gate verdict pending. Historical Archived section (Organic Posts, Lda) preserved unedited per append-only convention.
-- Update log: 2026-07-28 — new processing activity G16 added (Evidence Store — raw engine responses, 12-month retention) under founder-approved Product Decision 4-A; "Activity G16 — Evidence Store: Third-Party DSR Handling" subsection added; Data Subject Rights — Operational Handling section cross-referenced. Corresponding DPIA update in `docs/compliance/dpia.md` Section 11-GEO (new risk GEO-R13, conditions EV-1 through EV-9). Gate verdict in `docs/compliance/gate-log.md` 2026-07-28 entry. Does not alter the 90-day `citation_check` retention (unchanged, separate data category) or any other existing G1–G15 activity.
 - Next review: annual (2027-06) or on material change in processing, sub-processor list, applicable law, or entity identity
