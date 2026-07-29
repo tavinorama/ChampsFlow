@@ -127,6 +127,25 @@ export const FILM_STYLES = `
 }
 .film-chip svg { width: 14px; height: 14px; color: var(--film-green); flex: none; }
 
+/* ── Jump link, for scenes that hand the visitor to a form below ───── */
+.film-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 22px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 11px;
+  background: var(--film-green);
+  color: #04120c;
+  font-weight: 790;
+  font-size: 16.5px;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(39,201,138,0.26);
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.film-jump:hover { transform: translateY(-1px); filter: brightness(1.04); }
+
 /* ── AI answer device ─────────────────────────────────────────────── */
 .film-answer {
   margin-top: 26px;

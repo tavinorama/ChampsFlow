@@ -3,15 +3,25 @@
 /**
  * PricingPlans — the interactive plan cards on the public /pricing page.
  *
- * Founder ask: the displayed price defaults to ANNUAL, and the visitor can flip
- * to Monthly right in the box. The chosen interval is carried into the checkout
- * funnel (?interval=…) so what they pick is what they're charged.
+ * CRO pass (2026-07):
+ *  - MONTHLY is the default. The full annual total was scaring people before
+ *    they understood the value. Annual is one tap away and says what it saves.
+ *  - The $29 Get-Cited Kit is a real tier in the grid now, sitting between Free
+ *    and Growth. It is the tripwire of the funnel, so hiding it from the plan
+ *    table was costing the step it exists for. Its price ($29, one time) and
+ *    its destination (/kit, which owns the Stripe call) are unchanged.
+ *  - Every paid card repeats its guarantee directly under its button, where
+ *    the doubt actually happens, instead of once in the page subtitle.
  *
- * Annual prices are the founder price (30% off the 12× list), which is the only
- * annual price offered pre-launch (mirrors components/PlanCard + the founder
- * band on this page). Annual is the default selection.
+ * Honesty note on the guarantees: subscriptions carry the 30 day money back.
+ * The Kit is a one-time deliverable and carries the deliverable guarantee, the
+ * exact wording of /refund. We do not promise the Kit a policy it does not have.
  *
- * Growth/Agency CTAs now POST to /api/checkout/direct via useDirectCheckout —
+ * The chosen interval is carried into the checkout funnel so what they pick is
+ * what they're charged. Annual prices are the founder price (30% off the 12×
+ * list) while the founder cohort is open, then they flip to list automatically.
+ *
+ * Growth/Agency CTAs POST to /api/checkout/direct via useDirectCheckout —
  * skipping the /login?plan=... funnel and going straight to Stripe Checkout.
  */
 
@@ -22,16 +32,21 @@ import { useDirectCheckout, type CheckoutPlan } from "../../../lib/use-direct-ch
 type Interval = "year" | "month";
 
 type Plan = {
-  id: "free" | CheckoutPlan;
+  id: "free" | "kit" | CheckoutPlan;
+  /** free = no card, onetime = one payment, sub = recurring plan. */
+  kind: "free" | "onetime" | "sub";
   name: string;
-  monthly: string; // headline price when Monthly is selected
+  monthly: string; // headline price when Monthly is selected (or the one-time price)
   annualYear: string; // founder annual /yr total (while the offer is active)
   annualYearList?: string; // LIST annual /yr total (shown once the founder offer ends)
   annualPerMonth: string; // "≈ $69/mo" helper shown under the founder annual price
   sub: string;
   features: string[];
   cta: string;
-  paid: boolean;
+  /** Real destination for the non-subscription cards. */
+  href?: string;
+  /** Repeated under the button. Empty for the free card. */
+  guarantee?: string;
   accent: "muted" | "emerald";
   featured?: boolean;
 };
@@ -39,6 +54,7 @@ type Plan = {
 const PLANS: Plan[] = [
   {
     id: "free",
+    kind: "free",
     name: "Free",
     monthly: "$0",
     annualYear: "$0",
@@ -46,11 +62,34 @@ const PLANS: Plan[] = [
     sub: "See where you stand — no card.",
     features: ["1 brand", "10-prompt snapshot audit", "1 competitor", "All 5 AI engines", "Instant Ozvor AI Visibility Score"],
     cta: "Run my test — free",
-    paid: false,
+    href: "/test",
     accent: "muted",
   },
   {
+    id: "kit",
+    kind: "onetime",
+    name: "Get-Cited Kit",
+    monthly: "$29",
+    annualYear: "$29",
+    annualPerMonth: "",
+    sub: "One payment. We write your fixes.",
+    features: [
+      "Full audit on all 5 AI engines",
+      "Your Ozvor AI Visibility Score",
+      "Your top 3 citation fixes",
+      "3 ready-to-publish drafts: blog, LinkedIn, FAQ",
+      "Plain-English GEO guide",
+      "30-day re-test plan",
+      "No subscription",
+    ],
+    cta: "Get the Kit — $29",
+    href: "/kit",
+    guarantee: "Deliverable guarantee. Drafts not publish-ready, we refund.",
+    accent: "emerald",
+  },
+  {
     id: "growth",
+    kind: "sub",
     name: "Growth",
     monthly: "$99",
     annualYear: "$831",
@@ -59,12 +98,13 @@ const PLANS: Plan[] = [
     sub: "For one brand you want cited.",
     features: ["One manual re-audit per brand each week.", "Weekly monitoring", "Up to 10 competitors.", "GEO content plan + Content Studio", "CSV export", "Email support"],
     cta: "Start Growth",
-    paid: true,
+    guarantee: "30 day money back.",
     accent: "emerald",
     featured: true,
   },
   {
     id: "agency",
+    kind: "sub",
     name: "Agency",
     monthly: "$549",
     annualYear: "$4,611",
@@ -73,14 +113,15 @@ const PLANS: Plan[] = [
     sub: "For agencies & multi-brand teams.",
     features: ["$36.60 per brand — $25.62 on founder annual", "Multi-client dashboard (up to 15 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual bonus: one free website GEO audit."],
     cta: "Start Agency",
-    paid: true,
+    guarantee: "30 day money back.",
     accent: "emerald",
   },
 ];
 
 export function PricingPlans() {
-  // Annual is the default (better value + unlocks the founder discount).
-  const [interval, setInterval] = useState<Interval>("year");
+  // Monthly is the default: the smaller number is the honest entry price, and
+  // the annual total no longer lands before the visitor sees the value.
+  const [interval, setInterval] = useState<Interval>("month");
   const { loadingPlan, error, startCheckout } = useDirectCheckout();
 
   // Founder-offer status drives the displayed annual price: while active, show
@@ -108,13 +149,15 @@ export function PricingPlans() {
 
   return (
     <div style={{ marginTop: "var(--space-10)" }}>
-      {/* Interval toggle — Annual default, switch to Monthly in place */}
+      {/* Interval toggle — Monthly default, Annual one tap away and labelled
+          with what it saves. Centred so it reads as a control, not a stray tab. */}
+      <div style={{ textAlign: "center" }}>
       <div
         role="group"
         aria-label="Billing interval"
         style={{
           display: "inline-flex",
-          margin: "0 auto var(--space-6)",
+          margin: "0 auto var(--space-3)",
           padding: "4px",
           gap: "4px",
           border: "1px solid var(--color-border)",
@@ -123,8 +166,8 @@ export function PricingPlans() {
         }}
       >
         {([
-          { v: "year" as const, label: "Annual", note: founderActive ? "Save 30%" : null },
           { v: "month" as const, label: "Monthly", note: null },
+          { v: "year" as const, label: "Annual", note: founderActive ? "Save 30%" : null },
         ]).map((opt) => {
           const active = interval === opt.v;
           return (
@@ -170,18 +213,28 @@ export function PricingPlans() {
           );
         })}
       </div>
+      {/* One clear line about the other interval, so the choice is informed */}
+      <p style={{ margin: "0 0 var(--space-6)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+        {interval === "month"
+          ? founderActive
+            ? "Pay yearly and save 30% while the founder offer is open."
+            : "Pay yearly to save on the same plan."
+          : "Billed once a year. Switch to monthly any time."}
+      </p>
+      </div>
 
       {/* Plan cards */}
       <div className="pr-grid">
         {PLANS.map((pl) => {
           const isAnnual = interval === "year";
-          const priceMain =
-            pl.id === "free"
-              ? "$0"
-              : isAnnual
-                ? (founderActive ? pl.annualYear : (pl.annualYearList ?? pl.annualYear))
-                : pl.monthly;
-          const per = pl.id === "free" ? "" : isAnnual ? "/yr" : "/mo";
+          const isSub = pl.kind === "sub";
+          const priceMain = isSub
+            ? isAnnual
+              ? (founderActive ? pl.annualYear : (pl.annualYearList ?? pl.annualYear))
+              : pl.monthly
+            : pl.monthly;
+          const per =
+            pl.kind === "free" ? "" : pl.kind === "onetime" ? " one time" : isAnnual ? "/yr" : "/mo";
           return (
             <div
               key={pl.name}
@@ -201,18 +254,22 @@ export function PricingPlans() {
               )}
               <div style={{ fontSize: "1rem", fontWeight: 700, color: pl.accent === "emerald" ? "var(--color-accent-ink)" : "var(--color-muted)" }}>{pl.name}</div>
               <div style={{ marginTop: "var(--space-2)", fontSize: "2.5rem", fontWeight: 800, letterSpacing: "-0.03em" }}>
-                {priceMain}<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>{per}</span>
+                {priceMain}<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)", marginLeft: pl.kind === "onetime" ? "0.35rem" : 0 }}>{per}</span>
               </div>
-              {/* Annual helper line — keeps the per-month framing + founder context */}
+              {/* Helper line — annual per-month framing, or what a one-time buy means */}
               <div style={{ marginTop: "var(--space-1)", minHeight: "18px", fontSize: "var(--font-size-caption)", color: "var(--color-accent-ink)", fontWeight: 600 }}>
-                {pl.paid && isAnnual ? (founderActive ? pl.annualPerMonth : "billed annually") : " "}
+                {pl.kind === "onetime"
+                  ? "No subscription."
+                  : isSub && isAnnual
+                    ? (founderActive ? pl.annualPerMonth : "billed annually")
+                    : " "}
               </div>
               <div style={{ marginTop: "var(--space-1)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", minHeight: "32px" }}>{pl.sub}</div>
-              {pl.id === "free" ? (
+              {pl.kind !== "sub" ? (
                 <Link
-                  href="/test"
-                  className="pr-cta pr-cta-ghost"
-                  aria-label="Run my test — Free plan"
+                  href={pl.href ?? "/test"}
+                  className={`pr-cta ${pl.kind === "free" ? "pr-cta-ghost" : "pr-cta-emerald"}`}
+                  aria-label={`${pl.cta} — ${pl.name}`}
                 >
                   {pl.cta}
                 </Link>
@@ -233,6 +290,18 @@ export function PricingPlans() {
                     </button>
                   );
                 })()
+              )}
+              {/* The guarantee, right under the button that needs it */}
+              {pl.guarantee ? (
+                <p style={{ margin: "var(--space-2) 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center", lineHeight: 1.5 }}>
+                  <Link href="/refund" style={{ color: "var(--color-muted)", textDecoration: "underline" }}>
+                    {pl.guarantee}
+                  </Link>
+                </p>
+              ) : (
+                <p style={{ margin: "var(--space-2) 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }}>
+                  No card needed.
+                </p>
               )}
               <ul style={{ listStyle: "none", margin: "var(--space-5) 0 0", padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 {pl.features.map((f) => (
