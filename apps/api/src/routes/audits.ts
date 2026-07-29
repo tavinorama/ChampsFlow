@@ -38,6 +38,7 @@ import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
 import { asStr } from "../lib/coerce";
+import { publicRateLimit } from "../lib/public-rate-limit";
 
 // ---------------------------------------------------------------------------
 // topSources helper — aggregates citation URLs from evidence rows and offsite
@@ -2380,6 +2381,15 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   // callers render an honest fallback; numbers are never invented.
   // -------------------------------------------------------------------------
   app.get("/api/showcase/geo", async (c) => {
+    // Public self-score for the marketing site. Reads real audit data, so it
+    // is capped to keep a scraper from hammering the database for it.
+    const limited = await publicRateLimit(c, {
+      bucket: "showcase",
+      limit: 120,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limited) return limited;
+
     const brandId =
       process.env["SHOWCASE_BRAND_ID"] ?? "e74fcbc1-a988-4b5d-b054-87329dc881c0"; // Ozvor
 
@@ -2459,6 +2469,29 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   });
 
   app.get("/api/reports/:report_token", async (c) => {
+    // Public report by token. TWO caps, because either alone leaves a hole.
+    //
+    // The IP cap comes first and is the one that stops enumeration: a token
+    // cap alone gives every guessed token its own bucket, so rotating the path
+    // token buys unlimited attempts — and fills Redis with a key per guess.
+    // (Caught in review of #396; the first version shipped only the token cap.)
+    const limitedByIp = await publicRateLimit(c, {
+      bucket: "report_ip",
+      limit: 120,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limitedByIp) return limitedByIp;
+
+    // The token cap then protects a single known report from being scraped by
+    // many addresses at once, which the IP cap cannot see.
+    const limitedByToken = await publicRateLimit(c, {
+      bucket: "report",
+      limit: 60,
+      windowMs: 60 * 60 * 1000,
+      identity: c.req.param("report_token")?.slice(0, 64) || "unknown",
+    });
+    if (limitedByToken) return limitedByToken;
+
     const token = c.req.param("report_token");
 
     // Public read: a dedicated query that does NOT set a tenant context and
