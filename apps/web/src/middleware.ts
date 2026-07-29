@@ -104,9 +104,32 @@ export async function middleware(request: NextRequest) {
   // Supabase outage can never lock out a user who genuinely has a session
   // (fail-open). The API still does the real RS256 JWT verification.
   const path = request.nextUrl.pathname;
-  const hasSession = request.cookies
+  const hasRealSession = request.cookies
     .getAll()
     .some((c) => c.name.startsWith("sb-") && c.name.includes("auth-token"));
+
+  // --- E2E test session -----------------------------------------------------
+  // The suite could never sign a user in, so every authenticated spec was
+  // asserting against a login redirect (see tests/e2e and PR #390). The API
+  // already has this door — DEV_AUTH_BYPASS, gated on NODE_ENV=test — and the
+  // web app did not, which is the whole reason half the suite is switched off.
+  //
+  // Two INDEPENDENT conditions, both required:
+  //   1. NODE_ENV === "test". Railway runs "production", so this is false in
+  //      production no matter what else is set.
+  //   2. E2E_TEST_SESSION === "1", set only by .github/workflows/e2e.yml.
+  //
+  // Neither is enough alone, and neither can be reached by anything a visitor
+  // controls: these are process env, not headers or cookies. The cookie only
+  // decides whether the door — already unlocked by the environment — is used.
+  //
+  // It grants exactly what the real cookie grants here: passage through this
+  // gate. It mints no token and forges no identity. The API still decides what
+  // any request may actually read.
+  const e2eSessionAllowed =
+    process.env.NODE_ENV === "test" && process.env.E2E_TEST_SESSION === "1";
+  const hasSession =
+    hasRealSession || (e2eSessionAllowed && request.cookies.has("e2e_session"));
 
   if (!hasSession && isAuthedAppPath(path)) {
     const redirectUrl = request.nextUrl.clone();
@@ -125,7 +148,9 @@ export async function middleware(request: NextRequest) {
   // for anonymous public traffic). getUser() rotates the token via setAll below.
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (hasSession && supabaseUrl && supabaseAnonKey) {
+  // Only a real session gets refreshed; there is no Supabase token to rotate
+  // for a test session, and asking for one would just error.
+  if (hasRealSession && supabaseUrl && supabaseAnonKey) {
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
         getAll() {

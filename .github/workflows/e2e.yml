@@ -56,6 +56,10 @@ env:
   # (not TEST_AUTH_BYPASS) and only honours it because NODE_ENV=test (never in
   # production). Without this, authenticated routes 401 in E2E.
   DEV_AUTH_BYPASS: "1"
+  # Web-side counterpart of DEV_AUTH_BYPASS. The middleware honours an
+  # "e2e_session" cookie only when NODE_ENV=test AND this is "1" — two
+  # independent conditions, neither reachable in production.
+  E2E_TEST_SESSION: "1"
   # SUPABASE_URL is required by the API config validation (apps/api/src/config.ts)
   # — the server refuses to boot without it. A placeholder URL is fine for E2E
   # because auth is bypassed; no real Supabase calls are made.

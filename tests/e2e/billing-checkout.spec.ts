@@ -24,22 +24,13 @@ const STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"] === "true";
 // Skip guard for non-Stripe test environments
 // ---------------------------------------------------------------------------
 
-// BLOCKED (2026-07-29): every test below needs a signed-in user, and E2E has no
-// way to sign one in. The helper sets a "test_session" cookie that appears
-// nowhere in apps/ — the web app authenticates through Supabase cookie
-// sessions, and CI points SUPABASE_URL at a placeholder with no key, so no
-// session can exist. These specs have been asserting against a login redirect,
-// which is why every locator missed. They are marked fixme rather than deleted:
-// the flows they cover are real and worth testing. Unblocking them needs a
-// test-only session shim in the web app, gated on NODE_ENV=test the way the API
-// already gates DEV_AUTH_BYPASS. That is auth code and a HIGH-risk change, so it
-// is a founder-approved PR of its own, not a drive-by.
-test.describe.fixme("Billing — Stripe Checkout (C6)", () => {
+// Unblocked 2026-07-29: the web middleware now honours an e2e_session cookie
+// under NODE_ENV=test + E2E_TEST_SESSION=1, so these can finally run inside
+// the app instead of against a login redirect.
+test.describe("Billing — Stripe Checkout (C6)", () => {
   test.beforeEach(async ({ page }) => {
     // Seed test session as Owner on free plan
-    await page.context().addCookies([
-      { name: "test_session", value: "e2e-owner-1:e2e-tenant-free", domain: "localhost", path: "/" },
-    ]);
+    await signIn(page, "e2e-owner-1:e2e-tenant-free");
   });
 
   test("free-plan user sees plan cards with upgrade option", async ({ page }) => {
