@@ -13,6 +13,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RingFlow, ContentEngine } from "../../../components/marketing/illustrations";
+import { OrganicPostsFilmHero } from "./OrganicPostsFilmHero";
 
 export const metadata: Metadata = {
   title: "OrganicPosts — We build your AI visibility with you",
@@ -64,14 +65,21 @@ const PAGE_CSS = `
 
 export default function OrganicPostsPage() {
   return (
-    <main style={{ maxWidth: "980px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+    <>
+      {/* One scene: the work happening without you, before the engagement */}
+      <OrganicPostsFilmHero />
+
+      {/* A plain div, not a <main>: (marketing)/layout.tsx already owns the
+          main landmark, and a second one nested inside it breaks landmark
+          navigation for screen readers. */}
+      <div style={{ maxWidth: "980px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
 
       {/* Hero (gold) */}
       <span className="op-eyebrow">The summit of the ladder · done with you</span>
-      <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
+      <h2 id="start" style={{ fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)", scrollMarginTop: "72px" }}>
         OrganicPosts. <span style={{ color: "var(--color-gold-ink)" }}>We build it with you.</span>
-      </h1>
+      </h2>
       <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, maxWidth: "660px", margin: "0 0 var(--space-6)" }}>
         The tools get you moving on your own. Rather have a team run the whole
         AI-visibility project? OrganicPosts handles research, content, cadence, and monitoring &mdash; with you.
@@ -146,6 +154,7 @@ export default function OrganicPostsPage() {
         recommendations are evidence-based, directional estimates &mdash; not a guarantee of citation,
         ranking, traffic, or revenue.
       </p>
-    </main>
+      </div>
+    </>
   );
 }

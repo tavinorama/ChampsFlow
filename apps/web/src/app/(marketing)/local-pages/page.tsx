@@ -23,6 +23,7 @@ import Link from "next/link";
 import { PagesBuyForm } from "./PagesBuyForm";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
+import { PagesFilmHero } from "./PagesFilmHero";
 
 export const metadata: Metadata = {
   title: "Ozvor Pages — AI-search-ready 5-page websites | Ozvor",
@@ -126,7 +127,14 @@ const PAGE_CSS = `
 
 export default function LocalPagesSalesPage() {
   return (
-    <main style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+    <>
+      {/* One scene: the answer the page makes possible, before the price */}
+      <PagesFilmHero />
+
+      {/* A plain div, not a <main>: (marketing)/layout.tsx already owns the
+          main landmark, and a second one nested inside it breaks landmark
+          navigation for screen readers. */}
+      <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(pagesJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} />
@@ -134,9 +142,9 @@ export default function LocalPagesSalesPage() {
       {/* ── Hero ─────────────────────────────────────────────────────── */}
       <div style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto" }}>
         <span className="lp-eyebrow">Ozvor Pages</span>
-        <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.75rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
+        <h2 style={{ fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
           A 5-page website AI can actually cite.
-        </h1>
+        </h2>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: 0 }}>
           We build it from your real business data &mdash; your info, your site, your reviews. Then we interlink
           every page and make it schema-rich. Live on ozvor.com with a lead-capture form from day one.
@@ -272,6 +280,7 @@ export default function LocalPagesSalesPage() {
       <style>{`
         details summary::-webkit-details-marker { display: none; }
       `}</style>
-    </main>
+      </div>
+    </>
   );
 }

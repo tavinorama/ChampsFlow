@@ -16,6 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DirectCheckoutButton } from "../../../components/marketing/DirectCheckoutButton";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
+import { AgenciesFilmHero } from "./AgenciesFilmHero";
 
 export const metadata: Metadata = {
   title: "Ozvor for agencies — white-label AI-visibility for every client",
@@ -56,15 +57,22 @@ const PAGE_CSS = `
 
 export default function AgenciesPage() {
   return (
-    <main style={{ maxWidth: "1120px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
+    <>
+      {/* One scene: the client named, before the plan */}
+      <AgenciesFilmHero />
+
+      {/* A plain div, not a <main>: (marketing)/layout.tsx already owns the
+          main landmark, and a second one nested inside it breaks landmark
+          navigation for screen readers. */}
+      <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
 
       {/* Hero */}
       <div style={{ textAlign: "center", maxWidth: "760px", margin: "0 auto" }}>
         <span className="ag-eyebrow">Ozvor for agencies</span>
-        <h1 style={{ fontSize: "clamp(2.25rem, 6vw, 3.5rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
+        <h2 id="plan" style={{ fontSize: "clamp(2rem, 5vw, 3rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)", scrollMarginTop: "72px" }}>
           Deliver AI visibility to every client. Under your brand.
-        </h1>
+        </h2>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: "0 0 var(--space-6)" }}>
           Your clients are already asking why ChatGPT recommends their competitor. Ozvor Agency gives you the audits,
           the evidence, and the white-label reports. Own that conversation across your whole portfolio.
@@ -148,6 +156,7 @@ export default function AgenciesPage() {
           30-day money-back · cancel anytime · no lock-in
         </p>
       </div>
-    </main>
+      </div>
+    </>
   );
 }
