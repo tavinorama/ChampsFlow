@@ -200,6 +200,18 @@
   html[data-theme="light"] .gate-fine{ color:#6d8378; }
   html[data-theme="light"] #rotate{ background:#eef7f2; color:#0b1a14; }
 </style>
+<script>
+/* Stamp the stored site theme before first paint, so arriving from a light
+   site does not flash the dark game. Same key and same attribute the marketing
+   ThemeToggle uses; the game engine re-applies it (and repaints the canvas)
+   further down in applySkin(). */
+(function(){
+  try{
+    var t = localStorage.getItem("op-theme") || localStorage.getItem("geo_theme");
+    if(t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  }catch(e){}
+})();
+</script>
 </head>
 <body>
   <div id="wrap">
@@ -321,36 +333,65 @@ const C = {
 /* ---- Skin (light/dark theme) ---------------------------------------------
    The canvas is painted every frame from C.* and the SK.* environment colors,
    so flipping these live re-themes the whole game on the next frame. Brand
-   accents (green/gold/red) stay constant — they read on both grounds. The
-   flippable C keys (ui/uiDim text, deep/surface) are MUTATED in place so the
-   ~40 existing C.ui / C.uiDim reads pick up the new value with no other edits. */
+   flippable C keys (text, grounds AND the accents) are MUTATED in place so the
+   ~40 existing C.ui / C.green / C.gold reads pick up the new value with no
+   other edits.
+
+   The accents flip too: the bright emerald, mint, gold and red are tuned for a
+   near-black ground and drop to about 2:1 on the cream one, which would leave
+   the title, the HUD labels and the score unreadable in light mode. Light uses
+   the deeper brand tones the site's own light palette already defines
+   (--color-primary #0c7d54, --color-gold-ink #9a6a1e, --color-error #c9312b). */
 const SKINS = {
   dark: {
     sky0:"#0a0f0d", sky1:"#06120d", ground:"#05100b", grid:"rgba(39,201,138,0.05)",
     panel:"#08130e", panelBar:"#0e1714", rack:"#0b1611", dimRGB:"6,15,11",
     ui:"#f6faf7", uiDim:"#a6b4ac", deep:"#06140e", surface:"#0e1714",
+    green:"#27c98a", greenHi:"#2de09a", mint:"#5fdfa8",
+    gold:"#e6a93f", goldInk:"#e6c07a", red:"#f0584e",
   },
   light: {
     sky0:"#e6f4ec", sky1:"#f3faf6", ground:"#cbe4d8", grid:"rgba(18,80,58,0.10)",
     panel:"#ffffff", panelBar:"#dcefe6", rack:"#e3efe8", dimRGB:"228,242,236",
     ui:"#0b1a14", uiDim:"#4e635b", deep:"#eef7f2", surface:"#ffffff",
+    green:"#0c7d54", greenHi:"#0a6b47", mint:"#0f7a52",
+    gold:"#9a6a1e", goldInk:"#8a5f1a", red:"#c9312b",
   },
 };
 let SK = SKINS.dark;
+
+/* The game shares the SITE theme. The rest of Ozvor is dark-first: dark is the
+   default (no data-theme attribute on <html>), light is the explicit opt-in
+   `data-theme="light"`, and the choice is stored under "op-theme" by the
+   marketing ThemeToggle. This page is static HTML served by a rewrite, so it
+   cannot inherit the React theme through the DOM — it reads and writes the same
+   key and stamps the same attribute, which makes the toggle here and the toggle
+   in the navbar two doors into one preference. "geo_theme" is still read once,
+   so an early player who set a theme in the game keeps it. The OS preference is
+   deliberately NOT consulted: the site ignores it too, and honouring it here
+   would make the game light while the site next to it stays dark. */
+const THEME_KEY = "op-theme";
+const LEGACY_THEME_KEY = "geo_theme";
+
 function applySkin(mode){
   SK = SKINS[mode] || SKINS.dark;
   C.ui = SK.ui; C.uiDim = SK.uiDim; C.deep = SK.deep; C.surface = SK.surface;
+  C.green = SK.green; C.greenHi = SK.greenHi; C.mint = SK.mint;
+  C.gold = SK.gold; C.goldInk = SK.goldInk; C.red = SK.red;
+  // Aliases painted from the same accents (HUD, boost/citation/bonus particles).
+  C.greenUi = SK.green; C.calGreen = SK.green; C.coffeeFoam = SK.mint; C.ghost = SK.mint;
   document.documentElement.setAttribute("data-theme", mode);
-  try{ localStorage.setItem("geo_theme", mode); }catch(e){}
+  try{ localStorage.setItem(THEME_KEY, mode); }catch(e){}
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute("content", SK.sky0);
   const tb = document.getElementById("themeBtn");
   if(tb){ tb.textContent = mode === "light" ? "☾" : "☀"; tb.setAttribute("aria-label", mode === "light" ? "Switch to dark theme" : "Switch to light theme"); }
 }
 (function initSkin(){
   let mode = "dark";
   try{
-    const saved = localStorage.getItem("geo_theme");
+    const saved = localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY);
     if(saved === "light" || saved === "dark") mode = saved;
-    else if(window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) mode = "light";
   }catch(e){}
   applySkin(mode);
 })();

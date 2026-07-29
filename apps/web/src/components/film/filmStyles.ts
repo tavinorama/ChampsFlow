@@ -5,24 +5,97 @@
  * because these rules need sticky positioning, pseudo elements, media queries
  * and a reduced-motion fallback, none of which can be inline styles.
  *
- * The film is always dark. It is a photographic sequence, so it keeps its own
- * palette instead of following the light/dark theme token. The green matches
- * --color-primary (#27c98a) so the scenes, the navbar CTA and the footer stay
- * one brand.
+ * THEME
+ * -----
+ * The film follows the site theme, exactly like the navbar and the footer do.
+ * The site is dark-first: dark is the default (no attribute on <html>) and
+ * light is the explicit opt-in `html[data-theme="light"]` set by ThemeToggle
+ * (see styles/tokens.css). So the film has no palette of its own any more.
+ * Every rule below reads a `--film-*` variable, and those variables are
+ * derived from the global tokens whenever a global token exists:
+ *
+ *   --film-ground  → --color-bg          --film-ink    → --color-text
+ *   --film-muted   → --color-muted       --film-accent → --color-primary
+ *   --film-line    → --color-border      --film-red    → --color-error
+ *   --film-cta-*   → --landing-cta-*      (fixed emerald pill, both themes)
+ *   --film-tint/-step-* → --landing-tint-* / --landing-border-accent-strong
+ *
+ * The handful of values with no global equivalent — the scrim over the photo,
+ * the translucent card grounds, the grain blend and the two soft inks — are
+ * declared here once per theme, in this token block, and nowhere else. No rule
+ * in this file carries a literal colour.
+ *
+ * The accent follows --color-primary, so it is the bright emerald (#27c98a) in
+ * dark and the deeper brand green (#0c7d54) in light, which is the tone the
+ * design system already uses for green-on-cream contrast.
+ *
+ * The scrim inverts: a near-black veil under light text in dark mode, a cream
+ * veil under dark text in light mode, so the copy keeps its contrast over the
+ * photography either way.
  */
 
 export const FILM_STYLES = `
 .film {
-  --film-ground: #060c09;
-  --film-ink: #f4f9f6;
-  --film-muted: #9db0a6;
-  --film-green: #27c98a;
-  --film-red: #f0584e;
-  --film-line: rgba(244,249,246,0.13);
+  /* ── Dark (default — no data-theme attribute on <html>) ─────────────── */
+  --film-ground: var(--color-bg);
+  --film-ground-deep: #040806;
+  --film-ink: var(--color-text);
+  --film-ink-soft: #d3e0d9;
+  --film-muted: var(--color-muted);
+  --film-accent: var(--color-primary);
+  --film-red: var(--color-error);
+  --film-line: var(--color-border);
+
+  /* Solid call to action: bright emerald + near black label in BOTH themes,
+     reusing the tokens the fixed marketing CTA already pins for this reason. */
+  --film-cta-bg: var(--landing-cta-bg);
+  --film-cta-ink: var(--landing-cta-text);
+  --film-cta-shadow: var(--landing-cta-shadow);
+
+  --film-glow: rgba(39,201,138,0.8);
+  --film-focus-ring: rgba(39,201,138,0.17);
+
+  --film-tint: var(--landing-tint-strong);
+  --film-step-tint: var(--landing-tint-soft);
+  --film-step-border: var(--landing-border-accent-strong);
+
+  /* Veil over the photograph — dark, so light copy reads on top of it. */
+  --film-scrim:
+    radial-gradient(115% 85% at 50% 55%, rgba(6,12,9,0.22), rgba(6,12,9,0.88) 72%),
+    linear-gradient(180deg, rgba(6,12,9,0.92) 0%, rgba(6,12,9,0.30) 32%, rgba(6,12,9,0.60) 70%, rgba(6,12,9,0.97) 100%);
+  --film-grain-blend: overlay;
+  --film-grain-op: 0.05;
+
+  --film-card-bg: rgba(6,13,10,0.80);
+  --film-field-bg: rgba(255,255,255,0.045);
+
   background: var(--film-ground);
   color: var(--film-ink);
   position: relative;
   overflow-x: clip;
+}
+
+/* ── Light (explicit opt-in, same attribute the ThemeToggle sets) ─────────
+   Same structure, inverted ground: cream page, dark ink, and a CREAM veil
+   over the photo so the dark copy keeps its contrast. */
+html[data-theme="light"] .film {
+  --film-ground-deep: #e9e6da;
+  --film-ink-soft: #24352c;
+
+  --film-glow: rgba(12,125,84,0.45);
+  --film-focus-ring: rgba(12,125,84,0.20);
+
+  /* Mirrors the dark stops, a few points denser: cream hides less of a photo
+     than black does, and the ink on top is dark, so it needs the extra weight
+     without erasing the photograph. */
+  --film-scrim:
+    radial-gradient(115% 85% at 50% 55%, rgba(243,241,232,0.30), rgba(243,241,232,0.90) 72%),
+    linear-gradient(180deg, rgba(243,241,232,0.94) 0%, rgba(243,241,232,0.38) 32%, rgba(243,241,232,0.68) 70%, rgba(243,241,232,0.98) 100%);
+  --film-grain-blend: multiply;
+  --film-grain-op: 0.035;
+
+  --film-card-bg: rgba(255,255,255,0.84);
+  --film-field-bg: rgba(20,45,32,0.04);
 }
 
 /* ── Scroll progress hairline ─────────────────────────────────────── */
@@ -32,11 +105,11 @@ export const FILM_STYLES = `
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--film-green);
+  background: var(--film-accent);
   z-index: 120;
   transform: scaleX(0);
   transform-origin: 0 50%;
-  box-shadow: 0 0 12px rgba(39,201,138,0.8);
+  box-shadow: 0 0 12px var(--film-glow);
   pointer-events: none;
 }
 
@@ -61,15 +134,13 @@ export const FILM_STYLES = `
 .film-scrim {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(115% 85% at 50% 55%, rgba(6,12,9,0.22), rgba(6,12,9,0.88) 72%),
-    linear-gradient(180deg, rgba(6,12,9,0.92) 0%, rgba(6,12,9,0.30) 32%, rgba(6,12,9,0.60) 70%, rgba(6,12,9,0.97) 100%);
+  background: var(--film-scrim);
 }
 .film-grain {
   position: absolute;
   inset: 0;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
+  opacity: var(--film-grain-op);
+  mix-blend-mode: var(--film-grain-blend);
   pointer-events: none;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.6'/></svg>");
 }
@@ -89,7 +160,7 @@ export const FILM_STYLES = `
   font-weight: 700;
   margin: 0 0 16px;
 }
-.film-eyebrow.is-accent { color: var(--film-green); }
+.film-eyebrow.is-accent { color: var(--film-accent); }
 .film-copy h1,
 .film-copy h2 {
   font-size: clamp(32px, 6.4vw, 78px);
@@ -101,12 +172,12 @@ export const FILM_STYLES = `
   text-wrap: balance;
 }
 .film-copy h1 em,
-.film-copy h2 em { font-style: normal; color: var(--film-green); }
+.film-copy h2 em { font-style: normal; color: var(--film-accent); }
 .film-sub {
   margin: 20px 0 0;
   font-size: clamp(15.5px, 2vw, 20px);
   line-height: 1.5;
-  color: #d3e0d9;
+  color: var(--film-ink-soft);
   max-width: 34ch;
   font-weight: 430;
 }
@@ -120,12 +191,31 @@ export const FILM_STYLES = `
   margin-top: 20px;
   font-size: 12.5px;
   font-weight: 600;
-  color: #cfdcd5;
+  color: var(--film-ink-soft);
   border: 1px solid var(--film-line);
   border-radius: 999px;
   padding: 7px 13px;
 }
-.film-chip svg { width: 14px; height: 14px; color: var(--film-green); flex: none; }
+.film-chip svg { width: 14px; height: 14px; color: var(--film-accent); flex: none; }
+
+/* ── Jump link, for scenes that hand the visitor to a form below ───── */
+.film-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 22px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 11px;
+  background: var(--film-cta-bg);
+  color: var(--film-cta-ink);
+  font-weight: 790;
+  font-size: 16.5px;
+  text-decoration: none;
+  box-shadow: var(--film-cta-shadow);
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.film-jump:hover { transform: translateY(-1px); filter: brightness(1.04); }
 
 /* ── Jump link, for scenes that hand the visitor to a form below ───── */
 .film-jump {
@@ -150,7 +240,7 @@ export const FILM_STYLES = `
 .film-answer {
   margin-top: 26px;
   width: min(500px, 88vw);
-  background: rgba(6,13,10,0.80);
+  background: var(--film-card-bg);
   border: 1px solid var(--film-line);
   border-radius: 14px;
   padding: 16px 18px;
@@ -165,21 +255,21 @@ export const FILM_STYLES = `
   display: flex;
   gap: 8px;
 }
-.film-q b { color: var(--film-green); font-weight: 800; flex: none; }
+.film-q b { color: var(--film-accent); font-weight: 800; flex: none; }
 .film-a {
   font-size: 14.5px;
   line-height: 1.6;
   margin: 0;
-  color: #e2ece7;
+  color: var(--film-ink-soft);
   min-height: 3.2em;
 }
 .film-a .is-rival { color: var(--film-muted); }
-.film-a .is-you { color: var(--film-green); font-weight: 760; }
+.film-a .is-you { color: var(--film-accent); font-weight: 760; }
 .film-caret {
   display: inline-block;
   width: 2px;
   height: 1em;
-  background: var(--film-green);
+  background: var(--film-accent);
   vertical-align: -2px;
   margin-left: 1px;
   animation: film-blink 1s steps(2) infinite;
@@ -190,7 +280,7 @@ export const FILM_STYLES = `
 .film-panel {
   margin-top: 26px;
   width: min(520px, 88vw);
-  background: rgba(6,13,10,0.80);
+  background: var(--film-card-bg);
   border: 1px solid var(--film-line);
   border-radius: 14px;
   padding: 17px 18px;
@@ -204,8 +294,8 @@ export const FILM_STYLES = `
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 750;
-  color: #04120c;
-  background: var(--film-green);
+  color: var(--film-cta-ink);
+  background: var(--film-cta-bg);
   padding: 4px 9px;
   border-radius: 5px;
   margin-bottom: 14px;
@@ -231,12 +321,12 @@ export const FILM_STYLES = `
   transition: background 0.25s ease, box-shadow 0.25s ease;
 }
 .film-engines .film-row.is-on .film-dot {
-  background: var(--film-green);
-  box-shadow: 0 0 9px rgba(39,201,138,0.9);
+  background: var(--film-accent);
+  box-shadow: 0 0 9px var(--film-glow);
 }
-.film-who { flex: 1; color: #d3e0d9; }
+.film-who { flex: 1; color: var(--film-ink-soft); }
 .film-res { font-size: 12px; color: var(--film-red); font-weight: 650; }
-.film-engines .film-row.is-on .film-res.is-ok { color: var(--film-green); }
+.film-engines .film-row.is-on .film-res.is-ok { color: var(--film-accent); }
 .film-score {
   margin-top: 15px;
   padding-top: 14px;
@@ -249,7 +339,7 @@ export const FILM_STYLES = `
   font-size: 40px;
   font-weight: 830;
   letter-spacing: -0.04em;
-  color: var(--film-green);
+  color: var(--film-accent);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -262,7 +352,7 @@ export const FILM_STYLES = `
   gap: 11px;
   align-items: flex-start;
   font-size: 13.5px;
-  color: #d3e0d9;
+  color: var(--film-ink-soft);
   opacity: 0.22;
   transition: opacity 0.3s ease, transform 0.3s ease;
   transform: translateY(4px);
@@ -282,9 +372,9 @@ export const FILM_STYLES = `
   margin-top: 1px;
 }
 .film-work .film-item.is-on .film-check {
-  border-color: var(--film-green);
-  background: var(--film-green);
-  color: #04120c;
+  border-color: var(--film-cta-bg);
+  background: var(--film-cta-bg);
+  color: var(--film-cta-ink);
 }
 .film-work .film-item b { color: var(--film-ink); font-weight: 680; }
 
@@ -292,7 +382,7 @@ export const FILM_STYLES = `
 .film-closing {
   position: relative;
   padding: clamp(64px, 10vh, 120px) clamp(14px, 5vw, 40px) 64px;
-  background: linear-gradient(180deg, var(--film-ground), #040806);
+  background: linear-gradient(180deg, var(--film-ground), var(--film-ground-deep));
 }
 .film-wrap { width: min(1060px, 92vw); margin: 0 auto; }
 .film-verticals {
@@ -306,7 +396,7 @@ export const FILM_STYLES = `
 }
 .film-verticals li {
   font-size: 12.5px;
-  color: #cfdcd5;
+  color: var(--film-ink-soft);
   border: 1px solid var(--film-line);
   padding: 7px 13px;
   border-radius: 999px;
@@ -320,7 +410,7 @@ export const FILM_STYLES = `
   border: 1px solid var(--film-line);
   border-radius: 20px;
   padding: clamp(24px, 4vw, 44px);
-  background: linear-gradient(160deg, rgba(39,201,138,0.08), rgba(39,201,138,0) 55%);
+  background: linear-gradient(160deg, var(--film-tint), transparent 55%);
   scroll-margin-top: 88px;
 }
 @media (min-width: 860px) {
@@ -337,7 +427,7 @@ export const FILM_STYLES = `
 }
 .film-offer > div > p {
   margin: 15px 0 0;
-  color: #cfdcd5;
+  color: var(--film-ink-soft);
   font-size: 15.5px;
   line-height: 1.55;
   max-width: 34ch;
@@ -352,7 +442,7 @@ export const FILM_STYLES = `
 }
 .film-field { display: flex; flex-direction: column; gap: 6px; }
 .film-form input {
-  background: rgba(255,255,255,0.045);
+  background: var(--film-field-bg);
   border: 1px solid var(--film-line);
   color: var(--film-ink);
   border-radius: 11px;
@@ -361,18 +451,18 @@ export const FILM_STYLES = `
   font-family: inherit;
   width: 100%;
 }
-.film-form input::placeholder { color: #6f817a; }
+.film-form input::placeholder { color: var(--film-muted); }
 .film-form input:focus {
   outline: none;
-  border-color: var(--film-green);
-  box-shadow: 0 0 0 3px rgba(39,201,138,0.17);
+  border-color: var(--film-accent);
+  box-shadow: 0 0 0 3px var(--film-focus-ring);
 }
 .film-form input[aria-invalid="true"] { border-color: var(--film-red); }
 .film-error { margin: 0; font-size: 12.5px; color: var(--film-red); font-weight: 600; }
 .film-form button {
   margin-top: 5px;
-  background: var(--film-green);
-  color: #04120c;
+  background: var(--film-cta-bg);
+  color: var(--film-cta-ink);
   border: none;
   border-radius: 11px;
   padding: 15px 20px;
@@ -381,7 +471,7 @@ export const FILM_STYLES = `
   font-family: inherit;
   cursor: pointer;
   min-height: 48px;
-  box-shadow: 0 8px 24px rgba(39,201,138,0.26);
+  box-shadow: var(--film-cta-shadow);
   transition: transform 0.16s ease, filter 0.16s ease;
 }
 .film-form button:hover { transform: translateY(-1px); }
@@ -407,7 +497,7 @@ export const FILM_STYLES = `
 }
 .film-social button:hover { transform: none; border-color: rgba(244,249,246,0.3); }
 .film-fine { margin: 11px 0 0; font-size: 12.5px; color: var(--film-muted); text-align: center; }
-.film-fine b { color: #cfdcd5; font-weight: 640; }
+.film-fine b { color: var(--film-ink-soft); font-weight: 640; }
 
 .film-ladder {
   display: grid;
@@ -428,8 +518,8 @@ export const FILM_STYLES = `
 .film-step b { display: block; font-size: 14px; font-weight: 720; margin-bottom: 5px; }
 .film-step span { font-size: 12.5px; color: var(--film-muted); line-height: 1.45; }
 .film-step.is-now {
-  border-color: rgba(39,201,138,0.45);
-  background: rgba(39,201,138,0.06);
+  border-color: var(--film-step-border);
+  background: var(--film-step-tint);
 }
 .film-signoff {
   margin-top: 50px;
@@ -442,9 +532,9 @@ export const FILM_STYLES = `
   justify-content: space-between;
 }
 .film-signoff p { margin: 0; font-size: 12.5px; color: var(--film-muted); max-width: 58ch; }
-.film-signoff strong { font-size: 14px; color: #cfdcd5; font-weight: 620; }
+.film-signoff strong { font-size: 14px; color: var(--film-ink-soft); font-weight: 620; }
 
-.film :focus-visible { outline: 2px solid var(--film-green); outline-offset: 3px; }
+.film :focus-visible { outline: 2px solid var(--film-accent); outline-offset: 3px; }
 
 /* ── Reduced motion: a plain stack of sections, nothing moves ──────── */
 @media (prefers-reduced-motion: reduce) {
