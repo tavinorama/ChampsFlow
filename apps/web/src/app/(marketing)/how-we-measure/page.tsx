@@ -11,6 +11,8 @@
  *  - Section 3: Execution Progress
  *  - Section 4: Five AI engines table
  *  - Section 5: Methodology commitment callout
+ *  - Section 6: What changed in version 2.1 (two-pass extraction with a blind
+ *    verifier) + the public methodology version history table
  *  - Measured now vs roadmap table
  *  - SoftCTA
  */
@@ -819,6 +821,265 @@ export default function HowWeMeasurePage() {
             until your first action plan exists.
           </p>
         </blockquote>
+      </section>
+
+      {/* ── Section 6: Methodology 2.1, what changed ── */}
+      <section aria-labelledby="v21-heading" style={{ marginBottom: "var(--space-12)" }}>
+        <h2 id="v21-heading" style={sectionHeadingStyle}>
+          What changed in version 2.1
+        </h2>
+        <p
+          style={{
+            fontSize: "var(--font-size-body-sm)",
+            color: "var(--color-muted)",
+            lineHeight: 1.7,
+            margin: "0 0 var(--space-6) 0",
+          }}
+        >
+          Our methodology carries a version number, and every audit records the
+          version that produced it. Version 2.1 changes what counts as a
+          citation. Here is exactly what changed and why your number may move.
+        </p>
+
+        <article aria-labelledby="v21-detail-heading" style={cardStyle}>
+          <p style={labelStyle}>Methodology 2.1</p>
+          <h3
+            id="v21-detail-heading"
+            style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}
+          >
+            A mention is not the same thing as a citation
+          </h3>
+
+          <p
+            style={{
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              lineHeight: 1.7,
+              margin: "0 0 var(--space-4) 0",
+            }}
+          >
+            Until version 2.0, we counted a citation any time your brand name
+            appeared in an AI answer. That was too generous. A name in a
+            sentence is not always a recommendation.
+          </p>
+
+          <h4 style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
+            Now we read every answer twice
+          </h4>
+          <p
+            style={{
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              lineHeight: 1.7,
+              margin: "0 0 var(--space-4) 0",
+            }}
+          >
+            The first pass finds every place your brand is named and quotes the
+            exact words. The second pass is a blind check. A separate reviewer
+            reads the raw answer and one candidate mention at a time, with no
+            idea what the first pass decided, then rules on whether that mention
+            is really about you and what kind of mention it is.
+          </p>
+
+          <h4 style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
+            Only two kinds count toward your score
+          </h4>
+
+          <div style={inputRowStyle}>
+            <span style={{ color: "var(--color-text)", fontWeight: 600 }}>Direct recommendation</span>
+            <span style={weightBadgeStyle}>Counts</span>
+          </div>
+          <p
+            style={{
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              lineHeight: 1.6,
+              margin: "var(--space-1) 0 var(--space-3) 0",
+              paddingLeft: "var(--space-1)",
+            }}
+          >
+            The answer actually suggests your brand to the person asking.
+          </p>
+
+          <div style={inputRowStyle}>
+            <span style={{ color: "var(--color-text)", fontWeight: 600 }}>Cited source</span>
+            <span style={weightBadgeStyle}>Counts</span>
+          </div>
+          <p
+            style={{
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              lineHeight: 1.6,
+              margin: "var(--space-1) 0 var(--space-3) 0",
+              paddingLeft: "var(--space-1)",
+            }}
+          >
+            The answer leans on your site or your content as the source of what
+            it says.
+          </p>
+
+          <div style={inputRowStyle}>
+            <span style={{ color: "var(--color-text)", fontWeight: 600 }}>Neutral mention</span>
+            <span
+              style={{
+                ...weightBadgeStyle,
+                color: "var(--color-muted)",
+                backgroundColor: "var(--color-surface-muted)",
+              }}
+            >
+              Does not count
+            </span>
+          </div>
+          <div style={inputRowStyle}>
+            <span style={{ color: "var(--color-text)", fontWeight: 600 }}>Negative mention</span>
+            <span
+              style={{
+                ...weightBadgeStyle,
+                color: "var(--color-muted)",
+                backgroundColor: "var(--color-surface-muted)",
+              }}
+            >
+              Does not count
+            </span>
+          </div>
+          <p
+            style={{
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              lineHeight: 1.6,
+              margin: "var(--space-1) 0 var(--space-6) 0",
+              paddingLeft: "var(--space-1)",
+            }}
+          >
+            Neutral and negative mentions still show up in your report. You can
+            read every one of them. They simply do not earn points.
+          </p>
+
+          <h4 style={{ fontSize: "var(--font-size-body-sm)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}>
+            Four things the blind check catches
+          </h4>
+          <ol
+            style={{
+              margin: "0 0 var(--space-4) 0",
+              paddingLeft: "var(--space-5)",
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              lineHeight: 1.7,
+            }}
+          >
+            <li style={{ marginBottom: "var(--space-2)" }}>
+              <strong style={{ color: "var(--color-text)" }}>Same name, different company.</strong>{" "}
+              An answer about &ldquo;Acme Corp&rdquo; the spring factory is not
+              about Acme the software company. It no longer counts for you.
+            </li>
+            <li style={{ marginBottom: "var(--space-2)" }}>
+              <strong style={{ color: "var(--color-text)" }}>The answer says no.</strong>{" "}
+              &ldquo;I would not recommend Acme for this&rdquo; used to score the
+              same as praise. It is now a negative mention, and it does not count.
+            </li>
+            <li style={{ marginBottom: "var(--space-2)" }}>
+              <strong style={{ color: "var(--color-text)" }}>Your brand only inside a link.</strong>{" "}
+              If your name appears only in a URL and nothing in the text
+              recommends you, it is logged as a cited source, not as a
+              recommendation. It still counts, but it is now labelled for what it
+              is, so a link is never dressed up as an endorsement.
+            </li>
+            <li>
+              <strong style={{ color: "var(--color-text)" }}>A name in a list, with no opinion attached.</strong>{" "}
+              Being listed in a comparison table with no endorsement is a neutral
+              mention, and it does not count.
+            </li>
+          </ol>
+
+          <div style={honestNoteStyle}>
+            <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700 }}>
+              Your number may drop. That is the point.
+            </p>
+            <p style={{ margin: "0 0 var(--space-2) 0", lineHeight: 1.7 }}>
+              If your score falls after this change, your brand did not get
+              worse. We stopped counting things that were never citations. The
+              old number was inflated by false positives. The new number is
+              smaller and truer, and it is the one you can actually build on.
+            </p>
+            <p style={{ margin: "0 0 var(--space-2) 0", lineHeight: 1.7 }}>
+              The safety rule behind it: the second pass can only remove a
+              citation, never invent one. Nothing is added to your score by this
+              change.
+            </p>
+            <p style={{ margin: 0, lineHeight: 1.7 }}>
+              Scores from 2.0 and 2.1 are not comparable. Treat your first 2.1
+              audit as a new baseline, and compare 2.1 against 2.1 from there.
+            </p>
+          </div>
+
+          <p style={{ ...honestNoteStyle, marginTop: "var(--space-3)" }}>
+            <strong>Every audit shows its version.</strong> Each audit stores the
+            methodology version that produced it, and the report shows it. When
+            we tighten the rules again, the version goes up and you will see it.
+            You never have to guess which rules made your score.
+          </p>
+        </article>
+
+        {/* Version history */}
+        <h3
+          id="v21-history-heading"
+          style={{
+            fontSize: "var(--font-size-h3)",
+            fontWeight: 800,
+            margin: "var(--space-8) 0 var(--space-4) 0",
+          }}
+        >
+          Methodology version history
+        </h3>
+        <div
+          style={{
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-lg)",
+            overflow: "auto",
+          }}
+        >
+          <table
+            aria-labelledby="v21-history-heading"
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "var(--font-size-body-sm)",
+            }}
+          >
+            <thead>
+              <tr style={{ backgroundColor: "var(--color-surface-muted)", textAlign: "left" }}>
+                <th scope="col" style={thStyle}>Version</th>
+                <th scope="col" style={thStyle}>Date</th>
+                <th scope="col" style={thStyle}>What changed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                [
+                  "1.0",
+                  "Launch",
+                  "Flat repeat protocol. Each buyer prompt was asked a fixed number of times per engine, and any appearance of the brand name counted as a citation.",
+                ],
+                [
+                  "2.0",
+                  "28 July 2026",
+                  "Intent based prompt portfolio with sequential sampling: a lean base of runs per wording, extra runs added only where the result was ambiguous, and a Wilson 95% confidence interval reported on every aggregate. All 5 engines probed on their search enabled surfaces.",
+                ],
+                [
+                  "2.1",
+                  "29 July 2026",
+                  "Two pass extraction with a blind verifier. Only verified mentions of the kinds direct recommendation and cited source count as a citation. Neutral and negative mentions are reported but do not score.",
+                ],
+              ].map(([version, date, change]) => (
+                <tr key={version} style={{ borderTop: "1px solid var(--color-border)" }}>
+                  <td style={{ ...tdStyle, fontWeight: 700, whiteSpace: "nowrap" }}>{version}</td>
+                  <td style={{ ...tdStyle, color: "var(--color-muted)", whiteSpace: "nowrap" }}>{date}</td>
+                  <td style={tdStyle}>{change}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* ── Measured vs roadmap ── */}
