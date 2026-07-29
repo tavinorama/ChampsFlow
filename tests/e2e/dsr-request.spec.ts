@@ -16,6 +16,7 @@
  * Architecture refs: TB-7 (DSR trust boundary), S-11 (OTP brute-force), S-14 (rate limit)
  */
 import { test, expect, type Page } from "@playwright/test";
+import { seedConsent } from "./consent";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,6 +74,13 @@ async function mockDsrApi(page: Page): Promise<void> {
 // GDPR Art. 17 — Right to Erasure (Cond 7)
 // ---------------------------------------------------------------------------
 
+// The consent scrim intercepts every click until the visitor chooses, so the
+// whole file seeds an accepted record before each page load. Without this the
+// failures read as broken selectors and are not.
+test.beforeEach(async ({ page }) => {
+  await seedConsent(page);
+});
+
 test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]", () => {
   test("public user submits erasure → OTP email → enters OTP → confirmation shown", async ({ page }) => {
     await mockDsrApi(page);
@@ -80,7 +88,11 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     // Step 1: Submit DSR from public page
     await page.goto("/legal/dsr-request");
 
-    const emailInput = page.getByLabel(/email/i).or(page.getByPlaceholder(/email/i));
+    // The public DSR form's email field, by id. A loose /email/i label match also
+    // catches the "Lost email escalation" note next to it, which is a <div
+    // role="note">, not a field: Playwright then either fails strict mode or
+    // picks the note and times out trying to type into it.
+    const emailInput = page.locator("#pub-dsr-email");
     await expect(emailInput).toBeVisible();
     await emailInput.fill("test-erasure@example.com");
 
@@ -149,7 +161,7 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     });
 
     await page.goto("/legal/dsr-request");
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
     await emailInput.fill("brute-force@example.com");
     await page.getByRole("button", { name: /submit|request/i }).click();
 
@@ -204,7 +216,7 @@ test.describe("DSR — Access request / SAR (GDPR Art. 15 / CCPA §1798.110) [Co
       await accessOption.click();
     }
 
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
     await emailInput.fill("sar-user@example.com");
     await page.getByRole("button", { name: /submit|request/i }).click();
 
@@ -246,7 +258,7 @@ test.describe("DSR — Portability request (GDPR Art. 20)", () => {
       await portabilityOption.click();
     }
 
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
     await emailInput.fill("portability@example.com");
 
     const submitButton = page.getByRole("button", { name: /submit|request/i });
@@ -284,11 +296,14 @@ test.describe("DSR rate limit (S-14)", () => {
     });
 
     await page.goto("/legal/dsr-request");
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
 
-    // Submit 6 times
+    // Submit 6 times. The form is replaced by the OTP step after each submit,
+    // so the email field only exists on a fresh load — the old loop typed into
+    // an element that had already been unmounted.
     for (let i = 0; i < 6; i++) {
-      await emailInput.fill(`rate-test-${i}@example.com`);
+      await page.goto("/legal/dsr-request");
+      await page.locator("#pub-dsr-email").fill(`rate-test-${i}@example.com`);
       await page.getByRole("button", { name: /submit|request/i }).click();
       await page.waitForTimeout(200);
     }

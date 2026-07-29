@@ -8,15 +8,42 @@
  * dev-unlock URL and the delivery page builds the kit without payment.
  */
 import { test, expect } from "@playwright/test";
+import { seedConsent } from "./consent";
+
+// The film scenes animate on scroll, so a button can still be moving when
+// Playwright tries to click it ("element is not stable"). Ask for reduced
+// motion: the kit honours it (see useScrollFilm) and the layout settles.
+test.use({ reducedMotion: "reduce" });
 
 test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () => {
+  // The consent scrim intercepts clicks until the visitor chooses. Seed an
+  // accepted record so the form is reachable.
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
+  });
+
   test("free test runs and shows a scorecard with a Kit CTA", async ({ page }) => {
     await page.goto("/test");
-    await expect(page.getByRole("heading", { name: /AI picks you/i })).toBeVisible();
-    await page.getByLabel(/your brand/i).fill("Demo CRM");
-    await page.getByLabel(/a competitor/i).fill("HubSpot");
+    // The page opens on a film scene now. Its h1 is the scene headline; the
+    // form below it asks for a website and an email, not a brand/competitor/
+    // category triple — the free test was cut to two required fields to stop
+    // losing people in the form.
+    await expect(page.getByRole("heading", { name: /named someone else/i })).toBeVisible();
+    // Step one: the two boxes the page opens with.
+    await page.getByLabel(/your website/i).fill("demo-crm.com");
+    await page.getByLabel(/your email/i).fill("e2e-ladder@example.com");
+
+    // Step two reveals itself once both are valid, and it is where the last
+    // two required fields live. Submit stays disabled until all four are in —
+    // that is the form working, not a broken selector.
+    const brand = page.getByLabel(/your brand/i);
+    await expect(brand).toBeVisible({ timeout: 10_000 });
+    await brand.fill("Demo CRM");
     await page.getByLabel(/your category/i).fill("CRM");
-    await page.getByRole("button", { name: /run my test/i }).click();
+
+    const run = page.getByRole("button", { name: /run my test/i });
+    await expect(run).toBeEnabled({ timeout: 10_000 });
+    await run.click();
 
     // Scorecard: a verdict + the per-engine table + the Kit CTA.
     await expect(page.locator("body")).toContainText(/cited|invisible/i, { timeout: 30_000 });
