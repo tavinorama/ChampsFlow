@@ -26,6 +26,7 @@ import { OzvorScorecard, type ThreeScores } from "../../components/OzvorScorecar
 import { CancelRetentionFlow } from "../../components/CancelRetentionFlow";
 import { VerifiedCitations, type ExtractionTelemetry } from "../../components/VerifiedCitations";
 import { EngineConfidence } from "../../components/EngineConfidence";
+import { IntentBreakdown, type IntentRow } from "../../components/IntentBreakdown";
 
 // ---------------------------------------------------------------------------
 // Types mirrored from the API (audits.ts)
@@ -842,6 +843,7 @@ export default function DashboardV3() {
             extraction={(breakdown as { extraction?: ExtractionTelemetry | null } | null)?.extraction ?? null}
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
+            intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
           />
         ) : tab === "brands" ? (
           <BrandsTab
@@ -894,7 +896,7 @@ export default function DashboardV3() {
 
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditMsg,
-  auditId, extraction, methodologyVersion, citationCI,
+  auditId, extraction, methodologyVersion, citationCI, intents,
 }: {
   brandName?: string;
   overall: number | null;
@@ -914,6 +916,8 @@ function OverviewTab({
   methodologyVersion?: string | null;
   /** Wilson 95% interval on the citation rate, from the same breakdown. */
   citationCI?: { rate: number; low: number; high: number; n: number } | null;
+  /** B1 per-intent rates, share of voice and rivals. Empty on pre-B1 audits. */
+  intents?: IntentRow[] | null;
 }) {
   // The hero shows Visibility now, so "has data" follows Visibility. Keying it
   // on the composite would print a big "—" next to a filled three-score card.
@@ -1004,6 +1008,13 @@ function OverviewTab({
           </a>
         </p>
       )}
+
+      {/* D5 — which question you lose, and who wins it. The data has been in
+          every audit since B1 and no screen read it. It turns "you are
+          invisible" into a content brief. */}
+      <div style={{ marginTop: "var(--space-6)" }}>
+        <IntentBreakdown intents={intents} />
+      </div>
 
       {/* D1 — what the audit refused to count. */}
       <div style={{ marginTop: "var(--space-6)" }}>
