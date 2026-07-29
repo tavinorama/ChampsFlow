@@ -901,7 +901,10 @@ export default function DashboardV3() {
 interface PanelCoverageData {
   requested?: number;
   answered?: number;
+  /** Asked, gave nothing back — key, quota, outage. */
   missing?: string[];
+  /** Withheld by us: the engine's control battery says it is drifting. */
+  paused?: string[];
   comparable?: boolean;
 }
 
@@ -928,8 +931,9 @@ const ENGINE_NAME: Record<string, string> = {
  */
 function PanelCoverage({ coverage }: { coverage?: PanelCoverageData | null }) {
   if (!coverage || coverage.comparable !== false) return null;
-  const missing = (coverage.missing ?? []).map((e) => ENGINE_NAME[e] ?? e);
-  if (missing.length === 0) return null;
+  const silent = (coverage.missing ?? []).map((e) => ENGINE_NAME[e] ?? e);
+  const paused = (coverage.paused ?? []).map((e) => ENGINE_NAME[e] ?? e);
+  if (silent.length === 0 && paused.length === 0) return null;
 
   return (
     <p
@@ -946,9 +950,24 @@ function PanelCoverage({ coverage }: { coverage?: PanelCoverageData | null }) {
       <b style={{ color: "var(--color-text)" }}>
         This run reached {coverage.answered} of {coverage.requested} engines.
       </b>{" "}
-      {missing.join(" and ")} did not answer, so this number is not comparable
-      to your earlier audits — a smaller panel is a different measurement, not a
-      worse result. Run it again once the engines are back.
+      {/* Why the panel changed matters: one is an outage on their side, the
+          other is us holding an engine back. Saying only "missing" would hide
+          our own decision behind the engines' failure. */}
+      {silent.length > 0 && (
+        <>
+          {silent.join(" and ")} did not answer.{" "}
+        </>
+      )}
+      {paused.length > 0 && (
+        <>
+          We held {paused.join(" and ")} back: {paused.length === 1 ? "its" : "their"}{" "}
+          daily control check says {paused.length === 1 ? "it is" : "they are"} drifting, and a
+          drifting engine produces fiction rather than citations.{" "}
+        </>
+      )}
+      So this number is not comparable to your earlier audits — a smaller panel
+      is a different measurement, not a worse result. Run it again once the full
+      panel is back.
     </p>
   );
 }
