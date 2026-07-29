@@ -94,11 +94,12 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     const euCopy = page.getByText(/GDPR|data processing agreement|EU/i).first();
     await expect(euCopy).toBeVisible();
 
-    // No access to dashboard content (gated)
-    const mainContent = page.getByTestId("dashboard-content");
-    await expect(mainContent).not.toBeVisible().catch(() => {
-      // acceptable: element may not exist until after DPA acknowledgment
-    });
+    // The gate itself is the assertion. The old line looked for a
+    // "dashboard-content" test id that exists nowhere in apps/web/src and then
+    // wrapped the expect in .catch(), so it could not fail for either reason.
+    // What actually proves the gate is that the modal is modal: it traps the
+    // page until the user acknowledges.
+    await expect(modal).toHaveAttribute("aria-modal", "true");
   });
 
   test("EU user can acknowledge DPA and access the app", async ({ page }) => {
@@ -182,15 +183,13 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     const modal = page.getByRole("dialog").or(page.getByTestId("dpa-modal"));
     await expect(modal).toBeVisible({ timeout: 5_000 });
 
-    // Tab navigation should stay within modal
+    // A focus trap either holds or it does not. The old version computed
+    // isFocusInModal, never used it, and then asserted that pressing Tab "does
+    // not error out" — inside a .catch() that swallowed even that. Assert the
+    // actual accessibility guarantee: after Tab, focus is still inside the
+    // modal.
     await page.keyboard.press("Tab");
-    const focusedElement = page.locator(":focus");
-    const isFocusInModal = await modal.locator(":focus").count() > 0;
-    // Focus trap check: focused element should be inside the modal
-    if (await modal.isVisible()) {
-      // At minimum, pressing Tab should not error out
-      await expect(focusedElement).toBeVisible().catch(() => { /* acceptable */ });
-    }
+    await expect(modal.locator(":focus")).toHaveCount(1);
   });
 });
 
@@ -252,10 +251,11 @@ test.describe("DPA version mismatch — re-prompt (CI-1)", () => {
     await expect(modal).toBeVisible({ timeout: 5_000 });
 
     // Should mention update or new version
+    // Asserted for real. The .catch() here meant a re-acknowledgment modal that
+    // never explained WHY it reappeared would still pass — which is the one
+    // thing this test exists to catch.
     const updateText = page.getByText(/updated|new version|please review/i).first();
-    await expect(updateText).toBeVisible().catch(() => {
-      // acceptable: implementation may not explicitly say "updated" in this iteration
-    });
+    await expect(updateText).toBeVisible();
   });
 });
 
@@ -289,11 +289,13 @@ test.describe("California banner — US user detection (CI-2)", () => {
     await setupSession(page, { dpaAcknowledged: true, countryCode: "DE" });
     await page.goto("/dashboard");
 
-    // California banner should NOT be visible for EU users
-    const banner = page.getByTestId("california-banner");
-    await expect(banner).not.toBeVisible({ timeout: 3_000 }).catch(() => {
-      // If testid not present, check for absence of California-specific banner text
-    });
+    // Assert on the copy, not on a test id that exists nowhere in apps/web/src.
+    // The old line looked for "california-banner" and wrapped the expect in
+    // .catch(), so it passed whether or not an EU visitor was shown a
+    // California notice — the exact thing it is here to prevent.
+    await expect(
+      page.getByText(/do not sell|california privacy/i)
+    ).toHaveCount(0);
   });
 
   test("'Do Not Sell' link is present in footer on all pages", async ({ page }) => {

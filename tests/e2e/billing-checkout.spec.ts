@@ -202,16 +202,31 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
 
     await page.goto("/account/billing");
 
-    // Upgrade button should either be hidden or show an error when clicked
+    // Enforcement can take three shapes and this test accepts any of them —
+    // but exactly one of them, asserted. The previous version passed on every
+    // branch: hidden passed, and visible-clicked-with-no-error passed too,
+    // because the expect was wrapped in .catch(). An editor who could actually
+    // complete a checkout would have passed this authorisation test.
     const upgradeButton = page.getByRole("button", { name: /choose growth|upgrade/i }).first();
-    if (await upgradeButton.isVisible()) {
-      await upgradeButton.click();
-      // Should show error or be disabled
-      const error = page.getByText(/insufficient|owner only|no permission/i).first();
-      await expect(error).toBeVisible({ timeout: 3_000 }).catch(() => {
-        // Acceptable: button may be hidden/disabled for editors
-      });
+    const visible = await upgradeButton.isVisible().catch(() => false);
+
+    if (!visible) {
+      // Shape 1: the control is not offered at all.
+      await expect(upgradeButton).toBeHidden();
+      return;
     }
-    // If not visible, that also passes (editor cannot see upgrade button)
+
+    if (await upgradeButton.isDisabled()) {
+      // Shape 2: offered but inert.
+      await expect(upgradeButton).toBeDisabled();
+      return;
+    }
+
+    // Shape 3: clickable, so the refusal has to be shown to the user. No
+    // .catch() here: silence is the failure this test exists to catch.
+    await upgradeButton.click();
+    await expect(
+      page.getByText(/insufficient|owner only|no permission|not allowed/i).first()
+    ).toBeVisible({ timeout: 5_000 });
   });
 });
