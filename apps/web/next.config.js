@@ -131,6 +131,11 @@ const nextConfig = {
       "instagram.com",
       "cdninstagram.com",
     ],
+    // The film photos ship at 3840px so a 4K or Retina screen gets a sharp
+    // frame instead of an upscaled one. AVIF first keeps that sharpness cheap:
+    // Next serves each visitor the smallest width their screen actually needs,
+    // in the best format their browser accepts.
+    formats: ["image/avif", "image/webp"],
   },
 
   // TypeScript and ESLint strictness
