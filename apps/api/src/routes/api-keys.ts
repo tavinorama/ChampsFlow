@@ -412,11 +412,15 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       monitoring_enabled: boolean;
       latest_score: number | null;
     }>(
+      // score_ai = the Visibility score, same as the dashboard and the brands
+      // list. The public API must not be the one surface still reporting the
+      // legacy composite — an integrator comparing our API to our UI would find
+      // two different numbers for the same audit.
       `SELECT b.id, b.name, b.domain, b.category, b.region, b.monitoring_enabled,
-              (s.provider_breakdown->>'overall')::int AS latest_score
+              s.score_ai AS latest_score
          FROM brands b
          LEFT JOIN LATERAL (
-           SELECT provider_breakdown
+           SELECT score_ai
              FROM geo_score gs
             WHERE gs.brand_id = b.id
             ORDER BY recorded_at DESC

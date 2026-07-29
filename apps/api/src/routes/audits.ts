@@ -662,15 +662,24 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       facebook_url: string | null;
       tiktok_url: string | null;
     }>(
-      // geo_score stores the overall in provider_breakdown->>'overall' (applied
-      // schema has no dedicated score_overall column on geo_score).
+      // latest_score is score_ai — the SAME number the dashboard hero calls
+      // "Visibility" (see threeScores below: visibility = latest.score_ai).
+      //
+      // It used to be provider_breakdown->>'overall', the legacy composite. That
+      // meant one audit produced two different numbers on two screens with no
+      // hint they measured different things: the founder's 2026-07-29 run showed
+      // 10 on the overview and 24 on the brand card, and the honest reading of
+      // that is "the product cannot keep its own story straight".
+      //
+      // One score, one name, everywhere. Citation Readiness and Execution are
+      // shown as their own named lines, not folded into a headline average.
       `SELECT b.id, b.name, b.domain, b.category, b.region, b.monitoring_enabled,
               b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url, b.x_url, b.instagram_url, b.facebook_url, b.tiktok_url,
               b.trustpilot_url, b.crunchbase_url, b.youtube_url,
-              (s.provider_breakdown->>'overall')::int AS latest_score
+              s.score_ai AS latest_score
          FROM brands b
          LEFT JOIN LATERAL (
-           SELECT provider_breakdown
+           SELECT score_ai
              FROM geo_score gs
             WHERE gs.brand_id = b.id
             ORDER BY gs.recorded_at DESC

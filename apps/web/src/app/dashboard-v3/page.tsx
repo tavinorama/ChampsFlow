@@ -1243,7 +1243,14 @@ function BrandsTab({ brands, onOpen, canAdd, atLimit, maxBrands, onAdd, onDelete
               >×</button>
               <div style={S.fname}>{b.name}</div>
               <div style={S.frow}>
+                {/* Same metric and same name as the overview headline. An
+                    unlabelled number on one screen and a differently-computed
+                    unlabelled number on another is how the same audit came to
+                    read 10 in one place and 24 in the other. */}
                 <b style={S.fscore}>{b.latest_score ?? "—"}</b>
+                <span style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontWeight: 600 }}>
+                  Visibility
+                </span>
                 <span style={{ ...S.pill, background: tone.bg, color: tone.fg }}>● {tone.label}</span>
               </div>
               <div style={S.fmeta}>{b.monitoring_enabled ? "Weekly monitoring on" : "Monitoring off"}</div>
