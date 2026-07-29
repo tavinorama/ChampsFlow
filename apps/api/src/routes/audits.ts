@@ -1283,6 +1283,77 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   // per-prompt AI evidence (which prompt, which engine, cited?, position,
   // which sources) so the UI can answer "why 80 on AI?".
   // -------------------------------------------------------------------------
+  // =========================================================================
+  // D2 — engine confidence for ONE audit, as of the day it ran.
+  //
+  // B4 runs a daily control battery per engine: four brands that obviously
+  // should be named, three fictional entities that obviously should not. An
+  // engine that stops naming the obvious, or starts describing the fictional
+  // as real, is drifting — and a client's score can fall for that reason
+  // alone.
+  //
+  // The operator endpoint already exposes the full history. This one answers a
+  // narrower and more useful question for the person reading their own
+  // scorecard: was this engine steady on the day you were measured? So it
+  // matches each engine to its LATEST check at or before the audit's timestamp,
+  // never to today's — the audit does not get more or less trustworthy because
+  // an engine drifted a week later.
+  //
+  // Deliberately narrower than the operator view: status and date only, no
+  // rates and no detail. Those are calibration internals; the client needs the
+  // verdict.
+  // =========================================================================
+  app.get("/api/audits/:id/engine-confidence", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const auditId = c.req.param("id");
+
+    const auditRes = await db.query<{ created_at: string; providers_used: unknown }>(
+      `SELECT created_at, providers_used FROM geo_audit WHERE id = $1`,
+      [auditId]
+    );
+    const audit = auditRes.rows[0];
+    if (!audit) return c.json({ message: "Audit not found." }, 404);
+
+    const used = Array.isArray(audit.providers_used) ? (audit.providers_used as string[]) : [];
+    if (used.length === 0) return c.json({ engines: [], as_of: audit.created_at });
+
+    try {
+      const { rows } = await db.query<{ engine: string; status: string; checked_at: string }>(
+        `SELECT e.engine, c.status, c.checked_at
+           FROM unnest($2::text[]) AS e(engine)
+           LEFT JOIN LATERAL (
+             SELECT status, checked_at
+               FROM engine_drift_check d
+              WHERE d.engine = e.engine
+                AND d.checked_at <= $1
+              ORDER BY d.checked_at DESC
+              LIMIT 1
+           ) c ON true`,
+        [audit.created_at, used]
+      );
+
+      return c.json({
+        as_of: audit.created_at,
+        engines: rows.map((r) => ({
+          engine: r.engine,
+          // null when no control battery had run yet for that engine at that
+          // time. The UI must say "not checked", never "healthy".
+          status: r.status ?? null,
+          checked_at: r.checked_at ?? null,
+        })),
+      });
+    } catch (err) {
+      // Migration not applied yet → answer honestly instead of 500ing, same as
+      // the operator route.
+      if ((err as { code?: string }).code === "42P01") {
+        return c.json({ as_of: audit.created_at, engines: [] });
+      }
+      logger.error("engine_confidence_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "ENGINE_CONFIDENCE_FAILED" }, 500);
+    }
+  });
+
   app.get("/api/audits/:id/breakdown", requireAuth, async (c) => {
     const auth = c.get("auth");
     await db.setTenantId(auth.tenantId);

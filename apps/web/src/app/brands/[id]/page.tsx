@@ -20,6 +20,7 @@ import { ScoreTrend } from "../../../components/ScoreTrend";
 import { PromptsPanel } from "./PromptsPanel";
 import { confidenceLabel } from "../../../lib/confidence";
 import { VerifiedCitations, type ExtractionTelemetry } from "../../../components/VerifiedCitations";
+import { EngineConfidence } from "../../../components/EngineConfidence";
 
 interface AuditState {
   id?: string;
@@ -525,6 +526,10 @@ export default function BrandDetailPage() {
           }
           brandName={brandName}
         />
+        {/* D2 — was each engine steady on the day this audit ran? Silent unless
+            it has something to say. */}
+        <EngineConfidence auditId={resolvedAuditId} />
+
         {/* Export + methodology link row */}
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-4)", marginTop: "var(--space-3)", flexWrap: "wrap" }}>
           <a
