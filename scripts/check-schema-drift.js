@@ -69,10 +69,24 @@ function expectedObjects(sqlText) {
   const createTable = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi;
   for (const m of sql.matchAll(createTable)) tables.add(m[1].toLowerCase());
 
-  const addColumn =
-    /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([a-z_][a-z0-9_]*)"?/gi;
-  for (const m of sql.matchAll(addColumn)) {
-    columns.add(`${m[1].toLowerCase()}.${m[2].toLowerCase()}`);
+  // ALTER TABLE takes a comma-separated action list, and we write it that way:
+  //
+  //     ALTER TABLE audit_prompt
+  //       ADD COLUMN IF NOT EXISTS intent_id      TEXT,
+  //       ADD COLUMN IF NOT EXISTS formulation_ix SMALLINT;
+  //
+  // A single `ALTER TABLE t ... ADD COLUMN c` regex only ever matches the
+  // FIRST column and silently drops its siblings — a checker that reports OK
+  // without having looked at everything is the exact failure it exists to
+  // catch. So: find each statement, then find every ADD COLUMN inside it.
+  const alterTable =
+    /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?([^;]*);/gi;
+  const addColumn = /ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([a-z_][a-z0-9_]*)"?/gi;
+  for (const stmt of sql.matchAll(alterTable)) {
+    const table = stmt[1].toLowerCase();
+    for (const col of stmt[2].matchAll(addColumn)) {
+      columns.add(`${table}.${col[1].toLowerCase()}`);
+    }
   }
 
   // Reported separately so the caller can apply them to the running union
@@ -82,10 +96,12 @@ function expectedObjects(sqlText) {
   for (const m of sql.matchAll(dropTable)) droppedTables.add(m[1].toLowerCase());
 
   const droppedColumns = new Set();
-  const dropColumn =
-    /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?"?([a-z_][a-z0-9_]*)"?/gi;
-  for (const m of sql.matchAll(dropColumn)) {
-    droppedColumns.add(`${m[1].toLowerCase()}.${m[2].toLowerCase()}`);
+  const dropColumn = /DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?"?([a-z_][a-z0-9_]*)"?/gi;
+  for (const stmt of sql.matchAll(alterTable)) {
+    const table = stmt[1].toLowerCase();
+    for (const col of stmt[2].matchAll(dropColumn)) {
+      droppedColumns.add(`${table}.${col[1].toLowerCase()}`);
+    }
   }
 
   // A file that creates and drops the same thing leaves nothing behind.
