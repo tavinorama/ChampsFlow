@@ -1358,7 +1358,8 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       probe_repeat: (bd as { probeRepeat?: number }).probeRepeat ?? null,
       // B1 — additive fields (null/[] on pre-B1 audits; old clients ignore).
       // methodology_version: '1.0' flat-repeat legacy · '2.0' intent portfolio
-      // + sequential Wilson sampling.
+      // + sequential Wilson sampling · '2.1' B3 two-pass verified citations
+      // (neutral/negative mentions no longer count as a citation).
       methodology_version: (bd as { methodologyVersion?: string }).methodologyVersion ?? null,
       // Audit-level run-weighted citation rate with its Wilson 95% interval —
       // the honesty rule: the rate always travels with its ± width.
@@ -1367,6 +1368,10 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       intents: (bd as { intents?: unknown }).intents ?? [],
       // Sampling telemetry: base runs, escalations, generation ceiling, cache.
       sampling: (bd as { sampling?: unknown }).sampling ?? null,
+      // B3 — two-pass citation extraction: mode, verified/rejected counts,
+      // kinds, and sample false positives this audit refused to count.
+      // null on pre-B3 audits (additive; old clients ignore it).
+      extraction: (bd as { extraction?: unknown }).extraction ?? null,
       // Site-crawl evidence shown under Brand/Performance.
       site_crawl: (bd as { siteCrawl?: unknown }).siteCrawl ?? null,
       // Competitor benchmark — who AI recommends instead of you (ranked).
