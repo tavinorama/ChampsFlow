@@ -253,7 +253,7 @@ const MARKETING_STYLES = `
     box-shadow: 0 4px 14px rgba(39,201,138,0.28);
   }
   /* Full/short label swap (mobile-overflow fix, #kit-overflow): the full
-     "Check my brand — free" copy is fine down to ~480px; below that it, plus
+     "Check my brand, free" copy is fine down to ~480px; below that it, plus
      the logo and "Log in" link (none of which shrink), no longer fits the
      375px navbar. mk-cta-short stays hidden until the width-480 rule below
      swaps it in. */
@@ -566,7 +566,7 @@ function PublicNavbar() {
           </a>
         </div>
 
-        {/* Right: theme toggle + Log in (quiet text link) + "Check my brand — free" (the one highlighted CTA) */}
+        {/* Right: theme toggle + Log in (quiet text link) + "Check my brand, free" (the one highlighted CTA) */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexShrink: 0 }}>
           <ThemeToggle />
           <Link

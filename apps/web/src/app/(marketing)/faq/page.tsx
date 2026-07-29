@@ -280,7 +280,7 @@ export default function FaqPage() {
             minHeight: "44px",
           }}
         >
-          Check my brand — free →
+          Check my brand, free →
         </Link>
       </section>
     </main>

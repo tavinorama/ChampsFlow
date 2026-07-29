@@ -476,7 +476,7 @@ export const PRICING_TIERS: readonly PricingTier[] = [
     per: "",
     popular: false,
     features: ["Ozvor AI Visibility Score", "3 sub-scores breakdown", "Top gaps preview"],
-    cta: "Check my brand — free",
+    cta: "Check my brand, free",
     ctaKind: "link",
     href: "/test",
   },
