@@ -117,6 +117,62 @@ const REQUESTED_PROVIDERS: GeoLLMProvider[] = [
   "serp",
 ];
 
+/**
+ * Smallest share of the requested engines that has to actually answer before we
+ * are willing to publish a score. Half: on the default 5-engine panel that
+ * means 3 must answer, and a run that gets 2 or fewer is reported as failed
+ * rather than scored.
+ *
+ * The number is a judgement, not a derivation — the principle behind it is not.
+ * Engines disagree with each other far more than a brand changes week to week,
+ * so a score built on a different subset than the one before it is a different
+ * measurement wearing the same label. See the integrity guard below.
+ */
+const MIN_ENGINE_COVERAGE = 0.5;
+
+export interface EngineCoverage {
+  requested: number;
+  answered: number;
+  /** Asked, gave nothing back — key, quota, outage. */
+  missing: string[];
+  /** Withheld by us: the engine's control battery says it is drifting. */
+  paused: string[];
+  /** True only when every engine in the comparison panel answered. */
+  comparable: boolean;
+  /** Share of the comparison panel that answered, for the publish gate. */
+  ratio: number;
+}
+
+/**
+ * Coverage of one audit against the panel it is compared to.
+ *
+ * Pure and exported so the rule can be tested directly. The bug it prevents is
+ * subtle and was live: the caller shrinks its routing list when an engine is
+ * drift-paused, and computing coverage from that shrunken list makes a
+ * one-engine run look like a complete one (1 of 1, nothing missing). The panel
+ * passed here must therefore be the ORIGINAL request, never the routing set.
+ *
+ * `paused` and `missing` are kept apart because they are different claims: one
+ * is an outage on the engine's side, the other is our own decision to withhold
+ * it. Folding them together would hide ours behind theirs.
+ */
+export function computeEngineCoverage(
+  comparisonPanel: readonly string[],
+  answered: ReadonlySet<string>,
+  paused: readonly string[]
+): EngineCoverage {
+  const absent = comparisonPanel.filter((p) => !answered.has(p));
+  const answeredInPanel = comparisonPanel.filter((p) => answered.has(p)).length;
+  return {
+    requested: comparisonPanel.length,
+    answered: answeredInPanel,
+    missing: absent.filter((p) => !paused.includes(p)),
+    paused: comparisonPanel.filter((p) => paused.includes(p)),
+    comparable: absent.length === 0,
+    ratio: comparisonPanel.length ? answeredInPanel / comparisonPanel.length : 0,
+  };
+}
+
 function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
 }
@@ -348,6 +404,17 @@ export async function processAuditJob(
       // Column missing or parse error → fall back to all (current behavior)
     }
 
+    // The panel this run is COMPARED against — frozen here, before the drift
+    // pause below can shrink what we actually probe.
+    //
+    // Hermes caught the bug this prevents: coverage used to be computed from
+    // `requestedProviders` AFTER drift pause mutated it, so pausing 4 of 5
+    // engines left requested=1, answered=1, missing=[], comparable=true — a
+    // one-engine score published as comparable, which is precisely the failure
+    // this guard exists to stop. Routing may shrink; the yardstick may not.
+    const comparisonPanel: GeoLLMProvider[] = [...requestedProviders];
+    let pausedProviders: GeoLLMProvider[] = [];
+
     // B4 — anti-drift pause. An engine whose latest control-battery verdict is
     // 'failing' (it stopped naming dominant brands, or it described entities
     // that do not exist) is dropped from this audit: a hallucinating engine
@@ -376,6 +443,7 @@ export async function processAuditJob(
             paused: requestedProviders.filter((p) => paused.includes(p)).join(","),
             remaining: kept.length,
           });
+          pausedProviders = requestedProviders.filter((p) => paused.includes(p));
           requestedProviders = kept;
         }
       }
@@ -462,21 +530,69 @@ export async function processAuditJob(
       }
     }
 
-    // INTEGRITY: if EVERY provider returned nothing (all keys out of
-    // credits/quota, all errored, or none permitted), we measured zero AI
-    // answers. Do NOT compute a score from no data — a 0 citation rate would
-    // read as "you're invisible" when the truth is "we couldn't run the audit".
-    // Mark the run failed so the UI honestly says so (and the user re-runs once
-    // credits are available) instead of persisting a misleading score.
-    if (result.responses.length === 0) {
-      logger.warn("audit_all_providers_failed", {
+    // INTEGRITY: a score is only meaningful against the engine set it was
+    // measured on. The citation rate's denominator is "probes that ran", so an
+    // engine that never answers silently leaves the average — and the score
+    // moves for a reason that has nothing to do with the brand.
+    //
+    // This is not hypothetical. On 2026-07-29 an Ozvor audit ran with only
+    // `dataforseo` reachable. That engine had returned 0/11 citations on every
+    // previous run too, but the four engines that DO cite Ozvor were absent, so
+    // the visibility score fell 48 → 10 and read as "you went invisible". The
+    // brand had not changed at all; the engine mix had.
+    //
+    // The old guard only fired when EVERY provider failed, so 4-of-5 sailed
+    // through and published. Coverage is now what decides:
+    //   - nothing answered            → failed, as before
+    //   - under half of what we asked → failed. Too little of the panel to
+    //     compare against a full-panel baseline, and a wrong number is worse
+    //     than no number.
+    //   - partial but over the bar    → runs, and records what was missing so
+    //     the UI can say the run is not comparable instead of implying it is.
+    const answeredProviders = new Set(result.responses.map((r) => r.provider));
+
+    // Measured against comparisonPanel, never against the post-pause routing
+    // set — see the note where the panel is frozen. Two ways an engine can be
+    // absent, kept apart because they mean different things to the client:
+    //   silent — we asked and got nothing (key, quota, outage)
+    //   paused — we withheld it because its control battery says it is drifting
+    // Both make the run non-comparable; only one is our doing.
+    const cov = computeEngineCoverage(comparisonPanel, answeredProviders, pausedProviders);
+    if (result.responses.length === 0 || cov.ratio < MIN_ENGINE_COVERAGE) {
+      logger.warn("audit_insufficient_engine_coverage", {
         audit_id,
-        requested: requestedProviders.length,
+        requested: cov.requested,
+        answered: cov.answered,
+        silent: cov.missing.join(","),
+        paused: cov.paused.join(","),
         failed: result.failedProviders.length,
         blocked: result.blockedProviders.length,
+        note: "refusing to publish a score measured on too few engines",
       });
-      await sql`UPDATE geo_audit SET status = 'failed' WHERE id = ${audit_id}`;
-      throw new Error("all_providers_failed");
+      await sql`
+        UPDATE geo_audit
+           SET status = 'failed',
+               error_message = ${
+                 `Only ${cov.answered} of ${cov.requested} AI engines answered ` +
+                 `(no answer: ${cov.missing.join(", ") || "none"}` +
+                 `${cov.paused.length ? `; held back for drift: ${cov.paused.join(", ")}` : ""}). ` +
+                 `We did not score this run — a partial panel is not comparable to your history.`
+               }
+         WHERE id = ${audit_id}`;
+      throw new Error("insufficient_engine_coverage");
+    }
+
+    if (!cov.comparable) {
+      // Above the bar, so the run continues — but it is NOT comparable to a
+      // full-panel run, and the client has to be told that, not left to read a
+      // dip that we caused.
+      logger.warn("audit_partial_engine_coverage", {
+        audit_id,
+        answered: cov.answered,
+        requested: cov.requested,
+        silent: cov.missing.join(","),
+        paused: cov.paused.join(","),
+      });
     }
 
     const providersUsed = Array.from(new Set(result.responses.map((r) => dbProvider(r.provider))));
@@ -943,6 +1059,22 @@ export async function processAuditJob(
     const breakdown = {
       overall: score.overall,
       providers: providersUsed,
+      // Engine coverage for THIS run. Persisted in provider_breakdown rather
+      // than new geo_audit columns on purpose: nothing runs db:migrate on
+      // deploy, so a new column would be missing in production and this would
+      // ship dead — which is the exact failure this field exists to expose.
+      //
+      // `comparable` is false when any requested engine went unanswered. A
+      // score is a rate over the probes that ran, so a smaller panel is a
+      // different measurement, not a lower one, and the UI must not draw it on
+      // the same trend line as a full-panel run without saying so.
+      coverage: {
+        requested: cov.requested,
+        answered: cov.answered,
+        missing: cov.missing,
+        paused: cov.paused,
+        comparable: cov.comparable,
+      },
       inputs: scoreInputs,
       measured,
       baseline,

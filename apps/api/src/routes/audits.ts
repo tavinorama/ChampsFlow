@@ -662,15 +662,24 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       facebook_url: string | null;
       tiktok_url: string | null;
     }>(
-      // geo_score stores the overall in provider_breakdown->>'overall' (applied
-      // schema has no dedicated score_overall column on geo_score).
+      // latest_score is score_ai — the SAME number the dashboard hero calls
+      // "Visibility" (see threeScores below: visibility = latest.score_ai).
+      //
+      // It used to be provider_breakdown->>'overall', the legacy composite. That
+      // meant one audit produced two different numbers on two screens with no
+      // hint they measured different things: the founder's 2026-07-29 run showed
+      // 10 on the overview and 24 on the brand card, and the honest reading of
+      // that is "the product cannot keep its own story straight".
+      //
+      // One score, one name, everywhere. Citation Readiness and Execution are
+      // shown as their own named lines, not folded into a headline average.
       `SELECT b.id, b.name, b.domain, b.category, b.region, b.monitoring_enabled,
               b.linkedin_url, b.reddit_url, b.wikipedia_url, b.g2_url, b.x_url, b.instagram_url, b.facebook_url, b.tiktok_url,
               b.trustpilot_url, b.crunchbase_url, b.youtube_url,
-              (s.provider_breakdown->>'overall')::int AS latest_score
+              s.score_ai AS latest_score
          FROM brands b
          LEFT JOIN LATERAL (
-           SELECT provider_breakdown
+           SELECT score_ai
              FROM geo_score gs
             WHERE gs.brand_id = b.id
             ORDER BY gs.recorded_at DESC
@@ -2180,10 +2189,24 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       score_performance: number;
       score_ai: number;
       score_overall: number | null;
+      coverage: {
+        requested?: number;
+        answered?: number;
+        missing?: string[];
+        comparable?: boolean;
+      } | null;
     }>(
       // geo_score has no score_overall column — derive it from provider_breakdown.
+      //
+      // coverage rides in the same JSON (written by the worker) rather than in
+      // its own column: nothing runs db:migrate on deploy, so a new column
+      // would be absent in production and this would ship dead — which is
+      // precisely the class of failure the field is here to expose.
+      // Null for audits that predate it; the UI stays silent in that case
+      // rather than claiming a coverage it does not know.
       `SELECT recorded_at, audit_id, score_brand, score_performance, score_ai,
-              (provider_breakdown->>'overall')::int AS score_overall
+              (provider_breakdown->>'overall')::int AS score_overall,
+              provider_breakdown->'coverage' AS coverage
          FROM geo_score
         WHERE brand_id = $1
         ORDER BY recorded_at DESC
