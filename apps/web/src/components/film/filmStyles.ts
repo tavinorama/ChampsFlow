@@ -386,6 +386,26 @@ export const FILM_STYLES = `
 }
 .film-form button:hover { transform: translateY(-1px); }
 .film-form button[disabled] { opacity: 0.65; cursor: progress; transform: none; }
+/* Social sign-in row. SocialAuthButtons is shared with /test and styles itself
+   from the app tokens, so we re-point those tokens at the film palette here —
+   the film keeps its own dark look whatever theme the visitor picked. The
+   button resets undo the green CTA rules above, which would otherwise leak in. */
+.film-social {
+  --color-surface: rgba(255,255,255,0.045);
+  --color-text: var(--film-ink);
+  --color-border: var(--film-line);
+  --color-muted: var(--film-muted);
+  margin: 4px 0 2px;
+}
+/* No provider enabled → the row renders nothing, so it takes no space either. */
+.film-social:empty { display: none; }
+.film-social button {
+  margin-top: 0;
+  box-shadow: none;
+  min-height: 44px;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+.film-social button:hover { transform: none; border-color: rgba(244,249,246,0.3); }
 .film-fine { margin: 11px 0 0; font-size: 12.5px; color: var(--film-muted); text-align: center; }
 .film-fine b { color: #cfdcd5; font-weight: 640; }
 

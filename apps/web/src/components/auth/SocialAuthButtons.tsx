@@ -66,6 +66,12 @@ export interface SocialAuthButtonsProps {
   dividerLabel?: string;
   /** Called right before the redirect — persist any in-progress form draft here. */
   onBeforeRedirect?: () => void;
+  /**
+   * Shown instead of the raw provider error when sign-in fails (cancelled,
+   * provider down). Marketing surfaces pass a calm line, because the email
+   * field right below still works and nothing is broken.
+   */
+  errorText?: string;
 }
 
 export function SocialAuthButtons({
@@ -73,6 +79,7 @@ export function SocialAuthButtons({
   caption = "Continue with a verified account — we'll remember you next time:",
   dividerLabel = "or continue with email",
   onBeforeRedirect,
+  errorText,
 }: SocialAuthButtonsProps) {
   const [loading, setLoading] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState("");
@@ -99,12 +106,14 @@ export function SocialAuthButtons({
       });
       if (err) {
         setLoading(null);
-        setError(err.message);
+        setError(errorText ?? err.message);
       }
       // On success the browser redirects; no further state needed.
     } catch (e) {
       setLoading(null);
-      setError(e instanceof Error ? e.message : "Sign-in failed. Try email instead.");
+      setError(
+        errorText ?? (e instanceof Error ? e.message : "Sign-in failed. Try email instead."),
+      );
     }
   }
 
