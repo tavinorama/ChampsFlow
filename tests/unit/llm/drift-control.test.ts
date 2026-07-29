@@ -142,7 +142,9 @@ describe("healthy engine", () => {
     const evals = evaluateDrift(await runDriftBattery(ENGINES, caller));
     const byEngine = Object.fromEntries(evals.map((e) => [e.engine, e]));
 
-    expect(byEngine["openai"]?.status).toBe("failing");
+    // Advisory since 2026-07-29: inventing entities raises degraded, never
+    // failing, so it is reported and never pauses the engine.
+    expect(byEngine["openai"]?.status).toBe("degraded");
     expect(byEngine["openai"]?.negative_rate).toBe(1);
     for (const other of ["anthropic", "gemini", "perplexity", "serp"]) {
       expect(byEngine[other]?.status).toBe("healthy");
@@ -187,7 +189,7 @@ describe("degraded engine", () => {
 // ---------------------------------------------------------------------------
 
 describe("failing engine", () => {
-  it("describes invented companies as real → failing, citations that day are untrustworthy", async () => {
+  it("describes invented companies as real → degraded and reported, never paused", async () => {
     const caller: DriftLLMCaller = async ({ control }) =>
       control.kind === "positive"
         ? citingAnswer(control)
@@ -195,9 +197,13 @@ describe("failing engine", () => {
 
     const [evaluation] = evaluateDrift(await runDriftBattery(["anthropic"], caller));
 
+    // This is the exact shape the first real battery produced on 2026-07-29:
+    // positive controls perfect, negative controls at 1.00. Marking that
+    // 'failing' dropped four of five engines from paid audits. The engine is
+    // measurable — it named every known brand — so it stays in, flagged.
     expect(evaluation?.positive_rate).toBe(1);
     expect(evaluation?.negative_rate).toBe(1);
-    expect(evaluation?.status).toBe("failing");
+    expect(evaluation?.status).toBe("degraded");
     expect(evaluation?.reasons.join(" ")).toContain("do not exist");
   });
 
@@ -235,7 +241,7 @@ describe("threshold boundaries", () => {
     expect(below?.status).toBe("degraded");
   });
 
-  it("negative_rate exactly 0.10 is healthy; exactly 0.25 is degraded, above it is failing", async () => {
+  it("the negative side tops out at degraded — it never reaches failing", async () => {
     const onLine = evaluateDrift(
       await runDriftBattery(["gemini"], callerWithHits(1), {
         controls: syntheticControls("negative", 10),
@@ -257,8 +263,10 @@ describe("threshold boundaries", () => {
         controls: syntheticControls("negative", 5),
       })
     )[0];
+    // Well past the old failing line, and still only degraded: the negative
+    // side is advisory and must never pause an engine on its own.
     expect(aboveFailingLine?.negative_rate).toBe(0.4);
-    expect(aboveFailingLine?.status).toBe("failing");
+    expect(aboveFailingLine?.status).toBe("degraded");
   });
 
   it("positive_rate exactly 0.50 is degraded, not failing", async () => {
