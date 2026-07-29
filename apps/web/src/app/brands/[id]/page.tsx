@@ -56,6 +56,13 @@ interface Breakdown {
   probe_repeat: number | null;
   /** B1 — audit-level citation rate with its Wilson 95% interval (null on pre-B1 audits). */
   citation_ci: { rate: number; low: number; high: number; n: number } | null;
+  /**
+   * Which version of the method produced this score. '1.0' flat repeat ·
+   * '2.0' intent portfolio + Wilson sampling · '2.1' two-pass verified
+   * citations. Null on audits older than B1. Shown next to the score so a
+   * method correction is never read as a drop in performance.
+   */
+  methodology_version: string | null;
   site_crawl: { reachable: boolean; domain: string | null; findings: string[] } | null;
   competitors: Array<{ name: string; mentions: number; displacement: number }>;
   offsite: {
@@ -529,6 +536,29 @@ export default function BrandDetailPage() {
         {/* D2 — was each engine steady on the day this audit ran? Silent unless
             it has something to say. */}
         <EngineConfidence auditId={resolvedAuditId} />
+
+        {/* D10 — which method produced this number. 2.1 stopped counting
+            neutral and negative mentions as citations, so scores measured
+            under it are lower than the same brand under 2.0. Without this
+            line a client reads our correction as their decline. */}
+        {breakdown?.methodology_version && (
+          <p
+            style={{
+              margin: "var(--space-2) 0 0",
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            Measured with method {breakdown.methodology_version}.{" "}
+            {breakdown.methodology_version.startsWith("2.1")
+              ? "This version stopped counting neutral and negative mentions as citations, so it reads lower than earlier ones for the same brand. "
+              : ""}
+            <a href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600 }}>
+              What changed
+            </a>
+          </p>
+        )}
 
         {/* Export + methodology link row */}
         <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-4)", marginTop: "var(--space-3)", flexWrap: "wrap" }}>
