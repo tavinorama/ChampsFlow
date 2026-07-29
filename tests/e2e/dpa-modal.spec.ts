@@ -16,6 +16,7 @@
  * Architecture refs: CI-1, CI-2, L-UX-1, DPAModal.tsx, DpaGate.tsx
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { signIn } from "./session";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,14 +39,10 @@ async function setupSession(
     countryCode = "US",
   } = options;
 
-  await page.context().addCookies([
-    {
-      name: "test_session",
-      value: `${userId}:${tenantId}`,
-      domain: "localhost",
-      path: "/",
-    },
-  ]);
+  // "test_session" appears nowhere in apps/web/src — it was a cookie the app
+  // never read, so every test here browsed as a signed-out visitor. Same dead
+  // cookie #397 removed from the billing spec.
+  await signIn(page, `${userId}:${tenantId}`);
 
   // Override DPA status API based on options
   await page.route("**/api/dpa/status", async (route) => {
@@ -240,9 +237,7 @@ test.describe("DPA version mismatch — re-prompt (CI-1)", () => {
       });
     });
 
-    await page.context().addCookies([
-      { name: "test_session", value: "e2e-existing-user:e2e-tenant", domain: "localhost", path: "/" },
-    ]);
+    await signIn(page, "e2e-existing-user:e2e-tenant");
 
     await page.goto("/dashboard");
 
@@ -274,10 +269,12 @@ test.describe("California banner — US user detection (CI-2)", () => {
     await page.goto("/dashboard");
 
     // California banner should be visible
-    const banner = page.getByTestId("california-banner").or(
-      page.getByText(/california privacy|do not sell/i).first()
-    );
-    await expect(banner).toBeVisible({ timeout: 5_000 });
+    // Same locator as the EU case, for the same reason: the fallback here
+    // matched the permanent footer link, so this test passed for every
+    // visitor — Californian or not — and proved nothing.
+    await expect(
+      page.getByRole("region", { name: /privacy rights notice/i })
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("EU user (cf-ipcountry=DE) does NOT see California banner", async ({ page }) => {
@@ -289,12 +286,15 @@ test.describe("California banner — US user detection (CI-2)", () => {
     await setupSession(page, { dpaAcknowledged: true, countryCode: "DE" });
     await page.goto("/dashboard");
 
-    // Assert on the copy, not on a test id that exists nowhere in apps/web/src.
-    // The old line looked for "california-banner" and wrapped the expect in
-    // .catch(), so it passed whether or not an EU visitor was shown a
-    // California notice — the exact thing it is here to prevent.
+    // The banner is a labelled region (CaliforniaBanner: role="region"
+    // aria-label="Privacy rights notice"), so assert on that and nothing else.
+    //
+    // Matching loose "do not sell" copy is wrong twice over: the old line used
+    // a test id that does not exist, and my first fix matched the footer link
+    // in AppLegalStrip — which CCPA requires on EVERY page, for every visitor,
+    // and which the next test in this file asserts is always there.
     await expect(
-      page.getByText(/do not sell|california privacy/i)
+      page.getByRole("region", { name: /privacy rights notice/i })
     ).toHaveCount(0);
   });
 
