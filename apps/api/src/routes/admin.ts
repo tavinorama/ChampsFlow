@@ -49,6 +49,7 @@ import { normalizeCrmPatch } from "../lib/crm-validation";
 import { upsertCrmContact } from "../lib/crm";
 import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
+import { fetchReceivedMrr } from "../lib/received-mrr";
 import { fetchOperatingCadence } from "../lib/cadence";
 
 // ---------------------------------------------------------------------------
@@ -75,8 +76,8 @@ const VALID_STATUSES = new Set(["requested", "contacted", "won", "lost"]);
 // src/pricing) so the founder dashboard and the Hermes operator surface never
 // drift. Names kept for the existing call sites below.
 const KIT_PRICE_USD = LIST_PRICE_USD.kit;
-const GROWTH_PRICE_USD = LIST_PRICE_USD.growth;
-const AGENCY_PRICE_USD = LIST_PRICE_USD.agency;
+// Growth/Agency sticker prices are no longer used for MRR here — the analytics
+// endpoint now reports RECEIVED-value MRR (fetchReceivedMrr), not list price.
 const GEO_SPRINT_PRICE_USD = LIST_PRICE_USD.geoSprint;
 const MANAGED_GEO_PRICE_USD = LIST_PRICE_USD.managedGeo;
 
@@ -641,7 +642,14 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       const agencySubs      = subMap["agency"]  ?? 0;
       const starterSubs     = subMap["starter"] ?? 0;
       const totalActiveSubs = growthSubs + agencySubs + starterSubs;
-      const mrr             = growthSubs * GROWTH_PRICE_USD + agencySubs * AGENCY_PRICE_USD;
+      // RECEIVED-value MRR: what Stripe actually bills active subs (annual
+      // amortized + founder/coupon discounts), same source as the revenue
+      // surface so the founder never sees two different MRR numbers. Degrades to
+      // list price when Stripe is unavailable (see lib/received-mrr.ts).
+      const receivedMrr     = await fetchReceivedMrr(db);
+      const mrr             = receivedMrr.monthlyUsd;
+      const mrrListUsd      = receivedMrr.listMonthlyUsd;
+      const mrrSource       = receivedMrr.source;
       const arr             = mrr * 12;
 
       // 4. Engagements by status + sku (for pipeline value)
@@ -734,6 +742,8 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
           },
           mrr,
           arr,
+          mrrListUsd,
+          mrrSource,
           engagements: {
             requested:       engStatusMap["requested"],
             contacted:       engStatusMap["contacted"],

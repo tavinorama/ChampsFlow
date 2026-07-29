@@ -11,7 +11,8 @@
  */
 
 import type { PostgresClient } from "../routes/social-accounts";
-import { LIST_PRICE_USD, computeMrr, mrrForTier, arrFromMrr } from "../../../../packages/shared/src/pricing";
+import { LIST_PRICE_USD, mrrForTier, arrFromMrr } from "../../../../packages/shared/src/pricing";
+import { fetchReceivedMrr } from "./received-mrr";
 
 // ---------------------------------------------------------------------------
 // Enriched clients
@@ -42,6 +43,7 @@ interface EnrichedClientRow {
   owner_email: string | null;
   sub_status: string | null;
   sub_plan_tier: string | null;
+  sub_stripe_subscription_id: string | null;
   renews_at: string | null;
   cancel_at_period_end: boolean | null;
   audits_run: string;
@@ -62,6 +64,7 @@ export async function fetchEnrichedClients(
             owner.email                               AS owner_email,
             sub.status                                AS sub_status,
             sub.plan_tier                             AS sub_plan_tier,
+            sub.stripe_subscription_id                AS sub_stripe_subscription_id,
             sub.current_period_end                    AS renews_at,
             COALESCE(sub.cancel_at_period_end, FALSE) AS cancel_at_period_end,
             (SELECT COUNT(*)        FROM geo_audit ga WHERE ga.tenant_id = t.id) AS audits_run,
@@ -75,18 +78,23 @@ export async function fetchEnrichedClients(
           LIMIT 1
        ) owner ON TRUE
        LEFT JOIN LATERAL (
-         SELECT status, plan_tier, current_period_end, cancel_at_period_end
+         SELECT status, plan_tier, current_period_end, cancel_at_period_end, stripe_subscription_id
            FROM billing_subscriptions bs
           WHERE bs.tenant_id = t.id
           ORDER BY (bs.status = 'active') DESC, bs.updated_at DESC
           LIMIT 1
        ) sub ON TRUE
       GROUP BY t.id, owner.email, sub.status, sub.plan_tier,
-               sub.current_period_end, sub.cancel_at_period_end
+               sub.current_period_end, sub.cancel_at_period_end, sub.stripe_subscription_id
       ORDER BY t.created_at DESC
       LIMIT $1`,
     [limit]
   );
+
+  // Per-tenant MRR uses the RECEIVED value (amortized + discount-aware) from
+  // Stripe when available, matching the fetchRevenueSummary total. Falls back to
+  // list price per-sub when Stripe can't price it (see lib/received-mrr.ts).
+  const received = await fetchReceivedMrr(db);
 
   return result.rows.map((row) => ({
     id: row.id,
@@ -99,8 +107,15 @@ export async function fetchEnrichedClients(
     sub_plan_tier: row.sub_plan_tier,
     renews_at: row.renews_at,
     cancel_at_period_end: row.cancel_at_period_end === true,
-    // Per-tenant MRR only counts an actively-billing subscription.
-    mrr_usd: row.sub_status === "active" ? mrrForTier(row.sub_plan_tier) : 0,
+    // Per-tenant MRR only counts an actively-billing subscription, valued at what
+    // Stripe actually receives (received.bySubscription), falling back to list
+    // price when the sub isn't priced from Stripe.
+    mrr_usd:
+      row.sub_status === "active"
+        ? (row.sub_stripe_subscription_id
+            ? received.bySubscription[row.sub_stripe_subscription_id]
+            : undefined) ?? mrrForTier(row.sub_plan_tier)
+        : 0,
     audits_run: parseInt(row.audits_run, 10),
     last_audit_at: row.last_audit_at,
   }));
@@ -111,8 +126,19 @@ export async function fetchEnrichedClients(
 // ---------------------------------------------------------------------------
 
 export interface RevenueSummary {
+  /**
+   * RECEIVED-value MRR: the amount Stripe actually bills active subscriptions,
+   * amortized to monthly and net of founder/coupon discounts (see
+   * lib/received-mrr.ts). This is the honest recurring number — NOT the sticker
+   * price. Falls back to list price (== mrr_list_usd) when Stripe is unreachable.
+   */
   mrr_usd: number;
   arr_usd: number;
+  /** The same active subs summed at LIST/sticker price — kept for transparency
+   *  and to show the discount/amortization delta. */
+  mrr_list_usd: number;
+  /** 'stripe' when mrr_usd is the real received value; 'list' on fallback. */
+  mrr_source: "stripe" | "list";
   subscriptions: {
     active: { growth: number; agency: number; starter: number; total: number };
     trialing: number;
@@ -181,7 +207,11 @@ export async function fetchRevenueSummary(db: PostgresClient): Promise<RevenueSu
   const growth = activeByTier["growth"] ?? 0;
   const agency = activeByTier["agency"] ?? 0;
   const starter = activeByTier["starter"] ?? 0;
-  const mrr = computeMrr(mrrRows);
+  // mrrRows is retained only for the list-price transparency figure; the headline
+  // MRR is now RECEIVED value from Stripe (amortized + discount-aware).
+  void mrrRows;
+  const received = await fetchReceivedMrr(db);
+  const mrr = received.monthlyUsd;
 
   // One-time orders.
   const kit = await countByStatus(db, "kit_order");
@@ -195,6 +225,8 @@ export async function fetchRevenueSummary(db: PostgresClient): Promise<RevenueSu
   return {
     mrr_usd: mrr,
     arr_usd: arrFromMrr(mrr),
+    mrr_list_usd: received.listMonthlyUsd,
+    mrr_source: received.source,
     subscriptions: {
       active: { growth, agency, starter, total: growth + agency + starter },
       trialing,

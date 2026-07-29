@@ -103,6 +103,17 @@ describe("business reads", () => {
     const db = makeDb({
       scopes: FULL,
       tableRows: (sql) => {
+        // The received-value MRR path (fetchReceivedMrr) reads one row per active
+        // sub. With no STRIPE_SECRET_KEY in tests it falls back to list price, so
+        // these rows must sum to the list-price total the assertion expects.
+        if (sql.includes("stripe_subscription_id") && sql.includes("billing_subscriptions")) {
+          return [
+            { stripe_subscription_id: null, plan_tier: "growth" },
+            { stripe_subscription_id: null, plan_tier: "growth" },
+            { stripe_subscription_id: null, plan_tier: "growth" },
+            { stripe_subscription_id: null, plan_tier: "agency" },
+          ];
+        }
         if (sql.includes("GROUP BY plan_tier")) {
           return [
             { plan_tier: "growth", count: "3" },
@@ -115,7 +126,9 @@ describe("business reads", () => {
     });
     const res = await buildApp(db).request("/api/v1/operator/analytics", { headers: AUTH });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { mrr_usd: number; arr_usd: number };
+    const body = (await res.json()) as { mrr_usd: number; arr_usd: number; mrr_source: string };
+    // Stripe unconfigured in tests → list-price fallback (source 'list').
+    expect(body.mrr_source).toBe("list");
     expect(body.mrr_usd).toBe(3 * 99 + 1 * 549);
     expect(body.arr_usd).toBe(body.mrr_usd * 12);
   });

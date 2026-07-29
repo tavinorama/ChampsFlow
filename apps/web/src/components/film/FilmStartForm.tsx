@@ -17,12 +17,25 @@
  * POST runs.
  *
  * The email never travels in the URL: it goes through sessionStorage only.
+ *
+ * Social sign-in: the same SocialAuthButtons the free test page uses sits right
+ * above the email box, so a visitor can fill it with one click instead of
+ * typing. It reuses the free test's own machinery, nothing new: the draft is
+ * saved before the redirect (so the website survives the trip to the provider),
+ * the redirect returns to /test, and the verified email lands in the form there
+ * through useVerifiedEmail. Typing still works exactly as before, and a failed
+ * or cancelled sign-in leaves the form untouched.
  */
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
+import { SocialAuthButtons } from "../auth/SocialAuthButtons";
 import { saveFormDraft } from "../../lib/form-draft";
 import { trackEvent } from "../../lib/track";
+import { useVerifiedEmail } from "../../lib/use-verified-email";
+
+/** Same sessionStorage draft the free test page reads on mount. */
+const FREE_TEST_DRAFT_KEY = "free-test";
 
 const DOMAIN_RE =
   /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -61,6 +74,9 @@ export function FilmStartForm() {
   const siteError = tried && !isValidDomain(domain);
   const mailError = tried && !isValidEmail(email);
 
+  // Already signed in on this device? Then the email box fills itself.
+  useVerifiedEmail((e) => setEmail((prev) => prev || e));
+
   function submit(e: React.FormEvent): void {
     e.preventDefault();
     setTried(true);
@@ -69,9 +85,20 @@ export function FilmStartForm() {
 
     setBusy(true);
     // The free test page picks this up on mount and fills both fields.
-    saveFormDraft("free-test", { domain, email: email.trim() });
+    saveFormDraft(FREE_TEST_DRAFT_KEY, { domain, email: email.trim() });
     trackEvent("cta_free_test_click", { source: "home_film" });
     router.push("/test");
+  }
+
+  /**
+   * Runs just before the browser leaves for the provider. Whatever is already
+   * typed goes into the draft, so the website comes back filled on /test even
+   * though the page was unloaded. Nothing is validated here on purpose: a
+   * half-typed form must never block one-click sign-in.
+   */
+  function keepDraftBeforeOAuth(): void {
+    saveFormDraft(FREE_TEST_DRAFT_KEY, { domain, email: email.trim() });
+    trackEvent("cta_free_test_click", { source: "home_film_social" });
   }
 
   return (
@@ -96,6 +123,17 @@ export function FilmStartForm() {
               Enter a website like yourcompany.com
             </p>
           ) : null}
+        </div>
+
+        {/* One click instead of typing. Renders nothing when no provider is
+            enabled, so the typed path is never disturbed. */}
+        <div className="film-social">
+          <SocialAuthButtons
+            caption="Fill your email with one click. Or type it below:"
+            redirectPath="/test"
+            onBeforeRedirect={keepDraftBeforeOAuth}
+            errorText="That did not go through. Type your email below instead."
+          />
         </div>
 
         <div className="film-field">

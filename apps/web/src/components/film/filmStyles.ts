@@ -217,6 +217,25 @@ html[data-theme="light"] .film {
 }
 .film-jump:hover { transform: translateY(-1px); filter: brightness(1.04); }
 
+/* ── Jump link, for scenes that hand the visitor to a form below ───── */
+.film-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 22px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 11px;
+  background: var(--film-green);
+  color: #04120c;
+  font-weight: 790;
+  font-size: 16.5px;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(39,201,138,0.26);
+  transition: transform 0.16s ease, filter 0.16s ease;
+}
+.film-jump:hover { transform: translateY(-1px); filter: brightness(1.04); }
+
 /* ── AI answer device ─────────────────────────────────────────────── */
 .film-answer {
   margin-top: 26px;
@@ -457,6 +476,26 @@ html[data-theme="light"] .film {
 }
 .film-form button:hover { transform: translateY(-1px); }
 .film-form button[disabled] { opacity: 0.65; cursor: progress; transform: none; }
+/* Social sign-in row. SocialAuthButtons is shared with /test and styles itself
+   from the app tokens, so we re-point those tokens at the film palette here —
+   the film keeps its own dark look whatever theme the visitor picked. The
+   button resets undo the green CTA rules above, which would otherwise leak in. */
+.film-social {
+  --color-surface: rgba(255,255,255,0.045);
+  --color-text: var(--film-ink);
+  --color-border: var(--film-line);
+  --color-muted: var(--film-muted);
+  margin: 4px 0 2px;
+}
+/* No provider enabled → the row renders nothing, so it takes no space either. */
+.film-social:empty { display: none; }
+.film-social button {
+  margin-top: 0;
+  box-shadow: none;
+  min-height: 44px;
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+.film-social button:hover { transform: none; border-color: rgba(244,249,246,0.3); }
 .film-fine { margin: 11px 0 0; font-size: 12.5px; color: var(--film-muted); text-align: center; }
 .film-fine b { color: var(--film-ink-soft); font-weight: 640; }
 
