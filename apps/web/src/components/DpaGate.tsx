@@ -161,6 +161,7 @@ export function DpaGate({ children }: DpaGateProps) {
       <DPAModal
         dpa_variant={status.variant_required}
         dpa_version={status.current_dpa_version_in_env ?? "1.0"}
+        previously_acknowledged_version={status.user_acknowledged_version}
         onAcknowledged={handleAcknowledged}
         onExit={handleExit}
       />

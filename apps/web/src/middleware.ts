@@ -67,7 +67,14 @@ export async function middleware(request: NextRequest) {
     // host-allowlist fallbacks for browsers that ignore 'strict-dynamic'.
     // www.googletagmanager.com (GA4 gtag.js, consent-gated in Ga4Analytics) is
     // a host-allowlist fallback like the others below.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com`,
+    // 'unsafe-eval' in DEVELOPMENT ONLY: `next dev` compiles modules through
+    // webpack's eval-based runtime, so without it NO client JavaScript executes
+    // — pages render server-side and hydration dies silently. That is why the
+    // E2E suite run against dev servers saw a dashboard with no working DpaGate
+    // (its fetch never fired) while production, whose build needs no eval, was
+    // fine. `next dev` hard-sets NODE_ENV=development, so this can never be
+    // true under `next start` — production CSP is unchanged.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""} https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com`,
     // Next.js injects inline <style> for CSS-in-JS; 'unsafe-inline' for styles
     // is low-risk (styles can't exfiltrate data) and required. Calendly also
     // injects its own inline styles for the embed.

@@ -17,6 +17,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { signIn } from "./session";
+import { seedConsent } from "./consent";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,6 +44,11 @@ async function setupSession(
   // never read, so every test here browsed as a signed-out visitor. Same dead
   // cookie #397 removed from the billing spec.
   await signIn(page, `${userId}:${tenantId}`);
+  // Without this the cookie-consent banner mounts as a second role="dialog"
+  // ("We value your privacy") next to the DPA modal, and every strict-mode
+  // dialog locator in this file dies on the ambiguity. This spec is about the
+  // DPA gate; the consent banner has its own spec.
+  await seedConsent(page);
 
   // Override DPA status API based on options
   await page.route("**/api/dpa/status", async (route) => {
@@ -106,6 +112,30 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     });
 
     await setupSession(page, { dpaAcknowledged: false, countryCode: "DE" });
+    // The mocks must be STATEFUL, like the API they stand in for. The app
+    // redirects /dashboard → /dashboard-v3, which remounts DpaGate and asks
+    // /api/dpa/status again — correct behaviour. A static mock answered that
+    // second ask with needs_acknowledgment:true forever, so the modal the user
+    // had just dismissed came straight back and this test failed against its
+    // own scaffolding, not the product. (The POST also 404s if unmocked.)
+    let acknowledged = false;
+    await page.route("**/api/dpa/acknowledge", async (route) => {
+      acknowledged = true;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    });
+    // Registered AFTER setupSession's static status mock, so it wins.
+    await page.route("**/api/dpa/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current_dpa_version_in_env: "1.0",
+          user_acknowledged_version: acknowledged ? "1.0" : null,
+          variant_required: "EU",
+          needs_acknowledgment: !acknowledged,
+        }),
+      })
+    );
     await page.goto("/dashboard");
 
     // DPA modal should appear
@@ -238,6 +268,7 @@ test.describe("DPA version mismatch — re-prompt (CI-1)", () => {
     });
 
     await signIn(page, "e2e-existing-user:e2e-tenant");
+    await seedConsent(page);
 
     await page.goto("/dashboard");
 
