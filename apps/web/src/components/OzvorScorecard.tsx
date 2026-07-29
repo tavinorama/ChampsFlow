@@ -133,7 +133,7 @@ function useScorecardStyles() {
 // Score Ring (SVG inline)
 // ---------------------------------------------------------------------------
 
-function ScoreRingSVG({ value, size }: { value: number | null; size: number }) {
+function ScoreRingSVG({ value, size, label }: { value: number | null; size: number; label: string }) {
   const r = Math.round(size * 0.3375); // ~54 at 160px — matches hero proportions
   const strokeW = Math.round(size * 0.075); // ~12px at 160px
   const circumference = 2 * Math.PI * r;
@@ -150,8 +150,8 @@ function ScoreRingSVG({ value, size }: { value: number | null; size: number }) {
       role="img"
       aria-label={
         value == null
-          ? "Overall Ozvor AI Visibility Score: not yet computed"
-          : `Overall Ozvor AI Visibility Score: ${value} out of 100`
+          ? `${label} score: not yet computed`
+          : `${label} score: ${value} out of 100`
       }
       style={{ display: "block", flexShrink: 0 }}
     >
@@ -597,6 +597,21 @@ export function OzvorScorecard({
   // Prefer threeScores when provided; fall back to legacy vectors.
   const useThreeScores = threeScores != null;
 
+  // What the ring shows. It used to show the legacy composite (`overall`),
+  // which put "24 — Ozvor AI Visibility Score" directly under a hero saying
+  // "Visibility 10" — the same audit wearing two numbers on one screen, and
+  // the founder caught it live. The composite is dead as a headline: the ring
+  // now shows Visibility, named as such, matching the hero, the brands list
+  // and the public API. Citation Readiness and Execution are their own bars.
+  // Legacy callers pass `vectors` instead — their `ai` IS the Visibility score
+  // (score_ai), so the ring stays on the same metric there too. Only a caller
+  // with neither ever sees the composite, and no live page is in that state.
+  const ringValue = useThreeScores
+    ? threeScores.visibility
+    : vectors?.ai ?? overall;
+  const ringLabel =
+    useThreeScores || vectors?.ai != null ? "Visibility" : "Ozvor AI Visibility Score";
+
   return (
     <section
       aria-label={
@@ -658,7 +673,7 @@ export function OzvorScorecard({
             gap: "var(--space-2)",
           }}
         >
-          <ScoreRingSVG value={overall} size={ringSize} />
+          <ScoreRingSVG value={ringValue} size={ringSize} label={ringLabel} />
           <p
             style={{
               fontSize: "var(--font-size-caption)",
@@ -669,7 +684,7 @@ export function OzvorScorecard({
               whiteSpace: "nowrap",
             }}
           >
-            Ozvor AI Visibility Score
+            {ringLabel}
           </p>
         </div>
 

@@ -115,19 +115,30 @@ export async function middleware(request: NextRequest) {
   // web app did not, which is the whole reason half the suite is switched off.
   //
   // Two INDEPENDENT conditions, both required:
-  //   1. NODE_ENV === "test". Railway runs "production", so this is false in
-  //      production no matter what else is set.
-  //   2. E2E_TEST_SESSION === "1", set only by .github/workflows/e2e.yml.
+  //   1. E2E_TEST_SESSION === "1", set only by .github/workflows/e2e.yml and
+  //      scripts/e2e-local.sh. Process env — not a header or cookie, so no
+  //      visitor can set it.
+  //   2. The request is addressed to a loopback host. Production is served at
+  //      ozvor.com; a request arriving there never has Host: localhost.
   //
-  // Neither is enough alone, and neither can be reached by anything a visitor
-  // controls: these are process env, not headers or cookies. The cookie only
-  // decides whether the door — already unlocked by the environment — is used.
+  // It used to test NODE_ENV === "test", which looked airtight and was in fact
+  // ALWAYS FALSE: Next.js sets NODE_ENV from the command, not the environment —
+  // `next dev` forces "development" and `next start` forces "production", so
+  // the NODE_ENV=test that CI exports never reaches this file. The door was
+  // welded shut, every authenticated spec quietly asserted against a login
+  // redirect, and the suite reported that as passing.
   //
-  // It grants exactly what the real cookie grants here: passage through this
-  // gate. It mints no token and forges no identity. The API still decides what
-  // any request may actually read.
-  const e2eSessionAllowed =
-    process.env.NODE_ENV === "test" && process.env.E2E_TEST_SESSION === "1";
+  // The host check replaces it because it is checked per request and cannot be
+  // rewritten by a command: it holds even if someone sets E2E_TEST_SESSION on a
+  // production service by mistake.
+  //
+  // The cookie only decides whether the door — already unlocked by the two
+  // conditions above — is used. It grants exactly what the real cookie grants
+  // here: passage through this gate. It mints no token and forges no identity.
+  // The API still decides what any request may actually read.
+  const host = request.nextUrl.hostname;
+  const isLoopbackHost = host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+  const e2eSessionAllowed = process.env.E2E_TEST_SESSION === "1" && isLoopbackHost;
   const hasSession =
     hasRealSession || (e2eSessionAllowed && request.cookies.has("e2e_session"));
 
