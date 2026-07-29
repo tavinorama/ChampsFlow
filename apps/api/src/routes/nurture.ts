@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
+import { publicRateLimit } from "../lib/public-rate-limit";
 
 // ---------------------------------------------------------------------------
 // Sequence configuration (total steps per sequence)
@@ -256,6 +257,17 @@ export function registerNurtureRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
 
   app.get("/api/nurture/unsubscribe", async (c) => {
+    // Unsubscribe by token. Generous, because a real person clicking twice
+    // must never be blocked from opting out, but bounded so the endpoint
+    // cannot be walked to enumerate tokens.
+    const limited = await publicRateLimit(c, {
+      bucket: "unsubscribe",
+      limit: 60,
+      windowMs: 60 * 60 * 1000,
+      message: "Too many requests. Your unsubscribe link still works — try again shortly.",
+    });
+    if (limited) return limited;
+
     const token = c.req.query("token") ?? "";
 
     if (!token) {

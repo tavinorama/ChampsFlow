@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { verifyDownload } from "../../../../packages/shared/src/download-token";
 import { logger } from "../../../../packages/shared/src/logger";
+import { publicRateLimit } from "../lib/public-rate-limit";
 
 // Files live at <cwd>/assets/downloads — apps/api/assets/downloads in dev,
 // /app/assets/downloads in the Docker image (COPYed in the runner stage).
@@ -29,6 +30,16 @@ const MIME: Record<string, string> = {
 
 export function registerDownloadRoutes(app: Hono): void {
   app.get("/api/download", async (c) => {
+    // Signed-token download. Limited per IP so a leaked or guessed token
+    // cannot be turned into a bandwidth tap, and so token guessing is slow.
+    const limited = await publicRateLimit(c, {
+      bucket: "download",
+      limit: 30,
+      windowMs: 60 * 60 * 1000,
+      message: "Too many downloads from this address. Try again in an hour.",
+    });
+    if (limited) return limited;
+
     const asset = c.req.query("asset") ?? "";
     const exp = Number(c.req.query("exp") ?? "0");
     const sig = c.req.query("sig") ?? "";
