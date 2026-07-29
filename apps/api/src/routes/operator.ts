@@ -36,8 +36,9 @@ import { requireOperatorKey } from "./api-keys";
 import { enrollNurture, checkNurtureEligibility } from "./nurture";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
-import { mrrForTier, arrFromMrr } from "../../../../packages/shared/src/pricing";
+import { arrFromMrr } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
+import { fetchReceivedMrr } from "../lib/received-mrr";
 import { fetchOperatingCadence } from "../lib/cadence";
 import { normalizeCrmPatch } from "../lib/crm-validation";
 import { upsertCrmContact } from "../lib/crm";
@@ -88,9 +89,11 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
       for (const row of subsByTier.rows) tiers[row.plan_tier] = parseInt(row.count, 10);
       const growth = tiers["growth"] ?? 0;
       const agency = tiers["agency"] ?? 0;
-      // MRR from actively-billing subs only — same canonical rule as the founder
-      // dashboard (packages/shared/src/pricing), so the two never disagree.
-      const mrrUsd = growth * mrrForTier("growth") + agency * mrrForTier("agency");
+      // RECEIVED-value MRR: what Stripe actually bills active subs (amortized +
+      // discount-aware), same source the founder dashboard uses so the two never
+      // disagree. Degrades to list price when Stripe is unreachable (mrr_source).
+      const received = await fetchReceivedMrr(db);
+      const mrrUsd = received.monthlyUsd;
 
       const pipeline: Record<string, number> = {};
       for (const row of engagements.rows) pipeline[row.status] = parseInt(row.count, 10);
@@ -107,8 +110,13 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
         subscriptions: { growth, agency },
         mrr_usd: mrrUsd,
         arr_usd: arrFromMrr(mrrUsd),
+        mrr_list_usd: received.listMonthlyUsd,
+        mrr_source: received.source,
         dfy_pipeline: pipeline,
-        note: "List-price MRR from active Stripe subscriptions; founder-granted plans excluded.",
+        note:
+          received.source === "stripe"
+            ? "Received-value MRR (annual amortized + founder/coupon discounts) from active Stripe subscriptions; founder-granted plans excluded."
+            : "List-price MRR (Stripe unavailable — received value not computed); founder-granted plans excluded.",
       });
     } catch (err) {
       logger.error("operator_analytics_error", { message: (err as Error).message });
