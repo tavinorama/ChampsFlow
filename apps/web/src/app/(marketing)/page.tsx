@@ -1,80 +1,34 @@
 /**
- * Landing page v2 — Ozvor homepage redesign (feat/landing-v2-home).
- * Route: / (within (marketing) route group)
+ * Home: Ozvor, the cinematic cut.
+ * Route: / (within the (marketing) route group)
  *
- * Server shell: exports metadata + server-fetches the ONE dynamic bit — the
- * live self-score card's data (GET /api/showcase/geo, 10-min ISR, same
- * pattern + INTERNAL_API_URL fallback the pre-v2 homepage used for its
- * "building in public" band). All interactive state (hero demo loop,
- * score-ring count-up, click-to-play sims, FAQ accordion, checkout) lives in
- * the client component — see LandingV2.tsx for the full section breakdown.
+ * Server shell: metadata only. The page itself is one continuous scroll film
+ * (see HomeFilm.tsx) built from the reusable kit in components/film/.
  *
- * PR #231 review fix (Hermes, blocker): the score card's "LIVE" chip and
- * "updated weekly" claim need an actual live value, not a hardcoded const.
- * fetchSelfScore() below is the only place that value comes from; when it
- * fails/404s/is incomplete, `selfScore` is null and LandingV2 renders the
- * honest SNAPSHOT fallback (see landing-v2-logic.ts's scoreCardState()).
+ * Why this replaced LandingV2: the founder approved a story-first home. The
+ * old grid of sections explained the product; this one shows a contractor
+ * losing a job he never knew existed, then getting his name into the answer.
+ * LandingV2.tsx stays in the tree, unused by this route, because the pricing
+ * and FAQ pages still borrow its logic module (landing-v2-logic.ts).
  *
- * Nav + footer are NOT rendered here — ../layout.tsx already provides
- * PublicNavbar + SiteFooter for every route in this group (see the
- * implementation report for why this page renders sections only).
+ * No server fetch here on purpose. The old shell called /api/showcase/geo for
+ * the live self-score card; this page shows no score of its own, so there is
+ * nothing to fetch and nothing that could quietly go stale.
  */
 
 import type { Metadata } from "next";
-import { LandingV2 } from "./LandingV2";
-import type { SelfScoreApiData } from "./landing-v2-logic";
-
-export const revalidate = 600;
-
-// ---------------------------------------------------------------------------
-// Self-score fetch — same source + ISR window as the old homepage's
-// "building in public" band (GET /api/showcase/geo). Never invents a number:
-// any failure, non-200, or incomplete latest audit returns null and the
-// client component falls back to the honest, explicitly-labeled snapshot.
-// ---------------------------------------------------------------------------
-
-interface ShowcaseGeoResponse {
-  overall: number | null;
-  threeScores: {
-    visibility: number;
-    citationReadiness: number;
-    executionProgress: number | null;
-  } | null;
-  measuredAt: string;
-}
-
-async function fetchSelfScore(): Promise<SelfScoreApiData | null> {
-  const base =
-    process.env.INTERNAL_API_URL ?? "https://api-production-2052.up.railway.app";
-  try {
-    const res = await fetch(`${base}/api/showcase/geo`, {
-      next: { revalidate: 600 },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as ShowcaseGeoResponse;
-    if (data.overall == null || !data.threeScores || !data.measuredAt) return null;
-    return {
-      overall: data.overall,
-      visibility: data.threeScores.visibility,
-      citationReadiness: data.threeScores.citationReadiness,
-      executionProgress: data.threeScores.executionProgress,
-      measuredAt: data.measuredAt,
-    };
-  } catch {
-    return null;
-  }
-}
+import { HomeFilm } from "./HomeFilm";
 
 export const metadata: Metadata = {
-  // Bare title — the root layout template already suffixes "| Ozvor".
-  title: "Get your brand cited by AI search",
+  // Bare title: the root layout template already suffixes "| Ozvor".
+  title: "Make AI say your name",
   description:
-    "Run a free 60-second test. See your Ozvor AI Visibility Score, who AI cites instead of you — and exactly what to fix.",
+    "People ask AI who to hire. We check ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews, then get your name into the answer. Free test, 60 seconds.",
   alternates: { canonical: "https://ozvor.com/" },
   openGraph: {
-    title: "Ozvor — Get your brand cited by AI search",
+    title: "Ozvor: Make AI say your name",
     description:
-      "Run a free 60-second test. See your Ozvor AI Visibility Score, who AI cites instead of you — and exactly what to fix.",
+      "People ask AI who to hire. See who it names instead of you, then get your name into the answer. Free test, 60 seconds.",
     url: "https://ozvor.com/",
     siteName: "Ozvor",
     images: [
@@ -82,20 +36,20 @@ export const metadata: Metadata = {
         url: "https://ozvor.com/og-default.png",
         width: 1200,
         height: 630,
-        alt: "Ozvor — Know if AI trusts your brand",
+        alt: "Ozvor: Know if AI trusts your brand",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ozvor — Get your brand cited by AI search",
-    description: "When your customer asks ChatGPT for a recommendation, be the answer.",
+    title: "Ozvor: Make AI say your name",
+    description:
+      "When your customer asks AI who to hire, be the answer. Free test, 60 seconds.",
     images: ["https://ozvor.com/og-default.png"],
   },
 };
 
-export default async function LandingPage() {
-  const selfScore = await fetchSelfScore();
-  return <LandingV2 selfScore={selfScore} />;
+export default function LandingPage() {
+  return <HomeFilm />;
 }
