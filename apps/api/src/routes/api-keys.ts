@@ -605,6 +605,96 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
     });
   });
 
+  // GET /api/v1/operator/engine-drift — B4 anti-drift control battery history.
+  //
+  // The last 7 daily checks per engine. This is how the ops agent answers the
+  // question that used to be unanswerable: "scores moved — was it the client or
+  // was it the engine?". positive_rate = share of runs where the engine named
+  // the dominant brand for an obvious question (healthy ≈ 1.00). negative_rate =
+  // share of runs where it described a FICTIONAL company as real (healthy 0.00).
+  // status failing → the engine is paused for new audits (worker-side).
+  //
+  // PII-free by construction: the battery only ever sends synthetic questions
+  // about public companies and invented names — no tenant, brand, or user data
+  // exists anywhere in this table.
+  app.get("/api/v1/operator/engine-drift", operatorKey, async (c) => {
+    try {
+      const { rows } = await db.query<{
+        engine: string;
+        checked_at: string;
+        positive_rate: string | number;
+        negative_rate: string | number;
+        status: string;
+        methodology_version: string;
+        detail: unknown;
+      }>(
+        `SELECT engine, checked_at, positive_rate, negative_rate, status,
+                methodology_version, detail
+           FROM (
+             SELECT e.*,
+                    ROW_NUMBER() OVER (PARTITION BY engine ORDER BY checked_at DESC) AS rn
+               FROM engine_drift_check e
+           ) t
+          WHERE rn <= 7
+          ORDER BY engine ASC, checked_at DESC`,
+        []
+      );
+
+      const byEngine = new Map<
+        string,
+        Array<{
+          checked_at: string;
+          positive_rate: number;
+          negative_rate: number;
+          status: string;
+          methodology_version: string;
+          detail: unknown;
+        }>
+      >();
+      for (const r of rows) {
+        const list = byEngine.get(r.engine) ?? [];
+        list.push({
+          checked_at: r.checked_at,
+          positive_rate: Number(r.positive_rate),
+          negative_rate: Number(r.negative_rate),
+          status: r.status,
+          methodology_version: r.methodology_version,
+          detail: r.detail,
+        });
+        byEngine.set(r.engine, list);
+      }
+
+      const engines = Array.from(byEngine.entries()).map(([engine, checks]) => ({
+        engine,
+        latest_status: checks[0]?.status ?? null,
+        latest_checked_at: checks[0]?.checked_at ?? null,
+        // Engines are dropped from NEW audits while their latest verdict is
+        // 'failing' (worker-side pause; GEO_DRIFT_PAUSE=0 overrides).
+        paused_for_new_audits: checks[0]?.status === "failing",
+        checks,
+      }));
+
+      return c.json({
+        engines,
+        thresholds: {
+          degraded: { positive_rate_below: 0.75, negative_rate_above: 0.1 },
+          failing: { positive_rate_below: 0.5, negative_rate_above: 0.25 },
+        },
+        note: "PII-free by design. positive_rate = dominant brand named for an obvious question (healthy ~1.00); negative_rate = fictional entity described as real (healthy 0.00). Last 7 checks per engine.",
+      });
+    } catch (err) {
+      // Migration not applied yet → answer honestly instead of 500ing.
+      if ((err as { code?: string }).code === "42P01") {
+        return c.json({
+          engines: [],
+          note: "engine_drift_check table not present yet (migration pending) — no drift history to report.",
+        });
+      }
+      logger.error("operator_engine_drift_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "ENGINE_DRIFT_FAILED" }, 500);
+    }
+  });
+
   // =========================================================================
   // 4) Operator key minting — founder only (super_admin). Rotation semantics:
   //    minting a new operator key revokes all previous operator keys, so at
@@ -666,6 +756,7 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
         endpoints: [
           "/api/v1/operator/system-health",
           "/api/v1/operator/audits/recent",
+          "/api/v1/operator/engine-drift",
           "/api/v1/operator/analytics",
           "/api/v1/operator/leads",
           "/api/v1/operator/kit-orders",

@@ -133,6 +133,8 @@ export async function sendFreeTestResultEmail(
     `WHAT TO DO NEXT`,
     recLines,
     "",
+    `How we count a citation (methodology v2.1): ${absoluteHref("/how-we-measure")}`,
+    "",
     `Get-Cited Kit ($29): ${absoluteHref("/kit")}`,
     `Growth plan: ${absoluteHref("/login?plan=growth&next=checkout")}`,
     `Book a free 20-min GEO call: ${absoluteHref("/book")}`,
@@ -267,6 +269,10 @@ export async function sendFreeTestResultEmail(
     </tbody>
   </table>
   ${mockNote}
+  <p style="font-size:12px;color:#9CA3AF;margin:8px 0 0 0;">
+    Only verified recommendations and cited sources count as a citation.
+    <a href="${absoluteHref("/how-we-measure")}" style="color:#0c7d54;">How we measure (methodology v2.1)</a>
+  </p>
 
   <!-- Section 5: What to do next -->
   <h2 style="font-size:15px;font-weight:600;color:#111827;margin:24px 0 12px 0;">What to do next</h2>

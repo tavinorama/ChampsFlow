@@ -34,8 +34,15 @@ import {
   buildIntentPortfolio,
   type PortfolioPrompt,
   wilson95,
+  aggregateIntentEngine,
   computeGeoScore,
   parseCitation,
+  extractMentionsBatch,
+  twoPassExtractionEnabled,
+  countsAsCitation,
+  isBrandMention,
+  type ExtractionResult,
+  type MentionKind,
   crawlSite,
   tallyCompetitors,
   detectCompetitors,
@@ -57,6 +64,7 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+import { pausedDriftEngines } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 
@@ -340,6 +348,44 @@ export async function processAuditJob(
       // Column missing or parse error → fall back to all (current behavior)
     }
 
+    // B4 — anti-drift pause. An engine whose latest control-battery verdict is
+    // 'failing' (it stopped naming dominant brands, or it described entities
+    // that do not exist) is dropped from this audit: a hallucinating engine
+    // produces fiction, not citations, and folding that into a customer's score
+    // would hand them a number we already know is wrong.
+    //
+    // Two guards, both deliberate:
+    //   - fail-open: pausedDriftEngines() never throws and returns [] when the
+    //     history is missing/stale/disabled (GEO_DRIFT_PAUSE=0 is the override).
+    //   - never pause everything: if every requested engine is failing, the
+    //     problem is almost certainly on OUR side. Keep them all and shout —
+    //     a silently empty audit is worse than a loud suspicious one.
+    try {
+      const paused = await pausedDriftEngines(sql);
+      if (paused.length > 0) {
+        const kept = requestedProviders.filter((p) => !paused.includes(p));
+        if (kept.length === 0) {
+          logger.error("audit_drift_pause_all_engines", {
+            audit_id,
+            paused: paused.join(","),
+            note: "every requested engine is drift-failing — running anyway; investigate our side first",
+          });
+        } else if (kept.length < requestedProviders.length) {
+          logger.warn("audit_drift_engines_paused", {
+            audit_id,
+            paused: requestedProviders.filter((p) => paused.includes(p)).join(","),
+            remaining: kept.length,
+          });
+          requestedProviders = kept;
+        }
+      }
+    } catch (err) {
+      // Belt and braces — the pause check must never fail an audit.
+      logger.warn("audit_drift_pause_check_error", {
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+
     // In LIVE mode, repeat each probe to capture AI non-determinism as a mention
     // RATE with confidence. B1 lean protocol: base = 2 runs per formulation
     // (GEO_PROBE_REPEAT still overrides, clamped 1–5), then SEQUENTIAL
@@ -477,6 +523,107 @@ export async function processAuditJob(
     // "who AI recommends instead of you, and on which engine" data is verifiable.
     const competitorProbes: CompetitorProbe[] = [];
 
+    // -----------------------------------------------------------------------
+    // B3 — TWO-PASS CITATION EXTRACTION (extractor + blind verifier).
+    //
+    // Single-pass matching counted a citation whenever the brand token appeared
+    // in the answer, so "I would not recommend Acme", a homonym company, or the
+    // brand buried in a URL all scored the same as a real recommendation. The
+    // two-pass protocol re-reads each retained answer: pass 1 extracts candidate
+    // mentions, pass 2 (blind — it never sees pass 1's verdict) confirms or
+    // rejects each one. Only VERIFIED/unverifiable mentions whose kind is
+    // direct_recommendation or cited_source count as a citation.
+    //
+    // CONSERVATIVE BY DESIGN: extraction can only REMOVE a citation, never add
+    // one. The measured mention RATE (which spans every run of the probe) is
+    // zeroed when the retained answer text carries no surviving citing mention;
+    // a rate that survives is left exactly as measured. Extraction sees only the
+    // retained answer of a multi-run probe, so promoting a rate from it would
+    // invent agreement between runs that was never observed.
+    //
+    // Rollback: GEO_TWO_PASS_EXTRACTION=0 → responses pass through untouched.
+    // -----------------------------------------------------------------------
+    const extractionEnabled = twoPassExtractionEnabled();
+    let extractionMode: string = extractionEnabled ? "two_pass" : "disabled";
+    let extractionVerified = 0;
+    let extractionRejected = 0;
+    let extractionCalls = 0;
+    let extractionAdjusted = 0;
+    const extractionByKind: Record<string, number> = {};
+    const extractionRejections: Array<{ text: string; reason: string }> = [];
+    // Index-aligned with result.responses.
+    let extractions: ExtractionResult[] = [];
+
+    if (extractionEnabled) {
+      try {
+        extractions = await extractMentionsBatch(
+          result.responses.map((r) => ({
+            rawText: r.rawText ?? "",
+            brandName: brand.name,
+            competitors: competitorNames,
+          })),
+          { concurrency: 4 }
+        );
+        const modes = new Set(extractions.map((e) => e.extraction_mode));
+        extractionMode =
+          modes.size === 1 ? [...modes][0] ?? "two_pass" : `mixed(${[...modes].sort().join("+")})`;
+        for (const e of extractions) {
+          extractionVerified += e.verified_count;
+          extractionRejected += e.rejected_count;
+          extractionCalls += e.llm_calls;
+          for (const m of e.mentions) {
+            const k: MentionKind = m.kind_confirmed;
+            extractionByKind[k] = (extractionByKind[k] ?? 0) + 1;
+            if (m.verdict === "REJECTED" && extractionRejections.length < 3) {
+              extractionRejections.push({
+                // Bounded excerpt of the model's own answer — no PII, no tenant data.
+                text: m.text_exact.slice(0, 120),
+                reason: m.reason.slice(0, 160),
+              });
+            }
+          }
+        }
+      } catch (err) {
+        // extractMentions() is already non-throwing; this is the last-resort net
+        // so a citation-extraction problem can NEVER fail a paid audit.
+        extractionMode = "fallback_single_pass";
+        extractions = [];
+        logger.warn("citation_extraction_failed", {
+          audit_id,
+          message: (err as Error).message?.slice(0, 160),
+        });
+      }
+    }
+
+    // Apply the verified result to the probe aggregates (removal only).
+    const responses: ProbeResponse[] = result.responses.map((r, ix) => {
+      const e = extractions[ix];
+      if (!e || e.extraction_mode !== "two_pass") return r;
+      const rate = typeof r.mentionRate === "number" ? r.mentionRate : r.mentioned ? 1 : 0;
+      if (rate <= 0) return r;
+      const survives =
+        e.brand_cited ||
+        // Defensive: brand_cited already encodes this, kept explicit for readers.
+        e.mentions.some((m) => isBrandMention(m, brand.name) && countsAsCitation(m));
+      if (survives) return r;
+      extractionAdjusted += 1;
+      return { ...r, mentionRate: 0, mentioned: false, position: null };
+    });
+
+    // Wilson aggregates must be recomputed from the SAME numbers the score uses,
+    // otherwise the per-intent panel would contradict the headline rate.
+    const intentStats =
+      extractionAdjusted > 0
+        ? aggregateIntentEngine(
+            responses.map((r) => ({
+              intentId: (r.queryHash ? intentByHash.get(r.queryHash)?.intentId : null) ?? null,
+              provider: r.provider,
+              successes: responseSuccesses(r),
+              runs: r.runs ?? 1,
+            }))
+          )
+        : result.intentStats;
+
     // Persist citation_check rows + ai_generation_log (append-only). Aggregate only.
     // citedCount uses the mention RATE (fractional in live repeat mode) so the AI
     // score reflects confidence, not a single coin flip.
@@ -499,7 +646,7 @@ export async function processAuditJob(
     // so an old-schema deploy never fails audits.
     let citationSchemaHasB1 = true;
 
-    for (const resp of result.responses) {
+    for (const resp of responses) {
       const rate = typeof resp.mentionRate === "number" ? resp.mentionRate : (resp.mentioned ? 1 : 0);
       const mentioned = resp.mentioned; // majority-of-runs (rate >= 0.5)
       const position = resp.position;
@@ -619,7 +766,7 @@ export async function processAuditJob(
     }
 
     // Derive AI sub-score inputs from probe aggregates.
-    const totalProbes = result.responses.length || 1;
+    const totalProbes = responses.length || 1;
     const citationRate = citedCount / totalProbes;
     const avgPositionScore = positionScoreN > 0 ? positionScoreSum / positionScoreN : 0;
 
@@ -636,15 +783,15 @@ export async function processAuditJob(
           ? citedCount / (citedCount + totalCompetitorMentions)
           : 0;
 
-    const aioPresence = result.responses.some((r) => r.provider === "serp" && r.mentioned);
+    const aioPresence = responses.some((r) => r.provider === "serp" && r.mentioned);
 
     // -----------------------------------------------------------------------
     // B1 — intent×engine aggregates with Wilson 95% intervals.
     // HONESTY RULE: the interval width ships with every rate ("cited in 12%
     // ± 9%") — a rate is never surfaced without its n and CI.
     // -----------------------------------------------------------------------
-    const totalRunsAll = result.responses.reduce((s, r) => s + (r.runs ?? 1), 0);
-    const totalSuccessesAll = result.responses.reduce((s, r) => s + responseSuccesses(r), 0);
+    const totalRunsAll = responses.reduce((s, r) => s + (r.runs ?? 1), 0);
+    const totalSuccessesAll = responses.reduce((s, r) => s + responseSuccesses(r), 0);
     // Audit-level run-weighted citation rate + CI (basis of the scorecard "±").
     const citationCI = wilson95(totalSuccessesAll, totalRunsAll);
 
@@ -666,7 +813,7 @@ export async function processAuditJob(
         n: number;
       }
     >();
-    for (const s of result.intentStats) {
+    for (const s of intentStats) {
       const engine = dbProvider(s.provider);
       const sov = sovAcc.get(`${s.intentId}|${engine}`);
       // Same semantics as the audit-level shareOfVoice: no competitors
@@ -799,7 +946,7 @@ export async function processAuditJob(
       inputs: scoreInputs,
       measured,
       baseline,
-      probesTotal: result.responses.length,
+      probesTotal: responses.length,
       probesCited: citedAnyCount,
       probeRepeat: result.baseRuns,
       // B1 — protocol identity + audit-level citation rate with Wilson 95% CI.
@@ -830,11 +977,27 @@ export async function processAuditJob(
           misses: Math.max(0, cacheLookups - cacheHits),
         },
       },
+      // B3 — two-pass citation extraction telemetry. ADDITIVE: old readers that
+      // don't know this key keep working. `mode` says which path ran
+      // (two_pass / fallback_single_pass / disabled / mixed), by_kind counts
+      // every extracted mention by its FINAL kind, and sample_rejections shows
+      // (up to 3) concrete false positives this audit refused to count.
+      extraction: {
+        mode: extractionMode,
+        verified_count: extractionVerified,
+        rejected_count: extractionRejected,
+        by_kind: extractionByKind,
+        sample_rejections: extractionRejections,
+        // How many probe aggregates lost their citation because no verified
+        // recommendation/source mention survived (the false positives B3 kills).
+        probes_adjusted: extractionAdjusted,
+        llm_calls: extractionCalls,
+      },
       // B2 surface note — which surface each engine was actually probed on
       // (search-enabled consumer surface vs no-search fallback GEO_WEB_SEARCH=0).
       // Keyed by DB provider name, matching providers_used.
       surfaces: Object.fromEntries(
-        Array.from(new Set(result.responses.map((r) => r.provider))).map((p) => [
+        Array.from(new Set(responses.map((r) => r.provider))).map((p) => [
           dbProvider(p),
           providerSurface(p),
         ])
@@ -942,10 +1105,22 @@ export async function processAuditJob(
       // flat per-audit value; AUDIT_COST_PER_GEN_CENTS tunes the rate.
       const perGenRaw = Number(process.env["AUDIT_COST_PER_GEN_CENTS"] ?? 1.2);
       const perGenCents = Number.isFinite(perGenRaw) && perGenRaw > 0 ? perGenRaw : 1.2;
+      // B3: the extraction + verification passes are extra (cheap-tier) calls.
+      // ≈0.2¢ each (haiku-4-5 / gpt-4o-mini, ~1k in + ~200 out, no web search).
+      // Counting them keeps the spend ledger honest instead of hiding the new
+      // cost inside the per-generation blend. AUDIT_COST_PER_EXTRACTION_CENTS tunes it.
+      const perExtractionRaw = Number(process.env["AUDIT_COST_PER_EXTRACTION_CENTS"] ?? 0.2);
+      const perExtractionCents =
+        Number.isFinite(perExtractionRaw) && perExtractionRaw > 0 ? perExtractionRaw : 0.2;
       const flatOverride = Number(process.env["AUDIT_COST_CENTS"] ?? NaN);
       const auditCostCents = Number.isFinite(flatOverride)
         ? flatOverride
-        : Math.max(1, Math.round(result.generationsUsed * perGenCents));
+        : Math.max(
+            1,
+            Math.round(
+              result.generationsUsed * perGenCents + extractionCalls * perExtractionCents
+            )
+          );
       await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });
@@ -961,6 +1136,9 @@ export async function processAuditJob(
       gens_cap_reached: result.capReached,
       escalations: result.escalations.length,
       cache_hits: cacheHits,
+      extraction_mode: extractionMode,
+      extraction_rejected: extractionRejected,
+      extraction_adjusted: extractionAdjusted,
     });
 
     return { audit_id, overall: score.overall };

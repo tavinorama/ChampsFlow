@@ -186,6 +186,57 @@ export {
 export type { CitationParseResult } from "./citation-parser";
 export { parseCitation } from "./citation-parser";
 
+// B4 — daily anti-drift control battery (positive + negative controls)
+export type {
+  DriftControl,
+  DriftControlKind,
+  DriftControlResult,
+  DriftBatteryOutcome,
+  DriftEvaluation,
+  DriftStatus,
+  DriftEngine,
+  DriftCallInput,
+  DriftLLMCaller,
+  RunDriftBatteryOptions,
+} from "./drift-control";
+export {
+  DRIFT_CONTROLS,
+  DRIFT_THRESHOLDS,
+  DRIFT_BATTERY_VERSION,
+  DRIFT_POSITIVE_EXPECTED_RATE,
+  driftControlEnabled,
+  detectMention,
+  runDriftBattery,
+  evaluateDrift,
+  estimateDriftCostCents,
+} from "./drift-control";
+
+// B3 — two-pass citation extraction (extractor + blind verifier). Removes the
+// false positives single-pass matching produced (negation, homonym, source-only).
+export type {
+  Mention,
+  VerifiedMention,
+  ExtractionResult,
+  ExtractionInput,
+  ExtractionOptions,
+  ExtractionLLM,
+  ExtractionLLMRequest,
+  ExtractionMode,
+  MentionKind,
+  MentionVerdict,
+} from "./extraction";
+export {
+  extractMentions,
+  extractMentionsBatch,
+  twoPassExtractionEnabled,
+  countsAsCitation,
+  isBrandMention,
+  defaultExtractionLLM,
+  ExtractionUnavailableError,
+  EXTRACTION_METHODOLOGY_VERSION,
+  MAX_VERIFIED_MENTIONS,
+} from "./extraction";
+
 // Scoring engine — deterministic GEO Score computation (GEO-2)
 export type {
   BrandInputs,
