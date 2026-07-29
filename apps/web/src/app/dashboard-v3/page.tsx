@@ -24,6 +24,8 @@ import { useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned, isSupabaseConfigured, getSupabase } from "../../lib/supabase-browser";
 import { OzvorScorecard, type ThreeScores } from "../../components/OzvorScorecard";
 import { CancelRetentionFlow } from "../../components/CancelRetentionFlow";
+import { VerifiedCitations, type ExtractionTelemetry } from "../../components/VerifiedCitations";
+import { EngineConfidence } from "../../components/EngineConfidence";
 
 // ---------------------------------------------------------------------------
 // Types mirrored from the API (audits.ts)
@@ -557,7 +559,9 @@ export default function DashboardV3() {
     if (tab === "donext" && tasks === null && !tasksLoading) void loadTasks(activeBrandId);
     if (tab === "content" && content === null && !contentLoading) void loadContent(activeBrandId);
     // Competitors + Sources both read the latest audit's breakdown.
-    if ((tab === "competitors" || tab === "sources") && breakdown === null && !breakdownLoading && latestAuditId) {
+    // The overview needs it too now: D1 reads breakdown.extraction and D10 reads
+    // breakdown.methodology_version.
+    if ((tab === "overview" || tab === "competitors" || tab === "sources") && breakdown === null && !breakdownLoading && latestAuditId) {
       void loadBreakdown(latestAuditId, activeBrandId);
     }
     if (tab === "pages" && sites === null && !sitesLoading) void loadSites();
@@ -689,7 +693,11 @@ export default function DashboardV3() {
   }, []);
 
   const overall = score?.latest?.score_overall ?? activeBrand?.latest_score ?? null;
-  const tone = scoreTone(overall);
+  // The hero shows Visibility, so its label has to come from Visibility too.
+  // Leaving this on the composite put a "Stable" pill from the blended score
+  // directly under a Visibility number — the same mixing of causes this whole
+  // change exists to stop. (Caught in review of #395.)
+  const tone = scoreTone(score?.threeScores?.visibility ?? overall);
 
   // ---- render --------------------------------------------------------------
   const title = TAB_TITLE[tab];
@@ -830,6 +838,10 @@ export default function DashboardV3() {
             onRunAudit={() => runAudit(activeBrandId)}
             auditBusy={auditBusy}
             auditMsg={auditMsg}
+            auditId={latestAuditId}
+            extraction={(breakdown as { extraction?: ExtractionTelemetry | null } | null)?.extraction ?? null}
+            methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
+            citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
           />
         ) : tab === "brands" ? (
           <BrandsTab
@@ -882,6 +894,7 @@ export default function DashboardV3() {
 
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditMsg,
+  auditId, extraction, methodologyVersion, citationCI,
 }: {
   brandName?: string;
   overall: number | null;
@@ -893,9 +906,30 @@ function OverviewTab({
   onRunAudit: () => void;
   auditBusy: boolean;
   auditMsg: string | null;
+  /** Latest audit, for the engine-confidence read. */
+  auditId: string | null;
+  /** B3 telemetry from that audit's breakdown; null until it loads. */
+  extraction?: ExtractionTelemetry | null;
+  /** Which method produced the number above. */
+  methodologyVersion?: string | null;
+  /** Wilson 95% interval on the citation rate, from the same breakdown. */
+  citationCI?: { rate: number; low: number; high: number; n: number } | null;
 }) {
-  const hasData = overall != null || (threeScores && threeScores.visibility != null);
-  const overallPts = trend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
+  // The hero shows Visibility now, so "has data" follows Visibility. Keying it
+  // on the composite would print a big "—" next to a filled three-score card.
+  const hasData = (threeScores && threeScores.visibility != null) || overall != null;
+  // Same reason: the sparkline under the Visibility headline was drawing the
+  // composite trend. It draws Visibility now, and falls back to the composite
+  // only for audits old enough to have no score_ai, where a flat gap would
+  // read as a collapse.
+  const visibilityPts = trend
+    .map((t) => t.score_ai ?? null)
+    .filter((n): n is number => n != null)
+    .reverse();
+  const overallPts =
+    visibilityPts.length >= 2
+      ? visibilityPts
+      : trend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
   return (
     <>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "var(--space-3)" }}>
@@ -906,18 +940,39 @@ function OverviewTab({
       {auditMsg && (
         <div style={{ ...S.card, padding: "12px 16px", marginBottom: "var(--space-3)", fontSize: "0.86rem", color: "var(--color-text)", borderLeft: "3px solid var(--color-primary)" }}>{auditMsg}</div>
       )}
+      {/* The headline is Visibility, and only Visibility.
+          It is a pure measurement of what the AI engines do — nothing the
+          customer did is blended into it. The composite used to lead here, and
+          it mixed three causes with three different owners: the engines moving,
+          us changing the ruler, and the customer publishing. When it fell,
+          nobody could tell which. The founder ran his own brand, completed
+          100% of the recommended actions, watched the headline drop, and could
+          not explain it. A customer in that position cancels.
+          What the customer did now has its own line below, where it cannot be
+          mistaken for a verdict on their work. */}
       <div style={{ ...S.card, ...S.hero }}>
         <div style={S.scoreCol}>
-          <div style={S.scoreBig}>{overall ?? "—"}</div>
-          <div style={S.scoreOf}>out of 100</div>
+          <div style={S.scoreBig}>{threeScores?.visibility ?? "—"}</div>
+          <div style={S.scoreOf}>
+            out of 100
+            {citationCI && citationCI.n > 0
+              ? ` · ± ${Math.ceil(Math.max(citationCI.rate - citationCI.low, citationCI.high - citationCI.rate) * 100)}`
+              : ""}
+          </div>
           <span style={{ ...S.pill, background: tone.bg, color: tone.fg, marginTop: "var(--space-2)" }}>● {tone.label}</span>
         </div>
         <div style={S.heroRight}>
-          <h2 style={S.heroH2}>Your AI Visibility Score</h2>
+          <h2 style={S.heroH2}>How often AI names you</h2>
           {overallPts.length >= 2 ? <Sparkline points={overallPts} /> : <div style={S.muted}>Run a couple of audits to see your trend.</div>}
           <p style={S.heroCap}>
-            AI answers change a little every day, so this number moves a few points on its own. What matters is the trend.
-            Finish the actions in <b>Do next</b> and it climbs over the next few weeks.
+            This is the measurement, and nothing else: how often the AI engines
+            named you when asked your customers&rsquo; questions. Your own work
+            is not in this number{typeof threeScores?.executionProgress === "number" ? (
+              <> — it is the <b>Execution</b> line below, at {threeScores.executionProgress}%</>
+            ) : null}.
+            {" "}AI answers move on their own, so the &plusmn; is the range this
+            number could honestly sit in. When it changes, look for the reason
+            underneath before reading it as your doing.
           </p>
         </div>
       </div>
@@ -933,6 +988,27 @@ function OverviewTab({
           <button onClick={onRunAudit} disabled={auditBusy} style={{ ...S.btnPri, opacity: auditBusy ? 0.6 : 1 }}>{auditBusy ? "Running…" : "Run the first audit"}</button>
         </div>
       )}
+
+      {/* D2 and D10 sit with the number they qualify: was the engine steady on
+          the day, and which method produced it. Both stay quiet when they have
+          nothing true to say. */}
+      <EngineConfidence auditId={auditId} />
+      {methodologyVersion && (
+        <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.78rem", color: "var(--color-muted)", lineHeight: 1.5 }}>
+          Measured with method {methodologyVersion}.{" "}
+          {methodologyVersion.startsWith("2.1")
+            ? "This version stopped counting neutral and negative mentions as citations, so it reads lower than earlier ones for the same brand. "
+            : ""}
+          <a href="/how-we-measure" style={{ color: "var(--color-accent-ink, var(--color-primary))", fontWeight: 600 }}>
+            What changed
+          </a>
+        </p>
+      )}
+
+      {/* D1 — what the audit refused to count. */}
+      <div style={{ marginTop: "var(--space-6)" }}>
+        <VerifiedCitations extraction={extraction} />
+      </div>
 
       {trend.length >= 2 && (
         <>
