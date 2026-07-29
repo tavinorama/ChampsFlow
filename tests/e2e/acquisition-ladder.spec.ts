@@ -12,10 +12,13 @@ import { test, expect } from "@playwright/test";
 test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () => {
   test("free test runs and shows a scorecard with a Kit CTA", async ({ page }) => {
     await page.goto("/test");
-    await expect(page.getByRole("heading", { name: /AI picks you/i })).toBeVisible();
-    await page.getByLabel(/your brand/i).fill("Demo CRM");
-    await page.getByLabel(/a competitor/i).fill("HubSpot");
-    await page.getByLabel(/your category/i).fill("CRM");
+    // The page opens on a film scene now. Its h1 is the scene headline; the
+    // form below it asks for a website and an email, not a brand/competitor/
+    // category triple — the free test was cut to two required fields to stop
+    // losing people in the form.
+    await expect(page.getByRole("heading", { name: /named someone else/i })).toBeVisible();
+    await page.getByLabel(/your website/i).fill("demo-crm.com");
+    await page.getByLabel(/your email/i).fill("e2e-ladder@example.com");
     await page.getByRole("button", { name: /run my test/i }).click();
 
     // Scorecard: a verdict + the per-engine table + the Kit CTA.

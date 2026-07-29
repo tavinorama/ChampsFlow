@@ -80,7 +80,11 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     // Step 1: Submit DSR from public page
     await page.goto("/legal/dsr-request");
 
-    const emailInput = page.getByLabel(/email/i).or(page.getByPlaceholder(/email/i));
+    // The public DSR form's email field, by id. A loose /email/i label match also
+    // catches the "Lost email escalation" note next to it, which is a <div
+    // role="note">, not a field: Playwright then either fails strict mode or
+    // picks the note and times out trying to type into it.
+    const emailInput = page.locator("#pub-dsr-email");
     await expect(emailInput).toBeVisible();
     await emailInput.fill("test-erasure@example.com");
 
@@ -149,7 +153,7 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     });
 
     await page.goto("/legal/dsr-request");
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
     await emailInput.fill("brute-force@example.com");
     await page.getByRole("button", { name: /submit|request/i }).click();
 
@@ -204,7 +208,7 @@ test.describe("DSR — Access request / SAR (GDPR Art. 15 / CCPA §1798.110) [Co
       await accessOption.click();
     }
 
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
     await emailInput.fill("sar-user@example.com");
     await page.getByRole("button", { name: /submit|request/i }).click();
 
@@ -246,7 +250,7 @@ test.describe("DSR — Portability request (GDPR Art. 20)", () => {
       await portabilityOption.click();
     }
 
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
     await emailInput.fill("portability@example.com");
 
     const submitButton = page.getByRole("button", { name: /submit|request/i });
@@ -284,7 +288,7 @@ test.describe("DSR rate limit (S-14)", () => {
     });
 
     await page.goto("/legal/dsr-request");
-    const emailInput = page.getByLabel(/email/i).first();
+    const emailInput = page.locator("#pub-dsr-email");
 
     // Submit 6 times
     for (let i = 0; i < 6; i++) {

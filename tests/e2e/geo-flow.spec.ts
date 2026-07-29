@@ -30,11 +30,17 @@ test.describe("GEO journey — audit to approved draft", () => {
   test("how-it-works explains the system and the Google alignment", async ({ page }) => {
     await page.goto("/how-it-works");
     await expect(page.getByRole("heading", { name: /From invisible to cited/i })).toBeVisible();
-    // The transparency stages render from the live capabilities endpoint.
-    await expect(page.locator("body")).toContainText(/AI Visibility Audit/i);
-    await expect(page.locator("body")).toContainText(/Authority & Perception/i);
-    // Google-alignment trust section (2026 positioning).
-    await expect(page.locator("body")).toContainText(/Google.s official AI-search guidance/i);
+    // The four moves, named. These are server rendered on purpose, so they hold
+    // with JavaScript off and for a crawler — the film above them does not.
+    for (const move of [/Audit/i, /Benchmark/i, /Plan & publish/i, /Monitor/i]) {
+      await expect(page.locator("body")).toContainText(move);
+    }
+    // What the score is made of. The old assertions here named a "Authority &
+    // Perception" vector and a Google-guidance section that the page dropped
+    // when the score was split into three; they could not pass again.
+    await expect(page.locator("body")).toContainText(/Visibility/i);
+    await expect(page.locator("body")).toContainText(/Citation Readiness/i);
+    await expect(page.locator("body")).toContainText(/Execution/i);
   });
 
   test("full flow: create brand → audit → breakdown → plan → draft → approve", async ({ page }) => {
