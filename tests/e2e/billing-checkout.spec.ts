@@ -17,6 +17,7 @@
  * Architecture refs: C6 PRD ACs, US-07
  */
 import { test, expect, type Page } from "@playwright/test";
+import { signIn } from "./session";
 
 const STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"] === "true";
 
@@ -24,22 +25,13 @@ const STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"] === "true";
 // Skip guard for non-Stripe test environments
 // ---------------------------------------------------------------------------
 
-// BLOCKED (2026-07-29): every test below needs a signed-in user, and E2E has no
-// way to sign one in. The helper sets a "test_session" cookie that appears
-// nowhere in apps/ — the web app authenticates through Supabase cookie
-// sessions, and CI points SUPABASE_URL at a placeholder with no key, so no
-// session can exist. These specs have been asserting against a login redirect,
-// which is why every locator missed. They are marked fixme rather than deleted:
-// the flows they cover are real and worth testing. Unblocking them needs a
-// test-only session shim in the web app, gated on NODE_ENV=test the way the API
-// already gates DEV_AUTH_BYPASS. That is auth code and a HIGH-risk change, so it
-// is a founder-approved PR of its own, not a drive-by.
-test.describe.fixme("Billing — Stripe Checkout (C6)", () => {
+// Unblocked 2026-07-29: the web middleware now honours an e2e_session cookie
+// under NODE_ENV=test + E2E_TEST_SESSION=1, so these can finally run inside
+// the app instead of against a login redirect.
+test.describe("Billing — Stripe Checkout (C6)", () => {
   test.beforeEach(async ({ page }) => {
     // Seed test session as Owner on free plan
-    await page.context().addCookies([
-      { name: "test_session", value: "e2e-owner-1:e2e-tenant-free", domain: "localhost", path: "/" },
-    ]);
+    await signIn(page, "e2e-owner-1:e2e-tenant-free");
   });
 
   test("free-plan user sees plan cards with upgrade option", async ({ page }) => {
@@ -183,11 +175,13 @@ test.describe.fixme("Billing — Stripe Checkout (C6)", () => {
   });
 
   test("Editor role cannot initiate checkout (Owner-only)", async ({ page }) => {
-    // Seed editor session
+    // Seed editor session. clearCookies() drops the owner seeded in beforeEach,
+    // so this has to sign in again — and with e2e_session, not the old
+    // test_session, which the app never read. (Caught in review of #397: this
+    // one line would have kept the editor test on the login redirect while the
+    // rest of the file ran authenticated, which is the worst kind of green.)
     await page.context().clearCookies();
-    await page.context().addCookies([
-      { name: "test_session", value: "e2e-editor-1:e2e-tenant-free:editor", domain: "localhost", path: "/" },
-    ]);
+    await signIn(page, "e2e-editor-1:e2e-tenant-free:editor");
 
     await page.route("**/api/billing/checkout", async (route) => {
       // API returns 403 for editor role
