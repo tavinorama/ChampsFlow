@@ -112,50 +112,68 @@ export function TrustpilotReviewCollector() {
   // Nothing at all until consent: an empty bordered box reads as broken.
   if (!allowed) return null;
 
+  // The white rectangle IS Trustpilot's badge; the iframe simply carries a few
+  // pixels of transparent margin around it. Measured by rendering the iframe
+  // uncropped with a magenta outline on its 222x44 bounds and comparing: the
+  // white sits at 210x36, inset 6px horizontally and 4px vertically.
+  //
+  // The Review Collector template ignores data-theme (its iframe URL carries
+  // only templateId and businessunitId) and being cross-origin no CSS of ours
+  // reaches inside, so geometry is the only lever. The wrapper is the badge's
+  // exact size with overflow:hidden and the iframe is pulled back by the inset,
+  // which shows the badge and nothing else — no margin eaten off the top, no
+  // white passing at the sides.
+  //
+  // A first attempt guessed 10px/5px and was wrong in both directions at once:
+  // too much off the top, not enough at the sides. These four numbers are
+  // measured, and they are named so that a Trustpilot layout change has one
+  // obvious place to be fixed.
+  const CANVAS_W = 222;
+  const CANVAS_H = 44;
+  const PAD_X = 6;
+  const PAD_Y = 4;
+
   return (
     <div
-      ref={boxRef}
-      className="trustpilot-widget"
-      data-locale="en-US"
-      data-template-id={TEMPLATE_ID}
-      data-businessunit-id={BUSINESSUNIT_ID}
-      data-token={TOKEN}
-      data-theme={theme}
-      data-style-height="44px"
-      data-style-width="100%"
-      // The Review Collector template IGNORES data-theme — proven by the iframe
-      // URL Trustpilot builds, which carries only templateId and
-      // businessunitId. Its card is always white, and being a cross-origin
-      // iframe there is no CSS of ours that can reach inside it.
-      //
-      // So instead of fighting the white, make it deliberate: a rounded chip,
-      // clipped to the container. overflow:hidden with a radius turns the raw
-      // square slab into a badge that reads as designed on a dark footer, which
-      // is how Trustpilot badges normally sit on dark sites. Width is trimmed to
-      // the content so white does not trail off to the right of the wordmark.
       style={{
-        width: "222px",
-        maxWidth: "100%",
-        height: "44px",
-        lineHeight: 0,
-        borderRadius: "8px",
+        position: "relative",
+        width: `${CANVAS_W - PAD_X * 2}px`,
+        height: `${CANVAS_H - PAD_Y * 2}px`,
         overflow: "hidden",
-        // A hairline in the site's own border token keeps the chip from
-        // floating: it belongs to the footer, not on top of it.
-        boxShadow: "0 0 0 1px var(--color-border)",
         flex: "none",
+        lineHeight: 0,
       }}
     >
-      {/* Trustpilot replaces this link with the widget. Until it does, and for
-          anyone the script never reaches, the link itself is the fallback. */}
-      <a
-        href="https://www.trustpilot.com/review/ozvor.com"
-        target="_blank"
-        rel="noopener"
-        className="mk-footer-link"
+      <div
+        ref={boxRef}
+        className="trustpilot-widget"
+        data-locale="en-US"
+        data-template-id={TEMPLATE_ID}
+        data-businessunit-id={BUSINESSUNIT_ID}
+        data-token={TOKEN}
+        data-theme={theme}
+        data-style-height={`${CANVAS_H}px`}
+        data-style-width="100%"
+        style={{
+          position: "absolute",
+          top: `-${PAD_Y}px`,
+          left: `-${PAD_X}px`,
+          width: `${CANVAS_W}px`,
+          height: `${CANVAS_H}px`,
+          lineHeight: 0,
+        }}
       >
-        Review us on Trustpilot
-      </a>
+        {/* Trustpilot replaces this link with the widget. Until it does, and for
+            anyone the script never reaches, the link itself is the fallback. */}
+        <a
+          href="https://www.trustpilot.com/review/ozvor.com"
+          target="_blank"
+          rel="noopener"
+          className="mk-footer-link"
+        >
+          Review us on Trustpilot
+        </a>
+      </div>
     </div>
   );
 }
