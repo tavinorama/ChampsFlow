@@ -125,6 +125,15 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
   test("OTP brute-force: 6 wrong attempts → OTP invalidated (S-11)", async ({ page }) => {
     let attemptCount = 0;
 
+    // The mock mirrors the REAL contract of POST /api/dsr/verify
+    // (apps/api/src/routes/dsr.ts): the page branches on `code`, not on
+    // `error`. The previous mock sent `{error: "otp_invalidated"}` with no
+    // `code`, so the page fell through to its generic handler and rendered the
+    // raw string "otp_invalidated" — which still matched the old
+    // /invalidated/i assertion. The test could therefore have gone green
+    // without the real "your code has been invalidated" branch ever running.
+    // OTP_MAX_ATTEMPTS is 5 on the server, and attempt 6 is the one that
+    // invalidates.
     await page.route("**/api/dsr/verify", async (route) => {
       attemptCount++;
       if (attemptCount > 5) {
@@ -132,8 +141,8 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
           status: 429,
           contentType: "application/json",
           body: JSON.stringify({
-            error: "otp_invalidated",
-            message: "Too many failed attempts. Please submit a new request.",
+            error: "OTP invalidated due to too many attempts. Please submit a new DSR request.",
+            code: "OTP_INVALIDATED",
           }),
         });
       } else {
@@ -141,7 +150,8 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
           status: 400,
           contentType: "application/json",
           body: JSON.stringify({
-            error: "invalid_otp",
+            error: "Invalid OTP",
+            code: "INVALID_OTP",
             attempts_remaining: 5 - attemptCount,
           }),
         });
@@ -165,20 +175,37 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     await emailInput.fill("brute-force@example.com");
     await page.getByRole("button", { name: /submit|request/i }).click();
 
-    const otpInput = page.getByLabel(/code|OTP/i).or(page.getByPlaceholder(/6.digit|code/i));
+    // Wait for the OTP step instead of testing for it. The loop below used to
+    // be wrapped in `if (await otpInput.isVisible())`, with no wait after
+    // submitting the email — so the FIRST iteration ran while the page was
+    // still on the form step, found nothing, and silently did nothing. Six
+    // iterations produced five attempts, the server-side ceiling was never
+    // crossed, and the test failed on a page that was behaving correctly.
+    // Proof it was off by one: at failure the page read "invalid_otp" and
+    // "0 attempts remaining" — five attempts, not six.
+    const otpInput = page.getByLabel(/verification code/i);
+    await expect(otpInput).toBeVisible({ timeout: 10_000 });
+    const verifyButton = page.getByRole("button", { name: /verify|confirm/i });
 
-    // Attempt wrong OTP 6 times
+    // Six wrong attempts. Every one must actually reach the API, so nothing
+    // here is conditional — a skipped attempt is a failed test, not a pass.
     for (let i = 0; i < 6; i++) {
-      if (await otpInput.isVisible()) {
-        await otpInput.fill("000000");
-        await page.getByRole("button", { name: /verify|confirm/i }).click();
-        await page.waitForTimeout(300);
-      }
+      await otpInput.fill("000000");
+      await verifyButton.click();
+      // Wait for THIS attempt to land rather than sleeping a fixed 300ms: the
+      // page guards on `otpSubmitting`, so a click fired while the previous
+      // request is in flight is dropped on the floor.
+      await expect
+        .poll(() => attemptCount, { timeout: 5_000 })
+        .toBeGreaterThanOrEqual(i + 1);
     }
+    expect(attemptCount).toBe(6);
 
-    // Should show OTP invalidated message
-    const invalidatedMessage = page.getByText(/too many|invalidated|new request/i).first();
-    await expect(invalidatedMessage).toBeVisible({ timeout: 5_000 });
+    // The real copy from the OTP_INVALIDATED branch, asserted exactly — not a
+    // loose regex that a raw error code could satisfy by accident.
+    await expect(
+      page.getByText(/too many incorrect attempts .* invalidated/i)
+    ).toBeVisible({ timeout: 5_000 });
   });
 });
 

@@ -21,6 +21,30 @@ import { signIn } from "./session";
 
 const STRIPE_TEST_MODE = process.env["STRIPE_TEST_MODE"] === "true";
 
+/**
+ * Whether a USABLE Stripe test key is present — not merely whether test mode is
+ * switched on.
+ *
+ * The distinction is the whole point. CI sets, in .github/workflows/e2e.yml:
+ *
+ *     STRIPE_TEST_MODE: "true"
+ *     STRIPE_SECRET_KEY: "sk_test_placeholder_for_e2e"
+ *
+ * That key is a placeholder Stripe rejects — the API says so out loud at every
+ * boot ("Invalid API Key provided: sk_test_***_e2e"). So the live-checkout test
+ * below was gated on the wrong condition: test mode was on, the test ran, no
+ * Checkout Session could ever be created, and it failed on a 20s click timeout.
+ * Three attempts, every run, for as long as the key has been a placeholder.
+ * The E2E job is advisory, so it failed under a green badge and nobody saw.
+ *
+ * A skip with a stated reason is honest. A failure nobody reads is not.
+ */
+const STRIPE_KEY = process.env["STRIPE_SECRET_KEY"] ?? "";
+const HAS_USABLE_STRIPE_KEY =
+  STRIPE_TEST_MODE &&
+  /^sk_test_[A-Za-z0-9]{20,}$/.test(STRIPE_KEY) &&
+  !STRIPE_KEY.includes("placeholder");
+
 // ---------------------------------------------------------------------------
 // Skip guard for non-Stripe test environments
 // ---------------------------------------------------------------------------
@@ -127,12 +151,18 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
   });
 
   test.skip(
-    !STRIPE_TEST_MODE,
-    "Live Stripe checkout flow (skipped without STRIPE_TEST_MODE=true)"
+    !HAS_USABLE_STRIPE_KEY,
+    "Live Stripe checkout needs a real sk_test_ key; CI's STRIPE_SECRET_KEY is a placeholder Stripe rejects"
   );
 
   test("Stripe test mode — full checkout flow with test card", async ({ page }) => {
-    test.skip(!STRIPE_TEST_MODE, "Only runs with STRIPE_TEST_MODE=true");
+    // Gated on a USABLE key, not on the test-mode flag. See HAS_USABLE_STRIPE_KEY
+    // at the top of this file: the flag was true in CI while the key was a
+    // placeholder, so this drove a checkout that could not exist.
+    test.skip(
+      !HAS_USABLE_STRIPE_KEY,
+      "Needs a real Stripe test secret key (sk_test_…) — set STRIPE_SECRET_KEY to run this"
+    );
 
     // This test uses real Stripe test mode (no mock)
     await page.goto("/account/billing");
