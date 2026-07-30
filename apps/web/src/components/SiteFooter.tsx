@@ -246,7 +246,13 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
         {showTrustpilot && (
           <div
             style={{
-              marginTop: "var(--space-8)",
+              // Close to the legal lines it belongs with, not floating between
+              // the columns above and the bottom bar. It stays ABOVE the divider
+              // because the bottom-right corner is the fixed "Ask Ozvor"
+              // launcher's, and a badge placed in the bottom bar was measured
+              // overlapping it by 105x23px.
+              marginTop: "var(--space-6)",
+              marginBottom: "var(--space-1)",
               display: "flex",
               justifyContent: "flex-end",
             }}
@@ -258,8 +264,8 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
         {/* Bottom bar */}
         <div
           style={{
-            marginTop: "var(--space-4)",
-            paddingTop: "var(--space-6)",
+            marginTop: "var(--space-2)",
+            paddingTop: "var(--space-4)",
             borderTop: "1px solid var(--color-border)",
             display: "flex",
             flexWrap: "wrap",
