@@ -165,7 +165,6 @@ export function FilmStartForm() {
         <b>No card.</b> Results in 60 seconds. 30 day money back on any paid
         plan.
       </p>
-
     </div>
   );
 }

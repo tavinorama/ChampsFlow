@@ -67,7 +67,7 @@ export async function middleware(request: NextRequest) {
     // host-allowlist fallbacks for browsers that ignore 'strict-dynamic'.
     // www.googletagmanager.com (GA4 gtag.js, consent-gated in Ga4Analytics) is
     // a host-allowlist fallback like the others below.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""} https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com`,
     // Next.js injects inline <style> for CSS-in-JS; 'unsafe-inline' for styles
     // is low-risk (styles can't exfiltrate data) and required. Calendly also
     // injects its own inline styles for the embed.
