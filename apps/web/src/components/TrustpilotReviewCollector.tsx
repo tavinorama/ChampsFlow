@@ -112,68 +112,44 @@ export function TrustpilotReviewCollector() {
   // Nothing at all until consent: an empty bordered box reads as broken.
   if (!allowed) return null;
 
-  // The white rectangle IS Trustpilot's badge; the iframe simply carries a few
-  // pixels of transparent margin around it. Measured by rendering the iframe
-  // uncropped with a magenta outline on its 222x44 bounds and comparing: the
-  // white sits at 210x36, inset 6px horizontally and 4px vertically.
+  // NO CROPPING. Three attempts at trimming this box were all wrong, and the
+  // reason is that there was never anything to trim.
   //
-  // The Review Collector template ignores data-theme (its iframe URL carries
-  // only templateId and businessunitId) and being cross-origin no CSS of ours
-  // reaches inside, so geometry is the only lever. The wrapper is the badge's
-  // exact size with overflow:hidden and the iframe is pulled back by the inset,
-  // which shows the badge and nothing else — no margin eaten off the top, no
-  // white passing at the sides.
+  // What reads as "a shape exceeding the widget's square" is the badge itself:
+  // the Review Collector template draws a WHITE CARD with an outlined button
+  // inside it. That card is Trustpilot's design, not stray padding. The iframe's
+  // surrounding margin is transparent, so on a dark footer it was never visible
+  // in the first place — cropping bought nothing and eventually clipped the
+  // badge's own right edge.
   //
-  // A first attempt guessed 10px/5px and was wrong in both directions at once:
-  // too much off the top, not enough at the sides. These four numbers are
-  // measured, and they are named so that a Trustpilot layout change has one
-  // obvious place to be fixed.
-  const CANVAS_W = 222;
-  const CANVAS_H = 44;
-  const PAD_X = 6;
-  const PAD_Y = 4;
-
+  // The template also ignores data-theme (its iframe URL carries only templateId
+  // and businessunitId) and, being cross-origin, no CSS of ours reaches inside.
+  // So there is no honest way to make THIS template dark: the white card is
+  // fixed. A template built for it (Micro Star, Micro Combo) accepts data-theme
+  // and needs only a template-id swap — the theme plumbing above already works.
   return (
     <div
-      style={{
-        position: "relative",
-        width: `${CANVAS_W - PAD_X * 2}px`,
-        height: `${CANVAS_H - PAD_Y * 2}px`,
-        overflow: "hidden",
-        flex: "none",
-        lineHeight: 0,
-      }}
+      ref={boxRef}
+      className="trustpilot-widget"
+      data-locale="en-US"
+      data-template-id={TEMPLATE_ID}
+      data-businessunit-id={BUSINESSUNIT_ID}
+      data-token={TOKEN}
+      data-theme={theme}
+      data-style-height="44px"
+      data-style-width="100%"
+      style={{ width: "222px", maxWidth: "100%", flex: "none", lineHeight: 0 }}
     >
-      <div
-        ref={boxRef}
-        className="trustpilot-widget"
-        data-locale="en-US"
-        data-template-id={TEMPLATE_ID}
-        data-businessunit-id={BUSINESSUNIT_ID}
-        data-token={TOKEN}
-        data-theme={theme}
-        data-style-height={`${CANVAS_H}px`}
-        data-style-width="100%"
-        style={{
-          position: "absolute",
-          top: `-${PAD_Y}px`,
-          left: `-${PAD_X}px`,
-          width: `${CANVAS_W}px`,
-          height: `${CANVAS_H}px`,
-          lineHeight: 0,
-        }}
+      {/* Trustpilot replaces this link with the widget. Until it does, and for
+          anyone the script never reaches, the link itself is the fallback. */}
+      <a
+        href="https://www.trustpilot.com/review/ozvor.com"
+        target="_blank"
+        rel="noopener"
+        className="mk-footer-link"
       >
-        {/* Trustpilot replaces this link with the widget. Until it does, and for
-            anyone the script never reaches, the link itself is the fallback. */}
-        <a
-          href="https://www.trustpilot.com/review/ozvor.com"
-          target="_blank"
-          rel="noopener"
-          className="mk-footer-link"
-        >
-          Review us on Trustpilot
-        </a>
-      </div>
+        Review us on Trustpilot
+      </a>
     </div>
   );
 }
