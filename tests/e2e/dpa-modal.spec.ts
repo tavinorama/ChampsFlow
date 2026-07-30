@@ -183,19 +183,36 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
 
     await setupSession(page, { dpaAcknowledged: false, countryCode: "DE" });
 
-    // Attempt direct navigation to /create (bypassing DPA gate)
+    // Attempt direct navigation to /create, bypassing the normal entry path.
     await page.goto("/create");
 
-    // Either DPA modal appears, or user is redirected to auth/login
+    // ONE outcome, asserted unconditionally. This test used to branch on
+    // `modal.isVisible({timeout: 3_000})` and assert the OPPOSITE thing in each
+    // branch: modal visible → expect the modal; modal not visible within 3s →
+    // expect a redirect away from /create.
+    //
+    // Those two branches cannot both describe the app. /create is in
+    // AUTHED_APP_PREFIXES, so the root layout wraps it in <DpaGate>, and
+    // DpaGate's design is to STAY on the page and cover it with a blocking
+    // modal — it never redirects. So the `!isModalVisible` branch asserted
+    // behaviour the product has never had: reaching it meant certain failure.
+    // The test therefore did not measure the gate, it measured how fast the
+    // machine was. It passes locally in 4.5s and fails in CI, and both results
+    // were the same code being lucky or unlucky against a 3-second timer.
+    //
+    // setupSession mocks /api/dpa/status with needs_acknowledgment: true, so
+    // there is exactly one correct outcome and we wait properly for it.
     const modal = page.getByRole("dialog").or(page.getByTestId("dpa-modal"));
-    const isModalVisible = await modal.isVisible({ timeout: 3_000 }).catch(() => false);
+    await expect(modal).toBeVisible({ timeout: 10_000 });
 
-    if (!isModalVisible) {
-      // Should have been redirected away from /create
-      expect(page.url()).not.toContain("/create");
-    } else {
-      await expect(modal).toBeVisible();
-    }
+    // Staying on /create is CORRECT, and is asserted so that nobody later
+    // "fixes" this into a redirect. The URL is not the gate: the authoritative
+    // gate is server-side — requireDpaAcknowledged(db) guards every write route
+    // (drafts.ts, schedules.ts, social-accounts.ts, ccpa.ts, billing.ts), so an
+    // EU user sitting on /create without an acknowledgment cannot persist
+    // anything. DpaGate is the UI half, and it deliberately fails open when
+    // /api/dpa/status errors precisely because the API is the real boundary.
+    expect(page.url()).toContain("/create");
   });
 
   test("DPA modal has focus trap (WCAG — keyboard navigation)", async ({ page }) => {
