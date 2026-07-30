@@ -19,7 +19,7 @@
 import Link from "next/link";
 import { LogoMark, Wordmark } from "./brand/Logo";
 import { CookieConsentTrigger } from "./CookieConsent";
-import { TrustpilotReviewCollector } from "./TrustpilotReviewCollector";
+import { TrustpilotBadge } from "./TrustpilotBadge";
 
 const FOOTER_CSS = `
   .mk-footer-link {
@@ -54,7 +54,7 @@ const FOOTER_CSS = `
 
 export interface SiteFooterProps {
   /**
-   * Show Ozvor's Trustpilot TrustBox in the bottom bar.
+   * Show the Trustpilot badge above the bottom bar.
    *
    * Opt-IN, and only the marketing layout passes it. This footer is shared with
    * the SHARED REPORT page (/r/[token]), which agencies white-label, and with
@@ -251,7 +251,7 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
               justifyContent: "flex-end",
             }}
           >
-            <TrustpilotReviewCollector />
+            <TrustpilotBadge />
           </div>
         )}
 

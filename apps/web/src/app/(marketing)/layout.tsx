@@ -469,7 +469,8 @@ export default function MarketingLayout({
       </main>
 
       {/* Marketing footer. showTrustpilot is opt-in here only: the same footer
-          serves the shared report (/r/[token]), which agencies white-label. */}
+          serves the shared report (/r/[token]), which agencies white-label, and
+          an Ozvor badge there would leak our brand into theirs. */}
       <SiteFooter showTrustpilot />
 
       {/* Floating chat widget — overlay, does not affect layout flow */}
