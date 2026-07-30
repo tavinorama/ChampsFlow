@@ -469,9 +469,8 @@ export default function MarketingLayout({
         {children}
       </main>
 
-      {/* Marketing footer. The badge is rendered HERE, not inside the footer:
-          it reads the Trustpilot rating server-side and the footer is a client
-          component. Marketing pages only — the same footer serves the shared
+      {/* Marketing footer. The Trustpilot badge is passed in from here, so it
+          appears on marketing pages ONLY — the same footer serves the shared
           report (/r/[token]), which agencies white-label, and an Ozvor badge
           there would leak our brand into theirs. */}
       <SiteFooter trustpilot={<TrustpilotBadge />} />

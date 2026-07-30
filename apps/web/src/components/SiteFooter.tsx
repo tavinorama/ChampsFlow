@@ -55,11 +55,10 @@ export interface SiteFooterProps {
   /**
    * The Trustpilot badge, rendered above the bottom bar.
    *
-   * Passed IN as a node rather than imported here, because this footer is a
-   * client component and the badge is an ASYNC server component (it reads the
-   * rating server-side). An async component cannot run on the client at all, so
-   * the only way to have both is for the server layout to render the badge and
-   * hand the finished element down. React supports exactly this.
+   * Passed IN as a node rather than imported here. This footer is shared by
+   * every surface in the app, and only marketing pages should carry an Ozvor
+   * review badge — handing the element down keeps that decision at the call
+   * site instead of adding a flag here.
    *
    * Opt-IN, and only the marketing layout passes it. This footer is shared with
    * the SHARED REPORT page (/r/[token]), which agencies white-label, and with
