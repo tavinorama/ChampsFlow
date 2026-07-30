@@ -33,7 +33,7 @@ Every PR and issue must declare exactly one risk level. When in doubt, pick the 
 |---|---|---|---|
 | **LOW** | `claude-ready` | Docs, UI copy, simple pages, tests, blog content | Green CI → merge directly (no review required) |
 | **MEDIUM** | `hermes-review` | package/config changes, DB migrations, infra-as-code, integrations in test mode, non-trivial refactors | Green CI + **Hermes approval** |
-| **HIGH** | `hermes-review` + `security-sensitive` | Auth, RLS, billing code, email sending, domain/DNS, deployment configuration | Green CI + **Hermes approval + founder approval** |
+| **HIGH** | `hermes-review` + `security-sensitive` | Auth, RLS, billing code, email sending, domain/DNS, deployment configuration | Green CI + Hermes review read and answered + **the founder merges (or explicitly authorizes the merge)** |
 | **CRITICAL** | `needs-founder-approval` | Production data, live Stripe, live DNS, paid APIs, destructive commands, production migrations, secrets | **Founder explicitly approves in the PR**, always — no exceptions, no delegation |
 
 Notes that keep the system honest:
@@ -41,6 +41,7 @@ Notes that keep the system honest:
 - **Merge = deploy.** `main` auto-deploys to Railway (api, web, worker). Never merge something you would not deploy.
 - **Risk is set by the highest-risk file touched**, not by the average. One line in `stripe.ts` inside a docs PR makes it HIGH.
 - **Hermes may reclassify.** If a PR labeled LOW touches MEDIUM+ surface, Hermes bumps the label and the new gate applies. Mislabeling is a process bug — log it, don't argue it.
+- **HIGH is a founder merge, not a Hermes approval** (founder decision, 2026-07-29). Hermes reviews HIGH PRs and its blockers must be fixed or answered point-by-point on the PR — but Hermes does not APPROVE HIGH by policy, so a required-approval gate on HIGH deadlocks by construction (this happened on #400: correct review, fixed blocker, unmergeable PR). The GitHub branch protection therefore requires 0 approvals; the review gate for HIGH is procedural: green CI, Hermes review addressed, founder says merge. Dismissing a stale CHANGES_REQUESTED after its blocker is fixed requires explicit founder authorization recorded on the PR.
 - **Hotfix lane:** production down → branch `hotfix/*`, label `hotfix`, minimal diff, CI must still pass; founder may approve verbally and the PR records that approval after the fact (same day).
 - **Secrets are never in scope.** Any PR that would add, print, or commit a secret is rejected at any level. Secrets live only in Railway/Supabase/Stripe dashboards and the founder's password manager.
 - **`no-autodeploy`** label marks changes that must sit on `main` without being considered "live-approved" (e.g. feature-flagged work awaiting a founder switch).
