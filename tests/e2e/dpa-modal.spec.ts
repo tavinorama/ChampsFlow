@@ -16,6 +16,8 @@
  * Architecture refs: CI-1, CI-2, L-UX-1, DPAModal.tsx, DpaGate.tsx
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { signIn } from "./session";
+import { seedConsent } from "./consent";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,14 +40,15 @@ async function setupSession(
     countryCode = "US",
   } = options;
 
-  await page.context().addCookies([
-    {
-      name: "test_session",
-      value: `${userId}:${tenantId}`,
-      domain: "localhost",
-      path: "/",
-    },
-  ]);
+  // "test_session" appears nowhere in apps/web/src — it was a cookie the app
+  // never read, so every test here browsed as a signed-out visitor. Same dead
+  // cookie #397 removed from the billing spec.
+  await signIn(page, `${userId}:${tenantId}`);
+  // Without this the cookie-consent banner mounts as a second role="dialog"
+  // ("We value your privacy") next to the DPA modal, and every strict-mode
+  // dialog locator in this file dies on the ambiguity. This spec is about the
+  // DPA gate; the consent banner has its own spec.
+  await seedConsent(page);
 
   // Override DPA status API based on options
   await page.route("**/api/dpa/status", async (route) => {
@@ -94,11 +97,12 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     const euCopy = page.getByText(/GDPR|data processing agreement|EU/i).first();
     await expect(euCopy).toBeVisible();
 
-    // No access to dashboard content (gated)
-    const mainContent = page.getByTestId("dashboard-content");
-    await expect(mainContent).not.toBeVisible().catch(() => {
-      // acceptable: element may not exist until after DPA acknowledgment
-    });
+    // The gate itself is the assertion. The old line looked for a
+    // "dashboard-content" test id that exists nowhere in apps/web/src and then
+    // wrapped the expect in .catch(), so it could not fail for either reason.
+    // What actually proves the gate is that the modal is modal: it traps the
+    // page until the user acknowledges.
+    await expect(modal).toHaveAttribute("aria-modal", "true");
   });
 
   test("EU user can acknowledge DPA and access the app", async ({ page }) => {
@@ -108,6 +112,30 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     });
 
     await setupSession(page, { dpaAcknowledged: false, countryCode: "DE" });
+    // The mocks must be STATEFUL, like the API they stand in for. The app
+    // redirects /dashboard → /dashboard-v3, which remounts DpaGate and asks
+    // /api/dpa/status again — correct behaviour. A static mock answered that
+    // second ask with needs_acknowledgment:true forever, so the modal the user
+    // had just dismissed came straight back and this test failed against its
+    // own scaffolding, not the product. (The POST also 404s if unmocked.)
+    let acknowledged = false;
+    await page.route("**/api/dpa/acknowledge", async (route) => {
+      acknowledged = true;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    });
+    // Registered AFTER setupSession's static status mock, so it wins.
+    await page.route("**/api/dpa/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current_dpa_version_in_env: "1.0",
+          user_acknowledged_version: acknowledged ? "1.0" : null,
+          variant_required: "EU",
+          needs_acknowledgment: !acknowledged,
+        }),
+      })
+    );
     await page.goto("/dashboard");
 
     // DPA modal should appear
@@ -155,19 +183,36 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
 
     await setupSession(page, { dpaAcknowledged: false, countryCode: "DE" });
 
-    // Attempt direct navigation to /create (bypassing DPA gate)
+    // Attempt direct navigation to /create, bypassing the normal entry path.
     await page.goto("/create");
 
-    // Either DPA modal appears, or user is redirected to auth/login
+    // ONE outcome, asserted unconditionally. This test used to branch on
+    // `modal.isVisible({timeout: 3_000})` and assert the OPPOSITE thing in each
+    // branch: modal visible → expect the modal; modal not visible within 3s →
+    // expect a redirect away from /create.
+    //
+    // Those two branches cannot both describe the app. /create is in
+    // AUTHED_APP_PREFIXES, so the root layout wraps it in <DpaGate>, and
+    // DpaGate's design is to STAY on the page and cover it with a blocking
+    // modal — it never redirects. So the `!isModalVisible` branch asserted
+    // behaviour the product has never had: reaching it meant certain failure.
+    // The test therefore did not measure the gate, it measured how fast the
+    // machine was. It passes locally in 4.5s and fails in CI, and both results
+    // were the same code being lucky or unlucky against a 3-second timer.
+    //
+    // setupSession mocks /api/dpa/status with needs_acknowledgment: true, so
+    // there is exactly one correct outcome and we wait properly for it.
     const modal = page.getByRole("dialog").or(page.getByTestId("dpa-modal"));
-    const isModalVisible = await modal.isVisible({ timeout: 3_000 }).catch(() => false);
+    await expect(modal).toBeVisible({ timeout: 10_000 });
 
-    if (!isModalVisible) {
-      // Should have been redirected away from /create
-      expect(page.url()).not.toContain("/create");
-    } else {
-      await expect(modal).toBeVisible();
-    }
+    // Staying on /create is CORRECT, and is asserted so that nobody later
+    // "fixes" this into a redirect. The URL is not the gate: the authoritative
+    // gate is server-side — requireDpaAcknowledged(db) guards every write route
+    // (drafts.ts, schedules.ts, social-accounts.ts, ccpa.ts, billing.ts), so an
+    // EU user sitting on /create without an acknowledgment cannot persist
+    // anything. DpaGate is the UI half, and it deliberately fails open when
+    // /api/dpa/status errors precisely because the API is the real boundary.
+    expect(page.url()).toContain("/create");
   });
 
   test("DPA modal has focus trap (WCAG — keyboard navigation)", async ({ page }) => {
@@ -182,15 +227,13 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     const modal = page.getByRole("dialog").or(page.getByTestId("dpa-modal"));
     await expect(modal).toBeVisible({ timeout: 5_000 });
 
-    // Tab navigation should stay within modal
+    // A focus trap either holds or it does not. The old version computed
+    // isFocusInModal, never used it, and then asserted that pressing Tab "does
+    // not error out" — inside a .catch() that swallowed even that. Assert the
+    // actual accessibility guarantee: after Tab, focus is still inside the
+    // modal.
     await page.keyboard.press("Tab");
-    const focusedElement = page.locator(":focus");
-    const isFocusInModal = await modal.locator(":focus").count() > 0;
-    // Focus trap check: focused element should be inside the modal
-    if (await modal.isVisible()) {
-      // At minimum, pressing Tab should not error out
-      await expect(focusedElement).toBeVisible().catch(() => { /* acceptable */ });
-    }
+    await expect(modal.locator(":focus")).toHaveCount(1);
   });
 });
 
@@ -241,9 +284,8 @@ test.describe("DPA version mismatch — re-prompt (CI-1)", () => {
       });
     });
 
-    await page.context().addCookies([
-      { name: "test_session", value: "e2e-existing-user:e2e-tenant", domain: "localhost", path: "/" },
-    ]);
+    await signIn(page, "e2e-existing-user:e2e-tenant");
+    await seedConsent(page);
 
     await page.goto("/dashboard");
 
@@ -252,10 +294,11 @@ test.describe("DPA version mismatch — re-prompt (CI-1)", () => {
     await expect(modal).toBeVisible({ timeout: 5_000 });
 
     // Should mention update or new version
+    // Asserted for real. The .catch() here meant a re-acknowledgment modal that
+    // never explained WHY it reappeared would still pass — which is the one
+    // thing this test exists to catch.
     const updateText = page.getByText(/updated|new version|please review/i).first();
-    await expect(updateText).toBeVisible().catch(() => {
-      // acceptable: implementation may not explicitly say "updated" in this iteration
-    });
+    await expect(updateText).toBeVisible();
   });
 });
 
@@ -274,10 +317,12 @@ test.describe("California banner — US user detection (CI-2)", () => {
     await page.goto("/dashboard");
 
     // California banner should be visible
-    const banner = page.getByTestId("california-banner").or(
-      page.getByText(/california privacy|do not sell/i).first()
-    );
-    await expect(banner).toBeVisible({ timeout: 5_000 });
+    // Same locator as the EU case, for the same reason: the fallback here
+    // matched the permanent footer link, so this test passed for every
+    // visitor — Californian or not — and proved nothing.
+    await expect(
+      page.getByRole("region", { name: /privacy rights notice/i })
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("EU user (cf-ipcountry=DE) does NOT see California banner", async ({ page }) => {
@@ -289,11 +334,16 @@ test.describe("California banner — US user detection (CI-2)", () => {
     await setupSession(page, { dpaAcknowledged: true, countryCode: "DE" });
     await page.goto("/dashboard");
 
-    // California banner should NOT be visible for EU users
-    const banner = page.getByTestId("california-banner");
-    await expect(banner).not.toBeVisible({ timeout: 3_000 }).catch(() => {
-      // If testid not present, check for absence of California-specific banner text
-    });
+    // The banner is a labelled region (CaliforniaBanner: role="region"
+    // aria-label="Privacy rights notice"), so assert on that and nothing else.
+    //
+    // Matching loose "do not sell" copy is wrong twice over: the old line used
+    // a test id that does not exist, and my first fix matched the footer link
+    // in AppLegalStrip — which CCPA requires on EVERY page, for every visitor,
+    // and which the next test in this file asserts is always there.
+    await expect(
+      page.getByRole("region", { name: /privacy rights notice/i })
+    ).toHaveCount(0);
   });
 
   test("'Do Not Sell' link is present in footer on all pages", async ({ page }) => {
