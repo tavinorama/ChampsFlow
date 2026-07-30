@@ -121,11 +121,30 @@ export function TrustpilotReviewCollector() {
       data-businessunit-id={BUSINESSUNIT_ID}
       data-token={TOKEN}
       data-theme={theme}
-      data-style-height="52px"
+      data-style-height="44px"
       data-style-width="100%"
-      // Sized by the footer, not by itself, so it sits in the bottom row
-      // instead of pushing it around.
-      style={{ width: "100%", maxWidth: "260px", lineHeight: 0 }}
+      // The Review Collector template IGNORES data-theme — proven by the iframe
+      // URL Trustpilot builds, which carries only templateId and
+      // businessunitId. Its card is always white, and being a cross-origin
+      // iframe there is no CSS of ours that can reach inside it.
+      //
+      // So instead of fighting the white, make it deliberate: a rounded chip,
+      // clipped to the container. overflow:hidden with a radius turns the raw
+      // square slab into a badge that reads as designed on a dark footer, which
+      // is how Trustpilot badges normally sit on dark sites. Width is trimmed to
+      // the content so white does not trail off to the right of the wordmark.
+      style={{
+        width: "222px",
+        maxWidth: "100%",
+        height: "44px",
+        lineHeight: 0,
+        borderRadius: "8px",
+        overflow: "hidden",
+        // A hairline in the site's own border token keeps the chip from
+        // floating: it belongs to the footer, not on top of it.
+        boxShadow: "0 0 0 1px var(--color-border)",
+        flex: "none",
+      }}
     >
       {/* Trustpilot replaces this link with the widget. Until it does, and for
           anyone the script never reaches, the link itself is the fallback. */}

@@ -238,17 +238,33 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
           </div>
         </div>
 
+        {/* Trust badge — right-aligned, ABOVE the divider on purpose.
+            The bottom-right corner is where the floating "Ask AI" button lives
+            (position: fixed), and it covered the badge by 105px horizontally
+            and 23px vertically when this sat in the bottom bar. Measured, not
+            guessed. One row up keeps the right alignment and clears the chat. */}
+        {showTrustpilot && (
+          <div
+            style={{
+              marginTop: "var(--space-8)",
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            <TrustpilotReviewCollector />
+          </div>
+        )}
+
         {/* Bottom bar */}
         <div
           style={{
-            marginTop: "var(--space-10)",
+            marginTop: "var(--space-4)",
             paddingTop: "var(--space-6)",
             borderTop: "1px solid var(--color-border)",
             display: "flex",
             flexWrap: "wrap",
             gap: "var(--space-4)",
             alignItems: "center",
-            justifyContent: "space-between",
           }}
         >
           {/* The two legal lines are ONE block on the left, stacked tight (they
@@ -272,8 +288,6 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
             </p>
           </div>
 
-          {/* Right-hand side of the same row. Wraps under the text on a phone. */}
-          {showTrustpilot && <TrustpilotReviewCollector />}
         </div>
       </div>
     </footer>
