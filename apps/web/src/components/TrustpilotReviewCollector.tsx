@@ -1,29 +1,35 @@
 "use client";
 
 /**
- * Trustpilot TrustBox — Review Collector, under the landing form.
+ * Trustpilot TrustBox — Review Collector, in the marketing footer.
  *
- * Two things make a third-party widget non-trivial here, and both have bitten
+ * Four things make a third-party widget non-trivial here, and each has bitten
  * this codebase before:
  *
  * 1. THE CSP. The app runs nonce + 'strict-dynamic' (see middleware.ts). A
  *    pasted <script src> in markup has no nonce and is blocked — silently, the
  *    way /play was dead in production while working locally. The pattern that
- *    does work is the one Ga4Analytics already uses: create the element from
+ *    works is the one Ga4Analytics already uses: create the element from
  *    JavaScript that is itself already trusted, which 'strict-dynamic' permits.
- *    widget.trustpilot.com is also added to script-src and frame-src as the
+ *    widget.trustpilot.com is also named in script-src and frame-src as the
  *    host-allowlist fallback for browsers that ignore strict-dynamic.
  *
  * 2. CONSENT. The TrustBox is a third party that sets its own cookies, so it is
  *    gated on marketing consent exactly like GA4 is gated on analytics. A
- *    visitor who declines sees nothing at all rather than a broken frame. That
- *    is a deliberate compliance choice, not caution for its own sake: this
- *    product is sold on being honest about data, and loading an unconsented
- *    tracker on the first page a stranger sees would contradict that.
+ *    visitor who declines sees nothing rather than a broken frame.
  *
- * Trustpilot renders the widget INTO the div by reading its data-* attributes
- * once its bootstrap script loads. Ids come from the founder's TrustBox config
- * (Review Collector template, ozvor.com business unit).
+ * 3. THEME. The widget draws itself inside a cross-origin iframe, so no CSS of
+ *    ours can reach it — the ONLY lever is Trustpilot's own `data-theme`. This
+ *    component mirrors the site's theme into it and re-renders the box when the
+ *    visitor flips the toggle, so a dark page never shows a white slab. The
+ *    site's own convention is inverted from Trustpilot's: dark is the default
+ *    and carries NO attribute, while light sets data-theme="light" on <html>
+ *    (see marketing/ThemeToggle). The toggle dispatches no event, so the only
+ *    reliable signal is observing that attribute.
+ *
+ * 4. RE-RENDERING. Trustpilot's bootstrap scans the DOM once on load. Any later
+ *    change — a client-side navigation, or a theme flip — needs
+ *    loadFromElement(el, true) or the box keeps its first appearance.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -47,17 +53,41 @@ declare global {
 /** Appended once per page, even if the component remounts. */
 let bootstrapRequested = false;
 
+/** The site is dark unless <html data-theme="light"> says otherwise. */
+function readSiteTheme(): "light" | "dark" {
+  if (typeof document === "undefined") return "dark";
+  return document.documentElement.getAttribute("data-theme") === "light"
+    ? "light"
+    : "dark";
+}
+
 export function TrustpilotReviewCollector() {
   const [allowed, setAllowed] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Consent is read in an effect, never during render: the server has no
-  // localStorage, and reading it during render would hydrate mismatched.
+  // Consent and theme are both read in effects, never during render: the server
+  // has neither localStorage nor a resolved theme, and reading either while
+  // rendering would hydrate mismatched.
   useEffect(() => {
-    const sync = () => setAllowed(hasConsent("marketing"));
-    sync();
-    window.addEventListener(CONSENT_CHANGED_EVENT, sync);
-    return () => window.removeEventListener(CONSENT_CHANGED_EVENT, sync);
+    const syncConsent = () => setAllowed(hasConsent("marketing"));
+    syncConsent();
+    window.addEventListener(CONSENT_CHANGED_EVENT, syncConsent);
+
+    setTheme(readSiteTheme());
+    // ThemeToggle mutates <html data-theme> and fires no event, so watch the
+    // attribute itself. This also catches a theme restored from localStorage
+    // after our first paint.
+    const observer = new MutationObserver(() => setTheme(readSiteTheme()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+
+    return () => {
+      window.removeEventListener(CONSENT_CHANGED_EVENT, syncConsent);
+      observer.disconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -71,14 +101,13 @@ export function TrustpilotReviewCollector() {
       document.head.appendChild(script);
     }
 
-    // The bootstrap only scans the DOM once. When it is already on the page —
-    // a client-side navigation back to the landing — the div must be handed to
-    // it explicitly or the widget stays an empty box.
+    // Runs on mount AND on every theme change: React has already written the
+    // new data-theme onto the div, and this makes Trustpilot read it again.
     const el = boxRef.current;
     if (el && window.Trustpilot?.loadFromElement) {
       window.Trustpilot.loadFromElement(el, true);
     }
-  }, [allowed]);
+  }, [allowed, theme]);
 
   // Nothing at all until consent: an empty bordered box reads as broken.
   if (!allowed) return null;
@@ -90,10 +119,13 @@ export function TrustpilotReviewCollector() {
       data-locale="en-US"
       data-template-id={TEMPLATE_ID}
       data-businessunit-id={BUSINESSUNIT_ID}
+      data-token={TOKEN}
+      data-theme={theme}
       data-style-height="52px"
       data-style-width="100%"
-      data-token={TOKEN}
-      style={{ marginTop: "var(--space-3, 12px)" }}
+      // Sized by the footer, not by itself, so it sits in the bottom row
+      // instead of pushing it around.
+      style={{ width: "100%", maxWidth: "260px", lineHeight: 0 }}
     >
       {/* Trustpilot replaces this link with the widget. Until it does, and for
           anyone the script never reaches, the link itself is the fallback. */}
@@ -101,8 +133,9 @@ export function TrustpilotReviewCollector() {
         href="https://www.trustpilot.com/review/ozvor.com"
         target="_blank"
         rel="noopener"
+        className="mk-footer-link"
       >
-        Trustpilot
+        Review us on Trustpilot
       </a>
     </div>
   );

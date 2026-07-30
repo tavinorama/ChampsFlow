@@ -254,16 +254,15 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
           <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
             &copy; {currentYear} Ozvor. All audit data comes from real queries on real engines.
           </p>
+
+          {/* Inside the bottom row, not stacked under it: the row is already a
+              wrapping flex, so the box reads as one more item in the same line
+              on desktop and stacks by itself on a phone. */}
+          {showTrustpilot && <TrustpilotReviewCollector />}
           <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
             Serving SMBs in Brazil, the EU &amp; the United States.
           </p>
         </div>
-
-        {showTrustpilot && (
-          <div style={{ marginTop: "var(--space-4)", maxWidth: "320px" }}>
-            <TrustpilotReviewCollector />
-          </div>
-        )}
       </div>
     </footer>
   );
