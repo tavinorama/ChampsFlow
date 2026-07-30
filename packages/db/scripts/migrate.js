@@ -98,7 +98,22 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('Migration failed:', err.message);
-  process.exit(1);
-});
+// Exit EXPLICITLY on success. This runs as the first half of the API's start
+// command (`migrate && node dist/.../index.js`), so if this process merely
+// finishes its work without exiting, the API never starts and the deploy dies
+// on a healthcheck timeout with no error to read. That is exactly what happened
+// on the first armed deploy (2026-07-30 23:14): every migration logged
+// "Skipping (already applied)", then "No pending migrations.", then seven
+// minutes of silence and "Stopping Container" — no api_started line, because
+// the shell was still waiting on this process.
+//
+// postgres.js can keep the event loop alive after `sql.end()` (TLS socket and
+// internal timers), and a migration runner has nothing left to do once its
+// work is committed, so forcing the exit is correct rather than papering over
+// a leak.
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Migration failed:', err.message);
+    process.exit(1);
+  });
