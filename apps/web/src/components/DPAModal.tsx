@@ -31,6 +31,14 @@ import { useEffect, useRef, useState, useId } from "react";
 export interface DPAModalProps {
   dpa_variant: "EU" | "US";
   dpa_version: string;
+  /**
+   * The version this user acknowledged BEFORE, when there is one. Non-null
+   * means this is a re-acknowledgment: the terms moved under a user who had
+   * already agreed. The modal must say so — a returning user shown the
+   * first-time modal with no explanation reads it as a bug, or worse, as us
+   * quietly re-asking for something they already gave.
+   */
+  previously_acknowledged_version?: string | null;
   onAcknowledged: () => void;
   onExit: () => void;
 }
@@ -38,9 +46,13 @@ export interface DPAModalProps {
 export function DPAModal({
   dpa_variant,
   dpa_version,
+  previously_acknowledged_version = null,
   onAcknowledged,
   onExit,
 }: DPAModalProps) {
+  const isReacknowledgment =
+    previously_acknowledged_version != null &&
+    previously_acknowledged_version !== dpa_version;
   const titleId = useId();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +195,24 @@ export function DPAModal({
           >
             Before you continue
           </h2>
+
+          {isReacknowledgment && (
+            <p
+              style={{
+                fontSize: "15px",
+                lineHeight: 1.5,
+                margin: "0 0 12px 0",
+                padding: "10px 12px",
+                borderLeft: "3px solid var(--color-primary)",
+                background: "var(--color-surface-alt, rgba(10,126,90,0.06))",
+                color: "var(--color-text)",
+              }}
+            >
+              We&rsquo;ve <b>updated</b> our data processing terms since you last
+              agreed (version {previously_acknowledged_version} &rarr;{" "}
+              {dpa_version}). Please review the changes below before continuing.
+            </p>
+          )}
 
           {/* Copy — VERBATIM from docs/04-ux.md §6 CI-1 (EU) or CI-1b (US) */}
           {dpa_variant === "EU" ? (
