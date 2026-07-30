@@ -468,8 +468,9 @@ export default function MarketingLayout({
         {children}
       </main>
 
-      {/* Marketing footer */}
-      <SiteFooter />
+      {/* Marketing footer. showTrustpilot is opt-in here only: the same footer
+          serves the shared report (/r/[token]), which agencies white-label. */}
+      <SiteFooter showTrustpilot />
 
       {/* Floating chat widget — overlay, does not affect layout flow */}
       <ChatWidget />

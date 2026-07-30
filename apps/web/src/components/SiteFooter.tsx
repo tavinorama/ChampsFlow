@@ -19,6 +19,7 @@
 import Link from "next/link";
 import { LogoMark, Wordmark } from "./brand/Logo";
 import { CookieConsentTrigger } from "./CookieConsent";
+import { TrustpilotReviewCollector } from "./TrustpilotReviewCollector";
 
 const FOOTER_CSS = `
   .mk-footer-link {
@@ -51,7 +52,20 @@ const FOOTER_CSS = `
   }
 `;
 
-export function SiteFooter() {
+export interface SiteFooterProps {
+  /**
+   * Show Ozvor's Trustpilot TrustBox in the bottom bar.
+   *
+   * Opt-IN, and only the marketing layout passes it. This footer is shared with
+   * the SHARED REPORT page (/r/[token]), which agencies white-label, and with
+   * login/legal pages. An Ozvor "review us" box on a white-labelled client
+   * report would leak our brand into theirs — the same reason the cookie banner
+   * and GA4 are skipped on tenant sites (/l/*).
+   */
+  showTrustpilot?: boolean;
+}
+
+export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -244,6 +258,12 @@ export function SiteFooter() {
             Serving SMBs in Brazil, the EU &amp; the United States.
           </p>
         </div>
+
+        {showTrustpilot && (
+          <div style={{ marginTop: "var(--space-4)", maxWidth: "320px" }}>
+            <TrustpilotReviewCollector />
+          </div>
+        )}
       </div>
     </footer>
   );
