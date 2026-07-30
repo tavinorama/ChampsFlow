@@ -406,7 +406,7 @@ export function ChatWidget() {
             maxWidth: "clamp(0px, 100vw - 120px, 80px)",
           }}
         >
-          Ask AI
+          Ask Ozvor
         </span>
       </button>
 
