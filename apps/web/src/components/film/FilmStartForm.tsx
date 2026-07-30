@@ -33,6 +33,7 @@ import { SocialAuthButtons } from "../auth/SocialAuthButtons";
 import { saveFormDraft } from "../../lib/form-draft";
 import { trackEvent } from "../../lib/track";
 import { useVerifiedEmail } from "../../lib/use-verified-email";
+import { TrustpilotReviewCollector } from "../TrustpilotReviewCollector";
 
 /** Same sessionStorage draft the free test page reads on mount. */
 const FREE_TEST_DRAFT_KEY = "free-test";
@@ -165,6 +166,10 @@ export function FilmStartForm() {
         <b>No card.</b> Results in 60 seconds. 30 day money back on any paid
         plan.
       </p>
+
+      {/* Social proof right where the visitor decides. Renders only for a
+          visitor who accepted marketing cookies — see the component. */}
+      <TrustpilotReviewCollector />
     </div>
   );
 }

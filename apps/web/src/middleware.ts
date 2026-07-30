@@ -67,14 +67,25 @@ export async function middleware(request: NextRequest) {
     // host-allowlist fallbacks for browsers that ignore 'strict-dynamic'.
     // www.googletagmanager.com (GA4 gtag.js, consent-gated in Ga4Analytics) is
     // a host-allowlist fallback like the others below.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com`,
+    // widget.trustpilot.com (TrustBox bootstrap, consent-gated in
+    // TrustpilotReviewCollector) is the same kind of fallback: the script is
+    // injected from already-trusted JS, which strict-dynamic allows by itself,
+    // but a browser that ignores strict-dynamic needs the host named or the
+    // widget silently never renders — the way /play was dead in production.
+    // 'unsafe-eval' in DEVELOPMENT ONLY: `next dev` compiles modules through
+    // webpack's eval-based runtime, so without it NO client JavaScript runs —
+    // pages render server-side and every effect, the cookie banner and this
+    // Trustpilot widget silently never mount. That is exactly how this change
+    // first "failed" verification. `next dev` hard-sets NODE_ENV=development
+    // and `next start` forces production, so this can never be true in prod.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""} https://js.stripe.com https://assets.calendly.com https://www.googletagmanager.com https://widget.trustpilot.com`,
     // Next.js injects inline <style> for CSS-in-JS; 'unsafe-inline' for styles
     // is low-risk (styles can't exfiltrate data) and required. Calendly also
     // injects its own inline styles for the embed.
     "style-src 'self' 'unsafe-inline' https://assets.calendly.com",
     // *.google-analytics.com / *.googletagmanager.com: GA4 collect pixels.
-    "img-src 'self' data: https://media.licdn.com https://pbs.twimg.com https://instagram.com https://cdninstagram.com https://images.unsplash.com https://*.calendly.com https://*.google-analytics.com https://*.googletagmanager.com",
-    "font-src 'self' https://assets.calendly.com",
+    "img-src 'self' data: https://media.licdn.com https://pbs.twimg.com https://instagram.com https://cdninstagram.com https://images.unsplash.com https://*.calendly.com https://*.google-analytics.com https://*.googletagmanager.com https://*.trustpilot.com",
+    "font-src 'self' https://assets.calendly.com https://widget.trustpilot.com",
     // GA4 sends hits to regionalized *.google-analytics.com / *.analytics.google.com.
     "connect-src 'self' https://*.supabase.co https://api.stripe.com https://r.stripe.com https://calendly.com https://*.calendly.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
     // Calendly renders its booking UI in an iframe from calendly.com.
@@ -82,7 +93,9 @@ export async function middleware(request: NextRequest) {
     // section, #208 PR-9): free/unlimited Maps Embed API, browser-restricted
     // key baked into the src, no script execution — the iframe itself is the
     // sandbox boundary.
-    "frame-src https://js.stripe.com https://hooks.stripe.com https://calendly.com https://www.google.com",
+    // widget.trustpilot.com — the TrustBox draws itself inside an iframe, so
+    // without this the bootstrap loads and the box stays empty.
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://calendly.com https://www.google.com https://widget.trustpilot.com",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
