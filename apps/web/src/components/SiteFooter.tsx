@@ -251,17 +251,29 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
             justifyContent: "space-between",
           }}
         >
-          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-            &copy; {currentYear} Ozvor. All audit data comes from real queries on real engines.
-          </p>
+          {/* The two legal lines are ONE block on the left, stacked tight (they
+              are a single thought: who we are and where we operate), so the
+              TrustBox can sit alone on the right without a gap opening between
+              them. Before this they were separate flex children and
+              space-between pushed them to opposite ends of the row. */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px",
+              minWidth: 0,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+              &copy; {currentYear} Ozvor. All audit data comes from real queries on real engines.
+            </p>
+            <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+              Serving SMBs in Brazil, the EU &amp; the United States.
+            </p>
+          </div>
 
-          {/* Inside the bottom row, not stacked under it: the row is already a
-              wrapping flex, so the box reads as one more item in the same line
-              on desktop and stacks by itself on a phone. */}
+          {/* Right-hand side of the same row. Wraps under the text on a phone. */}
           {showTrustpilot && <TrustpilotReviewCollector />}
-          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-            Serving SMBs in Brazil, the EU &amp; the United States.
-          </p>
         </div>
       </div>
     </footer>
