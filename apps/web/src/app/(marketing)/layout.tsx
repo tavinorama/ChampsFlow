@@ -31,6 +31,7 @@ import { orgJsonLd, websiteJsonLd } from "../../lib/structured-data";
 import { safeJsonLd } from "../../lib/safe-json-ld";
 import { ChatWidget } from "../../components/ChatWidget";
 import { SiteFooter } from "../../components/SiteFooter";
+import { TrustpilotBadge } from "../../components/TrustpilotBadge";
 import { FreeTestCta } from "../../components/marketing/FreeTestCta";
 
 // ---------------------------------------------------------------------------
@@ -468,8 +469,11 @@ export default function MarketingLayout({
         {children}
       </main>
 
-      {/* Marketing footer */}
-      <SiteFooter />
+      {/* Marketing footer. The Trustpilot badge is passed in from here, so it
+          appears on marketing pages ONLY — the same footer serves the shared
+          report (/r/[token]), which agencies white-label, and an Ozvor badge
+          there would leak our brand into theirs. */}
+      <SiteFooter trustpilot={<TrustpilotBadge />} />
 
       {/* Floating chat widget — overlay, does not affect layout flow */}
       <ChatWidget />

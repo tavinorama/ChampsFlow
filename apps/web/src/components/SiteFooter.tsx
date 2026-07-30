@@ -51,7 +51,25 @@ const FOOTER_CSS = `
   }
 `;
 
-export function SiteFooter() {
+export interface SiteFooterProps {
+  /**
+   * The Trustpilot badge, rendered above the bottom bar.
+   *
+   * Passed IN as a node rather than imported here. This footer is shared by
+   * every surface in the app, and only marketing pages should carry an Ozvor
+   * review badge — handing the element down keeps that decision at the call
+   * site instead of adding a flag here.
+   *
+   * Opt-IN, and only the marketing layout passes it. This footer is shared with
+   * the SHARED REPORT page (/r/[token]), which agencies white-label, and with
+   * login/legal pages. An Ozvor "review us" box on a white-labelled client
+   * report would leak our brand into theirs — the same reason the cookie banner
+   * and GA4 are skipped on tenant sites (/l/*).
+   */
+  trustpilot?: React.ReactNode;
+}
+
+export function SiteFooter({ trustpilot }: SiteFooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -224,25 +242,62 @@ export function SiteFooter() {
           </div>
         </div>
 
+        {/* Trust badge — right-aligned, ABOVE the divider on purpose.
+            The bottom-right corner is where the floating "Ask AI" button lives
+            (position: fixed), and it covered the badge by 105px horizontally
+            and 23px vertically when this sat in the bottom bar. Measured, not
+            guessed. One row up keeps the right alignment and clears the chat. */}
+        {trustpilot && (
+          <div
+            style={{
+              // Close to the legal lines it belongs with, not floating between
+              // the columns above and the bottom bar. It stays ABOVE the divider
+              // because the bottom-right corner is the fixed "Ask Ozvor"
+              // launcher's, and a badge placed in the bottom bar was measured
+              // overlapping it by 105x23px.
+              marginTop: "var(--space-6)",
+              marginBottom: "var(--space-1)",
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            {trustpilot}
+          </div>
+        )}
+
         {/* Bottom bar */}
         <div
           style={{
-            marginTop: "var(--space-10)",
-            paddingTop: "var(--space-6)",
+            marginTop: "var(--space-2)",
+            paddingTop: "var(--space-4)",
             borderTop: "1px solid var(--color-border)",
             display: "flex",
             flexWrap: "wrap",
             gap: "var(--space-4)",
             alignItems: "center",
-            justifyContent: "space-between",
           }}
         >
-          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-            &copy; {currentYear} Ozvor. All audit data comes from real queries on real engines.
-          </p>
-          <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
-            Serving SMBs in Brazil, the EU &amp; the United States.
-          </p>
+          {/* The two legal lines are ONE block on the left, stacked tight (they
+              are a single thought: who we are and where we operate), so the
+              TrustBox can sit alone on the right without a gap opening between
+              them. Before this they were separate flex children and
+              space-between pushed them to opposite ends of the row. */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px",
+              minWidth: 0,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+              &copy; {currentYear} Ozvor. All audit data comes from real queries on real engines.
+            </p>
+            <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", fontFamily: "var(--font-family)" }}>
+              Serving SMBs in Brazil, the EU &amp; the United States.
+            </p>
+          </div>
+
         </div>
       </div>
     </footer>

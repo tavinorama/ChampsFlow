@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned, isSupabaseConfigured, getSupabase } from "../../lib/supabase-browser";
 import { OzvorScorecard, type ThreeScores } from "../../components/OzvorScorecard";
+import { ReviewInvite } from "../../components/ReviewInvite";
 import { CancelRetentionFlow } from "../../components/CancelRetentionFlow";
 import { VerifiedCitations, type ExtractionTelemetry } from "../../components/VerifiedCitations";
 import { EngineConfidence } from "../../components/EngineConfidence";
@@ -1112,6 +1113,13 @@ function OverviewTab({
           <AnalyticsChart trend={trend} brandId={brandId} />
         </>
       )}
+
+      {/* The review ask, and only for someone who has run more than one audit.
+          A first-run customer has seen a number, not a product; asking them
+          would buy a review of a demo. This gate is the reason the ask can be
+          unconditional — we never pre-screen for happy customers, which
+          Trustpilot bans and which would make the rating meaningless anyway. */}
+      {trend.length >= 2 && <ReviewInvite audits={trend.length} />}
 
       <p style={S.note}>
         Every number here comes from real questions run on real AI engines. When we can’t measure something, we say so —
