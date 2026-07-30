@@ -35,6 +35,15 @@ export async function sendNurtureKit3Email(
     process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const bookUrl = `${WEB_ORIGIN}/book`;
+  // The review ask rides on the LAST email of the sequence, a week after the
+  // purchase — long enough that the buyer has an opinion worth publishing, and
+  // the one email where we are not also asking for money.
+  //
+  // Trustpilot's rules shape this: nothing is offered in return, the same ask
+  // goes to every buyer, and we never ask "were you happy?" first and route only
+  // the happy ones here. That is review gating and it is banned — it would also
+  // make the rating we then print in the footer worthless.
+  const reviewUrl = "https://www.trustpilot.com/review/ozvor.com";
   const subject =
     "One founder's 30-day AI citation result (recap + last call)";
 
@@ -54,6 +63,10 @@ export async function sendNurtureKit3Email(
     "OrganicPosts GEO Sprint: we implement your Kit fixes, publish citation-ready content, and submit to the directories AI actually cites — in 2 weeks. You review and approve; we handle the rest.",
     "",
     "Book a call: " + bookUrl,
+    "",
+    "One last thing, and it costs you two minutes:",
+    "Was the Kit worth the $29? Say so on Trustpilot — either way. We ask every buyer, and we can't edit what you write. That's why it's worth reading.",
+    reviewUrl,
     "",
     "— The Ozvor Team",
     "https://ozvor.com",
@@ -145,6 +158,22 @@ export async function sendNurtureKit3Email(
   <div style="text-align:center;margin-bottom:32px;">
     <a href="${bookUrl}" style="${btnStyle}">
       Book a GEO Sprint call
+    </a>
+  </div>
+
+  <!-- Review ask. Deliberately AFTER the CTA and visually quieter than it: it
+       is a favour we are asking, not the point of the email. -->
+  <div style="border-top:1px solid #E5E7EB;padding-top:20px;margin-bottom:8px;">
+    <h2 style="font-size:14px;font-weight:600;color:#111827;margin:0 0 8px 0;">
+      One last thing, and it costs you two minutes
+    </h2>
+    <p style="margin:0 0 12px 0;color:#374151;font-size:14px;line-height:1.6;">
+      Was the Kit worth the $29? Say so on Trustpilot &mdash; either way. We ask
+      every buyer, and we can&rsquo;t edit what you write. That is exactly why it
+      is worth reading.
+    </p>
+    <a href="${reviewUrl}" style="color:#0c7d54;text-decoration:none;font-weight:600;font-size:14px;">
+      Write a review &rarr;
     </a>
   </div>
 

@@ -19,7 +19,6 @@
 import Link from "next/link";
 import { LogoMark, Wordmark } from "./brand/Logo";
 import { CookieConsentTrigger } from "./CookieConsent";
-import { TrustpilotBadge } from "./TrustpilotBadge";
 
 const FOOTER_CSS = `
   .mk-footer-link {
@@ -54,7 +53,13 @@ const FOOTER_CSS = `
 
 export interface SiteFooterProps {
   /**
-   * Show the Trustpilot badge above the bottom bar.
+   * The Trustpilot badge, rendered above the bottom bar.
+   *
+   * Passed IN as a node rather than imported here, because this footer is a
+   * client component and the badge is an ASYNC server component (it reads the
+   * rating server-side). An async component cannot run on the client at all, so
+   * the only way to have both is for the server layout to render the badge and
+   * hand the finished element down. React supports exactly this.
    *
    * Opt-IN, and only the marketing layout passes it. This footer is shared with
    * the SHARED REPORT page (/r/[token]), which agencies white-label, and with
@@ -62,10 +67,10 @@ export interface SiteFooterProps {
    * report would leak our brand into theirs — the same reason the cookie banner
    * and GA4 are skipped on tenant sites (/l/*).
    */
-  showTrustpilot?: boolean;
+  trustpilot?: React.ReactNode;
 }
 
-export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
+export function SiteFooter({ trustpilot }: SiteFooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -243,7 +248,7 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
             (position: fixed), and it covered the badge by 105px horizontally
             and 23px vertically when this sat in the bottom bar. Measured, not
             guessed. One row up keeps the right alignment and clears the chat. */}
-        {showTrustpilot && (
+        {trustpilot && (
           <div
             style={{
               // Close to the legal lines it belongs with, not floating between
@@ -257,7 +262,7 @@ export function SiteFooter({ showTrustpilot = false }: SiteFooterProps) {
               justifyContent: "flex-end",
             }}
           >
-            <TrustpilotBadge />
+            {trustpilot}
           </div>
         )}
 
