@@ -47,7 +47,12 @@ test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () =
 
     // Scorecard: a verdict + the per-engine table + the Kit CTA.
     await expect(page.locator("body")).toContainText(/cited|invisible/i, { timeout: 30_000 });
-    await expect(page.getByRole("link", { name: /get my kit/i })).toBeVisible();
+    // The link's accessible name is "Get my Get-Cited Kit — $29, one-time".
+    // The old locator asked for /get my kit/i, which does NOT match it: the
+    // product name "Get-Cited" sits between "my" and "Kit". So this assertion
+    // failed against a results page that was rendering the CTA correctly and
+    // prominently — the test was describing copy the page has never had.
+    await expect(page.getByRole("link", { name: /get my .*kit/i })).toBeVisible();
   });
 
   test("kit checkout (dev-unlock) delivers audit + 3 drafts", async ({ page }) => {
