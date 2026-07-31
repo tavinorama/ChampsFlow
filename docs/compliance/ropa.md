@@ -25,22 +25,24 @@
 
 ### Appointment Records — DPO (LGPD Art. 41 Encarregado) & EU Representative (GDPR Art. 27)
 
-> Added 2026-07-24 by `legal-privacy-officer`. This subsection provides the appointment record **templates** and the founder decisions required to close the two Gate 7 hard stops referenced above. **No appointment has been executed as of this update** — the fields below are blank templates, not completed records. Do not treat any name in this subsection as appointed until the founder has filled in, signed, and dated it. The full decision list is in this subsection (A1/A2 and B1/B2 below) — it is **not** in `gate-log.md`, which has no entry for this update, and there is therefore **no current Gate 7 verdict** on any of it.
+> Added 2026-07-24 by `legal-privacy-officer`. **Updated 2026-07-31: decision A1 is resolved — the Encarregado is the founder, and the record below is no longer a blank template.** The GDPR Art. 27 EU representative (section B) remains unappointed and is still a Gate 7 hard stop. Decision A2 (whether the Encarregado's civil name is published) remains open. Do not treat any name in this subsection as appointed until the founder has filled in, signed, and dated it. The full decision list is in this subsection (A1/A2 and B1/B2 below) — it is **not** in `gate-log.md`, which has no entry for this update, and there is therefore **no current Gate 7 verdict** on any of it.
 
 **A. LGPD Art. 41 — Encarregado de Dados (Data Protection Officer) appointment record**
 
 | Field | Value |
 |---|---|
 | Appointing entity | Ozvor (Brazilian MEI, CNPJ 67.609.444/0001-08) |
-| Appointee (must be a natural person — LGPD Art. 41 does not permit a legal entity for a Brazilian controller) | **[FOUNDER TO FILL: full name of the natural person]** |
-| Contact channel to be published (LGPD Art. 41 §1) | dpo@ozvor.com (already live on the Privacy Policy page) |
+| Appointee (must be a natural person — LGPD Art. 41 does not permit a legal entity for a Brazilian controller) | **The founder** — the natural person who holds CNPJ 67.609.444/0001-08. Decided by the founder on 2026-07-31 ("o encarregado LGPD sou eu mesmo e isso já está definido"). The civil name is not reproduced here, per the controller's standing instruction; it is a matter of public record in the ANPD/Receita Federal CNPJ registry, because an MEI's razão social **is** the holder's civil name. See A2 for whether it is published on the Privacy Policy. |
+| Contact channel to be published (LGPD Art. 41 §1) | dpo@ozvor.com (live on the Privacy Policy page) |
 | Scope of role | Receive data-subject and ANPD communications; interface with data subjects; orient staff/contractors on LGPD practices; receive breach reports and coordinate the 2-business-day ANPD notification (ANPD Resolution CD/ANPD 02/2022) |
-| Date of appointment | **[FOUNDER TO FILL]** |
-| Signature | **[FOUNDER TO SIGN]** |
+| Date of appointment | **2026-07-31** (date the founder confirmed the decision) |
+| Signature | **[FOUNDER TO SIGN — the decision is recorded; a signed/dated instrument is still owed]** |
 
-**Founder decision required (A1)**: Who is the Encarregado? Given Ozvor is a solo-founder MEI, the natural default is the founder himself. ANPD has not published a small-business exemption from Art. 41; a natural person must be named. The founder must decide and provide the name to insert above.
+**Founder decision A1 — RESOLVED 2026-07-31**: The Encarregado is the founder himself. This was the expected default for a solo-founder MEI, and ANPD publishes no small-business exemption from Art. 41. What remains is not the decision but the **instrument**: a signed and dated appointment, and the Art. 41 §1 public disclosure (see A2).
 
 **Founder decision required (A2)**: Does the founder want the Encarregado's **personal name** published on the Privacy Policy (a literal reading of LGPD Art. 41 §1 — "identidade e informações de contato" — favours this), or should the founder's civil name remain unpublished (consistent with the standing instruction that the razão social is not reproduced anywhere) with only the role-based email (dpo@ozvor.com) published? **This is a live tension with the founder's standing instruction.** ANPD enforcement practice for micro-entrepreneurs publishing only a functional contact channel (no personal name) is not settled. **Recommend external counsel (Brazilian LGPD specialist) confirm whether a functional contact channel alone satisfies Art. 41 §1 for an MEI controller**, or whether a name (even a first name / trade-facing name, not necessarily the full civil name) must accompany it.
+
+> **2026-07-31 note that materially weakens this tension**: the standing instruction protects the founder's civil name from being *reproduced by us*, but for an MEI the razão social **is** the holder's civil name, and the CNPJ (67.609.444/0001-08) is already published in this ROPA, on the Privacy Policy, and in the public federal registry. The name is therefore one public lookup away regardless of what we print. The remaining choice is presentational, not protective: publishing it costs almost nothing in exposure and removes the only reading under which our Art. 41 §1 disclosure is incomplete.
 
 **Exact text to publish on Privacy Policy §1 once A1/A2 are resolved** (replaces the current "has been appointed" sentence — this is finding 1 of the two Privacy Policy corrections recorded in this subsection):
 > "Ozvor's Encarregado de Dados (LGPD Art. 41) is [NAME OR ROLE DESCRIPTOR PER A2], reachable at dpo@ozvor.com."
@@ -59,6 +61,8 @@
 | Written mandate (Art. 27(3) requires a written mandate authorising the representative to be addressed by supervisory authorities and data subjects in addition to or instead of the controller) | **[FOUNDER TO ATTACH / REFERENCE CONTRACT]** |
 | Date of designation | **[FOUNDER TO FILL]** |
 
+> **2026-07-31 — the trigger is already met, so this is not hypothetical.** GDPR Art. 27 attaches to *offering goods or services to data subjects in the Union*, not to having EU users. Ozvor openly offers to the EU: the site footer reads "Serving SMBs in Brazil, the EU & the United States" and the pricing pages are open to EU visitors. Measured in production on 2026-07-31: 4 tenants carry `region = EU`, of which **3 are the founder's own accounts** and 1 belongs to a third party on the free plan with zero audits. So there is **no paying EU customer today**, but the obligation is triggered by the offering regardless, and the interim wording previously drafted below ("has not yet onboarded users based in the EU/EEA") is **not accurate** and must not be published.
+
 **Founder decision required (B1)**: Who/where is the EU representative? Two practical routes: (a) engage a commercial GDPR Art. 27 representative service (several exist commercially and provide the mandate + a published EU address as a paid subscription — this is the common route for non-EU-established solo/small controllers); or (b) appoint an EU-based individual or entity Ozvor already has a relationship with, who is willing to accept the Art. 27 role (this carries real visibility to supervisory authorities and liability exposure — it is not a nominal role). **Recommend route (a)** given Ozvor's solo-founder structure and the absence of an existing EU entity/contact.
 
 **Founder decision required (B2)**: Which EU member state should the representative be established in? GDPR Art. 27(3) directs this toward "one of the Member States where the data subjects... are." If EU customer-concentration data exists (or once it does), pick the state with the largest EU user base; absent that data, a commercial EU-rep provider will typically offer a default jurisdiction (commonly Ireland or Germany).
@@ -66,8 +70,8 @@
 **Exact text to publish on Privacy Policy §1 once B1/B2 are resolved** (replaces the current "is appointed before serving the EU/EEA market" sentence — this is finding 2 of the two Privacy Policy corrections recorded in this subsection):
 > "Ozvor's GDPR Article 27 representative in the European Union is [REPRESENTATIVE NAME / ENTITY], [EU ADDRESS], reachable at [EU CONTACT]."
 
-**Interim honest text (recommended immediate fix to the live page, until B1/B2 are resolved)**:
-> "Ozvor has not yet onboarded users based in the EU/EEA. A GDPR Article 27 EU representative will be appointed and named here before the Service is offered to EU/EEA users."
+**Interim honest text (recommended immediate fix to the live page, until B1/B2 are resolved)** — ~~superseded 2026-07-31~~, because the original draft asserted we had not onboarded EU users and we openly offer the service to the EU. Accurate replacement:
+> "Ozvor is established in Brazil and offers this Service to users in the EU/EEA. A GDPR Article 27 representative in the Union has not yet been designated; until one is named here, EU/EEA data subjects can reach us directly at dpo@ozvor.com and may also lodge a complaint with their national supervisory authority."
 
 ---
 
