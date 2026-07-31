@@ -5,7 +5,7 @@
     "dockerfilePath": "apps/api/Dockerfile"
   },
   "deploy": {
-    "startCommand": "node packages/db/scripts/migrate.js && node dist/apps/api/src/index.js",
+    "startCommand": "sh -c 'node packages/db/scripts/migrate.js && node dist/apps/api/src/index.js'",
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
