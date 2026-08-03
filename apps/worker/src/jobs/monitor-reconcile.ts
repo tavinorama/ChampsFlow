@@ -37,9 +37,9 @@
  * so it can't fight a user's manual choice or silently turn tracking off. Churn
  * cost is already bounded by the monthly_audit_cap guard above.
  *
- * Graceful fallback (mirrors processDailyMonitoredBrands): a missing column
- * (42703) or missing table (42P01) logs a warning and returns — the worker MUST
- * NOT crash. Per-brand failures are caught so one bad brand never blocks others.
+ * Any DB error logs at error level and skips the cycle — the worker MUST NOT
+ * crash, and it never skips silently. Per-brand failures are caught so one bad
+ * brand never blocks others.
  */
 
 import { Queue } from "bullmq";
@@ -120,16 +120,6 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
              )
     `;
   } catch (err: unknown) {
-    const pgCode = (err as { code?: string }).code;
-    if (pgCode === "42703" || pgCode === "42P01") {
-      // A column/table isn't in this schema yet (e.g. brands.monitoring_enabled
-      // or billing_subscriptions pre-migration). Non-fatal — skip this cycle.
-      logger.warn("monitor_reconcile_schema_missing", {
-        code: pgCode,
-        message: "required column/table missing; skipping weekly monitoring reconcile",
-      });
-      return;
-    }
     logger.error("monitor_reconcile_query_failed", {
       message: (err as Error).message?.slice(0, 200),
     });

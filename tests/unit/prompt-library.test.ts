@@ -5,7 +5,7 @@
  *  - GET  /api/brands/:id/prompts — defaults + custom list
  *  - POST /api/brands/:id/prompts — validation, cap enforcement, insert
  *  - DELETE /api/brands/:id/prompts/:promptId — row-level delete
- *  - Graceful 42P01 fallback (table not yet migrated)
+ *  - DB errors PROPAGATE (migrations run at boot; missing table = broken deploy)
  *  - Worker: custom prompt append + dedup + error isolation
  *
  * All tests use an in-memory mock of the PostgresClient interface.
@@ -197,7 +197,7 @@ describe("GET /api/brands/:id/prompts", () => {
     expect(cp.text).toBe("Custom question here?");
   });
 
-  it("gracefully falls back to empty custom[] when 42P01 table error occurs", async () => {
+  it("propagates a 42P01 table error instead of quietly returning defaults", async () => {
     const db = makeMockDb({
       queryImpl: async (sql) => {
         if (sql.includes("FROM brands") && sql.includes("AND tenant_id")) {
@@ -217,10 +217,9 @@ describe("GET /api/brands/:id/prompts", () => {
       headers: { Authorization: "Bearer dev-bypass" },
     });
 
-    expect(res.status).toBe(200);
-    const body = await res.json() as { defaults: unknown[]; custom: unknown[] };
-    expect(body.custom).toHaveLength(0);
-    expect(body.defaults).toHaveLength(10);
+    // The route rethrows; Hono's error handler answers 500. What matters is
+    // that a broken schema is never dressed up as a healthy empty list.
+    expect(res.status).toBe(500);
   });
 });
 
@@ -352,7 +351,7 @@ describe("POST /api/brands/:id/prompts", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 503 when audit_prompt table is missing", async () => {
+  it("surfaces a missing audit_prompt table as an error instead of a quiet 503", async () => {
     const db = makeMockDb({
       queryImpl: async (sql) => {
         if (sql.includes("FROM brands") && sql.includes("AND tenant_id")) {
@@ -377,9 +376,7 @@ describe("POST /api/brands/:id/prompts", () => {
       body: JSON.stringify({ text: "A valid prompt text here" }),
     });
 
-    expect(res.status).toBe(503);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe("PROMPT_TABLE_NOT_READY");
+    expect(res.status).toBe(500);
   });
 
   it("returns 404 when brand not found", async () => {
@@ -505,9 +502,7 @@ describe("DELETE /api/brands/:id/prompts/:promptId", () => {
       }
     );
 
-    expect(res.status).toBe(503);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe("PROMPT_TABLE_NOT_READY");
+    expect(res.status).toBe(500);
   });
 });
 

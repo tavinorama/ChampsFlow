@@ -439,11 +439,10 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
   // -------------------------------------------------------------------------
   // GET /api/admin/crm — lightweight CRM annotations (email-keyed).
   //
-  // Deliberately SEPARATE from /leads and /kit-orders (not a JOIN) so those
-  // existing tabs keep working even if this migration has not been applied yet:
-  // if crm_contact is missing (SQLSTATE 42P01), we degrade to an empty list +
-  // migrationPending flag instead of 500-ing the dashboard. The web client
-  // merges these annotations into the leads rows by email.
+  // Deliberately SEPARATE from /leads and /kit-orders (not a JOIN). The web
+  // client merges these annotations into the leads rows by email.
+  // migrationPending is always false (migrations run at boot); the field stays
+  // for web-client compatibility.
   // -------------------------------------------------------------------------
   app.get("/api/admin/crm", requireAuth, requireSuperAdmin, async (c) => {
     try {
@@ -463,11 +462,6 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       logger.info("admin_crm_fetched", { count: result.rows.length });
       return c.json({ contacts: result.rows, migrationPending: false });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        // Table not created yet — feature is inert, dashboard stays healthy.
-        logger.warn("admin_crm_table_missing", {});
-        return c.json({ contacts: [], migrationPending: true });
-      }
       logger.error("admin_crm_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_FAILED" }, 500);
     }
@@ -498,12 +492,6 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       logger.info("admin_crm_upserted", { stage: p.stage ?? "unchanged" });
       return c.json({ contact });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return c.json(
-          { error: "migration_pending", code: "CRM_TABLE_MISSING", message: "Apply the crm_contact migration first." },
-          503
-        );
-      }
       logger.error("admin_crm_upsert_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
     }
@@ -927,27 +915,19 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
 
   app.get("/api/admin/provider-keys", requireAuth, requireSuperAdmin, async (c) => {
     let rows: { provider: string; key_last4: string; rotated_at: string }[] = [];
-    let tableMissing = false;
     try {
       const res = await db.query<{ provider: string; key_last4: string; rotated_at: string }>(
         `SELECT provider, key_last4, rotated_at FROM platform_provider_key`
       );
       rows = res.rows;
     } catch (err) {
-      // Hermes review: only the undefined-table error (42P01 — migration not
-      // applied yet) degrades to env-only status. Anything else (permissions,
-      // connectivity, corruption) is a real failure and must be visible.
-      const code = (err as { code?: string }).code;
-      if (code === "42P01") {
-        tableMissing = true;
-        logger.warn("admin_provider_keys_table_missing", {});
-      } else {
-        logger.error("admin_provider_keys_query_failed", {
-          code: code ?? "unknown",
-          message: (err as Error).message?.slice(0, 120),
-        });
-        return c.json({ error: "internal_error", code: "PROVIDER_KEYS_QUERY_FAILED" }, 500);
-      }
+      // Migrations run at boot — any error here (missing table included, which
+      // would mean a broken deploy) is a real failure and must be visible.
+      logger.error("admin_provider_keys_query_failed", {
+        code: (err as { code?: string }).code ?? "unknown",
+        message: (err as Error).message?.slice(0, 120),
+      });
+      return c.json({ error: "internal_error", code: "PROVIDER_KEYS_QUERY_FAILED" }, 500);
     }
     const byProvider = new Map(rows.map((r) => [r.provider, r]));
     const keys = PLATFORM_KEY_PROVIDERS.map((p) => {
@@ -960,7 +940,7 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         active_source: row ? "dashboard" : bootEnvHasKey(p) ? "railway_env" : "none",
       };
     });
-    return c.json({ keys, table_missing: tableMissing || undefined });
+    return c.json({ keys });
   });
 
   app.put("/api/admin/provider-keys/:provider", requireAuth, requireSuperAdmin, async (c) => {
