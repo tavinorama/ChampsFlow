@@ -47,21 +47,16 @@ export interface OperatingCadence {
   stale_contacts: CadenceContact[];
 }
 
-// crm_contact may not exist in older environments; treat "missing" as "no CRM
-// data yet" instead of failing the whole brief.
-async function safeCrmQuery<T>(db: PostgresClient, sql: string): Promise<T[]> {
-  try {
-    const { rows } = await db.query<T>(sql);
-    return rows;
-  } catch (err) {
-    if ((err as { code?: string }).code === "42P01") return [];
-    throw err;
-  }
+// Migrations run at boot (start script), so crm_contact is guaranteed. A DB
+// error here is a real failure and propagates — no silent empty-list fallback.
+async function crmQuery<T>(db: PostgresClient, sql: string): Promise<T[]> {
+  const { rows } = await db.query<T>(sql);
+  return rows;
 }
 
 export async function fetchOperatingCadence(db: PostgresClient): Promise<OperatingCadence> {
   // 1. Follow-ups due — scheduled today or earlier.
-  const followUpsDue = await safeCrmQuery<CadenceContact>(
+  const followUpsDue = await crmQuery<CadenceContact>(
     db,
     `SELECT email, stage, note, next_follow_up
        FROM crm_contact
@@ -74,7 +69,7 @@ export async function fetchOperatingCadence(db: PostgresClient): Promise<Operati
 
   // 2. New leads to triage — captured in the last 14 days with no CRM annotation
   //    yet (Hermes should give them a stage + first touch).
-  const newLeads = await safeCrmQuery<CadenceLead>(
+  const newLeads = await crmQuery<CadenceLead>(
     db,
     `SELECT lc.email, lc.brand, lc.category, lc.created_at
        FROM lead_capture lc
@@ -87,7 +82,7 @@ export async function fetchOperatingCadence(db: PostgresClient): Promise<Operati
   );
 
   // 3. Upsell targets — paid Kit buyers with no active subscription.
-  const upsell = await safeCrmQuery<CadenceUpsell>(
+  const upsell = await crmQuery<CadenceUpsell>(
     db,
     `SELECT ko.email, ko.brand, ko.paid_at AS kit_paid_at
        FROM kit_order ko
@@ -105,7 +100,7 @@ export async function fetchOperatingCadence(db: PostgresClient): Promise<Operati
 
   // 4. Stale contacts — engaged (contacted/qualified) but untouched for 14+ days
   //    with no upcoming follow-up. These slip through the cracks without a nudge.
-  const stale = await safeCrmQuery<CadenceContact>(
+  const stale = await crmQuery<CadenceContact>(
     db,
     `SELECT email, stage, note, next_follow_up, updated_at
        FROM crm_contact

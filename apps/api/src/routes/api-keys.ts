@@ -687,13 +687,6 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
         note: "PII-free by design. positive_rate = dominant brand named for an obvious question (healthy ~1.00); negative_rate = fictional entity described as real (healthy 0.00). Last 7 checks per engine.",
       });
     } catch (err) {
-      // Migration not applied yet → answer honestly instead of 500ing.
-      if ((err as { code?: string }).code === "42P01") {
-        return c.json({
-          engines: [],
-          note: "engine_drift_check table not present yet (migration pending) — no drift history to report.",
-        });
-      }
       logger.error("operator_engine_drift_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGINE_DRIFT_FAILED" }, 500);
     }

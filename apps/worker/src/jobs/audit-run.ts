@@ -309,8 +309,8 @@ export async function processAuditJob(
         }
       }
     } catch (err) {
-      // Table not yet migrated (42P01) or any other DB error — log and continue
-      // with defaults only. Never let this block the audit.
+      // Any DB error: log and continue with defaults only — custom prompts
+      // must never block the audit. (#139 decides if this should scream.)
       logger.warn("custom_prompts_load_failed", {
         brand_id,
         message: (err as Error).message,
@@ -757,11 +757,6 @@ export async function processAuditJob(
     >();
     // B8 — cache accounting for the breakdown.
     let cacheHits = 0;
-    // Graceful degradation: if the B1 migration hasn't been applied yet
-    // (42703 undefined_column), fall back to the legacy citation_check insert
-    // so an old-schema deploy never fails audits.
-    let citationSchemaHasB1 = true;
-
     for (const resp of responses) {
       const rate = typeof resp.mentionRate === "number" ? resp.mentionRate : (resp.mentioned ? 1 : 0);
       const mentioned = resp.mentioned; // majority-of-runs (rate >= 0.5)
@@ -807,49 +802,21 @@ export async function processAuditJob(
 
       // citation_check stores the buyer prompt + cited sources as audit evidence
       // (the prompt is a synthetic category question, not PII; purged after 90d).
-      // B1 adds intent_id / formulation_ix / methodology_version (migration
-      // 20260728000001); on an old schema we fall back to the legacy insert.
-      let citationInserted = false;
-      if (citationSchemaHasB1) {
-        try {
-          await sql`
-            INSERT INTO citation_check
-              (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
-               mention_rate, runs_count, raw_text_snippet, intent_id, formulation_ix, methodology_version, processed_at)
-            VALUES
-              (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
-               ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
-               ${resp.queryText ?? null},
-               ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
-               ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)},
-               ${intentMeta?.intentId ?? null}, ${intentMeta?.formulationIx ?? null},
-               ${GEO_METHODOLOGY_VERSION}, NOW())
-          `;
-          citationInserted = true;
-        } catch (err: unknown) {
-          if ((err as { code?: string }).code === "42703") {
-            citationSchemaHasB1 = false;
-            logger.warn("citation_check_b1_columns_missing", {
-              message: "intent/methodology columns absent — migration 20260728000001 pending; using legacy insert",
-            });
-          } else {
-            throw err;
-          }
-        }
-      }
-      if (!citationInserted) {
-        await sql`
-          INSERT INTO citation_check
-            (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
-             mention_rate, runs_count, raw_text_snippet, processed_at)
-          VALUES
-            (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
-             ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
-             ${resp.queryText ?? null},
-             ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
-             ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)}, NOW())
-        `;
-      }
+      // B1 columns (intent_id / formulation_ix / methodology_version) are
+      // guaranteed by boot-time migrations; a failed insert fails the audit.
+      await sql`
+        INSERT INTO citation_check
+          (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
+           mention_rate, runs_count, raw_text_snippet, intent_id, formulation_ix, methodology_version, processed_at)
+        VALUES
+          (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
+           ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
+           ${resp.queryText ?? null},
+           ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
+           ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)},
+           ${intentMeta?.intentId ?? null}, ${intentMeta?.formulationIx ?? null},
+           ${GEO_METHODOLOGY_VERSION}, NOW())
+      `;
 
       // B8: a cached probe made NO generation calls — logging one would
       // fabricate an inference event (ai_generation_log is an audit trail of
@@ -1210,20 +1177,13 @@ export async function processAuditJob(
        WHERE id = ${audit_id}
     `;
 
-    // B1 — stamp the sampling protocol version on the audit. Separate,
-    // fault-tolerant statement so an old schema (migration 20260728000001
-    // pending → 42703) can never fail the audit finalize above.
-    try {
-      await sql`
-        UPDATE geo_audit
-           SET methodology_version = ${GEO_METHODOLOGY_VERSION}
-         WHERE id = ${audit_id}
-      `;
-    } catch (err: unknown) {
-      logger.warn("geo_audit_methodology_version_skipped", {
-        message: (err as Error).message?.slice(0, 160),
-      });
-    }
+    // B1 — stamp the sampling protocol version on the audit. Schema is
+    // guaranteed at boot; an error here fails the audit loudly.
+    await sql`
+      UPDATE geo_audit
+         SET methodology_version = ${GEO_METHODOLOGY_VERSION}
+       WHERE id = ${audit_id}
+    `;
 
     // Record estimated audit spend in the monthly budget ledger (visibility only
     // — audits are NOT hard-capped, so paying customers are never cut off).
@@ -1281,8 +1241,8 @@ export async function processAuditJob(
 // processDailyMonitoredBrands — enqueues scheduled-audit BullMQ jobs for all
 // brands that have monitoring_enabled=TRUE and tracking_frequency='daily'.
 //
-// Graceful fallback: if the tracking_frequency column doesn't exist yet (42703),
-// the function logs a warning and returns early — the worker MUST NOT crash.
+// Any DB error is logged at error level and the cycle skipped — the worker
+// MUST NOT crash, and it never skips silently.
 // Called by the daily interval loop in apps/worker/src/index.ts.
 // ---------------------------------------------------------------------------
 
@@ -1310,15 +1270,7 @@ export async function processDailyMonitoredBrands(sql: postgres.Sql): Promise<vo
          AND tracking_frequency = 'daily'
     `;
   } catch (err: unknown) {
-    const pgCode = (err as { code?: string }).code;
-    if (pgCode === "42703") {
-      // Column tracking_frequency not yet in schema — migration pending. Non-fatal.
-      logger.warn("daily_monitor_column_missing", {
-        message: "tracking_frequency column not found; skipping daily monitor loop",
-      });
-      return;
-    }
-    // Any other error: log and return — loop MUST NOT crash the worker.
+    // Any error: log loudly and return — loop MUST NOT crash the worker.
     logger.error("daily_monitor_query_failed", {
       message: (err as Error).message?.slice(0, 200),
     });

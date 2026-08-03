@@ -394,9 +394,6 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
       logger.info("operator_crm_accessed", { key_id: key.id, count: rows.length });
       return c.json({ contacts: rows, migrationPending: false });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return c.json({ contacts: [], migrationPending: true });
-      }
       logger.error("operator_crm_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_FAILED" }, 500);
     }
@@ -426,9 +423,6 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
       logger.info("operator_crm_upserted", { key_id: key.id, stage: parsed.patch.stage ?? "unchanged" });
       return c.json({ contact });
     } catch (err) {
-      if ((err as { code?: string }).code === "42P01") {
-        return c.json({ error: "migration_pending", code: "CRM_TABLE_MISSING" }, 503);
-      }
       logger.error("operator_crm_upsert_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
     }
