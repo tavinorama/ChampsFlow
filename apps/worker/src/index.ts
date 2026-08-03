@@ -118,7 +118,7 @@ const platformKeysReady = refreshPlatformKeys()
     return n;
   })
   .catch((err: Error) => {
-    // Real DB error (42P01 is tolerated upstream): run on env keys, loudly.
+    // Real DB error — missing table included (broken deploy): run on env keys, loudly.
     logger.error("platform_keys_boot_refresh_failed", { message: err.message?.slice(0, 120) });
     return 0;
   });
@@ -330,9 +330,8 @@ void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
 //
 // Uses a separate postgres client (same pattern as _nurtureSql).
 // Does NOT replace the weekly BullMQ repeatable jobs — both coexist.
-// Graceful fallback: if tracking_frequency column missing (42703) or any
-// error, processDailyMonitoredBrands logs a warning and returns without
-// crashing the worker.
+// Any DB error inside processDailyMonitoredBrands is logged at error level
+// and the cycle is skipped without crashing the worker — never silently.
 // ---------------------------------------------------------------------------
 
 let _dailyMonitorSql: import("postgres").Sql | null = null;

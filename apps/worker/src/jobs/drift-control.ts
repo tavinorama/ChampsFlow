@@ -171,13 +171,6 @@ export async function processDriftControlJob(
       `;
       written += 1;
     } catch (err: unknown) {
-      const pgCode = (err as { code?: string }).code;
-      if (pgCode === "42P01") {
-        logger.warn("drift_check_table_missing", {
-          message: "engine_drift_check not found; migration pending — skipping persistence",
-        });
-        break;
-      }
       logger.error("drift_check_write_failed", {
         engine: evaluation.engine,
         message: (err as Error).message?.slice(0, 200),
@@ -272,12 +265,11 @@ export async function pausedDriftEngines(sql: postgres.Sql): Promise<DriftEngine
       .filter((r) => r.status === "failing")
       .map((r) => r.engine as DriftEngine);
   } catch (err: unknown) {
-    const pgCode = (err as { code?: string }).code;
-    if (pgCode !== "42P01") {
-      logger.warn("drift_pause_check_failed", {
-        message: (err as Error).message?.slice(0, 160),
-      });
-    }
+    // Fail-open by design (a broken check must not pause engines), but never
+    // silently: every failure is logged, table-missing included.
+    logger.warn("drift_pause_check_failed", {
+      message: (err as Error).message?.slice(0, 160),
+    });
     return [];
   }
 }

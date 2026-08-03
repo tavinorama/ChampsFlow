@@ -693,16 +693,13 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
   // -------------------------------------------------------------------------
   // GET /api/brands/:id — fetch a single brand profile (settings included)
-  // Returns tracked_models and tracking_frequency with graceful fallback if
-  // the migration columns don't exist yet (42703 error → return without them).
-  // Also returns all 7 profile URL columns.
+  // Returns tracked_models, tracking_frequency, and all profile URL columns.
   // -------------------------------------------------------------------------
   app.get("/api/brands/:id", requireAuth, async (c) => {
     const auth = c.get("auth");
     await db.setTenantId(auth.tenantId);
     const brandId = c.req.param("id");
 
-    // Attempt full query with new columns first.
     try {
       const res = await db.query<{
         id: string;
@@ -736,39 +733,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       // tracked_models is already parsed by pg driver (JSONB → JS array). Return directly.
       return c.json(brand);
     } catch (err: unknown) {
-      // If migration hasn't run yet (column doesn't exist), degrade gracefully.
-      const pgCode = (err as { code?: string }).code;
-      if (pgCode === "42703") {
-        // Column missing — return brand without tracked_models / tracking_frequency
-        const fallbackRes = await db.query<{
-          id: string;
-          name: string;
-          domain: string | null;
-          category: string | null;
-          region: string;
-          monitoring_enabled: boolean;
-          linkedin_url: string | null;
-          reddit_url: string | null;
-          wikipedia_url: string | null;
-          g2_url: string | null;
-          trustpilot_url: string | null;
-          crunchbase_url: string | null;
-          youtube_url: string | null;
-          x_url: string | null;
-          instagram_url: string | null;
-          facebook_url: string | null;
-          tiktok_url: string | null;
-        }>(
-          `SELECT id, name, domain, category, region, monitoring_enabled,
-                  linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
-                x_url, instagram_url, facebook_url, tiktok_url
-             FROM brands WHERE id = $1`,
-          [brandId]
-        );
-        const brand = fallbackRes.rows[0];
-        if (!brand) return c.json({ message: "Brand not found." }, 404);
-        return c.json(brand);
-      }
+      // Migrations run at boot: a missing column here is a broken deploy, not
+      // a state to degrade around. Log loudly and surface the error.
+      logger.error("brand_fetch_failed", { message: (err as Error).message?.slice(0, 200) });
       throw err;
     }
   });
@@ -906,14 +873,7 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
 
         return c.json({ id: brandId, tracked_models: updatedTrackedModels, tracking_frequency: updatedFrequency });
       } catch (err: unknown) {
-        const pgCode = (err as { code?: string }).code;
-        if (pgCode === "42703") {
-          // Column not yet present — migration pending
-          return c.json(
-            { message: "Settings schema is being migrated. Please try again in a moment." },
-            503
-          );
-        }
+        logger.error("brand_settings_update_failed", { message: (err as Error).message?.slice(0, 200) });
         throw err;
       }
     }
@@ -1354,11 +1314,6 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
         })),
       });
     } catch (err) {
-      // Migration not applied yet → answer honestly instead of 500ing, same as
-      // the operator route.
-      if ((err as { code?: string }).code === "42P01") {
-        return c.json({ as_of: audit.created_at, engines: [] });
-      }
       logger.error("engine_confidence_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGINE_CONFIDENCE_FAILED" }, 500);
     }
@@ -2199,9 +2154,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       // geo_score has no score_overall column — derive it from provider_breakdown.
       //
       // coverage rides in the same JSON (written by the worker) rather than in
-      // its own column: nothing runs db:migrate on deploy, so a new column
-      // would be absent in production and this would ship dead — which is
-      // precisely the class of failure the field is here to expose.
+      // its own column — a historical choice from when nothing ran db:migrate
+      // on deploy (both services now migrate at boot). Kept as-is: moving it
+      // to a column is schema churn with no reader benefit.
       // Null for audits that predate it; the UI stays silent in that case
       // rather than claiming a coverage it does not know.
       `SELECT recorded_at, audit_id, score_brand, score_performance, score_ai,

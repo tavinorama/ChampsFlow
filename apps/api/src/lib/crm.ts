@@ -7,8 +7,8 @@
  * email-keyed crm_contact annotation (sales stage / note / next follow-up). It
  * never moves money and never sends email — those stay founder-only.
  *
- * Throws the raw Postgres error on failure; callers map SQLSTATE 42P01
- * (undefined_table) to a "migration pending" response.
+ * Throws the raw Postgres error on failure; callers log it and surface an
+ * internal error — migrations run at boot, so the table is guaranteed.
  */
 
 import type { PostgresClient } from "../routes/social-accounts";

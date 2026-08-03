@@ -28,9 +28,19 @@ async function main() {
   try { dbHost = new URL(DATABASE_URL).hostname; } catch { /* non-URL DSN — leave SSL on */ }
   const isLocalHost = dbHost === 'localhost' || dbHost === '127.0.0.1' || dbHost === '::1';
   const sslDisabled = process.env.PGSSL === 'disable' || isLocalHost;
-  const sql = postgres(DATABASE_URL, sslDisabled ? { ssl: false } : { ssl: { rejectUnauthorized: false } });
+  // max: 1 — a single session, so the advisory lock below lives on the same
+  // connection as every statement, and there is no pool to leak it from.
+  const baseOpts = { max: 1 };
+  const sql = postgres(DATABASE_URL, sslDisabled ? { ...baseOpts, ssl: false } : { ...baseOpts, ssl: { rejectUnauthorized: false } });
 
   try {
+    // Both api and worker run this at boot (start-api.sh / start-worker.sh),
+    // and Railway deploys them in parallel on the same commit. Two concurrent
+    // runners racing the same CREATE TABLE would corrupt the ledger, so the
+    // second one blocks here until the first finishes; it then finds nothing
+    // pending. Session-level lock: released on disconnect, even on crash.
+    await sql`SELECT pg_advisory_lock(861204)`;
+
     // Ensure migration tracking table exists
     await sql`
       CREATE TABLE IF NOT EXISTS ${sql(MIGRATION_TABLE)} (

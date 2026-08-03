@@ -100,7 +100,7 @@ describe("applyPlatformKeyOverrides", () => {
     expect(process.env["SERP_API_KEY"]).toBe("env-serp");
   });
 
-  it("tolerates ONLY undefined-table (42P01): env untouched, resolves 0", async () => {
+  it("PROPAGATES undefined-table (42P01) too — migrations run at boot, so a missing table is a broken deploy", async () => {
     process.env["ANTHROPIC_API_KEY"] = "env-anthropic";
     __resetPlatformKeySnapshotForTests();
 
@@ -108,11 +108,12 @@ describe("applyPlatformKeyOverrides", () => {
       new Error('relation "platform_provider_key" does not exist'),
       { code: "42P01" }
     );
-    const n = await applyPlatformKeyOverrides(async () => {
-      throw tableMissing;
-    });
-
-    expect(n).toBe(0);
+    await expect(
+      applyPlatformKeyOverrides(async () => {
+        throw tableMissing;
+      })
+    ).rejects.toThrow("does not exist");
+    // Env keys stay in effect either way.
     expect(process.env["ANTHROPIC_API_KEY"]).toBe("env-anthropic");
   });
 

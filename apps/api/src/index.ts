@@ -97,7 +97,7 @@ const platformKeysReady: Promise<number> = refreshPlatformKeys(db)
     return n;
   })
   .catch((err: Error) => {
-    // Real DB error (42P01 is tolerated upstream): serve on env keys, loudly.
+    // Real DB error — missing table included (broken deploy): serve on env keys, loudly.
     logger.error("platform_keys_boot_refresh_failed", { message: err.message?.slice(0, 120) });
     return 0;
   });

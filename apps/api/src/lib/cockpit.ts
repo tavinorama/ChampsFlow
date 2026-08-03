@@ -156,18 +156,12 @@ async function countByStatus(
   db: PostgresClient,
   table: "kit_order" | "pages_order"
 ): Promise<Record<string, number>> {
-  try {
-    const res = await db.query<{ status: string; count: string }>(
-      `SELECT status, COUNT(*) AS count FROM ${table} GROUP BY status`
-    );
-    const map: Record<string, number> = {};
-    for (const row of res.rows) map[row.status] = parseInt(row.count, 10);
-    return map;
-  } catch (err) {
-    // pages_order may be absent in older environments — degrade to empty.
-    if ((err as { code?: string }).code === "42P01") return {};
-    throw err;
-  }
+  const res = await db.query<{ status: string; count: string }>(
+    `SELECT status, COUNT(*) AS count FROM ${table} GROUP BY status`
+  );
+  const map: Record<string, number> = {};
+  for (const row of res.rows) map[row.status] = parseInt(row.count, 10);
+  return map;
 }
 
 /**

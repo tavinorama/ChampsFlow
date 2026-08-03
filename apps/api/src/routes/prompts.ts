@@ -15,7 +15,7 @@
  *  - All DB queries parameterized — no string interpolation EVER
  *  - db.setTenantId(auth.tenantId) called before any query (RLS enforcement)
  *  - requireAuth comes first on every route; requireRole applied per contract
- *  - Graceful 503/fallback when audit_prompt table doesn't exist yet (42P01)
+ *  - Schema guaranteed by boot-time migrations; DB errors surface loudly
  *  - Error responses: { error, code, requestId } — no stack traces or DB text
  *  - Rate limiting: auth + resource-creation endpoints declared here (middleware
  *    config enforces; Upstash Redis limit deferred to the global middleware tier)
@@ -36,23 +36,6 @@ import { buildIntentPortfolio } from "../../../../packages/llm/src/prompt-portfo
 
 function buildPromptPortfolio(brandName: string, category: string | null): string[] {
   return buildIntentPortfolio(brandName, category).map((p) => p.text);
-}
-
-// ---------------------------------------------------------------------------
-// Table-missing error detection
-// Postgres error code 42P01 = undefined_table.
-// postgres-js wraps the server error in a PostgresError with a `.code` field.
-// We also check the message string as a belt-and-suspenders fallback.
-// ---------------------------------------------------------------------------
-
-function isTableMissingError(err: unknown): boolean {
-  if (err && typeof err === "object") {
-    const code = (err as { code?: string }).code;
-    if (code === "42P01") return true;
-    const msg = (err as Error).message ?? "";
-    if (msg.includes("does not exist")) return true;
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,12 +100,8 @@ export function registerPromptRoutes(app: Hono, db: PostgresClient): void {
         );
         custom = customRes.rows;
       } catch (err) {
-        if (isTableMissingError(err)) {
-          // Table not yet applied — return defaults only. Not an error.
-          logger.warn("audit_prompt_table_missing_get", { brand_id: brandId });
-        } else {
-          throw err; // re-throw unexpected errors to the global handler
-        }
+        logger.error("audit_prompt_load_failed", { brand_id: brandId });
+        throw err;
       }
 
       return c.json({ defaults, custom });
@@ -215,13 +194,7 @@ export function registerPromptRoutes(app: Hono, db: PostgresClient): void {
         const newPrompt = insertRes.rows[0];
         return c.json(newPrompt, 201);
       } catch (err) {
-        if (isTableMissingError(err)) {
-          logger.warn("audit_prompt_table_missing_post", { brand_id: brandId });
-          return c.json(
-            { error: "PROMPT_TABLE_NOT_READY", code: "PROMPT_TABLE_NOT_READY" },
-            503
-          );
-        }
+        logger.error("audit_prompt_insert_failed", { brand_id: brandId });
         throw err;
       }
     }
@@ -276,13 +249,7 @@ export function registerPromptRoutes(app: Hono, db: PostgresClient): void {
 
         return new Response(null, { status: 204 });
       } catch (err) {
-        if (isTableMissingError(err)) {
-          logger.warn("audit_prompt_table_missing_delete", { brand_id: brandId, prompt_id: promptId });
-          return c.json(
-            { error: "PROMPT_TABLE_NOT_READY", code: "PROMPT_TABLE_NOT_READY" },
-            503
-          );
-        }
+        logger.error("audit_prompt_delete_failed", { brand_id: brandId, prompt_id: promptId });
         throw err;
       }
     }
