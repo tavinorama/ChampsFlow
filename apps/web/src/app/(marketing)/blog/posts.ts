@@ -80,6 +80,16 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "chatgpt-ads-that-talk-read-your-website-first",
+    title: "ChatGPT Is Testing Ads That Talk Back. They Read Your Website First.",
+    excerpt:
+      "OpenAI's new ad format skips the banner and starts a conversation: an AI agent built from the advertiser's own website. Rosa the butcher shows why the same reading already decides who gets named, ad or no ad.",
+    readTime: "3 min read",
+    publishedAt: "2026-08-03",
+    publishedAtDisplay: "3 August 2026",
+  },
+  {
+    type: "article",
     slug: "geo-number-everyone-quotes-measures-wrong-thing",
     title: "The GEO Number Everyone Quotes Measures the Wrong Thing",
     excerpt:

@@ -103,6 +103,44 @@ const S = {
 // ---------------------------------------------------------------------------
 
 export const BLOG_CONTENT: BlogContent[] = [
+  {
+    slug: "chatgpt-ads-that-talk-read-your-website-first",
+    title: "ChatGPT Is Testing Ads That Talk Back. They Read Your Website First.",
+    dek: "OpenAI's new ad format builds an AI agent from a business's own website. Rosa the butcher shows why the same reading decides who gets named, ad or no ad.",
+    category: "Local & SMB",
+    datePublished: "2026-08-03",
+    dateDisplay: "3 August 2026",
+    readTime: "3 min read",
+    keywords: ["ChatGPT ads", "AI agents", "GEO", "AI search", "small business websites"],
+    takeaways: [
+      "OpenAI is testing ChatGPT ads that open a conversation with an AI agent built from the advertiser's website, not a banner with a link.",
+      "The agent is only as good as the pages it reads. A thin or confusing site fails before the conversation starts.",
+      "AI search already runs the same reading on every business, ad or no ad. A clear site gets named either way.",
+    ],
+    body: [
+      { t: "p", text: "Rosa closes the shutter on her butcher counter at nine. Her hands smell like rosemary and cold metal. She wipes down the scale, counts the register, and switches off the light over the case where the lamb chops sat all day." },
+      { t: "p", text: "She has never bought a ChatGPT ad. She barely knows what one is." },
+      { t: "p", text: "But this week, something changed for shops like hers." },
+      { t: "h2", id: "new-kind-of-ad", text: "A new kind of ad" },
+      { t: "p", text: "OpenAI is testing a new ad format inside ChatGPT. It skips the usual banner and the usual link to a website. Instead, it starts a conversation." },
+      { t: "p", text: "Here is what we know so far. ChatGPT reads a business's website on its own. It builds a profile: what the business sells, what questions it answers, what its hours are. That profile becomes an agent, a small AI trained on that one business alone. When someone clicks the ad, they land inside a chat with that agent. It can answer questions, recommend products, even take a name for a booking." },
+      { t: "p", text: "Right now only a small group of advertisers can use it. OpenAI has not opened it to everyone." },
+      { t: "h2", id: "why-it-matters", text: "Why this matters even if you never buy the ad" },
+      { t: "p", text: "For that agent to work, a few things have to be true. ChatGPT has to read the site and actually understand it. Clear pages. Real details about what is sold. Plain answers to the questions a customer would ask standing at the counter." },
+      { t: "p", text: "A thin site gives the agent nothing to work with. A confusing site gives it the wrong things to say. Either way, the ad fails before the conversation even starts." },
+      { t: "p", text: "Here is the quiet part: AI search already runs the same test on every business, ad or no ad. When someone asks ChatGPT for the best butcher nearby, the answer comes from that same kind of reading. A clear page gets named. A confusing one gets left out, whether or not a single dollar was ever spent on it." },
+      { t: "p", text: "The ad format is new this week. What it depends on has been true the whole time." },
+      { t: "h2", id: "for-rosa-and-you", text: "What this means for Rosa, and for you" },
+      { t: "p", text: "Rosa does not need to buy this ad. She does not need to track every feature OpenAI ships. She needs one thing: a website an AI can read and trust. Real hours, written plainly. Real cuts and prices, in the words she would actually use at the counter. One honest page about what makes her shop hers." },
+      { t: "p", text: "That is the whole game now. Not chasing each new rollout from the platforms. Making sure the plain truth about a business sits somewhere clear. Clear enough for a machine to repeat it back correctly to a stranger who has never walked past that counter." },
+      { t: "p", text: "Rosa will keep closing her shop at nine, hands cold, radio low. She does not need to change how she works. She needs her website to finally say what she already knows about her own shop." },
+      { t: "p", text: "I check this for business owners every week: what ChatGPT and Google's AI already know, and what they are quietly missing. If you want to know what they would say about your business tonight, message me at ozvor.com and I will check." },
+    ],
+    sources: [
+      'Search Engine Roundtable, "ChatGPT Ads That Launch Business AI Agents" (Aug 2026), seroundtable.com/chatgpt-ads-business-agent-41801.html',
+      'Search Engine Land, "OpenAI appears to be building chatbot-native ads that launch AI agents" (Aug 2026), searchengineland.com/openai-appears-to-be-building-chatbot-native-ads-that-launch-ai-agents-484107',
+    ],
+  },
   // 0 ───────────────────────────────────────────────────────────────────────
   {
     slug: "geo-number-everyone-quotes-measures-wrong-thing",
