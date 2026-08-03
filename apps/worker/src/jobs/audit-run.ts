@@ -1027,9 +1027,9 @@ export async function processAuditJob(
       overall: score.overall,
       providers: providersUsed,
       // Engine coverage for THIS run. Persisted in provider_breakdown rather
-      // than new geo_audit columns on purpose: nothing runs db:migrate on
-      // deploy, so a new column would be missing in production and this would
-      // ship dead — which is the exact failure this field exists to expose.
+      // than new geo_audit columns — a historical choice from when nothing ran
+      // db:migrate on deploy (both services now migrate at boot). Kept: moving
+      // it to columns is schema churn with no reader benefit.
       //
       // `comparable` is false when any requested engine went unanswered. A
       // score is a rate over the probes that ran, so a smaller panel is a

@@ -2154,9 +2154,9 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       // geo_score has no score_overall column — derive it from provider_breakdown.
       //
       // coverage rides in the same JSON (written by the worker) rather than in
-      // its own column: nothing runs db:migrate on deploy, so a new column
-      // would be absent in production and this would ship dead — which is
-      // precisely the class of failure the field is here to expose.
+      // its own column — a historical choice from when nothing ran db:migrate
+      // on deploy (both services now migrate at boot). Kept as-is: moving it
+      // to a column is schema churn with no reader benefit.
       // Null for audits that predate it; the UI stays silent in that case
       // rather than claiming a coverage it does not know.
       `SELECT recorded_at, audit_id, score_brand, score_performance, score_ai,
