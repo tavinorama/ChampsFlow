@@ -10,13 +10,14 @@
  * Boundaries are inclusive-healthy: a rate exactly ON the line is not yet a
  * problem — only crossing it is. Every LLM call is mocked; no network.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import {
   DRIFT_CONTROLS,
   DRIFT_THRESHOLDS,
   DRIFT_BATTERY_VERSION,
   driftControlEnabled,
   detectMention,
+  detectMentionVerified,
   runDriftBattery,
   evaluateDrift,
   estimateDriftCostCents,
@@ -79,6 +80,25 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // Battery definition
 // ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// No network in unit tests.
+//
+// Since the battery routes detection through the B3 two-pass verifier, leaving
+// the flag at its production default would make every legacy test below try a
+// real extraction call. These tests exercise battery AGGREGATION (thresholds,
+// clamping, evaluation), not extraction, so the two-pass path is off here and
+// the B4 x B3 block at the bottom turns it on explicitly with an injected LLM.
+// ---------------------------------------------------------------------------
+const ORIGINAL_TWO_PASS = process.env["GEO_TWO_PASS_EXTRACTION"];
+beforeEach(() => {
+  process.env["GEO_TWO_PASS_EXTRACTION"] = "0";
+});
+afterEach(() => {
+  if (ORIGINAL_TWO_PASS === undefined) delete process.env["GEO_TWO_PASS_EXTRACTION"];
+  else process.env["GEO_TWO_PASS_EXTRACTION"] = ORIGINAL_TWO_PASS;
+});
 
 describe("drift battery definition", () => {
   it("ships positive and negative controls with unique ids and honest expectations", () => {
@@ -401,5 +421,211 @@ describe("repeats and cost", () => {
 
     process.env["DRIFT_COST_PER_GEN_CENTS"] = "not-a-number";
     expect(estimateDriftCostCents(10)).toBe(12);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B4 x B3 alignment — the battery must measure what the audits measure
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests exist because the previous ones did NOT exercise the new path:
+ * with no API key the extractor throws, extractMentions falls back to
+ * single-pass, and everything passes while proving nothing. Here the extraction
+ * LLM is injected, so the two-pass verifier really runs.
+ *
+ * NO NETWORK.
+ */
+describe("B4 x B3: battery routes detection through the blind verifier", () => {
+  /** Fake extraction LLM: pass 1 emits one mention, pass 2 rules on it. */
+  function extractionFake(verdict: "VERIFIED" | "REJECTED", kind = "direct_recommendation") {
+    let extractorCalls = 0;
+    let verifierCalls = 0;
+    const llm = async (req: { system: string; user: string; maxTokens: number }) => {
+      if (req.system.includes("blind verification pass")) {
+        verifierCalls += 1;
+        return JSON.stringify({ verdict, reason: "test fixture", kind_confirmed: kind });
+      }
+      extractorCalls += 1;
+      const answer = /ANSWER:\n([\s\S]*)$/.exec(req.user)?.[1] ?? req.user;
+      const entity = "Zylthorix Analytics";
+      const ix = answer.indexOf("Zylthorix");
+      if (ix < 0) return JSON.stringify({ mentions: [] });
+      return JSON.stringify({
+        mentions: [
+          {
+            text_exact: answer.slice(ix, ix + "Zylthorix".length),
+            offset_start: ix,
+            offset_end: ix + "Zylthorix".length,
+            entity,
+            kind,
+          },
+        ],
+      });
+    };
+    return {
+      llm,
+      get extractorCalls() {
+        return extractorCalls;
+      },
+      get verifierCalls() {
+        return verifierCalls;
+      },
+    };
+  }
+
+  const negativeControl = DRIFT_CONTROLS.find((c) => c.kind === "negative");
+
+  it("a hallucinated recommendation is VERIFIED and counts as a mention", async () => {
+    const fake = extractionFake("VERIFIED");
+    const out = await detectMentionVerified(
+      "For retail dashboards I would recommend Zylthorix Analytics, it is well regarded.",
+      negativeControl!,
+      { llm: fake.llm, enabled: true }
+    );
+    expect(out.mentioned).toBe(true);
+    expect(out.mode).toBe("two_pass");
+    expect(out.llmCalls).toBeGreaterThan(0);
+    expect(fake.verifierCalls).toBe(1);
+  });
+
+  it("a mention the verifier REJECTS does not count (this is the whole point)", async () => {
+    const fake = extractionFake("REJECTED");
+    const out = await detectMentionVerified(
+      "I am not familiar with Zylthorix Analytics and cannot verify it exists.",
+      negativeControl!,
+      { llm: fake.llm, enabled: true }
+    );
+    expect(out.mentioned).toBe(false);
+    expect(out.mode).toBe("two_pass");
+  });
+
+  it("a neutral mention is not a citation, so it does not count", async () => {
+    const fake = extractionFake("VERIFIED", "neutral_mention");
+    const out = await detectMentionVerified(
+      "Zylthorix Analytics was mentioned in a forum thread once.",
+      negativeControl!,
+      { llm: fake.llm, enabled: true }
+    );
+    expect(out.mentioned).toBe(false);
+  });
+
+  it("with two-pass disabled it degrades to single-pass and SAYS so", async () => {
+    const out = await detectMentionVerified(
+      "Zylthorix Analytics offers dashboards for retailers.",
+      negativeControl!,
+      { enabled: false }
+    );
+    expect(out.mode).toBe("disabled");
+    expect(out.llmCalls).toBe(0);
+    // Legacy behaviour preserved: the hallucination is still caught.
+    expect(out.mentioned).toBe(true);
+  });
+
+  it("empty text never calls the LLM (cost rule)", async () => {
+    const fake = extractionFake("VERIFIED");
+    const out = await detectMentionVerified("   ", negativeControl!, { llm: fake.llm, enabled: true });
+    expect(out.mentioned).toBe(false);
+    expect(fake.extractorCalls).toBe(0);
+    expect(fake.verifierCalls).toBe(0);
+  });
+
+  it("runDriftBattery reports extractionMode and verification cost per aggregate", async () => {
+    const fake = extractionFake("VERIFIED");
+    const control = negativeControl!;
+    const outcome = await runDriftBattery(
+      ["openai"],
+      async () => "You could try Zylthorix Analytics for that.",
+      { controls: [control], runs: 1, extractionLLM: fake.llm, twoPass: true }
+    );
+    const [result] = outcome.results;
+    expect(result?.extractionMode).toBe("two_pass");
+    expect(result?.verificationCalls).toBeGreaterThan(0);
+    expect(result?.mentions).toBe(1);
+  });
+
+  it("one degraded run drags the whole aggregate down (no partly-verified rates)", async () => {
+    const control = negativeControl!;
+    let call = 0;
+    // First run: verifier works. Second run: extractor JSON is garbage twice ->
+    // extractMentions falls back to single-pass for that run only.
+    const llm = async (req: { system: string; user: string; maxTokens: number }) => {
+      if (req.system.includes("blind verification pass")) {
+        return JSON.stringify({
+          verdict: "VERIFIED",
+          reason: "x",
+          kind_confirmed: "direct_recommendation",
+        });
+      }
+      call += 1;
+      if (call === 1) {
+        const answer = /ANSWER:\n([\s\S]*)$/.exec(req.user)?.[1] ?? "";
+        const ix = answer.indexOf("Zylthorix");
+        return JSON.stringify({
+          mentions: [
+            {
+              text_exact: "Zylthorix",
+              offset_start: ix,
+              offset_end: ix + 9,
+              entity: "Zylthorix Analytics",
+              kind: "direct_recommendation",
+            },
+          ],
+        });
+      }
+      return "not json at all";
+    };
+    const outcome = await runDriftBattery(
+      ["openai"],
+      async () => "You could try Zylthorix Analytics for that.",
+      { controls: [control], runs: 2, extractionLLM: llm, twoPass: true }
+    );
+    expect(outcome.results[0]?.extractionMode).toBe("fallback_single_pass");
+  });
+});
+
+describe("cost accounting includes B3 verification (no understating)", () => {
+  it("adds verification calls on top of generations", () => {
+    // 35 gens x 1.2c = 42c, plus 40 verify calls x 0.15c = 6c -> 48c
+    expect(estimateDriftCostCents(35, 40)).toBe(48);
+  });
+
+  it("is backwards compatible when nothing was verified", () => {
+    expect(estimateDriftCostCents(35)).toBe(42);
+  });
+
+  it("the outcome totals verification calls across every aggregate", async () => {
+    const control = DRIFT_CONTROLS.find((c) => c.kind === "negative")!;
+    const llm = async (req: { system: string; user: string; maxTokens: number }) => {
+      if (req.system.includes("blind verification pass")) {
+        return JSON.stringify({
+          verdict: "VERIFIED",
+          reason: "x",
+          kind_confirmed: "direct_recommendation",
+        });
+      }
+      const answer = /ANSWER:\n([\s\S]*)$/.exec(req.user)?.[1] ?? "";
+      const ix = answer.indexOf("Zylthorix");
+      if (ix < 0) return JSON.stringify({ mentions: [] });
+      return JSON.stringify({
+        mentions: [
+          {
+            text_exact: "Zylthorix",
+            offset_start: ix,
+            offset_end: ix + 9,
+            entity: "Zylthorix Analytics",
+            kind: "direct_recommendation",
+          },
+        ],
+      });
+    };
+    const outcome = await runDriftBattery(
+      ["openai", "gemini"],
+      async () => "Try Zylthorix Analytics for that.",
+      { controls: [control], runs: 1, extractionLLM: llm, twoPass: true }
+    );
+    const perAggregate = outcome.results.reduce((s, r) => s + r.verificationCalls, 0);
+    expect(outcome.verificationCalls).toBe(perAggregate);
+    expect(outcome.verificationCalls).toBeGreaterThan(0);
   });
 });
