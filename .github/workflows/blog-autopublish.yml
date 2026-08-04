@@ -1,0 +1,142 @@
+name: Blog auto-publish (Monday)
+
+# Owns the weekly blog end to end, replacing the n8n "blog" trigger that used to
+# die silently in Postiz (Postiz has no blog channel). The flow:
+#   1. ask the VPS (flat-fee Claude) to WRITE a complete article as strict JSON
+#   2. blog-ingest.mjs validates it hard and injects it into the site
+#   3. open a PR (with a PAT so CI + automerge fire) → auto-merge → deploy
+#   4. poll the live URL; ONLY once it is actually 200 do we announce it on
+#      LinkedIn + X, with the real link. If it never goes live, we do NOT
+#      announce (no post pointing at a 404) and the job fails loudly — the
+#      15:40 Telegram watcher also reports "SEM REGISTRO blog" on Mondays.
+#
+# Secrets required (repo → Settings → Secrets and variables → Actions):
+#   HERMES_BLOG_TOKEN  fine-grained PAT (Contents + Pull requests: RW) — opens
+#                      the PR so downstream CI/automerge trigger.
+#   HERMES_TASK_TOKEN  the Hermes /task bearer (same value as the n8n "hermes
+#                      Ozvor" credential) — lets the Action call the VPS.
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"   # Mondays 12:00 UTC
+  workflow_dispatch:
+    inputs:
+      theme:
+        description: "Optional theme/topic to steer the article"
+        required: false
+        default: ""
+
+concurrency:
+  group: blog-autopublish
+  cancel-in-progress: false
+
+permissions:
+  contents: read   # writes happen via the PAT, not GITHUB_TOKEN
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.HERMES_BLOG_TOKEN }}
+          fetch-depth: 0
+
+      - name: Guard — secrets present
+        run: |
+          test -n "${{ secrets.HERMES_TASK_TOKEN }}" || { echo "HERMES_TASK_TOKEN missing"; exit 1; }
+          test -n "${{ secrets.HERMES_BLOG_TOKEN }}" || { echo "HERMES_BLOG_TOKEN missing"; exit 1; }
+
+      - name: Generate the article on the VPS (flat-fee Claude)
+        env:
+          TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+          THEME: ${{ github.event.inputs.theme }}
+        run: |
+          set -euo pipefail
+          PROMPT=$(cat <<'EOF'
+          You are the staff writer for Ozvor, a GEO / AI-search visibility platform for small businesses. Write ONE complete, publishable blog article about generative-engine optimization (how ChatGPT, Perplexity, Gemini and Google AI Overviews decide which businesses to name), grounded in something real and recent. Center it on a concrete small-business owner and a specific, true development. Human, warm, specific. British-neutral English.
+          HARD RULES: never use an em-dash or en-dash anywhere; every statistic must cite a named, dated, public source with a real URL; no fabricated numbers; end with one soft CTA to ozvor.com.
+          Return ONLY a strict JSON object, no markdown fence, with exactly these keys:
+          {"slug":"kebab-case-6-to-80-chars","title":"...","dek":"one-sentence sub-headline","category":"one of: GEO 101, GEO Playbook, How AI Works, Local & SMB, Measurement, Playbook, Research, Reviews & Trust, Strategy, Technical GEO","excerpt":"one-sentence index blurb","readTime":"N min read","keywords":["3 to 6 terms"],"takeaways":["2 to 5 short takeaways"],"body_markdown":"the full article; paragraphs separated by blank lines; use '## ' for at least one section heading","sources":["Name, quoted title (date), https://url"]}
+          EOF
+          )
+          if [ -n "${THEME:-}" ]; then PROMPT="Theme to cover: ${THEME}. ${PROMPT}"; fi
+          BODY=$(python3 -c 'import json,os,sys; print(json.dumps({"engine":"claude","timeoutMs":540000,"prompt":os.environ["P"]}))' P="$PROMPT")
+          echo "Calling VPS to write the article (up to ~9 min)..."
+          RESP=$(curl -sS --max-time 600 -X POST https://hermes.ozvor.com/task \
+            -H "Content-Type: application/json" -H "Authorization: Bearer ${TASK_TOKEN}" \
+            -d "$BODY")
+          # /task returns { ok, output, ... }; the model's output holds the JSON article.
+          echo "$RESP" | python3 -c '
+          import json,sys,re
+          r=json.load(sys.stdin)
+          if not r.get("ok"): sys.exit("VPS task failed: "+str(r.get("error") or r.get("stderr") or r)[:300])
+          out=r.get("output") or ""
+          m=re.search(r"\{.*\}", out, re.S)
+          if not m: sys.exit("no JSON object found in the model output")
+          art=json.loads(m.group(0))
+          json.dump(art, open("article.json","w"), ensure_ascii=False, indent=2)
+          print("article slug:", art.get("slug"))
+          '
+
+      - name: Ingest + validate into the site
+        id: ingest
+        run: |
+          set -euo pipefail
+          SLUG=$(node scripts/blog-ingest.mjs article.json)
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "Injected article: $SLUG"
+
+      - name: Typecheck web
+        run: npm ci --no-audit --no-fund && npx tsc --noEmit -p apps/web
+
+      - name: Open PR (auto-merge armed)
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.HERMES_BLOG_TOKEN }}
+          SLUG: ${{ steps.ingest.outputs.slug }}
+        run: |
+          set -euo pipefail
+          BRANCH="content/blog-$(date -u +%Y-%m-%d)-${SLUG}"
+          git config user.name "ozvor-blog-bot"
+          git config user.email "blog@ozvor.com"
+          git checkout -b "$BRANCH"
+          git add "apps/web/src/app/(marketing)/blog/_content.ts" "apps/web/src/app/(marketing)/blog/posts.ts"
+          git commit -m "content(blog): weekly auto-published article — ${SLUG}"
+          git push origin "$BRANCH"
+          gh pr create --title "content(blog): ${SLUG}" \
+            --body "Auto-published weekly article (blog-autopublish.yml). Generated on the VPS, validated by scripts/blog-ingest.mjs (no em-dash, sourced, unique slug, tsc clean). Announced on LinkedIn + X only after the URL is live." \
+            --label claude-ready
+          echo "url=https://ozvor.com/blog/${SLUG}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the article to go live, then announce
+        env:
+          TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+          URL: ${{ steps.pr.outputs.url }}
+          SLUG: ${{ steps.ingest.outputs.slug }}
+        run: |
+          set -euo pipefail
+          echo "Polling ${URL} for up to 20 min (auto-merge + deploy)..."
+          LIVE=0
+          for i in $(seq 1 40); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo 000)
+            if [ "$CODE" = "200" ]; then LIVE=1; echo "live after ~$((i*30))s"; break; fi
+            sleep 30
+          done
+          if [ "$LIVE" != "1" ]; then
+            echo "Article never returned 200. NOT announcing (no post to a 404). The 15:40 watcher will flag SEM REGISTRO blog."
+            exit 1
+          fi
+          announce () {
+            local CH="$1"
+            local THEME="Ozvor just published a new blog article. Read it here: ${URL} . Write a short post for ${CH} that PRESENTS this article to the audience and INCLUDES the link ${URL} verbatim so readers can open it. Carry the article's core insight in one or two lines, then invite the reader to read the full piece at the link. Never use an em-dash."
+            local BODY
+            BODY=$(python3 -c 'import json,os;print(json.dumps({"channel":os.environ["CH"],"theme":os.environ["T"]}))' CH="$CH" T="$THEME")
+            curl -sS --max-time 30 -X POST https://hermes.ozvor.com/publish-async \
+              -H "Content-Type: application/json" -H "Authorization: Bearer ${TASK_TOKEN}" -d "$BODY"
+            echo ""
+          }
+          announce linkedin
+          announce x
+          echo "Announce dispatched for linkedin + x with the live URL."
