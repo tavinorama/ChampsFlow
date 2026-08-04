@@ -35,6 +35,7 @@ import { buildLandingExport, type ExportPage } from "../../../../packages/llm/sr
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { getSharedRedis } from "../shared-redis";
 import { resolvePlace, googlePlacesConfigured, PlacesError } from "../lib/google-places";
+import { revalidateSite } from "../lib/landing-revalidate";
 // computeLandingAllowance lives in a Hono-free module so the WORKER can import
 // it without dragging this route file (and `hono`) into its build. Re-exported
 // here for existing importers/tests.
@@ -401,6 +402,36 @@ async function checkPlacesResolveRateLimit(tenantId: string): Promise<boolean> {
 }
 
 export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
+  /**
+   * Purge the public cache for the site a page belongs to.
+   *
+   * Editing, deleting or restoring ONE page changes the site's nav on every
+   * other page, so the whole site is purged rather than the single path. Runs
+   * after the mutation has committed; never awaited by the response, and never
+   * able to fail it (revalidateSite swallows its own errors).
+   */
+  async function revalidateForPage(pageId: string, tenantId: string): Promise<void> {
+    try {
+      const rows = await db.query<{ site_slug: string; page_slug: string | null }>(
+        `SELECT s.slug AS site_slug, sib.slug AS page_slug
+           FROM landing_pages p
+           JOIN landing_sites s ON s.id = p.site_id
+           LEFT JOIN landing_pages sib ON sib.site_id = s.id
+          WHERE p.id = $1 AND p.tenant_id = $2`,
+        [pageId, tenantId]
+      );
+      const siteSlug = rows.rows[0]?.site_slug;
+      if (siteSlug) {
+        revalidateSite(
+          siteSlug,
+          rows.rows.map((r) => r.page_slug).filter((s): s is string => !!s)
+        );
+      }
+    } catch {
+      // Best-effort only: a failed lookup must not surface to the customer.
+    }
+  }
+
   // -------------------------------------------------------------------------
   // GET /api/landing/allowance — what can this tenant build? (drives the UI)
   // -------------------------------------------------------------------------
@@ -958,6 +989,26 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         );
       }
 
+      // Drop the cached public pages. Unpublish is the case that hurt most:
+      // without this the site stays readable on the internet until the next
+      // deploy, so the customer who just took their page down still sees it up.
+      {
+        const slugs = await db.query<{ site_slug: string; page_slug: string | null }>(
+          `SELECT s.slug AS site_slug, p.slug AS page_slug
+             FROM landing_sites s
+             LEFT JOIN landing_pages p ON p.site_id = s.id
+            WHERE s.id = $1 AND s.tenant_id = $2`,
+          [siteId, auth.tenantId]
+        );
+        const siteSlug = slugs.rows[0]?.site_slug;
+        if (siteSlug) {
+          revalidateSite(
+            siteSlug,
+            slugs.rows.map((r) => r.page_slug).filter((s): s is string => !!s)
+          );
+        }
+      }
+
       return c.json({ ok: true });
     }
   );
@@ -973,11 +1024,28 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       const auth = c.get("auth");
       const siteId = c.req.param("id") ?? "";
       await db.setTenantId(auth.tenantId);
+      // Read the slugs BEFORE deleting: the child rows cascade away with the
+      // site, and without them we would purge /l/slug while leaving
+      // /l/slug/faq serving cached HTML for a business that no longer exists.
+      const before = await db.query<{ site_slug: string; page_slug: string | null }>(
+        `SELECT s.slug AS site_slug, p.slug AS page_slug
+           FROM landing_sites s
+           LEFT JOIN landing_pages p ON p.site_id = s.id
+          WHERE s.id = $1 AND s.tenant_id = $2`,
+        [siteId, auth.tenantId]
+      );
       const res = await db.query<{ id: string }>(
         `DELETE FROM landing_sites WHERE id = $1 AND tenant_id = $2 RETURNING id`,
         [siteId, auth.tenantId]
       );
       if (!res.rows[0]) return c.json({ message: "Site not found." }, 404);
+      const siteSlug = before.rows[0]?.site_slug;
+      if (siteSlug) {
+        revalidateSite(
+          siteSlug,
+          before.rows.map((r) => r.page_slug).filter((s): s is string => !!s)
+        );
+      }
       logger.info("landing_site_deleted", { tenant_id: auth.tenantId, site_id: siteId });
       return c.json({ ok: true });
     }
@@ -1397,6 +1465,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         }
       }
 
+      await revalidateForPage(pageId, auth.tenantId);
       return c.json({ ok: true });
     }
   );
@@ -1420,10 +1489,28 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       if (res.rows[0].slug === "") {
         return c.json({ message: "The home page cannot be deleted." }, 400);
       }
+      // Resolve the paths BEFORE the delete: afterwards this pageId no longer
+      // joins to a site, so a lookup would find nothing and purge nothing,
+      // leaving the deleted page cached and readable.
+      const paths = await db.query<{ site_slug: string; page_slug: string | null }>(
+        `SELECT s.slug AS site_slug, sib.slug AS page_slug
+           FROM landing_pages p
+           JOIN landing_sites s ON s.id = p.site_id
+           LEFT JOIN landing_pages sib ON sib.site_id = s.id
+          WHERE p.id = $1 AND p.tenant_id = $2`,
+        [pageId, auth.tenantId]
+      );
       await db.query(`DELETE FROM landing_pages WHERE id = $1 AND tenant_id = $2`, [
         pageId,
         auth.tenantId,
       ]);
+      const siteSlug = paths.rows[0]?.site_slug;
+      if (siteSlug) {
+        revalidateSite(
+          siteSlug,
+          paths.rows.map((r) => r.page_slug).filter((s): s is string => !!s)
+        );
+      }
       return c.json({ ok: true });
     }
   );
@@ -1498,6 +1585,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
           jsonbParam(snap.rows[0].seo ?? {}),
         ]
       );
+      await revalidateForPage(pageId, auth.tenantId);
       return c.json({ ok: true, restored_version: version });
     }
   );
