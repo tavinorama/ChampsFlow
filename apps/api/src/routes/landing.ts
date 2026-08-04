@@ -1465,7 +1465,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         }
       }
 
-      await revalidateForPage(pageId, auth.tenantId);
+      if (pageId) await revalidateForPage(pageId, auth.tenantId);
       return c.json({ ok: true });
     }
   );
@@ -1585,7 +1585,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
           jsonbParam(snap.rows[0].seo ?? {}),
         ]
       );
-      await revalidateForPage(pageId, auth.tenantId);
+      if (pageId) await revalidateForPage(pageId, auth.tenantId);
       return c.json({ ok: true, restored_version: version });
     }
   );
