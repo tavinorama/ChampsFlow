@@ -62,7 +62,7 @@ jobs:
           EOF
           )
           if [ -n "${THEME:-}" ]; then PROMPT="Theme to cover: ${THEME}. ${PROMPT}"; fi
-          BODY=$(python3 -c 'import json,os,sys; print(json.dumps({"engine":"claude","timeoutMs":540000,"prompt":os.environ["P"]}))' P="$PROMPT")
+          BODY=$(P="$PROMPT" python3 -c 'import json,os,sys; print(json.dumps({"engine":"claude","timeoutMs":540000,"prompt":os.environ["P"]}))')
           echo "Calling VPS to write the article (up to ~9 min)..."
           RESP=$(curl -sS --max-time 600 -X POST https://hermes.ozvor.com/task \
             -H "Content-Type: application/json" -H "Authorization: Bearer ${TASK_TOKEN}" \
@@ -132,7 +132,7 @@ jobs:
             local CH="$1"
             local THEME="Ozvor just published a new blog article. Read it here: ${URL} . Write a short post for ${CH} that PRESENTS this article to the audience and INCLUDES the link ${URL} verbatim so readers can open it. Carry the article's core insight in one or two lines, then invite the reader to read the full piece at the link. Never use an em-dash."
             local BODY
-            BODY=$(python3 -c 'import json,os;print(json.dumps({"channel":os.environ["CH"],"theme":os.environ["T"]}))' CH="$CH" T="$THEME")
+            BODY=$(CH="$CH" T="$THEME" python3 -c 'import json,os;print(json.dumps({"channel":os.environ["CH"],"theme":os.environ["T"]}))')
             curl -sS --max-time 30 -X POST https://hermes.ozvor.com/publish-async \
               -H "Content-Type: application/json" -H "Authorization: Bearer ${TASK_TOKEN}" -d "$BODY"
             echo ""
