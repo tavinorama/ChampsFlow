@@ -198,6 +198,7 @@ export type {
   DriftCallInput,
   DriftLLMCaller,
   RunDriftBatteryOptions,
+  VerifiedDetection,
 } from "./drift-control";
 export {
   DRIFT_CONTROLS,
@@ -206,6 +207,7 @@ export {
   DRIFT_POSITIVE_EXPECTED_RATE,
   driftControlEnabled,
   detectMention,
+  detectMentionVerified,
   runDriftBattery,
   evaluateDrift,
   estimateDriftCostCents,
