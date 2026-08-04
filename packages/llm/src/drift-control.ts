@@ -39,11 +39,16 @@
  * Zylthorix Analytics" is behaving correctly and must NOT be counted as a
  * hallucination).
  *
- * TODO(B3): when the two-pass extraction/verification layer (PR #379,
- * packages/llm/src/extraction.ts) merges, the battery must run its detection
- * through the VERIFIER rather than parseCitation directly — the control battery
- * has to measure exactly what the audit measures, otherwise a drift signal here
- * would not map to the scores customers see. Swap `detectMention()` below.
+ * B3 wiring (done): the battery routes detection through the SAME two-pass
+ * verifier the audits use (packages/llm/src/extraction.ts), via
+ * `detectMentionVerified()`. A control counts as mentioned when the verifier
+ * confirms a CITING mention — the identical signal that feeds a customer's
+ * citation rate. Without this the battery would measure one thing and the
+ * customer score another, and a drift alert would not map to the numbers people
+ * actually see. `detectMention()` (parseCitation) remains as the deterministic
+ * fallback for when extraction is disabled or degrades, and every result
+ * carries `extractionMode` so a silent downgrade is visible rather than
+ * mistaken for a healthy run.
  *
  * Privacy: the prompts are synthetic category questions about public companies
  * and invented names. No tenant data, no personal data, no customer brand ever
@@ -52,6 +57,7 @@
  */
 
 import { parseCitation } from "./citation-parser";
+import { extractMentions, type ExtractionLLM, type ExtractionMode } from "./extraction";
 import type { LLMProvider } from "./providers/types";
 
 // ---------------------------------------------------------------------------
@@ -235,6 +241,13 @@ export interface RunDriftBatteryOptions {
   runs?: number;
   /** Subset of controls (defaults to the full battery). */
   controls?: readonly DriftControl[];
+  /** Injected extraction LLM (tests never hit the network). */
+  extractionLLM?: ExtractionLLM;
+  /**
+   * Force the B3 two-pass path on/off for this run. Defaults to the env flag
+   * (GEO_TWO_PASS_EXTRACTION), i.e. the battery follows whatever the audits do.
+   */
+  twoPass?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -258,12 +271,22 @@ export interface DriftControlResult {
   errorRuns: number;
   /** mentions / usableRuns, 4dp. 0 when nothing was usable. */
   mentionRate: number;
+  /**
+   * Which detection path produced `mentions` (B3 alignment telemetry).
+   * "two_pass" means the battery measured exactly what the audits measure.
+   * Anything else means it degraded, and the verdict is weaker than it looks.
+   */
+  extractionMode: ExtractionMode;
+  /** LLM calls the verification consumed across this aggregate (cost). */
+  verificationCalls: number;
 }
 
 export interface DriftBatteryOutcome {
   results: DriftControlResult[];
   /** Total engine calls attempted — the cost basis. */
   generations: number;
+  /** Total B3 verification calls across the battery — the other half of the cost. */
+  verificationCalls: number;
   checkedAt: string;
   batteryVersion: string;
 }
@@ -313,12 +336,83 @@ function ratio(hits: number, total: number): number {
  * discards "I'm not familiar with X" disclaimers — essential for the negative
  * controls). Any detectTerm hit counts.
  *
- * TODO(B3): route through the two-pass verifier from extraction.ts once #379
- * merges, so the battery measures the same extraction the audits use.
+ * This is now the FALLBACK path: `detectMentionVerified()` is what the battery
+ * calls, and it drops back to this function when two-pass extraction is off or
+ * degraded. Kept exported because it is the deterministic reference the unit
+ * tests pin the negative controls against.
  */
 export function detectMention(rawText: string, control: DriftControl): boolean {
   if (!rawText || rawText.trim().length === 0) return false;
   return control.detectTerms.some((term) => parseCitation(rawText, term).mentioned);
+}
+
+/**
+ * Rank of extraction modes, worst last. Used to collapse the per-run modes of
+ * an aggregate into one honest label: any run that fell back drags the whole
+ * aggregate down, because a partly-verified rate is not a verified rate.
+ */
+const MODE_RANK: Record<ExtractionMode, number> = {
+  two_pass: 0,
+  fallback_single_pass: 1,
+  disabled: 2,
+};
+
+function worstMode(a: ExtractionMode, b: ExtractionMode): ExtractionMode {
+  return MODE_RANK[b] > MODE_RANK[a] ? b : a;
+}
+
+/** What `detectMentionVerified` decided, and how it got there. */
+export interface VerifiedDetection {
+  /** Did a CITING mention of the control entity survive verification? */
+  mentioned: boolean;
+  /** Which path produced the answer — a downgrade must never be invisible. */
+  mode: ExtractionMode;
+  /** LLM calls the verification consumed (cost telemetry). */
+  llmCalls: number;
+}
+
+/**
+ * detectMentionVerified — the B3-aligned detector the battery actually uses.
+ *
+ * Runs the control answer through the same two-pass extraction the audits run,
+ * with the control entity standing in for the client brand. A mention counts
+ * only when the blind verifier confirms a CITING mention (`brand_cited`), which
+ * is the exact signal behind a customer's citation rate. That alignment is the
+ * whole point: a drift verdict here now maps one-to-one onto the scores people
+ * see.
+ *
+ * Both control kinds get more honest, not just the positives. A hallucinating
+ * engine that recommends an invented brand produces a direct_recommendation and
+ * is correctly counted; an engine answering "I'm not familiar with Zylthorix
+ * Analytics" is behaving correctly and the verifier rejects that mention, so it
+ * does not.
+ *
+ * Never throws: `extractMentions` is already non-throwing, and any surprise
+ * falls back to `detectMention` with the mode reported as fallback.
+ */
+export async function detectMentionVerified(
+  rawText: string,
+  control: DriftControl,
+  opts: { llm?: ExtractionLLM; enabled?: boolean } = {}
+): Promise<VerifiedDetection> {
+  if (!rawText || rawText.trim().length === 0) {
+    return { mentioned: false, mode: "disabled", llmCalls: 0 };
+  }
+  try {
+    const result = await extractMentions(
+      { rawText, brandName: control.entity, competitors: [] },
+      { llm: opts.llm, enabled: opts.enabled }
+    );
+    // In fallback/disabled mode brand_cited already mirrors the legacy
+    // single-pass boolean, so this stays correct either way.
+    return {
+      mentioned: result.brand_cited,
+      mode: result.extraction_mode,
+      llmCalls: result.llm_calls,
+    };
+  } catch {
+    return { mentioned: detectMention(rawText, control), mode: "fallback_single_pass", llmCalls: 0 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -349,6 +443,10 @@ export async function runDriftBattery(
         let mentions = 0;
         let emptyRuns = 0;
         let errorRuns = 0;
+        let verificationCalls = 0;
+        // Worst mode seen wins: one degraded run makes the whole aggregate
+        // degraded, because a mixed measurement is not a two-pass measurement.
+        let extractionMode: ExtractionMode = "two_pass";
 
         for (let runIndex = 0; runIndex < runs; runIndex++) {
           let text: string | null | undefined;
@@ -365,7 +463,13 @@ export async function runDriftBattery(
             continue;
           }
           usableRuns += 1;
-          if (detectMention(text, control)) mentions += 1;
+          const detection = await detectMentionVerified(text, control, {
+            llm: opts.extractionLLM,
+            enabled: opts.twoPass,
+          });
+          if (detection.mentioned) mentions += 1;
+          verificationCalls += detection.llmCalls;
+          extractionMode = worstMode(extractionMode, detection.mode);
         }
 
         out.push({
@@ -378,15 +482,19 @@ export async function runDriftBattery(
           emptyRuns,
           errorRuns,
           mentionRate: ratio(mentions, usableRuns),
+          extractionMode: usableRuns === 0 ? "disabled" : extractionMode,
+          verificationCalls,
         });
       }
       return out;
     })
   );
 
+  const results = perEngine.flat();
   return {
-    results: perEngine.flat(),
+    results,
     generations: engines.length * controls.length * runs,
+    verificationCalls: results.reduce((sum, r) => sum + r.verificationCalls, 0),
     checkedAt,
     batteryVersion: DRIFT_BATTERY_VERSION,
   };
@@ -528,9 +636,21 @@ export function evaluateDrift(
  * Same basis as the audit ledger: a blended per-generation rate across the 5
  * search-enabled engines (~1.2¢ per prompt-round / engine, see audit-run).
  * DRIFT_COST_PER_GEN_CENTS tunes it. Returns whole cents (api_spend is INTEGER).
+ *
+ * `verificationCalls` is the B3 wiring's own spend: routing detection through
+ * the two-pass verifier costs cheap-tier LLM calls on top of the engine
+ * generations. Counting them is not optional book-keeping. Leaving them out
+ * would make the battery look cheaper than it is, and a cost report that
+ * understates itself is the same failure mode as a health check that reports
+ * green while degraded. Cheap tier, so ~0.15¢ per call by default
+ * (DRIFT_COST_PER_VERIFY_CENTS tunes it).
  */
-export function estimateDriftCostCents(generations: number): number {
+export function estimateDriftCostCents(generations: number, verificationCalls = 0): number {
   const raw = Number(process.env["DRIFT_COST_PER_GEN_CENTS"] ?? 1.2);
   const perGen = Number.isFinite(raw) && raw > 0 ? raw : 1.2;
-  return Math.max(0, Math.round(Math.max(0, generations) * perGen));
+  const rawVerify = Number(process.env["DRIFT_COST_PER_VERIFY_CENTS"] ?? 0.15);
+  const perVerify = Number.isFinite(rawVerify) && rawVerify > 0 ? rawVerify : 0.15;
+  const gens = Math.max(0, generations) * perGen;
+  const verify = Math.max(0, verificationCalls) * perVerify;
+  return Math.max(0, Math.round(gens + verify));
 }

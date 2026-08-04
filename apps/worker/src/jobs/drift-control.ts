@@ -182,7 +182,7 @@ export async function processDriftControlJob(
   const degraded = evaluations.filter((e) => e.status === "degraded").map((e) => e.engine);
 
   // Record the battery's platform API spend (visibility only — never blocking).
-  const costCents = estimateDriftCostCents(outcome.generations);
+  const costCents = estimateDriftCostCents(outcome.generations, outcome.verificationCalls);
   try {
     await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('drift_control', ${costCents})`;
   } catch (err) {
