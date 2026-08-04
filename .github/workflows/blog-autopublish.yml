@@ -63,9 +63,12 @@ jobs:
           )
           if [ -n "${THEME:-}" ]; then PROMPT="Theme to cover: ${THEME}. ${PROMPT}"; fi
           BODY=$(P="$PROMPT" python3 -c 'import json,os,sys; print(json.dumps({"engine":"claude","timeoutMs":540000,"prompt":os.environ["P"]}))')
+          # Normalize: accept the secret whether it holds the raw token or a
+          # "Bearer <token>" header value, and trim stray whitespace/newlines.
+          TOKEN=$(printf '%s' "$TASK_TOKEN" | sed -E 's/^[[:space:]]*[Bb]earer[[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//')
           echo "Calling VPS to write the article (up to ~9 min)..."
           RESP=$(curl -sS --max-time 600 -X POST https://hermes.ozvor.com/task \
-            -H "Content-Type: application/json" -H "Authorization: Bearer ${TASK_TOKEN}" \
+            -H "Content-Type: application/json" -H "Authorization: Bearer ${TOKEN}" \
             -d "$BODY")
           # /task returns { ok, output, ... }; the model's output holds the JSON article.
           echo "$RESP" | python3 -c '
@@ -128,13 +131,14 @@ jobs:
             echo "Article never returned 200. NOT announcing (no post to a 404). The 15:40 watcher will flag SEM REGISTRO blog."
             exit 1
           fi
+          TOKEN=$(printf '%s' "$TASK_TOKEN" | sed -E 's/^[[:space:]]*[Bb]earer[[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//')
           announce () {
             local CH="$1"
             local THEME="Ozvor just published a new blog article. Read it here: ${URL} . Write a short post for ${CH} that PRESENTS this article to the audience and INCLUDES the link ${URL} verbatim so readers can open it. Carry the article's core insight in one or two lines, then invite the reader to read the full piece at the link. Never use an em-dash."
             local BODY
             BODY=$(CH="$CH" T="$THEME" python3 -c 'import json,os;print(json.dumps({"channel":os.environ["CH"],"theme":os.environ["T"]}))')
             curl -sS --max-time 30 -X POST https://hermes.ozvor.com/publish-async \
-              -H "Content-Type: application/json" -H "Authorization: Bearer ${TASK_TOKEN}" -d "$BODY"
+              -H "Content-Type: application/json" -H "Authorization: Bearer ${TOKEN}" -d "$BODY"
             echo ""
           }
           announce linkedin
