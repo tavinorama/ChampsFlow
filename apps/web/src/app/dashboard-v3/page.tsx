@@ -906,7 +906,13 @@ interface PanelCoverageData {
   missing?: string[];
   /** Withheld by us: the engine's control battery says it is drifting. */
   paused?: string[];
+  /** Answered and counted, but its control battery says it is failing. */
+  degraded?: string[];
   comparable?: boolean;
+  /** Headline citation rate, as published. */
+  citationRate?: number;
+  /** Same measurement with the degraded engines removed. Null when none were. */
+  citationRateWithoutDegraded?: number | null;
 }
 
 const ENGINE_NAME: Record<string, string> = {
@@ -934,7 +940,18 @@ function PanelCoverage({ coverage }: { coverage?: PanelCoverageData | null }) {
   if (!coverage || coverage.comparable !== false) return null;
   const silent = (coverage.missing ?? []).map((e) => ENGINE_NAME[e] ?? e);
   const paused = (coverage.paused ?? []).map((e) => ENGINE_NAME[e] ?? e);
-  if (silent.length === 0 && paused.length === 0) return null;
+  const degraded = (coverage.degraded ?? []).map((e) => ENGINE_NAME[e] ?? e);
+  if (silent.length === 0 && paused.length === 0 && degraded.length === 0) return null;
+
+  // The check the customer can run themselves. We publish a number, flag an
+  // engine, and then show what the number would have been without it — so the
+  // caveat is verifiable instead of something to take on trust.
+  const withPct = coverage.citationRate != null ? Math.round(coverage.citationRate * 100) : null;
+  const withoutPct =
+    coverage.citationRateWithoutDegraded != null
+      ? Math.round(coverage.citationRateWithoutDegraded * 100)
+      : null;
+  const showCompare = degraded.length > 0 && withPct !== null && withoutPct !== null;
 
   return (
     <p
@@ -966,9 +983,38 @@ function PanelCoverage({ coverage }: { coverage?: PanelCoverageData | null }) {
           drifting engine produces fiction rather than citations.{" "}
         </>
       )}
-      So this number is not comparable to your earlier audits — a smaller panel
-      is a different measurement, not a worse result. Run it again once the full
-      panel is back.
+      {degraded.length > 0 && (
+        <>
+          We kept {degraded.join(" and ")} in the panel, but{" "}
+          {degraded.length === 1 ? "its" : "their"} daily control check is failing:{" "}
+          {degraded.length === 1 ? "it has" : "they have"} stopped naming brands{" "}
+          {degraded.length === 1 ? "it" : "they"} should name. The answers still
+          count toward the number above.{" "}
+        </>
+      )}
+      {silent.length + paused.length > 0 && (
+        <>
+          So this number is not comparable to your earlier audits — a smaller
+          panel is a different measurement, not a worse result. Run it again once
+          the full panel is back.{" "}
+        </>
+      )}
+      {showCompare && (
+        <span style={{ display: "block", marginTop: "var(--space-2)" }}>
+          {/* Two numbers, one measurement, two panels. If they match, the flag
+              cost nothing and the score stands. If they diverge, the flag WAS
+              the story — and either way the customer gets to decide, which is
+              the whole point of saying anything at all. */}
+          <b style={{ color: "var(--color-text)" }}>Check it yourself:</b> you were
+          cited in <b style={{ color: "var(--color-text)" }}>{withPct}%</b> of
+          answers with {degraded.join(" and ")} included, and{" "}
+          <b style={{ color: "var(--color-text)" }}>{withoutPct}%</b> without{" "}
+          {degraded.length === 1 ? "it" : "them"}.{" "}
+          {withPct === withoutPct
+            ? `Identical — the flagged engine did not change your result.`
+            : `A ${Math.abs(withPct - withoutPct)} point difference, so treat this run's number with that much room.`}
+        </span>
+      )}
     </p>
   );
 }

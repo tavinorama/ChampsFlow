@@ -84,6 +84,36 @@ export function driftPauseEnabled(): boolean {
   return process.env["GEO_DRIFT_PAUSE"] !== "0";
 }
 
+/**
+ * Engines the founder wants kept IN the panel even when the battery says they
+ * are failing. Comma-separated, e.g. GEO_DRIFT_PAUSE_EXEMPT=serp.
+ *
+ * Why this exists rather than GEO_DRIFT_PAUSE=0: the blunt override switches
+ * pausing off for EVERY engine, so keeping one questionable engine in the panel
+ * would also mean losing the guard on the four that are fine. This narrows the
+ * decision to the engine it is actually about.
+ *
+ * The trade it encodes is real, and it is the founder's to make. The product
+ * sells "all 5 engines your buyers use", and a panel that silently drops to 4
+ * breaks both that promise and week-to-week comparability. Against that: an
+ * engine below the positive-control floor has measurably stopped naming brands
+ * it should name, so its silence about a customer means less than it looks like.
+ *
+ * WHAT THIS MUST NEVER DO IS HIDE THE STATE. An exempt engine still gets
+ * measured, still gets its verdict recorded, and now travels in coverage.degraded
+ * so the customer is told the panel was complete but one member was unreliable.
+ * Exempting from the PAUSE is a product decision; exempting from the DISCLOSURE
+ * would be the thing this whole battery exists to prevent.
+ */
+export function pauseExemptEngines(): DriftEngine[] {
+  const raw = process.env["GEO_DRIFT_PAUSE_EXEMPT"] ?? "";
+  const wanted = raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return DRIFT_ENGINES.filter((e) => wanted.includes(e));
+}
+
 // ---------------------------------------------------------------------------
 // LLM caller — wires the battery to the real gateway (one engine per call, so
 // the routing gate, retries and circuit breaker all still apply).
@@ -103,7 +133,31 @@ const gatewayCaller: DriftLLMCaller = async ({ engine, control }) => {
     ],
     { region: "US", requestedProviders: [engine], repeat: 1 }
   );
-  return res.responses[0]?.rawText ?? null;
+  const probe = res.responses[0];
+
+  // An ABSENT surface is not a failed answer, and conflating the two paused a
+  // healthy engine for three days.
+  //
+  // The SERP adapter returns a readable sentinel — "no AI Overview block
+  // returned in this snapshot" — when Google chose not to show an overview for
+  // the query. That string is not empty, so the battery below counted it as a
+  // usable run in which the engine failed to name a brand it should have named.
+  // Four positive controls, two of them on queries Google no longer overviews,
+  // and the rate fell to 0.33 against a 0.50 floor. The verdict said the engine
+  // had stopped naming dominant brands. What had actually changed was Google's
+  // editorial choice about which queries get an AI Overview at all.
+  //
+  // Returning null here puts it in the battery's own vocabulary: an empty run,
+  // excluded from usableRuns, counted in neither the numerator nor the
+  // denominator. A control that asked a question no surface answered tells us
+  // nothing about the engine, and scoring it as evidence either way is the one
+  // thing a control battery must never do.
+  //
+  // Audits are deliberately untouched: there, "Google showed no AI Overview" IS
+  // the customer's answer — they are genuinely not cited in one — and the probe
+  // keeps mentioned=false for exactly that reason.
+  if (probe?.absent) return null;
+  return probe?.rawText ?? null;
 };
 
 // ---------------------------------------------------------------------------
@@ -252,7 +306,31 @@ function buildDetail(
  * never break because the drift history is unavailable.
  */
 export async function pausedDriftEngines(sql: postgres.Sql): Promise<DriftEngine[]> {
-  if (!driftControlEnabled() || !driftPauseEnabled()) return [];
+  const { paused } = await driftVerdicts(sql);
+  return paused;
+}
+
+export interface DriftVerdicts {
+  /** Failing AND not exempt — dropped from the panel before probing. */
+  paused: DriftEngine[];
+  /**
+   * Failing but KEPT in the panel by GEO_DRIFT_PAUSE_EXEMPT. These probe
+   * normally and their answers count, so the customer has to be told: a full
+   * panel containing an engine we know is unreliable is a worse claim than an
+   * incomplete one, if nobody says so.
+   */
+  degraded: DriftEngine[];
+}
+
+/**
+ * The battery's latest fresh verdict, split by what we DO about it.
+ *
+ * Fail-open by design: table missing, DB error, flag off, or verdict older than
+ * PAUSE_FRESHNESS_HOURS → nothing paused and nothing flagged. An audit must
+ * never break because the drift history is unavailable.
+ */
+export async function driftVerdicts(sql: postgres.Sql): Promise<DriftVerdicts> {
+  if (!driftControlEnabled() || !driftPauseEnabled()) return { paused: [], degraded: [] };
 
   try {
     const rows = await sql<Array<{ engine: string; status: string }>>`
@@ -261,15 +339,30 @@ export async function pausedDriftEngines(sql: postgres.Sql): Promise<DriftEngine
        WHERE checked_at >= NOW() - make_interval(hours => ${PAUSE_FRESHNESS_HOURS})
        ORDER BY engine, checked_at DESC
     `;
-    return rows
+    const failing = rows
       .filter((r) => r.status === "failing")
       .map((r) => r.engine as DriftEngine);
+    const exempt = pauseExemptEngines();
+    const paused = failing.filter((e) => !exempt.includes(e));
+    const degraded = failing.filter((e) => exempt.includes(e));
+
+    if (degraded.length > 0) {
+      // Loud on purpose. Someone chose to keep a failing engine in the panel;
+      // that choice should be visible in the logs on every audit, not just on
+      // the day the env var was set.
+      logger.warn("drift_engine_kept_despite_failing", {
+        engines: degraded.join(","),
+        via: "GEO_DRIFT_PAUSE_EXEMPT",
+        effect: "engine probes normally; customer is told the panel is degraded",
+      });
+    }
+    return { paused, degraded };
   } catch (err: unknown) {
     // Fail-open by design (a broken check must not pause engines), but never
     // silently: every failure is logged, table-missing included.
     logger.warn("drift_pause_check_failed", {
       message: (err as Error).message?.slice(0, 160),
     });
-    return [];
+    return { paused: [], degraded: [] };
   }
 }

@@ -145,6 +145,13 @@ export class SerpProbeAdapter implements ProviderAdapter {
         mentioned: parsed.mentioned,
         position: parsed.position,
         sources: sources.length ? sources : parsed.sources,
+        // No AI Overview block at all. `mentioned` stays false — for an AUDIT
+        // that is the true answer, the brand really is not cited in an overview
+        // that Google did not show. But the sentinel text above is not empty, so
+        // without this flag the control battery counted Google's editorial
+        // choice as our engine failing to name a brand it should name, and
+        // paused the engine over our own measurement error.
+        absent: !aio,
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;
