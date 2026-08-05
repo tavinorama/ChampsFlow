@@ -1,6 +1,6 @@
 # Bias Baseline Report — Organic Posts C1 AI Post Generation
 
-> Generated: 2026-08-05T19:00:03.782Z
+> Generated: 2026-08-05T19:19:35.725Z
 > Model: Anthropic Claude Sonnet (claude-sonnet-4-5-20251022)
 > A8 Gate 6→7 condition — NIST AI RMF MEASURE
 
