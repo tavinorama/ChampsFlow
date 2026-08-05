@@ -19,6 +19,18 @@
  *
  * No real API calls — all layers are deterministic/keyless in test env.
  * Produces tests/ai/geo-bias-parity-report.md as the compliance artifact.
+ *
+ * NO INLINE TIMESTAMP, ON PURPOSE.
+ * This report used to open with `Generated: <ISO now>`, which meant every full
+ * suite run rewrote the file with a new value and nothing else. Two costs, one
+ * of them not obvious:
+ *   - every branch that ran tests dirtied the artifact and conflicted with every
+ *     other branch. On 2026-08-05 that alone put a green, unrelated PR into
+ *     CONFLICTING after two others merged.
+ *   - as PROVENANCE it was weaker than what replaced it. A self-reported string
+ *     is overwritten by whoever runs the suite last; git records who generated
+ *     the artifact, from which commit, and when — and cannot be rewritten by a
+ *     test run. For a compliance artifact that is the stronger claim.
  */
 import { describe, it, expect, afterAll } from "vitest";
 import { writeFileSync } from "fs";
@@ -49,7 +61,7 @@ afterAll(() => {
   const report = [
     "# GEO Bias Parity Report — GEO-A8 (Gate 6→7)",
     "",
-    `Generated: ${new Date().toISOString()}`,
+    "Generation date: this file's git history — see the spec header for why it is not stamped inline.",
     `Brand-name corpus: ${BRAND_CORPUS.length} names across 8+ linguistic origins (incl. diacritics, hyphens, apostrophes, multi-word).`,
     "",
     "| Layer | Parity result |",
