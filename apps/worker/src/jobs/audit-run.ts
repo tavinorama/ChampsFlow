@@ -64,7 +64,7 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
-import { pausedDriftEngines } from "./drift-control";
+import { driftVerdicts } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 import { creditsForAudit } from "../../../api/src/lib/credits";
@@ -138,7 +138,22 @@ export interface EngineCoverage {
   missing: string[];
   /** Withheld by us: the engine's control battery says it is drifting. */
   paused: string[];
-  /** True only when every engine in the comparison panel answered. */
+  /**
+   * Answered, and counted — but its control battery says it is failing. Kept in
+   * the panel deliberately via GEO_DRIFT_PAUSE_EXEMPT.
+   *
+   * This is the category that makes a FULL panel worth a warning. Without it, an
+   * exempt engine reads as 5-of-5 with nothing to say, which is a worse claim
+   * than an honest 4-of-5: the number looks complete and is quietly softer.
+   */
+  degraded: string[];
+  /**
+   * True only when the panel was complete AND every member was healthy.
+   *
+   * Degraded members break comparability just as absent ones do — a score built
+   * on an engine that stopped naming brands it should name is not the same
+   * measurement as last week's, whatever the engine count says.
+   */
   comparable: boolean;
   /** Share of the comparison panel that answered, for the publish gate. */
   ratio: number;
@@ -160,16 +175,24 @@ export interface EngineCoverage {
 export function computeEngineCoverage(
   comparisonPanel: readonly string[],
   answered: ReadonlySet<string>,
-  paused: readonly string[]
+  paused: readonly string[],
+  degraded: readonly string[] = []
 ): EngineCoverage {
   const absent = comparisonPanel.filter((p) => !answered.has(p));
   const answeredInPanel = comparisonPanel.filter((p) => answered.has(p)).length;
+  // Only count a degraded engine if it actually answered — one that was kept in
+  // the panel and then failed to respond is absent, not unreliable, and saying
+  // both would double-count the same engine in two categories.
+  const degradedAnswered = comparisonPanel.filter(
+    (p) => degraded.includes(p) && answered.has(p)
+  );
   return {
     requested: comparisonPanel.length,
     answered: answeredInPanel,
     missing: absent.filter((p) => !paused.includes(p)),
     paused: comparisonPanel.filter((p) => paused.includes(p)),
-    comparable: absent.length === 0,
+    degraded: degradedAnswered,
+    comparable: absent.length === 0 && degradedAnswered.length === 0,
     ratio: comparisonPanel.length ? answeredInPanel / comparisonPanel.length : 0,
   };
 }
@@ -421,6 +444,9 @@ export async function processAuditJob(
     // this guard exists to stop. Routing may shrink; the yardstick may not.
     const comparisonPanel: GeoLLMProvider[] = [...requestedProviders];
     let pausedProviders: GeoLLMProvider[] = [];
+    // Failing engines the founder chose to KEEP in the panel. They probe and
+    // count like any other; the customer is told, and told what they cost.
+    let degradedProviders: GeoLLMProvider[] = [];
 
     // B4 — anti-drift pause. An engine whose latest control-battery verdict is
     // 'failing' (it stopped naming dominant brands, or it described entities
@@ -429,13 +455,20 @@ export async function processAuditJob(
     // would hand them a number we already know is wrong.
     //
     // Two guards, both deliberate:
-    //   - fail-open: pausedDriftEngines() never throws and returns [] when the
-    //     history is missing/stale/disabled (GEO_DRIFT_PAUSE=0 is the override).
+    //   - fail-open: driftVerdicts() never throws and returns empty lists when
+    //     the history is missing/stale/disabled (GEO_DRIFT_PAUSE=0 is the
+    //     blunt override; GEO_DRIFT_PAUSE_EXEMPT keeps ONE named engine in the
+    //     panel without switching the guard off for the other four).
     //   - never pause everything: if every requested engine is failing, the
     //     problem is almost certainly on OUR side. Keep them all and shout —
     //     a silently empty audit is worse than a loud suspicious one.
     try {
-      const paused = await pausedDriftEngines(sql);
+      const verdicts = await driftVerdicts(sql);
+      const paused = verdicts.paused;
+      // Failing but kept by GEO_DRIFT_PAUSE_EXEMPT: it probes normally, its
+      // answers count, and coverage.degraded carries that to the customer.
+      // Keeping it silent would be the one thing this battery exists to stop.
+      degradedProviders = requestedProviders.filter((p) => verdicts.degraded.includes(p));
       if (paused.length > 0) {
         const kept = requestedProviders.filter((p) => !paused.includes(p));
         if (kept.length === 0) {
@@ -564,7 +597,7 @@ export async function processAuditJob(
     //   silent — we asked and got nothing (key, quota, outage)
     //   paused — we withheld it because its control battery says it is drifting
     // Both make the run non-comparable; only one is our doing.
-    const cov = computeEngineCoverage(comparisonPanel, answeredProviders, pausedProviders);
+    const cov = computeEngineCoverage(comparisonPanel, answeredProviders, pausedProviders, degradedProviders);
     if (result.responses.length === 0 || cov.ratio < MIN_ENGINE_COVERAGE) {
       logger.warn("audit_insufficient_engine_coverage", {
         audit_id,
@@ -858,6 +891,38 @@ export async function processAuditJob(
     // Derive AI sub-score inputs from probe aggregates.
     const totalProbes = responses.length || 1;
     const citationRate = citedCount / totalProbes;
+
+    // The same headline number, recomputed with every degraded engine removed.
+    //
+    // A warning that an engine is unreliable is worth something; a warning that
+    // shows what it COST is worth more. "4 of 5 engines, one is drifting" leaves
+    // the customer with no way to judge whether that mattered — this hands them
+    // the two numbers and lets them decide. If they move together, the flagged
+    // engine changed nothing and the score can be trusted as usual. If they
+    // diverge, the flag was the story.
+    //
+    // Null when nothing was degraded, so the UI has an unambiguous "no caveat"
+    // signal rather than two identical numbers it has to compare to find out.
+    // Uses the same fractional mentionRate the headline uses, so the two numbers
+    // are the same measurement on different panels — not two different maths
+    // that happen to sit side by side.
+    let citationRateWithoutDegraded: number | null = null;
+    if (degradedProviders.length > 0) {
+      const clean = responses.filter(
+        (r) => !degradedProviders.includes(r.provider as GeoLLMProvider)
+      );
+      // Only meaningful if something survived the exclusion. With every engine
+      // degraded there is no unflagged view to offer, and inventing one from an
+      // empty set would be exactly the fabrication this guard exists to stop.
+      if (clean.length > 0) {
+        const cleanCited = clean.reduce(
+          (sum, r) =>
+            sum + (typeof r.mentionRate === "number" ? r.mentionRate : r.mentioned ? 1 : 0),
+          0
+        );
+        citationRateWithoutDegraded = cleanCited / clean.length;
+      }
+    }
     const avgPositionScore = positionScoreN > 0 ? positionScoreSum / positionScoreN : 0;
 
     // Real share-of-voice vs competitors — the worker already tallied competitor
@@ -1047,7 +1112,17 @@ export async function processAuditJob(
         answered: cov.answered,
         missing: cov.missing,
         paused: cov.paused,
+        // Answered and counted, but flagged by its own control battery. Carried
+        // so the UI can name the engine rather than say "one of them".
+        degraded: cov.degraded,
         comparable: cov.comparable,
+        // The two numbers side by side: the headline as published, and the same
+        // measurement with the flagged engines removed. Lets the customer check
+        // our caveat instead of taking it on faith — and shows, in their own
+        // data, whether the flag actually cost them anything.
+        citationRate: round4(citationRate),
+        citationRateWithoutDegraded:
+          citationRateWithoutDegraded === null ? null : round4(citationRateWithoutDegraded),
       },
       inputs: scoreInputs,
       measured,

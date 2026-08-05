@@ -87,4 +87,57 @@ describe("computeEngineCoverage", () => {
     // Below the floor, so an empty panel is refused instead of scored.
     expect(cov.ratio).toBeLessThan(0.5);
   });
+
+  // -------------------------------------------------------------------------
+  // Degraded — an engine kept in the panel despite a failing control battery
+  // (GEO_DRIFT_PAUSE_EXEMPT). The founder's call; the disclosure is not
+  // optional, and these pin that it cannot be dropped by accident.
+  // -------------------------------------------------------------------------
+
+  it("a full panel with a degraded member is NOT comparable", () => {
+    // The failure this prevents: an exempt engine answers, the count reads 5 of
+    // 5, and the run looks pristine while resting on an engine we measured as
+    // unreliable. A complete-looking number that is quietly softer is a worse
+    // claim than an honest incomplete one.
+    const cov = computeEngineCoverage(
+      ["openai", "serp"],
+      new Set(["openai", "serp"]),
+      [],
+      ["serp"]
+    );
+    expect(cov.answered).toBe(2);
+    expect(cov.requested).toBe(2);
+    expect(cov.degraded).toEqual(["serp"]);
+    expect(cov.comparable).toBe(false);
+  });
+
+  it("an engine that was exempted but then went silent is missing, not degraded", () => {
+    // Otherwise the same engine appears in two categories and the UI says both
+    // "it did not answer" and "its answers still count".
+    const cov = computeEngineCoverage(["openai", "serp"], new Set(["openai"]), [], ["serp"]);
+    expect(cov.missing).toEqual(["serp"]);
+    expect(cov.degraded).toEqual([]);
+  });
+
+  it("stays comparable when nothing is degraded — no badge on a healthy run", () => {
+    const cov = computeEngineCoverage(["openai", "serp"], new Set(["openai", "serp"]), []);
+    expect(cov.degraded).toEqual([]);
+    expect(cov.comparable).toBe(true);
+  });
+
+  it("paused and degraded are different claims and never merge", () => {
+    // Paused = we removed it. Degraded = we kept it and it is shaky. Folding
+    // them together would let "we held it back" stand in for "we used it
+    // anyway", which are opposite messages to a customer.
+    const cov = computeEngineCoverage(
+      ["openai", "gemini", "serp"],
+      new Set(["openai", "serp"]),
+      ["gemini"],
+      ["serp"]
+    );
+    expect(cov.paused).toEqual(["gemini"]);
+    expect(cov.degraded).toEqual(["serp"]);
+    expect(cov.missing).toEqual([]);
+    expect(cov.comparable).toBe(false);
+  });
 });
