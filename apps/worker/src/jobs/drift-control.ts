@@ -133,7 +133,31 @@ const gatewayCaller: DriftLLMCaller = async ({ engine, control }) => {
     ],
     { region: "US", requestedProviders: [engine], repeat: 1 }
   );
-  return res.responses[0]?.rawText ?? null;
+  const probe = res.responses[0];
+
+  // An ABSENT surface is not a failed answer, and conflating the two paused a
+  // healthy engine for three days.
+  //
+  // The SERP adapter returns a readable sentinel — "no AI Overview block
+  // returned in this snapshot" — when Google chose not to show an overview for
+  // the query. That string is not empty, so the battery below counted it as a
+  // usable run in which the engine failed to name a brand it should have named.
+  // Four positive controls, two of them on queries Google no longer overviews,
+  // and the rate fell to 0.33 against a 0.50 floor. The verdict said the engine
+  // had stopped naming dominant brands. What had actually changed was Google's
+  // editorial choice about which queries get an AI Overview at all.
+  //
+  // Returning null here puts it in the battery's own vocabulary: an empty run,
+  // excluded from usableRuns, counted in neither the numerator nor the
+  // denominator. A control that asked a question no surface answered tells us
+  // nothing about the engine, and scoring it as evidence either way is the one
+  // thing a control battery must never do.
+  //
+  // Audits are deliberately untouched: there, "Google showed no AI Overview" IS
+  // the customer's answer — they are genuinely not cited in one — and the probe
+  // keeps mentioned=false for exactly that reason.
+  if (probe?.absent) return null;
+  return probe?.rawText ?? null;
 };
 
 // ---------------------------------------------------------------------------

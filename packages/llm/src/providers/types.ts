@@ -74,6 +74,26 @@ export interface ProbeQuery {
 export interface ProbeResponse {
   /** Which provider produced this response */
   provider: LLMProvider;
+  /**
+   * True when the surface produced NO answer at all — as opposed to an answer
+   * that simply did not name the brand. Today only the SERP adapter sets it,
+   * for the case where Google showed no AI Overview block for the query.
+   *
+   * The distinction is not pedantry, and getting it wrong had a live cost. That
+   * adapter returns a human-readable sentinel ("no AI Overview block returned in
+   * this snapshot") rather than an empty string, and every downstream emptiness
+   * check is `rawText.trim().length === 0`. So "Google chose not to show an AI
+   * Overview" was scored identically to "the engine saw the question and did not
+   * name the brand" — and the drift battery, which exists to catch engines that
+   * stop naming brands they should name, read Google's editorial choice as our
+   * engine degrading. It paused the engine over our own measurement error.
+   *
+   * For an AUDIT the old behaviour is still right: no AI Overview means the
+   * customer is genuinely not cited in one, and that is a true answer to give
+   * them. It is only the control battery, asking "is this engine still behaving",
+   * for which an absent surface says nothing either way.
+   */
+  absent?: boolean;
   /** The buyer prompt that produced this response (synthetic category question,
    *  NOT personal data). Attached by the gateway so callers can build a
    *  per-prompt evidence breakdown. */
