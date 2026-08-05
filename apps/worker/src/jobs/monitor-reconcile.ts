@@ -19,8 +19,8 @@
  *   - The monitoring_enabled UPDATE only touches rows that are still FALSE.
  *   Safe to run every week (and once at boot) forever.
  *
- * Respects the plan's monthly_audit_cap: this function only SCHEDULES the weekly
- * repeatable. The actual per-run cost ceiling (PLAN_LIMITS[tier].monthly_audit_cap)
+ * Respects the plan's monthly_audits_total: this function only SCHEDULES the weekly
+ * repeatable. The actual per-run cost ceiling (PLAN_LIMITS[tier].monthly_audits_total)
  * is enforced where audits are produced — the scheduled branch of processAuditJob
  * (apps/worker/src/jobs/audit-run.ts) skips + deletes a run once the tenant hits
  * its monthly cap. Registering the repeatable never bypasses that guard.
@@ -35,7 +35,7 @@
  *
  * Scope: ENABLE-only. It never DISABLES monitoring (e.g. for a churned tenant)
  * so it can't fight a user's manual choice or silently turn tracking off. Churn
- * cost is already bounded by the monthly_audit_cap guard above.
+ * cost is already bounded by the monthly_audits_total guard above.
  *
  * Any DB error logs at error level and skips the cycle — the worker MUST NOT
  * crash, and it never skips silently. Per-brand failures are caught so one bad

@@ -101,32 +101,77 @@ describe("PLAN_LIMITS — cost-control fields (#217)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 1b. monthly_audit_cap — margin guard: scheduled audits can't run a plan
-//     negative. Enforced in apps/worker/src/jobs/audit-run.ts (cron branch).
+// 1b. monthly_audits_total — margin guard over BOTH scheduled and manual runs.
+//
+// This block replaces one that asserted a 70-audit cap against a guessed $5 per
+// audit and only required cost < revenue — i.e. ANY positive margin passed. It
+// was green the entire time the plans were configured to lose money, for two
+// reasons worth keeping in mind while editing:
+//
+//   - the rate was invented. $5/audit was a placeholder, never reconciled with
+//     api_spend. The real figure below comes from the 2026-08-04 production
+//     audit: 156 cents for 11 prompts → $0.142 per prompt per audit.
+//   - it only counted cron. Manual re-runs were outside the ceiling entirely,
+//     so half the spend was invisible to the test AND to the guard it tested.
+//
+// The assertions now demand a MARGIN FLOOR at the plan's ceiling, not mere
+// positivity, and they multiply depth by volume — which is what actually breaks.
 // ---------------------------------------------------------------------------
 
-describe("PLAN_LIMITS.monthly_audit_cap — margin guard", () => {
-  const APPROX_AUDIT_COST_USD = 5; // ~$5 per full 250-prompt audit (api_spend)
+describe("PLAN_LIMITS.monthly_audits_total — margin guard", () => {
+  /** Measured, not assumed: api_spend 156c for an 11-prompt audit (2026-08-04). */
+  const USD_PER_PROMPT_AUDIT = 1.56 / 11;
   const PLAN_PRICE_USD: Record<PlanTier, number> = { free: 0, growth: 99, agency: 549 };
+  /** The founder's bar: high margin AT THE LIMIT, not at typical use. */
+  const MARGIN_FLOOR = 0.8;
 
-  it("every tier defines a positive integer cap", () => {
+  const ceilingCostUsd = (t: PlanTier): number =>
+    PLAN_LIMITS[t].prompts_per_audit * PLAN_LIMITS[t].monthly_audits_total * USD_PER_PROMPT_AUDIT;
+
+  it("every tier defines a positive integer ceiling", () => {
     (["free", "growth", "agency"] as PlanTier[]).forEach((t) => {
-      const cap = PLAN_LIMITS[t].monthly_audit_cap;
+      const cap = PLAN_LIMITS[t].monthly_audits_total;
       expect(Number.isInteger(cap)).toBe(true);
       expect(cap).toBeGreaterThan(0);
     });
   });
 
-  it("caps keep paid tiers' scheduled-audit API cost BELOW revenue (non-negative)", () => {
+  it("paid tiers keep >=80% margin when a customer uses EVERYTHING they bought", () => {
     (["growth", "agency"] as PlanTier[]).forEach((t) => {
-      const maxApiCost = PLAN_LIMITS[t].monthly_audit_cap * APPROX_AUDIT_COST_USD;
-      expect(maxApiCost).toBeLessThan(PLAN_PRICE_USD[t]);
+      const margin = (PLAN_PRICE_USD[t] - ceilingCostUsd(t)) / PLAN_PRICE_USD[t];
+      expect(margin).toBeGreaterThanOrEqual(MARGIN_FLOOR);
     });
   });
 
-  it("agency cap (70) bounds cost at ~$350 < $549 — the founder's trava", () => {
-    expect(PLAN_LIMITS.agency.monthly_audit_cap).toBe(70);
-    expect(PLAN_LIMITS.agency.monthly_audit_cap * APPROX_AUDIT_COST_USD).toBe(350);
+  it("the ceiling covers weekly monitoring on every brand, with slack for manual re-runs", () => {
+    const WEEKS_PER_MONTH = 4.33;
+    (["growth", "agency"] as PlanTier[]).forEach((t) => {
+      const scheduled = PLAN_LIMITS[t].max_brands * WEEKS_PER_MONTH;
+      expect(PLAN_LIMITS[t].monthly_audits_total).toBeGreaterThan(scheduled);
+    });
+  });
+
+  it("depth is a number we have actually priced — the 250 that was never generated cannot return", () => {
+    // prompts_per_audit was 250 on both paid tiers while the default portfolio
+    // (packages/llm/src/prompt-portfolio.ts) only ever produced 10. Paying
+    // customers saw "250" on the billing screen and received 11. Any future
+    // increase has to come with the margin arithmetic above still passing,
+    // which this ceiling makes impossible to skip by accident.
+    (["growth", "agency"] as PlanTier[]).forEach((t) => {
+      expect(PLAN_LIMITS[t].prompts_per_audit).toBeLessThanOrEqual(50);
+    });
+  });
+
+  it("agency is wide (10 brands) and growth is deep (more prompts per audit)", () => {
+    expect(PLAN_LIMITS.agency.max_brands).toBe(10);
+    expect(PLAN_LIMITS.growth.max_brands).toBe(1);
+    expect(PLAN_LIMITS.growth.prompts_per_audit).toBeGreaterThan(
+      PLAN_LIMITS.agency.prompts_per_audit
+    );
+    // ...and both beat the free taste, or there is no reason to upgrade.
+    expect(PLAN_LIMITS.growth.prompts_per_audit).toBeGreaterThan(
+      PLAN_LIMITS.free.prompts_per_audit
+    );
   });
 });
 

@@ -40,7 +40,7 @@ const COMPARE_ROWS: { f: string; vals: string[]; us: string }[] = [
   { f: "Evidence-backed action plan", vals: ["✗", "✗", "✗", "✗"], us: "Every audit" },
   { f: "Done-for-you execution", vals: ["✗", "✗", "✗", "✗"], us: "OrganicPosts, from $1,500" },
   { f: "Starts free", vals: ["✗", "✗", "✗", "✗"], us: "Free audit → $29 → $99/mo" },
-  { f: "White-label agency tier ($549/mo)", vals: ["~", "?", "?", "?"], us: "Yes — 15 brands ($36.60 each)" },
+  { f: "White-label agency tier ($549/mo)", vals: ["~", "?", "?", "?"], us: "Yes — 10 brands ($54.90 each)" },
   { f: "Public measurement methodology", vals: ["✗", "✗", "✗", "✗"], us: "Yes — /how-we-measure" },
 ];
 

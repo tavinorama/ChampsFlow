@@ -111,7 +111,7 @@ const PLANS: Plan[] = [
     annualYearList: "$6,588",
     annualPerMonth: "≈ $384/mo · 30% founder discount",
     sub: "For agencies & multi-brand teams.",
-    features: ["$36.60 per brand — $25.62 on founder annual", "Multi-client dashboard (up to 15 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual bonus: one free website GEO audit."],
+    features: ["$54.90 per brand — $38.40 on founder annual", "Multi-client dashboard (up to 10 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual bonus: one free website GEO audit."],
     cta: "Start Agency",
     guarantee: "30 day money back.",
     accent: "emerald",

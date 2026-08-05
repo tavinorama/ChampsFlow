@@ -90,7 +90,7 @@ const PLAN_META: Record<
     priceMonthly: "$549",
     priceAnnual: "$4,611",
     features: [
-      "15 brands monitored",
+      "10 brands monitored",
       "10 competitors per brand",
       "250 buyer-intent prompts per audit",
       "Weekly monitoring + alerts",

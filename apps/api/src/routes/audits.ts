@@ -1102,6 +1102,49 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
             429
           );
         }
+
+        // 4) Monthly ceiling across BOTH manual and scheduled audits (added
+        // 2026-08-05). Guards 2 and 3 bound how FAST a tenant can audit, never
+        // how MUCH in a month — and they deliberately excluded cron, so the two
+        // kinds of spend were never added up anywhere. With agency's per-day
+        // manual window, ten brands could reach 343 audits a month and leave
+        // 2.5% margin on a $549 plan. This is the ceiling that makes the plan
+        // arithmetic true; the worker enforces the same number on the scheduled
+        // side (apps/worker/src/jobs/audit-run.ts).
+        //
+        // Counts COMPLETED audits only, matching the worker, so a run that
+        // failed and cost us little does not consume the customer's allowance.
+        // Fails OPEN on a count error: a margin guard must never be the reason
+        // a paying customer cannot audit.
+        const monthlyTotal = limits.monthly_audits_total;
+        try {
+          const monthly = await db.query<{ count: string }>(
+            `SELECT COUNT(*) AS count
+               FROM geo_audit
+              WHERE tenant_id = $1
+                AND status = 'complete'
+                AND created_at >= date_trunc('month', NOW())`,
+            [tenantId]
+          );
+          const used = parseInt(monthly.rows[0]?.count ?? "0", 10);
+          if (used >= monthlyTotal) {
+            logger.warn("audit_monthly_total_hit", { tenantId, monthlyTotal, used });
+            return c.json(
+              {
+                message: `You've used all ${monthlyTotal} audits included in your plan this month (scheduled monitoring and manual runs combined). Your allowance resets on the 1st.`,
+                code: "AUDIT_MONTHLY_LIMIT",
+                used,
+                included: monthlyTotal,
+              },
+              429
+            );
+          }
+        } catch (err: unknown) {
+          logger.warn("audit_monthly_total_check_failed", {
+            tenantId,
+            message: (err as Error).message?.slice(0, 160),
+          });
+        }
       }
 
       // Create the audit row in 'pending' state.

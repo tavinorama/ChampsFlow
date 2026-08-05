@@ -286,9 +286,44 @@ export function tryGetStripe(): Stripe | null {
 // ---------------------------------------------------------------------------
 
 // Ozvor plan tiers (brand-package pricing architecture):
-//   free     — 1 brand, 3 competitors, 50 prompts, monthly audit
-//   growth   — 1 brand, 10 competitors, 250 prompts, weekly monitoring
-//   agency   — 15 brands, 10 competitors, 250 prompts, weekly monitoring (multi-client)
+//   free     — 1 brand, 1 competitor, 10 prompts, 2 audits/month
+//   growth   — 1 brand, 10 competitors, 20 prompts, weekly monitoring ("deep on one")
+//   agency   — 10 brands, 10 competitors, 12 prompts, weekly monitoring ("wide on ten")
+//
+// MARGIN CALIBRATION (2026-08-05). These numbers are not taste — they are the
+// output of measuring what an audit actually costs and solving for >80% margin
+// AT THE PLAN'S LIMIT, not at typical use. The measurement, from the 2026-08-04
+// production audit (api_spend 156c for 11 prompts): ~$0.142 of platform API per
+// prompt per audit.
+//
+// What that arithmetic showed, and why these fields changed:
+//
+//  1. prompts_per_audit was 250 on both paid tiers and NOTHING EVER GENERATED
+//     250. The default portfolio is 10 prompts (packages/llm/src/prompt-portfolio.ts),
+//     so real audits ran at 10-11 while the dashboard's "What's included" row
+//     advertised 250 to paying customers. The plans only looked profitable
+//     because they under-delivered: at a genuine 250 prompts, Growth loses $51/mo
+//     on ONE brand and Agency loses $1,726/mo. These values are now what we
+//     actually deliver, so the number on the billing screen is finally true.
+//
+//  2. max_brands 15 -> 10 on agency. At 15 brands weekly a 15-prompt audit
+//     yields 74.8% margin; at 10 brands the same depth yields 83.2%. Ten brands
+//     at $549 is still $54.90/brand — the agency pitch survives intact.
+//
+//  3. monthly_audit_cap became monthly_audits_total. The old cap counted ONLY
+//     cron audits, while agency allowed a MANUAL re-audit per brand per DAY with
+//     no monthly ceiling at all. A customer using exactly what we sold could run
+//     343 audits/month and leave 2.5% margin (or -46% at 15 brands). Capping
+//     brands alone never closes that hole; the ceiling has to cover both kinds.
+//     Six audits per brand per month covers weekly monitoring (4.33) and still
+//     leaves two manual runs of slack.
+//
+// STILL AN ESTIMATE, DELIBERATELY FLAGGED: api_spend is a MODEL, not a meter —
+// AUDIT_COST_PER_GEN_CENTS (1.2) and AUDIT_COST_PER_EXTRACTION_CENTS (0.2) are
+// assumed rates, and eleven of the fifteen historical rows were a flat
+// AUDIT_COST_CENTS=80 override. Nobody has ever reconciled provider invoices
+// against audit counts. Until someone does, every number above rests on those
+// two constants.
 export type PlanTier = "free" | "growth" | "agency";
 
 /** Paid tiers that can be purchased via checkout. */
@@ -316,17 +351,27 @@ export const PLAN_LIMITS: Record<
      * rolling 24h window (across ALL brands) — bounds brand-delete-and-recreate
      * abuse of the per-brand window above. super_admin bypasses this. */
     audit_backstop_24h: number;
-    /** Margin guard: max SCHEDULED (cron/monitor) audits per tenant per calendar
-     * month. Each full 250-prompt audit costs ~$5 of platform API (see
-     * api_spend). This caps the automatic monitor so a high-brand-count Agency
-     * can't run the plan negative. Math: Agency $549/mo, ~$5/audit → 70 audits
-     * ≈ $350 API, stays positive (~$180 buffer) AND covers all 15 brands
-     * weekly (15 × 4.3 ≈ 65). Growth (1 brand weekly ≈ 4.3) gets 8 for
-     * headroom. MANUAL
-     * audits the user explicitly triggers are NOT counted here — they have the
-     * manual_audit_interval + audit_backstop_24h guards above. Enforced in
-     * apps/worker/src/jobs/audit-run.ts (scheduled branch only). */
-    monthly_audit_cap: number;
+    /** Margin guard: max audits per tenant per calendar month, counting BOTH
+     * scheduled monitoring AND manual re-runs.
+     *
+     * This replaced `monthly_audit_cap`, which counted only cron audits. That
+     * was the hole: agency's manual_audit_interval is "day", so ten brands could
+     * be re-audited manually 300 times a month on top of the scheduled 43 —
+     * 343 audits, $487 of API, 2.5% margin on a $549 plan (at fifteen brands it
+     * went to -46%). Reducing max_brands does not close it; only a ceiling over
+     * BOTH kinds does.
+     *
+     * Sizing: 6 audits per brand per month. Weekly monitoring uses 4.33, so
+     * every brand keeps roughly two manual re-runs of slack — enough that a
+     * normal customer never touches the ceiling, and an abusive one cannot
+     * outrun the margin.
+     *
+     * Enforced in two places, because the two kinds fail differently:
+     *   - scheduled: apps/worker/src/jobs/audit-run.ts skips the run
+     *   - manual:    apps/api/src/routes/audits.ts rejects with 429 before any
+     *                work, so the customer gets a real message instead of a
+     *                silent no-op. */
+    monthly_audits_total: number;
     /** Cost-control (#217): Ozvor Pages REgenerations per site per calendar
      * month (UTC). Free is 0 here — free tenants regenerate against a
      * LIFETIME quota (2 per $99-credit site) enforced separately in
@@ -337,20 +382,29 @@ export const PLAN_LIMITS: Record<
   // Free is a deliberate TASTE, not a usable tier: 1 brand, 1 competitor, a
   // shallow 10-prompt audit, no monitoring. Enough to see your standing once —
   // upgrade to Growth for real depth + weekly tracking.
+  // Free is a deliberate TASTE, not a usable tier. Two audits a month: one to
+  // see where you stand, one to check whether anything moved. At 10 prompts
+  // that is ~$2.84/month of API per free tenant, which the funnel can carry.
   free: {
     max_brands: 1, max_competitors: 1, prompts_per_audit: 10, weekly_monitoring: false,
     max_landing_sites: 0, max_pages_per_site: 6,
-    manual_audit_interval: "week", audit_backstop_24h: 3, monthly_audit_cap: 4, pages_regens_per_site_month: 0,
+    manual_audit_interval: "week", audit_backstop_24h: 3, monthly_audits_total: 2, pages_regens_per_site_month: 0,
   },
+  // Growth goes DEEP on one brand: double the free tier's depth. 20 prompts x
+  // 6 audits = $17.02 of API against $99 → 82.8% margin at the ceiling.
   growth: {
-    max_brands: 1, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
+    max_brands: 1, max_competitors: 10, prompts_per_audit: 20, weekly_monitoring: true,
     max_landing_sites: 1, max_pages_per_site: 6,
-    manual_audit_interval: "week", audit_backstop_24h: 5, monthly_audit_cap: 8, pages_regens_per_site_month: 5,
+    manual_audit_interval: "week", audit_backstop_24h: 5, monthly_audits_total: 6, pages_regens_per_site_month: 5,
   },
+  // Agency goes WIDE across ten: breadth is what an agency buys, so depth per
+  // brand is standard and the count is what scales. 12 prompts x 60 audits =
+  // $102.11 against $549 → 81.4% margin at the ceiling, and $54.90 per brand
+  // still reads well next to hiring anyone.
   agency: {
-    max_brands: 15, max_competitors: 10, prompts_per_audit: 250, weekly_monitoring: true,
-    max_landing_sites: 15, max_pages_per_site: 6,
-    manual_audit_interval: "day", audit_backstop_24h: 30, monthly_audit_cap: 70, pages_regens_per_site_month: 5,
+    max_brands: 10, max_competitors: 10, prompts_per_audit: 12, weekly_monitoring: true,
+    max_landing_sites: 10, max_pages_per_site: 6,
+    manual_audit_interval: "day", audit_backstop_24h: 30, monthly_audits_total: 60, pages_regens_per_site_month: 5,
   },
 };
 
