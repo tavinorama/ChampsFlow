@@ -329,26 +329,32 @@ export async function processAuditJob(
       // plan_tier unreadable → default to free (most conservative).
     }
 
-    // Margin guard (cost-control): SCHEDULED (cron/monitor) audits only. Each full
-    // audit costs ~$5 of platform API (see api_spend); without a ceiling a
-    // high-brand-count Agency can run its plan negative. Once the tenant reaches
-    // its plan's monthly_audit_cap of COMPLETED cron audits this calendar month,
-    // skip this run and delete its (un-run) row. Manual audits the user triggers
-    // are unaffected (auditId present + their own manual_audit_interval / backstop).
+    // Margin guard (cost-control). This branch handles SCHEDULED runs; manual
+    // ones are rejected up front in apps/api/src/routes/audits.ts so the user
+    // gets a message rather than a silent no-op.
+    //
+    // The COUNT, however, covers BOTH kinds — and that is the 2026-08-05 fix.
+    // It used to filter `triggered_by = 'cron'`, which meant manual re-runs were
+    // invisible to the ceiling. Since agency allows a manual re-audit per brand
+    // per DAY, a customer using exactly what we sold could reach 343 audits in a
+    // month and leave 2.5% margin. Counting only half the spend is not a spend
+    // guard. Now: once a tenant has completed monthly_audits_total audits of any
+    // origin this calendar month, further scheduled runs are skipped and their
+    // (un-run) row deleted.
+    //
     // Month window uses date_trunc('month', NOW()) — the DB server tz, same
     // convention as the api_spend monthly budget (products.ts). This is a SOFT
     // ceiling by design: fail-open on a count error, and count-then-act is not
     // atomic, so it bounds cost rather than hard-locking it. A few hours of
     // month-boundary drift is immaterial for a spend guard.
     if (!job.data.audit_id) {
-      const cap = PLAN_LIMITS[planTier]?.monthly_audit_cap;
+      const cap = PLAN_LIMITS[planTier]?.monthly_audits_total;
       if (typeof cap === "number") {
         try {
           const capRows = await sql<{ n: number }[]>`
             SELECT count(*)::int AS n FROM geo_audit
              WHERE tenant_id = ${tenant_id}
                AND status = 'complete'
-               AND triggered_by = 'cron'
                AND created_at >= date_trunc('month', NOW())
           `;
           const completed = capRows[0]?.n ?? 0;

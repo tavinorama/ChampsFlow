@@ -38,7 +38,7 @@ export function FounderAnnualNote({
   return (
     <p style={style}>
       {active
-        ? "Founder annual: Growth $831/yr (~$69/mo), Agency $4,611/yr (~$384/mo, just $25.62 per brand) — 30% off, first 100 founders, annual only."
+        ? "Founder annual: Growth $831/yr (~$69/mo), Agency $4,611/yr (~$384/mo, just $38.40 per brand) — 30% off, first 100 founders, annual only."
         : "Annual: Growth $1,188/yr (~$99/mo), Agency $6,588/yr (~$549/mo)."}
       {suffix ? ` ${suffix}` : ""}
     </p>

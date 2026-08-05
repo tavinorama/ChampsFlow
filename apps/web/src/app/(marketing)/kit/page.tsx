@@ -154,7 +154,7 @@ export default function KitPage() {
         secondary={[
           {
             title: "Agency Plan",
-            why: "Monitor up to 15 brands, white-label reports, and a client approval workflow.",
+            why: "Monitor up to 10 brands, white-label reports, and a client approval workflow.",
             price: "$549/mo",
             plan: "agency", interval: "year",
             accent: "ghost",

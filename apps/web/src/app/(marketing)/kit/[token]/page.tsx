@@ -243,7 +243,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
         secondary={[
           {
             title: "Agency Plan",
-            why: "Weekly monitoring across up to 15 brands. Includes white-label reports and a client approval workflow.",
+            why: "Weekly monitoring across up to 10 brands. Includes white-label reports and a client approval workflow.",
             price: "$549/mo",
             plan: "agency", interval: "year",
             accent: "ghost",
