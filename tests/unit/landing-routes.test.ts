@@ -20,6 +20,7 @@ import {
   sectionsEmpty,
   registerLandingRoutes,
 } from "../../apps/api/src/routes/landing";
+import { PLAN_LIMITS } from "../../apps/api/src/integrations/stripe";
 
 describe("computeLandingAllowance — the plan/credit access matrix", () => {
   it("free WITHOUT credit: 0 sites (builder locked — the founder's guarantee)", () => {
@@ -38,8 +39,13 @@ describe("computeLandingAllowance — the plan/credit access matrix", () => {
     expect(computeLandingAllowance("growth", 1).maxSites).toBe(2);
   });
 
-  it("agency: 15 sites (1 per brand)", () => {
-    expect(computeLandingAllowance("agency", 0).maxSites).toBe(15);
+  it("agency: one site per brand, whatever max_brands currently is", () => {
+    // Was hardcoded to 15. That coupling is the point of this test — Ozvor
+    // Pages gives an agency one site per client brand, so the allowance has to
+    // track max_brands rather than restate it. When the 2026-08-05 margin
+    // calibration took agency from 15 brands to 10, a literal here would have
+    // silently promised five sites nobody could attach a brand to.
+    expect(computeLandingAllowance("agency", 0).maxSites).toBe(PLAN_LIMITS.agency.max_brands);
   });
 
   it("negative credit values never subtract from the plan base", () => {
