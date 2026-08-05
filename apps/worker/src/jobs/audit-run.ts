@@ -67,6 +67,7 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { pausedDriftEngines } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
+import { creditsForAudit } from "../../../api/src/lib/credits";
 
 export interface AuditJobData {
   /** Present for on-demand audits (row pre-created by the API).
@@ -1222,6 +1223,55 @@ export async function processAuditJob(
       await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });
+    }
+
+    // Charge the tenant's credit ledger for the audit that just completed (B5,
+    // #144). api_spend above is OUR ledger — what the platform paid providers.
+    // This is THEIRS — what the plan's allowance was spent on. Two different
+    // questions that happen to move together, so they are recorded separately
+    // and neither is derived from the other.
+    //
+    // Written here rather than in the API because this is the only point that
+    // knows the audit finished: a run that fails, or that the margin guard
+    // skips, must not consume a customer's credits. Charging at enqueue would
+    // bill for work we never delivered.
+    //
+    // The amount comes from creditsForAudit(tier) — depth x the unit price, the
+    // same arithmetic the balance and the grant use — so a plan change can never
+    // leave the charge and the allowance disagreeing.
+    //
+    // Idempotent by uniq_credit_ref: BullMQ retries a job after a partial
+    // failure, and ON CONFLICT DO NOTHING is what stops a retry becoming a
+    // second charge. The guarantee lives in the database index, not in a check
+    // here, because check-then-insert leaves the window open.
+    //
+    // FAILS OPEN, LOUDLY. The audit is finished and the customer can see it; a
+    // ledger error must never undo that. But an audit that silently escapes
+    // billing is money leaking, so the failure is logged at error level with the
+    // ids needed to reconcile it by hand.
+    try {
+      const creditCost = creditsForAudit(planTier);
+      const [row] = await sql<{ id: string }[]>`
+        INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
+        SELECT ${tenant_id}::uuid, ${-creditCost}, 'audit', 'geo_audit', ${audit_id}::uuid,
+               COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = ${tenant_id}::uuid), 0) - ${creditCost}
+          ON CONFLICT (tenant_id, ref_type, ref_id)
+            WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING
+          RETURNING id
+      `;
+      if (!row) {
+        // Expected on a retry, and only then. Worth a line either way: if this
+        // shows up without a preceding failure, the idempotency key is wrong.
+        logger.info("credit_debit_already_recorded", { audit_id, tenant_id, creditCost });
+      }
+    } catch (err) {
+      logger.error("credit_debit_failed", {
+        audit_id,
+        tenant_id,
+        plan: planTier,
+        message: (err as Error).message?.slice(0, 160),
+        effect: "audit delivered but NOT charged — reconcile manually",
+      });
     }
 
     logger.info("audit_completed", {

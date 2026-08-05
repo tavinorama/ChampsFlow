@@ -72,6 +72,7 @@ import { ownerEmailForTenant } from "../lib/tenant-email";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
+import { ensureMonthlyGrant, creditBalance, overagePackUsd } from "../lib/credits";
 import Stripe from "stripe";
 import { asStr } from "../lib/coerce";
 
@@ -433,6 +434,62 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         { error: "internal_error", code: "PLAN_FETCH_FAILED" },
         500
       );
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/billing/credits — the tenant's credit balance (B5, #144).
+  //
+  // Reading is also what ISSUES the month's grant. Lazy rather than cron: a
+  // tenant who never logs in costs nothing to keep current, and there is no
+  // scheduler that can quietly stop running — which is precisely how the daily
+  // video job died unnoticed on 2026-08-05. The grant is idempotent in the
+  // database (uniq_credit_monthly_grant), so concurrent reads issue one month,
+  // not several.
+  //
+  // Returns cost_per_audit and can_run_audit as well as the number, because a
+  // balance alone cannot answer the only question the UI actually has: will the
+  // next click work? Answering it here means the warning can appear BEFORE the
+  // button, instead of as a failure after it.
+  // -------------------------------------------------------------------------
+  app.get("/api/billing/credits", requireAuth, async (ctx: Context) => {
+    const auth = ctx.get("auth");
+
+    try {
+      await db.setTenantId(auth.tenantId);
+
+      const { rows } = await db.query<{ plan_tier: string | null }>(
+        `SELECT plan_tier
+           FROM billing_subscriptions
+          WHERE tenant_id = $1
+          ORDER BY (status = 'active') DESC, created_at DESC
+          LIMIT 1`,
+        [auth.tenantId]
+      );
+      const raw = rows[0]?.plan_tier;
+      const tier: PlanTier = raw === "growth" || raw === "agency" ? raw : "free";
+
+      await ensureMonthlyGrant(db, auth.tenantId, tier);
+      const balance = await creditBalance(db, auth.tenantId, tier);
+
+      return ctx.json({
+        plan: tier,
+        balance: balance.balance,
+        granted: balance.granted,
+        cost_per_audit: balance.costPerAudit,
+        can_run_audit: balance.canRunAudit,
+        /** Price of a top-up, derived — never a figure typed into a page. */
+        overage_pack: { credits: 1000, usd: overagePackUsd(1000) },
+      });
+    } catch (err) {
+      // FAILS CLOSED on the read, deliberately: a balance we cannot compute must
+      // not be rendered as a number, because a wrong balance is worse than an
+      // absent one — it either blocks a paying customer or invites overspend.
+      logger.error("credit_balance_failed", {
+        tenantId: auth.tenantId,
+        message: (err as Error).message?.slice(0, 160),
+      });
+      return ctx.json({ error: "internal_error", code: "CREDIT_BALANCE_FAILED" }, 500);
     }
   });
 
