@@ -44,6 +44,42 @@ import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 import { asStr } from "../lib/coerce";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Trading name from a homepage domain, for the free test's two-field promise.
+ *
+ * `ozvor.com` -> "Ozvor". `www.joes-plumbing.co.uk` -> "Joes Plumbing". Strips
+ * the leading www and every public suffix label, hyphens become spaces, and each
+ * word is capitalised. Returns "" when nothing usable survives, so the caller
+ * decides what a missing brand means rather than inheriting a silent default.
+ *
+ * A guess, and treated as one: any brand the caller actually sends wins. This
+ * only spares a visitor from typing what their own URL already says.
+ */
+export function brandFromDomain(domain: string | null | undefined): string {
+  if (!domain) return "";
+  let host = String(domain).trim().toLowerCase();
+  // Tolerate a pasted URL as well as a bare host.
+  host = host.replace(/^[a-z]+:\/\//, "").split("/")[0] ?? "";
+  host = host.split("?")[0] ?? "";
+  host = host.replace(/^www\./, "");
+  if (!host) return "";
+  const labels = host.split(".").filter(Boolean);
+  if (labels.length === 0) return "";
+  // Drop the TLD, and a second label for known two-part suffixes (co.uk, com.br).
+  const TWO_PART = new Set(["co", "com", "net", "org", "gov", "edu", "ac"]);
+  let cut = 1;
+  if (labels.length >= 3 && TWO_PART.has(labels[labels.length - 2] ?? "")) cut = 2;
+  const name = labels.slice(0, Math.max(1, labels.length - cut)).pop() ?? "";
+  if (!name) return "";
+  return name
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+    .slice(0, 80);
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function webOrigin(): string {
@@ -158,7 +194,29 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     // LGPD Art. 7(I) / GDPR Art. 6(1)(a): marketing consent must be explicitly true
     const marketingConsent = body.marketing_consent === true;
 
-    if (!brand) return c.json({ message: "Brand name is required." }, 400);
+    // The landing page promises "your website and your email — that is all we
+    // need to begin", and then the form revealed brand and category as REQUIRED,
+    // keeping the button disabled until all four were filled. Four fields sold
+    // as two, at the highest-friction point in the entire funnel.
+    //
+    // Brand is the half we can honestly infer: a homepage domain almost always
+    // carries the trading name, so `ozvor.com` yields "Ozvor" and the visitor
+    // never types what we could already read. A caller that sends a brand always
+    // wins — a registrable label is a good guess, never an authority.
+    //
+    // Category is deliberately NOT inferred. It shapes the buyer prompt we send
+    // to the engines, so a wrong guess produces a confidently wrong audit —
+    // precisely the failure this product exists to expose. Doing it properly
+    // means reading the homepage title/description, and crawlSite() today
+    // returns only signals (schema coverage, crawler access), never the text.
+    // That is the follow-up that takes this from three fields to the promised two.
+    const effectiveBrand = brand || brandFromDomain(domain);
+    if (!effectiveBrand) {
+      return c.json(
+        { message: "Add your website (or a brand name) to run the test." },
+        400
+      );
+    }
     if (!category) return c.json({ message: "Category is required." }, 400);
     if (!email) return c.json({ message: "Email is required to run the free test." }, 400);
     if (!EMAIL_RE.test(email)) return c.json({ message: "Invalid email." }, 400);
@@ -258,7 +316,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
 
     let result;
     try {
-      result = await runInvisibilityTest(brand, competitor, category, region, domain);
+      result = await runInvisibilityTest(effectiveBrand, competitor, category, region, domain);
     } catch (err) {
       logger.error("invisibility_test_failed", { message: (err as Error).message });
       return c.json({ message: "Could not run the test right now. Try again." }, 502);
@@ -279,7 +337,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       await db.query(
         `INSERT INTO lead_capture (id, email, brand, competitor, category, region, sector, country, result, source, ip_truncated, marketing_consent, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'invisibility_test',$10,$11, NOW())`,
-        [leadId, email, brand, competitor, category, region, sector, country, jsonbParam(result), ip ? truncateIp(ip) : null, marketingConsent]
+        [leadId, email, effectiveBrand, competitor, category, region, sector, country, jsonbParam(result), ip ? truncateIp(ip) : null, marketingConsent]
       );
       testId = leadId;
     } catch (err) {

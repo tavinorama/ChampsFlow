@@ -194,7 +194,7 @@ export default function InvisibilityTestPage() {
             margin: "0 0 var(--space-3) 0",
           }}
         >
-          Run your test. Start with two boxes.
+          Run your test. Start with your website.
         </h2>
         <p
           style={{
@@ -204,7 +204,7 @@ export default function InvisibilityTestPage() {
             margin: "0 0 var(--space-6) 0",
           }}
         >
-          Your website and your email. That is all we need to begin. We ask the
+          Your website and your email. We read your brand from the address, ask you one thing about what you sell, then ask the
           engines what your buyers ask, then send you the result.
         </p>
 

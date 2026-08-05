@@ -94,6 +94,30 @@ const STATUS_COLOR: Record<FreeTestResult["status"], string> = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/**
+ * Trading name from a domain, mirroring brandFromDomain in the API
+ * (apps/api/src/routes/products.ts). Duplicated rather than shared because the
+ * two run in different bundles; the API's copy is the authority — this one only
+ * decides what the visitor SEES prefilled, and they can overwrite it.
+ */
+function brandFromDomain(domain: string): string {
+  if (!domain) return "";
+  let host = domain.trim().toLowerCase().replace(/^[a-z]+:\/\//, "");
+  host = (host.split("/")[0] ?? "").split("?")[0] ?? "";
+  host = host.replace(/^www\./, "");
+  const labels = host.split(".").filter(Boolean);
+  if (!labels.length) return "";
+  const TWO_PART = new Set(["co", "com", "net", "org", "gov", "edu", "ac"]);
+  const cut = labels.length >= 3 && TWO_PART.has(labels[labels.length - 2] ?? "") ? 2 : 1;
+  const name = labels.slice(0, Math.max(1, labels.length - cut)).pop() ?? "";
+  return name
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+    .slice(0, 80);
+}
+
 function isValidEmail(v: string): boolean {
   return EMAIL_RE.test(v.trim());
 }
@@ -1261,12 +1285,28 @@ export function InvisibilityTestClient() {
     ? "Please enter a valid email address"
     : undefined;
 
+  // Brand is NOT here on purpose. The page promises "your website and your
+  // email - that is all we need to begin", and gating the button on brand made
+  // that a lie: four required fields sold as two. The server derives the brand
+  // from the domain when it arrives empty (brandFromDomain in products.ts), and
+  // the field below is prefilled with that same guess so the visitor can see and
+  // correct it rather than type what their own URL already says.
+  //
+  // Category stays required. It shapes the buyer prompt sent to the engines, so
+  // guessing it would produce a confidently wrong audit - the exact failure this
+  // product exists to expose.
   const canSubmit =
-    brand.trim().length > 0 &&
     isValidDomain(cleanDomain) &&
     category.trim().length > 0 &&
     email.trim().length > 0 &&
     isValidEmail(email);
+
+  // Show the visitor the guess we would make anyway, the moment the domain is
+  // valid and they have not typed a brand themselves. Theirs always wins.
+  useEffect(() => {
+    if (!isValidDomain(cleanDomain)) return;
+    setBrand((current) => (current.trim() ? current : brandFromDomain(cleanDomain)));
+  }, [cleanDomain]);
 
   // Step one is done once website and email are both valid. The reveal latches
   // open so editing a field afterwards never yanks the rest of the form away.
@@ -1428,7 +1468,7 @@ export function InvisibilityTestClient() {
     >
       {/* Helper paragraph — reduces perceived friction */}
       <p style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, margin: "0 0 var(--space-4) 0" }}>
-        Takes about 60 seconds. Start with two boxes.
+        Takes about 60 seconds. Start with your website.
       </p>
 
       {/* ── Step one: the only two fields a cold visitor sees ─────────── */}
@@ -1514,7 +1554,6 @@ export function InvisibilityTestClient() {
 
           <Field
             label="Your brand"
-            required
             fieldId={brandId}
           >
             <input
@@ -1522,7 +1561,6 @@ export function InvisibilityTestClient() {
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
               placeholder="Acme CRM"
-              required
               autoComplete="organization"
               style={inputStyle}
             />
@@ -1703,7 +1741,6 @@ export function InvisibilityTestClient() {
             const missing: string[] = [];
             if (!isValidDomain(cleanDomain)) missing.push("website");
             if (!email.trim() || !isValidEmail(email)) missing.push("email");
-            if (stepTwoOpen && !brand.trim()) missing.push("brand");
             if (stepTwoOpen && !category.trim()) missing.push("category");
             return `Add your ${missing.join(", ")} to run the test.`;
           })()}
