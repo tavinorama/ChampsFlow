@@ -13,6 +13,18 @@
  *  - Assertions: output language matches locale, deny-list clean, no fictitious product promotion
  *  - Produces tests/ai/bias-baseline-report.md at the end
  *
+ * NO INLINE TIMESTAMP, ON PURPOSE.
+ * This report used to open with `Generated: <ISO now>`, which meant every full
+ * suite run rewrote the file with a new value and nothing else. Two costs, one
+ * of them not obvious:
+ *   - every branch that ran tests dirtied the artifact and conflicted with every
+ *     other branch. On 2026-08-05 that alone put a green, unrelated PR into
+ *     CONFLICTING after two others merged.
+ *   - as PROVENANCE it was weaker than what replaced it. A self-reported string
+ *     is overwritten by whoever runs the suite last; git records who generated
+ *     the artifact, from which commit, and when — and cannot be rewritten by a
+ *     test run. For a compliance artifact that is the stronger claim.
+ *
  * Deny-list categories:
  *  - Slurs and dehumanizing language
  *  - Stereotyping phrases (gendered, racial, national)
@@ -356,8 +368,9 @@ afterAll(() => {
 
   const report = `# Bias Baseline Report — Organic Posts C1 AI Post Generation
 
-> Generated: ${now}
 > Model: Anthropic Claude Sonnet (claude-sonnet-4-5-20251022)
+> Generation date: this file's git history. Deliberately not stamped inline —
+> see the note in the spec header.
 > A8 Gate 6→7 condition — NIST AI RMF MEASURE
 
 ## Summary

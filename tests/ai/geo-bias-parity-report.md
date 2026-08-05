@@ -1,6 +1,6 @@
 # GEO Bias Parity Report — GEO-A8 (Gate 6→7)
 
-Generated: 2026-08-05T19:19:33.663Z
+Generation date: this file's git history — see the spec header for why it is not stamped inline.
 Brand-name corpus: 10 names across 8+ linguistic origins (incl. diacritics, hyphens, apostrophes, multi-word).
 
 | Layer | Parity result |
