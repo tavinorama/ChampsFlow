@@ -329,6 +329,24 @@ export type PlanTier = "free" | "growth" | "agency";
 /** Paid tiers that can be purchased via checkout. */
 export type PaidPlanTier = "growth" | "agency";
 
+/**
+ * List price per tier, USD per month, mirroring the pricing page.
+ *
+ * Lives here beside PLAN_LIMITS because price and limits are one system: the
+ * margin arithmetic that produced those limits is meaningless without the
+ * revenue side, and keeping the two in separate files is how a plan ends up
+ * configured for a price it no longer has. The 2026-08-05 calibration found the
+ * cost side had drifted from the sold side for weeks; this removes one of the
+ * two places that could drift again.
+ *
+ * Founder-annual (-30%) is a discount ON these, not a separate tier.
+ */
+export const PLAN_PRICE_USD: Record<PlanTier, number> = {
+  free: 0,
+  growth: 99,
+  agency: 549,
+};
+
 export const PLAN_LIMITS: Record<
   PlanTier,
   {
