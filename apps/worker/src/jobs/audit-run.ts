@@ -1270,32 +1270,78 @@ export async function processAuditJob(
     // Record estimated audit spend in the monthly budget ledger (visibility only
     // — audits are NOT hard-capped, so paying customers are never cut off).
     try {
-      // B1/B8: the estimate now scales with the generations ACTUALLY consumed
-      // by this run (sequential sampling shrinks it, escalation grows it, cache
-      // hits remove it) instead of a flat per-audit constant. Rate ≈ 1.2¢ per
-      // generation — the B2 search-enabled blend across the 5 engines (OpenAI
-      // 1.3¢ + Claude 1.8¢ + Gemini 1.7¢ + Perplexity 0.6¢ + SERP 0.5¢ ≈ 5.9¢
-      // per prompt-round / 5 engines). AUDIT_COST_CENTS still overrides with a
-      // flat per-audit value; AUDIT_COST_PER_GEN_CENTS tunes the rate.
-      const perGenRaw = Number(process.env["AUDIT_COST_PER_GEN_CENTS"] ?? 1.2);
-      const perGenCents = Number.isFinite(perGenRaw) && perGenRaw > 0 ? perGenRaw : 1.2;
+      // PER-ENGINE rates, calibrated against the 2026-08-05 controlled
+      // experiment (one isolated audit, provider panels read before/after).
+      // The old uniform 1.2¢ blend hid 3x errors in both directions — OpenAI
+      // really costs 0.41¢/call and Gemini currently costs 0¢ (free tier) —
+      // and an average of wrong numbers cannot stay right as the engine mix
+      // shifts, which it does every time drift pauses one.
+      //
+      // These are still ESTIMATES pending invoice reconciliation (#152), but
+      // they are per-engine measurements rather than one guessed blend:
+      //   anthropic  1.64¢  measured ($0.36 delta / 22 calls)
+      //   openai     0.41¢  measured ($0.09 / 22)
+      //   perplexity 0.68¢  measured ($0.15 / 22)
+      //   gemini     0¢     measured — FREE TIER today. Deliberately recorded
+      //                     as 0 (this ledger reports actual spend, not
+      //                     worst-case planning; planning lives in
+      //                     credits.USD_PER_PROMPT_AUDIT). If Google starts
+      //                     charging, this single line is a +52% audit-cost
+      //                     jump — set AUDIT_COST_PER_GEN_CENTS_GEMINI.
+      //   serp       0.40¢  DataForSEO list-derived (0.34¢/SERP measured on
+      //                     the shared account + 0.06¢ load_async_ai_overview)
+      // Per-engine override: AUDIT_COST_PER_GEN_CENTS_<ENGINE>. The legacy
+      // uniform AUDIT_COST_PER_GEN_CENTS, if set, applies to engines without a
+      // specific override; unknown engines fall back to 1.2¢.
+      const MEASURED_GEN_CENTS: Record<string, number> = {
+        anthropic: 1.64,
+        openai: 0.41,
+        perplexity: 0.68,
+        gemini: 0,
+        serp: 0.4,
+      };
+      const uniformRaw = Number(process.env["AUDIT_COST_PER_GEN_CENTS"] ?? NaN);
+      const uniform = Number.isFinite(uniformRaw) && uniformRaw > 0 ? uniformRaw : null;
+      const rateFor = (engine: string): number => {
+        const specific = Number(
+          process.env[`AUDIT_COST_PER_GEN_CENTS_${engine.toUpperCase()}`] ?? NaN
+        );
+        if (Number.isFinite(specific) && specific >= 0) return specific;
+        if (uniform !== null) return uniform;
+        return MEASURED_GEN_CENTS[engine] ?? 1.2;
+      };
+
+      // Live generations per engine, from the same accounting generationsUsed
+      // uses: cached probes are frozen seed units and cost nothing this run.
+      const gensByEngine: Record<string, number> = {};
+      for (const resp of responses) {
+        if (resp.fromCache) continue;
+        const eng = String(resp.provider);
+        gensByEngine[eng] = (gensByEngine[eng] ?? 0) + (resp.runs ?? 1);
+      }
+
       // B3: the extraction + verification passes are extra (cheap-tier) calls.
       // ≈0.2¢ each (haiku-4-5 / gpt-4o-mini, ~1k in + ~200 out, no web search).
-      // Counting them keeps the spend ledger honest instead of hiding the new
-      // cost inside the per-generation blend. AUDIT_COST_PER_EXTRACTION_CENTS tunes it.
       const perExtractionRaw = Number(process.env["AUDIT_COST_PER_EXTRACTION_CENTS"] ?? 0.2);
       const perExtractionCents =
         Number.isFinite(perExtractionRaw) && perExtractionRaw > 0 ? perExtractionRaw : 0.2;
+
+      const genCost = Object.entries(gensByEngine).reduce(
+        (sum, [eng, gens]) => sum + gens * rateFor(eng),
+        0
+      );
       const flatOverride = Number(process.env["AUDIT_COST_CENTS"] ?? NaN);
       const auditCostCents = Number.isFinite(flatOverride)
         ? flatOverride
-        : Math.max(
-            1,
-            Math.round(
-              result.generationsUsed * perGenCents + extractionCalls * perExtractionCents
-            )
-          );
+        : Math.max(1, Math.round(genCost + extractionCalls * perExtractionCents));
       await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
+      // The split is the point of the change — surface it, so "the ledger says
+      // $1.10" can always be decomposed into which engines that actually was.
+      logger.info("audit_spend_recorded", {
+        audit_id,
+        cents: auditCostCents,
+        per_engine: gensByEngine,
+      });
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });
     }
