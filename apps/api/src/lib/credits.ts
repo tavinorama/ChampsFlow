@@ -41,11 +41,28 @@ import type { PostgresClient } from "../routes/social-accounts";
 export const CREDITS_PER_PROMPT_AUDIT = 50;
 
 /**
- * Measured platform cost of one prompt-audit, from the 2026-08-04 production
- * audit: 156 cents for 11 prompts. THE SINGLE LINE TO CHANGE once provider
- * invoices are reconciled against audit counts (#152).
+ * Platform cost of one prompt-audit, USD. THE SINGLE LINE TO CHANGE when the
+ * cost picture moves — everything priced in this file derives from it.
+ *
+ * History matters here, because this number has already been wrong twice:
+ *  - 1.56/11 (until 2026-08-06) came from api_spend, which turned out to be a
+ *    MODEL — a uniform 1.2¢/generation guess — not a measurement.
+ *  - The controlled experiment of 2026-08-05 (one isolated audit, provider
+ *    panels read before/after) measured the real per-call rates: Claude 1.64¢,
+ *    OpenAI 0.41¢, Perplexity 0.68¢, Google 0¢ (free tier), serp ~0.40¢.
+ *
+ * This constant deliberately encodes the PLANNING-WORST-CASE five-engine
+ * audit — Google priced at its 1.7¢ list rate even though it bills 0 today —
+ * because prices set here (credit cost, overage floors) must survive the free
+ * tier ending without a repricing scramble: $1.08 per 11-prompt audit.
+ * The spend LEDGER (audit-run.ts) records measured reality instead, including
+ * Google at 0; the two numbers answer different questions and are documented
+ * against each other on purpose.
+ *
+ * Still pending to make this a fact rather than a good estimate: invoice
+ * reconciliation with per-surface API keys (#152 / founder P4-P5).
  */
-export const USD_PER_PROMPT_AUDIT = 1.56 / 11;
+export const USD_PER_PROMPT_AUDIT = 1.08 / 11;
 
 /** What one credit costs us, derived. */
 export function usdPerCredit(): number {

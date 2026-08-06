@@ -60,6 +60,7 @@ vi.mock("ioredis", () => ({
   },
 }));
 import { PLAN_LIMITS, type PlanTier } from "../../apps/api/src/integrations/stripe";
+import { USD_PER_PROMPT_AUDIT } from "../../apps/api/src/lib/credits";
 import { registerAuditRoutes, auditWindowDays } from "../../apps/api/src/routes/audits";
 import {
   registerLandingRoutes,
@@ -119,8 +120,10 @@ describe("PLAN_LIMITS — cost-control fields (#217)", () => {
 // ---------------------------------------------------------------------------
 
 describe("PLAN_LIMITS.monthly_audits_total — margin guard", () => {
-  /** Measured, not assumed: api_spend 156c for an 11-prompt audit (2026-08-04). */
-  const USD_PER_PROMPT_AUDIT = 1.56 / 11;
+  // Imported, not restated. This block used to carry its own copy of the rate
+  // (first a guessed $5/audit, then the modeled 1.56/11) — and a margin test
+  // that re-declares its own cost basis drifts from the one production prices
+  // with, which is how it stayed green while the plans lost money. One source.
   const PLAN_PRICE_USD: Record<PlanTier, number> = { free: 0, growth: 99, agency: 549 };
   /** The founder's bar: high margin AT THE LIMIT, not at typical use. */
   const MARGIN_FLOOR = 0.8;
