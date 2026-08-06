@@ -358,7 +358,7 @@ export default function LandingPagesHubPage() {
                 )}
 
                 {mapsFieldAvailable && (
-                  <Field id={mapsUrlId} label="Paste your Google Maps link" hint="optional">
+                  <Field id={mapsUrlId} label="Step 1 — paste your Google Maps link" hint="the path to your BEST pages">
                     <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
                       <input
                         id={mapsUrlId}
@@ -394,8 +394,8 @@ export default function LandingPagesHubPage() {
                     >
                       {mapsError ??
                         (mapsResolved
-                          ? "Filled from Google Maps — check and edit anything below before creating your site."
-                          : "We'll pre-fill the fields below from your Google Maps listing. Everything stays editable.")}
+                          ? "Linked. Your pages will carry your real reviews, rating and photos — check and edit anything below before creating."
+                          : "This link does two jobs: it pre-fills the form, and it lets the generator pull your REAL reviews, rating and photos into every page. Pages with real proof convert; pages without it read like promises.")}
                     </p>
                     {/* SMB owners often don't know where the Maps share link
                         lives — teach it inline (founder request, #208 PR-9). */}
@@ -450,6 +450,18 @@ export default function LandingPagesHubPage() {
                     </details>
                   </Field>
                 )}
+
+                {/* Pages v2 (#158): the manual path stays available but stops
+                    masquerading as equal. Without a Maps link the generator has
+                    no real reviews, and that is the entire gap between a
+                    readiness-0.2 delivery and a 0.8 one. Say it HERE, at the
+                    fork — not after the weak pages ship. */}
+                <p style={{ margin: "var(--space-5) 0 var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+                  <strong style={{ color: "var(--color-text)" }}>Or type it yourself.</strong>{" "}
+                  {mapsResolved
+                    ? "Everything below came from your listing — adjust whatever you like."
+                    : "Fair warning: without the Maps link your pages generate without real reviews — noticeably weaker. You can link Maps later in the builder."}
+                </p>
 
                 <Field id={nameId} label="Business name" required>
                   <input
