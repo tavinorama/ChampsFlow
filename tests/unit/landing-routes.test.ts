@@ -613,4 +613,54 @@ describe("PATCH /api/landing/sites/:id — publish guard + cascade", () => {
     );
     expect(cascade).toBeTruthy();
   });
+
+  // -------------------------------------------------------------------------
+  // place_id via PATCH (Pages v2, #158). Before this existed, the Maps link was
+  // a creation-time-only choice: one wrong turn at the first form and the site
+  // could NEVER gain real reviews — the design flaw behind the readiness-0.22
+  // deliveries. These pin the attach/clear/reject contract.
+  // -------------------------------------------------------------------------
+
+  async function patchPlace(db: ReturnType<typeof makePublishDb>, place_id: string) {
+    return publishApp(db).request(`/api/landing/sites/${SITE_ID}`, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer dev", "content-type": "application/json" },
+      body: JSON.stringify({ place_id }),
+    });
+  }
+  const draftSiteDb = () =>
+    makePublishDb((sql) => {
+      if (sql.includes("SELECT status FROM landing_sites")) return [{ status: "draft" }];
+      if (sql.includes("UPDATE landing_sites")) return [{ id: SITE_ID }];
+      return [];
+    });
+
+  it("rejects a malformed place_id with 400 before touching the site", async () => {
+    const db = draftSiteDb();
+    const res = await patchPlace(db, "not a place id!!");
+    expect(res.status).toBe(400);
+    expect(db._queries.some((q) => q.includes("UPDATE landing_sites"))).toBe(false);
+  });
+
+  it("attaches a valid place_id and resets google_synced_at in the same UPDATE", async () => {
+    // Resetting the sync stamp matters: without it the next generate would
+    // trust Google facts synced from the OLD place.
+    const db = draftSiteDb();
+    const res = await patchPlace(db, "ChIJN1t_tDeuEmsRUsoyG83frY4");
+    expect(res.status).toBe(200);
+    const update = db._queries.find((q) => q.includes("UPDATE landing_sites"));
+    expect(update).toBeDefined();
+    expect(update).toMatch(/place_id = CASE WHEN/);
+    expect(update).toMatch(/google_synced_at = CASE WHEN/);
+  });
+
+  it("an empty string clears the link instead of being rejected", async () => {
+    // "" is the unlink gesture; undefined leaves the link untouched. Collapsing
+    // the two would make unlinking impossible through this route.
+    const db = draftSiteDb();
+    const res = await patchPlace(db, "");
+    expect(res.status).toBe(200);
+    expect(db._queries.some((q) => q.includes("UPDATE landing_sites"))).toBe(true);
+  });
+
 });

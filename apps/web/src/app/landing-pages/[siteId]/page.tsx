@@ -53,6 +53,11 @@ interface Site {
   business: SiteBusiness;
   theme: SiteTheme;
   review_themes: string[];
+  /** Google Place linked to this site. The generator only pulls REAL reviews,
+   *  ratings and photos when this is set — its absence is what produced the
+   *  readiness-0.22 deliveries (#158). Attachable after creation since Pages v2. */
+  place_id: string | null;
+  google_synced_at: string | null;
   created_at: string;
   updated_at: string;
   /** Open audit-plan fixes ready to apply on the next generate/regenerate (#208 PR-7). */
@@ -165,6 +170,12 @@ export default function LandingSiteDetailPage() {
   const [statusToggling, setStatusToggling] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+
+  // Attach Google Maps after creation (#158). Until Pages v2 this was a
+  // creation-time-only choice, which made the weak path a dead end.
+  const [mapsAttachUrl, setMapsAttachUrl] = useState("");
+  const [attachingMaps, setAttachingMaps] = useState(false);
+  const [mapsAttachError, setMapsAttachError] = useState<string | null>(null);
 
   // Generate
   const [generateState, setGenerateState] = useState<GenerateState>("idle");
@@ -329,6 +340,55 @@ export default function LandingSiteDetailPage() {
       setBusinessError("Could not save. Please check your connection.");
     } finally {
       setSavingBusiness(false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Attach Google Maps (#158) — resolve the pasted link, then persist the
+  // place_id on the site so EVERY future generate pulls real reviews/ratings.
+  // Two calls, deliberately: resolve is a lookup with no side effects, and only
+  // a successful lookup is allowed to touch the site row.
+  // -------------------------------------------------------------------------
+  async function handleAttachMaps() {
+    const trimmed = mapsAttachUrl.trim();
+    if (!trimmed || attachingMaps || !site) return;
+    setAttachingMaps(true);
+    setMapsAttachError(null);
+    try {
+      const res = await apiFetch("/api/landing/places/resolve", {
+        method: "POST",
+        body: JSON.stringify({ maps_url: trimmed }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { message?: string };
+        setMapsAttachError(
+          res.status === 503
+            ? "Maps lookup isn't configured on the server yet."
+            : (data.message ?? "Could not look up that business. Check the link and try again.")
+        );
+        return;
+      }
+      const data = (await res.json()) as { place_id?: string };
+      if (!data.place_id) {
+        setMapsAttachError("That listing didn't return a usable Place ID. Try the share link from the Google Maps app.");
+        return;
+      }
+      const patch = await apiFetch(`/api/landing/sites/${siteId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ place_id: data.place_id }),
+      });
+      if (!patch.ok) {
+        const pd = (await patch.json().catch(() => ({}))) as { message?: string };
+        setMapsAttachError(pd.message ?? "Could not save the link. Please try again.");
+        return;
+      }
+      setSite((prev) => (prev ? { ...prev, place_id: data.place_id ?? null, google_synced_at: null } : prev));
+      setMapsAttachUrl("");
+      showToast("Google Maps linked — regenerate to pull real reviews into your pages.", "success");
+    } catch {
+      setMapsAttachError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setAttachingMaps(false);
     }
   }
 
@@ -813,6 +873,53 @@ export default function LandingSiteDetailPage() {
               View fixes →
             </a>
           </div>
+        )}
+        {/* Pages v2 (#158): the honest warning BEFORE the weak delivery, not a
+            surprise after it. Without a linked Place the generator has no real
+            reviews to work with, and that difference is the whole gap between a
+            readiness-0.2 page and a 0.8 one. Warn — never block: some
+            businesses genuinely have no Maps listing. */}
+        {!site.place_id ? (
+          <div
+            role="status"
+            style={{
+              padding: "var(--space-3) var(--space-4)", marginBottom: "var(--space-4)",
+              border: "1px solid var(--color-badge-status-warn-text, #b9781a)",
+              borderRadius: "var(--radius-md)", background: "var(--color-surface-alt, transparent)",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)", lineHeight: "var(--line-height-body)" }}>
+              <strong>No Google Maps listing linked.</strong> Generating now ships pages{" "}
+              <strong>without real reviews or ratings</strong> — the weakest version of what this
+              product can make. Paste your Maps link and every generate pulls fresh, attributed
+              reviews instead:
+            </p>
+            <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginTop: "var(--space-3)" }}>
+              <input
+                type="url" value={mapsAttachUrl}
+                onChange={(e) => { setMapsAttachUrl(e.target.value); setMapsAttachError(null); }}
+                maxLength={2000} placeholder="https://maps.app.goo.gl/..."
+                aria-label="Google Maps link"
+                style={{ ...inputStyle, flex: "1 1 220px" }}
+              />
+              <button
+                type="button" onClick={handleAttachMaps}
+                disabled={!mapsAttachUrl.trim() || attachingMaps} aria-busy={attachingMaps}
+                style={secondaryButtonStyle(!mapsAttachUrl.trim() || attachingMaps)}
+              >
+                {attachingMaps ? "Linking…" : "Link Google Maps"}
+              </button>
+            </div>
+            {mapsAttachError && (
+              <p role="alert" style={{ margin: "var(--space-2) 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-error)" }}>
+                {mapsAttachError}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p style={{ margin: "0 0 var(--space-4) 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+            Google Maps linked — real reviews, ratings and photos are pulled fresh on every generate.
+          </p>
         )}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "var(--space-4)" }}>
           <button

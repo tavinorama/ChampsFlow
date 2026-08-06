@@ -707,6 +707,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
     await db.setTenantId(auth.tenantId);
     const site = await db.query<Record<string, unknown> & { open_fixes: string }>(
       `SELECT s.id, s.brand_id, s.slug, s.status, s.business, s.theme, s.review_themes,
+              s.place_id, s.google_synced_at,
               s.created_at, s.updated_at,
               (SELECT COUNT(*) FROM plan_task pt
                  JOIN strategy_plan sp ON sp.id = pt.plan_id
@@ -852,6 +853,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
         business?: Record<string, unknown>;
         theme?: Record<string, unknown>;
         status?: string;
+        place_id?: string;
       };
       try {
         body = await c.req.json();
@@ -862,6 +864,27 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
       // 'suspended' is the admin abuse kill-switch — not settable by tenants.
       if (body.status !== undefined && !["draft", "published"].includes(body.status)) {
         return c.json({ message: "status must be 'draft' or 'published'." }, 400);
+      }
+
+      // Attach (or clear, with "") a Google Place AFTER creation — Pages v2
+      // (#158). Until this existed, the Maps link was a creation-time-only
+      // choice: a site created by typing fields manually could NEVER gain real
+      // reviews later, because the generator only pulls them when the site row
+      // carries a place_id. That dead end was the design flaw behind the
+      // readiness-0.22 deliveries — the best path was not just unmarked, it was
+      // unreachable after one wrong turn at the first form.
+      //
+      // Same validation as create; the sentinel dance mirrors create's CASE
+      // handling: undefined = untouched, "" = cleared, valid id = set. On any
+      // change google_synced_at resets to NULL so the next generate knows its
+      // Google facts are stale rather than trusting a sync from the OLD place.
+      let placePatch: string | null = null; // null = leave untouched
+      if (body.place_id !== undefined) {
+        const trimmed = (body.place_id ?? "").trim();
+        if (trimmed && !PLACE_ID_INPUT_RE.test(trimmed)) {
+          return c.json({ message: "Invalid place_id." }, 400);
+        }
+        placePatch = trimmed; // "" clears via NULLIF below
       }
 
       await db.setTenantId(auth.tenantId);
@@ -927,6 +950,8 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
               SET business = COALESCE($3, business),
                   theme    = COALESCE($4, theme),
                   status   = COALESCE($5, status),
+                  place_id = CASE WHEN $6::text IS NOT NULL THEN NULLIF($6, '') ELSE place_id END,
+                  google_synced_at = CASE WHEN $6::text IS NOT NULL THEN NULL ELSE google_synced_at END,
                   updated_at = NOW()
             WHERE id = $1 AND tenant_id = $2
             RETURNING id`,
@@ -936,6 +961,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
             body.business ? jsonbParam(body.business) : null,
             body.theme ? jsonbParam(body.theme) : null,
             body.status ?? null,
+            placePatch,
           ]
         );
         if (!res.rows[0]) return false;
