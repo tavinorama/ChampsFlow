@@ -173,7 +173,11 @@ export function requireApiKey(db: PostgresClient) {
     }
 
     // Touch last_used_at — fire-and-forget, unscoped (login role).
-    void db.query(`UPDATE api_key SET last_used_at = NOW() WHERE id = $1`, [key.id]).catch(() => {});
+    void db.query(`UPDATE api_key SET last_used_at = NOW() WHERE id = $1`, [key.id]).catch((err) => {
+      // Best-effort telemetry, but not silent (#139): a stale last_used_at is
+      // what an admin reads to decide whether a key is safe to revoke.
+      logger.warn("api_key_last_used_update_failed", { keyId: key.id, message: (err as Error).message?.slice(0, 200) });
+    });
 
     c.set("apiKey", { id: key.id, tenantId: key.tenant_id, scopes: key.scopes });
 
@@ -259,7 +263,11 @@ export function requireOperatorKey(db: PostgresClient, requiredScopes: string[] 
       );
     }
 
-    void db.query(`UPDATE api_key SET last_used_at = NOW() WHERE id = $1`, [key.id]).catch(() => {});
+    void db.query(`UPDATE api_key SET last_used_at = NOW() WHERE id = $1`, [key.id]).catch((err) => {
+      // Best-effort telemetry, but not silent (#139): a stale last_used_at is
+      // what an admin reads to decide whether a key is safe to revoke.
+      logger.warn("api_key_last_used_update_failed", { keyId: key.id, message: (err as Error).message?.slice(0, 200) });
+    });
     c.set("apiKey", { id: key.id, tenantId: key.tenant_id, scopes: key.scopes });
 
     // No runWithTenant on purpose — see header comment.

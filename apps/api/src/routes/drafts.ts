@@ -599,11 +599,20 @@ export function registerDraftRoutes(app: Hono, db: PostgresClient): void {
             llmErr.code === "unavailable" &&
             llmErr.message.includes("Input rejected")
           ) {
+            // The audit trail is protection — a rejected injection that fails
+            // to be RECORDED is half the incident invisible. The response to
+            // the user proceeds regardless, but the miss is logged (#139).
             await writeAuditLog(db, "prompt_injection_rejected", userId, tenantId, draftId ?? null, {
               requestId,
               reason: llmErr.message,
               isRegen: true,
-            }).catch(() => {});
+            }).catch((auditErr) => {
+              logger.warn("audit_log_write_failed", {
+                event: "prompt_injection_rejected",
+                requestId,
+                message: (auditErr as Error).message?.slice(0, 200),
+              });
+            });
 
             ctx.status(400);
             return ctx.json({
