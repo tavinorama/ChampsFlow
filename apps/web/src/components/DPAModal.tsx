@@ -13,8 +13,7 @@
  *   onExit: () => void         — called when user clicks "Not now — exit"
  *
  * Accessibility:
- *   - role="dialog"
-        data-testid="dpa-modal", aria-modal="true", aria-labelledby="dpa-modal-title"
+ *   - role="dialog", aria-modal="true", aria-labelledby="dpa-modal-title"
  *   - Focus trap: only two CTA buttons and two links are focusable
  *   - Tab cycles: agree button → exit button → DPA link → privacy link → agree button
  *   - Escape key: triggers "Not now — exit" path (never silent dismiss — arch §5 + UX §5)
@@ -162,6 +161,7 @@ export function DPAModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        data-testid="dpa-modal"
         style={{
           position: "fixed",
           inset: 0,

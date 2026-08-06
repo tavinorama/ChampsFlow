@@ -44,7 +44,13 @@ function collectTestIds(): Set<string> {
 function webSource(): string {
   let all = "";
   for (const f of walk(join(root, "apps/web/src"))) all += readFileSync(f, "utf8");
-  return all;
+  // Strip comments BEFORE matching. This is not hypothetical: the first
+  // version of this test was satisfied by the string "data-testid=\"dpa-modal\""
+  // sitting inside DPAModal's JSDoc — a botched edit had landed the attribute
+  // in the comment instead of the element, the contract stayed green, and the
+  // E2E run was what caught it. A contract that comments can satisfy
+  // certifies documentation, not UI. (Same lesson serp-absent.test.ts learned.)
+  return all.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
 describe("E2E testids are backed by the real UI (#140)", () => {
