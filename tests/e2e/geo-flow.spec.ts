@@ -78,6 +78,10 @@ test.describe("GEO journey — audit to approved draft", () => {
     // 5. Generate the GEO plan and accept the first recommendation.
     await page.getByRole("button", { name: /generate plan|regenerate plan/i }).click();
     await expect(page.locator("body")).toContainText(/Week \d/i, { timeout: 60_000 });
+    // DELIBERATELY guarded (#140 triage): plan recommendations can arrive
+    // already accepted from a prior run of this flow, in which case no Accept
+    // button renders — its absence is a valid state, not a failure. The plan
+    // itself was asserted above (Week N), which is what this step depends on.
     const accept = page.getByRole("button", { name: /^accept$/i }).first();
     if (await accept.isVisible().catch(() => false)) {
       await accept.click();

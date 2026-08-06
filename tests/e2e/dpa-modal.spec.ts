@@ -165,14 +165,14 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     await expect(modal).toBeVisible({ timeout: 5_000 });
 
     // Click "Not now — exit"
+    // #140: DPAModal always renders "Not now — exit"; guarded, this test could
+    // "pass" with the exit path broken. And the .catch() on waitForURL made the
+    // redirect assertion optional — the regex already accepts every legitimate
+    // destination (auth, login, or root), so a miss IS a failure.
     const exitButton = modal.getByRole("button", { name: /not now|exit|decline/i }).first();
-    if (await exitButton.isVisible()) {
-      await exitButton.click();
-      // Should redirect to root or login page
-      await page.waitForURL(/localhost:3000\/(auth|login|$)/, { timeout: 5_000 }).catch(() => {
-        // Also acceptable: redirect to / with session invalidated
-      });
-    }
+    await expect(exitButton).toBeVisible();
+    await exitButton.click();
+    await page.waitForURL(/localhost:3000\/(auth|login|$)/, { timeout: 5_000 });
   });
 
   test("EU user cannot bypass DPA by directly navigating to /create", async ({ page }) => {

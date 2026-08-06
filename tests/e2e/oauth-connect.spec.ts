@@ -300,13 +300,10 @@ test.describe("Facebook OAuth Connect (C4-ext)", () => {
     await expect(tile).toBeVisible();
   });
 
-  // FIXME (2026-07-29): this asserts on test ids (connect-linkedin,
-  // connect-instagram, platform-tile-facebook) that exist nowhere in
-  // apps/web/src. The test was written against a planned Connections UI that
-  // shipped differently, so it has never been able to pass and its failure has
-  // never meant a regression. Kept rather than deleted because the coverage is
-  // worth having the moment the tiles get stable hooks.
-  test.fixme("multi-page Facebook connect → PageSelectionModal shown → page selected", async ({ page }) => {
+  // Un-fixme'd 2026-08-06 (#140): PlatformTile now carries
+  // data-testid="platform-tile-<p>" and "connect-<p>" — the stable hooks this
+  // test always needed. The tiles render on /account/connections.
+  test("multi-page Facebook connect → PageSelectionModal shown → page selected", async ({ page }) => {
     await loginAsTestUser(page);
 
     // Multi-page response with page selection params

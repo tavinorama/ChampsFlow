@@ -36,6 +36,7 @@ export function AIBadge({ state, reviewerName }: AIBadgeProps) {
     <div
       role="status"
       aria-label={label}
+      data-testid="ai-badge"
       style={{
         display: "inline-flex",
         alignItems: "center",
