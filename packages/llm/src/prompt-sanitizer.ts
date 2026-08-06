@@ -85,3 +85,66 @@ export function sanitizeUserPrompt(raw: string): SanitizationResult {
 
   return { sanitized: truncated, rejected: false };
 }
+
+// ---------------------------------------------------------------------------
+// PII scrub (#159B, from the Signal-Engine spec's golden rule #3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic PII scrub for probe queries, applied at the same gateway
+ * chokepoint as the injection sanitizer (GEO-SEC-2's argument holds verbatim:
+ * a new provider must not be reachable with an unscrubbed prompt).
+ *
+ * WHAT THIS IS AND IS NOT. Probe queries are synthetic buyer-intent questions
+ * about the client's own brand — an email address, phone number, or @handle
+ * inside one is never intended and only arrives via a custom prompt or a
+ * pasted brand field. Scrubbing them before fan-out to five external engines
+ * costs nothing and removes the one path where a customer's stray personal
+ * data would leave our boundary. This is NOT a general anonymizer: the Pages
+ * builder keeps business contact details on purpose (they ARE the product),
+ * and the sales chat keeps addresses the user typed to be answered about —
+ * both documented in docs/compliance/data-provenance-policy.md.
+ *
+ * Deterministic regex only — no model in the loop, so the behaviour is
+ * testable and the failure mode is a visible placeholder, never a silent leak.
+ * Phone matching requires ≥9 digits so prices ("under $10,000"), years and
+ * plan limits never trip it. `found` carries KINDS only, never values —
+ * the same never-log-the-text rule the injection sanitizer follows.
+ */
+export interface PiiScrubResult {
+  scrubbed: string;
+  /** Kinds found (deduped): 'email' | 'phone' | 'handle'. Never the values. */
+  found: string[];
+}
+
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// Candidate phone runs: digits with common separators; verified by digit
+// count. Optional leading "+" or "(" so "(415) 555-0182" is swallowed whole
+// instead of leaving a stray parenthesis behind the placeholder.
+const PHONE_CANDIDATE_RE = /[+(]?\d[\d\s().\-–]{6,}\d/g;
+const MIN_PHONE_DIGITS = 9;
+// @handle: only after start/whitespace so emails (scrubbed first) never re-match.
+const HANDLE_RE = /(^|\s)@[A-Za-z0-9_]{2,30}\b/g;
+
+export function scrubPii(text: string): PiiScrubResult {
+  const kinds = new Set<string>();
+
+  let out = text.replace(EMAIL_RE, () => {
+    kinds.add("email");
+    return "[redacted-email]";
+  });
+
+  out = out.replace(PHONE_CANDIDATE_RE, (m) => {
+    const digits = m.replace(/\D/g, "");
+    if (digits.length < MIN_PHONE_DIGITS || digits.length > 15) return m;
+    kinds.add("phone");
+    return "[redacted-phone]";
+  });
+
+  out = out.replace(HANDLE_RE, (_m, pre: string) => {
+    kinds.add("handle");
+    return `${pre}[redacted-handle]`;
+  });
+
+  return { scrubbed: out, found: [...kinds] };
+}
