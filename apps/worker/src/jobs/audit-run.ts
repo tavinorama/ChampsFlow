@@ -847,7 +847,8 @@ export async function processAuditJob(
       await sql`
         INSERT INTO citation_check
           (tenant_id, brand_id, audit_id, provider, query_hash, query_text, cited, citation_rank, sources,
-           mention_rate, runs_count, raw_text_snippet, intent_id, formulation_ix, methodology_version, processed_at)
+           mention_rate, runs_count, raw_text_snippet, intent_id, formulation_ix, methodology_version,
+           source_id, processed_at)
         VALUES
           (${tenant_id}, ${brand_id}, ${audit_id}, ${dbProvider(resp.provider)},
            ${resp.queryHash ?? sha256(brand.name + "|" + resp.provider)},
@@ -855,7 +856,9 @@ export async function processAuditJob(
            ${mentioned}, ${position ?? null}, ${sql.json(sanitizeSources(resp.sources))},
            ${resp.mentionRate ?? null}, ${resp.runs ?? null}, ${capText(resp.rawText)},
            ${intentMeta?.intentId ?? null}, ${intentMeta?.formulationIx ?? null},
-           ${GEO_METHODOLOGY_VERSION}, NOW())
+           ${GEO_METHODOLOGY_VERSION},
+           ${dbProvider(resp.provider) === "dataforseo" ? "serp_public_search" : "provider_answer"},
+           NOW())
       `;
 
       // B8: a cached probe made NO generation calls — logging one would

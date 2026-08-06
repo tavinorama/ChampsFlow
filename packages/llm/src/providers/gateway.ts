@@ -29,7 +29,7 @@
 import type { ProbeQuery, ProbeResponse, UserRegion, LLMProvider } from "./types";
 import { ProviderError } from "./types";
 import { permittedProviders } from "./routing";
-import { sanitizeUserPrompt } from "../prompt-sanitizer";
+import { sanitizeUserPrompt, scrubPii } from "../prompt-sanitizer";
 import { AnthropicProbeAdapter } from "./anthropic";
 import { OpenAIProbeAdapter } from "./openai";
 import { GeminiProbeAdapter } from "./gemini";
@@ -208,16 +208,27 @@ export async function runProbes(
   // queries are dropped (never sent); sanitized text replaces the original.
   const safeQueries: ProbeQuery[] = [];
   let rejectedQueries = 0;
+  let piiScrubbed = 0;
   for (const q of queries) {
     const s = sanitizeUserPrompt(q.queryText);
     if (s.rejected) {
       rejectedQueries++;
       continue; // pattern already logged by the sanitizer (no prompt text)
     }
-    safeQueries.push(s.sanitized === q.queryText ? q : { ...q, queryText: s.sanitized });
+    // #159B — PII scrub at the same chokepoint, for the same reason: a probe
+    // query is a synthetic buyer-intent question; an email/phone/@handle in
+    // one is never intended, and this is the last stop before the text leaves
+    // our boundary to five external engines. Kinds are counted, values never
+    // logged (the sanitizer's own rule).
+    const p = scrubPii(s.sanitized);
+    if (p.found.length > 0) piiScrubbed++;
+    safeQueries.push(p.scrubbed === q.queryText ? q : { ...q, queryText: p.scrubbed });
   }
   if (rejectedQueries > 0) {
     console.warn(`[gateway] GEO-SEC-2 sanitizer rejected ${rejectedQueries} probe quer${rejectedQueries === 1 ? "y" : "ies"}`);
+  }
+  if (piiScrubbed > 0) {
+    console.warn(`[gateway] pii_scrubbed_from_probe count=${piiScrubbed}`);
   }
   queries = safeQueries;
 
