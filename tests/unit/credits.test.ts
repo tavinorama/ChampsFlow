@@ -23,6 +23,7 @@ import {
   monthlyCreditsFor,
   currentPeriod,
   OVERAGE_MARGIN_FLOOR,
+  FREE_SIGNUP_RESIDUAL_CREDITS,
 } from "../../apps/api/src/lib/credits";
 import { PLAN_LIMITS, type PlanTier } from "../../apps/api/src/integrations/stripe";
 
@@ -90,6 +91,22 @@ describe("credits — the money side", () => {
 
   it("scales linearly with pack size", () => {
     expect(overagePackUsd(2000)).toBeGreaterThan(overagePackUsd(1000));
+  });
+});
+
+describe("signup residual — visible, and visibly not enough", () => {
+  it("exists: the free wallet is never handed over at zero", () => {
+    expect(FREE_SIGNUP_RESIDUAL_CREDITS).toBeGreaterThan(0);
+  });
+
+  it("never funds a free audit on its own — the gap IS the upsell", () => {
+    // If the residual ever reaches one audit's cost, "not enough to run one"
+    // silently becomes "a third free audit a month" and the ladder breaks.
+    expect(FREE_SIGNUP_RESIDUAL_CREDITS).toBeLessThan(creditsForAudit("free"));
+  });
+
+  it("stays under half an audit, so the shortfall reads as a price, not a rounding error", () => {
+    expect(FREE_SIGNUP_RESIDUAL_CREDITS).toBeLessThanOrEqual(creditsForAudit("free") / 2);
   });
 });
 

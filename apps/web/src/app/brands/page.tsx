@@ -97,6 +97,23 @@ export default function BrandsPage() {
     void loadBrands();
   }, [loadBrands]);
 
+  // Credits are informational, NOT the gate (monthly_audits_total gates audit
+  // starts, by #423's one-door design) — so this warns before the click rather
+  // than disabling the button, and failing to load it changes nothing.
+  const [credits, setCredits] = useState<{
+    can_run_audit: boolean;
+    cost_per_audit: number;
+    balance: number;
+    overage_pack: { credits: number; usd: number };
+  } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    apiFetch("/api/billing/credits")
+      .then(async (r) => { if (r.ok && alive) setCredits(await r.json()); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || creating) return;
@@ -307,6 +324,23 @@ export default function BrandsPage() {
           {creating ? "Adding…" : "Add brand"}
         </button>
       </form>
+
+      {credits && !credits.can_run_audit && (
+        <div
+          style={{
+            margin: "0 0 var(--space-4) 0", padding: "var(--space-3) var(--space-4)",
+            backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)", fontSize: "var(--font-size-body-sm)",
+            color: "var(--color-muted)",
+          }}
+        >
+          Heads up: your credit balance ({credits.balance.toLocaleString("en-US")}) is below what one
+          audit uses ({credits.cost_per_audit.toLocaleString("en-US")}). Credits refill on the 1st, or{" "}
+          <a href="/dashboard-v3?tab=billing" style={{ color: "var(--color-text)", fontWeight: 600 }}>
+            buy {credits.overage_pack.credits.toLocaleString("en-US")} credits for ${credits.overage_pack.usd}
+          </a>.
+        </div>
+      )}
 
       {/* Brand list */}
       <div aria-live="polite">

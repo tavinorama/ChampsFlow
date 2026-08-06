@@ -53,8 +53,7 @@ import { requireAuth, requireRole, requireNotProcessingRestricted } from "../aut
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
-import {
-  createCheckoutSession,
+import {createCreditPackCheckoutSession, createCheckoutSession,
   createBillingPortalSession,
   cancelSubscriptionAtPeriodEnd,
   applyRetentionDiscount,
@@ -65,14 +64,18 @@ import {
   retrieveDisputeCharge,
   PLAN_LIMITS,
   type PlanTier,
-  type StripeCancellationFeedback,
-} from "../integrations/stripe";
+  type StripeCancellationFeedback,} from "../integrations/stripe";
 import { sendBonusDeliveryEmail } from "../../../../packages/shared/src/emails/bonus-delivery";
 import { ownerEmailForTenant } from "../lib/tenant-email";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
-import { ensureMonthlyGrant, creditBalance, overagePackUsd } from "../lib/credits";
+import {
+  ensureMonthlyGrant,
+  ensureFreeSignupResidual,
+  creditBalance,
+  overagePackUsd,
+} from "../lib/credits";
 import Stripe from "stripe";
 import { asStr } from "../lib/coerce";
 
@@ -470,6 +473,7 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       const tier: PlanTier = raw === "growth" || raw === "agency" ? raw : "free";
 
       await ensureMonthlyGrant(db, auth.tenantId, tier);
+      await ensureFreeSignupResidual(db, auth.tenantId, tier);
       const balance = await creditBalance(db, auth.tenantId, tier);
 
       return ctx.json({
@@ -492,6 +496,61 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       return ctx.json({ error: "internal_error", code: "CREDIT_BALANCE_FAILED" }, 500);
     }
   });
+
+  // -------------------------------------------------------------------------
+  // POST /api/billing/credits/checkout — buy a 1,000-credit overage pack.
+  //
+  // The price is computed HERE, per call, from overagePackUsd() — never read
+  // from a static Stripe price. It clears two floors by construction (80%
+  // margin, and a premium over the best subscription rate, because a unit test
+  // caught the first design selling top-ups cheaper than the plans). Owner
+  // only: buying credits is spending the workspace's money.
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/billing/credits/checkout",
+    requireAuth,
+    requireRole(["owner"]),
+    requireNotProcessingRestricted(db),
+    async (ctx: Context) => {
+      const auth = ctx.get("auth");
+      const CREDITS = 1000;
+      try {
+        const origin = process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "https://ozvor.com";
+        // Best-effort email pre-fill. auth.userId is the Supabase Auth UID
+        // (JWT sub) → users.supabase_auth_uid, NOT users.id — querying by id
+        // is the exact mistake that once broke plan checkout in this file.
+        let buyerEmail: string | null = null;
+        try {
+          await db.setTenantId(auth.tenantId);
+          const { rows } = await db.query<{ email: string | null }>(
+            `SELECT email FROM users WHERE supabase_auth_uid = $1 LIMIT 1`,
+            [auth.userId]
+          );
+          buyerEmail = rows[0]?.email ?? null;
+        } catch (err) {
+          logger.warn("credit_pack_email_fetch_failed", {
+            tenant_id: auth.tenantId,
+            message: (err as Error).message,
+          });
+        }
+        const { url } = await createCreditPackCheckoutSession({
+          tenantId: auth.tenantId,
+          credits: CREDITS,
+          amountUsd: overagePackUsd(CREDITS),
+          buyerEmail,
+          successUrl: `${origin}/dashboard-v3?credits=purchased`,
+          cancelUrl: `${origin}/dashboard-v3?credits=cancelled`,
+        });
+        return ctx.json({ url });
+      } catch (err) {
+        logger.error("credit_pack_checkout_failed", {
+          tenantId: auth.tenantId,
+          message: (err as Error).message?.slice(0, 160),
+        });
+        return ctx.json({ error: "internal_error", code: "CREDIT_CHECKOUT_FAILED" }, 500);
+      }
+    }
+  );
 
   // -------------------------------------------------------------------------
   // POST /api/billing/checkout
@@ -1260,6 +1319,41 @@ async function handleCheckoutSessionCompleted(
       event_id: eventId,
       mode: session.mode,
       payment_status: session.payment_status,
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // Credit-pack branch (mode='payment', product='credit_pack') — #144/P17.
+  // Money in -> credits in, exactly once. Idempotency lives in the DATABASE:
+  // uniq_credit_ref on (tenant, 'stripe_session', md5(session.id)::uuid) makes
+  // a Stripe redelivery a no-op instead of a double mint. md5-as-uuid because
+  // ref_id is a uuid column and session ids are not — a stable, collision-safe
+  // 128-bit fingerprint is exactly what the column wants.
+  // -------------------------------------------------------------------------
+  if (session.mode === "payment" && session.metadata?.product === "credit_pack") {
+    const tenantId = session.metadata?.tenant_id ?? "";
+    const credits = parseInt(session.metadata?.credits ?? "0", 10);
+    if (!tenantId || !Number.isFinite(credits) || credits <= 0) {
+      logger.warn("stripe_credit_pack_missing_metadata", {
+        session_id: session.id,
+        event_id: eventId,
+      });
+      return;
+    }
+    await db.query(
+      `INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
+       SELECT $1, $2, 'purchase', 'stripe_session', md5($3)::uuid,
+              COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1), 0) + $2
+        ON CONFLICT (tenant_id, ref_type, ref_id)
+          WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING`,
+      [tenantId, credits, session.id]
+    );
+    logger.info("credit_pack_granted", {
+      tenant_id: tenantId,
+      credits,
+      session_id: session.id,
+      event_id: eventId,
     });
     return;
   }
