@@ -322,10 +322,20 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       return c.json({ message: "Could not run the test right now. Try again." }, 502);
     }
 
-    // Record estimated spend for the monthly budget ledger (best-effort).
+    // Record estimated spend for the monthly budget ledger. Still best-effort
+    // (the visitor's test result must never depend on our ledger), but no
+    // longer SILENT: this insert feeding the free-test budget guard is a
+    // meter, and a meter that fails quietly under-counts spend until the
+    // month's budget check waves through traffic it should have stopped —
+    // the exact "degrada calado" failure #139 exists to hunt.
     void db
       .query(`INSERT INTO api_spend (op, est_cost_cents) VALUES ('free_test', $1)`, [freeTestCostCents])
-      .catch(() => {});
+      .catch((err) => {
+        logger.error("api_spend_insert_failed", {
+          op: "free_test",
+          message: (err as Error).message?.slice(0, 200),
+        });
+      });
 
     // Best-effort lead capture (email NOT logged). Never blocks the response.
     // testId lets the visitor carry this test into the Kit checkout so the Kit's
