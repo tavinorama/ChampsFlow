@@ -35,16 +35,22 @@ const DRIFT_SRC = readFileSync(
 );
 
 describe("serp adapter — absent vs not-mentioned", () => {
-  it("flags absent from the presence of the AI Overview block, not from the text", () => {
-    // `absent: !aio` reads the parsed block. Deriving it by matching the
-    // sentinel string would rot the moment someone reworded the message.
-    expect(SERP_SRC).toMatch(/absent:\s*!aio/);
+  it("derives absent from extractable TEXT, not from the block's mere existence", () => {
+    // Layer 2 of the same bug: Google serves most overviews asynchronously, so
+    // the block arrives as an empty shell unless load_async_ai_overview is
+    // sent. A block-existence check calls that shell "present" and scores
+    // "(no extractable text)" as an answer — which production did for weeks.
+    expect(SERP_SRC).toMatch(/const hasText = !!aio && parts\.some/);
+    expect(SERP_SRC).toMatch(/const absent = !hasText/);
+    expect(SERP_SRC).toMatch(/load_async_ai_overview:\s*true/);
   });
 
-  it("still reports mentioned=false when absent — the audit answer is unchanged", () => {
-    // The customer is genuinely not cited in an overview Google did not show.
-    // Only the battery's reading of that fact changes.
-    expect(SERP_SRC).toMatch(/mentioned:\s*parsed\.mentioned/);
+  it("never runs the citation parser on a sentinel — the query echo was a live false positive", () => {
+    // The "no block" sentinel echoes the customer's own question. On 20/07 the
+    // parser found the brand IN THE ECHOED QUESTION and recorded the only serp
+    // cited=true in history. Gating the parse on !absent kills that class.
+    expect(SERP_SRC).toMatch(/absent \? null : parseCitation/);
+    expect(SERP_SRC).toMatch(/parsed\?\.mentioned \?\? false/);
   });
 
   it("keeps returning the human-readable sentinel, so evidence stays explainable", () => {

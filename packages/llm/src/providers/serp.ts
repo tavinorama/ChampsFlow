@@ -104,7 +104,22 @@ export class SerpProbeAdapter implements ProviderAdapter {
         signal: controller.signal,
         headers: { "content-type": "application/json", authorization: `Basic ${apiKey}` },
         body: JSON.stringify([
-          { keyword: query.queryText, language_code: "en", location_code: region === "EU" ? 2826 : 2840, depth: 10 },
+          {
+            keyword: query.queryText,
+            language_code: "en",
+            location_code: region === "EU" ? 2826 : 2840,
+            depth: 10,
+            // Google serves most AI Overviews ASYNCHRONOUSLY now: the SERP HTML
+            // ships an empty ai_overview shell and the content arrives after.
+            // Without this flag DataForSEO returns that shell as-is, and this
+            // adapter extracted "(no extractable text)" from EVERY probe for
+            // weeks — which scored as "brand not cited" in every audit and
+            // drove the drift battery to pause the engine as "failing". One
+            // missing boolean manufactured both a weeks-long false product
+            // signal and a false engine-health verdict. Costs +$0.0006/request
+            // (~1.3¢ per 11-prompt audit) per DataForSEO's pricing.
+            load_async_ai_overview: true,
+          },
         ]),
       });
       if (!res.ok) {
@@ -118,10 +133,13 @@ export class SerpProbeAdapter implements ProviderAdapter {
 
       let rawText: string;
       let sources: string[] = [];
+      // Hoisted: `absent` below needs to know whether any overview TEXT was
+      // extracted, not merely whether the block existed — the async shell is a
+      // block with nothing inside.
+      const parts: string[] = [];
       if (aio) {
         // AI Overview text can live in markdown/text, or split across nested
         // components in items[]; references carry the cited source URLs.
-        const parts: string[] = [];
         if (typeof aio["markdown"] === "string") parts.push(aio["markdown"] as string);
         else if (typeof aio["text"] === "string") parts.push(aio["text"] as string);
         const comps = (aio["items"] as Array<Record<string, unknown>> | undefined) ?? [];
@@ -138,20 +156,29 @@ export class SerpProbeAdapter implements ProviderAdapter {
         rawText = `Google AI Overview for "${query.queryText}" — no AI Overview block returned in this snapshot.`;
       }
 
-      const parsed = parseCitation(rawText, query.brandName);
+      // ABSENT covers two cases that are the same claim — "there is no overview
+      // text to inspect": Google showed no block at all, or it returned the
+      // async shell with nothing extractable inside. The second case was live
+      // for weeks: every probe since at least 20/07 stored "(no extractable
+      // text)", scored the brand as uncited, and fed the drift battery a
+      // failure that was really our missing load_async flag.
+      const hasText = !!aio && parts.some((p) => p.trim().length > 0);
+      const absent = !hasText;
+
+      // parseCitation runs ONLY on real overview text. Both sentinels are
+      // ineligible, and the "no block" one is actively dangerous: it echoes the
+      // customer's own query, so a brand name in the QUESTION parsed as a
+      // citation. That happened in production — the one serp cited=true on
+      // record (20/07, "Is Ozvor a good choice?") was the parser finding
+      // "Ozvor" in the echoed question of a sentinel, not in any answer.
+      const parsed = absent ? null : parseCitation(rawText, query.brandName);
       return {
         provider: "serp",
         rawText,
-        mentioned: parsed.mentioned,
-        position: parsed.position,
-        sources: sources.length ? sources : parsed.sources,
-        // No AI Overview block at all. `mentioned` stays false — for an AUDIT
-        // that is the true answer, the brand really is not cited in an overview
-        // that Google did not show. But the sentinel text above is not empty, so
-        // without this flag the control battery counted Google's editorial
-        // choice as our engine failing to name a brand it should name, and
-        // paused the engine over our own measurement error.
-        absent: !aio,
+        mentioned: parsed?.mentioned ?? false,
+        position: parsed?.position ?? null,
+        sources: sources.length ? sources : (parsed?.sources ?? []),
+        absent,
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;
