@@ -141,3 +141,38 @@ describe("computeEngineCoverage", () => {
     expect(cov.comparable).toBe(false);
   });
 });
+
+/**
+ * #163's second half was never a computation bug — it was ONE truth on ONE
+ * screen. dashboard-v3 explained "4 of 5 engines, and why" while /brands/[id]
+ * read the same audit and said only "4 engines". These assertions pin the
+ * wiring: the breakdown API must surface coverage, and BOTH pages must render
+ * the same shared component, so the two screens cannot drift apart again.
+ */
+describe("coverage reaches both screens (#163)", () => {
+  const read = (p: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("node:fs").readFileSync(require("node:path").join(__dirname, "../..", p), "utf8") as string;
+
+  it("the breakdown API surfaces provider_breakdown.coverage", () => {
+    const src = read("apps/api/src/routes/audits.ts");
+    expect(src).toMatch(/coverage:\s*\(bd as \{ coverage\?: unknown \}\)\.coverage \?\? null/);
+  });
+
+  it("the brand page renders the SAME CoverageNote the dashboard renders", () => {
+    const brand = read("apps/web/src/app/brands/[id]/page.tsx");
+    const dash = read("apps/web/src/app/dashboard-v3/page.tsx");
+    for (const src of [brand, dash]) {
+      expect(src).toMatch(/from "[./]+components\/CoverageNote"/);
+      expect(src).toMatch(/<CoverageNote coverage=/);
+    }
+    // The old local copy must be gone — two implementations is how one screen
+    // got ahead of the other in the first place.
+    expect(dash).not.toMatch(/function PanelCoverage\(/);
+  });
+
+  it("the shared component stays silent unless it has something to say", () => {
+    const src = read("apps/web/src/components/CoverageNote.tsx");
+    expect(src).toMatch(/comparable !== false\) return null/);
+  });
+});

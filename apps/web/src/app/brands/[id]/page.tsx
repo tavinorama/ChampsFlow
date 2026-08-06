@@ -21,6 +21,7 @@ import { PromptsPanel } from "./PromptsPanel";
 import { confidenceLabel } from "../../../lib/confidence";
 import { VerifiedCitations, type ExtractionTelemetry } from "../../../components/VerifiedCitations";
 import { EngineConfidence } from "../../../components/EngineConfidence";
+import { CoverageNote, type CoverageData } from "../../../components/CoverageNote";
 
 interface AuditState {
   id?: string;
@@ -63,6 +64,12 @@ interface Breakdown {
    * method correction is never read as a drop in performance.
    */
   methodology_version: string | null;
+  /**
+   * Engine coverage (#163). The dashboard has explained "4 of 5 engines, and
+   * why" since B4; this page read the same audit and said only "4 engines".
+   * Null on audits that predate the field — CoverageNote stays silent then.
+   */
+  coverage: CoverageData | null;
   site_crawl: { reachable: boolean; domain: string | null; findings: string[] } | null;
   competitors: Array<{ name: string; mentions: number; displacement: number }>;
   offsite: {
@@ -533,6 +540,12 @@ export default function BrandDetailPage() {
           }
           brandName={brandName}
         />
+        {/* #163 — did this run reach the full panel? Same component, same
+            words as dashboard-v3: the number above is a rate over the probes
+            that ran, and a smaller panel is a different measurement, not a
+            worse result. Silent when coverage is complete or unknown. */}
+        <CoverageNote coverage={breakdown?.coverage ?? null} />
+
         {/* D2 — was each engine steady on the day this audit ran? Silent unless
             it has something to say. */}
         <EngineConfidence auditId={resolvedAuditId} />

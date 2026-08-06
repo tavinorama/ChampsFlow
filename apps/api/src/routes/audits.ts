@@ -1447,6 +1447,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       intents: (bd as { intents?: unknown }).intents ?? [],
       // Sampling telemetry: base runs, escalations, generation ceiling, cache.
       sampling: (bd as { sampling?: unknown }).sampling ?? null,
+      // Engine coverage (#163): which engines this run reached, which were
+      // held back or flagged, and the with/without comparison. The dashboard
+      // has shown this since B4; the brand page read the same audit and said
+      // only "4 engines" — one truth on one screen is worse than none.
+      coverage: (bd as { coverage?: unknown }).coverage ?? null,
       // B3 — two-pass citation extraction: mode, verified/rejected counts,
       // kinds, and sample false positives this audit refused to count.
       // null on pre-B3 audits (additive; old clients ignore it).
