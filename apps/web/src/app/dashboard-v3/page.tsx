@@ -2331,6 +2331,8 @@ function BillingTab({ billing, loading, onManage, onReload }: { billing: Billing
         </div>
       </div>
 
+      <CreditsCard />
+
       {billing.usage && (
         <>
           <div style={S.secH}>What’s included <span style={S.secN}>— your plan’s real limits, live from the API</span></div>
@@ -2390,6 +2392,103 @@ function BillingTab({ billing, loading, onManage, onReload }: { billing: Billing
           onCancelled={() => { setCancelOpen(false); onReload(); }}
         />
       )}
+    </>
+  );
+}
+
+/**
+ * CreditsCard — the visible half of the #144 credit ledger.
+ *
+ * Self-contained (fetches its own data) so BillingTab doesn't grow another
+ * loading dance. Two honesty rules shape the copy:
+ *  - credits are NOT the gate (monthly_audits_total is, by #423's design), so
+ *    a low balance is presented as information + an option, never a lock;
+ *  - every number shown comes from the API's derived values — nothing here
+ *    restates a plan allowance as a literal.
+ */
+type CreditsInfo = {
+  plan: string;
+  balance: number;
+  granted: number;
+  cost_per_audit: number;
+  can_run_audit: boolean;
+  overage_pack: { credits: number; usd: number };
+};
+
+function CreditsCard() {
+  const [info, setInfo] = useState<CreditsInfo | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    apiFetch("/api/billing/credits")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        const data = (await r.json()) as CreditsInfo;
+        if (alive) setInfo(data);
+      })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, []);
+
+  async function buyPack() {
+    if (buying) return;
+    setBuying(true);
+    setBuyError(null);
+    try {
+      const r = await apiFetch("/api/billing/credits/checkout", { method: "POST" });
+      const data = (await r.json()) as { url?: string };
+      if (!r.ok || !data.url) {
+        setBuyError(r.status === 403
+          ? "Only the workspace owner can buy credits."
+          : "Couldn't open checkout. Please try again.");
+        setBuying(false);
+        return;
+      }
+      window.location.href = data.url;
+    } catch {
+      setBuyError("Couldn't open checkout. Please check your connection.");
+      setBuying(false);
+    }
+  }
+
+  // Fail quiet: a billing tab that can't load credits still shows the plan.
+  if (failed) return null;
+  if (!info) return null;
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+  const low = info.balance < info.cost_per_audit;
+
+  return (
+    <>
+      <div style={S.secH}>Audit credits <span style={S.secN}>— what your audits draw from each month</span></div>
+      <div style={{ ...S.card, padding: "var(--space-6)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "var(--space-4)", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: "1.6rem", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
+              {fmt(info.balance)}
+              <span style={{ color: "var(--color-muted)", fontSize: "0.9rem", fontWeight: 600 }}> of {fmt(info.granted)} this month</span>
+            </div>
+            <div style={{ color: "var(--color-muted)", fontSize: "0.86rem", marginTop: "4px" }}>
+              Each audit on your plan uses {fmt(info.cost_per_audit)} credits. Balance resets on the 1st.
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <button onClick={buyPack} disabled={buying} style={{ ...S.btnGhost, cursor: buying ? "wait" : "pointer" }}>
+              {buying ? "Opening checkout…" : `Buy ${fmt(info.overage_pack.credits)} credits — $${info.overage_pack.usd}`}
+            </button>
+            {buyError && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "4px" }}>{buyError}</div>}
+          </div>
+        </div>
+        {low && (
+          <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3)", borderRadius: "8px", background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)", fontSize: "0.86rem" }}>
+            Not enough credits for another audit this month — top up above, or they refill on the 1st.
+            {info.plan === "free" && <> Upgrading to Growth is the better deal if you audit regularly.</>}
+          </div>
+        )}
+      </div>
     </>
   );
 }

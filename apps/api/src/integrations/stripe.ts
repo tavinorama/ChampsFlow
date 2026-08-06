@@ -745,6 +745,68 @@ export async function createPagesCheckoutSession(
   return { url: session.url };
 }
 
+/**
+ * Checkout for a credit overage pack (#144 / P17).
+ *
+ * Uses price_data (amount computed server-side per call) instead of an env
+ * price ID, deliberately: the pack's price is DERIVED — overagePackUsd() clears
+ * both the margin floor and a premium over the best subscription rate — and a
+ * Dashboard-created static price would be one more copy of a number that must
+ * never drift from its derivation. This is also why no new founder setup is
+ * required: the existing live key is enough.
+ *
+ * The webhook credits the ledger only on settled payment (same payment gate as
+ * Kit/Pages), idempotently by session id — a Stripe redelivery must never mint
+ * the pack twice.
+ */
+export async function createCreditPackCheckoutSession(params: {
+  tenantId: string;
+  credits: number;
+  amountUsd: number;
+  buyerEmail: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ url: string }> {
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    ...(params.buyerEmail ? { customer_email: params.buyerEmail } : {}),
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(params.amountUsd * 100),
+          product_data: {
+            name: `Ozvor credits — ${params.credits.toLocaleString("en-US")} pack`,
+            description: "Audit credits, added to your workspace balance on payment.",
+          },
+        },
+      },
+    ],
+    success_url: params.successUrl,
+    cancel_url: params.cancelUrl,
+    // Opaque references for reconciliation — no PII, no card data.
+    metadata: {
+      product: "credit_pack",
+      tenant_id: params.tenantId,
+      credits: String(params.credits),
+    },
+    payment_intent_data: {
+      metadata: { product: "credit_pack", tenant_id: params.tenantId },
+    },
+  });
+  if (!session.url) {
+    logger.error("stripe_credit_pack_no_url", { session_id: session.id });
+    throw new Error("Stripe credit-pack session created but URL is null");
+  }
+  logger.info("stripe_credit_pack_checkout_created", {
+    session_id: session.id,
+    credits: params.credits,
+  });
+  return { url: session.url };
+}
+
 export type KitSessionRejectReason =
   | "not_paid"
   | "wrong_mode"

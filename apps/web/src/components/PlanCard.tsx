@@ -59,15 +59,21 @@ const PLAN_META: Record<
     ctaLabel: string;
   }
 > = {
+  // Feature lines below must state what PLAN_LIMITS actually enforces
+  // (apps/api/src/integrations/stripe.ts). The previous copy sold "50/250
+  // buyer-intent prompts" and "3 competitors" — numbers no code ever
+  // delivered, the exact promise-vs-delivery failure the 2026-07 honesty
+  // audit was about. Credit figures are the derived monthly allowances from
+  // apps/api/src/lib/credits.ts (depth × audits × 50).
   free: {
     name: "Free",
     priceMonthly: "$0",
     priceAnnual: "$0",
     features: [
       "1 brand monitored",
-      "3 competitors benchmarked",
-      "50 buyer-intent prompts per audit",
-      "Monthly AI-visibility audit",
+      "1 competitor benchmarked",
+      "2 audits a month, 10 buyer-intent prompts each",
+      "1,000 audit credits every month",
       "Ozvor AI Visibility Score across 5 AI engines",
     ],
     ctaLabel: "Current plan",
@@ -77,9 +83,9 @@ const PLAN_META: Record<
     priceMonthly: "$99",
     priceAnnual: "$831",
     features: [
-      "1 brand monitored",
+      "1 brand, audited deep — 20 buyer-intent prompts per run",
       "10 competitors benchmarked",
-      "250 buyer-intent prompts per audit",
+      "6,000 audit credits every month",
       "Weekly monitoring + alerts",
       "GEO content plan + ready-to-publish drafts",
     ],
@@ -92,7 +98,7 @@ const PLAN_META: Record<
     features: [
       "10 brands monitored",
       "10 competitors per brand",
-      "250 buyer-intent prompts per audit",
+      "36,000 audit credits every month",
       "Weekly monitoring + alerts",
       "Client workspaces + priority support",
     ],

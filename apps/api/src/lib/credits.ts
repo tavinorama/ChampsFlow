@@ -124,6 +124,41 @@ export function monthlyCreditsFor(tier: PlanTier): number {
   return limits.prompts_per_audit * limits.monthly_audits_total * CREDITS_PER_PROMPT_AUDIT;
 }
 
+/**
+ * One-time signup residual for FREE tenants (#144, the founder's design).
+ *
+ * The ask, verbatim: the free allowance should leave "uma quantidade residual"
+ * — a balance that is visibly THERE and visibly NOT ENOUGH. A wallet at zero
+ * reads as "empty, move on"; a wallet at 200 against a 500-credit audit reads
+ * as "300 short", and that gap is the honest version of urgency: nothing was
+ * taken away, the next step just has a visible price.
+ *
+ * 200 = 40% of a free-tier audit (10 prompts × 50). Deliberately under half —
+ * close enough to feel owned, never enough to run one. A one-time grant on the
+ * tenant's FIRST ledger touch, not monthly: recurring residue would compound
+ * into a free audit every few months and quietly break the ladder.
+ *
+ * Idempotent by uniq_credit_ref on (tenant, 'signup_residual', tenant_id) —
+ * the DB, not a check in code, guarantees once-ever.
+ */
+export const FREE_SIGNUP_RESIDUAL_CREDITS = 200;
+
+export async function ensureFreeSignupResidual(
+  db: PostgresClient,
+  tenantId: string,
+  tier: PlanTier
+): Promise<void> {
+  if (tier !== "free") return;
+  await db.query(
+    `INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
+     SELECT $1, $2, 'adjustment', 'signup_residual', $1::uuid,
+            COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1), 0) + $2
+      ON CONFLICT (tenant_id, ref_type, ref_id)
+        WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING`,
+    [tenantId, FREE_SIGNUP_RESIDUAL_CREDITS]
+  );
+}
+
 export interface CreditBalance {
   balance: number;
   /** This plan's monthly allowance, for "X of Y left" in the UI. */
