@@ -29,6 +29,26 @@ import { PLAN_LIMITS, type PlanTier } from "../../apps/api/src/integrations/stri
 
 const TIERS: PlanTier[] = ["free", "growth", "agency"];
 
+describe("credits — importable by the worker", () => {
+  it("never imports from a route file — that edge held the worker on a stale build for 2 days", () => {
+    // #423 typed a parameter via `import type { PostgresClient } from
+    // "../routes/social-accounts"`. The worker imports credits.ts, the route
+    // file imports hono, the worker container installs no hono — and every
+    // worker deploy from 2026-08-05 21:10 onward FAILED while web/api shipped.
+    // The debit code this file prices never ran; credit_ledger sat at 0 rows.
+    // Types the worker needs live in packages/shared, and this pin is the
+    // tripwire for the next convenient-looking route import.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const lib = readFileSync(
+      join(__dirname, "../../apps/api/src/lib/credits.ts"),
+      "utf8"
+    );
+    expect(lib).not.toMatch(/from "\.\.\/routes\//);
+    expect(lib).not.toMatch(/from "\.\.\/auth\//);
+  });
+});
+
 describe("credits — derived from PLAN_LIMITS, never restated", () => {
   it("an audit costs depth × the unit price, on every tier", () => {
     for (const t of TIERS) {
