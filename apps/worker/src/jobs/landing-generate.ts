@@ -71,6 +71,7 @@ import {
 } from "../../../../packages/llm/src/index";
 import { guardedFetch, assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { logger } from "../../../../packages/shared/src/logger";
+import { revalidateSite } from "../../../../packages/shared/src/landing-revalidate";
 import { parseJsonbObject } from "../../../../packages/shared/src/jsonb";
 import {
   resolvePlaceById,
@@ -430,8 +431,9 @@ export async function processLandingGenerateJob(
         business: unknown;
         place_id: string | null;
         theme: unknown;
+        slug: string;
       }[]
-    >`SELECT id, brand_id, status, business, place_id, theme FROM landing_sites WHERE id = ${site_id}`;
+    >`SELECT id, brand_id, status, business, place_id, theme, slug FROM landing_sites WHERE id = ${site_id}`;
     const site = siteRows[0];
     if (!site) {
       throw new Error("site_not_found");
@@ -767,6 +769,21 @@ export async function processLandingGenerateJob(
       pages_written: pagesWritten,
       mode: bundle.mode,
     });
+
+    // 12. Purge the public cache (#155/P23). Generation rewrites landing_pages
+    // directly, so without this the customer clicks Generate, gets "done", and
+    // /l/:slug keeps serving the OLD content for up to `revalidate` seconds —
+    // or, per the 2026-08-04 incident the bridge was built for, until the next
+    // deploy. Same fail-open bridge the API's mutation routes use; a purge
+    // failure logs and never fails the generation the customer paid for.
+    if (pagesWritten > 0) {
+      const pageSlugRows = await sql<{ slug: string }[]>`
+        SELECT slug FROM landing_pages WHERE site_id = ${site_id}`;
+      revalidateSite(
+        site.slug,
+        pageSlugRows.map((r) => r.slug).filter((s) => !!s)
+      );
+    }
 
     return { site_id, pages_written: pagesWritten, mode: bundle.mode };
   });
