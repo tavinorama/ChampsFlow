@@ -235,6 +235,42 @@ export async function processDriftControlJob(
   const failing = evaluations.filter((e) => e.status === "failing").map((e) => e.engine);
   const degraded = evaluations.filter((e) => e.status === "degraded").map((e) => e.engine);
 
+  // P7 (council verdict, founder-approved 2026-08-07): an ISOLATED negative-
+  // control hit — the engine confirming a brand we invented — flags every
+  // audit of that UTC day, regardless of the engine's composite status. The
+  // battery runs at 03:30; audits that completed BEFORE it are backfilled
+  // here, audits after it pick the flag up at write time (audit-run.ts).
+  // The flag never changes a published number (append-only stays intact):
+  // it annotates, and the UI shows the score with and without the engine.
+  const hallucinating = evaluations
+    .filter((e) => e.negative_rate > 0)
+    .map((e) => e.engine);
+  if (hallucinating.length > 0) {
+    try {
+      const backfilled = await sql`
+        UPDATE geo_score
+           SET provider_breakdown = jsonb_set(
+                 COALESCE(provider_breakdown, '{}'::jsonb),
+                 '{hallucinationFlags}',
+                 ${sql.json(hallucinating)}::jsonb,
+                 true)
+         WHERE (recorded_at AT TIME ZONE 'utc')::date
+               = (${outcome.checkedAt}::timestamptz AT TIME ZONE 'utc')::date
+      `;
+      logger.warn("hallucination_flag_backfilled", {
+        engines: hallucinating.join(","),
+        audits_flagged: backfilled.count,
+        note: "negative control hit — same-day audits annotated, numbers untouched",
+      });
+    } catch (err: unknown) {
+      // The flag is protection; a failed write must scream, not vanish (#139).
+      logger.error("hallucination_flag_backfill_failed", {
+        engines: hallucinating.join(","),
+        message: (err as Error).message?.slice(0, 200),
+      });
+    }
+  }
+
   // Record the battery's platform API spend (visibility only — never blocking).
   const costCents = estimateDriftCostCents(outcome.generations, outcome.verificationCalls);
   try {
@@ -364,5 +400,27 @@ export async function driftVerdicts(sql: postgres.Sql): Promise<DriftVerdicts> {
       message: (err as Error).message?.slice(0, 160),
     });
     return { paused: [], degraded: [] };
+  }
+}
+
+
+/**
+ * Engines whose NEGATIVE controls hit today (UTC) — the P7 hallucination
+ * flag, read by audit-run at write time so audits AFTER the 03:30 battery
+ * carry the same annotation the backfill gives the ones before it.
+ * Fail-open: any error returns [] and the audit proceeds unflagged rather
+ * than failed — the backfill on tomorrow's battery is the safety net.
+ */
+export async function hallucinatingEnginesToday(sql: postgres.Sql): Promise<string[]> {
+  try {
+    const rows = await sql<Array<{ engine: string; negative_rate: string }>>`
+      SELECT DISTINCT ON (engine) engine, negative_rate
+        FROM engine_drift_check
+       WHERE (checked_at AT TIME ZONE 'utc')::date = (NOW() AT TIME ZONE 'utc')::date
+       ORDER BY engine, checked_at DESC
+    `;
+    return rows.filter((r) => Number(r.negative_rate) > 0).map((r) => r.engine);
+  } catch {
+    return [];
   }
 }

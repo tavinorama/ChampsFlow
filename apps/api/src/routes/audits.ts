@@ -1452,6 +1452,38 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       // has shown this since B4; the brand page read the same audit and said
       // only "4 engines" — one truth on one screen is worse than none.
       coverage: (bd as { coverage?: unknown }).coverage ?? null,
+      // P7 (council verdict, founder-approved 2026-08-07): engines that
+      // confirmed an INVENTED brand in the day's control battery. The score is
+      // untouched — this block carries the annotation plus the two numbers
+      // that make the caveat checkable: the run-weighted citation rate as
+      // published, and the same measurement with the flagged engine(s)
+      // removed. Battery engine ids map to citation_check's provider values
+      // (gemini→google, serp→dataforseo).
+      hallucination: (() => {
+        const flags = (bd as { hallucinationFlags?: string[] }).hallucinationFlags;
+        if (!Array.isArray(flags) || flags.length === 0) return null;
+        const toDb = (e: string) => (e === "gemini" ? "google" : e === "serp" ? "dataforseo" : e);
+        const flaggedDb = new Set(flags.map(toDb));
+        const weighted = (rows: typeof evidenceRes.rows) => {
+          let num = 0;
+          let den = 0;
+          for (const r of rows) {
+            const runs = r.runs_count && r.runs_count > 0 ? r.runs_count : 1;
+            const rate = r.mention_rate != null ? Number(r.mention_rate) : r.cited ? 1 : 0;
+            num += rate * runs;
+            den += runs;
+          }
+          return den > 0 ? num / den : null;
+        };
+        const all = weighted(evidenceRes.rows);
+        const rest = evidenceRes.rows.filter((r) => !flaggedDb.has(r.provider));
+        const without = rest.length > 0 ? weighted(rest) : null;
+        return {
+          engines: flags,
+          citation_rate: all,
+          citation_rate_without_flagged: without,
+        };
+      })(),
       // B3 — two-pass citation extraction: mode, verified/rejected counts,
       // kinds, and sample false positives this audit refused to count.
       // null on pre-B3 audits (additive; old clients ignore it).
