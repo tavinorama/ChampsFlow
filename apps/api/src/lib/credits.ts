@@ -30,7 +30,10 @@
 
 import { PLAN_LIMITS, PLAN_PRICE_USD, type PlanTier } from "../integrations/stripe";
 import { logger } from "../../../../packages/shared/src/logger";
-import type { PostgresClient } from "../routes/social-accounts";
+// Type comes from packages/shared, NOT from a route file: the worker imports
+// this module, and a route-file type import drags hono into the worker's tsc
+// closure — that exact edge held the worker on a pre-#423 build for 2 days.
+import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 
 /**
  * Credits per prompt-audit. Deliberately 50 rather than 1 so balances read in

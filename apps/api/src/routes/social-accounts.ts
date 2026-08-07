@@ -160,39 +160,13 @@ async function writeAuditLog(
 // ---------------------------------------------------------------------------
 // Type stub for Postgres client (wired by app entry point)
 // ---------------------------------------------------------------------------
-/**
- * A transaction-scoped database handle. Exposes the same parameterized query
- * API as PostgresClient, but every query runs inside the enclosing transaction
- * opened by PostgresClient.transaction() — they commit together or roll back
- * together.
- */
-export interface TxClient {
-  query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
-}
-
-export interface PostgresClient {
-  query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
-  /** Sets app.current_tenant_id in the Postgres session (for RLS) */
-  setTenantId(tenantId: string): Promise<void>;
-  /**
-   * Run `fn` inside a single explicit DB transaction. Every query issued via the
-   * supplied TxClient commits together or rolls back together — if `fn` throws,
-   * the transaction is rolled back and the error propagates. Use this for any
-   * multi-statement mutation whose partial application would leave data in an
-   * inconsistent state (e.g. the GDPR Art. 17 erasure cascade).
-   *
-   * Tenant context: if the current async context carries a tenant scope, the
-   * transaction sets the RLS GUC + drops to app_user first (mirroring query());
-   * unscoped contexts (e.g. super-admin) run as the privileged login role.
-   *
-   * `opts.mode` is appended to BEGIN (e.g. "read only isolation level
-   * repeatable read") for read-only / snapshot-consistent read sequences.
-   */
-  transaction<T>(
-    fn: (tx: TxClient) => Promise<T>,
-    opts?: { mode?: string }
-  ): Promise<T>;
-}
+// The interfaces themselves moved to packages/shared/src/db-client.ts — a
+// type importable by the worker must not live in a Hono route file (the
+// worker's container has no `hono`, and pulling this file into its tsc
+// closure via a type import broke 12 consecutive worker deploys). Re-exported
+// here so this file remains a valid import site for the existing callers.
+import type { PostgresClient } from "../../../../packages/shared/src/db-client";
+export type { PostgresClient, TxClient } from "../../../../packages/shared/src/db-client";
 
 // ---------------------------------------------------------------------------
 // Route registration
