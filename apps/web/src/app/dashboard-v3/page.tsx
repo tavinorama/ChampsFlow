@@ -29,6 +29,7 @@ import { VerifiedCitations, type ExtractionTelemetry } from "../../components/Ve
 import { EngineConfidence } from "../../components/EngineConfidence";
 import { IntentBreakdown, type IntentRow } from "../../components/IntentBreakdown";
 import { CoverageNote, type CoverageData } from "../../components/CoverageNote";
+import { HallucinationFlag, type HallucinationInfo } from "../../components/HallucinationFlag";
 
 // ---------------------------------------------------------------------------
 // Types mirrored from the API (audits.ts)
@@ -851,6 +852,7 @@ export default function DashboardV3() {
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
             coverage={score?.latest?.coverage ?? null}
+            hallucination={(breakdown as { hallucination?: HallucinationInfo | null } | null)?.hallucination ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
           />
         ) : tab === "brands" ? (
@@ -908,7 +910,7 @@ export default function DashboardV3() {
 
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditMsg,
-  auditId, extraction, methodologyVersion, citationCI, intents, coverage,
+  auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination,
 }: {
   brandName?: string;
   overall: number | null;
@@ -932,6 +934,8 @@ function OverviewTab({
   intents?: IntentRow[] | null;
   /** Which engines this run actually reached. Null on audits that predate it. */
   coverage?: CoverageData | null;
+  /** P7 — same-day negative-control hit on an engine in this panel. */
+  hallucination?: HallucinationInfo | null;
 }) {
   // The hero shows Visibility now, so "has data" follows Visibility. Keying it
   // on the composite would print a big "—" next to a filled three-score card.
@@ -993,6 +997,7 @@ function OverviewTab({
             underneath before reading it as your doing.
           </p>
           <CoverageNote coverage={coverage} />
+          <HallucinationFlag info={hallucination} />
         </div>
       </div>
 

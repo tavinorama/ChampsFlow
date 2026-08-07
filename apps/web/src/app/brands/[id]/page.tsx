@@ -22,6 +22,7 @@ import { confidenceLabel } from "../../../lib/confidence";
 import { VerifiedCitations, type ExtractionTelemetry } from "../../../components/VerifiedCitations";
 import { EngineConfidence } from "../../../components/EngineConfidence";
 import { CoverageNote, type CoverageData } from "../../../components/CoverageNote";
+import { HallucinationFlag, type HallucinationInfo } from "../../../components/HallucinationFlag";
 
 interface AuditState {
   id?: string;
@@ -70,6 +71,8 @@ interface Breakdown {
    * Null on audits that predate the field — CoverageNote stays silent then.
    */
   coverage: CoverageData | null;
+  /** P7 — same-day negative-control hit; annotation + checkable comparison. */
+  hallucination: HallucinationInfo | null;
   site_crawl: { reachable: boolean; domain: string | null; findings: string[] } | null;
   competitors: Array<{ name: string; mentions: number; displacement: number }>;
   offsite: {
@@ -545,6 +548,10 @@ export default function BrandDetailPage() {
             that ran, and a smaller panel is a different measurement, not a
             worse result. Silent when coverage is complete or unknown. */}
         <CoverageNote coverage={breakdown?.coverage ?? null} />
+
+        {/* P7 — the council's verdict on hallucination days: annotate, never
+            adjust; show with/without so the caveat is checkable. */}
+        <HallucinationFlag info={breakdown?.hallucination ?? null} />
 
         {/* D2 — was each engine steady on the day this audit ran? Silent unless
             it has something to say. */}

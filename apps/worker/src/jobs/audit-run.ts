@@ -64,7 +64,7 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
-import { driftVerdicts } from "./drift-control";
+import { driftVerdicts, hallucinatingEnginesToday } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 import { creditsForAudit } from "../../../api/src/lib/credits";
@@ -462,6 +462,14 @@ export async function processAuditJob(
     //   - never pause everything: if every requested engine is failing, the
     //     problem is almost certainly on OUR side. Keep them all and shout —
     //     a silently empty audit is worse than a loud suspicious one.
+    // P7: today's negative-control hits, stamped into this audit's breakdown
+    // at write time (the 03:30 backfill covers audits that ran earlier).
+    let hallucinationFlags: string[] = [];
+    try {
+      hallucinationFlags = await hallucinatingEnginesToday(sql);
+    } catch {
+      /* fail-open — tomorrow's battery backfills */
+    }
     try {
       const verdicts = await driftVerdicts(sql);
       const paused = verdicts.paused;
@@ -1127,6 +1135,16 @@ export async function processAuditJob(
         citationRateWithoutDegraded:
           citationRateWithoutDegraded === null ? null : round4(citationRateWithoutDegraded),
       },
+      // P7 (council verdict): engines that confirmed an invented brand in
+      // today's control battery. Annotation only — the score above is exactly
+      // what the panel measured; the UI names the engine and shows the
+      // comparison so the caveat is checkable, never a silent adjustment.
+      ...((): Record<string, unknown> => {
+        const inPanel = hallucinationFlags.filter((e) =>
+          (requestedProviders as readonly string[]).includes(e)
+        );
+        return inPanel.length > 0 ? { hallucinationFlags: inPanel } : {};
+      })(),
       inputs: scoreInputs,
       measured,
       baseline,
