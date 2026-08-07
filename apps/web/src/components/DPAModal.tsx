@@ -161,6 +161,7 @@ export function DPAModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        data-testid="dpa-modal"
         style={{
           position: "fixed",
           inset: 0,

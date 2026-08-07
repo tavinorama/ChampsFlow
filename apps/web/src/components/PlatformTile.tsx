@@ -343,6 +343,10 @@ export function PlatformTile({
 
       <article
         aria-label={tileAriaLabel}
+        // Stable E2E hook. oauth-connect.spec.ts asserted this id for months
+        // while it existed nowhere — the test could never pass, so its failure
+        // never meant anything (#140).
+        data-testid={`platform-tile-${platform}`}
         style={{
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
@@ -467,6 +471,7 @@ export function PlatformTile({
               onClick={handleConnect}
               disabled={isConnecting}
               aria-label={meta.ariaConnect}
+              data-testid={`connect-${platform}`}
               style={{
                 minHeight: "var(--min-tap-target)",
                 padding: "var(--space-2) var(--space-4)",

@@ -109,8 +109,11 @@ test.describe("Billing — Stripe Checkout (C6)", () => {
     await page.goto("/account/billing");
 
     // Click the paid plan's CTA. Growth is the first paid rung.
+    // #140: if this button is missing, the checkout flow is BROKEN — passing
+    // silently was the worst possible outcome. PlanCard always renders it.
     const upgradeButton = page.getByRole("button", { name: /choose growth/i }).first();
-    if (await upgradeButton.isVisible()) {
+    await expect(upgradeButton).toBeVisible();
+    {
       // Intercept navigation to Stripe (don't follow external redirect in tests)
       const [request] = await Promise.all([
         page.waitForRequest("**/api/billing/checkout"),

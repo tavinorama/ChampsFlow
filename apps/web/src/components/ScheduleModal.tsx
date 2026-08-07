@@ -297,6 +297,7 @@ export function ScheduleModal({ draftId, isOpen, onClose }: ScheduleModalProps) 
         ref={modalRef}
         role="dialog"
         aria-modal="true"
+        data-testid="schedule-modal"
         aria-labelledby={titleId}
         aria-describedby={error ? errorId : undefined}
         style={{

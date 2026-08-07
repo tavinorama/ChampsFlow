@@ -175,10 +175,12 @@ test.describe.fixme("Draft Generate → Approve → Schedule (golden path)", () 
     await topicInput.fill("New coffee shop opening downtown next Monday");
 
     // Select LinkedIn
-    const linkedInOption = page.getByTestId("platform-linkedin").or(page.getByLabel(/linkedin/i));
-    if (await linkedInOption.isVisible()) {
-      await linkedInOption.click();
-    }
+    // #140: this was `if (isVisible())` — with the testid missing from the UI,
+    // the click silently never happened and the test "passed" without ever
+    // choosing a platform. The testid now exists on /create; assert it.
+    const linkedInOption = page.getByTestId("platform-linkedin");
+    await expect(linkedInOption).toBeVisible();
+    await linkedInOption.click();
 
     // Click Generate
     const generateButton = page.getByRole("button", { name: /generate/i });
@@ -193,10 +195,9 @@ test.describe.fixme("Draft Generate → Approve → Schedule (golden path)", () 
     await expect(badge).toContainText(/AI-generated/i);
   });
 
-  // FIXME (2026-07-29): getByTestId("ai-badge") matches nothing in
-  // apps/web/src. The AI label shipped as visible copy, not a test id, so this
-  // assertion has never held. Re-point it at the real label before un-fixme.
-  test.fixme("C5: AI badge persists after user edits draft content", async ({ page }) => {
+  // Un-fixme'd 2026-08-06 (#140): AIBadge now carries data-testid="ai-badge",
+  // so the assertion this test was written for finally has a hook to hold.
+  test("C5: AI badge persists after user edits draft content", async ({ page }) => {
     await page.goto("/drafts/draft-e2e-1");
 
     // Verify badge is visible
@@ -249,10 +250,11 @@ test.describe.fixme("Draft Generate → Approve → Schedule (golden path)", () 
 
     // Select a date/time 1 hour from now
     const futureDate = new Date(Date.now() + 3_600_000);
+    // #140: scheduling WITHOUT a date is not the flow this test claims to
+    // cover. ScheduleModal ships a native <input type="date"> — assert it.
     const dateInput = modal.locator("input[type='date'], input[type='datetime-local']").first();
-    if (await dateInput.isVisible()) {
-      await dateInput.fill(futureDate.toISOString().slice(0, 16));
-    }
+    await expect(dateInput).toBeVisible();
+    await dateInput.fill(futureDate.toISOString().slice(0, 10));
 
     // Confirm schedule
     const confirmButton = modal.getByRole("button", { name: /schedule|confirm/i });

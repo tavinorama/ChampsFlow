@@ -97,10 +97,11 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     await emailInput.fill("test-erasure@example.com");
 
     // Select erasure request type
+    // #140: an erasure request test that never selects "erasure" is testing
+    // the default request type, whatever that is. The option exists — assert.
     const erasureOption = page.getByLabel(/erasure|delete|right to be forgotten/i).first();
-    if (await erasureOption.isVisible()) {
-      await erasureOption.click();
-    }
+    await expect(erasureOption).toBeVisible();
+    await erasureOption.click();
 
     const submitButton = page.getByRole("button", { name: /submit|request/i });
     await submitButton.click();
@@ -110,12 +111,13 @@ test.describe("DSR — Erasure request (GDPR Art. 17 / CCPA §1798.105) [Cond 7]
     await expect(otpMessage).toBeVisible({ timeout: 5_000 });
 
     // Step 3: Enter OTP
-    const otpInput = page.getByLabel(/code|OTP/i).or(page.getByPlaceholder(/6.digit|code/i));
-    if (await otpInput.isVisible()) {
-      await otpInput.fill("123456");
-      const verifyButton = page.getByRole("button", { name: /verify|confirm/i });
-      await verifyButton.click();
-    }
+    // #140: step 2 just ASSERTED the OTP prompt is on screen — so the input
+    // cannot be optional two lines later. Same fix as the sibling test below.
+    const otpInput = page.getByLabel(/code|OTP/i).or(page.getByPlaceholder(/6.digit|code/i)).first();
+    await expect(otpInput).toBeVisible();
+    await otpInput.fill("123456");
+    const verifyButton = page.getByRole("button", { name: /verify|confirm/i });
+    await verifyButton.click();
 
     // Step 4: Fulfillment confirmation
     const confirmation = page.getByText(/verified|processing|request received|under review/i).first();

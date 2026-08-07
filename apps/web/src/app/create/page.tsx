@@ -207,6 +207,7 @@ export default function CreatePage() {
             {(["linkedin", "instagram"] as Platform[]).map((p) => (
               <label
                 key={p}
+                data-testid={`platform-${p}`}
                 style={{
                   flex: 1,
                   display: "flex",

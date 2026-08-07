@@ -300,12 +300,12 @@ test.describe("Facebook OAuth Connect (C4-ext)", () => {
     await expect(tile).toBeVisible();
   });
 
-  // FIXME (2026-07-29): this asserts on test ids (connect-linkedin,
-  // connect-instagram, platform-tile-facebook) that exist nowhere in
-  // apps/web/src. The test was written against a planned Connections UI that
-  // shipped differently, so it has never been able to pass and its failure has
-  // never meant a regression. Kept rather than deleted because the coverage is
-  // worth having the moment the tiles get stable hooks.
+  // FIXME (2026-08-06, #140): un-fixme'd when the tiles got real testids, and
+  // the CI run answered with the REAL reason this test cannot pass yet — not
+  // missing hooks but missing flow: clicking through to PageSelectionModal
+  // times out (20s ×3), because navigating to /account/connections with
+  // ?facebook_select_page params does not open the modal in the shipped UI.
+  // The coverage needs the page-selection wiring, not another selector.
   test.fixme("multi-page Facebook connect → PageSelectionModal shown → page selected", async ({ page }) => {
     await loginAsTestUser(page);
 
