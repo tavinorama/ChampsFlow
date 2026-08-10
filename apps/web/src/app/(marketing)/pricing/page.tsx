@@ -117,46 +117,42 @@ export default function PricingPage() {
       {/* Plan cards — monthly default with an in-place Annual toggle (client) */}
       <PricingPlans />
 
-      {/* How credits work — every number below is computed from PLAN_LIMITS,
-          the same source the product bills with. */}
+      {/* How credits work — unit-value presentation (the founder's call,
+          2026-08-10): say what ONE credit is worth and what each unit of
+          credits actually buys. Every number is computed from
+          @organic-posts/shared — the same source the product bills with. */}
       <section aria-labelledby="pr-credits-heading" style={{ marginTop: "var(--space-16)" }} data-testid="pricing-credits">
         <h2 id="pr-credits-heading" style={{ fontSize: "clamp(1.5rem, 4vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", margin: "0 0 var(--space-2)", textAlign: "center" }}>
           How credits work
         </h2>
         <p style={{ textAlign: "center", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "0 auto var(--space-6)", maxWidth: 640, lineHeight: 1.7 }}>
-          Simple: every plan comes with a monthly wallet of credits. Asking one question across
-          all 5 AI engines costs {CREDITS_PER_PROMPT_AUDIT} credits. Your wallet covers exactly
-          the audits your plan promises — nothing hidden, nothing expiring mid-plan.
+          A credit is our unit of AI work. Every plan fills your wallet monthly, and everything
+          has a clear price in credits — nothing hidden, nothing expiring mid-plan.
         </p>
-        <div className="pr-fit-grid">
-          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
-            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-accent-ink)" }}>Your monthly wallet</h3>
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-              {[
-                `Free — ${fmt(monthlyCreditsFor("free"))} credits: ${PLAN_LIMITS.free.monthly_audits_total} snapshot audits (${PLAN_LIMITS.free.prompts_per_audit} prompts each)`,
-                `Growth — ${fmt(monthlyCreditsFor("growth"))} credits: up to ${PLAN_LIMITS.growth.monthly_audits_total} deep audits (${PLAN_LIMITS.growth.prompts_per_audit} prompts each)`,
-                `Agency — ${fmt(monthlyCreditsFor("agency"))} credits: up to ${PLAN_LIMITS.agency.monthly_audits_total} audits (${PLAN_LIMITS.agency.prompts_per_audit} prompts each) across 10 brands`,
-              ].map((item) => (
-                <li key={item} style={{ display: "flex", gap: "var(--space-2)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-                  <span aria-hidden="true" style={{ color: "var(--color-accent-ink)", fontWeight: 700, flexShrink: 0 }}>&#10003;</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-6)", boxShadow: "var(--shadow-card)" }}>
-            <h3 style={{ margin: "0 0 var(--space-4)", fontSize: "var(--font-size-h3)", fontWeight: 700, color: "var(--color-text)" }}>Ran out before the month did?</h3>
-            <p style={{ margin: "0 0 var(--space-3)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.7 }}>
-              That usually means the audits are working for you. Top up with a one-time credit
-              pack — <strong style={{ color: "var(--color-text)" }}>${overagePackUsd(1000)} for 1,000 credits</strong> — right
-              from your billing page. No plan change, no subscription, they just add to your wallet.
-            </p>
-            <p style={{ margin: 0, fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-              One deep Growth audit costs {fmt(creditsForAudit("growth"))} credits · one Agency audit {fmt(creditsForAudit("agency"))} credits.
-              Packs live in the app: <Link href="/dashboard-v3" style={{ color: "var(--color-accent-ink)", textDecoration: "none", fontWeight: 600 }}>Dashboard → Billing</Link>.
-            </p>
-          </div>
+        {/* Unit tiles: what each amount of credits BUYS. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)" }}>
+          {[
+            { n: fmt(CREDITS_PER_PROMPT_AUDIT), what: "1 question asked across all 5 AI engines", note: "the atom of every audit" },
+            { n: fmt(creditsForAudit("free")), what: "1 snapshot audit", note: `${PLAN_LIMITS.free.prompts_per_audit} questions — the free test` },
+            { n: fmt(creditsForAudit("growth")), what: "1 deep Growth audit", note: `${PLAN_LIMITS.growth.prompts_per_audit} buyer-intent questions` },
+            { n: fmt(creditsForAudit("agency")), what: "1 Agency audit", note: `${PLAN_LIMITS.agency.prompts_per_audit} questions per client brand` },
+          ].map((t) => (
+            <div key={t.what} style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "var(--space-5)", boxShadow: "var(--shadow-card)", textAlign: "center" }}>
+              <p style={{ margin: 0, fontFamily: "var(--font-mono)", fontSize: "1.75rem", fontWeight: 800, color: "var(--color-accent-ink)", fontVariantNumeric: "tabular-nums" }}>{t.n}</p>
+              <p style={{ margin: "var(--space-1) 0 0", fontSize: "var(--font-size-caption)", letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-muted)", fontWeight: 600 }}>credits</p>
+              <p style={{ margin: "var(--space-3) 0 0", fontSize: "var(--font-size-body-sm)", fontWeight: 700, color: "var(--color-text)", lineHeight: 1.4 }}>{t.what}</p>
+              <p style={{ margin: "var(--space-1) 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", lineHeight: 1.5 }}>{t.note}</p>
+            </div>
+          ))}
         </div>
+        <p style={{ textAlign: "center", color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: "var(--space-6) auto 0", maxWidth: 680, lineHeight: 1.7 }}>
+          Your monthly wallet: Free <strong style={{ color: "var(--color-text)" }}>{fmt(monthlyCreditsFor("free"))}</strong> ·
+          Growth <strong style={{ color: "var(--color-text)" }}>{fmt(monthlyCreditsFor("growth"))}</strong> ·
+          Agency <strong style={{ color: "var(--color-text)" }}>{fmt(monthlyCreditsFor("agency"))}</strong> —
+          exactly what each plan&rsquo;s audits cost, by design. Ran out early? The
+          ${overagePackUsd(1000)} pack adds 1,000 credits ({fmt(1000 / CREDITS_PER_PROMPT_AUDIT)} more questions)
+          from <Link href="/dashboard-v3" style={{ color: "var(--color-accent-ink)", textDecoration: "none", fontWeight: 600 }}>Dashboard → Billing</Link>, no plan change.
+        </p>
       </section>
 
       {/* "This is for you / not for you" — two-column fit guide */}

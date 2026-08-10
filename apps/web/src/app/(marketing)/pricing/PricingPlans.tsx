@@ -54,7 +54,7 @@ type Plan = {
 // Credit/depth figures are DERIVED from @organic-posts/shared — the same
 // PLAN_LIMITS production enforces — so this page cannot advertise a number
 // the product no longer delivers.
-import { PLAN_LIMITS, monthlyCreditsFor } from "@organic-posts/shared";
+import { PLAN_LIMITS, monthlyCreditsFor, overagePackUsd } from "@organic-posts/shared";
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 const PLANS: Plan[] = [
@@ -335,6 +335,34 @@ export function PricingPlans() {
           {error}
         </p>
       )}
+      {/* Credit pack band — the founder's call (2026-08-10): the one-time pack
+          lives NEXT TO the plans, not buried in a section below, because a
+          visitor comparing plans should see the escape hatch in the same
+          glance ("if I run out, it's $13, not a bigger plan"). All figures
+          derived from @organic-posts/shared. */}
+      <div
+        data-testid="pricing-pack-band"
+        style={{
+          marginTop: "var(--space-5)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          background: "var(--color-surface)",
+          padding: "var(--space-4) var(--space-5)",
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "var(--space-2) var(--space-4)",
+          textAlign: "center",
+        }}
+      >
+        <span style={{ fontWeight: 800, fontSize: "var(--font-size-body)", color: "var(--color-text)" }}>
+          Need more? Credit pack: ${overagePackUsd(1000)} for 1,000 credits.
+        </span>
+        <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.5 }}>
+          One-time top-up on any plan — no upgrade, no subscription. Buy it inside the app when you need it.
+        </span>
+      </div>
     </div>
   );
 }
