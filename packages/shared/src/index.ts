@@ -167,3 +167,10 @@ export interface RateLimitHeaders {
   'X-RateLimit-Reset': string;  // Unix timestamp seconds
   'Retry-After'?: string;       // Seconds until reset (only on 429)
 }
+
+// ---------------------------------------------------------------------------
+// Plans & credits — single source the API enforces and the web advertises
+// (credits-on-pages, 2026-08-10)
+// ---------------------------------------------------------------------------
+export * from "./plan-limits";
+export * from "./credits";

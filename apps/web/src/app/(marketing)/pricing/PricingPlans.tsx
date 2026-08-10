@@ -51,6 +51,12 @@ type Plan = {
   featured?: boolean;
 };
 
+// Credit/depth figures are DERIVED from @organic-posts/shared — the same
+// PLAN_LIMITS production enforces — so this page cannot advertise a number
+// the product no longer delivers.
+import { PLAN_LIMITS, monthlyCreditsFor } from "@organic-posts/shared";
+const fmt = (n: number) => n.toLocaleString("en-US");
+
 const PLANS: Plan[] = [
   {
     id: "free",
@@ -60,7 +66,7 @@ const PLANS: Plan[] = [
     annualYear: "$0",
     annualPerMonth: "",
     sub: "See where you stand — no card.",
-    features: ["1 brand", "10-prompt snapshot audit", "1 competitor", "All 5 AI engines", "Instant Ozvor AI Visibility Score"],
+    features: ["1 brand", `${PLAN_LIMITS.free.prompts_per_audit}-prompt snapshot audit`, `${fmt(monthlyCreditsFor("free"))} credits/mo included`, "1 competitor", "All 5 AI engines", "Instant Ozvor AI Visibility Score"],
     cta: "Run my test — free",
     href: "/test",
     accent: "muted",
@@ -96,7 +102,7 @@ const PLANS: Plan[] = [
     annualYearList: "$1,188",
     annualPerMonth: "≈ $69/mo · 30% founder discount",
     sub: "For one brand you want cited.",
-    features: ["One manual re-audit per brand each week.", "Weekly monitoring", "Up to 10 competitors.", "GEO content plan + Content Studio", "CSV export", "Email support"],
+    features: [`${fmt(monthlyCreditsFor("growth"))} credits/mo — ${PLAN_LIMITS.growth.prompts_per_audit}-prompt deep audits`, "One manual re-audit per brand each week.", "Weekly monitoring", "Up to 10 competitors.", "GEO content plan + Content Studio", "CSV export", "Email support"],
     cta: "Start Growth",
     guarantee: "30 day money back.",
     accent: "emerald",
@@ -111,7 +117,7 @@ const PLANS: Plan[] = [
     annualYearList: "$6,588",
     annualPerMonth: "≈ $384/mo · 30% founder discount",
     sub: "For agencies & multi-brand teams.",
-    features: ["$54.90 per brand — $38.40 on founder annual", "Multi-client dashboard (up to 10 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual bonus: one free website GEO audit."],
+    features: ["$54.90 per brand — $38.40 on founder annual", `${fmt(monthlyCreditsFor("agency"))} credits/mo across your portfolio`, "Multi-client dashboard (up to 10 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual bonus: one free website GEO audit."],
     cta: "Start Agency",
     guarantee: "30 day money back.",
     accent: "emerald",

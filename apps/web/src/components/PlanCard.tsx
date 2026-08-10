@@ -22,8 +22,15 @@
 "use client";
 
 import React from "react";
+import { PLAN_LIMITS, monthlyCreditsFor } from "@organic-posts/shared";
 
 export type PlanTier = "free" | "growth" | "agency";
+
+// Derived, never restated: these strings recompute whenever PLAN_LIMITS moves,
+// so this card can no longer drift from what production enforces (the pre-
+// 2026-08-10 copy hardcoded "6,000"/"36,000" — already wrong the day the P6
+// depth change landed).
+const fmt = (n: number) => n.toLocaleString("en-US");
 export type BillingInterval = "month" | "year";
 
 export interface PlanCardProps {
@@ -72,8 +79,8 @@ const PLAN_META: Record<
     features: [
       "1 brand monitored",
       "1 competitor benchmarked",
-      "2 audits a month, 10 buyer-intent prompts each",
-      "1,000 audit credits every month",
+      `${PLAN_LIMITS.free.monthly_audits_total} audits a month, ${PLAN_LIMITS.free.prompts_per_audit} buyer-intent prompts each`,
+      `${fmt(monthlyCreditsFor("free"))} audit credits every month`,
       "Ozvor AI Visibility Score across 5 AI engines",
     ],
     ctaLabel: "Current plan",
@@ -83,9 +90,9 @@ const PLAN_META: Record<
     priceMonthly: "$99",
     priceAnnual: "$831",
     features: [
-      "1 brand, audited deep — 20 buyer-intent prompts per run",
+      `1 brand, audited deep — ${PLAN_LIMITS.growth.prompts_per_audit} buyer-intent prompts per run`,
       "10 competitors benchmarked",
-      "6,000 audit credits every month",
+      `${fmt(monthlyCreditsFor("growth"))} audit credits every month`,
       "Weekly monitoring + alerts",
       "GEO content plan + ready-to-publish drafts",
     ],
@@ -98,7 +105,7 @@ const PLAN_META: Record<
     features: [
       "10 brands monitored",
       "10 competitors per brand",
-      "36,000 audit credits every month",
+      `${fmt(monthlyCreditsFor("agency"))} audit credits every month`,
       "Weekly monitoring + alerts",
       "Client workspaces + priority support",
     ],

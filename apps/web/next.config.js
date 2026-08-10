@@ -52,6 +52,10 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // The web app derives plan/credit numbers from @organic-posts/shared (TS
+  // source, no build step) — Next must transpile it (credits-on-pages,
+  // 2026-08-10). Without this, importing the workspace package fails at build.
+  transpilePackages: ["@organic-posts/shared"],
   // Pin the file-tracing root to THIS app's monorepo root (…/apps/web → ../..).
   // Without it, Next infers the root by scanning for lockfiles and — in a git
   // worktree or any checkout nested under another repo — finds TWO lockfiles and

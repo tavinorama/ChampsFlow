@@ -1,150 +1,38 @@
 /**
- * credits.ts — the B5 credit ledger (#144).
+ * credits.ts — the DB side of the B5 credit ledger (#144).
  *
- * WHY THE UNIT IS A PROMPT-AUDIT, NOT AN AUDIT
- * The first sketch priced one audit at 1,000 credits. That is only coherent
- * while every plan audits at the same depth, and after the 2026-08-05 margin
- * calibration they do not: Growth runs 20 prompts per audit, Agency 12. Pricing
- * both at 1,000 would have sold 67% more platform cost on one plan than the
- * other under the same label, and one tier would quietly subsidise the other.
- *
- * So a credit buys a PROMPT-AUDIT: one prompt, asked across the engine panel,
- * once. At 50 credits each, one credit is ~$0.00284 of platform API — a credit
- * is a unit of COST. That is what keeps overage pricing honest when the plans
- * are reshaped again, because the reshaping cannot move what a credit is worth.
- *
- * NOTHING HERE IS HARDCODED
- * Grants and prices are DERIVED from PLAN_LIMITS. A balance restated as a
- * literal is precisely the failure this project spent 2026-08-05 uncovering:
- * prompts_per_audit said 250, the generator produced 10, and the two numbers
- * drifted apart for weeks because nothing forced them to agree. A derived
- * number cannot drift from its source.
- *
- * THE COST MODEL UNDERNEATH IS STILL AN ASSUMPTION
- * $0.142 per prompt-audit comes from api_spend, which computes rather than
- * measures: AUDIT_COST_PER_GEN_CENTS (1.2) and AUDIT_COST_PER_EXTRACTION_CENTS
- * (0.2) are assumed rates that have never been reconciled against provider
- * invoices. Every price in this file inherits that uncertainty. When the
- * reconciliation happens, USD_PER_PROMPT_AUDIT is the single line to change.
+ * The pure arithmetic (unit, cost model, derivations, pack pricing) moved to
+ * packages/shared/src/credits.ts on 2026-08-10 so the public pricing page can
+ * derive the numbers it advertises from the same source production bills
+ * with. Re-exported below, so every existing import site keeps working. What
+ * remains here is everything that touches Postgres: grants, balance, debit.
  */
 
-import { PLAN_LIMITS, PLAN_PRICE_USD, type PlanTier } from "../integrations/stripe";
-import { logger } from "../../../../packages/shared/src/logger";
 // Type comes from packages/shared, NOT from a route file: the worker imports
 // this module, and a route-file type import drags hono into the worker's tsc
 // closure — that exact edge held the worker on a pre-#423 build for 2 days.
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
+import type { PlanTier } from "../../../../packages/shared/src/plan-limits";
+import { logger } from "../../../../packages/shared/src/logger";
+import {
+  FREE_SIGNUP_RESIDUAL_CREDITS,
+  creditsForAudit,
+  currentPeriod,
+  monthlyCreditsFor,
+} from "../../../../packages/shared/src/credits";
 
-/**
- * Credits per prompt-audit. Deliberately 50 rather than 1 so balances read in
- * the thousands — the founder's call, and a sound one: a plan that grants 6,000
- * of something feels materially different from one that grants 120, and the
- * arithmetic is identical.
- */
-export const CREDITS_PER_PROMPT_AUDIT = 50;
-
-/**
- * Platform cost of one prompt-audit, USD. THE SINGLE LINE TO CHANGE when the
- * cost picture moves — everything priced in this file derives from it.
- *
- * History matters here, because this number has already been wrong twice:
- *  - 1.56/11 (until 2026-08-06) came from api_spend, which turned out to be a
- *    MODEL — a uniform 1.2¢/generation guess — not a measurement.
- *  - The controlled experiment of 2026-08-05 (one isolated audit, provider
- *    panels read before/after) measured the real per-call rates: Claude 1.64¢,
- *    OpenAI 0.41¢, Perplexity 0.68¢, Google 0¢ (free tier), serp ~0.40¢.
- *
- * This constant deliberately encodes the PLANNING-WORST-CASE five-engine
- * audit — Google priced at its 1.7¢ list rate even though it bills 0 today —
- * because prices set here (credit cost, overage floors) must survive the free
- * tier ending without a repricing scramble: $1.08 per 11-prompt audit.
- * The spend LEDGER (audit-run.ts) records measured reality instead, including
- * Google at 0; the two numbers answer different questions and are documented
- * against each other on purpose.
- *
- * Still pending to make this a fact rather than a good estimate: invoice
- * reconciliation with per-surface API keys (#152 / founder P4-P5).
- */
-export const USD_PER_PROMPT_AUDIT = 1.08 / 11;
-
-/** What one credit costs us, derived. */
-export function usdPerCredit(): number {
-  return USD_PER_PROMPT_AUDIT / CREDITS_PER_PROMPT_AUDIT;
-}
-
-/** The same margin floor the plans themselves are held to. */
-export const OVERAGE_MARGIN_FLOOR = 0.8;
-
-/**
- * How much dearer a top-up is than the cheapest subscription rate. Overage
- * SHOULD cost more per credit — that is what makes running out an argument for
- * upgrading rather than a reason to stay on a smaller plan and buy packs.
- */
-export const OVERAGE_PREMIUM_OVER_PLAN = 1.3;
-
-/** Cheapest per-credit rate any subscription offers. */
-function bestPlanRateUsd(): number {
-  return Math.min(
-    ...(["growth", "agency"] as PlanTier[]).map(
-      (t) => PLAN_PRICE_USD[t] / monthlyCreditsFor(t)
-    )
-  );
-}
-
-/**
- * List price of an overage pack.
- *
- * Two floors, and it clears BOTH:
- *   - margin: cost / (1 - 0.8), the same bar the plans meet;
- *   - competitiveness: strictly above the best subscription rate, times a
- *     premium.
- *
- * The second floor exists because a unit test caught the first design underwater
- * on it. Pricing a pack purely off cost gave $15/1,000 = $0.015 per credit,
- * while Growth sells credits at $99/6,000 = $0.0165 — so top-ups were CHEAPER
- * than the plan, and the rational customer stays free and buys packs forever.
- * A number that clears the margin bar can still be the wrong price.
- */
-export function overagePackUsd(credits = 1000): number {
-  const marginFloor = (usdPerCredit() * credits) / (1 - OVERAGE_MARGIN_FLOOR);
-  const planFloor = bestPlanRateUsd() * credits * OVERAGE_PREMIUM_OVER_PLAN;
-  return Math.ceil(Math.max(marginFloor, planFloor));
-}
-
-/** Credits consumed by one audit on this plan — depth × the unit price. */
-export function creditsForAudit(tier: PlanTier): number {
-  return PLAN_LIMITS[tier].prompts_per_audit * CREDITS_PER_PROMPT_AUDIT;
-}
-
-/**
- * The monthly allowance, derived from what the plan actually permits:
- * depth × the monthly audit ceiling. Free 1,000 · Growth 6,000 · Agency 36,000
- * at the current limits — but those figures are outputs, not inputs, so a future
- * change to PLAN_LIMITS carries the balances with it automatically.
- */
-export function monthlyCreditsFor(tier: PlanTier): number {
-  const limits = PLAN_LIMITS[tier];
-  return limits.prompts_per_audit * limits.monthly_audits_total * CREDITS_PER_PROMPT_AUDIT;
-}
-
-/**
- * One-time signup residual for FREE tenants (#144, the founder's design).
- *
- * The ask, verbatim: the free allowance should leave "uma quantidade residual"
- * — a balance that is visibly THERE and visibly NOT ENOUGH. A wallet at zero
- * reads as "empty, move on"; a wallet at 200 against a 500-credit audit reads
- * as "300 short", and that gap is the honest version of urgency: nothing was
- * taken away, the next step just has a visible price.
- *
- * 200 = 40% of a free-tier audit (10 prompts × 50). Deliberately under half —
- * close enough to feel owned, never enough to run one. A one-time grant on the
- * tenant's FIRST ledger touch, not monthly: recurring residue would compound
- * into a free audit every few months and quietly break the ladder.
- *
- * Idempotent by uniq_credit_ref on (tenant, 'signup_residual', tenant_id) —
- * the DB, not a check in code, guarantees once-ever.
- */
-export const FREE_SIGNUP_RESIDUAL_CREDITS = 200;
+export {
+  CREDITS_PER_PROMPT_AUDIT,
+  USD_PER_PROMPT_AUDIT,
+  usdPerCredit,
+  OVERAGE_MARGIN_FLOOR,
+  OVERAGE_PREMIUM_OVER_PLAN,
+  overagePackUsd,
+  creditsForAudit,
+  monthlyCreditsFor,
+  FREE_SIGNUP_RESIDUAL_CREDITS,
+  currentPeriod,
+} from "../../../../packages/shared/src/credits";
 
 export async function ensureFreeSignupResidual(
   db: PostgresClient,
@@ -170,13 +58,6 @@ export interface CreditBalance {
   costPerAudit: number;
   /** False when the next audit would overdraw — the upsell moment. */
   canRunAudit: boolean;
-}
-
-/** First of the current month, UTC — the grant period bucket. */
-export function currentPeriod(now: Date = new Date()): string {
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-  return `${y}-${m}-01`;
 }
 
 /**
