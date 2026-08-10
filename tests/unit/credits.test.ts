@@ -77,6 +77,28 @@ describe("credits — importable by the worker", () => {
   });
 });
 
+describe("the pages advertise derived numbers, never literals", () => {
+  it("no credit allowance is hardcoded in the plan surfaces", () => {
+    // 2026-08-10: the founder asked when credits reach the pricing pages and
+    // the honest answer was "the pages restate them by hand". PlanCard said
+    // "6,000"/"36,000" — stale the day P6 changed the depths. These files must
+    // compute from @organic-posts/shared or this pin fails the build.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    for (const rel of [
+      "../../apps/web/src/components/PlanCard.tsx",
+      "../../apps/web/src/app/(marketing)/pricing/PricingPlans.tsx",
+      "../../apps/web/src/app/(marketing)/pricing/page.tsx",
+    ]) {
+      const src = readFileSync(join(__dirname, rel), "utf8");
+      expect(src, rel).toMatch(/monthlyCreditsFor|creditsForAudit/);
+      for (const literal of ["6,000 audit credits", "36,000 audit credits", "9,900", "57,000", "55,100"]) {
+        expect(src, `${rel} hardcodes "${literal}"`).not.toContain(literal);
+      }
+    }
+  });
+});
+
 describe("credits — derived from PLAN_LIMITS, never restated", () => {
   it("an audit costs depth × the unit price, on every tier", () => {
     for (const t of TIERS) {
