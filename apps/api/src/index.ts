@@ -44,6 +44,7 @@ import { registerDpaRoutes } from "./routes/dpa";
 import { registerCcpaRoutes } from "./routes/ccpa";
 import { registerDsrRoutes } from "./routes/dsr";
 import { registerBillingRoutes } from "./routes/billing";
+import { registerSmartleadWebhookRoutes } from "./routes/webhooks-smartlead";
 import { registerWaitlistRoutes } from "./routes/waitlist";
 import { registerProductRoutes } from "./routes/products";
 import { registerNurtureRoutes } from "./routes/nurture";
@@ -321,6 +322,11 @@ registerDsrRoutes(app, db);
 // does not accidentally match any auth middleware applied globally (there is none —
 // auth is per-route in this app's design pattern).
 registerBillingRoutes(app, db);
+
+// POST /api/webhooks/smartlead — NO auth middleware (P34): the capability
+// token in the registered URL is verified inside the handler (constant-time)
+// before any DB side-effects, mirroring the Stripe webhook pattern above.
+registerSmartleadWebhookRoutes(app, db);
 
 // Retention coupon (RETENTION30 — 30% / 3 monthly invoices): provision at BOOT
 // as the controlled path (Hermes review #357), so a customer request never has
