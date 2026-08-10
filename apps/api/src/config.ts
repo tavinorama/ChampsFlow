@@ -26,6 +26,9 @@ const envSchema = z.object({
 
   // LLM providers
   ANTHROPIC_API_KEY: z.string().optional(),
+  // P34 — capability token for the Smartlead webhook URL. Optional: while
+  // unset the route answers 503 "not configured" (outbound not live yet).
+  SMARTLEAD_WEBHOOK_SECRET: z.string().min(32).optional(),
   AWS_BEDROCK_REGION: z.string().optional(),
 
   // Tenant routing
