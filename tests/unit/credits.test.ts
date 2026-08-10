@@ -29,6 +29,34 @@ import { PLAN_LIMITS, type PlanTier } from "../../apps/api/src/integrations/stri
 
 const TIERS: PlanTier[] = ["free", "growth", "agency"];
 
+describe("credit_ledger — the worker may debit, and only debit", () => {
+  it("grants app_user INSERT bounded to own-tenant negative deltas — never UPDATE/DELETE", () => {
+    // 2026-08-10 06:03: first real post-#438 audit hit "permission denied for
+    // table credit_ledger" — the ledger was deliberately read-only for
+    // app_user ("cannot mint credits") while the #423 debit writes as
+    // app_user. The reconciliation is a write permission opened exactly as
+    // far as the debit needs: INSERT, own tenant, delta <= 0. This pin keeps
+    // the boundary from widening quietly.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "../../packages/db/migrations/20260810000001_credit_ledger_worker_debit.up.sql"
+      ),
+      "utf8"
+    );
+    expect(migration).toContain("GRANT INSERT ON credit_ledger TO app_user");
+    expect(migration).toMatch(/FOR INSERT TO app_user/);
+    expect(migration).toMatch(/delta <= 0/);
+    expect(migration).toMatch(/tenant_id = current_setting\('app\.current_tenant_id', TRUE\)::uuid/);
+    const sql = migration.replace(/--.*$/gm, "");
+    for (const forbidden of ["GRANT UPDATE", "GRANT DELETE", "GRANT ALL"]) {
+      expect(sql).not.toContain(forbidden);
+    }
+  });
+});
+
 describe("credits — importable by the worker", () => {
   it("never imports from a route file — that edge held the worker on a stale build for 2 days", () => {
     // #423 typed a parameter via `import type { PostgresClient } from
