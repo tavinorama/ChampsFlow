@@ -46,6 +46,7 @@
  */
 
 import { Hono } from "hono";
+import { runAsPlatform } from "../db/tenant-context";
 import type { Context, Next } from "hono";
 import { getSharedRedis, type SharedRedis } from "../shared-redis";
 import { acquireRetentionLock, releaseRetentionLock } from "../lib/retention-lock";
@@ -472,8 +473,13 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
       const raw = rows[0]?.plan_tier;
       const tier: PlanTier = raw === "growth" || raw === "agency" ? raw : "free";
 
-      await ensureMonthlyGrant(db, auth.tenantId, tier);
-      await ensureFreeSignupResidual(db, auth.tenantId, tier);
+      // PLATFORM writes, deliberately outside the tenant scope: the ledger's
+      // write policy (#439) lets tenant sessions record debits only, so these
+      // positive rows must run privileged. Every argument is platform-derived
+      // (tenantId from verified auth, amount from PLAN_LIMITS) — see
+      // runAsPlatform's contract in db/tenant-context.ts.
+      await runAsPlatform(() => ensureMonthlyGrant(db, auth.tenantId, tier));
+      await runAsPlatform(() => ensureFreeSignupResidual(db, auth.tenantId, tier));
       const balance = await creditBalance(db, auth.tenantId, tier);
 
       return ctx.json({

@@ -99,6 +99,29 @@ describe("the pages advertise derived numbers, never literals", () => {
   });
 });
 
+describe("grants are PLATFORM writes — the proof of 2026-08-11", () => {
+  it("billing wraps both positive-delta writes in runAsPlatform, and nothing else does", () => {
+    // Reconciling the missed 2026-08-10 debit proved #439's policy works for
+    // the worker AND exposed that the lazy monthly grant (+delta, written from
+    // inside a tenant-scoped billing request) had been silently RLS-blocked
+    // forever: zero grants ever landed. Grants are the platform's writes.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const billing = readFileSync(join(__dirname, "../../apps/api/src/routes/billing.ts"), "utf8");
+    expect(billing).toContain("runAsPlatform(() => ensureMonthlyGrant");
+    expect(billing).toContain("runAsPlatform(() => ensureFreeSignupResidual");
+    // The escape hatch must not spread: these two grant writes are the only
+    // allowed call sites in the API today. Widening this list is a review event.
+    const uses = (billing.match(/runAsPlatform\(/g) ?? []).length;
+    expect(uses).toBe(2);
+    const others = ["audits.ts", "social-accounts.ts", "landing.ts", "dpa.ts", "nurture.ts"];
+    for (const f of others) {
+      const src = readFileSync(join(__dirname, `../../apps/api/src/routes/${f}`), "utf8");
+      expect(src, `${f} must not use runAsPlatform`).not.toContain("runAsPlatform");
+    }
+  });
+});
+
 describe("credits — derived from PLAN_LIMITS, never restated", () => {
   it("an audit costs depth × the unit price, on every tier", () => {
     for (const t of TIERS) {
