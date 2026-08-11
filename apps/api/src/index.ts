@@ -63,6 +63,7 @@ import { registerAttributionRoutes } from "./routes/attribution";
 import { registerCheckoutRoutes } from "./routes/checkout";
 import { registerDownloadRoutes } from "./routes/downloads";
 import { registerOperatorBusinessRoutes } from "./routes/operator";
+import { registerOperatorAgentRoutes } from "./routes/operator-agents";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
@@ -271,6 +272,9 @@ registerDownloadRoutes(app);
 //     brands/:id/audits,audits/:id}
 registerApiKeyRoutes(app, db);
 registerOperatorBusinessRoutes(app, db);
+// #161b — the Hermes writer's door into ops.agent_run/step/outcome (same
+// operator-key auth; hashes never text; outcomes append-only).
+registerOperatorAgentRoutes(app, db);
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
