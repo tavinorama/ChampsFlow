@@ -43,6 +43,27 @@ export function currentTenantId(): string | undefined {
 }
 
 /**
+ * Run `fn` OUTSIDE any tenant scope: queries inside execute as the privileged
+ * login role — no app_user drop, no RLS. This is a deliberate escape hatch and
+ * a loaded gun; the name is scary on purpose.
+ *
+ * WHY IT EXISTS (2026-08-11): the credit ledger's write policy allows tenant
+ * sessions to record DEBITS only (delta <= 0, #439) — "a compromised session
+ * cannot mint credits". Correct — and it also means the lazy monthly grant and
+ * the signup residual (positive deltas, written from inside an authed billing
+ * request) were silently RLS-blocked: not one grant ever landed. Grants are
+ * the PLATFORM's writes, so they run here.
+ *
+ * Threat model note: the caller decides what runs inside. Only wrap statements
+ * whose every argument the platform derives itself (tenant id from verified
+ * auth, amounts from PLAN_LIMITS) — never anything carrying request-supplied
+ * values. The credits.test.ts pin enumerates the allowed call sites.
+ */
+export function runAsPlatform<T>(fn: () => Promise<T>): Promise<T> {
+  return tenantStore.exit(fn);
+}
+
+/**
  * The Postgres role the runtime drops into for tenant-scoped queries. Must be a
  * NON-superuser, non-BYPASSRLS role (so RLS applies) that has the table grants
  * the app needs. Defaults to `app_user` (created in the initial migration).
