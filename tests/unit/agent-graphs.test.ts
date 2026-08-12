@@ -90,11 +90,12 @@ describe("validateGraph — the hard rules", () => {
 describe("readyNodes — the scheduler's one question", () => {
   it("roots are ready at the start; nothing else is", () => {
     const ready = readyNodes(DAILY_VIDEO_GRAPH, {});
-    expect(ready.map((n) => n.id)).toEqual(["signal"]);
+    // v2: memory (perception of what was already published) is a root too.
+    expect(ready.map((n) => n.id).sort()).toEqual(["memory", "signal"]);
   });
 
   it("fan-out needs no operator: the three angles become ready together", () => {
-    const states: NodeStates = { signal: "succeeded", briefing: "succeeded" };
+    const states: NodeStates = { memory: "succeeded", signal: "succeeded", briefing: "succeeded" };
     expect(readyNodes(DAILY_VIDEO_GRAPH, states).map((n) => n.id).sort()).toEqual([
       "angle-a",
       "angle-b",
@@ -104,6 +105,7 @@ describe("readyNodes — the scheduler's one question", () => {
 
   it("the join waits for the WHOLE fan-out — two of three angles is not enough", () => {
     const states: NodeStates = {
+      memory: "succeeded",
       signal: "succeeded",
       briefing: "succeeded",
       "angle-a": "succeeded",
@@ -114,7 +116,7 @@ describe("readyNodes — the scheduler's one question", () => {
   });
 
   it("a failed dependency blocks its downstream instead of starting broken work", () => {
-    const states: NodeStates = { signal: "failed" };
+    const states: NodeStates = { signal: "failed", memory: "succeeded" };
     expect(readyNodes(DAILY_VIDEO_GRAPH, states)).toEqual([]);
     expect(isRunComplete(DAILY_VIDEO_GRAPH, states)).toBe(true);
   });
@@ -142,10 +144,16 @@ describe("the first graph is the company's own loop", () => {
     expect(byId.get("verdict")!.dependsOn).toEqual(["harvest"]);
   });
 
-  it("the debate is three distinct lenses, not three copies", () => {
+  it("the debate is four DISTINCT lenses, not copies — freshness joined in v2", () => {
     const lenses = DAILY_VIDEO_GRAPH.nodes
       .filter((n) => n.kind === "debate")
       .map((n) => n.config?.["lens"]);
-    expect(new Set(lenses).size).toBe(3);
+    // v2 (founder, 12/08): repeated images/hooks shipped because no critic was
+    // LOOKING for repetition. The freshness lens exists to reject it, and it
+    // must read the memory artifact to have something to compare against.
+    expect(new Set(lenses).size).toBe(lenses.length);
+    expect(lenses).toContain("freshness");
+    const freshness = DAILY_VIDEO_GRAPH.nodes.find((n) => n.config?.["lens"] === "freshness");
+    expect(freshness!.dependsOn).toContain("memory");
   });
 });
