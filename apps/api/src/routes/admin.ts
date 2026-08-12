@@ -31,6 +31,7 @@
 
 import { Hono } from "hono";
 import { requireAuth, requireSuperAdmin } from "../auth/middleware";
+import { agentOpsSummary, clampDays } from "../lib/agent-ops";
 import { tryGetSharedRedis } from "../shared-redis";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -1041,5 +1042,22 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       provider,
       note: "Override removed — reverted to the Railway env key (worker within 60s).",
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/agent-ops — #151: the CEO→VP→job drill-down.
+  // One query builder (lib/agent-ops.ts) shared with the operator route, so
+  // the founder's screen and Hermes's Daily Brief can never disagree.
+  // ops.* is PII-free by construction (slugs/hashes/numbers only).
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/agent-ops", requireAuth, requireSuperAdmin, async (c) => {
+    const days = clampDays(c.req.query("days"));
+    try {
+      const summary = await agentOpsSummary(db, days);
+      return c.json(summary);
+    } catch (err) {
+      logger.error("admin_agent_ops_failed", { message: (err as Error).message?.slice(0, 160) });
+      return c.json({ error: "internal", message: "Could not load agent ops." }, 500);
+    }
   });
 }

@@ -22,6 +22,7 @@ import { Hono } from "hono";
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { logger } from "../../../../packages/shared/src/logger";
 import { requireOperatorKey } from "./api-keys";
+import { agentOpsSummary, clampDays } from "../lib/agent-ops";
 import {
   startRun,
   finishRun,
@@ -201,6 +202,20 @@ export function registerOperatorAgentRoutes(app: Hono, db: PostgresClient): void
       logger.error("operator_missing_outcomes_failed", {
         message: (err as Error).message?.slice(0, 160),
       });
+      return c.json({ error: "internal", message: "Query failed." }, 500);
+    }
+  });
+
+  // GET /api/v1/operator/agent-ops — #151: the same CEO→VP→job summary the
+  // founder sees in /admin, for Hermes and the Daily Brief. One builder,
+  // two doors, zero chance of two truths.
+  app.get("/api/v1/operator/agent-ops", agentsKey, async (c) => {
+    const days = clampDays(c.req.query("days"));
+    try {
+      const summary = await agentOpsSummary(db, days);
+      return c.json(summary);
+    } catch (err) {
+      logger.error("operator_agent_ops_failed", { message: (err as Error).message?.slice(0, 160) });
       return c.json({ error: "internal", message: "Query failed." }, 500);
     }
   });
