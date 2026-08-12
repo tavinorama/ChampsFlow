@@ -22,7 +22,12 @@
  */
 
 import { logger } from "../../../../packages/shared/src/logger";
-import type { PostgresClient } from "../routes/social-accounts";
+// #438's lesson, applied late: types the worker can reach live in
+// packages/shared, NEVER in a route file. This import previously pointed at
+// ../routes/social-accounts — harmless until the graph runner pulled this
+// lib into the worker's compile graph, and the route's hono import killed
+// every worker deploy on 2026-08-12 (the #438 disease, second outbreak).
+import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 
 export type VpOwner =
   | "engineering"
