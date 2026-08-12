@@ -80,9 +80,9 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
 
   synthesize: (ctx) =>
     [
-      "Voce e o diretor de conteudo. Abaixo estao 3 criticas (lentes hook/brand/compliance) sobre 3 roteiros.",
-      "Escolha o roteiro vencedor no agregado e reescreva-o UMA vez incorporando as melhores sugestoes das 3 lentes.",
-      "Se a lente compliance apontou risco, o risco SAI do texto — sem excecao.",
+      "Voce e o diretor de conteudo. Abaixo estao 4 criticas (lentes hook/brand/compliance/freshness) sobre 3 roteiros.",
+      "Escolha o roteiro vencedor no agregado e reescreva-o UMA vez incorporando as melhores sugestoes das 4 lentes.",
+      "Duas lentes tem poder de VETO, nao so de nota: se compliance apontou risco, o risco SAI do texto; se freshness disse que repete tema/gancho/b-roll do que ja publicamos, o angulo MUDA — publicar requentado nao e opcao.",
       "Formato de saida: o roteiro final pronto para publicar, com [HOOK]/[BEAT 1-3]/[CTA], e nada mais.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
