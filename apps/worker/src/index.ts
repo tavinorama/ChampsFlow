@@ -34,6 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
+import { runGraphTick } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -250,6 +251,66 @@ driftWorker.on("completed", (job, result) => {
 });
 driftWorker.on("failed", (job, err) => {
   logger.error("drift_job_failed", { job_id: job?.id, message: err?.message?.slice(0, 200) });
+});
+
+// ---------------------------------------------------------------------------
+// #164 body — graph orchestrator tick, queue 'agent-graph'.
+//
+// A repeatable job every 10 minutes advances every in-flight ops.agent_run
+// whose graph is registered (GRAPH_REGISTRY). The tick is cheap when idle
+// (one SELECT, zero runs) and the runner itself derives all state from the
+// substrate, so a worker restart mid-run loses nothing — the next tick
+// resumes from the record. Same idempotent repeatable pattern as drift.
+// ---------------------------------------------------------------------------
+
+let _graphSql: import("postgres").Sql | null = null;
+function getGraphSql(): import("postgres").Sql {
+  if (_graphSql) return _graphSql;
+  // Unscoped (privileged) on purpose: ops.* is company-operations data,
+  // GRANT-gated, with no tenant rows — there is no tenant context to set.
+  _graphSql = createWorkerDb();
+  return _graphSql;
+}
+
+const graphWorker = new Worker(
+  "agent-graph",
+  async () => runGraphTick(getGraphSql(), connection),
+  { connection, concurrency: 1, autorun: false }
+);
+
+const graphQueue = new Queue("agent-graph", { connection });
+const GRAPH_TICK_CRON = process.env["GRAPH_TICK_CRON"] ?? "*/10 * * * *";
+
+async function registerGraphTickSchedule(): Promise<void> {
+  await graphQueue.add(
+    "graph-tick",
+    {},
+    {
+      jobId: "graph-tick-repeat",
+      repeat: { pattern: GRAPH_TICK_CRON },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    }
+  );
+  logger.info("graph_tick_schedule_registered", { cron: GRAPH_TICK_CRON });
+}
+
+void platformKeysReady.finally(() => {
+  void graphWorker.run();
+  void registerGraphTickSchedule().catch((err: Error) => {
+    // Non-fatal for audits — but the orchestrator being off must be visible.
+    logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+});
+
+graphWorker.on("completed", (_job, result) => {
+  const r = result as { advanced?: number } | undefined;
+  if (r?.advanced && r.advanced > 0) {
+    logger.info("graph_tick_completed", { advanced: r.advanced });
+  }
+});
+graphWorker.on("failed", (job, err) => {
+  logger.error("graph_tick_failed", { job_id: job?.id, message: err?.message?.slice(0, 200) });
 });
 
 // ---------------------------------------------------------------------------
