@@ -1,0 +1,376 @@
+/**
+ * graph-runner.ts — the BODY half of the orchestrator (#164): the engine
+ * that advances a graph run, one tick at a time.
+ *
+ * The BRAIN (agent-graphs.ts) answers "which nodes may start now?" and is
+ * pure. This file answers "then start them" — and everything with a side
+ * effect goes through an injected port, so the whole lifecycle is provable
+ * in a unit test with fake ports before it ever touches Hermes:
+ *
+ *   - substrate port  → ops.agent_run/agent_step/agent_outcome (the record)
+ *   - hermes port     → the VPS task server (task exec + postiz publish)
+ *   - artifacts port  → node outputs in transit (Redis, TTL) — the substrate
+ *                       keeps HASHES, working memory keeps the text, and the
+ *                       two never swap roles
+ *   - telegram port   → approvals + verdicts + failures (nada degrada calado)
+ *
+ * Design decisions that carry the house rules:
+ *  - THE SUBSTRATE IS THE STATE. NodeStates are derived from agent_step rows
+ *    every tick — there is no second state store to drift from the record.
+ *  - APPROVAL IS THE #445 ROUTE. An approval node parks as status 'waiting';
+ *    approving IS calling POST /agent-steps/:id/finish {status:'succeeded'}
+ *    (rejecting: 'failed'). No new mechanism, no new auth surface.
+ *  - FAIL-FAST, OUT LOUD. One failed node skips every waiting sibling,
+ *    fails the run, and says so on Telegram. A half-dead run that lingers
+ *    quietly is the five-times disease wearing a new coat.
+ *  - CRASH RECOVERY BY TIMEOUT. A step stuck 'running' past the timeout is
+ *    failed by the next tick — a crashed worker must not hang a run forever.
+ */
+
+import { createHash } from "node:crypto";
+import {
+  type GraphDefinition,
+  type GraphNode,
+  type NodeStates,
+  readyNodes,
+  isRunComplete,
+  DAILY_VIDEO_GRAPH,
+} from "./agent-graphs";
+import { buildPrompt } from "./graph-prompts";
+
+/**
+ * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
+ * it startable — the operator route and the worker tick both read this map,
+ * so an unregistered definition cannot run by accident.
+ */
+export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
+  [DAILY_VIDEO_GRAPH.slug]: DAILY_VIDEO_GRAPH,
+};
+
+// ---------------------------------------------------------------------------
+// Ports — everything the runner touches, injectable.
+// ---------------------------------------------------------------------------
+
+export interface StepRow {
+  id: string;
+  node: string;
+  status: "running" | "succeeded" | "failed" | "skipped" | "waiting";
+  started_at: string; // ISO
+}
+
+export interface RunRow {
+  id: string;
+  graph: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  started_at: string; // ISO
+}
+
+export interface SubstratePort {
+  getRun(runId: string): Promise<RunRow | null>;
+  loadSteps(runId: string): Promise<StepRow[]>;
+  startStep(input: {
+    runId: string;
+    node: string;
+    parentStepId?: string | null;
+    inputHash?: string | null;
+  }): Promise<string>;
+  finishStep(
+    stepId: string,
+    input: {
+      status: "succeeded" | "failed" | "skipped" | "waiting";
+      outputHash?: string | null;
+      summary?: string | null;
+      ms?: number | null;
+      engine?: string | null;
+    }
+  ): Promise<void>;
+  finishRun(runId: string, status: "succeeded" | "failed"): Promise<void>;
+  recordOutcome(input: {
+    stepId: string;
+    metric: string;
+    valueBefore: number | null;
+    valueAfter: number | null;
+  }): Promise<string>;
+  /** Aggregate harvested outcomes for a metric since a moment (from #162's cron). */
+  readHarvest(metric: string, sinceIso: string): Promise<{ n: number; total: number }>;
+}
+
+export interface HermesPort {
+  task(prompt: string): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null }>;
+  publish(payload: { channel: string; post: string }): Promise<{ ok: boolean; detail: string }>;
+}
+
+export interface ArtifactsPort {
+  get(runId: string, node: string): Promise<string | null>;
+  set(runId: string, node: string, text: string): Promise<void>;
+}
+
+export interface GraphRunnerPorts {
+  substrate: SubstratePort;
+  hermes: HermesPort;
+  artifacts: ArtifactsPort;
+  telegram(text: string): Promise<void>;
+  now(): Date;
+}
+
+export interface AdvanceResult {
+  status: "in-flight" | "completed" | "failed" | "not-running";
+  started: string[];
+  notes: string[];
+}
+
+/** A step stuck 'running' longer than this is treated as a crash. */
+export const RUNNING_TIMEOUT_HOURS = 2;
+/** A harvest that finds nothing keeps waiting this long, then records honest zero. */
+export const HARVEST_GRACE_HOURS = 48;
+
+const sha = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
+const hoursSince = (iso: string, now: Date): number =>
+  (now.getTime() - new Date(iso).getTime()) / 3_600_000;
+
+/** Latest step per node wins — a re-attempted node is a new step row. */
+function latestByNode(steps: StepRow[]): Map<string, StepRow> {
+  const byNode = new Map<string, StepRow>();
+  for (const s of [...steps].sort((a, b) => a.started_at.localeCompare(b.started_at))) {
+    byNode.set(s.node, s);
+  }
+  return byNode;
+}
+
+function statesFrom(byNode: Map<string, StepRow>): NodeStates {
+  const states: NodeStates = {};
+  for (const [node, step] of byNode) states[node] = step.status;
+  return states;
+}
+
+async function upstreamArtifacts(
+  def: GraphDefinition,
+  node: GraphNode,
+  runId: string,
+  artifacts: ArtifactsPort
+): Promise<Array<[string, string]>> {
+  const out: Array<[string, string]> = [];
+  for (const dep of node.dependsOn) {
+    const text = await artifacts.get(runId, dep);
+    if (text) out.push([dep, text]);
+  }
+  return out;
+}
+
+/**
+ * Advance one run by one tick. Idempotent per tick: derives state from the
+ * substrate, does what is due, returns. Callers loop it (cron every 10 min).
+ */
+export async function advanceRun(
+  def: GraphDefinition,
+  runId: string,
+  ports: GraphRunnerPorts
+): Promise<AdvanceResult> {
+  const { substrate, hermes, artifacts, telegram, now } = ports;
+  const notes: string[] = [];
+  const started: string[] = [];
+
+  const run = await substrate.getRun(runId);
+  if (!run || run.status !== "running") {
+    return { status: "not-running", started, notes: [`run ${runId} not running`] };
+  }
+
+  const byNode = latestByNode(await substrate.loadSteps(runId));
+
+  // 1) Crash recovery: 'running' past the timeout = failed, out loud.
+  for (const [node, step] of byNode) {
+    if (step.status === "running" && hoursSince(step.started_at, now()) > RUNNING_TIMEOUT_HOURS) {
+      await substrate.finishStep(step.id, {
+        status: "failed",
+        summary: `stale running step (>${RUNNING_TIMEOUT_HOURS}h) — worker crash presumed`,
+      });
+      step.status = "failed";
+      notes.push(`crash-recovered ${node} as failed`);
+    }
+  }
+
+  // 2) Waiting maintenance — waits elapse, harvests retry.
+  for (const [nodeId, step] of byNode) {
+    if (step.status !== "waiting") continue;
+    const node = def.nodes.find((n) => n.id === nodeId);
+    if (!node) continue;
+
+    if (node.kind === "wait") {
+      const hours = Number(node.config?.["hours"] ?? 0);
+      if (hoursSince(step.started_at, now()) >= hours) {
+        await substrate.finishStep(step.id, { status: "succeeded", summary: `waited ${hours}h` });
+        step.status = "succeeded";
+        notes.push(`wait ${nodeId} elapsed`);
+      }
+    } else if (node.kind === "harvest") {
+      const metric = String(node.config?.["metric"] ?? "");
+      const got = await substrate.readHarvest(metric, run.started_at);
+      if (got.n > 0) {
+        await artifacts.set(runId, nodeId, JSON.stringify({ metric, ...got }));
+        await substrate.finishStep(step.id, {
+          status: "succeeded",
+          summary: `harvest ${metric}: n=${got.n} total=${got.total}`,
+        });
+        step.status = "succeeded";
+        notes.push(`harvest ${nodeId} found n=${got.n}`);
+      } else if (hoursSince(step.started_at, now()) >= HARVEST_GRACE_HOURS) {
+        // Honest zero beats an eternal hang: the metric never arrived and
+        // the verdict must SAY that, not be silently never reached.
+        await artifacts.set(runId, nodeId, JSON.stringify({ metric, n: 0, total: 0 }));
+        await substrate.finishStep(step.id, {
+          status: "succeeded",
+          summary: `harvest ${metric}: NOTHING after ${HARVEST_GRACE_HOURS}h grace (honest zero)`,
+        });
+        step.status = "succeeded";
+        notes.push(`harvest ${nodeId} honest zero`);
+      }
+    }
+    // approval nodes stay 'waiting' until the #445 finish route decides them.
+  }
+
+  // 3) Fail-fast: any failed node fails the run and skips the stragglers.
+  const failed = [...byNode.entries()].filter(([, s]) => s.status === "failed");
+  if (failed.length > 0) {
+    for (const [, step] of byNode) {
+      if (step.status === "waiting") {
+        await substrate.finishStep(step.id, { status: "skipped", summary: "run failed elsewhere" });
+      }
+    }
+    await substrate.finishRun(runId, "failed");
+    await telegram(
+      `🔴 GRAPH ${def.slug} FALHOU (run ${runId.slice(0, 8)}): node '${failed[0]![0]}' falhou. Steps: ${byNode.size}/${def.nodes.length}.`
+    );
+    return { status: "failed", started, notes: [...notes, `failed at ${failed[0]![0]}`] };
+  }
+
+  // 4) Start whatever became ready.
+  const states = statesFrom(byNode);
+  for (const node of readyNodes(def, states)) {
+    started.push(node.id);
+    const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
+    const config = node.config ?? {};
+
+    if (node.kind === "task" || node.kind === "debate" || node.kind === "synthesis") {
+      const upstream = await upstreamArtifacts(def, node, runId, artifacts);
+      const prompt = buildPrompt(node.kind, config, upstream);
+      if (!prompt) {
+        const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `no prompt resolvable for kind=${node.kind} config.prompt=${String(config["prompt"])}`,
+        });
+        continue; // next tick's fail-fast closes the run
+      }
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: sha(prompt) });
+      const res = await hermes.task(prompt);
+      if (res.ok && res.output) {
+        await artifacts.set(runId, node.id, res.output);
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          outputHash: sha(res.output),
+          summary: `${node.kind} ok via ${res.engineUsed ?? "?"}`,
+          ms: res.ms,
+          engine: res.engineUsed,
+        });
+      } else {
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `hermes task failed: ${res.output.slice(0, 120) || "no output"}`,
+          ms: res.ms,
+          engine: res.engineUsed,
+        });
+      }
+    } else if (node.kind === "approval") {
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      const context = (await artifacts.get(runId, node.dependsOn[0] ?? "")) ?? "(sem artefato)";
+      await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
+      await telegram(
+        [
+          `🟡 APROVAÇÃO NECESSÁRIA — graph ${def.slug} (run ${runId.slice(0, 8)})`,
+          `Conteúdo proposto:`,
+          context.slice(0, 900),
+          ``,
+          `Aprovar:  finish step ${stepId} com status=succeeded`,
+          `Rejeitar: finish step ${stepId} com status=failed`,
+          `(rota #445: POST /api/v1/operator/agent-steps/${stepId}/finish)`,
+        ].join("\n")
+      );
+    } else if (node.kind === "publish") {
+      const content = (await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "";
+      // dependsOn[0] of publish is the approval node; the CONTENT lives on
+      // the approval's own upstream (the synthesis). Walk one edge back.
+      const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
+      const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+      const post = content || ((await artifacts.get(runId, contentNodeId)) ?? "");
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: post ? sha(post) : null });
+      if (!post) {
+        await substrate.finishStep(stepId, { status: "failed", summary: "publish had no content artifact" });
+        continue;
+      }
+      const channel = String(config["channel"] ?? "linkedin");
+      const res = await hermes.publish({ channel, post });
+      if (res.ok) {
+        await artifacts.set(runId, node.id, res.detail);
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          outputHash: sha(res.detail),
+          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}`,
+        });
+      } else {
+        await substrate.finishStep(stepId, { status: "failed", summary: `publish failed: ${res.detail.slice(0, 120)}` });
+      }
+    } else if (node.kind === "wait") {
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      await substrate.finishStep(stepId, {
+        status: "waiting",
+        summary: `waiting ${Number(config["hours"] ?? 0)}h`,
+      });
+    } else if (node.kind === "harvest") {
+      // Park as waiting; section 2 retries it every tick until data or grace.
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      await substrate.finishStep(stepId, { status: "waiting", summary: `awaiting metric ${String(config["metric"])}` });
+    } else if (node.kind === "verdict") {
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      const harvestNodeId = node.dependsOn[0] ?? "";
+      const raw = await artifacts.get(runId, harvestNodeId);
+      let metric = "unknown";
+      let total = 0;
+      let n = 0;
+      try {
+        const parsed = JSON.parse(raw ?? "{}") as { metric?: string; total?: number; n?: number };
+        metric = parsed.metric ?? "unknown";
+        total = Number(parsed.total ?? 0);
+        n = Number(parsed.n ?? 0);
+      } catch {
+        // verdict on a malformed harvest is still a verdict: zero, said out loud
+      }
+      await substrate.recordOutcome({ stepId, metric, valueBefore: null, valueAfter: total });
+      await substrate.finishStep(stepId, {
+        status: "succeeded",
+        summary: `verdict ${metric}: total=${total} n=${n}`,
+      });
+      await telegram(
+        `🟢 VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${metric} = ${total} (n=${n}). Registrado em ops.agent_outcome.`
+      );
+    }
+  }
+
+  // 5) Done? Recompute from the substrate — the record decides, not memory.
+  const finalStates = statesFrom(latestByNode(await substrate.loadSteps(runId)));
+  if (isRunComplete(def, finalStates)) {
+    const anyFailed = Object.values(finalStates).some((s) => s === "failed");
+    await substrate.finishRun(runId, anyFailed ? "failed" : "succeeded");
+    if (anyFailed) {
+      const firstFailed =
+        Object.entries(finalStates).find(([, s]) => s === "failed")?.[0] ?? "?";
+      await telegram(
+        `🔴 GRAPH ${def.slug} FALHOU (run ${runId.slice(0, 8)}): node '${firstFailed}' falhou e bloqueou o resto.`
+      );
+    } else {
+      await telegram(`✅ GRAPH ${def.slug} COMPLETO (run ${runId.slice(0, 8)}): ${def.nodes.length} nodes.`);
+    }
+    return { status: anyFailed ? "failed" : "completed", started, notes };
+  }
+
+  return { status: "in-flight", started, notes };
+}
