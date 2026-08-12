@@ -214,7 +214,14 @@ interface Opportunities {
   note: string;
 }
 
-type TabId = "today" | "system-health" | "analytics" | "clients" | "leads" | "audits" | "revenue" | "pipeline" | "opportunities" | "assets";
+interface AgentOps {
+  days: number;
+  vps: Array<{ vp_owner: string; runs: number; succeeded: number; failed: number; running: number; cost_cents: number; last_run_at: string | null }>;
+  graphs: Array<{ vp_owner: string; graph: string; runs: number; succeeded: number; failed: number; last_run_at: string | null }>;
+  recent: Array<{ id: string; graph: string; vp_owner: string; trigger: string; status: string; engine_used: string | null; started_at: string; ended_at: string | null; steps: number }>;
+}
+
+type TabId = "today" | "system-health" | "analytics" | "clients" | "leads" | "audits" | "revenue" | "pipeline" | "opportunities" | "agent-ops" | "assets";
 
 // A geo_audit row for the admin Audits tab (GET /api/admin/audits). Unlike the
 // PII-free operator feed, this super-admin panel may show brand/domain, and
@@ -1832,6 +1839,135 @@ function AnalyticsTab({ analytics }: { analytics: Analytics | null }) {
 // OpportunitiesTab
 // ---------------------------------------------------------------------------
 
+function AgentOpsStatus({ status }: { status: string }) {
+  const color =
+    status === "succeeded" ? "var(--color-success, #1a7f37)" :
+    status === "failed" ? "var(--color-danger, #b42318)" :
+    status === "running" ? "var(--color-warning, #9a6700)" :
+    "var(--color-muted)";
+  return <span style={{ color, fontWeight: 600 }}>{status}</span>;
+}
+
+function AgentOpsTab({ ops }: { ops: AgentOps | null }) {
+  if (!ops) {
+    return (
+      <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
+        Agent ops data unavailable.
+      </p>
+    );
+  }
+  const fmtWhen = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { timeZone: "UTC" }) + " UTC" : "\u2014");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-8)" }}>
+      <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: 0 }}>
+        Every agent run of the last {ops.days} days, from ops.agent_run &mdash; the same numbers Hermes reads. No run, no row: this table cannot flatter.
+      </p>
+
+      {/* CEO level: departments */}
+      <section aria-labelledby="agentops-vp-heading">
+        <h3 id="agentops-vp-heading" style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, color: "var(--color-text)", margin: "0 0 var(--space-4) 0" }}>
+          By department (VP owner)
+        </h3>
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>VP</th>
+              <th scope="col" style={TH_STYLE}>Runs</th>
+              <th scope="col" style={TH_STYLE}>Succeeded</th>
+              <th scope="col" style={TH_STYLE}>Failed</th>
+              <th scope="col" style={TH_STYLE}>Running</th>
+              <th scope="col" style={TH_STYLE}>Cost (cents)</th>
+              <th scope="col" style={TH_STYLE}>Last run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ops.vps.length === 0 ? (
+              <tr><td colSpan={7} style={{ ...TD_STYLE, color: "var(--color-muted)", textAlign: "center", padding: "var(--space-8)" }}>No agent runs in the window yet.</td></tr>
+            ) : (
+              ops.vps.map((v) => (
+                <tr key={v.vp_owner} style={{ backgroundColor: "var(--color-surface)" }}>
+                  <td style={{ ...TD_STYLE, fontWeight: 600 }}>{v.vp_owner}</td>
+                  <td style={TD_STYLE}>{v.runs}</td>
+                  <td style={TD_STYLE}>{v.succeeded}</td>
+                  <td style={{ ...TD_STYLE, color: v.failed > 0 ? "var(--color-danger, #b42318)" : undefined }}>{v.failed}</td>
+                  <td style={TD_STYLE}>{v.running}</td>
+                  <td style={TD_STYLE}>{v.cost_cents.toFixed(0)}</td>
+                  <td style={TD_STYLE}>{fmtWhen(v.last_run_at)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </TableWrapper>
+      </section>
+
+      {/* VP level: jobs/graphs per department */}
+      <section aria-labelledby="agentops-graph-heading">
+        <h3 id="agentops-graph-heading" style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, color: "var(--color-text)", margin: "0 0 var(--space-4) 0" }}>
+          Jobs per department
+        </h3>
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>VP</th>
+              <th scope="col" style={TH_STYLE}>Job (graph)</th>
+              <th scope="col" style={TH_STYLE}>Runs</th>
+              <th scope="col" style={TH_STYLE}>Succeeded</th>
+              <th scope="col" style={TH_STYLE}>Failed</th>
+              <th scope="col" style={TH_STYLE}>Last run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ops.graphs.map((g) => (
+              <tr key={`${g.vp_owner}:${g.graph}`} style={{ backgroundColor: "var(--color-surface)" }}>
+                <td style={TD_STYLE}>{g.vp_owner}</td>
+                <td style={{ ...TD_STYLE, fontWeight: 600 }}>{g.graph}</td>
+                <td style={TD_STYLE}>{g.runs}</td>
+                <td style={TD_STYLE}>{g.succeeded}</td>
+                <td style={{ ...TD_STYLE, color: g.failed > 0 ? "var(--color-danger, #b42318)" : undefined }}>{g.failed}</td>
+                <td style={TD_STYLE}>{fmtWhen(g.last_run_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </section>
+
+      {/* Job level: recent runs */}
+      <section aria-labelledby="agentops-recent-heading">
+        <h3 id="agentops-recent-heading" style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, color: "var(--color-text)", margin: "0 0 var(--space-4) 0" }}>
+          Recent runs
+        </h3>
+        <TableWrapper>
+          <thead>
+            <tr>
+              <th scope="col" style={TH_STYLE}>Started</th>
+              <th scope="col" style={TH_STYLE}>Graph</th>
+              <th scope="col" style={TH_STYLE}>VP</th>
+              <th scope="col" style={TH_STYLE}>Trigger</th>
+              <th scope="col" style={TH_STYLE}>Status</th>
+              <th scope="col" style={TH_STYLE}>Steps</th>
+              <th scope="col" style={TH_STYLE}>Engine</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ops.recent.map((r) => (
+              <tr key={r.id} style={{ backgroundColor: "var(--color-surface)" }}>
+                <td style={TD_STYLE}>{fmtWhen(r.started_at)}</td>
+                <td style={{ ...TD_STYLE, fontWeight: 600 }}>{r.graph}</td>
+                <td style={TD_STYLE}>{r.vp_owner}</td>
+                <td style={TD_STYLE}>{r.trigger}</td>
+                <td style={TD_STYLE}><AgentOpsStatus status={r.status} /></td>
+                <td style={TD_STYLE}>{r.steps}</td>
+                <td style={TD_STYLE}>{r.engine_used ?? "\u2014"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrapper>
+      </section>
+    </div>
+  );
+}
+
 function OpportunitiesTab({ opportunities }: { opportunities: Opportunities | null }) {
   if (!opportunities) {
     return (
@@ -2690,6 +2826,7 @@ export default function AdminPage() {
   const [resendState, setResendState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunities | null>(null);
+  const [agentOps, setAgentOps] = useState<AgentOps | null>(null);
   const [crmMap, setCrmMap] = useState<Record<string, CrmContact>>({});
   const [crmMigrationPending, setCrmMigrationPending] = useState(false);
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
@@ -2933,6 +3070,12 @@ export default function AdminPage() {
             const data = (await res.json()) as Opportunities;
             setOpportunities(data);
           }
+        } else if (tab === "agent-ops") {
+          const res = await apiFetch("/api/admin/agent-ops?days=7");
+          if (res.ok) {
+            const data = (await res.json()) as AgentOps;
+            setAgentOps(data);
+          }
         }
         setFetchedTabs((prev) => new Set([...prev, tab]));
       } catch {
@@ -3044,6 +3187,7 @@ export default function AdminPage() {
     { id: "revenue",       label: "Revenue" },
     { id: "pipeline",      label: "Pipeline" },
     { id: "opportunities", label: "Opportunities" },
+    { id: "agent-ops",     label: "Agent Ops" },
     { id: "assets",        label: "Assets" },
   ];
 
@@ -3802,6 +3946,25 @@ export default function AdminPage() {
             Opportunities
           </h2>
           <OpportunitiesTab opportunities={opportunities} />
+        </section>
+
+        {/* ── Agent Ops tab (#151: CEO→VP→job) ── */}
+        <section
+          id="tabpanel-agent-ops"
+          role="tabpanel"
+          aria-labelledby="tab-agent-ops"
+          hidden={activeTab !== "agent-ops"}
+        >
+          <h2
+            style={{
+              fontSize: "var(--font-size-h3)",
+              fontWeight: 700,
+              margin: "0 0 var(--space-4) 0",
+            }}
+          >
+            Agent Ops
+          </h2>
+          <AgentOpsTab ops={agentOps} />
         </section>
       </main>
     </div>
