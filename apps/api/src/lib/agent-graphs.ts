@@ -217,13 +217,17 @@ export function isRunComplete(def: GraphDefinition, states: NodeStates): boolean
 
 export const DAILY_VIDEO_GRAPH: GraphDefinition = {
   slug: "daily-video",
-  version: 1,
+  version: 2,
   vpOwner: "marketing",
   description:
-    "Daily social video: signal → briefing → 3 angles → parallel critique → synthesis → human approval → publish → wait 72h → harvest reach → verdict.",
+    "Daily social video with MEMORY: recall what was already published (themes, hooks, b-roll) → signal → briefing that must not repeat → 3 angles → 4 critics (hook/brand/compliance/freshness) → synthesis → human approval → publish → wait 72h → harvest reach → verdict.",
   nodes: [
+    // v2 (founder, 12/08): the videos were repeating images and hooks because
+    // nothing LOOKED at what was already made. Perception before creation:
+    // this node reads the recent production log and lists what to avoid.
+    { id: "memory", kind: "task", dependsOn: [], config: { prompt: "video-memory" } },
     { id: "signal", kind: "task", dependsOn: [], config: { prompt: "collect-signals" } },
-    { id: "briefing", kind: "task", dependsOn: ["signal"], config: { prompt: "write-briefing" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "write-briefing" } },
     // Three angles from one briefing — same parent, so they run in parallel.
     { id: "angle-a", kind: "task", dependsOn: ["briefing"], config: { prompt: "draft-angle", angle: "story" } },
     { id: "angle-b", kind: "task", dependsOn: ["briefing"], config: { prompt: "draft-angle", angle: "contrarian" } },
@@ -232,7 +236,10 @@ export const DAILY_VIDEO_GRAPH: GraphDefinition = {
     { id: "critic-hook", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c"], config: { lens: "hook" } },
     { id: "critic-brand", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c"], config: { lens: "brand" } },
     { id: "critic-compliance", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c"], config: { lens: "compliance" } },
-    { id: "synthesis", kind: "synthesis", dependsOn: ["critic-hook", "critic-brand", "critic-compliance"] },
+    // v2: the freshness critic also reads the memory artifact — its whole job
+    // is comparing the angles against what was already published.
+    { id: "critic-freshness", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c", "memory"], config: { lens: "freshness" } },
+    { id: "synthesis", kind: "synthesis", dependsOn: ["critic-hook", "critic-brand", "critic-compliance", "critic-freshness"] },
     // Telegram, always. The validator will not accept this graph without it.
     { id: "founder-approval", kind: "approval", dependsOn: ["synthesis"], config: { channel: "telegram" } },
     { id: "publish", kind: "publish", dependsOn: ["founder-approval"], config: { via: "postiz" } },

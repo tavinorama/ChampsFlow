@@ -27,6 +27,18 @@ function upstreamBlock(upstream: Array<[string, string]>): string {
 }
 
 const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
+  "video-memory": () =>
+    [
+      "Voce e o Hermes, agente de operacoes da Ozvor, rodando no VPS da propria empresa. Tarefa de MEMORIA do video diario (v2 do grafo, regra do founder 12/08: os videos vinham repetindo imagens e ganchos porque nada olhava o que ja foi feito).",
+      "Execute UM unico comando bash: tail -n 150 /root/vidjob.log",
+      "A partir da saida, liste os videos dos ultimos 7 dias (linhas VIDEO_OK e as linhas SCRIPTGEN/FORMAT/pexels ao redor).",
+      "Formato de saida, e NADA alem dele:",
+      "JA USADO (ultimos 7 dias):",
+      "- formato: <slides/broll/explainer/hottake/stats> | tema/hook: <resumo 1 linha> | b-roll: <queries pexels usadas>",
+      "EVITAR REPETIR:",
+      "- <lista curta dos temas, ganchos e queries de b-roll que apareceram 2+ vezes>",
+    ].join("\n"),
+
   "collect-signals": () =>
     [
       "Voce e o agente de sinais da Ozvor (plataforma de visibilidade em IA / GEO).",
@@ -41,6 +53,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o editor-chefe da Ozvor. Dos sinais abaixo, escolha O MELHOR para um video social curto de hoje.",
       "Produza um briefing com: TESE (1 frase forte) · PUBLICO (quem sente essa dor) · PROVA (o fato que sustenta) · CTA (1a pessoa, ex: 'Quero meu teste').",
+      "REGRA DE FRESCOR: o bloco [memory] abaixo lista o que JA publicamos. O briefing NAO pode repetir tema, gancho nem estetica de b-roll listados la — escolha o sinal que abre caminho NOVO.",
       "Regras de copy da casa: nivel de leitura 15-17 anos, frases <=12 palavras, sonho honesto (historia + gente real), zero jargao vazio.",
       "Formato de saida: 4 linhas rotuladas TESE/PUBLICO/PROVA/CTA, nada mais.",
       upstreamBlock(ctx.upstream),
@@ -58,7 +71,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   critique: (ctx) =>
     [
       `Voce e um critico com a lente "${String(ctx.config["lens"] ?? "hook")}". Avalie os 3 roteiros abaixo SOMENTE por essa lente.`,
-      "lens hook = o primeiro segundo segura o dedo? · lens brand = soa Ozvor (honesto, direto, sem hype)? · lens compliance = alguma promessa que nao cumprimos ou claim juridico arriscado?",
+      "lens hook = o primeiro segundo segura o dedo? · lens brand = soa Ozvor (honesto, direto, sem hype)? · lens compliance = alguma promessa que nao cumprimos ou claim juridico arriscado? · lens freshness = compare com o bloco [memory]: isso repete tema, gancho ou b-roll do que JA publicamos? novidade real ou requentado?",
       "Para cada roteiro: nota 0-10 pela sua lente + 1 frase do maior problema + 1 sugestao concreta.",
       "Termine com: VENCEDOR: <id do melhor roteiro pela sua lente>.",
       "Formato de saida: 3 blocos (um por roteiro) + a linha VENCEDOR.",
