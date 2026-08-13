@@ -37,8 +37,12 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  CONTENT_EXPERIMENT_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
+
+/** Artifact key holding the hypothesis a spawned run was seeded with. */
+export const SEED_ARTIFACT = "__seed__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -47,9 +51,10 @@ import { buildPrompt } from "./graph-prompts";
  */
 export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [DAILY_VIDEO_GRAPH.slug]: DAILY_VIDEO_GRAPH,
-  // Agent-org core: the two autonomous, read-only brains.
+  // Agent-org core: the two autonomous brains + the CDO's experiment cell.
   [DAILY_WATCHDOG_GRAPH.slug]: DAILY_WATCHDOG_GRAPH,
   [DAILY_DREAM_GRAPH.slug]: DAILY_DREAM_GRAPH,
+  [CONTENT_EXPERIMENT_GRAPH.slug]: CONTENT_EXPERIMENT_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -107,6 +112,12 @@ export interface SubstratePort {
    * lenses must say so, not invent).
    */
   snapshot(input: { source: string; days: number }): Promise<string>;
+  /**
+   * Start a fresh run of another graph (the spawn primitive). Returns the new
+   * run id. The runner seeds the new run's __seed__ artifact separately, via
+   * the artifacts port — the substrate only records the run.
+   */
+  startRun(input: { graph: string; trigger: string; vpOwner: string }): Promise<string>;
 }
 
 export interface HermesPort {
@@ -238,8 +249,36 @@ export async function advanceRun(
         step.status = "succeeded";
         notes.push(`harvest ${nodeId} honest zero`);
       }
+    } else if (node.kind === "approval") {
+      // Approvals stay 'waiting' until the #445 finish route decides them — but
+      // an approval with config.timeoutHours does not park forever: a stale
+      // decision resolves itself, so a launch nobody answered cannot leave a
+      // run 'running' indefinitely. optional → skipped (benign, the tail just
+      // doesn't run); required → failed (a stale publish approval must not ship).
+      const timeoutHours = Number(node.config?.["timeoutHours"] ?? 0);
+      if (timeoutHours > 0 && hoursSince(step.started_at, now()) >= timeoutHours) {
+        const optional = node.config?.["optional"] === true;
+        await substrate.finishStep(step.id, {
+          status: optional ? "skipped" : "failed",
+          summary: `approval timed out after ${timeoutHours}h (${optional ? "optional → skipped" : "required → failed"})`,
+        });
+        step.status = optional ? "skipped" : "failed";
+        notes.push(`approval ${nodeId} timed out`);
+      }
     }
-    // approval nodes stay 'waiting' until the #445 finish route decides them.
+  }
+
+  // 2b) An OPTIONAL approval declined by the founder skips its tail — it does
+  // NOT fail the run. Rejecting "launch this experiment" is a valid no; only a
+  // required approval (a publish gate) turns a rejection into a run failure.
+  for (const [nodeId, step] of byNode) {
+    if (step.status !== "failed") continue;
+    const node = def.nodes.find((n) => n.id === nodeId);
+    if (node?.kind === "approval" && node.config?.["optional"] === true) {
+      await substrate.finishStep(step.id, { status: "skipped", summary: "founder declined optional approval — tail skipped" });
+      step.status = "skipped";
+      notes.push(`optional approval ${nodeId} declined → skipped (run continues)`);
+    }
   }
 
   // 3) Fail-fast: any failed node fails the run and skips the stragglers.
@@ -266,6 +305,11 @@ export async function advanceRun(
 
     if (node.kind === "task" || node.kind === "debate" || node.kind === "synthesis") {
       const upstream = await upstreamArtifacts(def, node, runId, artifacts);
+      // A spawned (seeded) run carries its hypothesis in __seed__; surface it to
+      // every reasoning node so the experiment stays steered by the bet it was
+      // launched to test. Non-seeded runs have no __seed__ — nothing changes.
+      const seed = await artifacts.get(runId, SEED_ARTIFACT);
+      if (seed) upstream.unshift([SEED_ARTIFACT, seed]);
       const prompt = buildPrompt(node.kind, config, upstream);
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
@@ -423,6 +467,44 @@ export async function advanceRun(
         outputHash: sha(bodyText),
         summary: `reported ${bodyText.length} chars to founder`,
       });
+    } else if (node.kind === "spawn") {
+      // The acting primitive: launch experiment runs of other graphs, seeded
+      // with the approved hypothesis. Guarded upstream by an approval (the
+      // brain validated it); each spawned run carries its OWN approval before
+      // it publishes — two human gates on any path to the public.
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      // The seed is the content the approval gated — walk approval → its
+      // upstream (the synthesis / ranked bets), same one-edge-back as publish.
+      const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
+      const seedNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+      const seedText = (await artifacts.get(runId, seedNodeId)) ?? "";
+      const targets = Array.isArray(config["spawns"]) ? (config["spawns"] as unknown[]).map(String) : [];
+      const unknown = targets.filter((t) => !GRAPH_REGISTRY[t]);
+      if (unknown.length > 0) {
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `spawn target(s) not registered: ${unknown.join(", ")}`,
+        });
+        continue; // next tick's fail-fast closes the run, out loud
+      }
+      const launched: string[] = [];
+      for (const target of targets) {
+        const childId = await substrate.startRun({
+          graph: target,
+          trigger: `spawn:${runId.slice(0, 8)}`,
+          vpOwner: GRAPH_REGISTRY[target]!.vpOwner,
+        });
+        if (seedText) await artifacts.set(childId, SEED_ARTIFACT, seedText);
+        launched.push(`${target}:${childId.slice(0, 8)}`);
+      }
+      await artifacts.set(runId, node.id, JSON.stringify({ launched }));
+      await substrate.finishStep(stepId, {
+        status: "succeeded",
+        summary: `spawned ${launched.length} experiment(s): ${launched.join(", ")}`,
+      });
+      await telegram(
+        `🚀 EXPERIMENTO(S) LANÇADO(S) — graph ${def.slug} (run ${runId.slice(0, 8)}): ${launched.join(", ")}. Cada um pede a SUA aprovação antes de publicar.`
+      );
     }
   }
 

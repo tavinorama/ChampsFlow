@@ -15,6 +15,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  CONTENT_EXPERIMENT_GRAPH,
 } from "../../apps/api/src/lib/agent-graphs";
 
 const debateLenses = DAILY_VIDEO_GRAPH.nodes
@@ -61,14 +62,20 @@ describe("buildPrompt resolves the graph's task slugs", () => {
 });
 
 describe("the read-only brains' prompts resolve and stay honest", () => {
-  it("every Watchdog and CDO lens/synthesis node has a resolvable prompt", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH]) {
+  it("every Watchdog, CDO, and experiment-cell reasoning node has a resolvable prompt", () => {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, CONTENT_EXPERIMENT_GRAPH]) {
       for (const node of def.nodes) {
         if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
         const p = buildPrompt(node.kind, node.config ?? {}, []);
         expect(p, `${def.slug}/${node.id} has no resolvable prompt`).toBeTruthy();
       }
     }
+  });
+
+  it("the experiment brief reads the seeded hypothesis", () => {
+    const brief = buildPrompt("task", { prompt: "experiment-brief" }, []) ?? "";
+    expect(brief).toContain("__seed__");
+    expect(brief.toLowerCase()).toContain("aposta #1");
   });
 
   it("both synthesis prompts say PROPOSE, not act — the read-only guarantee in words", () => {

@@ -27,6 +27,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  CONTENT_EXPERIMENT_GRAPH,
   validateGraph,
   type GraphDefinition,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -45,6 +46,8 @@ interface FakeWorld {
   snapshotText: string;
   /** Records of what the runner asked the substrate to read. */
   snapshotCalls: Array<{ source: string; days: number }>;
+  /** Runs the spawn primitive started (the CDO's experiments). */
+  spawnedRuns: Array<{ id: string; graph: string; trigger: string; vpOwner: string }>;
   stepByNode(node: string): (StepRow & { summary?: string | null }) | undefined;
 }
 
@@ -74,6 +77,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
     failTaskWhenPromptIncludes: null,
     snapshotText: "REGISTRO OPERACIONAL (ops.*, 14d):\n- daily-video: 5 runs (4 ok / 1 falha)",
     snapshotCalls: [],
+    spawnedRuns: [],
     stepByNode: (node) => [...steps].reverse().find((s) => s.node === node),
     ports: {
       substrate: {
@@ -108,6 +112,11 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
         async snapshot(input) {
           world.snapshotCalls.push({ ...input });
           return world.snapshotText;
+        },
+        async startRun(input) {
+          const id = `child-${world.spawnedRuns.length + 1}`;
+          world.spawnedRuns.push({ id, ...input });
+          return id;
         },
       },
       hermes: {
@@ -291,18 +300,77 @@ describe("the Watchdog runs itself — read-only, no publish, no spend", () => {
   });
 });
 
-describe("the Chief Dreaming Officer runs itself — grounded in the real harvest", () => {
-  it("reads agent_outcome (30d), imagines 10x through 3 lenses, reports the bets", async () => {
+describe("the Chief Dreaming Officer acts — the brief lands, the founder launches", () => {
+  it("delivers the brief read-only, then PARKS at the launch gate — nothing spawns without a human", async () => {
     const world = makeWorld(DAILY_DREAM_GRAPH.slug);
-    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_DREAM_GRAPH);
+    await tickUntil(world, () => world.stepByNode("launch-approval")?.status === "waiting", 25, DAILY_DREAM_GRAPH);
 
     expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30 }]);
-    expect(world.stepByNode("outcome-snapshot")?.status).toBe("succeeded");
-    expect(world.stepByNode("lens-reach")?.status).toBe("succeeded");
-    expect(world.stepByNode("synthesis")?.status).toBe("succeeded");
+    // The brief (report tail) already reached the founder — before any decision.
     expect(world.stepByNode("report")?.status).toBe("succeeded");
-    expect(world.published).toEqual([]);
     expect(world.telegrams.some((t) => t.includes("DREAMING"))).toBe(true);
+    // The machine has NOT launched anything: the launch gate is still waiting.
+    expect(world.spawnedRuns).toEqual([]);
+    expect(world.stepByNode("spawn-experiment")).toBeUndefined();
+  });
+
+  it("on approval, SPAWNS a content-experiment SEEDED with the ranked bets", async () => {
+    const world = makeWorld(DAILY_DREAM_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("launch-approval")?.status === "waiting", 25, DAILY_DREAM_GRAPH);
+    // Founder approves the launch through the same #445 finish door.
+    await world.ports.substrate.finishStep(world.stepByNode("launch-approval")!.id, { status: "succeeded", summary: "founder: launch it" });
+    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_DREAM_GRAPH);
+
+    // Exactly one experiment run started, of the right graph, seeded.
+    expect(world.spawnedRuns).toHaveLength(1);
+    expect(world.spawnedRuns[0]!.graph).toBe("content-experiment");
+    expect(world.spawnedRuns[0]!.vpOwner).toBe("marketing");
+    const seed = await world.ports.artifacts.get(world.spawnedRuns[0]!.id, "__seed__");
+    expect(seed, "the experiment must be seeded with the hypothesis").toBeTruthy();
+    expect(world.stepByNode("launch-report")?.status).toBe("succeeded");
+    expect(world.telegrams.some((t) => t.includes("EXPERIMENTO"))).toBe(true);
+    expect(world.run.status).toBe("succeeded");
+  });
+
+  it("declining the launch spawns NOTHING but does not fail the run — the brief still counts", async () => {
+    const world = makeWorld(DAILY_DREAM_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("launch-approval")?.status === "waiting", 25, DAILY_DREAM_GRAPH);
+    // Founder declines (finishes the optional approval as failed).
+    await world.ports.substrate.finishStep(world.stepByNode("launch-approval")!.id, { status: "failed", summary: "founder: brief only" });
+    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_DREAM_GRAPH);
+
+    expect(world.spawnedRuns).toEqual([]);
+    // An OPTIONAL rejection is a valid no — the run SUCCEEDS, it does not fail.
+    expect(world.stepByNode("launch-approval")?.status).toBe("skipped");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the content-experiment cell — a seeded, gated, measured shot", () => {
+  it("runs seed → draft → critic → finalize → approval → publish → harvest → verdict", async () => {
+    const world = makeWorld(CONTENT_EXPERIMENT_GRAPH.slug);
+    // Seed it as the spawn would: the hypothesis lives in __seed__.
+    await world.ports.artifacts.set(world.run.id, "__seed__", "APOSTA #1: founder-story em vídeo curto — ancora: 250 views/72h");
+
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, CONTENT_EXPERIMENT_GRAPH);
+    // The brief node consumed the seed (its prompt carried the hypothesis).
+    const briefStep = world.stepByNode("brief");
+    expect(briefStep?.status).toBe("succeeded");
+    // Two gates: this spawned run parks at its OWN approval before publishing.
+    expect(world.published).toEqual([]);
+
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("wait-48h")?.status === "waiting", 25, CONTENT_EXPERIMENT_GRAPH);
+    expect(world.published).toHaveLength(1);
+
+    world.clock.now = new Date(world.clock.now.getTime() + 49 * 3_600_000);
+    world.harvestData = { n: 2, total: 180 };
+    await tickUntil(world, () => world.run.status !== "running", 25, CONTENT_EXPERIMENT_GRAPH);
+
+    expect(world.stepByNode("verdict")?.status).toBe("succeeded");
+    expect(world.outcomes[0]!.metric).toBe("experiment_reach_48h");
+    expect(world.outcomes[0]!.valueAfter).toBe(180);
     expect(world.run.status).toBe("succeeded");
   });
 });

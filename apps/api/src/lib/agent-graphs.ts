@@ -29,9 +29,14 @@
  *    digest of ops.* into an artifact the LLM lenses downstream reason over.
  *    The engines can't reach the DB; the runner injects the data.
  *  - report: deliver the synthesis to the founder (Telegram) and finish. No
- *    publish, no spend, no spawn — the Watchdog and the Chief Dreaming Officer
- *    PROPOSE, they do not act. The acting primitive (spawn, gated by approval)
- *    arrives with the experiment-cell it needs.
+ *    publish, no spend — the Watchdog PROPOSES, it does not act.
+ *
+ * CDO acts (2026-08-13): the acting primitive that closes the dream→test loop —
+ *  - spawn: start experiment runs of another registered graph, SEEDED with the
+ *    approved hypothesis. Gated exactly like publish: validateGraph rejects a
+ *    spawn that is not strictly downstream of an approval, so the machine can
+ *    never launch an experiment without a human. The spawned run then hits its
+ *    OWN approval before it publishes — two gates on any path to the public.
  */
 
 import type { VpOwner } from "./agent-substrate";
@@ -46,7 +51,8 @@ export type NodeKind =
   | "harvest"
   | "verdict"
   | "snapshot"
-  | "report";
+  | "report"
+  | "spawn";
 
 export interface GraphNode {
   /** Node slug, unique within the graph — becomes ops.agent_step.node. */
@@ -197,6 +203,31 @@ export function validateGraph(def: GraphDefinition): GraphValidationResult {
     if (n.kind === "report" && n.dependsOn.length === 0) {
       errors.push(`report node '${n.id}' has no upstream to deliver — a root report reports nothing`);
     }
+    // A spawn must name what it launches; an empty spawn is a no-op that looks
+    // like an action — the exact kind of silent nothing this system forbids.
+    if (n.kind === "spawn") {
+      const spawns = n.config?.["spawns"];
+      if (!Array.isArray(spawns) || spawns.length === 0 || !spawns.every((s) => typeof s === "string")) {
+        errors.push(`spawn node '${n.id}' must declare config.spawns as a non-empty string[] of graph slugs`);
+      }
+    }
+  }
+
+  // HARD RULE (CDO acts): nothing spawns an experiment without a human. A spawn
+  // commits the company to work that will eventually publish; it is gated by an
+  // approval upstream exactly like publish. Enforced at definition time — a
+  // graph that would launch experiments autonomously cannot exist.
+  for (const n of def.nodes) {
+    if (n.kind !== "spawn") continue;
+    const ancestors = upstreamOf(def, n.id);
+    const hasApproval = [...ancestors].some(
+      (id) => def.nodes.find((x) => x.id === id)?.kind === "approval"
+    );
+    if (!hasApproval) {
+      errors.push(
+        `spawn node '${n.id}' has no approval node upstream — nothing spawns an experiment without a human (hard rule)`
+      );
+    }
   }
 
   return { valid: errors.length === 0, errors };
@@ -317,24 +348,65 @@ export const DAILY_WATCHDOG_GRAPH: GraphDefinition = {
 // vibes: a dream that ignores the harvest (10x on a dead channel) is ranked
 // last by construction, because the lenses see the real numbers.
 //
-// v1 REPORTS the ranked bets — it does not yet spawn experiments. The acting
-// primitive (a gated `spawn` into an experiment cell) is the next drop; until
-// an experiment cell exists to spawn into, autonomous spawning would be a
-// primitive with no honest consumer. Read-only, like the Watchdog.
+// v2 (CDO acts): the brief STILL lands every run (the report tail off the
+// synthesis — read-only, always delivered). A SECOND tail lets the founder turn
+// the top bet into a real experiment: approval → spawn(content-experiment),
+// seeded with the ranked bets. The spawned run has its own approval before it
+// publishes, so there are two human gates on any path to the public. If the
+// founder ignores the launch approval, only the acting tail parks — the brief
+// was already delivered.
 // ---------------------------------------------------------------------------
 
 export const DAILY_DREAM_GRAPH: GraphDefinition = {
   slug: "daily-dream",
-  version: 1,
+  version: 2,
   vpOwner: "ceo",
   description:
-    "Chief Dreaming Officer: read what actually moved (agent_outcome lift per metric/graph) → imagine the 10x through 3 growth lenses (alcance, conversão, fosso) → rank the hypotheses cheapest-first → report the bets to the founder. Grounded in the real harvest; read-only (proposes, does not spawn yet).",
+    "Chief Dreaming Officer: read what actually moved (agent_outcome lift per metric/graph) → imagine the 10x through 3 growth lenses (alcance, conversão, fosso) → rank the hypotheses cheapest-first → (a) report the bets to the founder, always; (b) on the founder's approval, SPAWN a seeded content-experiment to test the top bet. Grounded in the real harvest; two human gates before anything publishes.",
   nodes: [
     { id: "outcome-snapshot", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30 } },
     { id: "lens-reach", kind: "debate", dependsOn: ["outcome-snapshot"], config: { prompt: "dream-reach" } },
     { id: "lens-conversion", kind: "debate", dependsOn: ["outcome-snapshot"], config: { prompt: "dream-conversion" } },
     { id: "lens-moat", kind: "debate", dependsOn: ["outcome-snapshot"], config: { prompt: "dream-moat" } },
     { id: "synthesis", kind: "synthesis", dependsOn: ["lens-reach", "lens-conversion", "lens-moat"], config: { prompt: "dream-synthesis" } },
+    // Tail A — the brief, always delivered (read-only).
     { id: "report", kind: "report", dependsOn: ["synthesis"], config: { title: "🌙 CHIEF DREAMING OFFICER — apostas 10x (mais barata primeiro)" } },
+    // Tail B — the founder may launch the top bet as a real experiment.
+    // Optional + timed: declining (or ignoring for 96h) skips the acting tail,
+    // it does NOT fail the run — the brief already landed. This is what keeps a
+    // strategic brief from being marked FAILED just because no experiment ran.
+    { id: "launch-approval", kind: "approval", dependsOn: ["synthesis"], config: { channel: "telegram", optional: true, timeoutHours: 96, question: "Aprovar = lançar a aposta #1 como experimento real (content-experiment). Rejeitar = só o brief hoje." } },
+    { id: "spawn-experiment", kind: "spawn", dependsOn: ["launch-approval"], config: { spawns: ["content-experiment"] } },
+    { id: "launch-report", kind: "report", dependsOn: ["spawn-experiment"], config: { title: "🚀 EXPERIMENTO LANÇADO — a aposta virou um run de verdade" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// The content-experiment cell (CDO's landing pad): a lean content run the CDO
+// spawns to TEST a hypothesis. Seeded with the approved bet (the runner writes
+// it into this run's __seed__ artifact; the brief node reads it). Smaller than
+// the daily video — one draft, one compliance gate, one post — because an
+// experiment is a probe, not the flagship. It carries its OWN approval and its
+// OWN harvest, so it satisfies the same hard rules as any publishing graph:
+// nothing publishes without a human, every publish reads its reach back.
+// ---------------------------------------------------------------------------
+
+export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
+  slug: "content-experiment",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "Seeded content experiment: take an approved growth hypothesis (seed) → brief → draft a single test post → compliance critic → finalize → human approval → publish → wait 48h → harvest reach → verdict. The CDO's dream, turned into one real, measured shot.",
+  nodes: [
+    // Root reads the seeded hypothesis (__seed__) the spawning run wrote.
+    { id: "brief", kind: "task", dependsOn: [], config: { prompt: "experiment-brief" } },
+    { id: "draft", kind: "task", dependsOn: ["brief"], config: { prompt: "experiment-draft" } },
+    { id: "critic", kind: "debate", dependsOn: ["draft"], config: { prompt: "experiment-critic", lens: "compliance" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft", "critic"], config: { prompt: "experiment-finalize" } },
+    { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
+    { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
+    { id: "wait-48h", kind: "wait", dependsOn: ["publish"], config: { hours: 48 } },
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: "experiment_reach_48h" } },
+    { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
   ],
 };
