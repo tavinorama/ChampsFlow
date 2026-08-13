@@ -401,6 +401,36 @@ export const DAILY_DREAM_GRAPH: GraphDefinition = {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// The CPO (founder, 13/08: "na estrutura da empresa falta o responsável pelo
+// produto"). The org's third brain — Watchdog owns operations, CDO owns
+// growth, and until now NOBODY owned what customers actually receive. The CPO
+// reads a PII-free aggregate snapshot of the product itself (audits run,
+// failure rate, score averages, engine drift, funnel, credit consumption) and
+// reasons through 3 product lenses:
+//  - qualidade: are the audits reliable? (failure rate, engine drift, cycle)
+//  - valor: are customers getting value? (usage, funnel conversion, credits)
+//  - honestidade: promessa × entrega — the #153 audit as a CONTINUOUS lens.
+// Read-only like the Watchdog: no publish, no spawn — it reports to the
+// founder, who decides. vpOwner engineering (product lives under VP Eng).
+// ---------------------------------------------------------------------------
+
+export const WEEKLY_PRODUCT_GRAPH: GraphDefinition = {
+  slug: "weekly-product",
+  version: 1,
+  vpOwner: "engineering",
+  description:
+    "CPO (Chief Product Officer): read the product's own PII-free aggregates (audits, failure rate, scores, engine drift, funnel, credit usage) → 3 product lenses (qualidade, valor, honestidade promessa×entrega) → synthesize the top product priorities → report to the founder. Proposes, never edits. Read-only: no publish, no spend.",
+  nodes: [
+    { id: "product-snapshot", kind: "snapshot", dependsOn: [], config: { source: "product", days: 14 } },
+    { id: "lens-quality", kind: "debate", dependsOn: ["product-snapshot"], config: { prompt: "product-quality" } },
+    { id: "lens-value", kind: "debate", dependsOn: ["product-snapshot"], config: { prompt: "product-value" } },
+    { id: "lens-honesty", kind: "debate", dependsOn: ["product-snapshot"], config: { prompt: "product-honesty" } },
+    { id: "synthesis", kind: "synthesis", dependsOn: ["lens-quality", "lens-value", "lens-honesty"], config: { prompt: "product-synthesis" } },
+    { id: "report", kind: "report", dependsOn: ["synthesis"], config: { title: "📦 CPO — prioridades de produto da semana" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // The first SPECIALIST CELL (#156): the X sphere. The cell pattern the video
 // proved — perception before creation, fan-out, critique, human gate, publish,
 // READ THE REACH BACK — generalized to one channel with its OWN memory: the

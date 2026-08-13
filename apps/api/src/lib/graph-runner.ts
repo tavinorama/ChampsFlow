@@ -37,6 +37,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  WEEKLY_PRODUCT_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
 } from "./agent-graphs";
@@ -55,6 +56,8 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // Agent-org core: the two autonomous brains + the CDO's experiment cell.
   [DAILY_WATCHDOG_GRAPH.slug]: DAILY_WATCHDOG_GRAPH,
   [DAILY_DREAM_GRAPH.slug]: DAILY_DREAM_GRAPH,
+  // The org's third brain: the product finally has an owner (founder, 13/08).
+  [WEEKLY_PRODUCT_GRAPH.slug]: WEEKLY_PRODUCT_GRAPH,
   [CONTENT_EXPERIMENT_GRAPH.slug]: CONTENT_EXPERIMENT_GRAPH,
   // #156, first specialist cell: the X sphere with its own memory.
   [SPHERE_X_GRAPH.slug]: SPHERE_X_GRAPH,

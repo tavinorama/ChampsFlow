@@ -27,6 +27,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  WEEKLY_PRODUCT_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
   validateGraph,
@@ -351,6 +352,25 @@ describe("the Chief Dreaming Officer acts — the brief lands, the founder launc
     // An OPTIONAL rejection is a valid no — the run SUCCEEDS, it does not fail.
     expect(world.stepByNode("launch-approval")?.status).toBe("skipped");
     expect(world.stepByNode("report")?.status).toBe("succeeded");
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the CPO runs itself — the product finally has an owner", () => {
+  it("reads the product aggregates, runs 3 lenses, reports — read-only end to end", async () => {
+    const world = makeWorld(WEEKLY_PRODUCT_GRAPH.slug);
+    world.snapshotText = "PRODUTO (agregados, 14d — sem PII):\nAuditorias: 12 rodadas · 1 falhou (8%)";
+    await tickUntil(world, () => world.run.status !== "running", 25, WEEKLY_PRODUCT_GRAPH);
+
+    expect(world.snapshotCalls).toEqual([{ source: "product", days: 14 }]);
+    expect(world.stepByNode("lens-quality")?.status).toBe("succeeded");
+    expect(world.stepByNode("lens-value")?.status).toBe("succeeded");
+    expect(world.stepByNode("lens-honesty")?.status).toBe("succeeded");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+    // Read-only by construction: no publish possible, nothing published.
+    expect(world.published).toEqual([]);
+    expect(world.spawnedRuns).toEqual([]);
+    expect(world.telegrams.some((t) => t.includes("CPO"))).toBe(true);
     expect(world.run.status).toBe("succeeded");
   });
 });

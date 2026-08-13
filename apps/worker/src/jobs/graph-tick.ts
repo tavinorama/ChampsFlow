@@ -190,6 +190,64 @@ async function buildSnapshot(
     return lines.join("\n");
   }
 
+  if (source === "product") {
+    // The CPO's fuel (founder, 13/08: "na estrutura falta o responsável pelo
+    // produto"): what the PRODUCT is actually delivering, as AGGREGATES ONLY.
+    // PII rule is absolute here — these are tenant tables, so nothing but
+    // counts, rates and averages may leave this function: no emails, no brand
+    // names, no domains, no ids.
+    const audits = await sql<
+      { total: string; failed: string; avg_brand: string | null; avg_perf: string | null; avg_ai: string | null; avg_seconds: string | null }[]
+    >`
+      SELECT COUNT(*)::text AS total,
+             COUNT(*) FILTER (WHERE status = 'failed')::text AS failed,
+             AVG(score_brand)::text AS avg_brand,
+             AVG(score_performance)::text AS avg_perf,
+             AVG(score_ai)::text AS avg_ai,
+             AVG(EXTRACT(EPOCH FROM (completed_at - created_at)))
+               FILTER (WHERE completed_at IS NOT NULL)::text AS avg_seconds
+        FROM geo_audit
+       WHERE created_at >= NOW() - make_interval(days => ${d})`;
+
+    const engines = await sql<{ engine: string; status: string; positive_rate: string | null }[]>`
+      SELECT DISTINCT ON (engine) engine, status, positive_rate::text
+        FROM engine_drift_check
+       ORDER BY engine, checked_at DESC`;
+
+    const funnel = await sql<{ free_tests: string; claimed: string; new_tenants: string; active_subs: string }[]>`
+      SELECT (SELECT COUNT(*) FROM lead_capture WHERE created_at >= NOW() - make_interval(days => ${d}))::text AS free_tests,
+             (SELECT COUNT(*) FROM lead_capture WHERE claimed_at >= NOW() - make_interval(days => ${d}))::text AS claimed,
+             (SELECT COUNT(*) FROM tenants WHERE created_at >= NOW() - make_interval(days => ${d}))::text AS new_tenants,
+             (SELECT COUNT(*) FROM billing_subscriptions WHERE status IN ('active','trialing'))::text AS active_subs`;
+
+    const usage = await sql<{ brands: string; monitored: string; credits_spent: string }[]>`
+      SELECT (SELECT COUNT(*) FROM brands)::text AS brands,
+             (SELECT COUNT(*) FROM brands WHERE monitoring_enabled)::text AS monitored,
+             (SELECT COALESCE(ABS(SUM(delta)), 0) FROM credit_ledger
+               WHERE delta < 0 AND created_at >= NOW() - make_interval(days => ${d}))::text AS credits_spent`;
+
+    const a = audits[0];
+    const f = funnel[0];
+    const u = usage[0];
+    if (!a || Number(a.total) === 0) {
+      // Zero audits in the window is itself the finding — say it, don't hide it.
+      return `PRODUTO (${d}d): NENHUMA auditoria rodou na janela. Funil: ${f?.free_tests ?? 0} free tests · ${f?.new_tenants ?? 0} tenants novos · ${f?.active_subs ?? 0} assinaturas ativas.`;
+    }
+    const failRate = ((Number(a.failed) / Number(a.total)) * 100).toFixed(0);
+    const lines: string[] = [
+      `PRODUTO (agregados, ${d}d — sem PII):`,
+      ``,
+      `Auditorias: ${a.total} rodadas · ${a.failed} falharam (${failRate}%) · scores medios brand=${Number(a.avg_brand ?? 0).toFixed(0)} perf=${Number(a.avg_perf ?? 0).toFixed(0)} ai=${Number(a.avg_ai ?? 0).toFixed(0)} · ciclo medio ${a.avg_seconds ? `${Math.round(Number(a.avg_seconds))}s` : "sem dado"}`,
+      ``,
+      `Motores (ultimo drift-check por engine):`,
+      ...engines.map((e) => `- ${e.engine}: ${e.status}${e.positive_rate ? ` · positive_rate ${Number(e.positive_rate).toFixed(2)}` : ""}`),
+      ``,
+      `Funil (${d}d): ${f?.free_tests ?? 0} free tests → ${f?.claimed ?? 0} claims → ${f?.new_tenants ?? 0} tenants novos · ${f?.active_subs ?? 0} assinaturas ativas (total)`,
+      `Uso: ${u?.brands ?? 0} marcas cadastradas · ${u?.monitored ?? 0} com monitoring ligado · ${u?.credits_spent ?? 0} creditos consumidos na janela`,
+    ];
+    return lines.join("\n");
+  }
+
   // Unknown source: honest empty, not a throw — the graph author named it, the
   // validator required it non-empty, so this is a typo, not an outage.
   return "";
@@ -324,7 +382,9 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
  * launch approvals from piling up.
  */
 const DAILY_BRAINS = ["daily-watchdog"];
-const WEEKLY_BRAINS = ["daily-dream"];
+// Monday morning strategy pair: the CDO (growth) and the CPO (product) land
+// together — the founder reviews both briefs in one sitting.
+const WEEKLY_BRAINS = ["daily-dream", "weekly-product"];
 /**
  * Specialist cells (#156) that self-start on their own cadence. The X cell
  * runs Mon/Wed/Fri — enough volume to generate signal on a near-dead channel
