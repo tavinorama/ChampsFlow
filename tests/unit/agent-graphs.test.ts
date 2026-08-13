@@ -16,6 +16,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  WEEKLY_PRODUCT_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   type GraphDefinition,
   type NodeStates,
@@ -128,19 +129,23 @@ describe("validateGraph — the hard rules", () => {
 });
 
 describe("validateGraph — the agent-org graphs", () => {
-  it("accepts the Watchdog, the CDO, and the content-experiment cell", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, CONTENT_EXPERIMENT_GRAPH]) {
+  it("accepts the Watchdog, the CDO, the CPO, and the content-experiment cell", () => {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, CONTENT_EXPERIMENT_GRAPH]) {
       const r = validateGraph(def);
       expect(r.errors, def.slug).toEqual([]);
       expect(r.valid).toBe(true);
     }
   });
 
-  it("the Watchdog is PURE read-only — it cannot publish and cannot spawn", () => {
-    const kinds = new Set(DAILY_WATCHDOG_GRAPH.nodes.map((n) => n.kind));
-    expect(kinds.has("publish")).toBe(false);
-    expect(kinds.has("spawn")).toBe(false);
-    expect(kinds.has("report")).toBe(true);
+  it("the Watchdog and the CPO are PURE read-only — no publish, no spawn", () => {
+    // The CPO exists because the org had no product owner (founder, 13/08);
+    // like the Watchdog, its only power is telling the founder the truth.
+    for (const def of [DAILY_WATCHDOG_GRAPH, WEEKLY_PRODUCT_GRAPH]) {
+      const kinds = new Set(def.nodes.map((n) => n.kind));
+      expect(kinds.has("publish"), `${def.slug} must not publish`).toBe(false);
+      expect(kinds.has("spawn"), `${def.slug} must not spawn`).toBe(false);
+      expect(kinds.has("report"), `${def.slug} must report`).toBe(true);
+    }
   });
 
   it("the CDO never publishes directly; any spawn it has is gated by a human", () => {

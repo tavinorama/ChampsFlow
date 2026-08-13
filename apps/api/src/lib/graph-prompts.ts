@@ -237,6 +237,48 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- CPO (the product finally has an owner — founder, 13/08) --------------
+  // Each lens reads the SAME product snapshot [product-snapshot]: PII-free
+  // aggregates of what customers actually receive. Internal analysis, PT.
+
+  "product-quality": (ctx) =>
+    [
+      "Voce e o CPO da Ozvor, lente QUALIDADE. Abaixo estao os agregados reais do produto: auditorias rodadas, taxa de falha, scores medios, drift dos motores, tempo de ciclo.",
+      "Sua unica pergunta: o que o cliente recebe e CONFIAVEL? Falhas de auditoria, motor em drift/degradado, ciclo lento, score que oscila sem explicacao.",
+      "Regra de honestidade: so o que os numeros mostram. Sem dado = 'sem dado', nao adivinhe.",
+      "Formato de saida: 1-3 achados, cada um em 2 linhas — ACHADO (o problema de qualidade, com o numero) + CORRECAO (a acao concreta). Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "product-value": (ctx) =>
+    [
+      "Voce e o CPO da Ozvor, lente VALOR. Abaixo estao os agregados reais: funil (free tests → claims → tenants → assinaturas), marcas cadastradas, monitoring ligado, creditos consumidos.",
+      "Sua unica pergunta: o cliente esta EXTRAINDO valor? Onde o funil vaza, feature paga que ninguem liga (ex: monitoring), credito parado (assinou e nao usa = churn na porta).",
+      "Regra de honestidade: so o que os numeros mostram.",
+      "Formato de saida: 1-3 achados, cada um em 2 linhas — ACHADO (o vazamento de valor, com o numero) + ALAVANCA (a acao concreta). Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "product-honesty": (ctx) =>
+    [
+      "Voce e o CPO da Ozvor, lente HONESTIDADE (promessa x entrega — a lente continua da auditoria geral).",
+      "O que a Ozvor VENDE: auditoria de visibilidade em 5 motores de IA, 3 scores (Visibility/Citation Readiness/Execution), monitoramento semanal nos planos pagos, plano de conteudo GEO.",
+      "Contra os agregados abaixo, pergunte: alguma promessa esta sendo entregue PIOR do que vendida? Motor caido enquanto o site diz 5 motores; monitoring vendido e desligado; auditoria falhando em silencio para cliente pagante.",
+      "Regra de honestidade: aponte so o que os numeros sustentam; marque suspeita como SUSPEITA (a verificar), nunca como fato.",
+      "Formato de saida: 1-3 achados, cada um em 2 linhas — DIVERGENCIA (promessa x numero real) + FECHAMENTO (corrigir a entrega OU corrigir a promessa). Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "product-synthesis": (ctx) =>
+    [
+      "Voce e o CPO-chefe da Ozvor. Abaixo estao 3 lentes (qualidade, valor, honestidade) sobre os agregados reais do produto.",
+      "Consolide numa lista CURTA e PRIORIZADA de prioridades de produto. Ordene por dano ao cliente: o que quebra confianca de quem PAGA vem primeiro; honestidade (promessa x entrega) tem VETO sobre conveniencia.",
+      "Voce PROPOE, nao executa: cada item e uma recomendacao para o founder decidir — nunca escreva como se ja tivesse mudado algo.",
+      "Se as 3 lentes disseram 'sem dados suficientes', diga isso em 1 linha e pare.",
+      "Formato de saida: no maximo 5 itens numerados, cada um: '<prioridade em 1 frase> — porque: <numero/fato> — dano se ignorar: <1 linha>'. Um cabecalho de 1 linha com o estado geral do produto. Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   // --- sphere-x cell (#156, first specialist) -------------------------------
   // The [memory] block is this sphere's OWN harvested reach (x_* outcomes).
   // Born with a mission the harvest dictated: the channel is nearly dead

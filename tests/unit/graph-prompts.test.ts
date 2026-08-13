@@ -15,6 +15,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  WEEKLY_PRODUCT_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -64,7 +65,7 @@ describe("buildPrompt resolves the graph's task slugs", () => {
 
 describe("the read-only brains' prompts resolve and stay honest", () => {
   it("every Watchdog, CDO, experiment-cell and sphere-cell reasoning node has a resolvable prompt", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH]) {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH]) {
       for (const node of def.nodes) {
         if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
         const p = buildPrompt(node.kind, node.config ?? {}, []);
