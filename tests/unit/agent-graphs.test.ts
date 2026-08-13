@@ -16,6 +16,7 @@ import {
   DAILY_VIDEO_GRAPH,
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
+  CONTENT_EXPERIMENT_GRAPH,
   type GraphDefinition,
   type NodeStates,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -96,24 +97,70 @@ describe("validateGraph — the hard rules", () => {
     expect(r.errors.join()).toContain("config.source");
     expect(r.errors.join()).toContain("reports nothing");
   });
+
+  it("IMPOSSIBLE: spawn with no approval upstream — nothing launches without a human", () => {
+    const r = validateGraph(base([
+      { id: "plan", kind: "task", dependsOn: [] },
+      { id: "go", kind: "spawn", dependsOn: ["plan"], config: { spawns: ["content-experiment"] } },
+    ]));
+    expect(r.valid).toBe(false);
+    expect(r.errors.join()).toContain("nothing spawns an experiment without a human");
+  });
+
+  it("a spawn must name a non-empty list of graph slugs to launch", () => {
+    const r = validateGraph(base([
+      { id: "plan", kind: "task", dependsOn: [] },
+      { id: "ok", kind: "approval", dependsOn: ["plan"] },
+      { id: "go", kind: "spawn", dependsOn: ["ok"], config: { spawns: [] } },
+    ]));
+    expect(r.errors.join()).toContain("non-empty string[]");
+  });
+
+  it("a spawn WITH an approval upstream and a real target is accepted", () => {
+    const r = validateGraph(base([
+      { id: "plan", kind: "task", dependsOn: [] },
+      { id: "ok", kind: "approval", dependsOn: ["plan"] },
+      { id: "go", kind: "spawn", dependsOn: ["ok"], config: { spawns: ["content-experiment"] } },
+    ]));
+    expect(r.errors).toEqual([]);
+    expect(r.valid).toBe(true);
+  });
 });
 
-describe("validateGraph — the read-only brains (agent-org core)", () => {
-  it("accepts the Watchdog and the Chief Dreaming Officer graphs", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH]) {
+describe("validateGraph — the agent-org graphs", () => {
+  it("accepts the Watchdog, the CDO, and the content-experiment cell", () => {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, CONTENT_EXPERIMENT_GRAPH]) {
       const r = validateGraph(def);
       expect(r.errors, def.slug).toEqual([]);
       expect(r.valid).toBe(true);
     }
   });
 
-  it("both brains are read-only by construction — no publish, no spend", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH]) {
-      const kinds = new Set(def.nodes.map((n) => n.kind));
-      expect(kinds.has("publish"), `${def.slug} must not publish`).toBe(false);
-      // They end in a report to the founder — a proposal, never an action.
-      expect(def.nodes.some((n) => n.kind === "report"), `${def.slug} must report`).toBe(true);
-    }
+  it("the Watchdog is PURE read-only — it cannot publish and cannot spawn", () => {
+    const kinds = new Set(DAILY_WATCHDOG_GRAPH.nodes.map((n) => n.kind));
+    expect(kinds.has("publish")).toBe(false);
+    expect(kinds.has("spawn")).toBe(false);
+    expect(kinds.has("report")).toBe(true);
+  });
+
+  it("the CDO never publishes directly; any spawn it has is gated by a human", () => {
+    const kinds = DAILY_DREAM_GRAPH.nodes.map((n) => n.kind);
+    expect(kinds.includes("publish")).toBe(false); // it proposes + spawns, never posts
+    expect(kinds.includes("report")).toBe(true); // the brief always lands
+    // Its spawn (the experiment launch) validated — meaning an approval sits
+    // upstream of it (the hard rule). The graph being valid IS the proof.
+    expect(validateGraph(DAILY_DREAM_GRAPH).valid).toBe(true);
+    expect(kinds.includes("spawn")).toBe(true);
+  });
+
+  it("the spawned cell publishes — but only behind its own approval and harvest", () => {
+    // content-experiment IS a publishing graph; it passing validation proves it
+    // has an approval upstream of publish and a harvest downstream (two gates).
+    const kinds = new Set(CONTENT_EXPERIMENT_GRAPH.nodes.map((n) => n.kind));
+    expect(kinds.has("publish")).toBe(true);
+    expect(kinds.has("approval")).toBe(true);
+    expect(kinds.has("harvest")).toBe(true);
+    expect(validateGraph(CONTENT_EXPERIMENT_GRAPH).valid).toBe(true);
   });
 });
 

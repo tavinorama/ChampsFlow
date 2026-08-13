@@ -237,6 +237,13 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
       async snapshot(input) {
         return buildSnapshot(sql, input.source, input.days);
       },
+      async startRun(input) {
+        const rows = await sql<{ id: string }[]>`
+          INSERT INTO ops.agent_run (graph, trigger, vp_owner)
+          VALUES (${input.graph}, ${input.trigger}, ${input.vpOwner})
+          RETURNING id`;
+        return rows[0]!.id;
+      },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
         // harvest config may name the exact metric or a prefix ('yt_views').
@@ -298,32 +305,39 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
 }
 
 /**
- * The read-only brains that self-start every morning (proactivity, not a
- * button someone remembers to press). Each is registered in GRAPH_REGISTRY and
- * validated read-only (no publish, no spend); a daily run gives the founder a
- * LEAN watchdog report and a grounded 10x brief without asking.
+ * The brains that self-start on a schedule (proactivity, not a button someone
+ * remembers to press). Cadence matched to the work: operational hygiene is a
+ * DAILY concern (the Watchdog), strategy is a WEEKLY one (the CDO) — and the
+ * CDO now carries an acting tail (approval → spawn), so weekly also keeps the
+ * launch approvals from piling up.
  */
-const DAILY_BRAINS = ["daily-watchdog", "daily-dream"];
+const DAILY_BRAINS = ["daily-watchdog"];
+const WEEKLY_BRAINS = ["daily-dream"];
 
 /**
- * Start today's brain runs — idempotent by a 20h look-back so a worker restart
- * or a second instance cannot double-fire. Gated on HERMES_TOKEN: with no
- * executor, starting a run only creates a stuck row and a false alarm, so we
- * skip (the tick's own missing-token alarm still covers a token that vanishes
+ * Start brain runs — idempotent by a look-back window so a worker restart or a
+ * second instance cannot double-fire. Gated on HERMES_TOKEN: with no executor,
+ * starting a run only creates a stuck row and a false alarm, so we skip (the
+ * tick's own missing-token alarm still covers a token that vanishes
  * mid-flight). The every-10-min graph-tick advances whatever this starts.
  */
-export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+async function startBrainRuns(
+  sql: postgres.Sql,
+  brains: string[],
+  lookbackHours: number,
+  trigger: string
+): Promise<{ started: string[]; skipped: string[] }> {
   const started: string[] = [];
   const skipped: string[] = [];
   if (!HERMES_TOKEN) {
-    logger.warn("brain_daily_skipped_no_executor", { brains: DAILY_BRAINS.join(",") });
-    return { started, skipped: [...DAILY_BRAINS] };
+    logger.warn("brain_start_skipped_no_executor", { brains: brains.join(","), trigger });
+    return { started, skipped: [...brains] };
   }
-  for (const graph of DAILY_BRAINS) {
+  for (const graph of brains) {
     const recent = await sql<{ id: string }[]>`
       SELECT id FROM ops.agent_run
        WHERE graph = ${graph}
-         AND started_at >= NOW() - INTERVAL '20 hours'
+         AND started_at >= NOW() - make_interval(hours => ${lookbackHours})
        LIMIT 1`;
     if (recent.length > 0) {
       skipped.push(graph);
@@ -331,15 +345,25 @@ export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: strin
     }
     const rows = await sql<{ id: string }[]>`
       INSERT INTO ops.agent_run (graph, trigger, vp_owner)
-      VALUES (${graph}, 'cron:brain-daily', 'ceo')
+      VALUES (${graph}, ${trigger}, 'ceo')
       RETURNING id`;
     started.push(`${graph}:${rows[0]!.id.slice(0, 8)}`);
-    logger.info("brain_daily_started", { graph, runId: rows[0]!.id });
+    logger.info("brain_started", { graph, runId: rows[0]!.id, trigger });
   }
   if (started.length > 0) {
-    await sendTelegram(`🧠 Cérebros do dia iniciados: ${started.join(", ")}. Relatórios chegam quando os graphs concluírem.`);
+    await sendTelegram(`🧠 Cérebros iniciados (${trigger}): ${started.join(", ")}. Relatórios chegam quando os graphs concluírem.`);
   }
   return { started, skipped };
+}
+
+/** Daily hygiene: the Watchdog. 20h look-back (once per calendar day). */
+export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, DAILY_BRAINS, 20, "cron:brain-daily");
+}
+
+/** Weekly strategy: the Chief Dreaming Officer. 6-day look-back (once/week). */
+export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, WEEKLY_BRAINS, 24 * 6, "cron:brain-weekly");
 }
 
 export interface GraphTickResult {
