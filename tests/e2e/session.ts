@@ -15,8 +15,22 @@ import type { Page } from "@playwright/test";
 /** Domain the tests run against. Playwright's baseURL is localhost in CI. */
 const DOMAIN = "localhost";
 
+/**
+ * Sign a test user in.
+ *
+ * webkit-mobile fix (#170): the cookie was set with no `sameSite`. Chromium
+ * treats an omitted value as Lax and sends it on the top-level navigation that
+ * every authed spec starts with; WebKit (mobile Safari) is stricter and did
+ * NOT send it, so `getByRole('dialog')` for the login-gated modal never
+ * appeared and 96 webkit-mobile assertions failed in cascade while chromium
+ * stayed green. `sameSite: "Lax"` is chromium's existing default (so the green
+ * required gate is unchanged) and is what WebKit needs to send the cookie on a
+ * same-site GET navigation. No `secure` on purpose — the suite runs over
+ * http://localhost. This is a test-environment cookie; production auth is
+ * untouched. Proof: tomorrow's 06:00 nightly webkit-mobile run.
+ */
 export async function signIn(page: Page, value = "e2e-user-1:e2e-tenant-1"): Promise<void> {
   await page.context().addCookies([
-    { name: "e2e_session", value, domain: DOMAIN, path: "/" },
+    { name: "e2e_session", value, domain: DOMAIN, path: "/", sameSite: "Lax" },
   ]);
 }
