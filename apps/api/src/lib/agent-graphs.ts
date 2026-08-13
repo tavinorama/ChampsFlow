@@ -21,6 +21,17 @@
  *
  * Vocabulary (task #164): task · debate (fan-out) · synthesis (join) ·
  * approval (human, Telegram) · publish · wait · harvest · verdict.
+ *
+ * Agent-org core (2026-08-13, founder's "sistema PICA"): two read-only kinds
+ * let a graph reason over the company's OWN record instead of only the outside
+ * world —
+ *  - snapshot: the runner (which HAS the substrate) reads a bounded, PII-free
+ *    digest of ops.* into an artifact the LLM lenses downstream reason over.
+ *    The engines can't reach the DB; the runner injects the data.
+ *  - report: deliver the synthesis to the founder (Telegram) and finish. No
+ *    publish, no spend, no spawn — the Watchdog and the Chief Dreaming Officer
+ *    PROPOSE, they do not act. The acting primitive (spawn, gated by approval)
+ *    arrives with the experiment-cell it needs.
  */
 
 import type { VpOwner } from "./agent-substrate";
@@ -33,7 +44,9 @@ export type NodeKind =
   | "publish"
   | "wait"
   | "harvest"
-  | "verdict";
+  | "verdict"
+  | "snapshot"
+  | "report";
 
 export interface GraphNode {
   /** Node slug, unique within the graph — becomes ops.agent_step.node. */
@@ -174,6 +187,16 @@ export function validateGraph(def: GraphDefinition): GraphValidationResult {
     if (n.kind === "harvest" && typeof n.config?.["metric"] !== "string") {
       errors.push(`harvest node '${n.id}' must declare config.metric`);
     }
+    // A snapshot must name WHAT it reads — the runner routes on it, and an
+    // unnamed source is a snapshot that reads nothing (silent-empty lenses).
+    if (n.kind === "snapshot" && typeof n.config?.["source"] !== "string") {
+      errors.push(`snapshot node '${n.id}' must declare config.source`);
+    }
+    // A report delivers an upstream artifact to the founder — a root report
+    // has nothing to deliver, which is always an authoring mistake.
+    if (n.kind === "report" && n.dependsOn.length === 0) {
+      errors.push(`report node '${n.id}' has no upstream to deliver — a root report reports nothing`);
+    }
   }
 
   return { valid: errors.length === 0, errors };
@@ -248,5 +271,70 @@ export const DAILY_VIDEO_GRAPH: GraphDefinition = {
     // The verdict writes agent_outcome + the sphere's lesson, re-weighting
     // the next run's signal — the loop's closing edge.
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// The Watchdog (agent-org core): keep every process LEAN and clear.
+//
+// The opposite of a content graph — it produces no post, spends nothing, and
+// touches no customer. It reads the company's OWN record (ops.*) and reasons
+// through three kaizen lenses, then hands the founder a short list of what to
+// cut or fix. It PROPOSES; it never edits. Read-only by construction: no
+// publish node, no spawn, no approval — so it can run itself, daily, forever.
+//
+// This is the "auto-ajustável" half of the founder's vision: the system that
+// watches the system. It subsumes the one-off #157 (red team) and #153
+// (promise-vs-delivery audit) as CONTINUOUS lenses instead of annual events.
+// ---------------------------------------------------------------------------
+
+export const DAILY_WATCHDOG_GRAPH: GraphDefinition = {
+  slug: "daily-watchdog",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "LEAN watchdog: read the company's own operational record (runs, steps, cost, cycle time, redundancy) → analyze through 3 kaizen lenses (custo-por-resultado, tempo-de-ciclo, redundância) → synthesize the top cuts/fixes → report to the founder. Proposes, never edits. Read-only: no publish, no spend.",
+  nodes: [
+    // The runner reads a bounded, PII-free digest of ops.* into an artifact.
+    { id: "ops-snapshot", kind: "snapshot", dependsOn: [], config: { source: "ops", days: 14 } },
+    // Three lenses, same input, parallel — each names one kind of waste.
+    { id: "lens-cost", kind: "debate", dependsOn: ["ops-snapshot"], config: { prompt: "watchdog-cost" } },
+    { id: "lens-cycle", kind: "debate", dependsOn: ["ops-snapshot"], config: { prompt: "watchdog-cycle" } },
+    { id: "lens-redundancy", kind: "debate", dependsOn: ["ops-snapshot"], config: { prompt: "watchdog-redundancy" } },
+    { id: "synthesis", kind: "synthesis", dependsOn: ["lens-cost", "lens-cycle", "lens-redundancy"], config: { prompt: "watchdog-synthesis" } },
+    // Deliver to the founder. No approval — nothing is being done, only said.
+    { id: "report", kind: "report", dependsOn: ["synthesis"], config: { title: "🐕 WATCHDOG LEAN — cortes e correções propostas" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// The Chief Dreaming Officer (agent-org core): imagine the 10x, grounded.
+//
+// The "proativo" half. It reads what actually MOVED (ops.agent_outcome: the
+// harvested lift per metric per graph) and asks, through three growth lenses,
+// "how does this reach 10x more people / 100x the result?" — then ranks the
+// hypotheses and hands the founder the bets, cheapest-first. Grounded, not
+// vibes: a dream that ignores the harvest (10x on a dead channel) is ranked
+// last by construction, because the lenses see the real numbers.
+//
+// v1 REPORTS the ranked bets — it does not yet spawn experiments. The acting
+// primitive (a gated `spawn` into an experiment cell) is the next drop; until
+// an experiment cell exists to spawn into, autonomous spawning would be a
+// primitive with no honest consumer. Read-only, like the Watchdog.
+// ---------------------------------------------------------------------------
+
+export const DAILY_DREAM_GRAPH: GraphDefinition = {
+  slug: "daily-dream",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Chief Dreaming Officer: read what actually moved (agent_outcome lift per metric/graph) → imagine the 10x through 3 growth lenses (alcance, conversão, fosso) → rank the hypotheses cheapest-first → report the bets to the founder. Grounded in the real harvest; read-only (proposes, does not spawn yet).",
+  nodes: [
+    { id: "outcome-snapshot", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30 } },
+    { id: "lens-reach", kind: "debate", dependsOn: ["outcome-snapshot"], config: { prompt: "dream-reach" } },
+    { id: "lens-conversion", kind: "debate", dependsOn: ["outcome-snapshot"], config: { prompt: "dream-conversion" } },
+    { id: "lens-moat", kind: "debate", dependsOn: ["outcome-snapshot"], config: { prompt: "dream-moat" } },
+    { id: "synthesis", kind: "synthesis", dependsOn: ["lens-reach", "lens-conversion", "lens-moat"], config: { prompt: "dream-synthesis" } },
+    { id: "report", kind: "report", dependsOn: ["synthesis"], config: { title: "🌙 CHIEF DREAMING OFFICER — apostas 10x (mais barata primeiro)" } },
   ],
 };

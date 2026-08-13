@@ -11,7 +11,11 @@
 
 import { describe, it, expect } from "vitest";
 import { buildPrompt, PROMPT_SLUGS } from "../../apps/api/src/lib/graph-prompts";
-import { DAILY_VIDEO_GRAPH } from "../../apps/api/src/lib/agent-graphs";
+import {
+  DAILY_VIDEO_GRAPH,
+  DAILY_WATCHDOG_GRAPH,
+  DAILY_DREAM_GRAPH,
+} from "../../apps/api/src/lib/agent-graphs";
 
 const debateLenses = DAILY_VIDEO_GRAPH.nodes
   .filter((n) => n.kind === "debate")
@@ -53,5 +57,34 @@ describe("buildPrompt resolves the graph's task slugs", () => {
     const mem = buildPrompt("task", { prompt: "video-memory" }, []) ?? "";
     expect(mem).toContain("vidjob.log");
     expect(mem).toContain("EVITAR REPETIR");
+  });
+});
+
+describe("the read-only brains' prompts resolve and stay honest", () => {
+  it("every Watchdog and CDO lens/synthesis node has a resolvable prompt", () => {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH]) {
+      for (const node of def.nodes) {
+        if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
+        const p = buildPrompt(node.kind, node.config ?? {}, []);
+        expect(p, `${def.slug}/${node.id} has no resolvable prompt`).toBeTruthy();
+      }
+    }
+  });
+
+  it("both synthesis prompts say PROPOSE, not act — the read-only guarantee in words", () => {
+    const watchdog = buildPrompt("synthesis", { prompt: "watchdog-synthesis" }, []) ?? "";
+    const dream = buildPrompt("synthesis", { prompt: "dream-synthesis" }, []) ?? "";
+    // The whole safety story is that these brains recommend; the prompt must
+    // never let the engine write as if it executed something.
+    expect(watchdog.toLowerCase()).toContain("propoe");
+    expect(watchdog.toLowerCase()).toContain("nao executa");
+    expect(dream.toLowerCase()).toContain("propoe");
+  });
+
+  it("the dreaming lenses demand an anchor in a real number — no vibes", () => {
+    for (const slug of ["dream-reach", "dream-conversion", "dream-moat"]) {
+      const p = buildPrompt("debate", { prompt: slug }, []) ?? "";
+      expect(p.toLowerCase(), `${slug} must anchor in real data`).toContain("ancora");
+    }
   });
 });

@@ -14,6 +14,8 @@ import {
   readyNodes,
   isRunComplete,
   DAILY_VIDEO_GRAPH,
+  DAILY_WATCHDOG_GRAPH,
+  DAILY_DREAM_GRAPH,
   type GraphDefinition,
   type NodeStates,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -84,6 +86,34 @@ describe("validateGraph — the hard rules", () => {
     ]));
     expect(r.errors.join()).toContain("config.hours");
     expect(r.errors.join()).toContain("config.metric");
+  });
+
+  it("a snapshot must name its source and a report must have upstream", () => {
+    const r = validateGraph(base([
+      { id: "snap", kind: "snapshot", dependsOn: [] }, // no config.source
+      { id: "rep", kind: "report", dependsOn: [] }, // root report has nothing to deliver
+    ]));
+    expect(r.errors.join()).toContain("config.source");
+    expect(r.errors.join()).toContain("reports nothing");
+  });
+});
+
+describe("validateGraph — the read-only brains (agent-org core)", () => {
+  it("accepts the Watchdog and the Chief Dreaming Officer graphs", () => {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH]) {
+      const r = validateGraph(def);
+      expect(r.errors, def.slug).toEqual([]);
+      expect(r.valid).toBe(true);
+    }
+  });
+
+  it("both brains are read-only by construction — no publish, no spend", () => {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH]) {
+      const kinds = new Set(def.nodes.map((n) => n.kind));
+      expect(kinds.has("publish"), `${def.slug} must not publish`).toBe(false);
+      // They end in a report to the founder — a proposal, never an action.
+      expect(def.nodes.some((n) => n.kind === "report"), `${def.slug} must report`).toBe(true);
+    }
   });
 });
 

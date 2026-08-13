@@ -23,7 +23,13 @@ import {
   type StepRow,
   type RunRow,
 } from "../../apps/api/src/lib/graph-runner";
-import { DAILY_VIDEO_GRAPH, validateGraph } from "../../apps/api/src/lib/agent-graphs";
+import {
+  DAILY_VIDEO_GRAPH,
+  DAILY_WATCHDOG_GRAPH,
+  DAILY_DREAM_GRAPH,
+  validateGraph,
+  type GraphDefinition,
+} from "../../apps/api/src/lib/agent-graphs";
 
 interface FakeWorld {
   ports: GraphRunnerPorts;
@@ -35,14 +41,18 @@ interface FakeWorld {
   clock: { now: Date };
   harvestData: { n: number; total: number };
   failTaskWhenPromptIncludes: string | null;
+  /** What the substrate.snapshot port returns — the read-only brains' fuel. */
+  snapshotText: string;
+  /** Records of what the runner asked the substrate to read. */
+  snapshotCalls: Array<{ source: string; days: number }>;
   stepByNode(node: string): (StepRow & { summary?: string | null }) | undefined;
 }
 
-function makeWorld(): FakeWorld {
+function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
   const clock = { now: new Date("2026-08-12T10:00:00Z") };
   const run: RunRow = {
     id: "run-1",
-    graph: DAILY_VIDEO_GRAPH.slug,
+    graph: graphSlug,
     status: "running",
     started_at: clock.now.toISOString(),
   };
@@ -62,6 +72,8 @@ function makeWorld(): FakeWorld {
     clock,
     harvestData: { n: 0, total: 0 },
     failTaskWhenPromptIncludes: null,
+    snapshotText: "REGISTRO OPERACIONAL (ops.*, 14d):\n- daily-video: 5 runs (4 ok / 1 falha)",
+    snapshotCalls: [],
     stepByNode: (node) => [...steps].reverse().find((s) => s.node === node),
     ports: {
       substrate: {
@@ -92,6 +104,10 @@ function makeWorld(): FakeWorld {
         },
         async readHarvest() {
           return { ...world.harvestData };
+        },
+        async snapshot(input) {
+          world.snapshotCalls.push({ ...input });
+          return world.snapshotText;
         },
       },
       hermes: {
@@ -124,12 +140,17 @@ function makeWorld(): FakeWorld {
   return world;
 }
 
-async function tick(world: FakeWorld) {
-  return advanceRun(DAILY_VIDEO_GRAPH, world.run.id, world.ports);
+async function tick(world: FakeWorld, def: GraphDefinition = DAILY_VIDEO_GRAPH) {
+  return advanceRun(def, world.run.id, world.ports);
 }
 
-async function tickUntil(world: FakeWorld, done: () => boolean, max = 25): Promise<void> {
-  for (let i = 0; i < max && !done(); i++) await tick(world);
+async function tickUntil(
+  world: FakeWorld,
+  done: () => boolean,
+  max = 25,
+  def: GraphDefinition = DAILY_VIDEO_GRAPH
+): Promise<void> {
+  for (let i = 0; i < max && !done(); i++) await tick(world, def);
 }
 
 describe("the registry only holds graphs the brain accepts", () => {
@@ -228,6 +249,60 @@ describe("daily-video, the full life", () => {
     expect(world.stepByNode("harvest")?.status).toBe("succeeded");
     expect(world.stepByNode("harvest")?.summary).toContain("honest zero");
     expect(world.outcomes[0]!.valueAfter).toBe(0);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the Watchdog runs itself — read-only, no publish, no spend", () => {
+  it("snapshot → 3 lenses → synthesis → report to the founder, run succeeds", async () => {
+    const world = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+
+    // The runner read ops.* — the only DB access these brains get — and passed
+    // the digest to the lenses (no engine ever touched the database).
+    expect(world.snapshotCalls).toEqual([{ source: "ops", days: 14 }]);
+    expect(world.stepByNode("ops-snapshot")?.status).toBe("succeeded");
+    expect(world.stepByNode("lens-cost")?.status).toBe("succeeded");
+    expect(world.stepByNode("lens-cycle")?.status).toBe("succeeded");
+    expect(world.stepByNode("lens-redundancy")?.status).toBe("succeeded");
+    expect(world.stepByNode("synthesis")?.status).toBe("succeeded");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+
+    // Safety by construction: a Watchdog CANNOT publish or spend — no such node
+    // exists, and nothing was published.
+    expect(world.published).toEqual([]);
+    // The proposal reached the founder, tagged as a proposal (nothing executed).
+    const report = world.telegrams.find((t) => t.includes("WATCHDOG"));
+    expect(report).toBeTruthy();
+    expect(report).toContain("nada foi executado");
+    expect(world.run.status).toBe("succeeded");
+  });
+
+  it("an empty ops record does not crash the Watchdog — the digest is honest-empty", async () => {
+    const world = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    world.snapshotText = ""; // no data at all
+    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+
+    // Honest-empty snapshot still SUCCEEDS (the runner marks "SEM DADOS"), so
+    // the lenses reason over "no data" instead of the run hanging.
+    expect(world.stepByNode("ops-snapshot")?.status).toBe("succeeded");
+    expect(world.stepByNode("ops-snapshot")?.summary).toContain("empty");
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the Chief Dreaming Officer runs itself — grounded in the real harvest", () => {
+  it("reads agent_outcome (30d), imagines 10x through 3 lenses, reports the bets", async () => {
+    const world = makeWorld(DAILY_DREAM_GRAPH.slug);
+    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_DREAM_GRAPH);
+
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30 }]);
+    expect(world.stepByNode("outcome-snapshot")?.status).toBe("succeeded");
+    expect(world.stepByNode("lens-reach")?.status).toBe("succeeded");
+    expect(world.stepByNode("synthesis")?.status).toBe("succeeded");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+    expect(world.published).toEqual([]);
+    expect(world.telegrams.some((t) => t.includes("DREAMING"))).toBe(true);
     expect(world.run.status).toBe("succeeded");
   });
 });

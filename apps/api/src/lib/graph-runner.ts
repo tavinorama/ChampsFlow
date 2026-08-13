@@ -35,6 +35,8 @@ import {
   readyNodes,
   isRunComplete,
   DAILY_VIDEO_GRAPH,
+  DAILY_WATCHDOG_GRAPH,
+  DAILY_DREAM_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
 
@@ -45,6 +47,9 @@ import { buildPrompt } from "./graph-prompts";
  */
 export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [DAILY_VIDEO_GRAPH.slug]: DAILY_VIDEO_GRAPH,
+  // Agent-org core: the two autonomous, read-only brains.
+  [DAILY_WATCHDOG_GRAPH.slug]: DAILY_WATCHDOG_GRAPH,
+  [DAILY_DREAM_GRAPH.slug]: DAILY_DREAM_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -93,6 +98,15 @@ export interface SubstratePort {
   }): Promise<string>;
   /** Aggregate harvested outcomes for a metric since a moment (from #162's cron). */
   readHarvest(metric: string, sinceIso: string): Promise<{ n: number; total: number }>;
+  /**
+   * A bounded, PII-free digest of the company's own record, for the read-only
+   * brains (Watchdog, CDO). The engines cannot reach the DB — the runner, which
+   * can, reads here and injects the text so the LLM lenses reason over facts.
+   * source 'ops' → run/step health, cost, cycle, redundancy; source 'outcomes'
+   * → agent_outcome lift per metric/graph. Empty string means "no data" (the
+   * lenses must say so, not invent).
+   */
+  snapshot(input: { source: string; days: number }): Promise<string>;
 }
 
 export interface HermesPort {
@@ -352,6 +366,63 @@ export async function advanceRun(
       await telegram(
         `🟢 VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${metric} = ${total} (n=${n}). Registrado em ops.agent_outcome.`
       );
+    } else if (node.kind === "snapshot") {
+      // The runner reads the company's own record into an artifact. Honest
+      // empty: if there is no data, the node still SUCCEEDS with a said-so
+      // marker, so the downstream lenses reason over "no data" instead of
+      // hanging or inventing.
+      const source = String(config["source"] ?? "");
+      const days = Number(config["days"] ?? 14);
+      const stepId = await substrate.startStep({ runId, node: node.id });
+      let text = "";
+      try {
+        text = await substrate.snapshot({ source, days });
+      } catch (err) {
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `snapshot ${source} failed: ${(err as Error).message?.slice(0, 120)}`,
+        });
+        continue; // next tick's fail-fast closes the run, out loud
+      }
+      const body = text.trim() || `SEM DADOS em ops.* (source=${source}, ${days}d).`;
+      await artifacts.set(runId, node.id, body);
+      await substrate.finishStep(stepId, {
+        status: "succeeded",
+        outputHash: sha(body),
+        summary: `snapshot ${source}/${days}d: ${text.trim() ? `${body.length} chars` : "empty (honest)"}`,
+      });
+    } else if (node.kind === "report") {
+      // The read-only brains PROPOSE: deliver the synthesis to the founder and
+      // finish. No publish, no spend, no spawn — the whole safety of the
+      // Watchdog and the CDO is that a report is the only thing they can do.
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      const upstream = await upstreamArtifacts(def, node, runId, artifacts);
+      const bodyText = upstream.map(([, text]) => text).join("\n\n").trim();
+      const title = String(config["title"] ?? `📋 ${def.slug}`);
+      if (!bodyText) {
+        await substrate.finishStep(stepId, { status: "failed", summary: "report had no upstream artifact to deliver" });
+        continue;
+      }
+      // Telegram caps a message near 4096 chars; keep headroom for the header.
+      const TELEGRAM_BODY_CAP = 3500;
+      const clipped = bodyText.length > TELEGRAM_BODY_CAP
+        ? `${bodyText.slice(0, TELEGRAM_BODY_CAP)}\n…[+${bodyText.length - TELEGRAM_BODY_CAP} chars — veja ops.agent_step]`
+        : bodyText;
+      await artifacts.set(runId, node.id, bodyText);
+      await telegram(
+        [
+          `${title} — graph ${def.slug} (run ${runId.slice(0, 8)})`,
+          ``,
+          clipped,
+          ``,
+          `— proposta, nada foi executado. (${def.slug})`,
+        ].join("\n")
+      );
+      await substrate.finishStep(stepId, {
+        status: "succeeded",
+        outputHash: sha(bodyText),
+        summary: `reported ${bodyText.length} chars to founder`,
+      });
     }
   }
 
