@@ -271,10 +271,10 @@ export function isRunComplete(def: GraphDefinition, states: NodeStates): boolean
 
 export const DAILY_VIDEO_GRAPH: GraphDefinition = {
   slug: "daily-video",
-  version: 2,
+  version: 3,
   vpOwner: "marketing",
   description:
-    "Daily social video with MEMORY: recall what was already published (themes, hooks, b-roll) → signal → briefing that must not repeat → 3 angles → 4 critics (hook/brand/compliance/freshness) → synthesis → human approval → publish → wait 72h → harvest reach → verdict.",
+    "Daily social video with MEMORY: recall what was already published (themes, hooks, b-roll) → signal → briefing that must not repeat → 3 angles → 4 critics (hook/brand/compliance/freshness) → synthesis (script) → ADAPT to a native LinkedIn post (English) → human approval → publish → wait 72h → harvest reach → verdict.",
   nodes: [
     // v2 (founder, 12/08): the videos were repeating images and hooks because
     // nothing LOOKED at what was already made. Perception before creation:
@@ -294,11 +294,20 @@ export const DAILY_VIDEO_GRAPH: GraphDefinition = {
     // is comparing the angles against what was already published.
     { id: "critic-freshness", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c", "memory"], config: { lens: "freshness" } },
     { id: "synthesis", kind: "synthesis", dependsOn: ["critic-hook", "critic-brand", "critic-compliance", "critic-freshness"] },
+    // v3 (founder, 13/08 — "a publicação foi totalmente inadequada"): the raw
+    // video script (PT, [HOOK]/[BEAT] markers) went to LinkedIn verbatim
+    // because nothing adapted it to the destination. This node is the missing
+    // step: script → native English LinkedIn post. THIS artifact is what the
+    // approval gates and what the publish posts.
+    { id: "linkedin-post", kind: "task", dependsOn: ["synthesis"], config: { prompt: "video-to-linkedin" } },
     // Telegram, always. The validator will not accept this graph without it.
-    { id: "founder-approval", kind: "approval", dependsOn: ["synthesis"], config: { channel: "telegram" } },
-    { id: "publish", kind: "publish", dependsOn: ["founder-approval"], config: { via: "postiz" } },
+    { id: "founder-approval", kind: "approval", dependsOn: ["linkedin-post"], config: { channel: "telegram" } },
+    { id: "publish", kind: "publish", dependsOn: ["founder-approval"], config: { channel: "linkedin", via: "postiz" } },
     { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
-    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "yt_views_72h" } },
+    // v3: the metric prefix must match what the #162 harvest actually writes
+    // (youtube_views_7d) — 'yt_views' matched NOTHING and Saturday's verdict
+    // would have been a false zero with 478 real views on the books.
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "youtube_views" } },
     // The verdict writes agent_outcome + the sphere's lesson, re-weighting
     // the next run's signal — the loop's closing edge.
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },

@@ -79,6 +79,35 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
     expect(brief.toLowerCase()).toContain("aposta #1");
   });
 
+  it("EVERY publishable prompt demands English output — the founder's 13/08 rule as a build gate", () => {
+    // The first orchestrated LinkedIn post went out in Portuguese. Any prompt
+    // whose output becomes (or feeds verbatim into) a public post must carry
+    // the English-first clause; internal analysis and founder reports stay PT.
+    const publishable = [
+      ["task", "write-briefing"],
+      ["task", "draft-angle"],
+      ["synthesis", "synthesize"],
+      ["task", "video-to-linkedin"],
+      ["task", "x-briefing"],
+      ["task", "x-draft"],
+      ["synthesis", "x-finalize"],
+      ["task", "experiment-brief"],
+      ["task", "experiment-draft"],
+      ["synthesis", "experiment-finalize"],
+    ] as const;
+    for (const [kind, slug] of publishable) {
+      const p = buildPrompt(kind, { prompt: slug }, []) ?? "";
+      expect(p, `${slug} must demand English output`).toContain("INGLES");
+    }
+  });
+
+  it("the LinkedIn adapt step forbids script residue — a post, never a screenplay", () => {
+    const p = buildPrompt("task", { prompt: "video-to-linkedin" }, []) ?? "";
+    expect(p).toContain("PROIBIDO");
+    expect(p).toContain("[HOOK]");
+    expect(p).toContain("POST DE LINKEDIN");
+  });
+
   it("the X briefing confronts the channel's own record — repeating the dead pattern is not an option", () => {
     const brief = buildPrompt("task", { prompt: "x-briefing" }, []) ?? "";
     expect(brief).toContain("[memory]");
