@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -295,11 +295,41 @@ async function registerGraphTickSchedule(): Promise<void> {
   logger.info("graph_tick_schedule_registered", { cron: GRAPH_TICK_CRON });
 }
 
+// The read-only brains (agent-org core): a once-a-day self-start so the
+// Watchdog and the Chief Dreaming Officer are PROACTIVE — a morning report the
+// founder never has to trigger. Default 06:30 UTC (~07:30 Lisbon). The daily
+// tick starts runs; the */10 graph-tick advances them like any other run.
+const brainDailyWorker = new Worker(
+  "brain-daily",
+  async () => runBrainDaily(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const brainDailyQueue = new Queue("brain-daily", { connection });
+const BRAIN_DAILY_CRON = process.env["BRAIN_DAILY_CRON"] ?? "30 6 * * *";
+
+async function registerBrainDailySchedule(): Promise<void> {
+  await brainDailyQueue.add(
+    "brain-daily",
+    {},
+    {
+      jobId: "brain-daily-repeat",
+      repeat: { pattern: BRAIN_DAILY_CRON },
+      removeOnComplete: 20,
+      removeOnFail: 20,
+    }
+  );
+  logger.info("brain_daily_schedule_registered", { cron: BRAIN_DAILY_CRON });
+}
+
 void platformKeysReady.finally(() => {
   void graphWorker.run();
+  void brainDailyWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
     logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerBrainDailySchedule().catch((err: Error) => {
+    logger.error("brain_daily_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
 });
 

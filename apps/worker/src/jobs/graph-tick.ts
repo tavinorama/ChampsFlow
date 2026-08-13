@@ -83,6 +83,108 @@ async function sendTelegram(text: string): Promise<void> {
   }
 }
 
+/**
+ * The read-only brains' fuel: a bounded, PII-free digest of ops.* as text.
+ * ops.* holds slugs, statuses, hashes and numbers — no tenant data is touched,
+ * so this stays inside the company's own record. Two sources:
+ *  - 'ops'      → run/step health, cost, cycle time, failure hotspots,
+ *                 repeated inputs (the Watchdog's raw material);
+ *  - 'outcomes' → agent_outcome lift per metric/graph (the CDO's raw material).
+ * Returns "" when there is genuinely nothing — the runner turns that into an
+ * honest "SEM DADOS" marker so the lenses never invent a number.
+ */
+async function buildSnapshot(sql: postgres.Sql, source: string, days: number): Promise<string> {
+  const d = Math.min(90, Math.max(1, Math.round(days) || 14));
+
+  if (source === "ops") {
+    const perGraph = await sql<
+      { graph: string; runs: string; succeeded: string; failed: string; running: string; cost_cents: string; avg_seconds: string | null }[]
+    >`
+      SELECT graph,
+             COUNT(*)::text AS runs,
+             COUNT(*) FILTER (WHERE status = 'succeeded')::text AS succeeded,
+             COUNT(*) FILTER (WHERE status = 'failed')::text AS failed,
+             COUNT(*) FILTER (WHERE status = 'running')::text AS running,
+             COALESCE(SUM(cost_cents), 0)::text AS cost_cents,
+             AVG(EXTRACT(EPOCH FROM (ended_at - started_at)))
+               FILTER (WHERE ended_at IS NOT NULL)::text AS avg_seconds
+        FROM ops.agent_run
+       WHERE started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY graph
+       ORDER BY COUNT(*) DESC`;
+
+    const hotspots = await sql<{ node: string; graph: string; fails: string; total: string }[]>`
+      SELECT s.node, r.graph,
+             COUNT(*) FILTER (WHERE s.status = 'failed')::text AS fails,
+             COUNT(*)::text AS total
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY s.node, r.graph
+      HAVING COUNT(*) FILTER (WHERE s.status = 'failed') > 0
+       ORDER BY COUNT(*) FILTER (WHERE s.status = 'failed') DESC
+       LIMIT 8`;
+
+    const dupes = await sql<{ n: string; node: string }[]>`
+      SELECT COUNT(*)::text AS n, MIN(node) AS node
+        FROM ops.agent_step
+       WHERE input_hash IS NOT NULL
+         AND started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY input_hash
+      HAVING COUNT(*) > 1
+       ORDER BY COUNT(*) DESC
+       LIMIT 6`;
+
+    if (perGraph.length === 0) return "";
+    const lines: string[] = [`REGISTRO OPERACIONAL (ops.*, ${d}d):`, ``, `Por graph:`];
+    for (const g of perGraph) {
+      const avg = g.avg_seconds ? `${Math.round(Number(g.avg_seconds))}s ciclo medio` : "sem ciclo medido";
+      lines.push(
+        `- ${g.graph}: ${g.runs} runs (${g.succeeded} ok / ${g.failed} falha / ${g.running} rodando) · ${(Number(g.cost_cents) / 100).toFixed(2)} USD · ${avg}`
+      );
+    }
+    if (hotspots.length > 0) {
+      lines.push(``, `Nodes que mais falham:`);
+      for (const h of hotspots) lines.push(`- ${h.graph}/${h.node}: ${h.fails} falhas em ${h.total} execucoes`);
+    }
+    if (dupes.length > 0) {
+      lines.push(``, `Inputs repetidos (mesmo hash rodado varias vezes):`);
+      for (const dp of dupes) lines.push(`- node '${dp.node}': input identico rodou ${dp.n}x`);
+    }
+    return lines.join("\n");
+  }
+
+  if (source === "outcomes") {
+    const outcomes = await sql<
+      { metric: string; graph: string | null; value_after: string | null; lift: string | null; measured_at: string }[]
+    >`
+      SELECT ao.metric,
+             r.graph,
+             ao.value_after::text AS value_after,
+             ao.lift::text AS lift,
+             ao.measured_at::text AS measured_at
+        FROM ops.agent_outcome ao
+        JOIN ops.agent_step s ON s.id = ao.step_id
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE ao.measured_at >= NOW() - make_interval(days => ${d})
+       ORDER BY ao.measured_at DESC
+       LIMIT 60`;
+
+    if (outcomes.length === 0) return "";
+    const lines: string[] = [`RESULTADOS REAIS (ops.agent_outcome, ${d}d):`, ``];
+    for (const o of outcomes) {
+      const lift = o.lift != null ? `lift ${o.lift}` : "sem baseline";
+      const val = o.value_after != null ? o.value_after : "?";
+      lines.push(`- ${o.metric} (${o.graph ?? "?"}): ${val} · ${lift} · ${o.measured_at.slice(0, 10)}`);
+    }
+    return lines.join("\n");
+  }
+
+  // Unknown source: honest empty, not a throw — the graph author named it, the
+  // validator required it non-empty, so this is a typo, not an outage.
+  return "";
+}
+
 function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
   return {
     substrate: {
@@ -131,6 +233,9 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           VALUES (${input.stepId}::uuid, ${input.metric}, ${input.valueBefore}, ${input.valueAfter}, ${lift})
           RETURNING id`;
         return rows[0]!.id;
+      },
+      async snapshot(input) {
+        return buildSnapshot(sql, input.source, input.days);
       },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
@@ -190,6 +295,51 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
     telegram: sendTelegram,
     now: () => new Date(),
   };
+}
+
+/**
+ * The read-only brains that self-start every morning (proactivity, not a
+ * button someone remembers to press). Each is registered in GRAPH_REGISTRY and
+ * validated read-only (no publish, no spend); a daily run gives the founder a
+ * LEAN watchdog report and a grounded 10x brief without asking.
+ */
+const DAILY_BRAINS = ["daily-watchdog", "daily-dream"];
+
+/**
+ * Start today's brain runs — idempotent by a 20h look-back so a worker restart
+ * or a second instance cannot double-fire. Gated on HERMES_TOKEN: with no
+ * executor, starting a run only creates a stuck row and a false alarm, so we
+ * skip (the tick's own missing-token alarm still covers a token that vanishes
+ * mid-flight). The every-10-min graph-tick advances whatever this starts.
+ */
+export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  const started: string[] = [];
+  const skipped: string[] = [];
+  if (!HERMES_TOKEN) {
+    logger.warn("brain_daily_skipped_no_executor", { brains: DAILY_BRAINS.join(",") });
+    return { started, skipped: [...DAILY_BRAINS] };
+  }
+  for (const graph of DAILY_BRAINS) {
+    const recent = await sql<{ id: string }[]>`
+      SELECT id FROM ops.agent_run
+       WHERE graph = ${graph}
+         AND started_at >= NOW() - INTERVAL '20 hours'
+       LIMIT 1`;
+    if (recent.length > 0) {
+      skipped.push(graph);
+      continue;
+    }
+    const rows = await sql<{ id: string }[]>`
+      INSERT INTO ops.agent_run (graph, trigger, vp_owner)
+      VALUES (${graph}, 'cron:brain-daily', 'ceo')
+      RETURNING id`;
+    started.push(`${graph}:${rows[0]!.id.slice(0, 8)}`);
+    logger.info("brain_daily_started", { graph, runId: rows[0]!.id });
+  }
+  if (started.length > 0) {
+    await sendTelegram(`🧠 Cérebros do dia iniciados: ${started.join(", ")}. Relatórios chegam quando os graphs concluírem.`);
+  }
+  return { started, skipped };
 }
 
 export interface GraphTickResult {
