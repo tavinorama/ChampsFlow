@@ -204,6 +204,60 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- sphere-x cell (#156, first specialist) -------------------------------
+  // The [memory] block is this sphere's OWN harvested reach (x_* outcomes).
+  // Born with a mission the harvest dictated: the channel is nearly dead
+  // (30 impressions across 8 posts on 13/08) — every post must try something
+  // measurably different from what already failed.
+
+  "x-signal": () =>
+    [
+      "Voce e o agente de sinais da esfera X (Twitter) da Ozvor (visibilidade em IA / GEO).",
+      "Liste 4 conversas ou angulos QUENTES no X agora onde a Ozvor tem algo real a dizer: SEO morrendo/mudando, marcas sumindo das respostas de IA, casos de citacao, dores de agencia/SMB.",
+      "X premia opiniao com atrito: prefira angulos que geram resposta (concordo/discordo), nao anuncios.",
+      "Para cada um: 1 linha do angulo + 1 linha de por que renderia engajamento HOJE.",
+      "Sem inventar dado: numero so com certeza.",
+      "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+    ].join("\n"),
+
+  "x-briefing": (ctx) =>
+    [
+      "Voce e o editor da esfera X da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no X — leia primeiro.",
+      "REGRA DA MISSAO: esse canal esta quase morto (impressions baixissimas). O briefing de hoje tem que tentar algo MENSURAVELMENTE diferente do que ja falhou — formato, gancho, ou tese. Repetir o padrao que deu ~0 nao e opcao.",
+      "Dos sinais em [signal], escolha O MELHOR angulo para UM post de X hoje e produza: TESE (1 frase com atrito) · PUBLICO (quem responde) · PROVA (fato/numero real) · CTA (1a pessoa, leve — X odeia vendedor) · DIFERENTE-DE (1 linha: o que estamos deliberadamente fazendo diferente do historico em [memory]).",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao.",
+      "Formato de saida: 5 linhas rotuladas TESE/PUBLICO/PROVA/CTA/DIFERENTE-DE, nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "x-draft": (ctx) =>
+    [
+      `Voce e um escritor de X (Twitter). A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "punchy")}":`,
+      "punchy = UM post unico, <=280 caracteres, primeira linha para o dedo, zero link. · mini-thread = 3 posts encadeados (1/3, 2/3, 3/3), cada um <=280 caracteres, o primeiro segura sozinho.",
+      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, honesto (nada que o produto nao cumpre).",
+      "Formato de saida: so o(s) post(s), prontos para colar. Mini-thread separa os posts com uma linha '---'.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "x-critic": (ctx) =>
+    [
+      "Voce e o critico da esfera X da Ozvor. Abaixo: 2 versoes (punchy e mini-thread), o briefing e o historico real do canal em [memory].",
+      "Avalie por 3 perguntas: 1) o primeiro segundo para o dedo? 2) isso repete o padrao que ja deu ~0 impressions em [memory]? 3) algum risco de compliance (promessa que nao cumprimos, claim sem base)?",
+      "Para cada versao: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
+      "Compliance e freshness tem VETO: risco apontado tem que sair; padrao repetido tem que mudar.",
+      "Termine com: VENCEDOR: <punchy|mini-thread>.",
+      "Formato de saida: 2 blocos + a linha VENCEDOR.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "x-finalize": (ctx) =>
+    [
+      "Voce e o editor-chefe da esfera X. Abaixo: as 2 versoes e a critica.",
+      "Pegue o VENCEDOR da critica e reescreva UMA vez incorporando as correcoes. Vetos da critica sao lei: risco sai, padrao repetido muda.",
+      "Formato de saida: so o texto final pronto para publicar (mini-thread separa com '---'), nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   "experiment-finalize": (ctx) =>
     [
       "Voce e o editor-chefe da Ozvor. Abaixo estao o rascunho do post e a critica de compliance.",

@@ -93,8 +93,16 @@ async function sendTelegram(text: string): Promise<void> {
  * Returns "" when there is genuinely nothing — the runner turns that into an
  * honest "SEM DADOS" marker so the lenses never invent a number.
  */
-async function buildSnapshot(sql: postgres.Sql, source: string, days: number): Promise<string> {
+async function buildSnapshot(
+  sql: postgres.Sql,
+  source: string,
+  days: number,
+  metricPrefix?: string
+): Promise<string> {
   const d = Math.min(90, Math.max(1, Math.round(days) || 14));
+  // Sphere memory (#156): narrow an outcomes snapshot to one channel's own
+  // record. No prefix → '%' matches every metric (the CDO's full view).
+  const metricLike = (metricPrefix ?? "").replace(/%/g, "") + "%";
 
   if (source === "ops") {
     const perGraph = await sql<
@@ -167,11 +175,13 @@ async function buildSnapshot(sql: postgres.Sql, source: string, days: number): P
         JOIN ops.agent_step s ON s.id = ao.step_id
         JOIN ops.agent_run r ON r.id = s.run_id
        WHERE ao.measured_at >= NOW() - make_interval(days => ${d})
+         AND ao.metric LIKE ${metricLike}
        ORDER BY ao.measured_at DESC
        LIMIT 60`;
 
     if (outcomes.length === 0) return "";
-    const lines: string[] = [`RESULTADOS REAIS (ops.agent_outcome, ${d}d):`, ``];
+    const scope = metricPrefix ? ` · esfera ${metricPrefix}*` : "";
+    const lines: string[] = [`RESULTADOS REAIS (ops.agent_outcome, ${d}d${scope}):`, ``];
     for (const o of outcomes) {
       const lift = o.lift != null ? `lift ${o.lift}` : "sem baseline";
       const val = o.value_after != null ? o.value_after : "?";
@@ -235,7 +245,7 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         return rows[0]!.id;
       },
       async snapshot(input) {
-        return buildSnapshot(sql, input.source, input.days);
+        return buildSnapshot(sql, input.source, input.days, input.metricPrefix);
       },
       async startRun(input) {
         const rows = await sql<{ id: string }[]>`
@@ -313,6 +323,12 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
  */
 const DAILY_BRAINS = ["daily-watchdog"];
 const WEEKLY_BRAINS = ["daily-dream"];
+/**
+ * Specialist cells (#156) that self-start on their own cadence. The X cell
+ * runs Mon/Wed/Fri — enough volume to generate signal on a near-dead channel
+ * without flooding it (the video pipeline's X thread still posts daily).
+ */
+const SPHERE_CELLS = ["sphere-x"];
 
 /**
  * Start brain runs — idempotent by a look-back window so a worker restart or a
@@ -343,9 +359,12 @@ async function startBrainRuns(
       skipped.push(graph);
       continue;
     }
+    // vp_owner comes from the graph's own definition — the CEO owns the
+    // brains, marketing owns the sphere cells; one lookup, no drift.
+    const vpOwner = GRAPH_REGISTRY[graph]?.vpOwner ?? "ceo";
     const rows = await sql<{ id: string }[]>`
       INSERT INTO ops.agent_run (graph, trigger, vp_owner)
-      VALUES (${graph}, ${trigger}, 'ceo')
+      VALUES (${graph}, ${trigger}, ${vpOwner})
       RETURNING id`;
     started.push(`${graph}:${rows[0]!.id.slice(0, 8)}`);
     logger.info("brain_started", { graph, runId: rows[0]!.id, trigger });
@@ -364,6 +383,11 @@ export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: strin
 /** Weekly strategy: the Chief Dreaming Officer. 6-day look-back (once/week). */
 export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, WEEKLY_BRAINS, 24 * 6, "cron:brain-weekly");
+}
+
+/** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
+export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
 }
 
 export interface GraphTickResult {

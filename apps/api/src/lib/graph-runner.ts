@@ -38,6 +38,7 @@ import {
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
+  SPHERE_X_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
 
@@ -55,6 +56,8 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [DAILY_WATCHDOG_GRAPH.slug]: DAILY_WATCHDOG_GRAPH,
   [DAILY_DREAM_GRAPH.slug]: DAILY_DREAM_GRAPH,
   [CONTENT_EXPERIMENT_GRAPH.slug]: CONTENT_EXPERIMENT_GRAPH,
+  // #156, first specialist cell: the X sphere with its own memory.
+  [SPHERE_X_GRAPH.slug]: SPHERE_X_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -109,9 +112,11 @@ export interface SubstratePort {
    * can, reads here and injects the text so the LLM lenses reason over facts.
    * source 'ops' → run/step health, cost, cycle, redundancy; source 'outcomes'
    * → agent_outcome lift per metric/graph. Empty string means "no data" (the
-   * lenses must say so, not invent).
+   * lenses must say so, not invent). metricPrefix narrows an 'outcomes'
+   * snapshot to one sphere's own record (e.g. 'x_' → only X reach) — the piece
+   * that gives each specialist cell (#156) a memory of ITS channel.
    */
-  snapshot(input: { source: string; days: number }): Promise<string>;
+  snapshot(input: { source: string; days: number; metricPrefix?: string }): Promise<string>;
   /**
    * Start a fresh run of another graph (the spawn primitive). Returns the new
    * run id. The runner seeds the new run's __seed__ artifact separately, via
@@ -417,10 +422,12 @@ export async function advanceRun(
       // hanging or inventing.
       const source = String(config["source"] ?? "");
       const days = Number(config["days"] ?? 14);
+      const metricPrefix =
+        typeof config["metricPrefix"] === "string" ? (config["metricPrefix"] as string) : undefined;
       const stepId = await substrate.startStep({ runId, node: node.id });
       let text = "";
       try {
-        text = await substrate.snapshot({ source, days });
+        text = await substrate.snapshot({ source, days, metricPrefix });
       } catch (err) {
         await substrate.finishStep(stepId, {
           status: "failed",

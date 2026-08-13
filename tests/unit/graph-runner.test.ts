@@ -28,6 +28,7 @@ import {
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
+  SPHERE_X_GRAPH,
   validateGraph,
   type GraphDefinition,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -343,6 +344,43 @@ describe("the Chief Dreaming Officer acts — the brief lands, the founder launc
     // An OPTIONAL rejection is a valid no — the run SUCCEEDS, it does not fail.
     expect(world.stepByNode("launch-approval")?.status).toBe("skipped");
     expect(world.stepByNode("report")?.status).toBe("succeeded");
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the X sphere cell (#156) — perception of ITS OWN channel before creation", () => {
+  it("memory reads ONLY the sphere's metrics (metricPrefix x_), then runs to the approval gate", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    world.snapshotText = "RESULTADOS REAIS (ops.agent_outcome, 30d · esfera x_*):\n- x_impressions_7d (social-harvest): 30";
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+
+    // The sphere's memory asked for ITS channel, not the whole company.
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "x_" }]);
+    expect(world.stepByNode("memory")?.status).toBe("succeeded");
+    expect(world.stepByNode("draft-punchy")?.status).toBe("succeeded");
+    expect(world.stepByNode("draft-thread")?.status).toBe("succeeded");
+    expect(world.stepByNode("critic")?.status).toBe("succeeded");
+    expect(world.stepByNode("finalize")?.status).toBe("succeeded");
+    // Parked at the human gate; nothing on X yet.
+    expect(world.published).toEqual([]);
+  });
+
+  it("approve → publishes to channel X → harvest x_impressions closes the sphere's loop", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting", 25, SPHERE_X_GRAPH);
+
+    expect(world.published).toHaveLength(1);
+    expect(world.published[0]!.channel).toBe("x");
+
+    world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+    world.harvestData = { n: 1, total: 45 };
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_X_GRAPH);
+
+    // The closing edge writes x_impressions — the NEXT run's memory reads it.
+    expect(world.outcomes[0]!.metric).toBe("x_impressions");
+    expect(world.outcomes[0]!.valueAfter).toBe(45);
     expect(world.run.status).toBe("succeeded");
   });
 });

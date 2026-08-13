@@ -391,6 +391,44 @@ export const DAILY_DREAM_GRAPH: GraphDefinition = {
 // nothing publishes without a human, every publish reads its reach back.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The first SPECIALIST CELL (#156): the X sphere. The cell pattern the video
+// proved — perception before creation, fan-out, critique, human gate, publish,
+// READ THE REACH BACK — generalized to one channel with its OWN memory: the
+// memory node reads only this sphere's harvested outcomes (metricPrefix 'x_'),
+// so every post is written against the channel's real numbers.
+//
+// This cell is born with a mission the harvest dictated (13/08: 30 impressions
+// across 8 posts — the channel is nearly dead): every briefing must confront
+// that record and try something MEASURABLY different. The verdicts it writes
+// accumulate the evidence; deciding to double down or quit the channel is the
+// founder's call, fed by the Watchdog/CDO reading these very outcomes.
+// ---------------------------------------------------------------------------
+
+export const SPHERE_X_GRAPH: GraphDefinition = {
+  slug: "sphere-x",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "X (Twitter) specialist cell with its own memory: read this sphere's OWN harvested reach (x_* outcomes) → signal → briefing that must confront the channel's record → 2 drafts (punchy single vs mini-thread) → critic → finalize → human approval → publish to X → wait 72h → harvest x_impressions → verdict. The closed learning loop, one channel.",
+  nodes: [
+    // Perception before creation — the sphere's own numbers, not vibes.
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "x_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "x-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "x-briefing" } },
+    { id: "draft-punchy", kind: "task", dependsOn: ["briefing"], config: { prompt: "x-draft", style: "punchy" } },
+    { id: "draft-thread", kind: "task", dependsOn: ["briefing"], config: { prompt: "x-draft", style: "mini-thread" } },
+    // The critic sees both drafts AND the memory — judged against the record.
+    { id: "critic", kind: "debate", dependsOn: ["draft-punchy", "draft-thread", "memory"], config: { prompt: "x-critic" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft-punchy", "draft-thread", "critic"], config: { prompt: "x-finalize" } },
+    { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
+    { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "x", via: "postiz" } },
+    { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "x_impressions" } },
+    { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+  ],
+};
+
 export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
   slug: "content-experiment",
   version: 1,
