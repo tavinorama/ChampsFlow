@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runSphereStart } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -317,6 +317,26 @@ const brainWeeklyWorker = new Worker(
 const brainWeeklyQueue = new Queue("brain-weekly", { connection });
 const BRAIN_WEEKLY_CRON = process.env["BRAIN_WEEKLY_CRON"] ?? "30 6 * * 1";
 
+// Specialist cells (#156): the X sphere posts Mon/Wed/Fri 09:00 UTC (~10:00
+// Lisbon) — the approval reaches the founder mid-morning, the post goes out
+// while the timeline is awake.
+const sphereStartWorker = new Worker(
+  "sphere-start",
+  async () => runSphereStart(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const sphereStartQueue = new Queue("sphere-start", { connection });
+const SPHERE_START_CRON = process.env["SPHERE_START_CRON"] ?? "0 9 * * 1,3,5";
+
+async function registerSphereStartSchedule(): Promise<void> {
+  await sphereStartQueue.add(
+    "sphere-start",
+    {},
+    { jobId: "sphere-start-repeat", repeat: { pattern: SPHERE_START_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("sphere_start_schedule_registered", { cron: SPHERE_START_CRON });
+}
+
 async function registerBrainDailySchedule(): Promise<void> {
   await brainDailyQueue.add(
     "brain-daily",
@@ -339,6 +359,7 @@ void platformKeysReady.finally(() => {
   void graphWorker.run();
   void brainDailyWorker.run();
   void brainWeeklyWorker.run();
+  void sphereStartWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
     logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -348,6 +369,9 @@ void platformKeysReady.finally(() => {
   });
   void registerBrainWeeklySchedule().catch((err: Error) => {
     logger.error("brain_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerSphereStartSchedule().catch((err: Error) => {
+    logger.error("sphere_start_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
 });
 
