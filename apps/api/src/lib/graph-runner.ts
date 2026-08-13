@@ -38,6 +38,7 @@ import {
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
   WEEKLY_PRODUCT_GRAPH,
+  WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
 } from "./agent-graphs";
@@ -58,6 +59,8 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [DAILY_DREAM_GRAPH.slug]: DAILY_DREAM_GRAPH,
   // The org's third brain: the product finally has an owner (founder, 13/08).
   [WEEKLY_PRODUCT_GRAPH.slug]: WEEKLY_PRODUCT_GRAPH,
+  // CDO+CPO active discovery — ideas reach the founder MVP-ready (13/08 rule).
+  [WEEKLY_DISCOVERY_GRAPH.slug]: WEEKLY_DISCOVERY_GRAPH,
   [CONTENT_EXPERIMENT_GRAPH.slug]: CONTENT_EXPERIMENT_GRAPH,
   // #156, first specialist cell: the X sphere with its own memory.
   [SPHERE_X_GRAPH.slug]: SPHERE_X_GRAPH,

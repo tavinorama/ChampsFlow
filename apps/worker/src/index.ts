@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runSphereStart } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -317,6 +317,25 @@ const brainWeeklyWorker = new Worker(
 const brainWeeklyQueue = new Queue("brain-weekly", { connection });
 const BRAIN_WEEKLY_CRON = process.env["BRAIN_WEEKLY_CRON"] ?? "30 6 * * 1";
 
+// CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
+// to MVP-ready before the founder sees them; offset from the Monday pair.
+const discoveryWorker = new Worker(
+  "discovery-weekly",
+  async () => runDiscoveryWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const discoveryQueue = new Queue("discovery-weekly", { connection });
+const DISCOVERY_WEEKLY_CRON = process.env["DISCOVERY_WEEKLY_CRON"] ?? "30 6 * * 4";
+
+async function registerDiscoverySchedule(): Promise<void> {
+  await discoveryQueue.add(
+    "discovery-weekly",
+    {},
+    { jobId: "discovery-weekly-repeat", repeat: { pattern: DISCOVERY_WEEKLY_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("discovery_weekly_schedule_registered", { cron: DISCOVERY_WEEKLY_CRON });
+}
+
 // Specialist cells (#156): the X sphere posts Mon/Wed/Fri 09:00 UTC (~10:00
 // Lisbon) — the approval reaches the founder mid-morning, the post goes out
 // while the timeline is awake.
@@ -359,6 +378,7 @@ void platformKeysReady.finally(() => {
   void graphWorker.run();
   void brainDailyWorker.run();
   void brainWeeklyWorker.run();
+  void discoveryWorker.run();
   void sphereStartWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
@@ -372,6 +392,9 @@ void platformKeysReady.finally(() => {
   });
   void registerSphereStartSchedule().catch((err: Error) => {
     logger.error("sphere_start_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerDiscoverySchedule().catch((err: Error) => {
+    logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
 });
 

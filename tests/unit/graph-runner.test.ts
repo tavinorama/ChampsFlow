@@ -28,6 +28,7 @@ import {
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
   WEEKLY_PRODUCT_GRAPH,
+  WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
   validateGraph,
@@ -371,6 +372,28 @@ describe("the CPO runs itself — the product finally has an owner", () => {
     expect(world.published).toEqual([]);
     expect(world.spawnedRuns).toEqual([]);
     expect(world.telegrams.some((t) => t.includes("CPO"))).toBe(true);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the discovery pipeline — ideas reach the founder MVP-ready", () => {
+  it("research + both snapshots → ideate → develop → viability → final → report, read-only", async () => {
+    const world = makeWorld(WEEKLY_DISCOVERY_GRAPH.slug);
+    await tickUntil(world, () => world.run.status !== "running", 25, WEEKLY_DISCOVERY_GRAPH);
+
+    // Inward perception is DOUBLE: the product aggregates and the real outcomes.
+    expect(world.snapshotCalls).toEqual([
+      { source: "product", days: 30 },
+      { source: "outcomes", days: 30 },
+    ]);
+    expect(world.stepByNode("research")?.status).toBe("succeeded");
+    expect(world.stepByNode("develop")?.status).toBe("succeeded");
+    expect(world.stepByNode("viability")?.status).toBe("succeeded");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+    // Read-only: maturing an idea publishes nothing and spawns nothing.
+    expect(world.published).toEqual([]);
+    expect(world.spawnedRuns).toEqual([]);
+    expect(world.telegrams.some((t) => t.includes("CDO+CPO"))).toBe(true);
     expect(world.run.status).toBe("succeeded");
   });
 });
