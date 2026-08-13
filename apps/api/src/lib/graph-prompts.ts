@@ -23,6 +23,24 @@
 const ENGLISH_FIRST =
   "IDIOMA OBRIGATORIO: escreva a saida em INGLES (US English). Todo conteudo publicado da Ozvor e English-first — regra do founder, sem excecao.";
 
+/**
+ * Products the founder explicitly flagged for weekly-discovery to develop.
+ * Discovery must analyze each of these EVERY week (not just when it stumbles on
+ * them), maturing them toward an MVP-ready spec, while staying free to surface
+ * new ideas too. Add the next founder-flagged product here — one source.
+ */
+const STANDING_INITIATIVES: string[] = [
+  "AI Audit Stack — uma auditoria que, a partir das DORES do cliente, indica o STACK de ferramentas de IA certo para ele. Dois formatos: (a) low-ticket self-serve: questionario -> recomenda 1 tool/shortlist; (b) high-ticket $1.5k dentro do OrganicPosts, junto com o GEO audit (bundle GEO + AI stack). E a PORTA DE ENTRADA do mercado BRASILEIRO (PT-BR) — avaliar se a superficie de entrada BR e PT (provavel excecao a regra English-first, por ser porta de entrada nacional). REQUISITO DE PROFUNDIDADE (founder): o produto precisa de CAPILARIDADE — entender NICHOS/verticais a fundo (cada segmento tem dores e ferramentas diferentes) E cobrir o universo de IAs de forma COMPLETA e atualizada. Logo a analise tem que enderecar: como manter um catalogo de tools abrangente e fresco, como mapear dor->tool POR nicho, e como a recomendacao escala para muitos segmentos sem virar generica.",
+];
+
+function standingInitiativesBlock(): string {
+  if (STANDING_INITIATIVES.length === 0) return "";
+  return (
+    "\n\n--- INICIATIVAS PERMANENTES (sinalizadas pelo founder — analisar TODA semana) ---\n" +
+    STANDING_INITIATIVES.map((s, i) => `${i + 1}. ${s}`).join("\n")
+  );
+}
+
 export interface PromptContext {
   /** Node config minus the prompt slug (angle, lens, ...). */
   config: Record<string, unknown>;
@@ -282,21 +300,30 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // --- weekly-discovery (CDO+CPO, founder rule 13/08) -----------------------
   // Active weekly search for product improvements AND new products; the
   // founder only sees an idea AFTER it is MVP-ready. Internal analysis, PT.
+  //
+  // STANDING INITIATIVES: products the founder explicitly flagged for the
+  // agents to develop. Discovery must ALWAYS carry these among its candidates
+  // (analyze them every week) while staying free to surface new ones. When the
+  // founder flags another product, it joins this list — one place, no drift.
 
   "discovery-research": () =>
     [
       "Voce e o pesquisador de descoberta da Ozvor (CDO+CPO), rodando na VPS da empresa. Missao semanal: olhar PARA FORA de forma ativa.",
       "Se voce tiver ferramenta de busca na web, USE-A para checar novidades reais da semana no espaco GEO/AI-search: movimentos de concorrentes (Profound, Peec, Otterly, ferramentas open-source como Elmo), mudancas nos motores (ChatGPT/Perplexity/Gemini/AI Overviews), dores novas de SMB/agencia em foruns e comunidades.",
+      "ALEM DISSO, pesquise sinal para CADA iniciativa permanente listada abaixo (mercado, concorrentes, dores, disposicao a pagar) — elas sao prioridade do founder.",
       "Se NAO tiver busca disponivel, diga 'sem busca ao vivo' na primeira linha e liste apenas o que voce sabe com confianca — sem inventar lancamento nem citar data que nao pode confirmar.",
-      "Formato de saida: 3-5 observacoes numeradas, cada uma: FATO (1 linha, com fonte se houver) + OPORTUNIDADE para a Ozvor (1 linha). Nada alem disso.",
+      "Formato de saida: 3-6 observacoes numeradas, cada uma: FATO (1 linha, com fonte se houver) + OPORTUNIDADE para a Ozvor (1 linha). Marque com [INICIATIVA] as que tocam uma iniciativa permanente. Nada alem disso.",
+      standingInitiativesBlock(),
     ].join("\n"),
 
   "discovery-ideate": (ctx) =>
     [
       "Voce e o par CDO+CPO da Ozvor. Abaixo: a pesquisa externa da semana [research], os agregados do produto [product-snapshot] e os resultados reais [outcome-snapshot].",
-      "Gere ATE 3 ideias, de dois tipos permitidos: MELHORIA de produto existente ou PRODUTO NOVO. Cada ideia nasce do cruzamento de uma dor/oportunidade externa com um dado interno (ancora).",
-      "Ideia sem ancora num dado real e descartada aqui mesmo. Termine escolhendo: MELHOR: <numero> — 1 frase do porque.",
-      "Formato de saida: ate 3 blocos de 3 linhas (IDEIA / ANCORA / TIPO: melhoria|novo-produto) + a linha MELHOR. Nada alem disso.",
+      "As INICIATIVAS PERMANENTES abaixo sao prioridade do founder: pelo menos UMA das suas ideias TEM que avancar uma delas (a mais madura no sinal desta semana). As demais ideias podem ser melhorias ou produtos novos livres.",
+      "Gere ATE 3 ideias, de dois tipos permitidos: MELHORIA de produto existente ou PRODUTO NOVO. Cada ideia nasce do cruzamento de uma dor/oportunidade com um dado interno OU com uma iniciativa permanente (ancora).",
+      "Ideia sem ancora e descartada aqui mesmo. Termine escolhendo: MELHOR: <numero> — 1 frase do porque (com leve preferencia por iniciativa permanente quando o sinal sustentar).",
+      "Formato de saida: ate 3 blocos de 3 linhas (IDEIA / ANCORA / TIPO: melhoria|novo-produto|iniciativa) + a linha MELHOR. Nada alem disso.",
+      standingInitiativesBlock(),
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
