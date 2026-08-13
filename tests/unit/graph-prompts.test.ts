@@ -110,6 +110,23 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
     expect(p).toContain("POST DE LINKEDIN");
   });
 
+  it("discovery carries the founder's standing initiatives (AI Audit Stack) into research AND ideation", () => {
+    // Founder (13/08) flagged the AI Audit Stack as the BR-market entry product
+    // the agents must analyze every week; both prompts must surface it, and
+    // ideation must require at least one idea to advance a standing initiative.
+    const research = buildPrompt("task", { prompt: "discovery-research" }, []) ?? "";
+    const ideate = buildPrompt("synthesis", { prompt: "discovery-ideate" }, []) ?? "";
+    for (const p of [research, ideate]) {
+      expect(p).toContain("INICIATIVAS PERMANENTES");
+      expect(p).toContain("AI Audit Stack");
+    }
+    // The capilaridade requirement (niches + full AI coverage) rides along.
+    expect(ideate).toContain("CAPILARIDADE");
+    expect(ideate.toLowerCase()).toContain("nicho");
+    // Ideation is bound to advance at least one standing initiative.
+    expect(ideate).toContain("pelo menos UMA");
+  });
+
   it("the discovery pipeline matures ideas and can VETO — the founder never sees a raw fragment", () => {
     const viability = buildPrompt("debate", { prompt: "discovery-viability" }, []) ?? "";
     expect(viability).toContain("VETO");
