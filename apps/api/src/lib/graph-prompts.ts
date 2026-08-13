@@ -9,7 +9,19 @@
  * Every prompt states the output contract in its last line — the Hermes
  * engines return raw text and the next node consumes it verbatim, so a
  * prompt that lets the engine ramble poisons the whole downstream.
+ *
+ * LANGUAGE RULE (founder, 13/08 — the first orchestrated LinkedIn post went
+ * out in Portuguese): ALL PUBLISHED CONTENT IS ENGLISH-FIRST. The prompts
+ * themselves stay in PT (the engines read either), but every prompt whose
+ * output becomes a public post (briefing fields, drafts, final syntheses)
+ * must explicitly demand US English. Internal analysis (critics, watchdog,
+ * CDO) and founder-facing reports stay PT — the rule is about what the
+ * PUBLIC sees.
  */
+
+/** The output-language clause every publishable prompt must carry. */
+const ENGLISH_FIRST =
+  "IDIOMA OBRIGATORIO: escreva a saida em INGLES (US English). Todo conteudo publicado da Ozvor e English-first — regra do founder, sem excecao.";
 
 export interface PromptContext {
   /** Node config minus the prompt slug (angle, lens, ...). */
@@ -55,7 +67,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Produza um briefing com: TESE (1 frase forte) · PUBLICO (quem sente essa dor) · PROVA (o fato que sustenta) · CTA (1a pessoa, ex: 'Quero meu teste').",
       "REGRA DE FRESCOR: o bloco [memory] abaixo lista o que JA publicamos. O briefing NAO pode repetir tema, gancho nem estetica de b-roll listados la — escolha o sinal que abre caminho NOVO.",
       "Regras de copy da casa: nivel de leitura 15-17 anos, frases <=12 palavras, sonho honesto (historia + gente real), zero jargao vazio.",
-      "Formato de saida: 4 linhas rotuladas TESE/PUBLICO/PROVA/CTA, nada mais.",
+      ENGLISH_FIRST,
+      "Formato de saida: 4 linhas rotuladas TESE/PUBLICO/PROVA/CTA (os rotulos em PT, o CONTEUDO em ingles), nada mais.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -64,6 +77,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um roteirista. Escreva UM roteiro de video social de 30-45s no angulo "${String(ctx.config["angle"] ?? "story")}" a partir do briefing abaixo.`,
       "Estrutura: HOOK (3s, para o dedo) -> desenvolvimento em 3 beats -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada de promessa que o produto nao cumpre).",
+      ENGLISH_FIRST,
       "Formato de saida: o roteiro puro, com marcacoes [HOOK], [BEAT 1-3], [CTA].",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
@@ -83,7 +97,24 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o diretor de conteudo. Abaixo estao 4 criticas (lentes hook/brand/compliance/freshness) sobre 3 roteiros.",
       "Escolha o roteiro vencedor no agregado e reescreva-o UMA vez incorporando as melhores sugestoes das 4 lentes.",
       "Duas lentes tem poder de VETO, nao so de nota: se compliance apontou risco, o risco SAI do texto; se freshness disse que repete tema/gancho/b-roll do que ja publicamos, o angulo MUDA — publicar requentado nao e opcao.",
-      "Formato de saida: o roteiro final pronto para publicar, com [HOOK]/[BEAT 1-3]/[CTA], e nada mais.",
+      ENGLISH_FIRST,
+      "Formato de saida: o roteiro final, com [HOOK]/[BEAT 1-3]/[CTA], e nada mais. (Este roteiro NAO vai direto ao publico — o node seguinte o adapta para o formato do canal.)",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  // v3 (founder, 13/08): the run's first LinkedIn post was the RAW video
+  // script — [HOOK]/[BEAT] markers, in Portuguese — because no node ever
+  // adapted the script to the destination format. This node is that missing
+  // step: the winning script becomes a native LinkedIn post, and THIS is what
+  // the approval gates and the publish posts.
+  "video-to-linkedin": (ctx) =>
+    [
+      "Voce e o social editor da Ozvor. Abaixo esta o roteiro de video vencedor do dia. Transforme-o num POST DE LINKEDIN nativo — nao um roteiro, um post.",
+      "PROIBIDO no resultado: marcacoes [HOOK]/[BEAT]/[CTA], rotulos de secao, indicacoes de cena ou qualquer vestigio de formato de roteiro.",
+      "Estrutura do post: 1a linha que para o scroll (sem clickbait vazio) · 3-6 linhas curtas com a historia/dado · 1 CTA em 1a pessoa no final. 80-150 palavras. Zero hashtag ou no maximo 2 relevantes.",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, sonho honesto, nada que o produto nao cumpre.",
+      ENGLISH_FIRST,
+      "Formato de saida: apenas o texto final do post, pronto para colar no LinkedIn, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -182,6 +213,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Produza: TESE (1 frase) · PUBLICO (quem sente a dor) · PROVA (o fato/numero que sustenta) · CTA (1a pessoa) · METRICA (o que olhar em 48h para saber se a aposta tem pernas).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero promessa que o produto nao cumpre.",
       "Se o [__seed__] nao trouxer aposta com ancora real, diga 'sem aposta testavel' em 1 linha e pare — nao invente experimento.",
+      ENGLISH_FIRST,
       "Formato de saida: 5 linhas rotuladas TESE/PUBLICO/PROVA/CTA/METRICA, nada mais.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
@@ -191,6 +223,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e roteirista da Ozvor. Do briefing abaixo, escreva UM post social curto (LinkedIn, 60-120 palavras) que testa a hipotese.",
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto. Uma unica ideia — e um teste, nao um manifesto.",
+      ENGLISH_FIRST,
       "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
@@ -226,7 +259,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "REGRA DA MISSAO: esse canal esta quase morto (impressions baixissimas). O briefing de hoje tem que tentar algo MENSURAVELMENTE diferente do que ja falhou — formato, gancho, ou tese. Repetir o padrao que deu ~0 nao e opcao.",
       "Dos sinais em [signal], escolha O MELHOR angulo para UM post de X hoje e produza: TESE (1 frase com atrito) · PUBLICO (quem responde) · PROVA (fato/numero real) · CTA (1a pessoa, leve — X odeia vendedor) · DIFERENTE-DE (1 linha: o que estamos deliberadamente fazendo diferente do historico em [memory]).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao.",
-      "Formato de saida: 5 linhas rotuladas TESE/PUBLICO/PROVA/CTA/DIFERENTE-DE, nada mais.",
+      ENGLISH_FIRST,
+      "Formato de saida: 5 linhas rotuladas TESE/PUBLICO/PROVA/CTA/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -235,6 +269,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um escritor de X (Twitter). A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "punchy")}":`,
       "punchy = UM post unico, <=280 caracteres, primeira linha para o dedo, zero link. · mini-thread = 3 posts encadeados (1/3, 2/3, 3/3), cada um <=280 caracteres, o primeiro segura sozinho.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, honesto (nada que o produto nao cumpre).",
+      ENGLISH_FIRST,
       "Formato de saida: so o(s) post(s), prontos para colar. Mini-thread separa os posts com uma linha '---'.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
@@ -254,6 +289,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o editor-chefe da esfera X. Abaixo: as 2 versoes e a critica.",
       "Pegue o VENCEDOR da critica e reescreva UMA vez incorporando as correcoes. Vetos da critica sao lei: risco sai, padrao repetido muda.",
+      ENGLISH_FIRST,
       "Formato de saida: so o texto final pronto para publicar (mini-thread separa com '---'), nada antes nem depois.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
@@ -263,6 +299,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o editor-chefe da Ozvor. Abaixo estao o rascunho do post e a critica de compliance.",
       "Compliance tem VETO: se apontou risco, o risco SAI do texto — reescreva a linha, nao publique o risco.",
       "Entregue a versao FINAL do post, incorporando a correcao, pronta para publicar. Mesmo tom, mesmo tamanho.",
+      ENGLISH_FIRST,
       "Formato de saida: o texto final do post puro, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),

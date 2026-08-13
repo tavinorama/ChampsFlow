@@ -346,10 +346,27 @@ export async function advanceRun(
     } else if (node.kind === "approval") {
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
       const context = (await artifacts.get(runId, node.dependsOn[0] ?? "")) ?? "(sem artefato)";
+      // v3 (founder, 13/08): the first approval never said WHERE the content
+      // would land, so a raw script was approved thinking of the video. The
+      // ask now names every publish/spawn destination downstream of this gate
+      // — the human must know exactly what a "yes" sets in motion.
+      const downstream = def.nodes.filter(
+        (n) =>
+          (n.kind === "publish" || n.kind === "spawn") &&
+          n.dependsOn.some((d) => d === node.id)
+      );
+      const destinations = downstream.map((n) =>
+        n.kind === "publish"
+          ? `publicar como POST em ${String(n.config?.["channel"] ?? "linkedin")} (via ${String(n.config?.["via"] ?? "postiz")})`
+          : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
+      );
+      const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
       await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
       await telegram(
         [
           `🟡 APROVAÇÃO NECESSÁRIA — graph ${def.slug} (run ${runId.slice(0, 8)})`,
+          destinations.length > 0 ? `Aprovar vai: ${destinations.join(" · ")}` : `Aprovar destrava o resto do graph (sem publicação direta neste passo).`,
+          ...(question ? [question] : []),
           `Conteúdo proposto:`,
           context.slice(0, 900),
           ``,

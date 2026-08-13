@@ -256,7 +256,9 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
       },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
-        // harvest config may name the exact metric or a prefix ('yt_views').
+        // harvest config names the exact metric or a TRUE prefix of it
+        // ('youtube_views'). Beware: an abbreviation ('yt_views') matches
+        // NOTHING — that was the daily-video v2 false-zero bug (13/08).
         const rows = await sql<{ n: string; total: string | null }[]>`
           SELECT COUNT(*)::text AS n, COALESCE(SUM(value_after), 0)::text AS total
             FROM ops.agent_outcome

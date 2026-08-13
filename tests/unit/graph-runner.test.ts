@@ -187,6 +187,11 @@ describe("daily-video, the full life", () => {
     const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO"));
     expect(ask).toBeTruthy();
     expect(ask).toContain(world.stepByNode("founder-approval")!.id);
+    // v3: the ask must SAY where a yes lands — the first approval never did,
+    // and a raw script was approved thinking of the video.
+    expect(ask).toContain("publicar como POST em linkedin");
+    // v3: what the approval gates is the ADAPTED LinkedIn post, not the script.
+    expect(world.stepByNode("linkedin-post")?.status).toBe("succeeded");
   });
 
   it("approve → publish → wait elapses → harvest → verdict → run succeeds", async () => {
@@ -214,7 +219,9 @@ describe("daily-video, the full life", () => {
     expect(world.stepByNode("verdict")?.status).toBe("succeeded");
     // The closing edge: the verdict WROTE an outcome with the harvested total.
     expect(world.outcomes).toHaveLength(1);
-    expect(world.outcomes[0]!.metric).toBe("yt_views_72h");
+    // v3: must be a TRUE prefix of what the #162 harvest writes
+    // (youtube_views_7d) — the old 'yt_views_72h' matched nothing.
+    expect(world.outcomes[0]!.metric).toBe("youtube_views");
     expect(world.outcomes[0]!.valueAfter).toBe(250);
     expect(world.run.status).toBe("succeeded");
     expect(world.telegrams.some((t) => t.includes("VEREDITO"))).toBe(true);
