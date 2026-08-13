@@ -447,6 +447,15 @@ export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: stri
   return startBrainRuns(sql, WEEKLY_BRAINS, 24 * 6, "cron:brain-weekly");
 }
 
+/**
+ * CDO+CPO active discovery (founder rule 13/08): improvements + new products,
+ * matured to MVP-ready before the founder sees them. Thursday, offset from the
+ * Monday strategy pair so the week has two thinking moments, not one pile.
+ */
+export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, ["weekly-discovery"], 24 * 6, "cron:discovery-weekly");
+}
+
 /** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
 export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");

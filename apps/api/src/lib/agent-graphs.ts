@@ -431,6 +431,47 @@ export const WEEKLY_PRODUCT_GRAPH: GraphDefinition = {
 };
 
 // ---------------------------------------------------------------------------
+// weekly-discovery (founder, 13/08): "o CDO e o CPO também devem ser
+// responsáveis pela busca de melhoria dos produtos e pela pesquisa de novos
+// produtos de forma ativa, pelo menos uma vez por semana — e isso deve chegar
+// em mim depois da ideia estar pronta para o primeiro MVP."
+//
+// The rule has two halves and the graph encodes both:
+//  1. ACTIVE search, weekly — a research node that looks OUTWARD (market,
+//     competitors, new pains in the GEO space), joined with what we already
+//     know inward (product aggregates + real outcomes).
+//  2. The founder only sees a MATURE idea — the pipeline ideates, DEVELOPS the
+//     best idea into an MVP-ready spec, and passes it through a viability
+//     critic WITH VETO before anything reaches Telegram. A vetoed week reports
+//     "nenhuma ideia madura" honestly instead of forcing a weak one.
+//
+// Co-owned by the CDO (growth eye) and the CPO (product eye) — the substrate
+// records one vpOwner, so it runs as 'ceo' (the layer both report to).
+// Read-only: no publish, no spawn — turning the spec into an MVP is the
+// founder's call.
+// ---------------------------------------------------------------------------
+
+export const WEEKLY_DISCOVERY_GRAPH: GraphDefinition = {
+  slug: "weekly-discovery",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "CDO+CPO discovery: active weekly research (market/competitors/new pains) + product aggregates + real outcomes → ideate improvements AND new products → develop the best idea into an MVP-ready spec → viability critic with VETO → report to the founder ONLY when the idea is mature (or say honestly that none matured). Read-only.",
+  nodes: [
+    // Outward: active research. Inward: what we have and what moved.
+    { id: "research", kind: "task", dependsOn: [], config: { prompt: "discovery-research" } },
+    { id: "product-snapshot", kind: "snapshot", dependsOn: [], config: { source: "product", days: 30 } },
+    { id: "outcome-snapshot", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30 } },
+    { id: "ideate", kind: "synthesis", dependsOn: ["research", "product-snapshot", "outcome-snapshot"], config: { prompt: "discovery-ideate" } },
+    // Maturation: the best idea becomes an MVP-ready spec BEFORE any human sees it.
+    { id: "develop", kind: "task", dependsOn: ["ideate"], config: { prompt: "discovery-develop" } },
+    { id: "viability", kind: "debate", dependsOn: ["develop", "product-snapshot"], config: { prompt: "discovery-viability" } },
+    { id: "final-spec", kind: "synthesis", dependsOn: ["develop", "viability"], config: { prompt: "discovery-final" } },
+    { id: "report", kind: "report", dependsOn: ["final-spec"], config: { title: "💡 CDO+CPO — ideia pronta para o 1º MVP" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // The first SPECIALIST CELL (#156): the X sphere. The cell pattern the video
 // proved — perception before creation, fan-out, critique, human gate, publish,
 // READ THE REACH BACK — generalized to one channel with its OWN memory: the

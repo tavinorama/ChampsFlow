@@ -16,6 +16,7 @@ import {
   DAILY_WATCHDOG_GRAPH,
   DAILY_DREAM_GRAPH,
   WEEKLY_PRODUCT_GRAPH,
+  WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -65,7 +66,7 @@ describe("buildPrompt resolves the graph's task slugs", () => {
 
 describe("the read-only brains' prompts resolve and stay honest", () => {
   it("every Watchdog, CDO, experiment-cell and sphere-cell reasoning node has a resolvable prompt", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH]) {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH]) {
       for (const node of def.nodes) {
         if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
         const p = buildPrompt(node.kind, node.config ?? {}, []);
@@ -107,6 +108,19 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
     expect(p).toContain("PROIBIDO");
     expect(p).toContain("[HOOK]");
     expect(p).toContain("POST DE LINKEDIN");
+  });
+
+  it("the discovery pipeline matures ideas and can VETO — the founder never sees a raw fragment", () => {
+    const viability = buildPrompt("debate", { prompt: "discovery-viability" }, []) ?? "";
+    expect(viability).toContain("VETO");
+    expect(viability).toContain("VEREDITO");
+    const final = buildPrompt("synthesis", { prompt: "discovery-final" }, []) ?? "";
+    expect(final).toContain("NENHUMA IDEIA MADURA");
+    expect(final).toContain("PRONTA PARA MVP");
+    const develop = buildPrompt("task", { prompt: "discovery-develop" }, []) ?? "";
+    for (const block of ["PROBLEMA", "PUBLICO", "PROPOSTA", "MVP", "ESFORCO", "RISCO"]) {
+      expect(develop, `spec must carry ${block}`).toContain(block);
+    }
   });
 
   it("the X briefing confronts the channel's own record — repeating the dead pattern is not an option", () => {

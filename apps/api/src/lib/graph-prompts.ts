@@ -279,6 +279,55 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- weekly-discovery (CDO+CPO, founder rule 13/08) -----------------------
+  // Active weekly search for product improvements AND new products; the
+  // founder only sees an idea AFTER it is MVP-ready. Internal analysis, PT.
+
+  "discovery-research": () =>
+    [
+      "Voce e o pesquisador de descoberta da Ozvor (CDO+CPO), rodando na VPS da empresa. Missao semanal: olhar PARA FORA de forma ativa.",
+      "Se voce tiver ferramenta de busca na web, USE-A para checar novidades reais da semana no espaco GEO/AI-search: movimentos de concorrentes (Profound, Peec, Otterly, ferramentas open-source como Elmo), mudancas nos motores (ChatGPT/Perplexity/Gemini/AI Overviews), dores novas de SMB/agencia em foruns e comunidades.",
+      "Se NAO tiver busca disponivel, diga 'sem busca ao vivo' na primeira linha e liste apenas o que voce sabe com confianca — sem inventar lancamento nem citar data que nao pode confirmar.",
+      "Formato de saida: 3-5 observacoes numeradas, cada uma: FATO (1 linha, com fonte se houver) + OPORTUNIDADE para a Ozvor (1 linha). Nada alem disso.",
+    ].join("\n"),
+
+  "discovery-ideate": (ctx) =>
+    [
+      "Voce e o par CDO+CPO da Ozvor. Abaixo: a pesquisa externa da semana [research], os agregados do produto [product-snapshot] e os resultados reais [outcome-snapshot].",
+      "Gere ATE 3 ideias, de dois tipos permitidos: MELHORIA de produto existente ou PRODUTO NOVO. Cada ideia nasce do cruzamento de uma dor/oportunidade externa com um dado interno (ancora).",
+      "Ideia sem ancora num dado real e descartada aqui mesmo. Termine escolhendo: MELHOR: <numero> — 1 frase do porque.",
+      "Formato de saida: ate 3 blocos de 3 linhas (IDEIA / ANCORA / TIPO: melhoria|novo-produto) + a linha MELHOR. Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "discovery-develop": (ctx) =>
+    [
+      "Voce e o desenvolvedor de conceito da Ozvor. Pegue a ideia marcada MELHOR no bloco [ideate] e DESENVOLVA-A ate ficar pronta para decisao de MVP — o founder so pode receber ideia madura (regra 13/08).",
+      "Produza o spec completo, rotulado exatamente assim:",
+      "PROBLEMA (a dor real, 2 linhas) · PUBLICO (quem paga, 1 linha) · PROPOSTA (o que a Ozvor entrega, 2 linhas) · MVP (o menor produto que testa a tese: escopo em 3-5 bullets, o que fica DE FORA) · ESFORCO (dias de build, honesto) · CUSTO (infra/API, ordem de grandeza) · RISCO (os 2 maiores) · METRICA DE SUCESSO (1 numero em 30 dias).",
+      "Regras: honesto (nada que o stack nao sustenta), enxuto (MVP e teste, nao produto final), sem jargao.",
+      "Formato de saida: os 8 blocos rotulados, nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "discovery-viability": (ctx) =>
+    [
+      "Voce e o critico de viabilidade da Ozvor (o advogado do diabo do CDO+CPO). Abaixo: o spec [develop] e os agregados do produto [product-snapshot].",
+      "Ataque o spec por 4 frentes: 1) mercado — alguem paga MESMO por isso? 2) canibalismo/foco — atrapalha o caminho até $10K MRR em outubro? 3) esforco — o ESFORCO declarado e realista para founder+agentes? 4) dados — a ancora sustenta a aposta?",
+      "Voce tem VETO: termine com VEREDITO: APROVADO ou VEREDITO: VETADO — <motivo em 1 frase>. Vete sem pena se a ideia for fraca; semana sem ideia madura e melhor que founder decidindo sobre ideia ruim.",
+      "Formato de saida: 4 criticas de 1-2 linhas + a linha VEREDITO.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "discovery-final": (ctx) =>
+    [
+      "Voce e o editor final do CDO+CPO. Abaixo: o spec [develop] e a critica [viability].",
+      "Se o VEREDITO foi VETADO: sua saida inteira e 'NENHUMA IDEIA MADURA ESTA SEMANA — <motivo do veto em 1 frase>. Proxima rodada: <o que investigar>.' Nada mais — o founder nao recebe ideia vetada.",
+      "Se APROVADO: reescreva o spec UMA vez incorporando as criticas (esforco/risco ajustados, escopo cortado onde o critico apontou gordura) e abra com a linha 'PRONTA PARA MVP: <nome da ideia em 3-5 palavras>'.",
+      "Formato de saida: ou a linha de veto, ou o spec final com os 8 blocos. Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   // --- sphere-x cell (#156, first specialist) -------------------------------
   // The [memory] block is this sphere's OWN harvested reach (x_* outcomes).
   // Born with a mission the harvest dictated: the channel is nearly dead
