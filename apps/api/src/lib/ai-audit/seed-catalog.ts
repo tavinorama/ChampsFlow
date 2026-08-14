@@ -8,10 +8,15 @@
  * ESTIMATE and must be verified before it appears in a client-facing report —
  * honesty rule: audits must be real or fail honestly.
  *
- * Pain vocabulary (the questionnaire offers these slugs; tools tag which they
- * address): content-volume · customer-support-load · meeting-notes ·
+ * Every tool is tagged with the five business ENGINES it serves (attract,
+ * convert, deliver, retain, run) and the NICHES/industries it fits, so a
+ * clinic's Convert/Run gargalos surface clinic tools, not "use ChatGPT"
+ * (capilaridade, founder 2026-08-14).
+ *
+ * Pain vocabulary: content-volume · customer-support-load · meeting-notes ·
  * lead-research · repetitive-tasks · data-analysis · video-editing ·
- * social-scheduling · email-overload · seo-visibility · design-assets.
+ * social-scheduling · email-overload · seo-visibility · design-assets ·
+ * no-shows · reviews · phone-answering · appointment-scheduling · billing-admin.
  */
 
 import type { Tool } from "./types";
@@ -24,6 +29,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "writing",
     niches: [],
     pains: ["content-volume", "repetitive-tasks", "email-overload"],
+    engines: ["attract", "deliver", "run"],
     monthlyCostUsd: 20,
     setupEffort: "low",
     impact: "high",
@@ -38,6 +44,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "writing",
     niches: [],
     pains: ["content-volume", "data-analysis", "repetitive-tasks"],
+    engines: ["deliver", "run"],
     monthlyCostUsd: 20,
     setupEffort: "low",
     impact: "high",
@@ -52,6 +59,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "marketing",
     niches: ["agency", "ecommerce"],
     pains: ["content-volume", "seo-visibility"],
+    engines: ["attract"],
     monthlyCostUsd: 49,
     setupEffort: "medium",
     impact: "medium",
@@ -65,6 +73,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "meetings",
     niches: [],
     pains: ["meeting-notes"],
+    engines: ["run"],
     monthlyCostUsd: 18,
     setupEffort: "low",
     impact: "medium",
@@ -78,6 +87,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "support",
     niches: ["saas", "ecommerce"],
     pains: ["customer-support-load", "email-overload"],
+    engines: ["retain", "run"],
     monthlyCostUsd: 99,
     setupEffort: "high",
     impact: "high",
@@ -91,6 +101,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "sales",
     niches: ["saas", "agency"],
     pains: ["lead-research"],
+    engines: ["attract", "convert"],
     monthlyCostUsd: 49,
     setupEffort: "medium",
     impact: "high",
@@ -104,6 +115,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "ops",
     niches: [],
     pains: ["repetitive-tasks", "email-overload"],
+    engines: ["run", "deliver"],
     monthlyCostUsd: 16,
     setupEffort: "high",
     impact: "high",
@@ -117,6 +129,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "ops",
     niches: [],
     pains: ["repetitive-tasks"],
+    engines: ["run"],
     monthlyCostUsd: 30,
     setupEffort: "low",
     impact: "medium",
@@ -130,6 +143,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "video",
     niches: ["creator", "agency"],
     pains: ["video-editing", "content-volume"],
+    engines: ["attract"],
     monthlyCostUsd: 29,
     setupEffort: "low",
     impact: "medium",
@@ -143,6 +157,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "marketing",
     niches: [],
     pains: ["social-scheduling", "content-volume"],
+    engines: ["attract"],
     monthlyCostUsd: 12,
     setupEffort: "low",
     impact: "medium",
@@ -156,6 +171,7 @@ export const SEED_CATALOG: Tool[] = [
     category: "design",
     niches: ["agency", "consulting"],
     pains: ["design-assets", "content-volume"],
+    engines: ["attract", "deliver"],
     monthlyCostUsd: 10,
     setupEffort: "low",
     impact: "medium",
@@ -169,10 +185,56 @@ export const SEED_CATALOG: Tool[] = [
     category: "data",
     niches: ["saas"],
     pains: ["data-analysis"],
+    engines: ["run", "deliver"],
     monthlyCostUsd: 36,
     setupEffort: "high",
     impact: "high",
     hoursSavedWeekly: 6,
     oneLiner: "Notebook + AI for exploring and sharing data analyses.",
+  },
+  // Vertical tools: the capilaridade proof. A dental clinic gets these, not
+  // ChatGPT, because they are tagged to the clinic's niche + Convert/Run engines
+  // and its real gargalos (no-shows, phone, reviews, scheduling, billing).
+  {
+    id: "weave",
+    name: "Weave",
+    url: "https://getweave.com",
+    category: "clinic-ops",
+    niches: ["clinic", "dental", "local-service"],
+    pains: ["phone-answering", "no-shows", "reviews", "appointment-scheduling"],
+    engines: ["convert", "retain", "run"],
+    monthlyCostUsd: 99,
+    setupEffort: "medium",
+    impact: "high",
+    hoursSavedWeekly: 8,
+    oneLiner: "Phone, texts, reviews and reminders for local clinics in one place.",
+  },
+  {
+    id: "nexhealth",
+    name: "NexHealth",
+    url: "https://nexhealth.com",
+    category: "clinic-ops",
+    niches: ["clinic", "dental"],
+    pains: ["appointment-scheduling", "no-shows", "billing-admin"],
+    engines: ["convert", "run"],
+    monthlyCostUsd: 79,
+    setupEffort: "medium",
+    impact: "high",
+    hoursSavedWeekly: 6,
+    oneLiner: "Online booking, reminders and paperwork for dental and medical practices.",
+  },
+  {
+    id: "podium",
+    name: "Podium",
+    url: "https://podium.com",
+    category: "reviews",
+    niches: ["clinic", "dental", "local-service", "restaurant"],
+    pains: ["reviews", "phone-answering"],
+    engines: ["attract", "retain"],
+    monthlyCostUsd: 89,
+    setupEffort: "low",
+    impact: "medium",
+    hoursSavedWeekly: 4,
+    oneLiner: "Collects reviews and answers customer messages for local businesses.",
   },
 ];

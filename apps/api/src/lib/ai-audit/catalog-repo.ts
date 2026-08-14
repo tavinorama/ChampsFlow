@@ -13,7 +13,7 @@
 
 import type { PostgresClient } from "../../../../../packages/shared/src/db-client";
 import { SEED_CATALOG } from "./seed-catalog";
-import type { Effort, Impact, Tool } from "./types";
+import type { BusinessEngine, Effort, Impact, Tool } from "./types";
 
 interface AiToolRow {
   id: string;
@@ -22,6 +22,8 @@ interface AiToolRow {
   category: string;
   niches: string[] | null;
   pains: string[] | null;
+  /** Added with the 5-engine model; absent on the pre-engines migration (defaults []). */
+  engines?: string[] | null;
   monthly_cost_usd: string | number;
   setup_effort: string;
   impact: string;
@@ -29,6 +31,10 @@ interface AiToolRow {
   one_liner: string;
   verified: boolean;
 }
+
+const ENGINES: ReadonlySet<string> = new Set<BusinessEngine>([
+  "attract", "convert", "deliver", "retain", "run",
+]);
 
 const EFFORTS: ReadonlySet<string> = new Set<Effort>(["low", "medium", "high"]);
 const IMPACTS: ReadonlySet<string> = new Set<Impact>(["low", "medium", "high"]);
@@ -43,6 +49,9 @@ function rowToTool(r: AiToolRow): Tool | null {
     category: r.category,
     niches: r.niches ?? [],
     pains: r.pains ?? [],
+    // engines column arrives with a later migration; until then default to []
+    // (the seed catalog carries the real values, and it is what serves today).
+    engines: (r.engines ?? []).filter((e): e is BusinessEngine => ENGINES.has(e)),
     monthlyCostUsd: Number(r.monthly_cost_usd),
     setupEffort: r.setup_effort as Effort,
     impact: r.impact as Impact,

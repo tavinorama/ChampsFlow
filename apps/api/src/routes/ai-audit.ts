@@ -21,10 +21,11 @@ import { Hono } from "hono";
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { loadCatalog } from "../lib/ai-audit/catalog-repo";
 import { buildAuditReport, buildEntryResult } from "../lib/ai-audit/engine";
-import type { QuestionnaireAnswers } from "../lib/ai-audit/types";
+import type { BusinessEngine, QuestionnaireAnswers } from "../lib/ai-audit/types";
 
 const MAX_PAINS = 20;
 const MAX_STR = 120;
+const VALID_ENGINES: readonly BusinessEngine[] = ["attract", "convert", "deliver", "retain", "run"];
 
 function cleanStr(v: unknown, max = MAX_STR): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
@@ -44,6 +45,13 @@ function cleanPosNumber(v: unknown): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/** Keep only the five valid business engines the questionnaire offers. */
+function cleanEngines(v: unknown): BusinessEngine[] {
+  if (!Array.isArray(v)) return [];
+  const set = new Set(v.map((x) => (typeof x === "string" ? x.trim().toLowerCase() : "")));
+  return VALID_ENGINES.filter((e) => set.has(e));
+}
+
 export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
   // GET /api/ai-audit/meta — vocabulary for the questionnaire, from the catalog.
   app.get("/api/ai-audit/meta", async (c) => {
@@ -52,6 +60,8 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
     const categories = [...new Set(tools.map((t) => t.category))].sort();
     const niches = [...new Set(tools.flatMap((t) => t.niches))].sort();
     return c.json({
+      // The five business engines the questionnaire asks about, in order.
+      engines: VALID_ENGINES,
       pains,
       categories,
       niches,
@@ -71,6 +81,7 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
       businessType: cleanStr(body["businessType"]),
       primaryFocus: cleanStr(body["primaryFocus"]),
       pains: cleanStrArray(body["pains"], MAX_PAINS),
+      engines: cleanEngines(body["engines"]),
       hourlyRateUsd: cleanPosNumber(body["hourlyRateUsd"]),
       maxMonthlyBudgetUsd: cleanPosNumber(body["maxMonthlyBudgetUsd"]),
       toolsInUse: cleanStrArray(body["toolsInUse"], MAX_PAINS),
@@ -109,6 +120,7 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
       businessType: cleanStr(body["businessType"]),
       primaryFocus: cleanStr(body["primaryFocus"]),
       pains: cleanStrArray(body["pains"], MAX_PAINS),
+      engines: cleanEngines(body["engines"]),
       toolsInUse: cleanStrArray(body["toolsInUse"], MAX_PAINS),
     };
     if (answers.pains.length === 0) {
