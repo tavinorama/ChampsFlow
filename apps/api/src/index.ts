@@ -65,6 +65,7 @@ import { registerDownloadRoutes } from "./routes/downloads";
 import { registerOperatorBusinessRoutes } from "./routes/operator";
 import { registerOperatorAgentRoutes } from "./routes/operator-agents";
 import { registerOperatorGraphRoutes } from "./routes/operator-graphs";
+import { registerAiAuditRoutes } from "./routes/ai-audit";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
@@ -277,6 +278,7 @@ registerOperatorBusinessRoutes(app, db);
 // operator-key auth; hashes never text; outcomes append-only).
 registerOperatorAgentRoutes(app, db);
 registerOperatorGraphRoutes(app, db);
+registerAiAuditRoutes(app, db);
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
