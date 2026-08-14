@@ -391,6 +391,16 @@ const WEEKLY_BRAINS = ["daily-dream", "weekly-product"];
  * without flooding it (the video pipeline's X thread still posts daily).
  */
 const SPHERE_CELLS = ["sphere-x"];
+/**
+ * The daily video, as a GRAPH (v2/v3 — memory + adapt + correct harvest
+ * metric). The structural hole of 14/08: this graph was registered and valid
+ * but appeared in NO cron list, so nothing ever started it — while the legacy
+ * VPS/n8n video job it was built to replace went silent on 10/08. This is the
+ * clock. The legacy path stays untouched until this graph's first PROVEN
+ * publish (founder retires it — a live switch); the absence check below
+ * screams either way, so the gap can never again be silent.
+ */
+const VIDEO_CELLS = ["daily-video"];
 
 /**
  * Start brain runs — idempotent by a look-back window so a worker restart or a
@@ -459,6 +469,60 @@ export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: 
 /** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
 export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
+}
+
+/** The daily video graph (v2), once per calendar day. 20h look-back. */
+export async function runVideoDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, VIDEO_CELLS, 20, "cron:video-daily");
+}
+
+/**
+ * The video ABSENCE watchdog (#169 — "vigia de ausência de publicação").
+ * The 10-14/08 outage taught the rule the hard way: a pipeline that stops is
+ * not an error anyone sees — it is a silence. This check makes silence LOUD:
+ * if no daily-video publish step SUCCEEDED in the look-back window, it says so
+ * on Telegram, with enough context to diagnose (runs started? stuck where?).
+ * It never fixes anything itself — the watcher stays outside the watched.
+ */
+export async function runVideoAbsenceCheck(
+  sql: postgres.Sql
+): Promise<{ published: number; runsStarted: number; alarmed: boolean }> {
+  const LOOKBACK_HOURS = 26; // one day + slack for a slow approval
+  const def = GRAPH_REGISTRY["daily-video"];
+  // Publish node ids come from the graph definition itself — no drift when the
+  // graph changes shape.
+  const publishNodes = (def?.nodes ?? []).filter((n) => n.kind === "publish").map((n) => n.id);
+
+  const pub = await sql<{ n: string }[]>`
+    SELECT COUNT(*)::text AS n
+      FROM ops.agent_step s
+      JOIN ops.agent_run r ON r.id = s.run_id
+     WHERE r.graph = 'daily-video'
+       AND s.node = ANY(${publishNodes})
+       AND s.status = 'succeeded'
+       AND s.started_at >= NOW() - make_interval(hours => ${LOOKBACK_HOURS})`;
+  const published = Number(pub[0]?.n ?? 0);
+
+  const runs = await sql<{ n: string }[]>`
+    SELECT COUNT(*)::text AS n
+      FROM ops.agent_run
+     WHERE graph = 'daily-video'
+       AND started_at >= NOW() - make_interval(hours => ${LOOKBACK_HOURS})`;
+  const runsStarted = Number(runs[0]?.n ?? 0);
+
+  if (published > 0) {
+    return { published, runsStarted, alarmed: false };
+  }
+  // Silence detected — scream with a diagnosis, not just a siren.
+  const diagnosis =
+    runsStarted === 0
+      ? "nenhum run do graph daily-video começou (relógio ou executor parados)"
+      : `${runsStarted} run(s) começaram mas NENHUM publish concluiu (preso em aprovação, falha de nó, ou Postiz)`;
+  await sendTelegram(
+    `🔴 VÍDEO SEM PUBLICAR há ${LOOKBACK_HOURS}h: ${diagnosis}. ` +
+      `Ver ops.agent_run WHERE graph='daily-video' e o alerta de aprovação no Telegram.`
+  );
+  return { published, runsStarted, alarmed: true };
 }
 
 export interface GraphTickResult {
