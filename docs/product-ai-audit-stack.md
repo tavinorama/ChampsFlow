@@ -16,11 +16,16 @@
 
 ## 1. What it is
 
-From a short intake about the client — business type, primary focus, and their
-biggest operational pains — the product returns a prioritized set of AI tools
-that reclaim time and money, sequenced into an actionable plan. It is NOT a
-generic "top AI tools" list: the value is the **pain → tool mapping per niche**
-plus the impact/effort/ROI framing.
+**The pitch (founder, 2026-08-14):** there are too many AI tools to choose from,
+and picking the right one for your business is hard. We understand your pains and
+**adapt and integrate** the right stack to your needs. The proof is three KPIs
+the report promises and quantifies: **Time saved, Effort saved, Money saved.**
+
+From a short intake about the client (business type, primary focus, and their
+biggest operational pains) the product returns a prioritized set of AI tools
+that save time, effort and money, sequenced into an actionable plan. It is NOT a
+generic "top AI tools" list: the value is the **pain to tool mapping per niche**,
+the adaptation to the client's real needs, and the three-KPI proof.
 
 ## 2. Two delivery forms
 
@@ -51,7 +56,7 @@ Every section below maps to data the engine must produce:
 5. **Recommended Solutions** — *the tool stack*: **6 tools**, each with **Cost · Setup · Saves** (monthly cost, setup effort, time/impact saved).
 6. **Your 4-Day Quick Wins Plan** — Day One / Two / Three / Four, each `Tool · <action>` — start this week.
 7. **What Comes After Quick Wins** — the next phase (the Major Projects, sequenced).
-8. **Financial Impact** — *the bottom line*: **Monthly Net ROI** · **Weekly Time Returned** · **Total Monthly Tool Cost**.
+8. **What you save** — *the bottom line*, the three promised KPIs: **Time saved** (weekly hours returned) · **Effort saved** (recurring chores removed = distinct pains covered) · **Money saved** (monthly net ROI). Tool cost is shown as a supporting number, not a headline.
 9. **Your Next Steps** — CTA: **Schedule Your Review Call** (the funnel into the $1.5k / retainer).
 
 > Design language of the template: dark ground (near-#0a0f0d), single orange

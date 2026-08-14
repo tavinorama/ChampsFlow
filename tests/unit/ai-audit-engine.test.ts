@@ -89,13 +89,19 @@ describe("buildAuditReport — the whole deck", () => {
     for (const s of r.recommendedSolutions) expect(ignore.has(s.tool.id)).toBe(false);
   });
 
-  it("Financial Impact computes ROI from the recommended stack", () => {
+  it("the 3 KPIs are Time, Effort and Money saved (founder pitch, 14/08)", () => {
     const r = buildAuditReport(answers(), SEED_CATALOG);
     const cost = r.recommendedSolutions.reduce((s, x) => s + x.tool.monthlyCostUsd, 0);
     const hours = r.recommendedSolutions.reduce((s, x) => s + x.tool.hoursSavedWeekly, 0);
-    expect(r.financialImpact.totalMonthlyToolCostUsd).toBeCloseTo(cost, 2);
+    const chores = new Set(r.recommendedSolutions.flatMap((x) => x.matchedPains)).size;
+    // TIME
     expect(r.financialImpact.weeklyTimeReturnedHours).toBeCloseTo(hours, 2);
+    // EFFORT — one chore per distinct pain the stack covers
+    expect(r.financialImpact.choresRemoved).toBe(chores);
+    expect(r.financialImpact.choresRemoved).toBeGreaterThan(0);
+    // MONEY (net of the supporting tool cost)
     expect(r.financialImpact.monthlyNetRoiUsd).toBeCloseTo(hours * 4.33 * 50 - cost, 2);
+    expect(r.financialImpact.totalMonthlyToolCostUsd).toBeCloseTo(cost, 2);
   });
 
   it("the 4-day plan is quick wins only, at most 4, numbered 1..n", () => {

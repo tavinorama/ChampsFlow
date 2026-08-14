@@ -100,10 +100,14 @@ function financialImpact(tools: ScoredTool[], hourlyRate: number): FinancialImpa
   const totalMonthlyToolCostUsd = round2(tools.reduce((s, t) => s + t.tool.monthlyCostUsd, 0));
   const weeklyTimeReturnedHours = round2(tools.reduce((s, t) => s + t.tool.hoursSavedWeekly, 0));
   const monthlyValue = weeklyTimeReturnedHours * WEEKS_PER_MONTH * hourlyRate;
+  // EFFORT saved = the recurring chores the stack takes off the client's plate,
+  // one per distinct pain a recommended tool covers. Honest count, not a guess.
+  const choresRemoved = new Set(tools.flatMap((t) => t.matchedPains)).size;
   return {
-    totalMonthlyToolCostUsd,
     weeklyTimeReturnedHours,
+    choresRemoved,
     monthlyNetRoiUsd: round2(monthlyValue - totalMonthlyToolCostUsd),
+    totalMonthlyToolCostUsd,
     hourlyRateUsd: hourlyRate,
   };
 }

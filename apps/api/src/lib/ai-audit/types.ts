@@ -88,13 +88,21 @@ export interface PlanStep {
   action: string;
 }
 
+/**
+ * The three KPIs the pitch promises the client (founder, 14/08): Time, Effort,
+ * and Money saved. The whole product exists because there are too many AI tools
+ * to choose from; we understand the client's pains and adapt their stack, and
+ * these three numbers are the proof.
+ */
 export interface FinancialImpact {
-  /** Sum of recommended tools' monthly cost. */
-  totalMonthlyToolCostUsd: number;
-  /** Sum of recommended tools' weekly hours saved (deck: "Weekly Time Returned"). */
+  /** TIME saved: sum of recommended tools' weekly hours saved. */
   weeklyTimeReturnedHours: number;
-  /** weeklyHours × 4.33 × hourlyRate − monthlyToolCost (deck: "Monthly Net ROI"). */
+  /** EFFORT saved: how many recurring chores (distinct pains) the stack removes. */
+  choresRemoved: number;
+  /** MONEY saved: weeklyHours × 4.33 × hourlyRate − monthly tool cost. */
   monthlyNetRoiUsd: number;
+  /** Supporting number: what the recommended stack costs per month. */
+  totalMonthlyToolCostUsd: number;
   /** The hourly rate used (echoed for transparency). */
   hourlyRateUsd: number;
 }
