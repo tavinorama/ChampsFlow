@@ -44,6 +44,15 @@ export interface Tool {
   hoursSavedWeekly: number;
   /** One line of what it does / the "Saves" description in section 5. */
   oneLiner: string;
+  /**
+   * True for the household-name generalist AIs everyone already reaches for
+   * (ChatGPT, Claude…). The low-ticket ENTRY result deliberately skips these:
+   * its single recommendation should be a specialized, niche-fit tool the
+   * client probably hasn't found — that's what makes the free/entry check feel
+   * personal, and what leaves the obvious giants (and the full ranked stack,
+   * plan and ROI) as the reason to buy the full audit. Defaults to false.
+   */
+  isGeneric?: boolean;
 }
 
 /** The client's questionnaire answers (section 1 intake). */
@@ -121,5 +130,27 @@ export interface AuditReport {
   topPick: ScoredTool | null;
   topPickReason: string;
   /** True when nothing scored — the honest "no confident recommendation" state. */
+  empty: boolean;
+}
+
+/**
+ * The LOW-TICKET entry result: ONE personalized, niche-fit tool — never a
+ * household-name giant — plus an honest count of how much more the full audit
+ * would surface. The upsell is baked into the shape: the client sees exactly
+ * what they're NOT getting (the ranked stack, the plan, the ROI), which is the
+ * curiosity hook into the $1,500 AI Audit Stack inside OrganicPosts.
+ */
+export interface EntryResult {
+  /** The single niche recommendation, or null when nothing niche-fit matched. */
+  pick: ScoredTool | null;
+  /** One-line why this tool, for this client. */
+  reason: string;
+  /** How many tools in total matched the client's pains (what the full audit ranks). */
+  totalMatched: number;
+  /** totalMatched − 1 (the tools this entry check deliberately withholds). */
+  withheldCount: number;
+  /** Human summary of the pains (deck: "The Pain"), echoed for the entry card. */
+  painSummary: string;
+  /** True when no niche-fit tool matched — the honest "book a call" state. */
   empty: boolean;
 }

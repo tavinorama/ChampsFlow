@@ -20,7 +20,7 @@
 import { Hono } from "hono";
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { loadCatalog } from "../lib/ai-audit/catalog-repo";
-import { buildAuditReport } from "../lib/ai-audit/engine";
+import { buildAuditReport, buildEntryResult } from "../lib/ai-audit/engine";
 import type { QuestionnaireAnswers } from "../lib/ai-audit/types";
 
 const MAX_PAINS = 20;
@@ -94,6 +94,43 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
         // present estimated cost/ROI as a promise.
         estimatesUnverified: !allVerified,
       },
+    });
+  });
+
+  // POST /api/ai-audit/entry — the LOW-TICKET result: ONE niche-fit tool + the
+  // honest count of what the full audit would surface. Same input as /assess.
+  // The upsell is in the payload (withheldCount, fullAudit) so the front-end
+  // can wire the ladder without guessing.
+  app.post("/api/ai-audit/entry", async (c) => {
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return c.json({ message: "Invalid JSON body." }, 400);
+
+    const answers: QuestionnaireAnswers = {
+      businessType: cleanStr(body["businessType"]),
+      primaryFocus: cleanStr(body["primaryFocus"]),
+      pains: cleanStrArray(body["pains"], MAX_PAINS),
+      toolsInUse: cleanStrArray(body["toolsInUse"], MAX_PAINS),
+    };
+    if (answers.pains.length === 0) {
+      return c.json({ message: "Select at least one pain.", code: "NO_PAINS" }, 400);
+    }
+
+    const { tools, source, allVerified } = await loadCatalog(db);
+    const entry = buildEntryResult(answers, tools);
+
+    return c.json({
+      entry,
+      // The whole ladder, spelled out for the client — every product connects.
+      upsell: {
+        limitation: "This entry check shows ONE niche tool. It intentionally skips the big-name AIs and holds back the rest.",
+        fullAudit: {
+          name: "AI Audit Stack — Full",
+          gets: `The complete ranked stack (${entry.totalMatched} tools matched your needs), the impact-effort map, a day-by-day plan, and your monthly ROI.`,
+          bundledWith: "Delivered inside OrganicPosts, bundled with the Ozvor GEO Search audit.",
+        },
+        alsoOffer: "Ozvor GEO Search — see (and fix) how AI engines describe your brand.",
+      },
+      catalog: { source, estimatesUnverified: !allVerified },
     });
   });
 }
