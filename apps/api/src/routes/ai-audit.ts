@@ -21,6 +21,7 @@ import { Hono } from "hono";
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { loadCatalog } from "../lib/ai-audit/catalog-repo";
 import { buildAuditReport, buildEntryResult } from "../lib/ai-audit/engine";
+import { clientSafeGroundingSources } from "../lib/ai-audit/grounding-sources";
 import type { BusinessEngine, QuestionnaireAnswers } from "../lib/ai-audit/types";
 
 const MAX_PAINS = 20;
@@ -67,6 +68,11 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
       niches,
       toolCount: tools.length,
       catalog: { source, estimatesUnverified: !allVerified },
+      // The directories the FULL audit + catalog curation research against, to
+      // ground recommendations in real tools (the method from the source video).
+      // Product metadata — NOT a claim on the self-serve result, which does not
+      // consult them live. Legal notes/ingest gate stay server-side.
+      research: { groundingSources: clientSafeGroundingSources() },
     });
   });
 

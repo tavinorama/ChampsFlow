@@ -43,6 +43,23 @@ describe("GET /api/ai-audit/meta", () => {
     expect(body.catalog.source).toBe("seed");
     expect(body.catalog.estimatesUnverified).toBe(true);
   });
+
+  it("exposes the grounding directories without leaking legal notes", async () => {
+    const res = await appWith(seedDb).request("/api/ai-audit/meta");
+    const body = (await res.json()) as {
+      research: { groundingSources: Array<Record<string, unknown>> };
+    };
+    const sources = body.research.groundingSources;
+    // the two the video cites are named
+    const names = sources.map((s) => s.name);
+    expect(names).toContain("There's An AI For That");
+    expect(names).toContain("Futurepedia");
+    // client-safe: no internal legal note / ingest gate on the wire
+    for (const s of sources) {
+      expect(s).not.toHaveProperty("legalNote");
+      expect(s).not.toHaveProperty("automatedIngestAllowed");
+    }
+  });
 });
 
 describe("POST /api/ai-audit/assess", () => {
