@@ -104,6 +104,38 @@ stack — no new services, no paid API, no copyleft exposure:
 > moat is the **curated PT-BR catalog + the rules/weights**, not the engine —
 > build on the blocks above; there is no shortcut fork.
 
+## 5b. Grounding sources — the directories we research against (founder, 2026-08-14)
+
+The founder pointed us at Corey Ganim's **"$1,000/hour Solo AI business"** video
+(youtu.be/dhbcVxYhWaQ): a **$999 AI Tools Assessment** where a client-call
+transcript is fed to an LLM that recommends real tools — grounded in AI-tool
+directories so it does not hallucinate. That is almost exactly this product (ours
+adds GEO + the OrganicPosts bundle). The video names **two directories**; the
+method is to use them as **reference to steer the LLM, not to scrape them**.
+
+The registry lives in code (`apps/api/src/lib/ai-audit/grounding-sources.ts`) so
+the legal terms travel with the data and no future catalog-builder scrapes a
+forbidden source. `/api/ai-audit/meta` exposes a **client-safe** view (name, url,
+one-liner) — product metadata for the full audit, **not** a claim on the
+self-serve result (the pure engine does not consult them live).
+
+| Source | Cited in video | Official API | Automated ingest | Use |
+|---|---|---|---|---|
+| **There's An AI For That** | ✅ | ❌ | **❌ forbidden** | Reference only |
+| **Futurepedia** | ✅ | ❌ | ❌ gray | Reference only |
+| **Product Hunt** | — | ✅ GraphQL | ✅ | Live lookup + seed |
+| **Toolify.ai** | — | ❌ (3rd-party only) | ❌ | Seed only via a license deal |
+| **G2** | — | paid/partner | ❌ | Reference/enrichment |
+
+> **The legal gate (why this is code, not a bookmark).** There's An AI For That's
+> ToS **forbids extracting its data "by any automated OR manual means"** and
+> asserts **EU Database Directive 96/9/EC** rights; Ozvor has an EU footprint
+> (founder in Lisbon). So automated ingestion of the two cited directories is off
+> the table — they are **human/LLM reference only**. The only source safe to
+> ingest automatically today is **Product Hunt** (official GraphQL API). This is
+> also the honest architecture: let the **LLM do the niche→tool mapping**,
+> grounded in these directories, rather than depending on scraped data.
+
 ## 6. Brazil entry + language
 
 This is the **PT-BR market entry**. Ozvor's rule is English-first for public
