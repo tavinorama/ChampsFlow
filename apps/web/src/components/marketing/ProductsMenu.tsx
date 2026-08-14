@@ -42,6 +42,7 @@ interface ProductsMenuItem {
 
 const ITEMS: readonly ProductsMenuItem[] = [
   { slug: "free-test", label: "Free AI test", blurb: "Your score in 60 seconds.", href: "/test" },
+  { slug: "ai-audit", label: "Free AI stack check", blurb: "The right AI tool for your pains.", href: "/ai-audit" },
   { slug: "kit", label: "Get-Cited Kit — $29", blurb: "Audit + 3 fixes, ready to publish.", href: "/kit" },
   { slug: "pages", label: "Ozvor Pages", blurb: "A 5-page site AI can quote.", href: "/local-pages" },
   {
