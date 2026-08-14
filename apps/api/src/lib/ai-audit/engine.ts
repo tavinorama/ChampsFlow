@@ -64,6 +64,13 @@ export function scoreTool(tool: Tool, answers: QuestionnaireAnswers): ScoredTool
   const toolPains = new Set(tool.pains.map(normalize));
   const matchedPains = [...wantedPains].filter((p) => toolPains.has(p));
 
+  // Engine fit: which of the client's hurting engines this tool serves. Strong
+  // signal, second only to a specific pain — it is how "my Convert is on fire"
+  // reaches the right tools even before a specific gargalo is named.
+  const wantedEngines = new Set((answers.engines ?? []).map(normalize));
+  const toolEngines = new Set(tool.engines.map(normalize));
+  const matchedEngines = [...toolEngines].filter((e) => wantedEngines.has(e)) as ScoredTool["matchedEngines"];
+
   const nicheMatch =
     tool.niches.length === 0
       ? 0.5 // general-purpose: a mild, non-zero fit for any niche
@@ -75,16 +82,25 @@ export function scoreTool(tool: Tool, answers: QuestionnaireAnswers): ScoredTool
   const budget = answers.maxMonthlyBudgetUsd;
   const overBudget = typeof budget === "number" && tool.monthlyCostUsd > budget;
 
-  // Weights: pains dominate (the anchor), then fit, then intrinsic value.
+  // Weights: a specific pain dominates (the anchor), then the hurting engine,
+  // then industry fit, then intrinsic value. Industry fit is weighted enough
+  // that a clinic tool beats a generalist for a clinic (capilaridade).
   const score =
     matchedPains.length * 5 +
+    matchedEngines.length * 4 +
     nicheMatch * 3 +
     focusMatch * 2 +
     IMPACT_WEIGHT[tool.impact] +
     EFFORT_WEIGHT[tool.setupEffort] -
     (overBudget ? 4 : 0);
 
-  return { tool, score, matchedPains, quadrant: quadrantOf(tool), overBudget };
+  return { tool, score, matchedPains, matchedEngines, quadrant: quadrantOf(tool), overBudget };
+}
+
+/** A recommendation must be anchored in a real stated need: a specific pain OR
+ * one of the client's hurting engines. Never invented, never a giant on nothing. */
+function isAnchored(s: ScoredTool): boolean {
+  return s.matchedPains.length > 0 || s.matchedEngines.length > 0;
 }
 
 /** Deterministic ordering: score desc, then hours saved desc, then name. */
@@ -140,7 +156,7 @@ export function buildEntryResult(
   const matched = catalog
     .filter((t) => !owned.has(normalize(t.id)))
     .map((t) => scoreTool(t, answers))
-    .filter((s) => s.matchedPains.length > 0)
+    .filter(isAnchored)
     .sort(byRank);
 
   const nonGiant = matched.filter((s) => s.tool.isGeneric !== true);
@@ -175,7 +191,7 @@ export function buildAuditReport(
   const scored = catalog
     .filter((t) => !owned.has(normalize(t.id)))
     .map((t) => scoreTool(t, answers))
-    .filter((s) => s.matchedPains.length > 0)
+    .filter(isAnchored)
     .sort(byRank);
 
   const matrix: Record<Quadrant, ScoredTool[]> = {

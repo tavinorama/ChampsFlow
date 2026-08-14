@@ -20,6 +20,15 @@ export type Impact = "low" | "medium" | "high";
 export type Quadrant = "quick-win" | "major-project" | "fill-in" | "ignore";
 
 /**
+ * The five engines every business runs, whatever the industry (founder,
+ * 2026-08-14): Attract (get found) · Convert (win the customer) · Deliver (do
+ * the work) · Retain (keep and grow) · Run (the back office). The questionnaire
+ * asks where each engine breaks; tools are tagged with the engines they serve,
+ * so a clinic's Convert/Run gargalos surface clinic tools, not "use ChatGPT".
+ */
+export type BusinessEngine = "attract" | "convert" | "deliver" | "retain" | "run";
+
+/**
  * One entry in the tool catalog. The catalog is DATA (seeded + curated, then
  * kept fresh) — never hardcoded in the engine. Costs/hours are estimates that
  * must be verified before they appear in a client-facing report.
@@ -40,6 +49,8 @@ export interface Tool {
   setupEffort: Effort;
   /** Business impact — feeds the matrix impact axis. */
   impact: Impact;
+  /** Which of the five business engines this tool serves (industry-agnostic). */
+  engines: BusinessEngine[];
   /** Hours saved per week once adopted — feeds ROI + "Saves". */
   hoursSavedWeekly: number;
   /** One line of what it does / the "Saves" description in section 5. */
@@ -63,6 +74,8 @@ export interface QuestionnaireAnswers {
   primaryFocus: string;
   /** Selected pain slugs — matched against tool.pains. */
   pains: string[];
+  /** Which of the five engines hurt (from the questionnaire) — matched against tool.engines. */
+  engines?: BusinessEngine[];
   /** Blended hourly rate for ROI. Defaults applied by the engine if absent. */
   hourlyRateUsd?: number;
   /** Optional monthly budget cap; tools above it are demoted, never hidden. */
@@ -77,6 +90,8 @@ export interface ScoredTool {
   score: number;
   /** Which of the client's pains this tool addresses. */
   matchedPains: string[];
+  /** Which of the client's hurting engines this tool serves. */
+  matchedEngines: BusinessEngine[];
   quadrant: Quadrant;
   /** True when the tool's monthly cost exceeds the client's stated budget. */
   overBudget: boolean;

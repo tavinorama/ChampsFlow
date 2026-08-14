@@ -45,7 +45,7 @@ describe("the seed catalog is well-formed", () => {
 
 describe("quadrantOf — the deck's 2×2", () => {
   const t = (impact: Tool["impact"], setupEffort: Tool["setupEffort"]): Tool => ({
-    id: "x", name: "X", url: "", category: "ops", niches: [], pains: ["p"],
+    id: "x", name: "X", url: "", category: "ops", niches: [], pains: ["p"], engines: [],
     monthlyCostUsd: 0, setupEffort, impact, hoursSavedWeekly: 1, oneLiner: "",
   });
   it("high impact + low effort = quick-win; high+high = major; low+low = fill-in; low+high = ignore", () => {
@@ -139,6 +139,45 @@ describe("buildAuditReport — the whole deck", () => {
     expect(r.recommendedSolutions).toEqual([]);
     expect(r.topPick).toBeNull();
     expect(r.topPickReason.toLowerCase()).toContain("human review");
+  });
+
+  it("industry-aware: a dental clinic gets clinic tools, never ChatGPT (capilaridade)", () => {
+    const clinic = buildAuditReport(
+      {
+        businessType: "dental",
+        primaryFocus: "operations",
+        pains: ["no-shows", "reviews", "phone-answering", "appointment-scheduling"],
+        engines: ["convert", "run", "retain"],
+      },
+      SEED_CATALOG
+    );
+    const topIds = clinic.recommendedSolutions.map((s) => s.tool.id);
+    // The clinic-tagged tools lead the stack.
+    expect(topIds).toContain("weave");
+    expect(topIds.slice(0, 3)).toEqual(expect.arrayContaining(["weave"]));
+    // Every recommended tool serves the clinic's niche or a hurting engine.
+    for (const s of clinic.recommendedSolutions) {
+      const nicheFit = s.tool.niches.includes("dental") || s.tool.niches.includes("clinic");
+      expect(nicheFit || s.matchedEngines.length > 0, s.tool.id).toBe(true);
+    }
+    // The single entry pick for a clinic is a clinic tool, not a giant.
+    const entry = buildEntryResult(
+      { businessType: "dental", primaryFocus: "operations", pains: ["no-shows"], engines: ["convert"] },
+      SEED_CATALOG
+    );
+    expect(["weave", "nexhealth", "podium"]).toContain(entry.pick!.tool.id);
+  });
+
+  it("engine fit anchors a recommendation even with no specific pain named", () => {
+    // Client says only "my Convert engine is on fire", no specific gargalo slug.
+    const r = buildAuditReport(
+      { businessType: "saas", primaryFocus: "sales", pains: [], engines: ["convert"] },
+      SEED_CATALOG
+    );
+    expect(r.empty).toBe(false);
+    for (const s of r.recommendedSolutions) {
+      expect(s.matchedEngines).toContain("convert");
+    }
   });
 
   it("the low-ticket entry picks ONE niche tool, never a household-name giant", () => {
