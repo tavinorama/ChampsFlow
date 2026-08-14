@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -356,6 +356,39 @@ async function registerSphereStartSchedule(): Promise<void> {
   logger.info("sphere_start_schedule_registered", { cron: SPHERE_START_CRON });
 }
 
+// The daily video graph (v2) + its ABSENCE watchdog (#169). The 14/08 finding:
+// the graph existed, validated, and had NO clock — while the legacy VPS video
+// job silently died on 10/08. Two repeatables on one queue: 'video-daily'
+// starts the run at 13:00 UTC (~14:00 Lisbon, the historical video hour);
+// 'video-absence' checks at 19:00 UTC that a publish actually SUCCEEDED in the
+// last 26h and screams on Telegram when it did not. The watcher stays outside
+// the watched: the check never starts or fixes anything.
+const videoWorker = new Worker(
+  "video-daily",
+  async (job) =>
+    job.name === "video-absence"
+      ? runVideoAbsenceCheck(getGraphSql())
+      : runVideoDaily(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const videoQueue = new Queue("video-daily", { connection });
+const VIDEO_DAILY_CRON = process.env["VIDEO_DAILY_CRON"] ?? "0 13 * * *";
+const VIDEO_ABSENCE_CRON = process.env["VIDEO_ABSENCE_CRON"] ?? "0 19 * * *";
+
+async function registerVideoSchedules(): Promise<void> {
+  await videoQueue.add(
+    "video-daily",
+    {},
+    { jobId: "video-daily-repeat", repeat: { pattern: VIDEO_DAILY_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  await videoQueue.add(
+    "video-absence",
+    {},
+    { jobId: "video-absence-repeat", repeat: { pattern: VIDEO_ABSENCE_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("video_schedules_registered", { start: VIDEO_DAILY_CRON, absence: VIDEO_ABSENCE_CRON });
+}
+
 async function registerBrainDailySchedule(): Promise<void> {
   await brainDailyQueue.add(
     "brain-daily",
@@ -380,6 +413,7 @@ void platformKeysReady.finally(() => {
   void brainWeeklyWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
+  void videoWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
     logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -395,6 +429,9 @@ void platformKeysReady.finally(() => {
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerVideoSchedules().catch((err: Error) => {
+    logger.error("video_schedules_register_failed", { message: err.message?.slice(0, 200) });
   });
 });
 
@@ -638,6 +675,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await landingWorker.close();
     await monitorReconcileWorker.close();
     await monitorReconcileQueue.close();
+    await videoWorker.close();
+    await videoQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,
