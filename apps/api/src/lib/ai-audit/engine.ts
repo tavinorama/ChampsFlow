@@ -147,8 +147,8 @@ export function buildEntryResult(
   return {
     pick,
     reason: pick
-      ? `Picked for a ${answers.businessType} focused on ${answers.primaryFocus}: ${pick.tool.oneLiner} Not a tool most teams have already found.`
-      : "No niche-fit tool matched your pains confidently — the full audit (with a human review) is the honest next step.",
+      ? `Picked for your ${answers.businessType} work in ${answers.primaryFocus}. ${pick.tool.oneLiner} Most teams have not found this one yet.`
+      : "No niche tool clearly fits your answers yet. The full audit, with a human review, is the honest next step.",
     totalMatched,
     withheldCount: Math.max(0, totalMatched - 1),
     painSummary: painSummaryOf(answers),
@@ -193,7 +193,7 @@ export function buildAuditReport(
   const fourDayPlan: PlanStep[] = quickWins.slice(0, PLAN_DAYS).map((s, i) => ({
     day: i + 1,
     tool: s.tool,
-    action: `Set up ${s.tool.name} — ${s.tool.oneLiner}`,
+    action: `Set up ${s.tool.name}. ${s.tool.oneLiner}`,
   }));
 
   const hoursReclaimedWeekly = round2(
@@ -202,8 +202,8 @@ export function buildAuditReport(
 
   const topPick = quickWins[0] ?? recommendedSolutions[0] ?? null;
   const topPickReason = topPick
-    ? `Best fit: addresses ${topPick.matchedPains.length} of your pains, ${topPick.tool.setupEffort}-effort setup, saves ~${topPick.tool.hoursSavedWeekly}h/week.`
-    : "No tool matched your pains confidently — a human review is the honest next step.";
+    ? `Best fit. It solves ${topPick.matchedPains.length} of your pains, takes ${topPick.tool.setupEffort} setup, and saves about ${topPick.tool.hoursSavedWeekly}h a week.`
+    : "No tool clearly matched your pains. A human review is the honest next step.";
 
   return {
     businessType: answers.businessType,
@@ -211,8 +211,8 @@ export function buildAuditReport(
     painSummary: painSummaryOf(answers),
     outcomeSummary:
       quickWins.length > 0
-        ? `Reclaim ~${hoursReclaimedWeekly}h/week by adopting ${quickWins.length} quick win${quickWins.length > 1 ? "s" : ""} first.`
-        : "No quick wins found for these answers — see the recommended path below.",
+        ? `Reclaim about ${hoursReclaimedWeekly}h a week. Start with ${quickWins.length} quick win${quickWins.length > 1 ? "s" : ""}.`
+        : "No quick wins for these answers. See the recommended path below.",
     hoursReclaimedWeekly,
     matrix,
     quickWins,

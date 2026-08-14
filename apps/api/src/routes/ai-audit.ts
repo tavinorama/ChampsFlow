@@ -122,13 +122,13 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
       entry,
       // The whole ladder, spelled out for the client — every product connects.
       upsell: {
-        limitation: "This entry check shows ONE niche tool. It intentionally skips the big-name AIs and holds back the rest.",
+        limitation: "This entry check shows one niche tool. It skips the big-name AIs and holds back the rest.",
         fullAudit: {
-          name: "AI Audit Stack — Full",
-          gets: `The complete ranked stack (${entry.totalMatched} tools matched your needs), the impact-effort map, a day-by-day plan, and your monthly ROI.`,
-          bundledWith: "Delivered inside OrganicPosts, bundled with the Ozvor GEO Search audit.",
+          name: "The full AI Audit Stack",
+          gets: `We matched ${entry.totalMatched} tools to your needs. The full audit ranks them all, maps quick wins, plans your first days, and shows your monthly ROI.`,
+          bundledWith: "You get it inside OrganicPosts, together with your Ozvor GEO Search audit.",
         },
-        alsoOffer: "Ozvor GEO Search — see (and fix) how AI engines describe your brand.",
+        alsoOffer: "Ozvor GEO Search. See how AI engines describe your brand, then fix it.",
       },
       catalog: { source, estimatesUnverified: !allVerified },
     });

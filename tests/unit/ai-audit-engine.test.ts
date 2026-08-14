@@ -163,6 +163,22 @@ describe("buildAuditReport — the whole deck", () => {
     expect(e.reason.toLowerCase()).toContain("full audit");
   });
 
+  it("no client-facing string contains an em-dash (brand copy rule, 14/08)", () => {
+    // Founder rule: zero em-dash (travessao) in ANY copy. Pin it on the strings
+    // the engine generates, plus every seed one-liner, so copy can't regress.
+    const report = buildAuditReport(answers({ pains: SEED_CATALOG.flatMap((t) => t.pains) }), SEED_CATALOG);
+    const entry = buildEntryResult(answers(), SEED_CATALOG);
+    const strings = [
+      report.painSummary, report.outcomeSummary, report.topPickReason,
+      ...report.fourDayPlan.map((s) => s.action),
+      entry.reason,
+      ...SEED_CATALOG.map((t) => t.oneLiner),
+    ];
+    for (const s of strings) {
+      expect(s, `em-dash found in: "${s}"`).not.toContain("—");
+    }
+  });
+
   it("a real agency/marketing intake produces a coherent, ordered deck", () => {
     const r = buildAuditReport(answers(), SEED_CATALOG);
     expect(r.empty).toBe(false);
