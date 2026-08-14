@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildAuditReport,
+  buildEntryResult,
   quadrantOf,
   scoreTool,
 } from "../../apps/api/src/lib/ai-audit/engine";
@@ -132,6 +133,34 @@ describe("buildAuditReport — the whole deck", () => {
     expect(r.recommendedSolutions).toEqual([]);
     expect(r.topPick).toBeNull();
     expect(r.topPickReason.toLowerCase()).toContain("human review");
+  });
+
+  it("the low-ticket entry picks ONE niche tool, never a household-name giant", () => {
+    const e = buildEntryResult(answers(), SEED_CATALOG);
+    expect(e.empty).toBe(false);
+    expect(e.pick).not.toBeNull();
+    // ChatGPT/Claude are marked isGeneric — the entry must not surface them.
+    expect(e.pick!.tool.isGeneric).not.toBe(true);
+    expect(["chatgpt", "claude"]).not.toContain(e.pick!.tool.id);
+    // The upsell hook: it counts everything the full audit would rank, and
+    // withholds all-but-one.
+    expect(e.totalMatched).toBeGreaterThan(1);
+    expect(e.withheldCount).toBe(e.totalMatched - 1);
+  });
+
+  it("the entry prefers a tool whose niche matches the client's business type", () => {
+    // An agency should get an agency-niche tool, not a generic-niche one.
+    const e = buildEntryResult(answers({ businessType: "agency", primaryFocus: "marketing" }), SEED_CATALOG);
+    expect(e.pick!.tool.niches).toContain("agency");
+  });
+
+  it("the entry is honest-empty (never a giant) when no niche tool matches", () => {
+    // Only content-volume, and among matches the sole non-giant niche fit... if
+    // we strip niches, it still must not return a giant.
+    const e = buildEntryResult(answers({ pains: ["a-pain-no-tool-has"] }), SEED_CATALOG);
+    expect(e.empty).toBe(true);
+    expect(e.pick).toBeNull();
+    expect(e.reason.toLowerCase()).toContain("full audit");
   });
 
   it("a real agency/marketing intake produces a coherent, ordered deck", () => {

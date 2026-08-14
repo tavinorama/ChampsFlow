@@ -16,6 +16,7 @@
 import type {
   AuditReport,
   Effort,
+  EntryResult,
   FinancialImpact,
   Impact,
   PlanStep,
@@ -114,6 +115,45 @@ function round2(n: number): number {
 function painSummaryOf(answers: QuestionnaireAnswers): string {
   if (answers.pains.length === 0) return "No specific pains were selected.";
   return `Time lost to: ${answers.pains.join(", ")}.`;
+}
+
+/**
+ * The LOW-TICKET entry result: ONE niche-fit tool (never a household-name
+ * giant) + the honest count of what the full audit would surface. Selection:
+ * drop already-owned and giants, keep only pain-anchored matches, then PREFER
+ * a tool whose niches include the client's business type (the personal touch)
+ * and, among those, the highest score. When no niche-fit tool exists, fall
+ * back to the best non-giant match; when nothing matches, return empty (the
+ * honest "let's talk" state) — never a giant, never invented.
+ */
+export function buildEntryResult(
+  answers: QuestionnaireAnswers,
+  catalog: Tool[]
+): EntryResult {
+  const owned = new Set((answers.toolsInUse ?? []).map(normalize));
+  const bt = normalize(answers.businessType);
+
+  const matched = catalog
+    .filter((t) => !owned.has(normalize(t.id)))
+    .map((t) => scoreTool(t, answers))
+    .filter((s) => s.matchedPains.length > 0)
+    .sort(byRank);
+
+  const nonGiant = matched.filter((s) => s.tool.isGeneric !== true);
+  const nicheFit = nonGiant.filter((s) => s.tool.niches.map(normalize).includes(bt));
+  const pick = nicheFit[0] ?? nonGiant[0] ?? null;
+
+  const totalMatched = matched.length;
+  return {
+    pick,
+    reason: pick
+      ? `Picked for a ${answers.businessType} focused on ${answers.primaryFocus}: ${pick.tool.oneLiner} Not a tool most teams have already found.`
+      : "No niche-fit tool matched your pains confidently — the full audit (with a human review) is the honest next step.",
+    totalMatched,
+    withheldCount: Math.max(0, totalMatched - 1),
+    painSummary: painSummaryOf(answers),
+    empty: pick === null,
+  };
 }
 
 /**

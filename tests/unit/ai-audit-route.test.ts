@@ -88,3 +88,23 @@ describe("POST /api/ai-audit/assess", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("POST /api/ai-audit/entry (low-ticket)", () => {
+  it("returns one niche tool + the visible upsell ladder", async () => {
+    const res = await appWith(seedDb).request("/api/ai-audit/entry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ businessType: "agency", primaryFocus: "marketing", pains: ["content-volume", "lead-research"] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      entry: { pick: { tool: { id: string; isGeneric?: boolean } }; totalMatched: number; withheldCount: number };
+      upsell: { fullAudit: { bundledWith: string }; alsoOffer: string };
+    };
+    expect(body.entry.pick.tool.isGeneric).not.toBe(true);
+    expect(body.entry.withheldCount).toBe(body.entry.totalMatched - 1);
+    // The ladder is in the payload: full audit bundled with GEO, GEO offered too.
+    expect(body.upsell.fullAudit.bundledWith).toContain("GEO");
+    expect(body.upsell.alsoOffer).toContain("GEO Search");
+  });
+});

@@ -29,6 +29,7 @@ export const SEED_CATALOG: Tool[] = [
     impact: "high",
     hoursSavedWeekly: 5,
     oneLiner: "General-purpose assistant for drafts, replies and quick analysis.",
+    isGeneric: true,
   },
   {
     id: "claude",
@@ -42,6 +43,7 @@ export const SEED_CATALOG: Tool[] = [
     impact: "high",
     hoursSavedWeekly: 5,
     oneLiner: "Long-context assistant strong at documents, analysis and code.",
+    isGeneric: true,
   },
   {
     id: "jasper",
