@@ -46,3 +46,28 @@ describe("runVideoAbsenceCheck (#169)", () => {
     expect(res.runsStarted).toBe(2);
   });
 });
+
+/**
+ * computeLift — structural hole #2 of the 14/08 sweep. lift was a hardcoded
+ * null since day one, so every verdict was absolute. Baseline = mean of prior
+ * outcomes for the same metric; null stays honest on a first run.
+ */
+import { computeLift } from "../../apps/worker/src/jobs/graph-tick";
+
+describe("computeLift (real lift, hole #2)", () => {
+  it("300 vs baseline mean(100,200)=150 → +1.0", () => {
+    expect(computeLift(300, 150)).toBe(1);
+  });
+  it("75 vs baseline 100 → -0.25", () => {
+    expect(computeLift(75, 100)).toBe(-0.25);
+  });
+  it("no prior rows (baseline null) → null, never invented", () => {
+    expect(computeLift(300, null)).toBeNull();
+  });
+  it("baseline 0 → null (division would lie)", () => {
+    expect(computeLift(10, 0)).toBeNull();
+  });
+  it("missing value → null", () => {
+    expect(computeLift(null, 100)).toBeNull();
+  });
+});

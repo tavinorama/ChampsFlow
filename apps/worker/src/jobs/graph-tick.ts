@@ -41,6 +41,18 @@ const MAX_RUNS_PER_TICK = 5;
 
 let warnedMissingHermes = false;
 
+/**
+ * Relative lift of a new outcome vs its baseline (mean of prior outcomes for
+ * the same metric). Pure, exported for tests. Honest null when there is no
+ * baseline, the baseline is 0, or the value is missing — a first run has
+ * nothing to be compared against, and we never invent a comparison.
+ * Rounded to 4 decimals (0.25 = +25%).
+ */
+export function computeLift(valueAfter: number | null, baseline: number | null): number | null {
+  if (valueAfter == null || baseline == null || !(baseline > 0)) return null;
+  return Math.round(((valueAfter - baseline) / baseline) * 10_000) / 10_000;
+}
+
 async function httpJson(
   url: string,
   init: RequestInit,
@@ -295,7 +307,23 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
            WHERE id = ${runId}::uuid`;
       },
       async recordOutcome(input) {
-        const lift = null; // no baseline on a first-run verdict; lib semantics
+        // LIFT, for real (structural hole #2 of the 14/08 sweep — this was a
+        // hardcoded null since day one, so every verdict was absolute and the
+        // learning loop compared against nothing). Baseline = the mean of the
+        // last 5 PRIOR outcomes for the exact same metric; lift = relative
+        // change vs that baseline. Honest null when there is no prior row or
+        // the baseline is 0 — a first run has nothing to be measured against,
+        // and we never invent a comparison. One query, no schema change.
+        const base = await sql<{ baseline: string | null }[]>`
+          SELECT AVG(value_after)::text AS baseline
+            FROM (SELECT value_after
+                    FROM ops.agent_outcome
+                   WHERE metric = ${input.metric}
+                     AND value_after IS NOT NULL
+                   ORDER BY measured_at DESC
+                   LIMIT 5) prior`;
+        const baseline = base[0]?.baseline != null ? Number(base[0].baseline) : null;
+        const lift = computeLift(input.valueAfter, baseline);
         const rows = await sql<{ id: string }[]>`
           INSERT INTO ops.agent_outcome (step_id, metric, value_before, value_after, lift)
           VALUES (${input.stepId}::uuid, ${input.metric}, ${input.valueBefore}, ${input.valueAfter}, ${lift})

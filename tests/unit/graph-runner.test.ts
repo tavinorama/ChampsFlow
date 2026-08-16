@@ -253,7 +253,10 @@ describe("daily-video, the full life", () => {
     expect(world.published).toEqual([]);
   });
 
-  it("a harvest with no data records HONEST ZERO at grace instead of hanging", async () => {
+  it("a harvest whose SOURCE is mute (0 rows at grace) SCREAMS and records NO outcome — never a fake zero", async () => {
+    // Structural hole #3 of the 14/08 sweep. Before: n=0 at grace → total=0
+    // → verdict wrote value_after=0 → the learning loop was taught "did not
+    // perform" (the 13/08 false-zero bug). Now: noData → alarm + no row.
     const world = makeWorld();
     await tickUntil(world, () => world.stepByNode("founder-approval")?.status === "waiting");
     await world.ports.substrate.finishStep(world.stepByNode("founder-approval")!.id, { status: "succeeded" });
@@ -266,8 +269,31 @@ describe("daily-video, the full life", () => {
     await tickUntil(world, () => world.run.status !== "running");
 
     expect(world.stepByNode("harvest")?.status).toBe("succeeded");
-    expect(world.stepByNode("harvest")?.summary).toContain("honest zero");
+    expect(world.stepByNode("harvest")?.summary).toContain("SEM DADO");
+    // The alarm named the mute source, and the verdict said "sem veredito".
+    expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(true);
+    expect(world.telegrams.some((t) => t.includes("SEM VEREDITO"))).toBe(true);
+    // The whole point: NO fake zero in ops.agent_outcome.
+    expect(world.outcomes).toEqual([]);
+    expect(world.stepByNode("verdict")?.status).toBe("succeeded");
+    expect(world.run.status).toBe("succeeded");
+  });
+
+  it("a REAL zero (rows exist, total 0) still records the outcome as a legitimate measurement", async () => {
+    const world = makeWorld();
+    await tickUntil(world, () => world.stepByNode("founder-approval")?.status === "waiting");
+    await world.ports.substrate.finishStep(world.stepByNode("founder-approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting");
+
+    world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+    // The source wrote rows; they just say zero. That IS a measurement.
+    world.harvestData = { n: 2, total: 0 };
+    await tickUntil(world, () => world.run.status !== "running");
+
+    expect(world.stepByNode("harvest")?.summary).toContain("n=2 total=0");
+    expect(world.outcomes).toHaveLength(1);
     expect(world.outcomes[0]!.valueAfter).toBe(0);
+    expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(false);
     expect(world.run.status).toBe("succeeded");
   });
 });

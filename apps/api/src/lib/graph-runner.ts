@@ -157,7 +157,7 @@ export interface AdvanceResult {
 
 /** A step stuck 'running' longer than this is treated as a crash. */
 export const RUNNING_TIMEOUT_HOURS = 2;
-/** A harvest that finds nothing keeps waiting this long, then records honest zero. */
+/** A harvest that finds nothing keeps waiting this long, then finishes as noData — loud, never a fake zero. */
 export const HARVEST_GRACE_HOURS = 48;
 
 const sha = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
@@ -250,15 +250,23 @@ export async function advanceRun(
         step.status = "succeeded";
         notes.push(`harvest ${nodeId} found n=${got.n}`);
       } else if (hoursSince(step.started_at, now()) >= HARVEST_GRACE_HOURS) {
-        // Honest zero beats an eternal hang: the metric never arrived and
-        // the verdict must SAY that, not be silently never reached.
-        await artifacts.set(runId, nodeId, JSON.stringify({ metric, n: 0, total: 0 }));
+        // ZERO ROWS is not a zero RESULT. n=0 after the grace window means the
+        // outcome SOURCE went mute (the VPS 07:40 writer lives outside this
+        // repo and can die without anyone here noticing) — recording it as
+        // total=0 fabricated a "did not perform" verdict once already (the
+        // 13/08 false-zero bug). Nada degrada calado: mark the artifact
+        // noData, finish out loud, and scream on Telegram. A REAL zero
+        // (n>0, total=0) still flows through the branch above untouched.
+        await artifacts.set(runId, nodeId, JSON.stringify({ metric, n: 0, total: 0, noData: true }));
         await substrate.finishStep(step.id, {
           status: "succeeded",
-          summary: `harvest ${metric}: NOTHING after ${HARVEST_GRACE_HOURS}h grace (honest zero)`,
+          summary: `SEM DADO: fonte de outcomes muda (0 linhas para ${metric}) após ${HARVEST_GRACE_HOURS}h`,
         });
         step.status = "succeeded";
-        notes.push(`harvest ${nodeId} honest zero`);
+        await telegram(
+          `🔴 HARVEST SEM DADO — graph ${def.slug} (run ${runId.slice(0, 8)}): 0 linhas para '${metric}' após ${HARVEST_GRACE_HOURS}h de graça. O escritor de outcomes da VPS (cron 07:40) parece morto — verificar a fonte, não o graph.`
+        );
+        notes.push(`harvest ${nodeId} no data — source mute`);
       }
     } else if (node.kind === "approval") {
       // Approvals stay 'waiting' until the #445 finish route decides them — but
@@ -422,22 +430,38 @@ export async function advanceRun(
       let metric = "unknown";
       let total = 0;
       let n = 0;
+      let noData = false;
       try {
-        const parsed = JSON.parse(raw ?? "{}") as { metric?: string; total?: number; n?: number };
+        const parsed = JSON.parse(raw ?? "{}") as { metric?: string; total?: number; n?: number; noData?: boolean };
         metric = parsed.metric ?? "unknown";
         total = Number(parsed.total ?? 0);
         n = Number(parsed.n ?? 0);
+        noData = parsed.noData === true;
       } catch {
         // verdict on a malformed harvest is still a verdict: zero, said out loud
       }
-      await substrate.recordOutcome({ stepId, metric, valueBefore: null, valueAfter: total });
-      await substrate.finishStep(stepId, {
-        status: "succeeded",
-        summary: `verdict ${metric}: total=${total} n=${n}`,
-      });
-      await telegram(
-        `🟢 VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${metric} = ${total} (n=${n}). Registrado em ops.agent_outcome.`
-      );
+      if (noData) {
+        // A mute source produced no measurement — recording total=0 here would
+        // put a FALSE ZERO in ops.agent_outcome and teach the learning loop
+        // that the content "did not perform" (the 13/08 bug, exactly). No
+        // outcome row: "sem dado, sem veredito", said out loud.
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `verdict ${metric}: SEM DADO — sem veredito, nada gravado em ops.agent_outcome`,
+        });
+        await telegram(
+          `🟠 SEM VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): '${metric}' sem dado (fonte de outcomes muda). NADA gravado em ops.agent_outcome — sem zero falso.`
+        );
+      } else {
+        await substrate.recordOutcome({ stepId, metric, valueBefore: null, valueAfter: total });
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `verdict ${metric}: total=${total} n=${n}`,
+        });
+        await telegram(
+          `🟢 VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${metric} = ${total} (n=${n}). Registrado em ops.agent_outcome.`
+        );
+      }
     } else if (node.kind === "snapshot") {
       // The runner reads the company's own record into an artifact. Honest
       // empty: if there is no data, the node still SUCCEEDS with a said-so
