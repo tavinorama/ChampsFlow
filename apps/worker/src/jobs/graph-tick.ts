@@ -420,6 +420,14 @@ const WEEKLY_BRAINS = ["daily-dream", "weekly-product"];
  */
 const SPHERE_CELLS = ["sphere-x"];
 /**
+ * #156 cells two and three (14/08 sprint). LinkedIn posts Tue/Thu — offset
+ * from X's Mon/Wed/Fri so the founder never gets two approvals in one
+ * sitting. The blog cell thinks on Thursday, so its brief+outline reaches the
+ * founder before the Monday 12:00 CI autopublish; it publishes nothing.
+ */
+const LINKEDIN_CELLS = ["sphere-linkedin"];
+const BLOG_CELLS = ["sphere-blog"];
+/**
  * The daily video, as a GRAPH (v2/v3 — memory + adapt + correct harvest
  * metric). The structural hole of 14/08: this graph was registered and valid
  * but appeared in NO cron list, so nothing ever started it — while the legacy
@@ -497,6 +505,16 @@ export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: 
 /** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
 export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
+}
+
+/** LinkedIn cell (#156): Tue/Thu content runs. 20h look-back. */
+export async function runSphereLinkedinStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, LINKEDIN_CELLS, 20, "cron:sphere-linkedin");
+}
+
+/** Blog cell (#156): weekly thinker, Thursday. 6-day look-back. */
+export async function runSphereBlogStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+  return startBrainRuns(sql, BLOG_CELLS, 24 * 6, "cron:sphere-blog");
 }
 
 /** The daily video graph (v2), once per calendar day. 20h look-back. */

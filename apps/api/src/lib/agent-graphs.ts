@@ -509,6 +509,65 @@ export const SPHERE_X_GRAPH: GraphDefinition = {
   ],
 };
 
+/**
+ * #156, second specialist cell: LinkedIn. Same closed loop as sphere-x, its
+ * OWN memory (linkedin_* outcomes), and the channel's own grammar: LinkedIn
+ * rewards a story with a lesson, not a punch. Two drafts — a first-person
+ * story and a contrarian take — judged against what this sphere already
+ * published. LinkedIn is where the org proved approval→publish (13/08), so
+ * this cell inherits the adapt discipline: English, native to the feed,
+ * never a raw script.
+ */
+export const SPHERE_LINKEDIN_GRAPH: GraphDefinition = {
+  slug: "sphere-linkedin",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedin_* outcomes) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedin_impressions → verdict.",
+  nodes: [
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedin_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "linkedin-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "linkedin-briefing" } },
+    { id: "draft-story", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "story" } },
+    { id: "draft-contrarian", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "contrarian" } },
+    { id: "critic", kind: "debate", dependsOn: ["draft-story", "draft-contrarian", "memory"], config: { prompt: "linkedin-critic" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft-story", "draft-contrarian", "critic"], config: { prompt: "linkedin-finalize" } },
+    { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
+    { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
+    { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "linkedin_impressions" } },
+    { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+  ],
+};
+
+/**
+ * #156, third specialist cell: the blog. Different shape ON PURPOSE. The blog
+ * has no Postiz channel — articles ship through the CI blog-autopublish
+ * pipeline (Monday 12:00, PR + auto-merge). So this cell does the THINKING
+ * the pipeline lacks (memory of what was published, a real angle, an
+ * outline judged by a critic) and ends in a REPORT to the founder: the brief
+ * + outline, ready to feed the pipeline. Read-only by construction (no
+ * publish, no spawn), so it can run itself weekly and never violates the
+ * "nothing publishes without approval" rule — it publishes nothing.
+ */
+export const SPHERE_BLOG_GRAPH: GraphDefinition = {
+  slug: "sphere-blog",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "Blog specialist cell (read-only): recall what the blog already covered (blog_* outcomes + memory) → signal (what people search/ask about GEO now) → editorial briefing that must not repeat → 2 outlines (how-to vs data-story) → critic (freshness + honesty) → finalize → REPORT the brief+outline to the founder for the blog-autopublish pipeline. Publishes nothing itself.",
+  nodes: [
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 60, metricPrefix: "blog_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "blog-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "blog-briefing" } },
+    { id: "outline-howto", kind: "task", dependsOn: ["briefing"], config: { prompt: "blog-outline", style: "how-to" } },
+    { id: "outline-data", kind: "task", dependsOn: ["briefing"], config: { prompt: "blog-outline", style: "data-story" } },
+    { id: "critic", kind: "debate", dependsOn: ["outline-howto", "outline-data", "memory"], config: { prompt: "blog-critic" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["outline-howto", "outline-data", "critic"], config: { prompt: "blog-finalize" } },
+    { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "📝 Blog da semana: briefing + outline (esfera blog)" } },
+  ],
+};
+
 export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
   slug: "content-experiment",
   version: 1,
