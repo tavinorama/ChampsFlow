@@ -412,6 +412,122 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- sphere-linkedin cell (#156, second specialist) ------------------------
+  // LinkedIn's grammar: a story with a lesson beats a punch; the first two
+  // lines decide the "see more" click. This is the channel where the org
+  // proved approval→publish (13/08) AND where the raw-script incident
+  // happened — so every draft is native to the feed, English, never a script.
+
+  "linkedin-signal": () =>
+    [
+      "Voce e o agente de sinais da esfera LinkedIn da Ozvor (visibilidade em IA / GEO).",
+      "Liste 4 angulos QUENTES no LinkedIn agora onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
+      "LinkedIn premia historia com licao e opiniao com dado: prefira angulos que rendam um post de 6-10 linhas com uma virada.",
+      "Para cada um: 1 linha do angulo + 1 linha de por que renderia comentario HOJE.",
+      "Sem inventar dado: numero so com certeza.",
+      "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+    ].join("\n"),
+
+  "linkedin-briefing": (ctx) =>
+    [
+      "Voce e o editor da esfera LinkedIn da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no LinkedIn — leia primeiro.",
+      "REGRA: o briefing de hoje tem que ser MENSURAVELMENTE diferente do que ja publicamos em [memory] — outro gancho, outra tese ou outro formato. Repetir o que ja rodou nao e opcao.",
+      "Dos sinais em [signal], escolha O MELHOR angulo para UM post de LinkedIn hoje e produza: TESE (1 frase, a virada) · PUBLICO (quem comenta) · PROVA (fato/numero real ou historia real) · CTA (1a pessoa, leve, sem link na 1a linha) · DIFERENTE-DE (1 linha: o que fazemos diferente do historico em [memory]).",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
+      ENGLISH_FIRST,
+      "Formato de saida: 5 linhas rotuladas TESE/PUBLICO/PROVA/CTA/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "linkedin-draft": (ctx) =>
+    [
+      `Voce e um escritor de LinkedIn. A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "story")}":`,
+      "story = post em 1a pessoa, 6-10 linhas curtas, uma cena real no comeco, a licao no fim, as 2 primeiras linhas seguram o 'ver mais'. · contrarian = post que abre com uma opiniao que contraria o senso comum, prova em 3 linhas, fecha com a consequencia pratica.",
+      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, no maximo 1 emoji, honesto (nada que o produto nao cumpre), zero link no corpo (link vai no comentario).",
+      ENGLISH_FIRST,
+      "Formato de saida: so o post, pronto para colar, uma linha em branco entre paragrafos.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "linkedin-critic": (ctx) =>
+    [
+      "Voce e o critico da esfera LinkedIn da Ozvor. Abaixo: 2 versoes (story e contrarian), o briefing e o historico real do canal em [memory].",
+      "Avalie por 3 perguntas: 1) as 2 primeiras linhas fazem clicar em 'ver mais'? 2) isso repete o padrao de [memory]? 3) algum risco de compliance (promessa que nao cumprimos, claim sem base, dado inventado)?",
+      "Para cada versao: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
+      "Compliance e freshness tem VETO: risco apontado tem que sair; padrao repetido tem que mudar.",
+      "Termine com: VENCEDOR: <story|contrarian>.",
+      "Formato de saida: 2 blocos + a linha VENCEDOR.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "linkedin-finalize": (ctx) =>
+    [
+      "Voce e o editor-chefe da esfera LinkedIn. Abaixo: as 2 versoes e a critica.",
+      "Pegue o VENCEDOR da critica e reescreva UMA vez incorporando as correcoes. Vetos da critica sao lei: risco sai, padrao repetido muda.",
+      "Confirme: post nativo do LinkedIn (nao e roteiro, nao tem marcadores [HOOK]/[BEAT]), sem travessao, sem link no corpo.",
+      ENGLISH_FIRST,
+      "Formato de saida: so o texto final pronto para publicar, nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  // --- sphere-blog cell (#156, third specialist; read-only) -----------------
+  // The blog ships through the CI autopublish pipeline; this cell supplies
+  // the THINKING (memory, angle, judged outline) and reports it to the
+  // founder. It publishes nothing.
+
+  "blog-signal": () =>
+    [
+      "Voce e o agente de sinais da esfera BLOG da Ozvor (visibilidade em IA / GEO).",
+      "Liste 4 perguntas ou temas que SMBs e agencias estao buscando/perguntando AGORA sobre aparecer nas respostas de IA (ChatGPT, Perplexity, Gemini, AI Overview): como ser citado, por que sumiram, o que muda em relacao ao SEO, como medir.",
+      "Blog premia utilidade que a IA cita de volta: prefira temas com resposta concreta, passo a passo ou dado.",
+      "Para cada um: 1 linha do tema + 1 linha da intencao de busca por tras.",
+      "Sem inventar dado: numero so com certeza.",
+      "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+    ].join("\n"),
+
+  "blog-briefing": (ctx) =>
+    [
+      "Voce e o editor do blog da Ozvor. O bloco [memory] abaixo e o que o blog JA cobriu e como performou — leia primeiro.",
+      "REGRA: o artigo desta semana NAO pode repetir tema ja coberto em [memory]. Se o melhor sinal ja foi coberto, escolha o segundo ou um angulo genuinamente novo sobre ele.",
+      "Dos sinais em [signal], escolha O MELHOR tema para UM artigo e produza: TITULO (H1, promessa clara) · PERGUNTA (a busca que ele responde) · PUBLICO · TESE (1 frase) · PROVA (o que sustenta, com fonte real ou 'a pesquisar') · DIFERENTE-DE (1 linha vs [memory]).",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, 100% humano, sem travessao, sonho honesto.",
+      ENGLISH_FIRST,
+      "Formato de saida: 6 linhas rotuladas (rotulos em PT, conteudo em ingles), nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "blog-outline": (ctx) =>
+    [
+      `Voce e um redator de blog. A partir do briefing abaixo, escreva um OUTLINE no estilo "${String(ctx.config["style"] ?? "how-to")}":`,
+      "how-to = H1 + intro de 3 linhas + 5-7 H2 em ordem de execucao, cada H2 com 2 bullets do que entra + um fecho com o proximo passo. · data-story = H1 + intro com o dado/fato que surpreende + 4-6 H2 que explicam causa, efeito, o que fazer + fecho.",
+      "Cada H2 deve poder ser citado sozinho por uma IA (frase-resposta direta no primeiro bullet).",
+      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem promessa que o produto nao cumpre, fontes marcadas como [fonte: ...] ou [a pesquisar].",
+      ENGLISH_FIRST,
+      "Formato de saida: o outline em markdown (H1, H2, bullets), nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "blog-critic": (ctx) =>
+    [
+      "Voce e o critico do blog da Ozvor. Abaixo: 2 outlines (how-to e data-story), o briefing e o historico do blog em [memory].",
+      "Avalie por 3 perguntas: 1) uma IA citaria este artigo como resposta? (utilidade concreta) 2) repete tema/angulo de [memory]? 3) algum claim sem fonte ou promessa que nao cumprimos?",
+      "Para cada outline: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
+      "Honestidade e freshness tem VETO: claim sem fonte vira [a pesquisar] ou sai; tema repetido muda de angulo.",
+      "Termine com: VENCEDOR: <how-to|data-story>.",
+      "Formato de saida: 2 blocos + a linha VENCEDOR.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "blog-finalize": (ctx) =>
+    [
+      "Voce e o editor-chefe do blog da Ozvor. Abaixo: os 2 outlines e a critica.",
+      "Pegue o VENCEDOR e entregue o pacote FINAL para o redator: o briefing resumido (titulo, pergunta, publico, tese) + o outline corrigido conforme a critica. Vetos sao lei.",
+      "Este pacote vai para o founder e para o pipeline de publicacao do blog; ele NAO publica nada sozinho.",
+      ENGLISH_FIRST,
+      "Formato de saida: markdown com 2 secoes: '## Brief' e '## Outline', nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   "experiment-finalize": (ctx) =>
     [
       "Voce e o editor-chefe da Ozvor. Abaixo estao o rascunho do post e a critica de compliance.",
