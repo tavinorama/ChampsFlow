@@ -64,6 +64,8 @@ import {
   scorePage,
   computeContentScoreFromTraits,
   mockAllowed,
+  recordSpend,
+  execForPostgresJs,
   type ContentProvider,
   type LandingBusinessInput,
   type LandingReviewInput,
@@ -745,13 +747,17 @@ export async function processLandingGenerateJob(
     // ledger + try/catch pattern as audit-run.ts's post-completion spend
     // record. Only real LLM runs cost anything against the platform key;
     // mock-mode runs are free and are not recorded.
+    // #152: still a FLAT number here (the content-studio path does not surface
+    // token usage yet) — recorded through the shared writer so the row says
+    // source='flat' instead of pretending to be a measurement.
     if (bundle.mode === "llm") {
-      try {
-        const landingGenerateCostCents = Number(process.env["LANDING_GENERATE_COST_CENTS"] ?? 15);
-        await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('pages_generate', ${landingGenerateCostCents})`;
-      } catch (err) {
-        logger.warn("landing_generate_spend_record_failed", { message: (err as Error).message });
-      }
+      const landingGenerateCostCents = Number(process.env["LANDING_GENERATE_COST_CENTS"] ?? 15);
+      await recordSpend(execForPostgresJs(sql), {
+        op: "pages_generate",
+        estCents: landingGenerateCostCents,
+        estSource: "flat",
+        ref: site_id,
+      });
     }
 
     // 11. Stamp the site's first successful generation (#121). COALESCE keeps

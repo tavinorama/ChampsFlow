@@ -49,6 +49,10 @@ import {
   type DriftEngine,
   type DriftEvaluation,
   type DriftLLMCaller,
+  type ProbeUsage,
+  mergeProbeUsage,
+  recordSpend,
+  execForPostgresJs,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
 
@@ -122,7 +126,17 @@ export function pauseExemptEngines(): DriftEngine[] {
 // prompts contain no personal data and no customer brand, so no EU restriction
 // applies — and running the full 5 is the whole point of a control.
 // ---------------------------------------------------------------------------
-const gatewayCaller: DriftLLMCaller = async ({ engine, control }) => {
+/**
+ * #152 — per-job usage collector. The battery's LLMCaller contract returns
+ * text only, so the measured usage the adapters attach to each ProbeResponse
+ * would be dropped here. makeGatewayCaller threads it into a per-job map
+ * (engine → summed usage) that the spend writer reads at the end. Tests that
+ * pass their own caller get no usage and the ledger degrades to 'rate'.
+ */
+type UsageByEngine = Map<string, ProbeUsage>;
+
+const makeGatewayCaller = (usage: UsageByEngine): DriftLLMCaller =>
+  async ({ engine, control }) => {
   const res = await runProbes(
     [
       {
@@ -134,6 +148,10 @@ const gatewayCaller: DriftLLMCaller = async ({ engine, control }) => {
     { region: "US", requestedProviders: [engine], repeat: 1 }
   );
   const probe = res.responses[0];
+  if (probe?.usage) {
+    const merged = mergeProbeUsage(usage.get(engine), probe.usage);
+    if (merged) usage.set(engine, merged);
+  }
 
   // An ABSENT surface is not a failed answer, and conflating the two paused a
   // healthy engine for three days.
@@ -175,7 +193,7 @@ export interface DriftJobResult {
 export async function processDriftControlJob(
   _job: Job<Record<string, never>> | undefined,
   sql: postgres.Sql,
-  caller: DriftLLMCaller = gatewayCaller
+  caller?: DriftLLMCaller
 ): Promise<DriftJobResult> {
   if (!driftControlEnabled()) {
     logger.info("drift_battery_disabled", { flag: "GEO_DRIFT_CONTROL=0" });
@@ -183,7 +201,11 @@ export async function processDriftControlJob(
   }
 
   const runs = driftRuns();
-  const outcome = await runDriftBattery(DRIFT_ENGINES, caller, { runs });
+  // #152: the default (gateway) caller collects measured usage per engine
+  // for THIS job; an injected caller (tests) collects nothing → 'rate' rows.
+  const usageByEngine: UsageByEngine = new Map();
+  const effectiveCaller = caller ?? makeGatewayCaller(usageByEngine);
+  const outcome = await runDriftBattery(DRIFT_ENGINES, effectiveCaller, { runs });
   const evaluations = evaluateDrift(outcome);
 
   // Integrity guard: zero usable answers across ALL engines is our outage, not
@@ -272,12 +294,47 @@ export async function processDriftControlJob(
   }
 
   // Record the battery's platform API spend (visibility only — never blocking).
+  // #152: one row per engine. Measured (tokens × list price) when the gateway
+  // caller collected usage for that engine, else the per-generation RATE.
+  // Verification calls (B3) have no usage plumbing yet → one 'rate' row.
+  // The writer never throws and degrades to the legacy INSERT pre-migration.
   const costCents = estimateDriftCostCents(outcome.generations, outcome.verificationCalls);
-  try {
-    await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('drift_control', ${costCents})`;
-  } catch (err) {
-    logger.warn("drift_spend_record_failed", { message: (err as Error).message?.slice(0, 160) });
+  const perEngineGens = DRIFT_CONTROLS.length * runs;
+  const perEngineRateCents = estimateDriftCostCents(perEngineGens, 0);
+  const verifyRateCents = estimateDriftCostCents(0, outcome.verificationCalls);
+  const spendExec = execForPostgresJs(sql);
+  const jobRef = `drift:${outcome.checkedAt}`;
+  let measuredEngines = 0;
+  for (const engine of DRIFT_ENGINES) {
+    const u = usageByEngine.get(engine);
+    const r = await recordSpend(spendExec, {
+      op: "drift_control",
+      engine,
+      model: u?.model ?? null,
+      inputTokens: u?.inputTokens ?? null,
+      outputTokens: u?.outputTokens ?? null,
+      searchRequests: u?.searchRequests ?? null,
+      requests: u?.requests ?? perEngineGens,
+      estCents: perEngineRateCents,
+      estSource: "rate",
+      ref: jobRef,
+    });
+    if (r.source === "measured") measuredEngines += 1;
   }
+  if (outcome.verificationCalls > 0) {
+    await recordSpend(spendExec, {
+      op: "drift_control",
+      engine: "extraction",
+      estCents: verifyRateCents,
+      estSource: "rate",
+      ref: jobRef,
+    });
+  }
+  logger.info("drift_spend_recorded", {
+    cents: costCents,
+    engines: DRIFT_ENGINES.length,
+    measured_engines: measuredEngines,
+  });
 
   if (failing.length > 0) {
     logger.error("drift_engines_failing", {

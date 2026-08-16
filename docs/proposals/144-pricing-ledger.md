@@ -436,3 +436,40 @@ Nothing below is implemented. This is the surface a B5 implementation would need
 | `methodology_version` convention | `packages/db/migrations/20260728000001_intent_sampling.up.sql:44` to `:52` |
 | `usage_counters` is a counter, not a record | `packages/db/migrations/20260710000004_usage_counters.up.sql:8` to `:14` |
 | `GET /audits/:id` exposes `extraction` additively | `apps/api/src/routes/audits.ts:1407` to `:1410` |
+
+---
+
+## Addendum 2026-08-16 — #152: `api_spend` mede, não estima
+
+**Status**: implementado (PR `feat/cost-real-metering-code`; migração em PR separado, `feat/cost-real-metering`, merge do founder).
+
+Até aqui `api_spend` era um **modelo**: uma linha por operação, `est_cost_cents = chamadas × taxa por motor` (taxas do experimento de 2026-08-05; overrides `AUDIT_COST_PER_GEN_CENTS[_ENGINE]`). Os clientes LLM já recebiam `input_tokens`/`output_tokens` em toda resposta e descartavam antes de chegar ao ledger. O #152 fecha esse elo.
+
+### O que mudou
+
+- **Schema** (`20260815000001_api_spend_measured`): colunas NULLABLE `engine`, `model`, `input_tokens`, `output_tokens`, `measured_cost_cents NUMERIC(10,4)`, `source` (`measured|rate|flat`) e `ref` (audit_id / job id). `est_cost_cents` continua NOT NULL. Índice `(engine, created_at)`.
+- **Adapters de probe** (`packages/llm/src/providers/{anthropic,openai,gemini,perplexity}.ts`) agora anexam `usage` (`model`, tokens, `searchRequests` quando o provedor reporta, `requests`) a cada `ProbeResponse`. O gateway soma entre repetições; o sampler soma entre rodadas de escalação; o probe cache **não** guarda usage (cache = custo zero neste run, sem dupla contagem).
+- **Preço de lista** (`packages/llm/src/cost.ts`): `measuredCostCents({model, tokens, ...})` = tokens × preço público (USD/1M) + taxas por requisição conhecidas (sonar $5/1k req; Anthropic web search $10/1k). Modelo desconhecido → `null` → o chamador cai na taxa. **Nunca chuta.**
+- **Escritor único** (`packages/llm/src/api-spend.ts` → `recordSpend`): precedência `measured › rate › flat`; INSERT largo; em `42703` (migração ainda não aplicada) degrada para o INSERT legado `(op, est_cost_cents)` e loga `api_spend_legacy_schema` uma vez por processo; nunca lança. Linha `measured` **mantém** a estimativa da taxa em `est_cost_cents` para comparação linha a linha.
+- **Escritores**: `audit-run.ts` (1 linha por motor vivo + 1 `rate` para extração; `AUDIT_COST_CENTS` mantém 1 linha `flat`), `drift-control.ts` (1 linha por motor + 1 `rate` para verificação), `products.ts` free_test (1 linha por motor com usage; senão 1 `flat`), `landing-generate.ts` (`flat`, como antes, mas dizendo que é flat).
+- **Leitura**: `GET /api/admin/system-health` ganha `apiSpend { monthCents, bySource {measured, rate, flat, legacy}, rowsBySource, measuredShare, legacySchema }`.
+
+### Como ler o ledger a partir de agora
+
+| `source` | Significa | Confiança |
+|---|---|---|
+| `measured` | tokens reais × preço de lista (mais taxa por req/busca onde conhecida) | número real; **margens devem ser lidas daqui** quando acumular |
+| `rate` | chamadas × taxa por motor (2026-08-05) — motor sem usage (serp, mock, provedor omitiu), extração/verificação B3 | estimativa calibrada |
+| `flat` | número fixo por operação (env / legado: `pages_generate`, free_test sem usage) | estimativa grossa |
+| `legacy` (NULL) | linhas anteriores ao #152 | estimativa; sem motor |
+
+`SUM(COALESCE(measured_cost_cents, est_cost_cents))` é o melhor número conhecido do mês. Comparar `measured_cost_cents` com `est_cost_cents` na mesma linha diz o quanto a taxa de 08/05 estava errada por motor — o insumo para recalibrar `MEASURED_GEN_CENTS` ou aposentá-la.
+
+### O que ainda NÃO é medido (honesto)
+
+- **Taxa de busca do OpenAI web_search e do Gemini grounding**: preço por chamada não incluído (não temos certeza do valor de lista) — a linha `measured` desses dois motores é **só tokens** e pode subestimar. Anthropic (via `server_tool_use.web_search_requests`) e Perplexity (por requisição) estão incluídos.
+- **serp (DataForSEO)**: não é LLM; segue `rate` (0,40¢).
+- **Extração/verificação B3** (`extraction.ts`): o `ExtractionLLM` retorna string; usage ainda não plumbado → `rate`.
+- **pages_generate / content studio**: `flat`.
+- **Guarda de orçamento do free test** (`products.ts`) ainda soma `est_cost_cents` (pré-migração-safe). Trocar para `COALESCE(measured, est)` quando a migração estiver aplicada é uma linha — deixado explícito para não quebrar antes.
+- **Reconciliação com fatura**: continua manual. O que este PR entrega é o número por motor por chamada, que é o que uma reconciliação precisa.

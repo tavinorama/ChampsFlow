@@ -57,6 +57,10 @@ import {
   type SamplingQuery,
   type GeoLLMProvider,
   type ProbeResponse,
+  type ProbeUsage,
+  mergeProbeUsage,
+  recordSpend,
+  execForPostgresJs,
   providerSurface,
   permittedProviders,
   probeCacheEnabled,
@@ -1334,11 +1338,16 @@ export async function processAuditJob(
 
       // Live generations per engine, from the same accounting generationsUsed
       // uses: cached probes are frozen seed units and cost nothing this run.
+      // #152: alongside the count, SUM the measured usage the adapters now
+      // attach (tokens, model, searches). A cached response carries no usage
+      // (the cache never stores it), so this cannot double-count.
       const gensByEngine: Record<string, number> = {};
+      const usageByEngine: Record<string, ProbeUsage | undefined> = {};
       for (const resp of responses) {
         if (resp.fromCache) continue;
         const eng = String(resp.provider);
         gensByEngine[eng] = (gensByEngine[eng] ?? 0) + (resp.runs ?? 1);
+        usageByEngine[eng] = mergeProbeUsage(usageByEngine[eng], resp.usage);
       }
 
       // B3: the extraction + verification passes are extra (cheap-tier) calls.
@@ -1355,13 +1364,68 @@ export async function processAuditJob(
       const auditCostCents = Number.isFinite(flatOverride)
         ? flatOverride
         : Math.max(1, Math.round(genCost + extractionCalls * perExtractionCents));
-      await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
+
+      // #152 — MEASURE, not estimate. One api_spend row per live engine, with
+      // engine/model/tokens and the list-price cost when the adapter reported
+      // usage (source='measured'); the per-engine RATE estimate rides along in
+      // est_cost_cents so the two can be compared. Engines whose adapter gave
+      // no usage (serp, mock, provider omitted the block) stay 'rate'. The
+      // extraction passes have no usage plumbing yet → one 'rate' row. With
+      // AUDIT_COST_CENTS set (flat override) the whole audit is ONE 'flat'
+      // row, exactly as before. Pre-migration the writer degrades to the
+      // legacy (op, est_cost_cents) INSERT — never throws.
+      const spendExec = execForPostgresJs(sql);
+      const bySource: Record<string, number> = { measured: 0, rate: 0, flat: 0 };
+      let measuredEngines = 0;
+      let rateEngines = 0;
+      if (Number.isFinite(flatOverride)) {
+        const r = await recordSpend(spendExec, {
+          op: "audit",
+          estCents: flatOverride,
+          estSource: "flat",
+          ref: audit_id,
+        });
+        bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
+      } else {
+        for (const [eng, gens] of Object.entries(gensByEngine)) {
+          const u = usageByEngine[eng];
+          const r = await recordSpend(spendExec, {
+            op: "audit",
+            engine: eng,
+            model: u?.model ?? null,
+            inputTokens: u?.inputTokens ?? null,
+            outputTokens: u?.outputTokens ?? null,
+            searchRequests: u?.searchRequests ?? null,
+            requests: u?.requests ?? gens,
+            estCents: gens * rateFor(eng),
+            estSource: "rate",
+            ref: audit_id,
+          });
+          if (r.source === "measured") measuredEngines += 1;
+          else rateEngines += 1;
+          bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
+        }
+        if (extractionCalls > 0) {
+          const r = await recordSpend(spendExec, {
+            op: "audit",
+            engine: "extraction",
+            estCents: extractionCalls * perExtractionCents,
+            estSource: "rate",
+            ref: audit_id,
+          });
+          bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
+        }
+      }
       // The split is the point of the change — surface it, so "the ledger says
-      // $1.10" can always be decomposed into which engines that actually was.
+      // $1.10" can always be decomposed into which engines that actually was,
+      // and (now) which of those numbers were measured vs still a rate.
       logger.info("audit_spend_recorded", {
         audit_id,
         cents: auditCostCents,
         per_engine: gensByEngine,
+        measured_engines: measuredEngines,
+        rate_engines: rateEngines,
+        by_source_cents: bySource,
       });
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });

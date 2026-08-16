@@ -65,8 +65,8 @@ import { analyzeSentiment } from "./sentiment";
 import { crawlSite } from "./site-crawl";
 import { computeGeoScore } from "./scoring";
 import { createHash } from "node:crypto";
-import type { LLMProvider, UserRegion } from "./providers/types";
-import { webSearchEnabled } from "./providers/types";
+import type { LLMProvider, UserRegion, ProbeUsage } from "./providers/types";
+import { webSearchEnabled, mergeProbeUsage } from "./providers/types";
 
 export interface EngineResult {
   engine: LLMProvider;
@@ -232,12 +232,27 @@ function buildRecommendations(
  * @param region      "EU" | "US" (routing gate; EU excludes Perplexity)
  * @param domain      optional homepage domain for light crawl (SSRF-safe via guardedFetch)
  */
+/**
+ * #152 — measured usage per engine for the free test, delivered via callback
+ * so the persisted FreeTestResult (lead_capture.result) keeps its shape.
+ */
+export interface FreeTestUsage {
+  engine: LLMProvider;
+  usage: ProbeUsage;
+}
+
+export interface RunInvisibilityTestOptions {
+  /** Called once with the per-engine measured usage of the live probes. */
+  onUsage?: (usage: FreeTestUsage[]) => void;
+}
+
 export async function runInvisibilityTest(
   brand: string,
   competitor: string | null,
   category: string,
   region: UserRegion = "US",
-  domain?: string | null
+  domain?: string | null,
+  opts: RunInvisibilityTestOptions = {}
 ): Promise<FreeTestResult> {
   const prompts = buildTestPrompts(category, brand);
   const prompt = prompts[0] ?? buildTestPrompt(category); // primary prompt shown in the UI
@@ -252,6 +267,18 @@ export async function runInvisibilityTest(
     }),
     crawlSite(domain ?? null),
   ]);
+
+  // #152 — hand the measured usage to the caller (the spend ledger) before
+  // the result is shaped. The callback is ours (products.ts stores the array).
+  if (opts.onUsage) {
+    const byEngine = new Map<LLMProvider, ProbeUsage>();
+    for (const r of probeResult.responses) {
+      if (!r.usage) continue;
+      const merged = mergeProbeUsage(byEngine.get(r.provider), r.usage);
+      if (merged) byEngine.set(r.provider, merged);
+    }
+    opts.onUsage(Array.from(byEngine.entries()).map(([engine, usage]) => ({ engine, usage })));
+  }
 
   // Aggregate the (prompt × provider) responses into one row per engine, while
   // tracking cell-level citation for an honest, sample-representative AI rate.

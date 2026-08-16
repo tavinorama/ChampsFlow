@@ -32,7 +32,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow } from "./types";
+import { ProviderError, assertLiveOrThrow, usageFromCounts } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -116,17 +116,22 @@ export class PerplexityProbeAdapter implements ProviderAdapter {
       const data = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
         citations?: string[];
+        // #152 — real usage (Chat Completions shape). The per-request search
+        // fee is part of sonar's list price and is added in cost.ts.
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
       const rawText = data.choices?.[0]?.message?.content ?? "";
       const parsed = parseCitation(rawText, query.brandName);
       // Merge Perplexity's structured citations with any inline URLs found.
       const sources = Array.from(new Set([...(data.citations ?? []), ...parsed.sources]));
+      const usage = usageFromCounts(model, data.usage?.prompt_tokens, data.usage?.completion_tokens);
       return {
         provider: "perplexity",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
         sources,
+        ...(usage ? { usage } : {}),
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;

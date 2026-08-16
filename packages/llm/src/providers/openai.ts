@@ -33,7 +33,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow, webSearchEnabled } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -135,6 +135,15 @@ export class OpenAIProbeAdapter implements ProviderAdapter {
             annotations?: Array<{ type?: string; url?: string }>;
           }>;
         }>;
+        // #152 — real usage. Responses API: input_tokens/output_tokens;
+        // Chat Completions: prompt_tokens/completion_tokens. Web-search tool
+        // calls are billed separately and NOT priced here (see cost.ts).
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          prompt_tokens?: number;
+          completion_tokens?: number;
+        };
       };
 
       let rawText: string;
@@ -158,12 +167,18 @@ export class OpenAIProbeAdapter implements ProviderAdapter {
       }
 
       const parsed = parseCitation(rawText, query.brandName);
+      const usage = usageFromCounts(
+        model,
+        data.usage?.input_tokens ?? data.usage?.prompt_tokens,
+        data.usage?.output_tokens ?? data.usage?.completion_tokens
+      );
       return {
         provider: "openai",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
         sources: [...new Set([...parsed.sources, ...searchSources])],
+        ...(usage ? { usage } : {}),
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;

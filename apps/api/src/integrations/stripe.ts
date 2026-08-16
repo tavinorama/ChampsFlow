@@ -318,12 +318,15 @@ export function tryGetStripe(): Stripe | null {
 //     Six audits per brand per month covers weekly monitoring (4.33) and still
 //     leaves two manual runs of slack.
 //
-// STILL AN ESTIMATE, DELIBERATELY FLAGGED: api_spend is a MODEL, not a meter —
-// AUDIT_COST_PER_GEN_CENTS (1.2) and AUDIT_COST_PER_EXTRACTION_CENTS (0.2) are
-// assumed rates, and eleven of the fifteen historical rows were a flat
-// AUDIT_COST_CENTS=80 override. Nobody has ever reconciled provider invoices
-// against audit counts. Until someone does, every number above rests on those
-// two constants.
+// STILL AN ESTIMATE, DELIBERATELY FLAGGED: the numbers above were derived from
+// api_spend rows that were a MODEL, not a meter — AUDIT_COST_PER_GEN_CENTS and
+// AUDIT_COST_PER_EXTRACTION_CENTS are assumed rates, and eleven of the fifteen
+// historical rows were a flat AUDIT_COST_CENTS=80 override. Since #152
+// (2026-08-16) api_spend records real tokens × list price per engine
+// (source='measured') next to the rate estimate; once enough measured rows
+// accumulate, re-derive the numbers above from
+// SUM(measured_cost_cents) WHERE source='measured' — see
+// docs/proposals/144-pricing-ledger.md, addendum 2026-08-16.
 // The plans themselves — type, price, limits — moved to
 // packages/shared/src/plan-limits.ts (2026-08-10): the public pricing page
 // must DERIVE the numbers it advertises from the same source production
