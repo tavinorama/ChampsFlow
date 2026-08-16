@@ -42,6 +42,7 @@ import { createWorkerDb, withRlsContext } from "../db/rls-client";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import {
   PublishError,
+  type Platform,
   type SocialAccountForPublish,
   type DraftForPublish,
 } from "../../../../packages/shared/src/index";
@@ -298,10 +299,21 @@ export async function processPublishJob(
         );
 
         if (draftRows.length === 0) {
+          // The draft is gone but the job still names its social account, so
+          // the platform is knowable — resolve it instead of hardcoding one
+          // (the 14/08 sweep's only real placeholder in the worker). Falls
+          // back to 'linkedin' ONLY if the account row is also gone.
+          const platRows = await sql.unsafe<Array<{ platform: string }>>(
+            `SELECT platform FROM social_accounts WHERE id = $1 AND tenant_id = $2`,
+            [publishJob.social_account_id, publishJob.tenant_id]
+          );
+          const known = platRows[0]?.platform;
+          const platform: Platform =
+            known === "instagram" || known === "facebook" ? known : "linkedin";
           throw new PublishError(
             false,
             "platform_error",
-            "linkedin", // placeholder; platform unknown at this point
+            platform,
             `Draft not found: ${publishJob.draft_id}`
           );
         }
