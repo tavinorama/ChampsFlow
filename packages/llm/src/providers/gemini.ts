@@ -32,7 +32,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow, webSearchEnabled } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,12 @@ export class GeminiProbeAdapter implements ProviderAdapter {
             groundingChunks?: Array<{ web?: { uri?: string } }>;
           };
         }>;
+        // #152 — real usage. Grounding requests beyond the free tier are
+        // billed separately and NOT priced here (see cost.ts).
+        usageMetadata?: {
+          promptTokenCount?: number;
+          candidatesTokenCount?: number;
+        };
       };
       const candidate = data.candidates?.[0];
       const rawText = (candidate?.content?.parts ?? [])
@@ -127,12 +133,18 @@ export class GeminiProbeAdapter implements ProviderAdapter {
         .map((c) => c.web?.uri)
         .filter((u): u is string => typeof u === "string");
       const parsed = parseCitation(rawText, query.brandName);
+      const usage = usageFromCounts(
+        model,
+        data.usageMetadata?.promptTokenCount,
+        data.usageMetadata?.candidatesTokenCount
+      );
       return {
         provider: "gemini",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
         sources: [...new Set([...parsed.sources, ...searchSources])],
+        ...(usage ? { usage } : {}),
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;

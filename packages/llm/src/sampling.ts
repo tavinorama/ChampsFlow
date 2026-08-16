@@ -27,6 +27,7 @@
 
 import type { ProbeResponse, UserRegion, LLMProvider } from "./providers/types";
 import type { ProbeQuery } from "./providers/types";
+import { mergeProbeUsage } from "./providers/types";
 import { runProbes, type RunProbesResult } from "./providers/gateway";
 import { permittedProviders } from "./providers/routing";
 import {
@@ -146,6 +147,7 @@ export function mergeProbeResponses(a: ProbeResponse, b: ProbeResponse): ProbeRe
     }
   }
 
+  const usage = mergeProbeUsage(a.usage, b.usage);
   return {
     ...a,
     rawText: b.rawText || a.rawText,
@@ -154,6 +156,7 @@ export function mergeProbeResponses(a: ProbeResponse, b: ProbeResponse): ProbeRe
     mentioned,
     position,
     sources,
+    ...(usage ? { usage } : {}),
   };
 }
 

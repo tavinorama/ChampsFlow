@@ -86,8 +86,14 @@ describe("no backend failure degrades silently (#139)", () => {
   });
 
   it("the fixed meters actually log now", () => {
-    expect(readFileSync(join(root, "apps/api/src/routes/products.ts"), "utf8")).toContain(
+    // #152: the free-test meter now goes through the shared api_spend writer,
+    // which owns the api_spend_insert_failed log; products.ts must still route
+    // through it (a bare INSERT there would be a regression to the silent path).
+    expect(readFileSync(join(root, "packages/llm/src/api-spend.ts"), "utf8")).toContain(
       "api_spend_insert_failed"
+    );
+    expect(readFileSync(join(root, "apps/api/src/routes/products.ts"), "utf8")).toContain(
+      "recordSpend("
     );
     expect(readFileSync(join(root, "apps/api/src/routes/drafts.ts"), "utf8")).toContain(
       "audit_log_write_failed"

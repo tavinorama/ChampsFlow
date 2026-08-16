@@ -27,7 +27,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow, webSearchEnabled } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts } from "./types";
 import { parseCitation } from "../citation-parser";
 
 /**
@@ -149,6 +149,13 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
           // Array on success; an error OBJECT on tool failure — must check.
           content?: Array<{ type?: string; url?: string }> | { type?: string };
         }>;
+        // #152 — real usage. server_tool_use.web_search_requests is what
+        // Anthropic bills the per-search fee on.
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          server_tool_use?: { web_search_requests?: number };
+        };
       };
       const blocks = data.content ?? [];
       const rawText = blocks
@@ -164,12 +171,19 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
         }
       }
       const parsed = parseCitation(rawText, query.brandName);
+      const usage = usageFromCounts(
+        model,
+        data.usage?.input_tokens,
+        data.usage?.output_tokens,
+        data.usage?.server_tool_use?.web_search_requests
+      );
       return {
         provider: "anthropic",
         rawText,
         mentioned: parsed.mentioned,
         position: parsed.position,
         sources: [...new Set([...parsed.sources, ...searchSources])],
+        ...(usage ? { usage } : {}),
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;

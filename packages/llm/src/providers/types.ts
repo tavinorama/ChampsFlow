@@ -131,6 +131,74 @@ export interface ProbeResponse {
    * them or logs an ai_generation for them.
    */
   fromCache?: boolean;
+  /**
+   * #152 — measured provider usage for THIS response, straight from the
+   * provider's usage block. Aggregated responses (gateway repeat, sampling
+   * merge) SUM it across the calls they fold. Absent when the adapter is in
+   * mock mode, when the provider returned no usage, or when the response was
+   * served from the probe cache (cached = no live cost). The worker's spend
+   * ledger prices it with packages/llm/src/cost.ts; when absent it falls back
+   * to the per-call rate. Never used for scoring.
+   */
+  usage?: ProbeUsage;
+}
+
+/** Measured provider usage attached to a ProbeResponse (see above). */
+export interface ProbeUsage {
+  /** Provider model id as sent (e.g. "claude-haiku-4-5", "gpt-4o-mini", "sonar"). */
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  /** Provider-side web searches, when the provider reports them (Anthropic). */
+  searchRequests?: number;
+  /** Number of API requests this usage aggregates. 1 for a single call. */
+  requests: number;
+}
+
+/**
+ * mergeProbeUsage — sum two usages (or pass through the one that exists).
+ * Model: keep the first's; a mixed-model aggregate is a bug upstream, not
+ * something to average.
+ */
+export function mergeProbeUsage(
+  a: ProbeUsage | undefined,
+  b: ProbeUsage | undefined
+): ProbeUsage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const searches = (a.searchRequests ?? 0) + (b.searchRequests ?? 0);
+  return {
+    model: a.model,
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    requests: a.requests + b.requests,
+    ...(searches > 0 ? { searchRequests: searches } : {}),
+  };
+}
+
+/**
+ * usageFromCounts — build a single-call ProbeUsage from raw provider counts.
+ * Returns undefined unless BOTH token counts are finite non-negative numbers:
+ * a response without a usage block is not a measurement, and half a
+ * measurement would price as if the missing half were free.
+ */
+export function usageFromCounts(
+  model: string,
+  inputTokens: unknown,
+  outputTokens: unknown,
+  searchRequests?: unknown
+): ProbeUsage | undefined {
+  const ok = (n: unknown): n is number =>
+    typeof n === "number" && Number.isFinite(n) && n >= 0;
+  if (!ok(inputTokens) || !ok(outputTokens)) return undefined;
+  const u: ProbeUsage = {
+    model,
+    inputTokens: Math.floor(inputTokens),
+    outputTokens: Math.floor(outputTokens),
+    requests: 1,
+  };
+  if (ok(searchRequests) && searchRequests > 0) u.searchRequests = Math.floor(searchRequests);
+  return u;
 }
 
 // ---------------------------------------------------------------------------

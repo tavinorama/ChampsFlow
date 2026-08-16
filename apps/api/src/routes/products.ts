@@ -24,7 +24,10 @@ import {
   runInvisibilityTest,
   buildKitDeliverable,
   buildFallbackKitDeliverable,
+  recordSpend,
+  execForPg,
   type InvisibilityTestResult,
+  type FreeTestUsage,
 } from "../../../../packages/llm/src/index";
 import {
   createKitCheckoutSession,
@@ -315,8 +318,16 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     }
 
     let result;
+    const leadId = randomUUID();
+    // #152 — measured usage per engine, delivered by callback so the persisted
+    // result shape is untouched. Empty when the adapters ran in mock mode.
+    let freeTestUsage: FreeTestUsage[] = [];
     try {
-      result = await runInvisibilityTest(effectiveBrand, competitor, category, region, domain);
+      result = await runInvisibilityTest(effectiveBrand, competitor, category, region, domain, {
+        onUsage: (u) => {
+          freeTestUsage = u;
+        },
+      });
     } catch (err) {
       logger.error("invisibility_test_failed", { message: (err as Error).message });
       return c.json({ message: "Could not run the test right now. Try again." }, 502);
@@ -328,19 +339,46 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     // meter, and a meter that fails quietly under-counts spend until the
     // month's budget check waves through traffic it should have stopped —
     // the exact "degrada calado" failure #139 exists to hunt.
-    void db
-      .query(`INSERT INTO api_spend (op, est_cost_cents) VALUES ('free_test', $1)`, [freeTestCostCents])
-      .catch((err) => {
-        logger.error("api_spend_insert_failed", {
+    //
+    // #152 — MEASURE where we can: one row per engine that reported usage
+    // (source='measured', tokens × list price), and the FREE_TEST_COST_CENTS
+    // flat estimate is split evenly across the live engines as the
+    // comparison number in est_cost_cents. When no engine reported usage
+    // (mock mode / provider omitted usage) it stays ONE 'flat' row, exactly
+    // as before. recordSpend never throws and logs its own failures; it
+    // degrades to the legacy INSERT until migration 20260815000001 lands.
+    void (async () => {
+      const exec = execForPg(db);
+      if (freeTestUsage.length === 0) {
+        await recordSpend(exec, {
           op: "free_test",
-          message: (err as Error).message?.slice(0, 200),
+          estCents: freeTestCostCents,
+          estSource: "flat",
+          ref: leadId,
         });
-      });
+        return;
+      }
+      const perEngineEst = freeTestCostCents / freeTestUsage.length;
+      for (const { engine, usage } of freeTestUsage) {
+        await recordSpend(exec, {
+          op: "free_test",
+          engine,
+          model: usage.model,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          searchRequests: usage.searchRequests ?? null,
+          requests: usage.requests,
+          estCents: perEngineEst,
+          estSource: "flat",
+          ref: leadId,
+        });
+      }
+    })();
 
     // Best-effort lead capture (email NOT logged). Never blocks the response.
     // testId lets the visitor carry this test into the Kit checkout so the Kit's
     // Part 1 can be framed as "your free test, completed" (Test → Kit → Plans).
-    const leadId = randomUUID();
+    // (leadId is minted above so the spend rows can reference it.)
     let testId: string | null = null;
     try {
       const ip = clientIp(c);
