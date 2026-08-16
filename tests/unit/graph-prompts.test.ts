@@ -19,6 +19,8 @@ import {
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
+  SPHERE_LINKEDIN_GRAPH,
+  SPHERE_BLOG_GRAPH,
 } from "../../apps/api/src/lib/agent-graphs";
 
 const debateLenses = DAILY_VIDEO_GRAPH.nodes
@@ -66,7 +68,7 @@ describe("buildPrompt resolves the graph's task slugs", () => {
 
 describe("the read-only brains' prompts resolve and stay honest", () => {
   it("every Watchdog, CDO, experiment-cell and sphere-cell reasoning node has a resolvable prompt", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH]) {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH, SPHERE_LINKEDIN_GRAPH, SPHERE_BLOG_GRAPH]) {
       for (const node of def.nodes) {
         if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
         const p = buildPrompt(node.kind, node.config ?? {}, []);
@@ -96,6 +98,14 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
       ["task", "experiment-brief"],
       ["task", "experiment-draft"],
       ["synthesis", "experiment-finalize"],
+      // #156 cells two and three (14/08): LinkedIn publishes; the blog's
+      // brief+outline feeds a public article, so it is English too.
+      ["task", "linkedin-briefing"],
+      ["task", "linkedin-draft"],
+      ["synthesis", "linkedin-finalize"],
+      ["task", "blog-briefing"],
+      ["task", "blog-outline"],
+      ["synthesis", "blog-finalize"],
     ] as const;
     for (const [kind, slug] of publishable) {
       const p = buildPrompt(kind, { prompt: slug }, []) ?? "";

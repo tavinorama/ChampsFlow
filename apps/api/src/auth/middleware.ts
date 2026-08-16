@@ -368,12 +368,26 @@ export function requireNotProcessingRestricted(db: DbClient) {
         }, 403);
       }
     } catch (err) {
-      // On DB error, fail open to avoid blocking all users on infra issues.
-      // Log without PII.
+      // #306 hardening: FAIL CLOSED — for THIS action only. This guard is
+      // mounted solely on the restricted-class writes (generate / publish /
+      // connect / checkout), never on GETs or the rest of the app, so denying
+      // here on a DB error blocks exactly the operations Art. 18 exists to
+      // block, while all other traffic keeps flowing. The previous fail-open
+      // meant an infra blip could let a restricted user's data be processed —
+      // the one outcome the article forbids. Retryable 503, no PII in the log.
       logger.error("gdpr_art18_restriction_check_failed", {
         tenant_id: auth.tenantId,
+        path: ctx.req.path,
         message: (err as Error).message,
       });
+      return ctx.json(
+        {
+          error: "restriction_check_unavailable",
+          message:
+            "We could not verify your processing status right now. Please try again in a moment.",
+        },
+        503
+      );
     }
 
     await next();

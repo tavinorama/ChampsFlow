@@ -31,6 +31,8 @@ import {
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
+  SPHERE_LINKEDIN_GRAPH,
+  SPHERE_BLOG_GRAPH,
   validateGraph,
   type GraphDefinition,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -457,6 +459,53 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     // The closing edge writes x_impressions — the NEXT run's memory reads it.
     expect(world.outcomes[0]!.metric).toBe("x_impressions");
     expect(world.outcomes[0]!.valueAfter).toBe(45);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measured", () => {
+  it("memory reads ONLY linkedin_ metrics, both drafts + critic run, parks at the human gate", async () => {
+    const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "linkedin_" }]);
+    expect(world.stepByNode("draft-story")?.status).toBe("succeeded");
+    expect(world.stepByNode("draft-contrarian")?.status).toBe("succeeded");
+    expect(world.stepByNode("critic")?.status).toBe("succeeded");
+    expect(world.stepByNode("finalize")?.status).toBe("succeeded");
+    expect(world.published).toEqual([]);
+  });
+
+  it("approve → publishes to LinkedIn → harvest linkedin_impressions closes the loop", async () => {
+    const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.published).toHaveLength(1);
+    expect(world.published[0]!.channel).toBe("linkedin");
+
+    world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+    world.harvestData = { n: 1, total: 320 };
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.outcomes[0]!.metric).toBe("linkedin_impressions");
+    expect(world.outcomes[0]!.valueAfter).toBe(320);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the blog sphere cell (#156, third) — a read-only thinker that publishes NOTHING", () => {
+  it("memory (blog_, 60d) → signal → briefing → 2 outlines → critic → finalize → REPORT; no publish, no spawn", async () => {
+    const world = makeWorld(SPHERE_BLOG_GRAPH.slug);
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_BLOG_GRAPH);
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 60, metricPrefix: "blog_" }]);
+    expect(world.stepByNode("outline-howto")?.status).toBe("succeeded");
+    expect(world.stepByNode("outline-data")?.status).toBe("succeeded");
+    expect(world.stepByNode("critic")?.status).toBe("succeeded");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+    // The whole safety of this cell: it can only report.
+    expect(world.published).toEqual([]);
+    expect(world.spawnedRuns).toEqual([]);
+    expect(SPHERE_BLOG_GRAPH.nodes.some((n) => n.kind === "publish" || n.kind === "spawn")).toBe(false);
+    expect(world.telegrams.some((t) => t.includes("Blog da semana"))).toBe(true);
     expect(world.run.status).toBe("succeeded");
   });
 });

@@ -41,6 +41,8 @@ import {
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
+  SPHERE_LINKEDIN_GRAPH,
+  SPHERE_BLOG_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
 
@@ -64,6 +66,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [CONTENT_EXPERIMENT_GRAPH.slug]: CONTENT_EXPERIMENT_GRAPH,
   // #156, first specialist cell: the X sphere with its own memory.
   [SPHERE_X_GRAPH.slug]: SPHERE_X_GRAPH,
+  // #156, cells two and three (14/08 sprint): LinkedIn (full loop) and the
+  // blog (read-only thinker that feeds the CI autopublish pipeline).
+  [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
+  [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
 };
 
 // ---------------------------------------------------------------------------

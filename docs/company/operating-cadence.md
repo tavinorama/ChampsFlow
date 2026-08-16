@@ -52,10 +52,13 @@ Codified guardrails (from design §2/§3.1 and AGENTS.md §1): a recommendation 
 
 ## 3. How the founder stays in control
 
-**One approval surface** (design-autonomous-engine §4.5 — do not build a second one):
-1. **Approval Queue** (web, batch) — filters by risk/kind; approve in bulk; "ask for more evidence" re-enqueues with feedback. Everything gated in the matrix lands here.
-2. **Daily digest** (email) — 5 lines: what ran, what's in the queue, exceptions.
-3. **Weekly report** — the cycle's proposals, decisions, and pending gates.
+**One approval surface** (design-autonomous-engine §4.5 — do not build a second one).
+**As built (14/08/2026, verified against code):** the surface IS **Telegram + the operator API**, not a web queue.
+1. **Telegram** — every graph `approval` node parks the run and posts the decision request there, naming what a "yes" triggers (channel + destination — the 13/08 incident rule). Verdicts, spawn announcements, watchdog/CDO/CPO/discovery reports and all alarms (deploy, incident, video absence, mute harvest) land in the same chat. This is the company's real "Buzz".
+2. **Operator API** — the decision itself: `POST /api/v1/operator/agent-steps/:id/finish` with `succeeded` (approve) or `failed` (reject); Hermes relays the Telegram reply into it. Runs are inspectable via `GET /api/v1/operator/graph-runs/:id`.
+3. **Weekly report** — the Monday CDO+CPO briefs and the Thursday discovery brief (graphs, delivered on Telegram).
+
+> The **web Approval Queue** and **daily digest email** described in the design doc were **never built** and are not planned for now — Telegram carries the load at ≤30 min/day. If a web queue is ever built, it must wrap the same operator route, never a second decision path.
 
 Target load: **≤30 min/day**. Escalations that must always reach the founder directly: any dept BLOCKED, any HIGH/CRITICAL PR, and any live/production/destructive/paid action.
 

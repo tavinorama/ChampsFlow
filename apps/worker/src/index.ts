@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -363,6 +363,37 @@ async function registerSphereStartSchedule(): Promise<void> {
 // 'video-absence' checks at 19:00 UTC that a publish actually SUCCEEDED in the
 // last 26h and screams on Telegram when it did not. The watcher stays outside
 // the watched: the check never starts or fixes anything.
+// #156 cells two and three (14/08 sprint). One queue, two named repeatables:
+// 'sphere-linkedin' Tue/Thu 09:00 UTC (offset from X's Mon/Wed/Fri so the
+// founder never gets two approvals at once) and 'sphere-blog' Thu 08:00 UTC
+// (the brief+outline reaches the founder before Monday's 12:00 autopublish;
+// it publishes nothing itself).
+const sphereMoreWorker = new Worker(
+  "sphere-more",
+  async (job) =>
+    job.name === "sphere-blog"
+      ? runSphereBlogStart(getGraphSql())
+      : runSphereLinkedinStart(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const sphereMoreQueue = new Queue("sphere-more", { connection });
+const SPHERE_LINKEDIN_CRON = process.env["SPHERE_LINKEDIN_CRON"] ?? "0 9 * * 2,4";
+const SPHERE_BLOG_CRON = process.env["SPHERE_BLOG_CRON"] ?? "0 8 * * 4";
+
+async function registerSphereMoreSchedules(): Promise<void> {
+  await sphereMoreQueue.add(
+    "sphere-linkedin",
+    {},
+    { jobId: "sphere-linkedin-repeat", repeat: { pattern: SPHERE_LINKEDIN_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  await sphereMoreQueue.add(
+    "sphere-blog",
+    {},
+    { jobId: "sphere-blog-repeat", repeat: { pattern: SPHERE_BLOG_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("sphere_more_schedules_registered", { linkedin: SPHERE_LINKEDIN_CRON, blog: SPHERE_BLOG_CRON });
+}
+
 const videoWorker = new Worker(
   "video-daily",
   async (job) =>
@@ -414,6 +445,7 @@ void platformKeysReady.finally(() => {
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
+  void sphereMoreWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
     logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -429,6 +461,9 @@ void platformKeysReady.finally(() => {
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerSphereMoreSchedules().catch((err: Error) => {
+    logger.error("sphere_more_schedules_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerVideoSchedules().catch((err: Error) => {
     logger.error("video_schedules_register_failed", { message: err.message?.slice(0, 200) });
@@ -677,6 +712,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await monitorReconcileQueue.close();
     await videoWorker.close();
     await videoQueue.close();
+    await sphereMoreWorker.close();
+    await sphereMoreQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,
