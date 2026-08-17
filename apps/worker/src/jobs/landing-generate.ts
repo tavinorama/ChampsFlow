@@ -28,7 +28,25 @@
  *      intentionally NEVER read here — it stays reserved for Content Studio /
  *      customer-initiated content generation (routes/system.ts:
  *      resolveProviderKey), a different cost model.
- *   7. buildLandingBundle() — pure, packages/llm/src/landing-generate.ts.
+ *   7. buildLandingBundleStaged() — pure, packages/llm/src/landing-stages.ts
+ *      (D5, 2026-08-17). Two LLM stages, copy ONLY, facts never invented:
+ *        stage 1 "draft"  — Kimi via the Hermes VPS /task (engine:"kimi",
+ *                           flat-fee; HERMES_TASK_URL/TOKEN). Longer section
+ *                           copy (about, service intros, FAQ answers, proof
+ *                           intro) as strict JSON. HERMES env absent → stage
+ *                           skipped honestly (logged), never faked.
+ *        stage 2 "refine" — the platform key path that already existed
+ *                           (Claude/OpenAI): hero/sub + compliance pass over
+ *                           the stage-1 draft (ungrounded claims out, ≤12-word
+ *                           sentences).
+ *      Grounding validator rejects any number not present in the input facts.
+ *      Fallbacks: kimi fails → claude-only; claude fails → stage-1 copy +
+ *      template hero; both fail → mock skeleton (prod: honest job failure).
+ *      Which stages ran is recorded in ai_generation_log.model_version and
+ *      the api_spend rows (one per stage that ran; kimi at the flat
+ *      PAGES_KIMI_COST_CENTS, default 0 — flat-fee VPS).
+ *      Sources of truth: the client's OWN domain crawl (step 4) + their
+ *      AUTHORIZED testimonials; Google Places is REVIEWS/photos only.
  *   8. Write results: existing page (by page_type+slug, home always exists
  *      from PR-3) → snapshot to landing_page_versions (saved_by='generator',
  *      pruned to VERSION_CAP) then UPDATE; missing page → INSERT, but NEVER
@@ -49,7 +67,7 @@
  *      Mock-mode runs cost nothing and are not recorded.
  *
  * Hard rules: parameterized SQL only; ai_generation_log INSERT-only; no raw
- * PII in logs; never fabricate — buildLandingBundle's mock mode only
+ * PII in logs; never fabricate — buildLandingBundleStaged's mock mode only
  * restructures real input facts, and the crawl only ever touches the
  * client's own domain.
  */
@@ -58,7 +76,8 @@ import type { Job } from "bullmq";
 import postgres from "postgres";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  buildLandingBundle,
+  buildLandingBundleStaged,
+  providerTextPort,
   deriveReviewThemes,
   renderSectionsForScoring,
   scorePage,
@@ -67,6 +86,8 @@ import {
   recordSpend,
   execForPostgresJs,
   type ContentProvider,
+  type LandingTextPort,
+  type LandingStages,
   type LandingBusinessInput,
   type LandingReviewInput,
   type LandingPhotoInput,
@@ -302,11 +323,54 @@ export function resolvePlatformPagesKey(): { provider: ContentProvider; apiKey: 
   return openai ?? anthropic;
 }
 
+// ---------------------------------------------------------------------------
+// Stage 1 port — Kimi on the Hermes VPS (flat-fee). Same /task contract
+// graph-tick.ts uses: POST {engine, timeoutMs, prompt} with a Bearer token;
+// reply {ok, output, engine_used}. No token → null (stage skipped honestly).
+// ---------------------------------------------------------------------------
+
+const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
+const KIMI_TIMEOUT_MS = 150_000;
+
+export function resolveKimiDraftPort(fetchImpl: typeof fetch = fetch): LandingTextPort | null {
+  const token = process.env["HERMES_TASK_TOKEN"];
+  if (!token || !token.trim()) return null;
+  return async (systemPrompt, userPrompt) => {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), KIMI_TIMEOUT_MS);
+    try {
+      const res = await fetchImpl(`${HERMES_URL}/task`, {
+        method: "POST",
+        signal: ctl.signal,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          engine: "kimi",
+          timeoutMs: KIMI_TIMEOUT_MS - 20_000,
+          prompt: `${systemPrompt}\n\n${userPrompt}`,
+        }),
+      });
+      if (res.status !== 200) return null;
+      const b = (await res.json()) as { ok?: boolean; output?: string };
+      if (b?.ok !== true || typeof b.output !== "string" || !b.output.trim()) return null;
+      return b.output;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  };
+}
+
+/** Compact stage label stored in ai_generation_log.model_version. */
+export function stagesLabel(stages: LandingStages): string {
+  return `draft:kimi=${stages.draft};refine=${stages.refine}`;
+}
+
 /**
  * HARD INTEGRITY RULE for Ozvor Pages (task #122 — same rule the audit engine
  * enforces via `mockAllowed()`/PR #90): a paid $99 generation must NEVER
  * silently ship template content as if it were generated. `bundle.mode ===
- * "mock"` after buildLandingBundle means one of its three silent fallbacks
+ * "mock"` after buildLandingBundleStaged means both LLM stages failed or were skipped
  * fired (no platform key — OPENAI_API_KEY/ANTHROPIC_API_KEY both absent — the
  * LLM call threw, or its output was unusable). In production — with no
  * explicit GEO_ALLOW_MOCK=true opt-in —
@@ -420,7 +484,7 @@ export async function closeConsumedGapCards(
 export async function processLandingGenerateJob(
   job: Job<LandingGenerateJobData>,
   sql: postgres.Sql
-): Promise<{ site_id: string; pages_written: number; mode: "mock" | "llm" }> {
+): Promise<{ site_id: string; pages_written: number; mode: "mock" | "llm"; stages?: LandingStages }> {
   const { tenant_id, site_id } = job.data;
 
   return runWithTenant(tenant_id, async () => {
@@ -523,7 +587,7 @@ export async function processLandingGenerateJob(
     // 6. Platform key (issue #217) — never customer BYOK for Ozvor Pages
     //    generation. OpenAI-first for cost + quality, Anthropic fallback (see
     //    resolvePlatformPagesKey). Absent → mock mode in dev/test; in
-    //    production the integrity gate after buildLandingBundle fails the job
+    //    production the integrity gate after buildLandingBundleStaged fails the job
     //    honestly (#122).
     const platformKey = resolvePlatformPagesKey();
 
@@ -577,8 +641,17 @@ export async function processLandingGenerateJob(
     const brandColor =
       typeof siteTheme["primary"] === "string" ? (siteTheme["primary"] as string) : undefined;
 
-    // 7. Build the bundle (pure — packages/llm/src/landing-generate.ts).
-    const bundle = await buildLandingBundle(
+    // 7. Build the bundle (pure — packages/llm/src/landing-stages.ts, D5):
+    //    stage 1 Kimi draft (Hermes VPS) → stage 2 Claude/OpenAI refine.
+    //    A missing port is a SKIPPED stage (logged), never a faked one.
+    const draftPort = resolveKimiDraftPort();
+    if (!draftPort) {
+      logger.warn("landing_generate_kimi_stage_skipped", {
+        site_id,
+        hint: "HERMES_TASK_TOKEN absent on the worker — stage 1 (Kimi draft) skipped, refine-only",
+      });
+    }
+    const bundle = await buildLandingBundleStaged(
       {
         business,
         reviewThemes,
@@ -589,10 +662,17 @@ export async function processLandingGenerateJob(
         crawlSummary,
         auditGaps,
       },
-      platformKey
-        ? { mode: "llm", apiKey: platformKey.apiKey, provider: platformKey.provider }
-        : { mode: "mock" }
+      {
+        draft: draftPort,
+        refine: platformKey ? providerTextPort(platformKey.provider, platformKey.apiKey) : null,
+      }
     );
+    logger.info("landing_generate_stages", {
+      site_id,
+      draft: bundle.stages.draft,
+      refine: bundle.stages.refine,
+      rejected_numbers: bundle.stages.rejectedNumbers.length,
+    });
 
     // 7a. Integrity gate (#122) — BEFORE anything is persisted. In production
     //     a mock bundle is an honest failure, never a silent template delivery.
@@ -628,11 +708,15 @@ export async function processLandingGenerateJob(
       }
     }
 
-    const logProvider = bundle.mode === "llm" && platformKey ? dbProvider(platformKey.provider) : "internal";
-    const modelVersion =
-      bundle.mode === "llm" && platformKey
-        ? process.env[`${platformKey.provider.toUpperCase()}_MODEL`] ?? platformKey.provider
+    const refined = bundle.stages.refine === "ok" && platformKey;
+    const logProvider = refined ? dbProvider(platformKey.provider) : "internal";
+    const baseModel = refined
+      ? process.env[`${platformKey.provider.toUpperCase()}_MODEL`] ?? platformKey.provider
+      : bundle.mode === "llm"
+        ? "kimi-draft-only"
         : "mock-template-v1";
+    // Stage metadata travels with the compliance log row (no schema change).
+    const modelVersion = `${baseModel} [${stagesLabel(bundle.stages)}]`;
 
     let pagesWritten = 0;
     // page_type -> the page that now carries it, for step 9's FAQ-vs-home
@@ -750,13 +834,29 @@ export async function processLandingGenerateJob(
     // #152: still a FLAT number here (the content-studio path does not surface
     // token usage yet) — recorded through the shared writer so the row says
     // source='flat' instead of pretending to be a measurement.
-    if (bundle.mode === "llm") {
+    // D5: one row per stage that actually ran, so the ledger says which
+    // engine did the work. Kimi runs on the flat-fee VPS → PAGES_KIMI_COST_CENTS
+    // (default 0), source 'flat'. tenant_id attributes the spend (#D8e; the
+    // writer tolerates the column being absent pre-migration).
+    if (bundle.stages.draft === "ok") {
+      await recordSpend(execForPostgresJs(sql), {
+        op: "pages_generate",
+        engine: "kimi",
+        estCents: Number(process.env["PAGES_KIMI_COST_CENTS"] ?? 0),
+        estSource: "flat",
+        ref: site_id,
+        tenantId: tenant_id,
+      });
+    }
+    if (bundle.stages.refine === "ok" && platformKey) {
       const landingGenerateCostCents = Number(process.env["LANDING_GENERATE_COST_CENTS"] ?? 15);
       await recordSpend(execForPostgresJs(sql), {
         op: "pages_generate",
+        engine: platformKey.provider,
         estCents: landingGenerateCostCents,
         estSource: "flat",
         ref: site_id,
+        tenantId: tenant_id,
       });
     }
 
@@ -774,6 +874,7 @@ export async function processLandingGenerateJob(
       site_id,
       pages_written: pagesWritten,
       mode: bundle.mode,
+      stages: stagesLabel(bundle.stages),
     });
 
     // 12. Purge the public cache (#155/P23). Generation rewrites landing_pages
@@ -791,6 +892,6 @@ export async function processLandingGenerateJob(
       );
     }
 
-    return { site_id, pages_written: pagesWritten, mode: bundle.mode };
+    return { site_id, pages_written: pagesWritten, mode: bundle.mode, stages: bundle.stages };
   });
 }
