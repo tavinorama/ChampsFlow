@@ -101,7 +101,18 @@ async function checkApiRateLimit(keyId: string): Promise<boolean> {
 // requireApiKey — authenticate a public-API request by API key
 // ---------------------------------------------------------------------------
 
-export function requireApiKey(db: PostgresClient) {
+export interface RequireApiKeyOptions {
+  /** Scope the key must carry. Default "read" (the existing behaviour). */
+  requireScope?: string;
+  /** Tick the per-key sliding-window limiter. Default true. The MCP outer
+   *  guard ticks once; the inner sub-request pass sets this false so a single
+   *  tool call does not consume two rate-limit slots (design §4.4). */
+  rateLimit?: boolean;
+}
+
+export function requireApiKey(db: PostgresClient, opts: RequireApiKeyOptions = {}) {
+  const requiredScope = opts.requireScope ?? "read";
+  const doRateLimit = opts.rateLimit ?? true;
   return async function apiKeyGuard(c: Context, next: Next): Promise<Response | void> {
     // Accept "Authorization: Bearer ozk_…" or "X-API-Key: ozk_…".
     let presented = "";
@@ -147,20 +158,22 @@ export function requireApiKey(db: PostgresClient) {
     }
 
     // Scope gate (Hermes review, operator PR): the tenant-scoped public API
-    // requires the 'read' scope. Operator-only keys (Hermes agent) must NOT be
-    // able to read tenant data — they are limited to /api/v1/operator/*.
-    if (!key.scopes.includes("read")) {
+    // requires the 'read' scope by default. The MCP endpoint passes
+    // requireScope:"mcp" so a plain read key does not silently gain a live
+    // agent surface (design §3.3). Operator-only keys must NOT read tenant
+    // data — they are limited to /api/v1/operator/*.
+    if (!key.scopes.includes(requiredScope)) {
       return c.json(
         {
           error: "forbidden",
-          code: "READ_SCOPE_REQUIRED",
-          message: "This key does not grant tenant API access (missing 'read' scope).",
+          code: `${requiredScope.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_SCOPE_REQUIRED`,
+          message: `This key does not grant '${requiredScope}' access.`,
         },
         403
       );
     }
 
-    const allowed = await checkApiRateLimit(key.id);
+    const allowed = doRateLimit ? await checkApiRateLimit(key.id) : true;
     if (!allowed) {
       return c.json(
         {

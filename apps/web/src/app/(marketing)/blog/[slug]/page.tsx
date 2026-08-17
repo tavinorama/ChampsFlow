@@ -3,7 +3,7 @@
  *
  * Renders any post defined in ../_content.ts with one consistent, on-brand
  * template: cover, key-takeaways, auto table-of-contents (from h2 blocks),
- * prose blocks, a full Sources list, and the shared SoftCTA. New articles are
+ * prose blocks, a full Sources list, and the shared AiAuditCta. New articles are
  * authored as data in _content.ts — no new page files.
  *
  * Static folders (e.g. /blog/why-small-businesses-stop-posting) take precedence
@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { BLOG_CONTENT, findBlogContent, type Block } from "../_content";
-import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { BlogCover } from "../../../../components/marketing/BlogCover";
 import { SITE_URL } from "../../../../lib/site";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
@@ -261,7 +261,7 @@ export default async function BlogArticlePage({
       </article>
 
       <div style={{ maxWidth: "1120px", margin: "0 auto", padding: "0 var(--space-4) var(--space-8)" }}>
-        <SoftCTA
+        <AiAuditCta
           headline="Curious how AI describes your brand right now?"
           subline="Run the free 60-second AI Visibility Test — see if ChatGPT, Claude, and Perplexity recommend you or a competitor."
           primary={{ label: "Run the free test", href: "/test" }}

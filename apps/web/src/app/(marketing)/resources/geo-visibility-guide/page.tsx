@@ -11,7 +11,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
@@ -626,7 +626,7 @@ export default function GeoVisibilityGuidePage() {
 
         {/* Soft CTA nudge — free test */}
         <div style={{ marginBottom: "var(--space-6)" }}>
-          <SoftCTA
+          <AiAuditCta
             headline="Put this guide to work on your own brand"
             subline="The free AI Visibility Test shows your real citation rate across ChatGPT, Claude, and Perplexity in 60 seconds."
             primary={{ label: "Run the free test", href: "/test" }}

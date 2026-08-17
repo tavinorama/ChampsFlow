@@ -17,6 +17,7 @@ import Link from "next/link";
 import { DirectCheckoutButton } from "../../../components/marketing/DirectCheckoutButton";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
 import { AgenciesFilmHero } from "./AgenciesFilmHero";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "Ozvor for agencies — white-label AI-visibility for every client",
@@ -155,6 +156,14 @@ export default function AgenciesPage() {
         <p style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
           30-day money-back · cancel anytime · no lock-in
         </p>
+      </div>
+
+      {/* AI Audit Stack — site-wide peer CTA (SPRINT-9) */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Need the right AI stack for a client?"
+          subline="Run the free test on any brand. Or get an AI stack picked, $49."
+        />
       </div>
       </div>
     </>

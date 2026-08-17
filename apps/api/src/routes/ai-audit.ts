@@ -24,6 +24,10 @@
  * 503 {code:"AI_AUDIT_ORDERS_NOT_READY"} — logged once, never a crash, never a
  * fabricated success.
  *
+ * Every public endpoint is rate-limited per IP: /meta 30/h, /entry + /assess
+ * 8/h (D8c, lib/ip-rate-limit.ts — Redis ZSET with bounded memory fallback,
+ * #261); /checkout keeps its own 8/h limiter below.
+ *
  * Honesty carried to the wire: every payload says whether the catalog came
  * from the DB or the seed and whether its numbers are human-verified.
  */
@@ -52,6 +56,17 @@ import {
   createAiAuditCheckoutSession,
   verifyAiAuditCheckoutSession,
 } from "../integrations/stripe";
+import {
+  sharedIpRateLimiter,
+  truncateIp as truncateIpForRateLimit,
+  type IpRateLimiter,
+} from "../lib/ip-rate-limit";
+
+// Per-IP limits (D8c, 2026-08-17) — same ZSET pattern as /api/test. /meta is
+// cheap (30/h); /entry and /assess build a teaser (8/h, like the free test).
+export const AI_AUDIT_META_LIMIT = 30;
+export const AI_AUDIT_ASSESS_LIMIT = 8;
+const HOUR_MS = 60 * 60 * 1000;
 
 const MAX_PAINS = 20;
 const MAX_STR = 120;
@@ -105,16 +120,6 @@ function webOrigin(): string {
   return process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "http://localhost:3000";
 }
 
-/** GDPR data minimization for the rate-limit key (same as products.ts). */
-function truncateIpForRateLimit(ip: string): string {
-  if (!ip) return "unknown";
-  const v4 = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
-  if (v4) return `${v4[1]}.0`;
-  const colons = ip.split(":");
-  if (colons.length >= 4) return colons.slice(0, 3).join(":") + "::/48";
-  return "unknown";
-}
-
 async function checkCheckoutRateLimit(ipTruncated: string): Promise<boolean> {
   const redis = getSharedRedis();
   const key = `ai_audit_rl:${ipTruncated}`;
@@ -161,9 +166,28 @@ interface OrderRow {
   lead_capture_id: string | null;
 }
 
-export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
+export function registerAiAuditRoutes(
+  app: Hono,
+  db: PostgresClient,
+  opts: { limiter?: IpRateLimiter } = {}
+): void {
+  const limiter = opts.limiter ?? sharedIpRateLimiter;
+  const limited = async (
+    c: { req: { header: (n: string) => string | undefined } },
+    bucket: "meta" | "assess",
+    limit: number
+  ): Promise<boolean> => {
+    const ip = truncateIpForRateLimit(clientIp(c));
+    return !(await limiter(`ai_audit_rl:${bucket}:${ip}`, limit, HOUR_MS));
+  };
+  const tooMany = (limit: number) => ({
+    message: `Too many requests. Up to ${limit} per hour per network. Try again later.`,
+    code: "RATE_LIMITED",
+  });
+
   // GET /api/ai-audit/meta — vocabulary for the questionnaire, from the catalog.
   app.get("/api/ai-audit/meta", async (c) => {
+    if (await limited(c, "meta", AI_AUDIT_META_LIMIT)) return c.json(tooMany(AI_AUDIT_META_LIMIT), 429);
     const { tools, source, allVerified } = await loadCatalog(db);
     const pains = [...new Set(tools.flatMap((t) => t.pains))].sort();
     const categories = [...new Set(tools.map((t) => t.category))].sort();
@@ -185,6 +209,7 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
   // built server-side for paid orders and for the OrganicPosts DFY audit; it
   // is never returned here.
   app.post("/api/ai-audit/assess", async (c) => {
+    if (await limited(c, "assess", AI_AUDIT_ASSESS_LIMIT)) return c.json(tooMany(AI_AUDIT_ASSESS_LIMIT), 429);
     const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return c.json({ message: "Invalid JSON body." }, 400);
     const answers = answersFromBody(body);
@@ -218,6 +243,7 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/ai-audit/entry — TEASER (counts only, no pick). The pick is
   // what the $49 buys; it is delivered only through /order/:token/deliver.
   app.post("/api/ai-audit/entry", async (c) => {
+    if (await limited(c, "assess", AI_AUDIT_ASSESS_LIMIT)) return c.json(tooMany(AI_AUDIT_ASSESS_LIMIT), 429);
     const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return c.json({ message: "Invalid JSON body." }, 400);
     const answers = answersFromBody(body);
