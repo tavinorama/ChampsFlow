@@ -803,6 +803,93 @@ export async function verifyKitCheckoutSession(
 }
 
 // ---------------------------------------------------------------------------
+// AI Audit Stack — $49 one-time (founder 2026-08-15). Same shape as the Kit:
+// mode "payment", STRIPE_PRICE_ID_AI_AUDIT, metadata on the session AND the
+// payment_intent (so refunds/disputes name the order via the charge), and a
+// PURE fail-closed binding check used by the synchronous deliver path.
+// ---------------------------------------------------------------------------
+
+export const AI_AUDIT_PRODUCT = "ai_audit_stack" as const;
+
+export async function createAiAuditCheckoutSession(
+  orderId: string,
+  orderToken: string,
+  buyerEmail: string,
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ url: string }> {
+  const priceId = process.env["STRIPE_PRICE_ID_AI_AUDIT"];
+  if (!priceId) {
+    const err = new Error("STRIPE_PRICE_ID_AI_AUDIT is not configured");
+    (err as NodeJS.ErrnoException).code = "missing_price_id";
+    throw err;
+  }
+  const stripe = getStripe();
+  const metadata = { ai_audit_order_id: orderId, order_token: orderToken, product: AI_AUDIT_PRODUCT };
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer_email: buyerEmail,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    allow_promotion_codes: true,
+    metadata,
+    payment_intent_data: { metadata },
+  });
+  if (!session.url) {
+    logger.error("stripe_ai_audit_checkout_no_url", { session_id: session.id });
+    throw new Error("Stripe AI Audit checkout session created but URL is null");
+  }
+  logger.info("stripe_ai_audit_checkout_created", { session_id: session.id, ai_audit_order_id: orderId });
+  return { url: session.url };
+}
+
+/**
+ * PURE binding check for an AI Audit Stack session — same rules as
+ * evaluateKitSession: paid, payment mode, product + order id + token in the
+ * session's own metadata, and the single line item must be the configured
+ * price (missing price config → reject, fail-closed).
+ */
+export function evaluateAiAuditSession(
+  session: KitSessionShape,
+  bind: { orderId: string; orderToken: string },
+  expectedPriceId?: string | null
+): KitSessionVerification {
+  if (session.payment_status !== "paid") return { ok: false, reason: "not_paid" };
+  if (session.mode !== "payment") return { ok: false, reason: "wrong_mode" };
+  const md = session.metadata ?? {};
+  if (md["product"] !== AI_AUDIT_PRODUCT) return { ok: false, reason: "wrong_product" };
+  if (md["ai_audit_order_id"] !== bind.orderId) return { ok: false, reason: "order_mismatch" };
+  if (md["order_token"] !== bind.orderToken) return { ok: false, reason: "token_mismatch" };
+  if (!expectedPriceId) return { ok: false, reason: "price_unconfigured" };
+  const ids = (session.line_items?.data ?? [])
+    .map((li) => li?.price?.id)
+    .filter((x): x is string => Boolean(x));
+  if (ids.length !== 1 || ids[0] !== expectedPriceId) return { ok: false, reason: "price_mismatch" };
+  return { ok: true };
+}
+
+export async function verifyAiAuditCheckoutSession(
+  sessionId: string,
+  bind: { orderId: string; orderToken: string }
+): Promise<KitSessionVerification> {
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
+    return evaluateAiAuditSession(
+      session as unknown as KitSessionShape,
+      bind,
+      process.env["STRIPE_PRICE_ID_AI_AUDIT"] ?? null
+    );
+  } catch (err) {
+    logger.error("stripe_ai_audit_session_verify_error", {
+      error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
+    });
+    return { ok: false, reason: "retrieve_error" };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // retrieveDisputeCharge
 // ---------------------------------------------------------------------------
 // Fetches the Charge behind a charge.dispute.created event. The Dispute object

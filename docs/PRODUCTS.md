@@ -12,6 +12,7 @@
 |---|---|---|---|---|
 | **The AI Invisibility Test** | $0 (free) | — | 1 buyer prompt across 4 AI engines → shows if the brand is cited. Lead magnet (~2¢/run on platform key). | `packages/llm/invisibility-test.ts`, `/test` |
 | **The Get-Cited Kit** | **$29** | one-time | Ozvor AI Visibility Score (3 vectors) + top fixes + content drafts + publish checklist. No subscription. | `packages/llm/kit-deliverable.ts`, `/kit` |
+| **AI Audit Stack** | **$49** | one-time | Email mandatory. Questionnaire (business, focus, engines, pains, tools in use) → ONE niche AI tool picked for the buyer's pains + why + the honest teaser of the full report (tools matched, matrix counts, hours/ROI estimates). Result on `/ai-audit/:token` AND inline in the delivery email. Full 9-section report stays the OrganicPosts $1.5k deliverable. | `apps/api/src/routes/ai-audit.ts`, `apps/api/src/lib/ai-audit/*`, `/ai-audit` |
 
 ## B. Subscription tiers (the SaaS)
 
@@ -47,6 +48,7 @@ Create these objects, then put each ID in the matching API env var:
 | Agency — monthly | recurring / month | $549 | `STRIPE_PRICE_ID_AGENCY` |
 | Agency — annual | recurring / year | $6,588 | `STRIPE_PRICE_ID_AGENCY_ANNUAL` |
 | Get-Cited Kit | one-time | $29 | `STRIPE_PRICE_ID_KIT` |
+| AI Audit Stack | one-time | $49 | `STRIPE_PRICE_ID_AI_AUDIT` (founder creates the Price; unset → non-prod dev-unlock, prod 503) |
 | Founder coupon | 30% off, duration "forever" | — | `STRIPE_FOUNDER_COUPON_ID` |
 
 > The founder coupon is applied by the code **only on annual** checkouts, so a
