@@ -67,6 +67,8 @@ import { registerOperatorBusinessRoutes } from "./routes/operator";
 import { registerOperatorAgentRoutes } from "./routes/operator-agents";
 import { registerOperatorGraphRoutes } from "./routes/operator-graphs";
 import { registerAiAuditRoutes } from "./routes/ai-audit";
+import { registerBookRoutes } from "./routes/book";
+import { registerPrimeRoutes } from "./routes/prime";
 import { registerTelegramRoutes } from "./routes/telegram";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
@@ -281,6 +283,10 @@ registerOperatorBusinessRoutes(app, db);
 registerOperatorAgentRoutes(app, db);
 registerOperatorGraphRoutes(app, db);
 registerAiAuditRoutes(app, db);
+// D3 (2026-08-17): /book intake — lead + claim + book_to_dfy nurture (public, rate-limited).
+registerBookRoutes(app, db);
+// D3: OrganicPosts Prime tab — real tenant facts + nudge log.
+registerPrimeRoutes(app, db);
 // Telegram bot webhook: approve/reject buttons → graph decisions (17/08).
 registerTelegramRoutes(app, db);
 registerMcpRoutes(app, db); // #150 Phase 1 — Streamable HTTP MCP at POST /api/mcp
