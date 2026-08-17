@@ -43,6 +43,10 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
@@ -51,6 +55,8 @@ import { dayBlock } from "./editorial-calendar";
 export const SEED_ARTIFACT = "__seed__";
 /** Upstream key carrying the editorial calendar's day theme to content cells. */
 export const DAY_ARTIFACT = "__day__";
+/** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
+export const SIGNALS_ARTIFACT = "__signals__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -73,6 +79,12 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // blog (read-only thinker that feeds the CI autopublish pipeline).
   [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
   [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
+  // Content alive on every platform (17/08): the three short-video spheres
+  // (own memory, own approval, own harvest) + the zero-spend PPC thinker.
+  [SPHERE_INSTAGRAM_GRAPH.slug]: SPHERE_INSTAGRAM_GRAPH,
+  [SPHERE_TIKTOK_GRAPH.slug]: SPHERE_TIKTOK_GRAPH,
+  [SPHERE_YOUTUBE_GRAPH.slug]: SPHERE_YOUTUBE_GRAPH,
+  [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -138,6 +150,13 @@ export interface SubstratePort {
    * the artifacts port — the substrate only records the run.
    */
   startRun(input: { graph: string; trigger: string; vpOwner: string }): Promise<string>;
+  /**
+   * External REAL signals for content cells (Signal Engine, docs/signal-engine-
+   * integration.md): the "where to act" queue rendered as text. Optional on
+   * purpose — a worker without SIGNAL_ENGINE_* env returns null and the cell
+   * runs exactly as before. Must never throw; "SEM DADO" is a valid answer.
+   */
+  externalSignals?(): Promise<string | null>;
 }
 
 export interface HermesPort {
@@ -355,7 +374,21 @@ export async function advanceRun(
       // day seven times). Every reasoning node of a marketing cell sees the
       // day's theme/angle/CTA as [__day__]; the briefing prompts must honor
       // it. Brains (CEO-owned, read-only) do not get it — they are not content.
-      if (def.vpOwner === "marketing") upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
+      if (def.vpOwner === "marketing") {
+        upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
+        // Real conversations/opportunities from the Signal Engine, when wired.
+        // Fail-open: no env / down / bad payload → the cell keeps working on
+        // its own memory. Only signal/briefing/PPC-style nodes benefit, but
+        // giving every reasoning node the same block keeps critics honest too.
+        if (substrate.externalSignals) {
+          try {
+            const sig = await substrate.externalSignals();
+            if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
+          } catch {
+            /* fail-open by contract; the port should not throw */
+          }
+        }
+      }
       const prompt = buildPrompt(node.kind, config, upstream);
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
