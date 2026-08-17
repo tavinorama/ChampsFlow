@@ -25,6 +25,12 @@ export interface SoftCTAProps {
   subline?: string;
   primary: { label: string; href: string };
   secondary?: { label: string; href: string };
+  /**
+   * Optional outlined button rendered right after the primary one — used for
+   * a paid peer offer (e.g. the $49 AI Audit Stack). Same tap target as the
+   * primary; only the fill differs.
+   */
+  outlined?: { label: string; href: string };
   tone?: "default" | "quiet";
 }
 
@@ -37,6 +43,7 @@ export function SoftCTA({
   subline,
   primary,
   secondary,
+  outlined,
   tone = "default",
 }: SoftCTAProps) {
   if (tone === "quiet") {
@@ -162,6 +169,33 @@ export function SoftCTA({
           >
             {primary.label}
           </Link>
+
+          {/* Outlined CTA — paid peer offer, same tap target */}
+          {outlined && (
+            <Link
+              href={outlined.href}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "var(--min-tap-target)",
+                minWidth: "var(--min-tap-target)",
+                padding: "0 var(--space-6)",
+                backgroundColor: "transparent",
+                color: "var(--color-primary)",
+                border: "1px solid var(--color-primary)",
+                borderRadius: "var(--radius-md)",
+                fontSize: "var(--font-size-body-sm)",
+                fontWeight: "var(--font-weight-bold)",
+                fontFamily: "var(--font-family)",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {outlined.label}
+            </Link>
+          )}
 
           {/* Secondary CTA — text link with underline on hover */}
           {secondary && (

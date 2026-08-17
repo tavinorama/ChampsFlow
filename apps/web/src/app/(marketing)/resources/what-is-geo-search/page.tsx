@@ -17,7 +17,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "../../../../components/brand/Logo";
 import { ResourceMarkdown } from "../../../../components/ResourceMarkdown";
-import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
@@ -754,7 +754,7 @@ export default function WhatIsGeoSearchPage(): React.ReactElement {
 
       {/* Soft CTA nudge — free test */}
       <div className="noprint" style={{ marginBottom: "var(--space-6)" }}>
-        <SoftCTA
+        <AiAuditCta
           headline="Ready to see your own GEO score?"
           subline="The AI Visibility Test runs one real probe per engine, you see exactly who AI recommends in your category."
           primary={{ label: "Run the free test", href: "/test" }}
