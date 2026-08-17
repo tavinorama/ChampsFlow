@@ -79,6 +79,7 @@ import {
   creditBalance,
   overagePackUsd,
 } from "../lib/credits";
+import { creditsPct } from "../../../../packages/shared/src/credits";
 import Stripe from "stripe";
 import { asStr } from "../lib/coerce";
 
@@ -490,6 +491,10 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         granted: balance.granted,
         cost_per_audit: balance.costPerAudit,
         can_run_audit: balance.canRunAudit,
+        /** Same as `granted`, named for the header pill + low-balance banners (D1). */
+        monthly_allowance: balance.granted,
+        /** balance ÷ allowance, 0..100, clamped. The banner thresholds read this. */
+        pct: creditsPct(balance.balance, balance.granted),
         /** Price of a top-up, derived — never a figure typed into a page. */
         overage_pack: { credits: 1000, usd: overagePackUsd(1000) },
       });

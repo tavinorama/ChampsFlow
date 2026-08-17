@@ -43,19 +43,26 @@ const KIT_TO_GROWTH_STEPS = 3;
 // 20260815000002 (widens the sequence CHECK) — until then the INSERT fails and
 // the caller's best-effort catch logs it.
 const AI_AUDIT_TO_FULL_STEPS = 2;
+// /book intake (D3, 2026-08-17): someone who left an email to book a call but
+// may not show → two honest nudges toward the OrganicPosts (DFY) call. Shell
+// only: cadences are being reworked by another PR; the DB CHECK on
+// nurture_enrollment.sequence must be widened by that migration first, and
+// until then the INSERT fails and the caller logs it (best-effort).
+const BOOK_TO_DFY_STEPS = 2;
 
 const SEQUENCE_STEPS: Record<Sequence, number> = {
   free_to_kit: FREE_TO_KIT_STEPS,
   kit_to_dfy: KIT_TO_DFY_STEPS,
   kit_to_growth: KIT_TO_GROWTH_STEPS,
   ai_audit_to_full: AI_AUDIT_TO_FULL_STEPS,
+  book_to_dfy: BOOK_TO_DFY_STEPS,
 };
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type Sequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth" | "ai_audit_to_full";
+export type Sequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth" | "ai_audit_to_full" | "book_to_dfy";
 
 interface NurtureEnrollmentRow {
   id: string;

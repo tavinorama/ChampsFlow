@@ -72,6 +72,65 @@ import { driftVerdicts, hallucinatingEnginesToday } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 import { creditsForAudit } from "../../../api/src/lib/credits";
+import { overagePackUsd } from "../../../../packages/shared/src/credits";
+import { sendCreditsOutEmail } from "../../../../packages/shared/src/emails/credits-out";
+
+/**
+ * D1: one "You are out of credits" email per tenant per month, sent when a
+ * debit crosses the balance to zero. The month guard is an audit_log row
+ * (event_type credits_out_email); if that read fails we still send, because
+ * the crossing rule already bounds it to one per crossing. Never throws.
+ */
+export async function notifyCreditsOut(
+  sql: postgres.Sql,
+  input: { tenantId: string; brandName?: string | null; balance: number; planTier: string }
+): Promise<void> {
+  const { tenantId } = input;
+  try {
+    try {
+      const [already] = await sql<{ one: number }[]>`
+        SELECT 1 AS one FROM audit_log
+         WHERE event_type = 'credits_out_email' AND tenant_id = ${tenantId}::uuid
+           AND created_at >= date_trunc('month', NOW())
+         LIMIT 1
+      `;
+      if (already) {
+        logger.info("credits_out_email_skipped_this_month", { tenant_id: tenantId });
+        return;
+      }
+    } catch (err) {
+      logger.warn("credits_out_email_month_check_failed", { tenant_id: tenantId, message: (err as Error).message?.slice(0, 120) });
+    }
+    const [owner] = await sql<{ email: string }[]>`
+      SELECT email FROM users
+       WHERE tenant_id = ${tenantId}::uuid AND role = 'owner' AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1
+    `;
+    if (!owner?.email) {
+      logger.warn("credits_out_email_no_owner", { tenant_id: tenantId });
+      return;
+    }
+    await sendCreditsOutEmail({
+      to: owner.email,
+      brand: input.brandName ?? null,
+      balance: input.balance,
+      packCredits: 1000,
+      packUsd: overagePackUsd(1000),
+      plan: input.planTier,
+    });
+    logger.info("credits_out_email_sent", { tenant_id: tenantId, balance: input.balance });
+    try {
+      await sql`
+        INSERT INTO audit_log (event_type, tenant_id, target_entity, metadata, created_at)
+        VALUES ('credits_out_email', ${tenantId}::uuid, 'credit_ledger', ${sql.json({ balance: input.balance, plan: input.planTier })}, NOW())
+      `;
+    } catch (err) {
+      logger.warn("credits_out_email_log_failed", { tenant_id: tenantId, message: (err as Error).message?.slice(0, 120) });
+    }
+  } catch (err) {
+    logger.warn("credits_out_email_failed", { tenant_id: tenantId, message: (err as Error).message?.slice(0, 160) });
+  }
+}
 
 export interface AuditJobData {
   /** Present for on-demand audits (row pre-created by the API).
@@ -1457,18 +1516,31 @@ export async function processAuditJob(
     // ids needed to reconcile it by hand.
     try {
       const creditCost = creditsForAudit(planTier);
-      const [row] = await sql<{ id: string }[]>`
+      const [row] = await sql<{ id: string; balance_after: number | string }[]>`
         INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
         SELECT ${tenant_id}::uuid, ${-creditCost}, 'audit', 'geo_audit', ${audit_id}::uuid,
                COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = ${tenant_id}::uuid), 0) - ${creditCost}
           ON CONFLICT (tenant_id, ref_type, ref_id)
             WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING
-          RETURNING id
+          RETURNING id, balance_after
       `;
       if (!row) {
         // Expected on a retry, and only then. Worth a line either way: if this
         // shows up without a preceding failure, the idempotency key is wrong.
         logger.info("credit_debit_already_recorded", { audit_id, tenant_id, creditCost });
+      } else {
+        // D1: the moment the balance CROSSES to zero (or below) is the one time
+        // we email "you are out of credits". Crossing = before > 0 and after
+        // <= 0, which the ledger row itself tells us; a retry never gets here
+        // (no row), so the rule is idempotent without a flag. audit_log adds
+        // the once-per-month guard for the case where a top-up and a second
+        // crossing happen inside the same month. Best-effort end to end: an
+        // email failure never touches the audit or the charge.
+        const after = Number(row.balance_after);
+        const before = after + creditCost;
+        if (Number.isFinite(after) && after <= 0 && before > 0) {
+          void notifyCreditsOut(sql, { tenantId: tenant_id, brandName: brand.name, balance: after, planTier });
+        }
       }
     } catch (err) {
       logger.error("credit_debit_failed", {

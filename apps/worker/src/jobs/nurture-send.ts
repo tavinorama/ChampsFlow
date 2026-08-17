@@ -48,6 +48,8 @@ import { sendNurtureGrowth2Email } from "../../../../packages/shared/src/emails/
 import { sendNurtureGrowth3Email } from "../../../../packages/shared/src/emails/nurture-growth-3";
 import { sendNurtureAiAudit1Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-1";
 import { sendNurtureAiAudit2Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-2";
+import { sendNurtureBook1Email } from "../../../../packages/shared/src/emails/nurture-book-1";
+import { sendNurtureBook2Email } from "../../../../packages/shared/src/emails/nurture-book-2";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -81,11 +83,17 @@ const AI_AUDIT_TO_FULL_NEXT_STEP_DELAY_MS: Record<number, number> = {
   0: 4 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 4 days
 };
 
+// book_to_dfy (/book intake → OrganicPosts call; D3 shell, cadence being
+// reworked separately): step0→step1=3d
+const BOOK_TO_DFY_NEXT_STEP_DELAY_MS: Record<number, number> = {
+  0: 3 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 3 days
+};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type NurtureSequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth" | "ai_audit_to_full";
+type NurtureSequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth" | "ai_audit_to_full" | "book_to_dfy";
 
 interface EnrollmentRow {
   id: string;
@@ -126,6 +134,9 @@ async function dispatchEmail(
   } else if (sequence === "ai_audit_to_full") {
     if (step === 0) return sendNurtureAiAudit1Email(params);
     if (step === 1) return sendNurtureAiAudit2Email(params);
+  } else if (sequence === "book_to_dfy") {
+    if (step === 0) return sendNurtureBook1Email(params);
+    if (step === 1) return sendNurtureBook2Email(params);
   } else {
     // kit_to_dfy
     if (step === 0) return sendNurtureKit1Email(params);
@@ -181,7 +192,9 @@ async function advanceCursor(
           ? KIT_TO_GROWTH_NEXT_STEP_DELAY_MS
           : row.sequence === "ai_audit_to_full"
             ? AI_AUDIT_TO_FULL_NEXT_STEP_DELAY_MS
-            : KIT_TO_DFY_NEXT_STEP_DELAY_MS;
+            : row.sequence === "book_to_dfy"
+              ? BOOK_TO_DFY_NEXT_STEP_DELAY_MS
+              : KIT_TO_DFY_NEXT_STEP_DELAY_MS;
     const delayMs = delayTable[row.current_step] ?? 3 * 24 * 60 * 60 * 1000;
 
     await sql`

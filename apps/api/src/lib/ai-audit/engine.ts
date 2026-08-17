@@ -180,16 +180,30 @@ export function buildEntryResult(
  * Build the full 9-section deck data from answers + catalog. The single entry
  * point; everything above is exposed for testing and weight-tuning.
  */
+export interface AuditReportOptions {
+  /**
+   * Let household-name giants (isGeneric: ChatGPT, Claude...) into the ranked
+   * stack. Default false: the self-serve/$49 path keeps the niche-only rule.
+   * ONLY the FULL report for an OrganicPosts (prime) tenant passes true — a
+   * paid full audit may say "use ChatGPT for this" when it honestly fits.
+   */
+  allowGeneric?: boolean;
+}
+
 export function buildAuditReport(
   answers: QuestionnaireAnswers,
-  catalog: Tool[]
+  catalog: Tool[],
+  options: AuditReportOptions = {}
 ): AuditReport {
   const hourlyRate = answers.hourlyRateUsd ?? DEFAULT_HOURLY_RATE;
   const owned = new Set((answers.toolsInUse ?? []).map(normalize));
+  const allowGeneric = options.allowGeneric === true;
 
   // Score everything the client doesn't already own; keep only real matches.
+  // Giants are excluded unless the caller (full/prime path) opts in.
   const scored = catalog
     .filter((t) => !owned.has(normalize(t.id)))
+    .filter((t) => allowGeneric || t.isGeneric !== true)
     .map((t) => scoreTool(t, answers))
     .filter(isAnchored)
     .sort(byRank);
