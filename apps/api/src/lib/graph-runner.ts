@@ -45,9 +45,12 @@ import {
   SPHERE_BLOG_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
+import { dayBlock } from "./editorial-calendar";
 
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
 export const SEED_ARTIFACT = "__seed__";
+/** Upstream key carrying the editorial calendar's day theme to content cells. */
+export const DAY_ARTIFACT = "__day__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -335,6 +338,11 @@ export async function advanceRun(
       // launched to test. Non-seeded runs have no __seed__ — nothing changes.
       const seed = await artifacts.get(runId, SEED_ARTIFACT);
       if (seed) upstream.unshift([SEED_ARTIFACT, seed]);
+      // The editorial calendar (founder 14/08: seven different days, not one
+      // day seven times). Every reasoning node of a marketing cell sees the
+      // day's theme/angle/CTA as [__day__]; the briefing prompts must honor
+      // it. Brains (CEO-owned, read-only) do not get it — they are not content.
+      if (def.vpOwner === "marketing") upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
       const prompt = buildPrompt(node.kind, config, upstream);
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });

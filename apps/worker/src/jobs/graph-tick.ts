@@ -414,16 +414,17 @@ const DAILY_BRAINS = ["daily-watchdog"];
 // together — the founder reviews both briefs in one sitting.
 const WEEKLY_BRAINS = ["daily-dream", "weekly-product"];
 /**
- * Specialist cells (#156) that self-start on their own cadence. The X cell
- * runs Mon/Wed/Fri — enough volume to generate signal on a near-dead channel
- * without flooding it (the video pipeline's X thread still posts daily).
+ * Specialist cells (#156) that self-start on their own cadence. Founder 14/08:
+ * the X cell runs EVERY day now (was Mon/Wed/Fri); the editorial calendar
+ * rotates the theme so daily volume stays diverse. The legacy VPS X thread
+ * must be retired by the founder — two producers on one channel is R7.
  */
 const SPHERE_CELLS = ["sphere-x"];
 /**
- * #156 cells two and three (14/08 sprint). LinkedIn posts Tue/Thu — offset
- * from X's Mon/Wed/Fri so the founder never gets two approvals in one
- * sitting. The blog cell thinks on Thursday, so its brief+outline reaches the
- * founder before the Monday 12:00 CI autopublish; it publishes nothing.
+ * #156 cells two and three. LinkedIn posts EVERY day (founder 14/08), one
+ * hour after X so approvals never collide. The blog cell thinks on Thursday,
+ * so its brief+outline reaches the founder before the Monday 12:00 CI
+ * autopublish; it publishes nothing.
  */
 const LINKEDIN_CELLS = ["sphere-linkedin"];
 const BLOG_CELLS = ["sphere-blog"];
@@ -502,12 +503,12 @@ export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: 
   return startBrainRuns(sql, ["weekly-discovery"], 24 * 6, "cron:discovery-weekly");
 }
 
-/** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
+/** Specialist cells (#156): daily content runs. 20h look-back. */
 export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
 }
 
-/** LinkedIn cell (#156): Tue/Thu content runs. 20h look-back. */
+/** LinkedIn cell (#156): daily content runs. 20h look-back. */
 export async function runSphereLinkedinStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, LINKEDIN_CELLS, 20, "cron:sphere-linkedin");
 }

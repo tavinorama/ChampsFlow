@@ -233,7 +233,9 @@ describe("daily-video, the full life", () => {
 
   it("a failed angle fails the run fast and says so on Telegram", async () => {
     const world = makeWorld();
-    world.failTaskWhenPromptIncludes = "contrarian"; // angle-b's angle
+    // angle-b's own prompt line — not the bare word "contrarian", which the
+    // editorial calendar's [__day__] block also carries on Wednesdays.
+    world.failTaskWhenPromptIncludes = 'no angulo "contrarian"';
     await tickUntil(world, () => world.run.status !== "running");
 
     expect(world.run.status).toBe("failed");
@@ -507,6 +509,27 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
     expect(SPHERE_BLOG_GRAPH.nodes.some((n) => n.kind === "publish" || n.kind === "spawn")).toBe(false);
     expect(world.telegrams.some((t) => t.includes("Blog da semana"))).toBe(true);
     expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the editorial calendar reaches content cells, never the brains", () => {
+  it("a marketing cell's reasoning prompts carry [__day__]; a CEO brain's do not", async () => {
+    const seen: string[] = [];
+    // sphere-x is marketing → every task/debate prompt should carry the day.
+    const cell = makeWorld(SPHERE_X_GRAPH.slug);
+    const origTask = cell.ports.hermes.task.bind(cell.ports.hermes);
+    cell.ports.hermes.task = async (prompt) => { seen.push(prompt); return origTask(prompt); };
+    await tickUntil(cell, () => cell.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const p of seen) expect(p).toContain("[__day__]");
+
+    const brainSeen: string[] = [];
+    const brain = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    const origBrain = brain.ports.hermes.task.bind(brain.ports.hermes);
+    brain.ports.hermes.task = async (prompt) => { brainSeen.push(prompt); return origBrain(prompt); };
+    await tickUntil(brain, () => brain.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+    expect(brainSeen.length).toBeGreaterThan(0);
+    for (const p of brainSeen) expect(p).not.toContain("[__day__]");
   });
 });
 
