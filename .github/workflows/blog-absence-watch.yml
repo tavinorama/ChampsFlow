@@ -1,0 +1,61 @@
+name: Blog absence watch (Monday 15:00 UTC)
+
+# NADA DEGRADA CALADO — for the blog. The Monday autopublish (12:00 UTC)
+# failed on EVERY run until 17/08 and nobody was told (its own alarm only fires
+# on a failed run — a run that never starts, or a PR that never merges, is
+# silence). This watcher runs 3h later and asks the only question that matters:
+# "is there a merged content/blog-* PR today?" If not, it screams (job summary
+# always; Telegram when the secrets exist). The watcher stays outside the
+# watched: it never generates or publishes anything.
+
+on:
+  schedule:
+    - cron: "0 15 * * 1"   # Mondays 15:00 UTC (autopublish is 12:00)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Look for today's merged blog PR
+        id: look
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TODAY=$(date -u +%Y-%m-%d)
+          # PRs whose head branch is content/blog-<today>-... and merged today.
+          N=$(gh pr list --repo "${{ github.repository }}" --state merged --search "head:content/blog-${TODAY} merged:${TODAY}" --json number --jq 'length' 2>/dev/null || echo 0)
+          echo "merged_today=$N" >> "$GITHUB_OUTPUT"
+          echo "Merged blog PRs today (${TODAY}): $N"
+
+      - name: Quiet when published
+        if: steps.look.outputs.merged_today != '0'
+        run: echo "OK — the blog published today (${{ steps.look.outputs.merged_today }} merged PR)."
+
+      - name: SCREAM when nothing published
+        if: steps.look.outputs.merged_today == '0'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUNS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/blog-autopublish.yml
+        run: |
+          {
+            echo "## 🔴 SEGUNDA SEM BLOG"
+            echo ""
+            echo "Nenhum PR content/blog-* mergeado hoje. O autopublish das 12:00 UTC não entregou (não rodou, falhou, ou o PR não mergeou)."
+            echo ""
+            echo "$RUNS_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="SEGUNDA SEM BLOG: nenhum PR content/blog-* mergeado hoje. Ver ${RUNS_URL}"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "TELEGRAM secrets not set in Actions — alarm only in the job summary."
+          fi
+          exit 1
