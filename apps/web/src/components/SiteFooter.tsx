@@ -210,6 +210,7 @@ export function SiteFooter({ trustpilot }: SiteFooterProps) {
               title="Product"
               links={[
                 ["Free test", "/test"],
+                ["AI Audit Stack ($49)", "/ai-audit"],
                 ["Pricing", "/pricing"],
                 ["Ozvor Pages", "/local-pages"],
                 ["OrganicPosts", "/organicposts"],

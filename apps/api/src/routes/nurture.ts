@@ -38,18 +38,24 @@ import { publicRateLimit } from "../lib/public-rate-limit";
 const FREE_TO_KIT_STEPS = 4;
 const KIT_TO_DFY_STEPS = 3;
 const KIT_TO_GROWTH_STEPS = 3;
+// AI Audit Stack ($49) buyer → the OrganicPosts $1.5k bundle (GEO + full AI
+// Audit), with the free GEO test as the cross-sell rung. Requires migration
+// 20260815000002 (widens the sequence CHECK) — until then the INSERT fails and
+// the caller's best-effort catch logs it.
+const AI_AUDIT_TO_FULL_STEPS = 2;
 
 const SEQUENCE_STEPS: Record<Sequence, number> = {
   free_to_kit: FREE_TO_KIT_STEPS,
   kit_to_dfy: KIT_TO_DFY_STEPS,
   kit_to_growth: KIT_TO_GROWTH_STEPS,
+  ai_audit_to_full: AI_AUDIT_TO_FULL_STEPS,
 };
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type Sequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth";
+export type Sequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth" | "ai_audit_to_full";
 
 interface NurtureEnrollmentRow {
   id: string;
