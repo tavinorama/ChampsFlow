@@ -22,6 +22,7 @@
 import type postgres from "postgres";
 import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
+import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import {
   advanceRun,
   GRAPH_REGISTRY,
@@ -36,6 +37,13 @@ const HERMES_TOKEN = process.env["HERMES_TASK_TOKEN"] ?? "";
 const TG_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
 const TG_CHAT = process.env["TELEGRAM_CHAT_ID"] ?? "";
 const ARTIFACT_TTL_SECONDS = 7 * 24 * 3600;
+// Signal Engine (docs/signal-engine-integration.md): the founder's other
+// product, read as a service. Both unset → content cells run on their own
+// memory, exactly as before. Cached 6h: its queues are daily.
+const SE_URL = process.env["SIGNAL_ENGINE_URL"] ?? "";
+const SE_KEY = process.env["SIGNAL_ENGINE_API_KEY"] ?? "";
+const SE_COUNTRY = process.env["SIGNAL_ENGINE_COUNTRY"] ?? "";
+const SE_CACHE_SECONDS = 6 * 3600;
 const HERMES_TIMEOUT_MS = 240_000;
 /** Cap runs advanced per tick — a stampede of runs must not starve the queue. */
 const MAX_RUNS_PER_TICK = 5;
@@ -379,6 +387,31 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           VALUES (${input.graph}, ${input.trigger}, ${input.vpOwner})
           RETURNING id`;
         return rows[0]!.id;
+      },
+      async externalSignals() {
+        if (!SE_URL || !SE_KEY) return null; // not wired: cells run as before
+        const cacheKey = `se:signals:${SE_COUNTRY || "all"}`;
+        try {
+          const cached = await redis.get(cacheKey);
+          if (cached) return cached;
+        } catch {
+          /* cache miss on redis error is fine */
+        }
+        const se = signalEngine({ baseUrl: SE_URL, apiKey: SE_KEY });
+        const r = await se.opportunities(SE_COUNTRY || undefined);
+        if (!r.ok) {
+          // Honest: the cell will see SEM DADO, and we log why (no key in log).
+          logger.warn("signal_engine_unavailable", { reason: r.reason, status: r.status ?? null });
+          return signalsBlock([], { source: `Signal Engine indisponivel (${r.reason})` });
+        }
+        const opps = listOf<SeOpportunity>(r.data, "items", "opportunities");
+        const block = signalsBlock(opps, { fetchedAt: r.fetchedAt });
+        try {
+          await redis.set(cacheKey, block, "EX", SE_CACHE_SECONDS);
+        } catch {
+          /* fine */
+        }
+        return block;
       },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
