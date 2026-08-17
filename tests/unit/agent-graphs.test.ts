@@ -19,6 +19,10 @@ import {
   WEEKLY_PRODUCT_GRAPH,
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
   type GraphDefinition,
   type NodeStates,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -238,5 +242,60 @@ describe("the first graph is the company's own loop", () => {
     expect(lenses).toContain("freshness");
     const freshness = DAILY_VIDEO_GRAPH.nodes.find((n) => n.config?.["lens"] === "freshness");
     expect(freshness!.dependsOn).toContain("memory");
+  });
+
+  it("v4: a VIRALITY critic sits in the debate, reads memory, and the synthesis waits for it", () => {
+    // Founder 17/08: the scripts were stiff and corporate. The virality lens
+    // judges hook / watch-time / share trigger and vetoes ad-or-slide-deck.
+    const virality = DAILY_VIDEO_GRAPH.nodes.find((n) => n.config?.["lens"] === "virality");
+    expect(virality, "daily-video must carry a virality critic").toBeTruthy();
+    expect(virality!.kind).toBe("debate");
+    expect(virality!.dependsOn).toEqual(expect.arrayContaining(["angle-a", "angle-b", "angle-c", "memory"]));
+    const synthesis = DAILY_VIDEO_GRAPH.nodes.find((n) => n.id === "synthesis")!;
+    expect(synthesis.dependsOn).toContain(virality!.id);
+    expect(DAILY_VIDEO_GRAPH.version).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("content alive on every platform (17/08) — the new cells", () => {
+  it("IG / TikTok / YouTube spheres validate, are marketing-owned, gated, and close their own loop", () => {
+    const expected: Array<[GraphDefinition, string, string, string]> = [
+      [SPHERE_INSTAGRAM_GRAPH, "instagram", "instagram_", "instagram_reach"],
+      [SPHERE_TIKTOK_GRAPH, "tiktok", "tiktok_", "tiktok_views"],
+      [SPHERE_YOUTUBE_GRAPH, "youtube", "youtube_", "youtube_views"],
+    ];
+    for (const [def, channel, prefix, metric] of expected) {
+      const v = validateGraph(def);
+      expect(v.errors, def.slug).toEqual([]);
+      expect(def.vpOwner).toBe("marketing");
+      const byId = new Map(def.nodes.map((n) => [n.id, n]));
+      expect(byId.get("memory")!.config?.["metricPrefix"]).toBe(prefix);
+      expect(byId.get("publish")!.config?.["channel"]).toBe(channel);
+      expect(byId.get("publish")!.dependsOn).toEqual(["approval"]);
+      expect(byId.get("harvest")!.config?.["metric"]).toBe(metric);
+      // Two drafts, one critic that also reads memory (freshness against the record).
+      expect(byId.get("draft-talking-head")).toBeTruthy();
+      expect(byId.get("draft-caption-story")).toBeTruthy();
+      expect(byId.get("critic")!.dependsOn).toContain("memory");
+    }
+  });
+
+  it("no cell publishes to LinkedIn twice — the daily video already owns that adaptation", () => {
+    for (const def of [SPHERE_INSTAGRAM_GRAPH, SPHERE_TIKTOK_GRAPH, SPHERE_YOUTUBE_GRAPH, SPHERE_PPC_GRAPH]) {
+      const linkedinPublish = def.nodes.filter((n) => n.kind === "publish" && n.config?.["channel"] === "linkedin");
+      expect(linkedinPublish, def.slug).toEqual([]);
+    }
+  });
+
+  it("PPC is READ-ONLY and ZERO SPEND: no publish, no spawn, no approval — it can only report", () => {
+    const v = validateGraph(SPHERE_PPC_GRAPH);
+    expect(v.errors).toEqual([]);
+    expect(SPHERE_PPC_GRAPH.vpOwner).toBe("marketing");
+    expect(SPHERE_PPC_GRAPH.nodes.some((n) => n.kind === "publish" || n.kind === "spawn")).toBe(false);
+    expect(SPHERE_PPC_GRAPH.nodes.some((n) => n.kind === "report")).toBe(true);
+    // Three networks, one critic over all three, finalize joins drafts + critic.
+    const ads = SPHERE_PPC_GRAPH.nodes.filter((n) => n.config?.["prompt"] === "ppc-draft").map((n) => n.config?.["network"]);
+    expect(ads.sort()).toEqual(["google-search", "linkedin", "meta"]);
+    expect(SPHERE_PPC_GRAPH.description.toLowerCase()).toContain("zero spend");
   });
 });

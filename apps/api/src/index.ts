@@ -58,6 +58,7 @@ import { registerSystemRoutes } from "./routes/system";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerChatRoutes } from "./routes/chat";
 import { registerApiKeyRoutes } from "./routes/api-keys";
+import { registerMcpRoutes } from "./routes/mcp";
 import { registerAgencyRoutes } from "./routes/agency";
 import { registerAttributionRoutes } from "./routes/attribution";
 import { registerCheckoutRoutes } from "./routes/checkout";
@@ -68,6 +69,7 @@ import { registerOperatorGraphRoutes } from "./routes/operator-graphs";
 import { registerAiAuditRoutes } from "./routes/ai-audit";
 import { registerBookRoutes } from "./routes/book";
 import { registerPrimeRoutes } from "./routes/prime";
+import { registerTelegramRoutes } from "./routes/telegram";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
@@ -285,6 +287,9 @@ registerAiAuditRoutes(app, db);
 registerBookRoutes(app, db);
 // D3: OrganicPosts Prime tab — real tenant facts + nudge log.
 registerPrimeRoutes(app, db);
+// Telegram bot webhook: approve/reject buttons → graph decisions (17/08).
+registerTelegramRoutes(app, db);
+registerMcpRoutes(app, db); // #150 Phase 1 — Streamable HTTP MCP at POST /api/mcp
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
