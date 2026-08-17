@@ -91,15 +91,17 @@ function shortVideoFamily(
   spec: { name: string; signalHint: string; grammar: string; finalizeExtras: string }
 ): Record<string, (ctx: PromptContext) => string> {
   return {
-    [`${p}-signal`]: () =>
+    [`${p}-signal`]: (ctx) =>
       [
         `Voce e o agente de sinais da esfera ${spec.name} da Ozvor (visibilidade em IA / GEO).`,
         `Liste 4 angulos QUENTES para um video curto de ${spec.name} hoje onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.`,
         spec.signalHint,
         "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
         "Para cada um: 1 linha do angulo + 1 linha do GANCHO de 1 segundo que ele rende (a frase exata).",
+        "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
         "Sem inventar dado: numero so com certeza.",
         "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+        upstreamBlock(ctx.upstream),
       ].join("\n"),
 
     [`${p}-briefing`]: (ctx) =>
@@ -165,7 +167,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "- <lista curta dos temas, ganchos e queries de b-roll que apareceram 2+ vezes>",
     ].join("\n"),
 
-  "collect-signals": () =>
+  "collect-signals": (ctx) =>
     [
       "Voce e o agente de sinais da Ozvor (plataforma de visibilidade em IA / GEO).",
       "Liste 5 sinais atuais e concretos do universo GEO/AI search que valem conteudo hoje:",
@@ -174,6 +176,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Sem inventar dado: se nao tiver certeza de um numero, nao use numero.",
       "Formato de saida: lista numerada 1-5, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "write-briefing": (ctx) =>
@@ -469,7 +473,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // (30 impressions across 8 posts on 13/08) — every post must try something
   // measurably different from what already failed.
 
-  "x-signal": () =>
+  "x-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera X (Twitter) da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 conversas ou angulos QUENTES no X agora onde a Ozvor tem algo real a dizer: SEO morrendo/mudando, marcas sumindo das respostas de IA, casos de citacao, dores de agencia/SMB.",
@@ -478,6 +482,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia engajamento HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "x-briefing": (ctx) =>
@@ -528,7 +534,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // proved approval→publish (13/08) AND where the raw-script incident
   // happened — so every draft is native to the feed, English, never a script.
 
-  "linkedin-signal": () =>
+  "linkedin-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera LinkedIn da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 angulos QUENTES no LinkedIn agora onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
@@ -537,6 +543,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia comentario HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "linkedin-briefing": (ctx) =>
@@ -587,7 +595,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // the THINKING (memory, angle, judged outline) and reports it to the
   // founder. It publishes nothing.
 
-  "blog-signal": () =>
+  "blog-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera BLOG da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 perguntas ou temas que SMBs e agencias estao buscando/perguntando AGORA sobre aparecer nas respostas de IA (ChatGPT, Perplexity, Gemini, AI Overview): como ser citado, por que sumiram, o que muda em relacao ao SEO, como medir.",
@@ -596,6 +604,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Para cada um: 1 linha do tema + 1 linha da intencao de busca por tras.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "blog-briefing": (ctx) =>

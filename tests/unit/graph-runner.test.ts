@@ -618,6 +618,33 @@ describe("the editorial calendar reaches content cells, never the brains", () =>
   });
 });
 
+describe("external signals (Signal Engine) reach content cells, fail-open", () => {
+  it("when the substrate offers externalSignals, marketing prompts carry [__signals__]; brains never do; absent port = as before", async () => {
+    const seen: string[] = [];
+    const cell = makeWorld(SPHERE_X_GRAPH.slug);
+    cell.ports.substrate.externalSignals = async () => "SINAIS EXTERNOS REAIS: kw=\"dentist austin\" · acao=publish_own_community";
+    const orig = cell.ports.hermes.task.bind(cell.ports.hermes);
+    cell.ports.hermes.task = async (p) => { seen.push(p); return orig(p); };
+    await tickUntil(cell, () => cell.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const p of seen) expect(p).toContain("[__signals__]");
+
+    const brainSeen: string[] = [];
+    const brain = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    brain.ports.substrate.externalSignals = async () => "should not be injected";
+    const ob = brain.ports.hermes.task.bind(brain.ports.hermes);
+    brain.ports.hermes.task = async (p) => { brainSeen.push(p); return ob(p); };
+    await tickUntil(brain, () => brain.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+    for (const p of brainSeen) expect(p).not.toContain("[__signals__]");
+
+    // A port that throws must not break the run (fail-open by contract).
+    const throwing = makeWorld(SPHERE_X_GRAPH.slug);
+    throwing.ports.substrate.externalSignals = async () => { throw new Error("se down"); };
+    await tickUntil(throwing, () => throwing.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(throwing.stepByNode("approval")?.status).toBe("waiting");
+  });
+});
+
 describe("the content-experiment cell — a seeded, gated, measured shot", () => {
   it("runs seed → draft → critic → finalize → approval → publish → harvest → verdict", async () => {
     const world = makeWorld(CONTENT_EXPERIMENT_GRAPH.slug);
