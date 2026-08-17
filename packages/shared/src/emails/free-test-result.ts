@@ -136,6 +136,7 @@ export async function sendFreeTestResultEmail(
     `How we count a citation (methodology v2.1): ${absoluteHref("/how-we-measure")}`,
     "",
     `Get-Cited Kit ($29): ${absoluteHref("/kit")}`,
+    `AI Audit Stack ($49): ${absoluteHref("/ai-audit")}`,
     `Growth plan: ${absoluteHref("/login?plan=growth&next=checkout")}`,
     `Book a free 20-min GEO call: ${absoluteHref("/book")}`,
     "",
@@ -286,6 +287,12 @@ export async function sendFreeTestResultEmail(
         $29 Get-Cited Kit &rarr;
       </a>
       <span style="font-size:13px;color:#374151;"> — Prompt blueprint + top-3 fixes for your brand</span>
+    </p>
+    <p style="margin:0 0 8px 0;">
+      <a href="${absoluteHref("/ai-audit")}" style="color:#0c7d54;font-size:13px;text-decoration:none;font-weight:600;">
+        $49 AI Audit Stack &rarr;
+      </a>
+      <span style="font-size:13px;color:#374151;"> — Too many AI tools. We pick the one that fits your business.</span>
     </p>
     <p style="margin:0 0 8px 0;">
       <a href="${absoluteHref("/login?plan=growth&next=checkout")}" style="color:#0c7d54;font-size:13px;text-decoration:none;font-weight:600;">

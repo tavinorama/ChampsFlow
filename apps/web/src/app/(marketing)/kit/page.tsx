@@ -153,6 +153,14 @@ export default function KitPage() {
         }}
         secondary={[
           {
+            title: "AI Audit Stack",
+            why: "Too many AI tools. We pick the one that fits your business and your pains. One payment.",
+            price: "$49",
+            href: "/ai-audit",
+            accent: "ghost",
+            ctaAriaLabel: "Get my AI Audit Stack for $49",
+          },
+          {
             title: "Agency Plan",
             why: "Monitor up to 10 brands, white-label reports, and a client approval workflow.",
             price: "$549/mo",

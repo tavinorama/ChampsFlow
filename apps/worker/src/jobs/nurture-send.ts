@@ -50,6 +50,8 @@ import { sendNurtureKit3Email } from "../../../../packages/shared/src/emails/nur
 import { sendNurtureGrowth1Email } from "../../../../packages/shared/src/emails/nurture-growth-1";
 import { sendNurtureGrowth2Email } from "../../../../packages/shared/src/emails/nurture-growth-2";
 import { sendNurtureGrowth3Email } from "../../../../packages/shared/src/emails/nurture-growth-3";
+import { sendNurtureAiAudit1Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-1";
+import { sendNurtureAiAudit2Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-2";
 import {
   isCatalogSequence,
   sendNurtureCatalogEmail,
@@ -118,10 +120,13 @@ export async function dispatchEmail(
     if (step === 0) return sendNurtureKit1Email(params);
     if (step === 1) return sendNurtureKit2Email(params);
     if (step === 2) return sendNurtureKit3Email(params);
+  } else if (sequence === "ai_audit_to_full") {
+    // $49 AI Audit buyer → OrganicPosts bundle (#479); cadence 0/1 from
+    // nurture-cadence.ts, senders bespoke (result-aware copy).
+    if (step === 0) return sendNurtureAiAudit1Email(params);
+    if (step === 1) return sendNurtureAiAudit2Email(params);
   }
-  // ai_audit_to_full: senders (nurture-ai-audit-1/2) arrive with PR #479.
-  // Until then an enrollment of that name (impossible on this branch: no
-  // trigger) throws here, the row is kept and retried, never marked sent.
+  // Unknown pair: throw so the row is kept and retried, never marked sent.
   throw new Error(
     `Unknown nurture step: sequence=${sequence} step=${step}`
   );

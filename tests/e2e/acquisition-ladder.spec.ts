@@ -78,3 +78,53 @@ test.describe("Acquisition ladder — Invisibility Test → Get-Cited Kit", () =
     await expect(page.locator("body")).toContainText(/Where to publish/i);
   });
 });
+
+test.describe("Acquisition ladder — AI Audit Stack ($49, email first, dev-unlock)", () => {
+  test.beforeEach(async ({ page }) => {
+    await seedConsent(page);
+  });
+
+  test("email → questionnaire → $49 checkout (dev-unlock) delivers ONE niche pick + the ladder", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/ai-audit");
+    await expect(page.getByRole("heading", { name: /too many ai tools/i })).toBeVisible();
+    // The offer is on the page before any form: price + what you get.
+    await expect(page.locator("body")).toContainText(/\$49/);
+    await expect(page.locator("body")).toContainText(/what you get for \$49/i);
+
+    // Step 1 of 5 — email is mandatory. "Next" without it stays on the step.
+    await expect(page.locator("body")).toContainText(/step 1 of 5/i);
+    await page.getByRole("button", { name: /^next$/i }).click();
+    await expect(page.locator("body")).toContainText(/add your email first/i);
+    await page.getByLabel(/your email/i).fill("e2e-ai-audit@example.com");
+    await page.getByRole("button", { name: /^next$/i }).click();
+
+    // Step 2 — business + focus.
+    await expect(page.locator("body")).toContainText(/step 2 of 5/i);
+    await page.getByLabel(/what is your business/i).fill("agency");
+    await page.getByRole("button", { name: /^next$/i }).click();
+
+    // Step 3 — engines (optional).
+    await expect(page.locator("body")).toContainText(/step 3 of 5/i);
+    await page.getByRole("button", { name: /^next$/i }).click();
+
+    // Step 4 — pains (at least one).
+    await expect(page.locator("body")).toContainText(/step 4 of 5/i);
+    await page.getByRole("button", { name: /cannot produce enough content/i }).click();
+    await page.getByRole("button", { name: /^next$/i }).click();
+
+    // Step 5 — tools in use + the $49 button (first-person CTA).
+    await expect(page.locator("body")).toContainText(/step 5 of 5/i);
+    const buy = page.getByRole("button", { name: /get my ai stack for \$49/i });
+    await expect(buy).toBeEnabled();
+    await buy.click();
+
+    // Dev-unlock (no Stripe keys) → /ai-audit/:token?dev_unlock=1 → delivery.
+    await expect(page).toHaveURL(/\/ai-audit\/.+dev_unlock=1/, { timeout: 20_000 });
+    await expect(page.locator("body")).toContainText(/your ai audit stack result|no clear niche fit yet/i, { timeout: 60_000 });
+    // The honest limit + the ladder into OrganicPosts and the free GEO test.
+    await expect(page.locator("body")).toContainText(/the size of the full picture/i);
+    await expect(page.getByRole("link", { name: /full ai audit stack/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /free geo test/i })).toBeVisible();
+  });
+});
