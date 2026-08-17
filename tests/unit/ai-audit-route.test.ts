@@ -27,6 +27,9 @@ vi.mock("../../packages/shared/src/logger", () => ({
 // checkout rate limit (zremrangebyscore/zadd/zcard/expire → exec).
 const zsets = new Map<string, number[]>();
 vi.mock("../../apps/api/src/shared-redis", () => ({
+  // D8c per-IP limiter (lib/ip-rate-limit.ts) asks for the optional client;
+  // null → bounded memory limiter, which is fine for these functional tests.
+  tryGetSharedRedis: () => null,
   getSharedRedis: () => ({
     pipeline: () => {
       const ops: Array<() => unknown> = [];

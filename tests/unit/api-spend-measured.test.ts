@@ -191,7 +191,7 @@ describe("recordSpend — measured › rate › flat, legacy-schema tolerant, ne
       estSource: "rate",
       ref: "audit-1",
     });
-    expect(r).toEqual({ ok: true, source: "measured", measuredCents: 0.2, estCents: 2, legacy: false });
+    expect(r).toEqual({ ok: true, source: "measured", measuredCents: 0.2, estCents: 2, legacy: false, tenantRecorded: false });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.q).toContain("measured_cost_cents");
     // [op, est, engine, model, in, out, measured, source, ref]
@@ -230,7 +230,7 @@ describe("recordSpend — measured › rate › flat, legacy-schema tolerant, ne
       estCents: 0.41,
       ref: "audit-2",
     });
-    expect(first).toEqual({ ok: true, source: "rate", measuredCents: null, estCents: 0, legacy: true });
+    expect(first).toEqual({ ok: true, source: "rate", measuredCents: null, estCents: 0, legacy: true, tenantRecorded: false });
     expect(calls).toHaveLength(2);
     expect(calls[1]!.q).toBe("INSERT INTO api_spend (op, est_cost_cents) VALUES ($1, $2)");
     expect(calls[1]!.p).toEqual(["audit", 0]);

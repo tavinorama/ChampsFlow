@@ -16,6 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 import { HowItWorksFilm } from "./HowItWorksFilm";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
@@ -177,6 +178,14 @@ export default function HowItWorksPage() {
             <Link href="/pricing" className="hiw-cta-ghost">See plans</Link>
           </div>
         </section>
+
+        {/* AI Audit Stack — site-wide peer CTA (SPRINT-9) */}
+        <div style={{ marginTop: "var(--space-12)" }}>
+          <AiAuditCta
+            headline="Not sure which AI tools you need?"
+            subline="Answer a few questions. We pick your AI stack and email it."
+          />
+        </div>
       </div>
     </>
   );

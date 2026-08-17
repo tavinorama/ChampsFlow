@@ -16,9 +16,18 @@ passos — e essa sequência é a espinha de toda a escada de valor:
 
 ```
 1. VER       →  2. DIAGNOSTICAR  →  3. CORRIGIR  →  4. MONITORAR  →  5. ESCALAR
-   (grátis)       └──────── $29 (one-time) ───────┘     €99/mo          OrganicPosts
+   (grátis)       └──────── $29 (one-time) ───────┘     $99/mo          OrganicPosts
    LEAD MAGNET            LOW-TICKET / TRIPWIRE          Growth          (DFY)
+                 (+ AI Audit Stack $49 one-time — degrau
+                  lateral, porta de entrada BR: stack de IA
+                  certo p/ as dores → OrganicPosts $1.5k)
 ```
+
+> Atualizado 2026-08-17: preços em **USD** (Growth **$99/mo**, nunca €99); o
+> **AI Audit Stack ($49 one-time, Stripe live desde #479)** entra como degrau
+> low-ticket paralelo ao Kit — questionário → 1 ferramenta de IA p/ a dor +
+> teaser honesto do relatório completo (que fica no OrganicPosts). Ver
+> `docs/PRODUCTS.md`.
 
 - **Lead magnet (grátis):** "The AI Invisibility Test" — em 60s mostra se a IA
   recomenda você ou seu concorrente. É o **passo 1 (VER)** do produto e revela a
@@ -29,7 +38,7 @@ passos — e essa sequência é a espinha de toda a escada de valor:
   e 3 (DIAGNOSTICAR + CORRIGIR)** — a primeira citação de verdade, sem assinatura.
 
 Funil: Teste grátis (lead) → Kit $29 (vira **cliente** — o salto mais importante)
-→ Growth €99/mo (monitorar) → OrganicPosts (feito-para-você). Cada degrau é um
+→ Growth $99/mo (monitorar) → OrganicPosts (feito-para-você). Cada degrau é um
 passo real do mesmo processo; ninguém "começa do zero" no degrau seguinte.
 
 ---
@@ -144,7 +153,7 @@ mostra o movimento sem prometer um número.
 
 Depois de publicar os 3 rascunhos, a próxima pergunta nasce sozinha: *"está
 funcionando? o que publico depois?"* → essa é exatamente a promessa do **Growth
-€99/mo** (monitorar semanalmente + gerar mais conteúdo). E quem não quer fazer
+$99/mo** (monitorar semanalmente + gerar mais conteúdo). E quem não quer fazer
 sozinho → **OrganicPosts** (feito-para-você). O Kit não é um beco sem saída: é a
 rampa de entrada do flywheel.
 
@@ -159,7 +168,8 @@ rampa de entrada do flywheel.
 |---|---|---|---|---|
 | 0 | **The AI Invisibility Test** | Grátis | 1 · VER | Lead magnet / hook — captura e revela a dor |
 | 1 | **The Get-Cited Kit** | **$29 one-time** | 2+3 · DIAGNOSTICAR + CORRIGIR | Tripwire — transforma lead em cliente |
-| 2 | **Growth** | €99/mo | 4 · MONITORAR | Core — flywheel semanal + mais conteúdo |
+| 1b | **AI Audit Stack** | **$49 one-time** | 2 · DIAGNOSTICAR (stack de IA p/ as dores) | Tripwire lateral (entrada BR) — 1 ferramenta certa + teaser; relatório completo = OrganicPosts |
+| 2 | **Growth** | $99/mo | 4 · MONITORAR | Core — flywheel semanal + mais conteúdo |
 | 3 | **Agency** | $549/mo | 4 · MONITORAR (multi-marca) | Core para agências |
 | 4 | **OrganicPosts** | Sprint / Managed | 5 · ESCALAR | High-ticket feito-para-você |
 

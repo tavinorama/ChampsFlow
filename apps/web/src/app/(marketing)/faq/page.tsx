@@ -21,6 +21,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { safeJsonLd } from "../../../components/landing-public/json-ld";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "FAQ — Answers about Ozvor, pricing, and the AI Visibility Score | Ozvor",
@@ -283,6 +284,14 @@ export default function FaqPage() {
           Check my brand, free →
         </Link>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA (SPRINT-9) */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Still asking which AI tools to use?"
+          subline="Answer a few questions. We pick your AI stack and email it."
+        />
+      </div>
     </main>
   );
 }

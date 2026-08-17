@@ -165,13 +165,18 @@ describe("Stripe webhook — AI Audit Stack ($49) branch", () => {
     expect(p.totalMatched).toBe(d.entry.totalMatched);
     expect(p.hasFreeTest).toBe(false); // never ran /test → cross-sell it
 
-    // Same dynamic as the Kit: suppress free_to_kit + enroll the next rung.
+    // Same dynamic as the Kit: suppress free_to_kit + enroll the next rung
+    // (ai_audit_to_full, upsell) AND the post-purchase onboarding
+    // (ai_audit_bought, D4 cadence 0/+1d/+2d).
     expect(mockSuppress).toHaveBeenCalledWith(expect.anything(), "buyer@example.com");
-    expect(mockEnroll).toHaveBeenCalledTimes(1);
+    expect(mockEnroll).toHaveBeenCalledTimes(2);
     const enroll = mockEnroll.mock.calls[0]![1] as { sequence: string; email: string; metadata: { hasFreeTest: boolean } };
     expect(enroll.sequence).toBe("ai_audit_to_full");
     expect(enroll.email).toBe("buyer@example.com");
     expect(enroll.metadata.hasFreeTest).toBe(false);
+    const onboarding = mockEnroll.mock.calls[1]![1] as { sequence: string; email: string };
+    expect(onboarding.sequence).toBe("ai_audit_bought");
+    expect(onboarding.email).toBe("buyer@example.com");
   });
 
   it("hasFreeTest=true when the email already ran the free GEO test (no cross-sell noise)", async () => {
@@ -195,7 +200,9 @@ describe("Stripe webhook — AI Audit Stack ($49) branch", () => {
     mockConstructEvent.mockReturnValue(evt("checkout.session.async_payment_succeeded", session("paid"), "evt_other"));
     expect((await postWebhook(app)).status).toBe(200);
     expect(mockSendAiAuditEmail).toHaveBeenCalledTimes(1);
-    expect(mockEnroll).toHaveBeenCalledTimes(1);
+    // 2 = ai_audit_to_full + ai_audit_bought from the FIRST delivery only;
+    // the redelivered / later events must not re-enroll anything.
+    expect(mockEnroll).toHaveBeenCalledTimes(2);
   });
 
   it("payment gate: unpaid session grants nothing", async () => {

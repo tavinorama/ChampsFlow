@@ -126,6 +126,9 @@ function isValidEmail(v: string): boolean {
 // Recommendation CTA labels
 // ---------------------------------------------------------------------------
 
+// AI Audit Stack ($49) — canonical public URL (peer of the Kit upsell)
+const AI_AUDIT_HREF = "/ai-audit";
+
 const PLAN_LABEL: Record<Recommendation["plan"], string> = {
   kit: "Get my Kit — $29 →",
   growth: "Start my Growth Plan →",
@@ -865,7 +868,6 @@ function RecommendationCards({
   // Filter out "kit" — it's always shown as the prominent hero above; rendering
   // it again here would create a duplicate CTA.
   const secondary = recommendations.filter((r) => r.plan !== "kit");
-  if (secondary.length === 0) return null;
 
   return (
     <section aria-labelledby="rec-heading">
@@ -929,6 +931,41 @@ function RecommendationCards({
             </div>
           );
         })}
+
+        {/* AI Audit Stack — always offered as a peer card (SPRINT-9) */}
+        <div
+          role="region"
+          aria-label="ai audit recommendation"
+          style={{
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            padding: "var(--space-4) var(--space-5)",
+            backgroundColor: "var(--color-surface)",
+            boxShadow: "var(--shadow-card)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontSize: "var(--font-size-body-sm)",
+              color: "var(--color-muted)",
+              lineHeight: 1.6,
+            }}
+          >
+            Not sure which AI tools fit your business? Answer a few questions.
+            We send you the right AI stack by email.
+          </p>
+          <a
+            href={AI_AUDIT_HREF}
+            aria-label="Show me my AI stack, $49"
+            style={outlinedBtn()}
+          >
+            Show me my AI stack, $49 →
+          </a>
+        </div>
       </div>
     </section>
   );

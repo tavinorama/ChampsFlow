@@ -29,9 +29,12 @@
  *   - The tenant must have a billing_subscriptions row with status='active'
  *     whose plan_tier is a paid tier that includes weekly_monitoring
  *     (derived from PLAN_LIMITS so it can never drift from the plan matrix).
- *   - Founder-granted plans (tenants.plan_tier set with NO active subscription
- *     row) are intentionally EXCLUDED — this reconcile only acts on real paid
- *     subscriptions. Those accounts can still enable monitoring manually.
+ *   - Founder-granted (comped) plans — tenants.plan_tier on an eligible tier
+ *     with NO active billing_subscriptions row — are ALSO eligible since
+ *     2026-08-17 (D8b): a comped Growth/Agency account gets the headline
+ *     feature too. Every such brand is logged as `monitor_reconcile_comped`
+ *     so the grant is visible in the boot logs, never silent. The row tells
+ *     which path qualified it (`via`: 'subscription' | 'comped').
  *
  * Scope: ENABLE-only. It never DISABLES monitoring (e.g. for a churned tenant)
  * so it can't fight a user's manual choice or silently turn tracking off. Churn
@@ -79,6 +82,23 @@ interface EligibleBrandRow {
   tenant_id: string;
   region: string;
   monitoring_enabled: boolean;
+  /** 'subscription' = active paid row; 'comped' = tenants.plan_tier only (founder grant). */
+  via: "subscription" | "comped";
+}
+
+/**
+ * Pure: classifies eligibility for a brand's tenant. Exported for tests.
+ * `hasActiveSub` = an active billing_subscriptions row on an eligible tier;
+ * `planTier` = tenants.plan_tier. Comped = eligible tier with no active row.
+ */
+export function classifyMonitoringEligibility(
+  hasActiveSub: boolean,
+  planTier: string | null | undefined,
+  tiers: readonly string[]
+): "subscription" | "comped" | null {
+  if (hasActiveSub) return "subscription";
+  if (planTier && tiers.includes(planTier)) return "comped";
+  return null;
 }
 
 /**
@@ -108,9 +128,20 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
     // so the sold "full-auto weekly monitoring" feature was dead in production
     // and nothing ever said so. Found only because the 2026-07-29 silent-failure
     // sweep read the boot logs.
+    //
+    // D8b (2026-08-17): comped accounts — tenants.plan_tier on an eligible
+    // tier with NO active subscription row — qualify too (via='comped').
     rows = await sql<EligibleBrandRow[]>`
-      SELECT b.id, b.tenant_id, b.region, b.monitoring_enabled
+      SELECT b.id, b.tenant_id, b.region, b.monitoring_enabled,
+             CASE WHEN EXISTS (
+               SELECT 1
+                 FROM billing_subscriptions bs
+                WHERE bs.tenant_id = b.tenant_id
+                  AND bs.status = 'active'
+                  AND bs.plan_tier = ANY(${tiers as string[]}::text[])
+             ) THEN 'subscription' ELSE 'comped' END AS via
         FROM brands b
+        JOIN tenants t ON t.id = b.tenant_id
        WHERE EXISTS (
                SELECT 1
                  FROM billing_subscriptions bs
@@ -118,6 +149,7 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
                   AND bs.status = 'active'
                   AND bs.plan_tier = ANY(${tiers as string[]}::text[])
              )
+          OR t.plan_tier = ANY(${tiers as string[]}::text[])
     `;
   } catch (err: unknown) {
     logger.error("monitor_reconcile_query_failed", {
@@ -134,8 +166,14 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
   const queue = getReconcileAuditQueue();
   let registered = 0;
   let enabled = 0;
+  let comped = 0;
 
   for (const brand of rows) {
+    if (brand.via === "comped") {
+      comped += 1;
+      // Visible by design: a founder-granted plan getting the paid feature.
+      logger.info("monitor_reconcile_comped", { brand_id: brand.id, tenant_id: brand.tenant_id });
+    }
     // 1. Ensure the weekly repeatable exists. Stable jobId + fixed cron pattern
     //    make this idempotent: BullMQ dedupes on the repeat key, so re-adding is
     //    a no-op. Identical to the manual toggle (audits.ts) so both paths land
@@ -179,6 +217,7 @@ export async function reconcileWeeklyMonitoring(sql: postgres.Sql): Promise<void
     eligible: rows.length,
     schedules_registered: registered,
     newly_enabled: enabled,
+    comped,
     tiers: tiers.join(","),
   });
 }

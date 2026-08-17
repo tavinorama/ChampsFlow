@@ -18,7 +18,7 @@
  */
 
 import type { Metadata } from "next";
-import { SoftCTA } from "../../../components/marketing/SoftCTA";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { THREE_SCORE_COLORS } from "../../../components/OzvorScorecard";
 
 // ---------------------------------------------------------------------------
@@ -1178,11 +1178,10 @@ export default function HowWeMeasurePage() {
         </div>
       </section>
 
-      {/* ── SoftCTA ── */}
-      <SoftCTA
+      {/* ── AiAuditCta ── */}
+      <AiAuditCta
         headline="See how your brand actually scores"
-        subline="Free AI visibility test — takes 30 seconds, no credit card."
-        primary={{ label: "Run the free test", href: "/test" }}
+        subline="Free AI visibility test, 30 seconds, no credit card. Or get your AI stack, $49."
         secondary={{ label: "View pricing", href: "/pricing" }}
       />
     </div>

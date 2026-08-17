@@ -116,6 +116,54 @@ export function monthlyCreditsFor(tier: PlanTier): number {
  */
 export const FREE_SIGNUP_RESIDUAL_CREDITS = 200;
 
+// ---------------------------------------------------------------------------
+// D1 (2026-08-17): the visible credit state. The header pill, the low/empty
+// banners, the audit CTA gate and the account/billing card all read THIS, so
+// "running low" means the same thing on every screen.
+// ---------------------------------------------------------------------------
+
+/** Below this share of the monthly allowance the UI says "running low". */
+export const CREDITS_LOW_PCT = 20;
+
+/** balance ÷ allowance as a whole percent, clamped to 0..100. Allowance 0 → 0. */
+export function creditsPct(balance: number, allowance: number): number {
+  if (!Number.isFinite(balance) || !Number.isFinite(allowance) || allowance <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((balance / allowance) * 100)));
+}
+
+export type CreditsLevel = "ok" | "low" | "empty";
+
+export interface CreditsState {
+  level: CreditsLevel;
+  pct: number;
+  /** False when the next audit would overdraw — the CTA disables with this reason. */
+  canRunAudit: boolean;
+  /** Plain-English reason for the disabled CTA (empty string when it can run). */
+  blockedReason: string;
+}
+
+/**
+ * The one decision the pill/banners make. `empty` wins over `low` (0 balance
+ * is red even on a tiny allowance); a balance that cannot cover ONE audit
+ * disables the CTA even when it is not zero, and the reason says why.
+ */
+export function creditsState(input: {
+  balance: number;
+  allowance: number;
+  costPerAudit: number;
+}): CreditsState {
+  const balance = Number.isFinite(input.balance) ? input.balance : 0;
+  const pct = creditsPct(balance, input.allowance);
+  const canRunAudit = balance >= input.costPerAudit && input.costPerAudit >= 0;
+  const level: CreditsLevel = balance <= 0 ? "empty" : pct < CREDITS_LOW_PCT ? "low" : "ok";
+  const blockedReason = canRunAudit
+    ? ""
+    : balance <= 0
+      ? "You have 0 credits. Buy 1,000 credits or upgrade to run an audit."
+      : `An audit needs ${input.costPerAudit.toLocaleString("en-US")} credits. You have ${balance.toLocaleString("en-US")}. Top up or wait for the 1st.`;
+  return { level, pct, canRunAudit, blockedReason };
+}
+
 /** First of the current month, UTC — the grant period bucket. */
 export function currentPeriod(now: Date = new Date()): string {
   const y = now.getUTCFullYear();

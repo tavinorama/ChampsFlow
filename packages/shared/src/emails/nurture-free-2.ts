@@ -34,6 +34,7 @@ export async function sendNurtureFree2Email(
     process.env.EMAIL_FROM ?? "Ozvor <hello@ozvor.com>";
 
   const kitUrl = `${WEB_ORIGIN}/kit`;
+  const aiAuditUrl = `${WEB_ORIGIN}/ai-audit`;
   const subject =
     "Your competitors are getting AI citations. Here's what they're doing differently.";
 
@@ -48,6 +49,8 @@ export async function sendNurtureFree2Email(
     "That's what the Get-Cited Kit fixes: a full audit + your top-3 highest-impact actions + 3 citation-ready content pieces, ready to publish.",
     "",
     "Get the $29 Get-Cited Kit: " + kitUrl,
+    "",
+    "Not sure which AI tools you need? Show me my AI stack, $49: " + aiAuditUrl,
     "",
     "— The Ozvor Team",
     "https://ozvor.com",
@@ -115,6 +118,10 @@ export async function sendNurtureFree2Email(
     <a href="${kitUrl}" style="${btnStyle}">
       Get the $29 Get-Cited Kit
     </a>
+    <p style="margin:12px 0 0;font-size:13px;color:#6B7280;">
+      Not sure which AI tools you need?
+      <a href="${aiAuditUrl}" style="color:#0E7490;font-weight:600;">Show me my AI stack, $49</a>
+    </p>
   </div>
 
   <!-- Unsubscribe footer -->
