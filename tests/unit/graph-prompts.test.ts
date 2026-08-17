@@ -21,6 +21,10 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
 } from "../../apps/api/src/lib/agent-graphs";
 
 const debateLenses = DAILY_VIDEO_GRAPH.nodes
@@ -68,7 +72,7 @@ describe("buildPrompt resolves the graph's task slugs", () => {
 
 describe("the read-only brains' prompts resolve and stay honest", () => {
   it("every Watchdog, CDO, experiment-cell and sphere-cell reasoning node has a resolvable prompt", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH, SPHERE_LINKEDIN_GRAPH, SPHERE_BLOG_GRAPH]) {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH, SPHERE_LINKEDIN_GRAPH, SPHERE_BLOG_GRAPH, SPHERE_INSTAGRAM_GRAPH, SPHERE_TIKTOK_GRAPH, SPHERE_YOUTUBE_GRAPH, SPHERE_PPC_GRAPH]) {
       for (const node of def.nodes) {
         if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
         const p = buildPrompt(node.kind, node.config ?? {}, []);
@@ -106,11 +110,86 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
       ["task", "blog-briefing"],
       ["task", "blog-outline"],
       ["synthesis", "blog-finalize"],
+      // 17/08: the short-video spheres publish; PPC drafts are public ad copy.
+      ["task", "instagram-briefing"],
+      ["task", "instagram-draft"],
+      ["synthesis", "instagram-finalize"],
+      ["task", "tiktok-briefing"],
+      ["task", "tiktok-draft"],
+      ["synthesis", "tiktok-finalize"],
+      ["task", "youtube-briefing"],
+      ["task", "youtube-draft"],
+      ["synthesis", "youtube-finalize"],
+      ["task", "ppc-draft"],
+      ["synthesis", "ppc-finalize"],
     ] as const;
     for (const [kind, slug] of publishable) {
       const p = buildPrompt(kind, { prompt: slug }, []) ?? "";
       expect(p, `${slug} must demand English output`).toContain("INGLES");
     }
+  });
+
+  it("v4 video ALIVE: draft-angle encodes the phone-shot format and the [STYLE] line the renderer reads", () => {
+    const p = buildPrompt("task", { prompt: "draft-angle", angle: "story" }, []) ?? "";
+    expect(p).toContain("9:16");
+    expect(p).toContain("25-40");
+    expect(p).toContain("[HOOK] <=1 segundo");
+    expect(p).toContain("CAPTION:");
+    expect(p).toContain("[PATTERN INTERRUPT]");
+    expect(p).toContain("[STYLE] phone-shot, handheld feel, natural light, jump cuts, big captions, no stock-footage look, no corporate B-roll");
+  });
+
+  it("v4: the virality lens judges hook / watch-time / share and VETOES ad-or-slide-deck", () => {
+    const p = buildPrompt("debate", { lens: "virality" }, []) ?? "";
+    expect(p).toContain('lente "virality"');
+    expect(p.toLowerCase()).toContain("watch-time");
+    expect(p.toLowerCase()).toContain("beat 2");
+    expect(p.toLowerCase()).toContain("share");
+    expect(p).toContain("VETO: parece anuncio");
+    expect(p).toContain("VETO: parece slide deck");
+  });
+
+  it("v4: the synthesis applies virality corrections and emits [RENDER BRIEF] + [CHANNEL VARIANTS]", () => {
+    const p = buildPrompt("synthesis", {}, []) ?? "";
+    expect(p).toContain("virality");
+    expect(p).toContain("[RENDER BRIEF]");
+    for (const field of ["format:", "style:", "captions:", "music:", "pace:"]) expect(p).toContain(field);
+    expect(p).toContain("[CHANNEL VARIANTS]");
+    for (const ch of ["IG Reels", "TikTok", "YT Shorts"]) expect(p).toContain(ch);
+  });
+
+  it("every short-video sphere family carries the alive format, the virality veto and the render brief", () => {
+    for (const fam of ["instagram", "tiktok", "youtube"]) {
+      const draft = buildPrompt("task", { prompt: `${fam}-draft`, style: "talking-head" }, []) ?? "";
+      expect(draft, `${fam}-draft`).toContain("[STYLE] phone-shot");
+      expect(draft).toContain("caption-story");
+      const critic = buildPrompt("debate", { prompt: `${fam}-critic` }, []) ?? "";
+      expect(critic, `${fam}-critic`).toContain("VIRALIDADE");
+      expect(critic).toContain("VETO");
+      expect(critic).toContain("[memory]");
+      const fin = buildPrompt("synthesis", { prompt: `${fam}-finalize` }, []) ?? "";
+      expect(fin, `${fam}-finalize`).toContain("[RENDER BRIEF]");
+      const brief = buildPrompt("task", { prompt: `${fam}-briefing` }, []) ?? "";
+      expect(brief).toContain("CALENDARIO EDITORIAL");
+      expect(brief).toContain("[memory]");
+    }
+    // Platform-native grammar, one pin each.
+    expect(buildPrompt("task", { prompt: "instagram-draft" }, [])).toContain("Hashtags: 3-5 de NICHO");
+    expect(buildPrompt("task", { prompt: "tiktok-signal" }, [])).toContain("hook culture");
+    expect(buildPrompt("synthesis", { prompt: "youtube-finalize" }, [])).toContain("[TITLE] <=60 chars");
+  });
+
+  it("PPC prompts: claim rules, compliance VETO, and 'zero spend / founder decides' in words", () => {
+    const draft = buildPrompt("task", { prompt: "ppc-draft", network: "google-search" }, []) ?? "";
+    expect(draft).toContain("REGRAS DE CLAIM");
+    expect(draft).toContain("HEADLINES");
+    expect(buildPrompt("task", { prompt: "ppc-draft", network: "meta" }, [])).toContain("PRIMARY TEXT");
+    expect(buildPrompt("task", { prompt: "ppc-draft", network: "linkedin" }, [])).toContain("Sponsored Content");
+    const critic = buildPrompt("debate", { prompt: "ppc-critic" }, []) ?? "";
+    expect(critic).toContain("VETO");
+    const fin = buildPrompt("synthesis", { prompt: "ppc-finalize" }, []) ?? "";
+    expect(fin).toContain("0 gasto");
+    expect(fin.toLowerCase()).toContain("decisao do founder");
   });
 
   it("the LinkedIn adapt step forbids script residue — a post, never a screenplay", () => {

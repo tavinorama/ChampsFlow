@@ -43,6 +43,10 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
@@ -73,6 +77,12 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // blog (read-only thinker that feeds the CI autopublish pipeline).
   [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
   [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
+  // Content alive on every platform (17/08): the three short-video spheres
+  // (own memory, own approval, own harvest) + the zero-spend PPC thinker.
+  [SPHERE_INSTAGRAM_GRAPH.slug]: SPHERE_INSTAGRAM_GRAPH,
+  [SPHERE_TIKTOK_GRAPH.slug]: SPHERE_TIKTOK_GRAPH,
+  [SPHERE_YOUTUBE_GRAPH.slug]: SPHERE_YOUTUBE_GRAPH,
+  [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
