@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runPlatformCellStart } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -395,6 +395,47 @@ async function registerSphereMoreSchedules(): Promise<void> {
   logger.info("sphere_more_schedules_registered", { linkedin: SPHERE_LINKEDIN_CRON, blog: SPHERE_BLOG_CRON });
 }
 
+// Content alive on every platform (founder, 17/08). One queue, four named
+// repeatables: 'sphere-instagram' 11:00 UTC, 'sphere-tiktok' 12:00,
+// 'sphere-youtube' 14:00 (each daily, staggered after LinkedIn 10:00 and
+// around the video 13:00 so approvals never collide), and 'sphere-ppc' Tue
+// 08:00 UTC — weekly, read-only, ZERO SPEND (it reports 3 ad drafts; activating
+// a campaign is a founder-gated live switch outside this repo). The daily
+// approvals valve (SPHERE_MAX_DAILY_APPROVALS, default 6) lives in
+// startBrainRuns and skips gated marketing starts out loud past the cap.
+const spherePlatformsWorker = new Worker(
+  "sphere-platforms",
+  async (job) => runPlatformCellStart(getGraphSql(), job.name),
+  { connection, concurrency: 1, autorun: false }
+);
+const spherePlatformsQueue = new Queue("sphere-platforms", { connection });
+const SPHERE_INSTAGRAM_CRON = process.env["SPHERE_INSTAGRAM_CRON"] ?? "0 11 * * *";
+const SPHERE_TIKTOK_CRON = process.env["SPHERE_TIKTOK_CRON"] ?? "0 12 * * *";
+const SPHERE_YOUTUBE_CRON = process.env["SPHERE_YOUTUBE_CRON"] ?? "0 14 * * *";
+const SPHERE_PPC_CRON = process.env["SPHERE_PPC_CRON"] ?? "0 8 * * 2";
+
+async function registerSpherePlatformsSchedules(): Promise<void> {
+  const schedules: Array<[string, string]> = [
+    ["sphere-instagram", SPHERE_INSTAGRAM_CRON],
+    ["sphere-tiktok", SPHERE_TIKTOK_CRON],
+    ["sphere-youtube", SPHERE_YOUTUBE_CRON],
+    ["sphere-ppc", SPHERE_PPC_CRON],
+  ];
+  for (const [name, pattern] of schedules) {
+    await spherePlatformsQueue.add(
+      name,
+      {},
+      { jobId: `${name}-repeat`, repeat: { pattern }, removeOnComplete: 20, removeOnFail: 20 }
+    );
+  }
+  logger.info("sphere_platforms_schedules_registered", {
+    instagram: SPHERE_INSTAGRAM_CRON,
+    tiktok: SPHERE_TIKTOK_CRON,
+    youtube: SPHERE_YOUTUBE_CRON,
+    ppc: SPHERE_PPC_CRON,
+  });
+}
+
 const videoWorker = new Worker(
   "video-daily",
   async (job) =>
@@ -447,6 +488,7 @@ void platformKeysReady.finally(() => {
   void sphereStartWorker.run();
   void videoWorker.run();
   void sphereMoreWorker.run();
+  void spherePlatformsWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
     logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -468,6 +510,9 @@ void platformKeysReady.finally(() => {
   });
   void registerVideoSchedules().catch((err: Error) => {
     logger.error("video_schedules_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerSpherePlatformsSchedules().catch((err: Error) => {
+    logger.error("sphere_platforms_schedules_register_failed", { message: err.message?.slice(0, 200) });
   });
 });
 
@@ -715,6 +760,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await videoQueue.close();
     await sphereMoreWorker.close();
     await sphereMoreQueue.close();
+    await spherePlatformsWorker.close();
+    await spherePlatformsQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,

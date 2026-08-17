@@ -33,6 +33,10 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
   validateGraph,
   type GraphDefinition,
 } from "../../apps/api/src/lib/agent-graphs";
@@ -508,6 +512,79 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
     expect(world.spawnedRuns).toEqual([]);
     expect(SPHERE_BLOG_GRAPH.nodes.some((n) => n.kind === "publish" || n.kind === "spawn")).toBe(false);
     expect(world.telegrams.some((t) => t.includes("Blog da semana"))).toBe(true);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("content alive on every platform (17/08) — IG / TikTok / YouTube spheres", () => {
+  const cells: Array<[GraphDefinition, string, string, string, number]> = [
+    [SPHERE_INSTAGRAM_GRAPH, "instagram_", "instagram", "instagram_reach", 1200],
+    [SPHERE_TIKTOK_GRAPH, "tiktok_", "tiktok", "tiktok_views", 5400],
+    [SPHERE_YOUTUBE_GRAPH, "youtube_", "youtube", "youtube_views", 830],
+  ];
+
+  for (const [def, prefix, channel, metric, total] of cells) {
+    it(`${def.slug}: memory reads ONLY ${prefix} metrics, both drafts + critic run, PARKS at the human gate`, async () => {
+      const world = makeWorld(def.slug);
+      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: prefix }]);
+      expect(world.stepByNode("draft-talking-head")?.status).toBe("succeeded");
+      expect(world.stepByNode("draft-caption-story")?.status).toBe("succeeded");
+      expect(world.stepByNode("critic")?.status).toBe("succeeded");
+      expect(world.stepByNode("finalize")?.status).toBe("succeeded");
+      expect(world.published).toEqual([]);
+      const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO"));
+      expect(ask).toContain(`publicar como POST em ${channel}`);
+    });
+
+    it(`${def.slug}: approve → publish to ${channel} → wait 72h → harvest ${metric} → verdict closes the loop`, async () => {
+      const world = makeWorld(def.slug);
+      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+      await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting", 25, def);
+      expect(world.published).toHaveLength(1);
+      expect(world.published[0]!.channel).toBe(channel);
+
+      world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+      world.harvestData = { n: 1, total };
+      await tickUntil(world, () => world.run.status !== "running", 25, def);
+      expect(world.outcomes[0]!.metric).toBe(metric);
+      expect(world.outcomes[0]!.valueAfter).toBe(total);
+      expect(world.run.status).toBe("succeeded");
+    });
+  }
+
+  it("every new marketing cell's reasoning prompts carry [__day__] — the calendar still reaches them", async () => {
+    for (const [def] of cells) {
+      const seen: string[] = [];
+      const world = makeWorld(def.slug);
+      const orig = world.ports.hermes.task.bind(world.ports.hermes);
+      world.ports.hermes.task = async (prompt) => { seen.push(prompt); return orig(prompt); };
+      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      expect(seen.length, def.slug).toBeGreaterThan(0);
+      for (const p of seen) expect(p, def.slug).toContain("[__day__]");
+    }
+  });
+});
+
+describe("the PPC cell (17/08) — 3 ad drafts, ZERO spend, report only", () => {
+  it("snapshot(outcomes 30d, all spheres) → signal → 3 ads → critic → finalize → REPORT; no publish, no spawn", async () => {
+    const world = makeWorld(SPHERE_PPC_GRAPH.slug);
+    world.snapshotText = "RESULTADOS REAIS (ops.agent_outcome, 30d):\n- linkedin_impressions (sphere-linkedin): 320 · lift 0.4";
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_PPC_GRAPH);
+    // All spheres, no prefix — ads follow whatever content resonated anywhere.
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30 }]);
+    for (const id of ["signal", "ad-google", "ad-meta", "ad-linkedin", "critic", "finalize", "report"]) {
+      expect(world.stepByNode(id)?.status, id).toBe("succeeded");
+    }
+    // The whole safety of this cell: it cannot spend, publish or launch.
+    expect(world.published).toEqual([]);
+    expect(world.spawnedRuns).toEqual([]);
+    expect(world.telegrams.some((t) => t.includes("APROVAÇÃO"))).toBe(false);
+    const report = world.telegrams.find((t) => t.includes("PPC"));
+    expect(report).toBeTruthy();
+    expect(report).toContain("sem gasto");
+    expect(report).toContain("nada foi executado");
     expect(world.run.status).toBe("succeeded");
   });
 });
