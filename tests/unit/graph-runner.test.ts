@@ -43,6 +43,7 @@ interface FakeWorld {
   steps: Array<StepRow & { summary?: string | null }>;
   outcomes: Array<{ stepId: string; metric: string; valueAfter: number | null }>;
   telegrams: string[];
+  telegramButtons: string[][];
   published: Array<{ channel: string; post: string }>;
   clock: { now: Date };
   harvestData: { n: number; total: number };
@@ -67,6 +68,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
   const steps: FakeWorld["steps"] = [];
   const outcomes: FakeWorld["outcomes"] = [];
   const telegrams: string[] = [];
+  const telegramButtons: string[][] = [];
   const published: FakeWorld["published"] = [];
   const artifacts = new Map<string, string>();
   let stepSeq = 0;
@@ -76,6 +78,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
     steps,
     outcomes,
     telegrams,
+    telegramButtons,
     published,
     clock,
     harvestData: { n: 0, total: 0 },
@@ -145,8 +148,9 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
           artifacts.set(`${runId}:${node}`, text);
         },
       },
-      telegram: async (text) => {
+      telegram: async (text, buttons) => {
         telegrams.push(text);
+        if (buttons) world.telegramButtons.push(buttons.map((b) => b.data));
       },
       now: () => clock.now,
     },
@@ -443,6 +447,10 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     expect(world.stepByNode("finalize")?.status).toBe("succeeded");
     // Parked at the human gate; nothing on X yet.
     expect(world.published).toEqual([]);
+    // 17/08: the approval carries the two buttons the Telegram webhook maps
+    // to the #445 finish call — approve is one tap, reject asks why.
+    const stepId = world.stepByNode("approval")!.id;
+    expect(world.telegramButtons.at(-1)).toEqual([`ap:${stepId}`, `rj:${stepId}`]);
   });
 
   it("approve → publishes to channel X → harvest x_impressions closes the sphere's loop", async () => {
