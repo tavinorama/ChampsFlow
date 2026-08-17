@@ -336,16 +336,18 @@ async function registerDiscoverySchedule(): Promise<void> {
   logger.info("discovery_weekly_schedule_registered", { cron: DISCOVERY_WEEKLY_CRON });
 }
 
-// Specialist cells (#156): the X sphere posts Mon/Wed/Fri 09:00 UTC (~10:00
-// Lisbon) — the approval reaches the founder mid-morning, the post goes out
-// while the timeline is awake.
+// Specialist cells (#156). Founder 14/08: content EVERY day of the week, more
+// diverse than before — the editorial calendar (lib/editorial-calendar.ts)
+// gives each day its theme, so daily cadence reads as seven different things.
+// X starts 09:00 UTC (~10:00 Lisbon); LinkedIn 10:00; video 13:00 — staggered
+// so the founder never gets two approvals in the same minute.
 const sphereStartWorker = new Worker(
   "sphere-start",
   async () => runSphereStart(getGraphSql()),
   { connection, concurrency: 1, autorun: false }
 );
 const sphereStartQueue = new Queue("sphere-start", { connection });
-const SPHERE_START_CRON = process.env["SPHERE_START_CRON"] ?? "0 9 * * 1,3,5";
+const SPHERE_START_CRON = process.env["SPHERE_START_CRON"] ?? "0 9 * * *";
 
 async function registerSphereStartSchedule(): Promise<void> {
   await sphereStartQueue.add(
@@ -363,11 +365,10 @@ async function registerSphereStartSchedule(): Promise<void> {
 // 'video-absence' checks at 19:00 UTC that a publish actually SUCCEEDED in the
 // last 26h and screams on Telegram when it did not. The watcher stays outside
 // the watched: the check never starts or fixes anything.
-// #156 cells two and three (14/08 sprint). One queue, two named repeatables:
-// 'sphere-linkedin' Tue/Thu 09:00 UTC (offset from X's Mon/Wed/Fri so the
-// founder never gets two approvals at once) and 'sphere-blog' Thu 08:00 UTC
-// (the brief+outline reaches the founder before Monday's 12:00 autopublish;
-// it publishes nothing itself).
+// #156 cells two and three. One queue, two named repeatables: 'sphere-linkedin'
+// DAILY 10:00 UTC (founder 14/08: every day; one hour after X so approvals
+// never collide) and 'sphere-blog' Thu 08:00 UTC (the brief+outline reaches
+// the founder before Monday's 12:00 autopublish; it publishes nothing itself).
 const sphereMoreWorker = new Worker(
   "sphere-more",
   async (job) =>
@@ -377,7 +378,7 @@ const sphereMoreWorker = new Worker(
   { connection, concurrency: 1, autorun: false }
 );
 const sphereMoreQueue = new Queue("sphere-more", { connection });
-const SPHERE_LINKEDIN_CRON = process.env["SPHERE_LINKEDIN_CRON"] ?? "0 9 * * 2,4";
+const SPHERE_LINKEDIN_CRON = process.env["SPHERE_LINKEDIN_CRON"] ?? "0 10 * * *";
 const SPHERE_BLOG_CRON = process.env["SPHERE_BLOG_CRON"] ?? "0 8 * * 4";
 
 async function registerSphereMoreSchedules(): Promise<void> {
