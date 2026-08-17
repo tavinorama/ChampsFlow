@@ -33,7 +33,12 @@
 
 import { Hono } from "hono";
 import { requireOperatorKey } from "./api-keys";
-import { enrollNurture, checkNurtureEligibility } from "./nurture";
+import { enrollNurture, checkNurtureEligibility, suppressOnConversion } from "./nurture";
+import { ownerEmailForTenant } from "../lib/tenant-email";
+import {
+  ALL_NURTURE_SEQUENCES,
+  type NurtureSequence,
+} from "../../../../packages/shared/src/nurture-cadence";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { arrFromMrr } from "../../../../packages/shared/src/pricing";
@@ -46,7 +51,9 @@ import { upsertCrmContact } from "../lib/crm";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const VALID_ENGAGEMENT_STATUSES = new Set(["requested", "contacted", "won", "lost"]);
-const VALID_SEQUENCES = new Set(["free_to_kit", "kit_to_dfy"]);
+// Founder-approved sequences = the whole catalog in nurture-cadence.ts (every
+// one is a fixed, unsubscribe-carrying drip; no free-form email through here).
+const VALID_SEQUENCES = new Set<string>(ALL_NURTURE_SEQUENCES);
 
 function clampLimit(raw: string | undefined, dflt: number, max: number): number {
   const n = parseInt(raw ?? "", 10);
@@ -340,14 +347,30 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
       );
     }
     try {
-      const { rows } = await db.query<{ id: string; status: string }>(
-        `UPDATE engagement SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, status`,
+      const { rows } = await db.query<{
+        id: string;
+        status: string;
+        contact_email: string | null;
+        tenant_id: string | null;
+      }>(
+        `UPDATE engagement SET status = $1, updated_at = NOW() WHERE id = $2
+         RETURNING id, status, contact_email, tenant_id`,
         [status, id]
       );
       if (!rows[0]) return c.json({ error: "not_found", code: "ENGAGEMENT_NOT_FOUND" }, 404);
       const key = c.get("apiKey");
       logger.info("operator_engagement_updated", { key_id: key.id, engagement_id: id, status });
-      return c.json(rows[0]);
+      // OrganicPosts won = the top rung. Every smaller-ticket drip stops
+      // (nurture-cadence.ts: NURTURE_SUPPRESS_ON_CONVERSION.organicposts). Best-effort.
+      if (status === "won") {
+        try {
+          const email = rows[0].contact_email ?? (await ownerEmailForTenant(db, rows[0].tenant_id));
+          if (email) await suppressOnConversion(db, email.toLowerCase().trim(), "organicposts");
+        } catch (err) {
+          logger.warn("nurture_suppress_organicposts_failed", { engagement_id: id, message: (err as Error).message });
+        }
+      }
+      return c.json({ id: rows[0].id, status: rows[0].status });
     } catch (err) {
       logger.error("operator_engagement_update_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "ENGAGEMENT_UPDATE_FAILED" }, 500);
@@ -452,12 +475,12 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
         {
           error: "invalid_input",
           code: "INVALID_SEQUENCE",
-          message: "sequence must be one of: free_to_kit, kit_to_dfy",
+          message: `sequence must be one of: ${ALL_NURTURE_SEQUENCES.join(", ")}`,
         },
         400
       );
     }
-    const seq = sequence as "free_to_kit" | "kit_to_dfy";
+    const seq = sequence as NurtureSequence;
     try {
       const eligibility = await checkNurtureEligibility(db, email, seq);
       if (eligibility.suppressed || eligibility.alreadyEnrolled) {

@@ -14,6 +14,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RingFlow, ContentEngine } from "../../../components/marketing/illustrations";
 import { OrganicPostsFilmHero } from "./OrganicPostsFilmHero";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "OrganicPosts — We build your AI visibility with you",
@@ -149,6 +150,14 @@ export default function OrganicPostsPage() {
           <Link href="/pricing" className="op-cta-ghost">Compare plans</Link>
         </div>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA (SPRINT-9) */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Not ready for done-for-you? Start smaller."
+          subline="Run the free test. Or get the AI tools that fit your business, $49."
+        />
+      </div>
       <p style={{ maxWidth: 720, margin: "var(--space-8) auto 0", padding: "0 var(--space-4)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center", lineHeight: 1.6 }}>
         AI answers are non-deterministic and vary by engine, phrasing, and day. Ozvor&rsquo;s scores and
         recommendations are evidence-based, directional estimates &mdash; not a guarantee of citation,

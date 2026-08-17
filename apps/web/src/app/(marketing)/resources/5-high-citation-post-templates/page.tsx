@@ -10,7 +10,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SoftCTA } from "../../../../components/marketing/SoftCTA";
+import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
@@ -880,7 +880,7 @@ export default function PostTemplatesPage() {
 
         {/* Soft CTA nudge — free test */}
         <div style={{ marginBottom: "var(--space-6)" }}>
-          <SoftCTA
+          <AiAuditCta
             headline="See if these templates are already working for your brand"
             subline="The free AI Visibility Test checks whether ChatGPT, Claude, and Perplexity mention you today."
             primary={{ label: "Run the free test", href: "/test" }}

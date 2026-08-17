@@ -24,6 +24,10 @@
  * 503 {code:"AI_AUDIT_ORDERS_NOT_READY"} — logged once, never a crash, never a
  * fabricated success.
  *
+ * Every public endpoint is rate-limited per IP: /meta 30/h, /entry + /assess
+ * 8/h (D8c, lib/ip-rate-limit.ts — Redis ZSET with bounded memory fallback,
+ * #261); /checkout keeps its own 8/h limiter below.
+ *
  * Honesty carried to the wire: every payload says whether the catalog came
  * from the DB or the seed and whether its numbers are human-verified.
  */
@@ -48,10 +52,24 @@ import {
   isUndefinedTable,
 } from "../lib/ai-audit/deliverable";
 import { fulfillAiAuditOrder } from "../lib/ai-audit/fulfill";
+import { requireAuth } from "../auth/middleware";
+import { aiAuditAccessFor, discountedPriceUsd, type AiAuditAccess } from "../lib/ai-audit/access";
+import type { PlanTier } from "../../../../packages/shared/src/plan-limits";
 import {
   createAiAuditCheckoutSession,
   verifyAiAuditCheckoutSession,
 } from "../integrations/stripe";
+import {
+  sharedIpRateLimiter,
+  truncateIp as truncateIpForRateLimit,
+  type IpRateLimiter,
+} from "../lib/ip-rate-limit";
+
+// Per-IP limits (D8c, 2026-08-17) — same ZSET pattern as /api/test. /meta is
+// cheap (30/h); /entry and /assess build a teaser (8/h, like the free test).
+export const AI_AUDIT_META_LIMIT = 30;
+export const AI_AUDIT_ASSESS_LIMIT = 8;
+const HOUR_MS = 60 * 60 * 1000;
 
 const MAX_PAINS = 20;
 const MAX_STR = 120;
@@ -105,16 +123,6 @@ function webOrigin(): string {
   return process.env["WEB_ORIGIN"] ?? process.env["FRONTEND_URL"] ?? "http://localhost:3000";
 }
 
-/** GDPR data minimization for the rate-limit key (same as products.ts). */
-function truncateIpForRateLimit(ip: string): string {
-  if (!ip) return "unknown";
-  const v4 = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$/);
-  if (v4) return `${v4[1]}.0`;
-  const colons = ip.split(":");
-  if (colons.length >= 4) return colons.slice(0, 3).join(":") + "::/48";
-  return "unknown";
-}
-
 async function checkCheckoutRateLimit(ipTruncated: string): Promise<boolean> {
   const redis = getSharedRedis();
   const key = `ai_audit_rl:${ipTruncated}`;
@@ -161,9 +169,28 @@ interface OrderRow {
   lead_capture_id: string | null;
 }
 
-export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
+export function registerAiAuditRoutes(
+  app: Hono,
+  db: PostgresClient,
+  opts: { limiter?: IpRateLimiter } = {}
+): void {
+  const limiter = opts.limiter ?? sharedIpRateLimiter;
+  const limited = async (
+    c: { req: { header: (n: string) => string | undefined } },
+    bucket: "meta" | "assess",
+    limit: number
+  ): Promise<boolean> => {
+    const ip = truncateIpForRateLimit(clientIp(c));
+    return !(await limiter(`ai_audit_rl:${bucket}:${ip}`, limit, HOUR_MS));
+  };
+  const tooMany = (limit: number) => ({
+    message: `Too many requests. Up to ${limit} per hour per network. Try again later.`,
+    code: "RATE_LIMITED",
+  });
+
   // GET /api/ai-audit/meta — vocabulary for the questionnaire, from the catalog.
   app.get("/api/ai-audit/meta", async (c) => {
+    if (await limited(c, "meta", AI_AUDIT_META_LIMIT)) return c.json(tooMany(AI_AUDIT_META_LIMIT), 429);
     const { tools, source, allVerified } = await loadCatalog(db);
     const pains = [...new Set(tools.flatMap((t) => t.pains))].sort();
     const categories = [...new Set(tools.map((t) => t.category))].sort();
@@ -185,6 +212,7 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
   // built server-side for paid orders and for the OrganicPosts DFY audit; it
   // is never returned here.
   app.post("/api/ai-audit/assess", async (c) => {
+    if (await limited(c, "assess", AI_AUDIT_ASSESS_LIMIT)) return c.json(tooMany(AI_AUDIT_ASSESS_LIMIT), 429);
     const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return c.json({ message: "Invalid JSON body." }, 400);
     const answers = answersFromBody(body);
@@ -218,6 +246,7 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/ai-audit/entry — TEASER (counts only, no pick). The pick is
   // what the $49 buys; it is delivered only through /order/:token/deliver.
   app.post("/api/ai-audit/entry", async (c) => {
+    if (await limited(c, "assess", AI_AUDIT_ASSESS_LIMIT)) return c.json(tooMany(AI_AUDIT_ASSESS_LIMIT), 429);
     const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return c.json({ message: "Invalid JSON body." }, 400);
     const answers = answersFromBody(body);
@@ -487,5 +516,293 @@ export function registerAiAuditRoutes(app: Hono, db: PostgresClient): void {
 
     const { deliverable } = await fulfillAiAuditOrder(db, { ...order, status: "paid" }, { source });
     return c.json({ status: "delivered", deliverable });
+  });
+
+  // =========================================================================
+  // TENANT surface (dashboard "AI Audit" tab, founder D2 2026-08-17).
+  // The rule lives in lib/ai-audit/access.ts (pure, tested):
+  //   prime (OrganicPosts won) → FULL report, unlocked, free
+  //   paid  (growth/agency)    → teaser + $49 checkout with 15% off (coupon env)
+  //   free                     → teaser + full-price $49 checkout + upsell
+  // =========================================================================
+
+  /** Facts the access rule needs, read tenant-scoped. Never throws. */
+  async function tenantFacts(tenantId: string): Promise<{ tier: PlanTier; hasOrganicPosts: boolean }> {
+    let tier: PlanTier = "free";
+    let hasOrganicPosts = false;
+    try {
+      const { rows } = await db.query<{ plan_tier: string | null }>(
+        `SELECT plan_tier FROM billing_subscriptions
+          WHERE tenant_id = $1
+          ORDER BY (status = 'active') DESC, created_at DESC
+          LIMIT 1`,
+        [tenantId]
+      );
+      const raw = rows[0]?.plan_tier;
+      tier = raw === "growth" || raw === "agency" ? raw : "free";
+    } catch (err) {
+      logger.warn("ai_audit_tenant_tier_lookup_failed", { tenant_id: tenantId, message: (err as Error).message });
+    }
+    try {
+      // OrganicPosts = a WON engagement (status vocabulary: requested |
+      // contacted | won | lost — routes/engagements.ts).
+      const { rows } = await db.query<{ one: number }>(
+        `SELECT 1 AS one FROM engagement
+          WHERE tenant_id = $1 AND sku IN ('geo_sprint','managed_geo') AND status = 'won'
+          LIMIT 1`,
+        [tenantId]
+      );
+      hasOrganicPosts = rows.length > 0;
+    } catch (err) {
+      logger.warn("ai_audit_tenant_engagement_lookup_failed", { tenant_id: tenantId, message: (err as Error).message });
+    }
+    return { tier, hasOrganicPosts };
+  }
+
+  /** The offer block the UI renders. Honest about the coupon: unset env = full price, said out loud. */
+  function offerFor(access: AiAuditAccess) {
+    const coupon = process.env["STRIPE_COUPON_AIAUDIT15"]?.trim() || null;
+    const couponApplied = access.kind === "paid" && !!coupon;
+    const discountPct = couponApplied ? access.discountPct : 0;
+    return {
+      priceUsd: access.priceUsd,
+      discountPct,
+      finalPriceUsd: access.kind === "prime" ? 0 : discountedPriceUsd(access.priceUsd, discountPct),
+      couponApplied,
+      couponMissing: access.kind === "paid" && !coupon,
+      checkoutPath: access.unlocked ? null : "/api/ai-audit/tenant/checkout",
+    };
+  }
+
+  /** Latest delivered $49 order claimed by this tenant (RLS: only claimed rows). Null when none / table missing. */
+  async function latestTenantOrder(tenantId: string): Promise<{ orderToken: string; deliverable: unknown; deliveredAt: string | null } | null> {
+    try {
+      const { rows } = await db.query<{ order_token: string; deliverable: unknown; delivered_at: string | null }>(
+        `SELECT order_token, deliverable, delivered_at FROM ai_audit_order
+          WHERE claimed_by_tenant_id = $1 AND status = 'delivered' AND deliverable IS NOT NULL
+          ORDER BY delivered_at DESC NULLS LAST LIMIT 1`,
+        [tenantId]
+      );
+      const r = rows[0];
+      return r ? { orderToken: r.order_token, deliverable: r.deliverable, deliveredAt: r.delivered_at } : null;
+    } catch (err) {
+      if (!isUndefinedTable(err)) {
+        logger.warn("ai_audit_tenant_order_lookup_failed", { tenant_id: tenantId, message: (err as Error).message });
+      }
+      return null;
+    }
+  }
+
+  // GET /api/ai-audit/tenant/access — the rule + offer + last delivered order,
+  // so the tab can render the right frame before any answers are typed.
+  app.get("/api/ai-audit/tenant/access", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const facts = await tenantFacts(auth.tenantId);
+    const access = aiAuditAccessFor(facts);
+    const order = access.unlocked ? null : await latestTenantOrder(auth.tenantId);
+    const last = await lastTenantAssess(auth.tenantId);
+    return c.json({ access, offer: offerFor(access), tier: facts.tier, order, last });
+  });
+
+  /**
+   * Persistence choice (D2, no migration): the tenant's last questionnaire is
+   * the audit_log row the assess route writes (event_type
+   * ai_audit_tenant_assess, metadata.answers). The engine is pure and the
+   * catalog is shared, so answers + catalog reproduce the same result; the tab
+   * re-runs /assess with these answers on open. No new table, no jsonb column.
+   */
+  async function lastTenantAssess(tenantId: string): Promise<{ answers: QuestionnaireAnswers; at: string; access: string | null } | null> {
+    try {
+      const { rows } = await db.query<{ metadata: Record<string, unknown> | string | null; created_at: string }>(
+        `SELECT metadata, created_at FROM audit_log
+          WHERE tenant_id = $1 AND event_type = 'ai_audit_tenant_assess'
+          ORDER BY created_at DESC LIMIT 1`,
+        [tenantId]
+      );
+      const r = rows[0];
+      if (!r) return null;
+      const meta = (typeof r.metadata === "string" ? JSON.parse(r.metadata) : r.metadata) as Record<string, unknown> | null;
+      const rawAnswers = meta?.["answers"];
+      if (!rawAnswers || typeof rawAnswers !== "object") return null;
+      const answers = answersFromBody(rawAnswers as Record<string, unknown>);
+      if (answers.pains.length === 0 || !answers.businessType) return null;
+      return { answers, at: r.created_at, access: typeof meta?.["access"] === "string" ? (meta["access"] as string) : null };
+    } catch (err) {
+      logger.warn("ai_audit_tenant_last_lookup_failed", { tenant_id: tenantId, message: (err as Error).message });
+      return null;
+    }
+  }
+
+  // POST /api/ai-audit/tenant/assess — answers → BOTH entry + full report,
+  // then the rule decides what leaves the server. Prime gets everything (the
+  // full path is the ONLY one that may recommend giants: allowGeneric). Paid /
+  // free get the counts-only teaser; the pick and the report never leak.
+  app.post("/api/ai-audit/tenant/assess", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return c.json({ message: "Invalid JSON body." }, 400);
+    const answers = answersFromBody(body);
+    if (answers.pains.length === 0) {
+      return c.json({ message: "Pick at least one pain first.", code: "NO_PAINS" }, 400);
+    }
+    if (!answers.businessType) {
+      return c.json({ message: "Tell us your business first.", code: "NO_BUSINESS" }, 400);
+    }
+
+    await db.setTenantId(auth.tenantId);
+    const facts = await tenantFacts(auth.tenantId);
+    const access = aiAuditAccessFor(facts);
+    const { tools, source, allVerified } = await loadCatalog(db);
+    const entry = buildEntryResult(answers, tools);
+    const full = buildAuditReport(answers, tools, { allowGeneric: access.unlocked });
+    const catalog = { source, estimatesUnverified: !allVerified };
+
+    // Best-effort trail (audit_log is insert-only for tenant sessions): the
+    // answers + the summary, so ops can see the tenant ran it. Never the reason
+    // a 200 turns into a 500.
+    try {
+      await db.query(
+        `INSERT INTO audit_log (event_type, actor_user_id, tenant_id, target_entity, metadata, created_at)
+         VALUES ('ai_audit_tenant_assess', $1, $2, 'ai_audit', $3, NOW())`,
+        [
+          auth.userId,
+          auth.tenantId,
+          jsonbParam({
+            access: access.kind,
+            answers,
+            totalMatched: entry.totalMatched,
+            quickWins: full.quickWins.length,
+            hoursReclaimedWeekly: full.hoursReclaimedWeekly,
+          }),
+        ]
+      );
+    } catch (err) {
+      logger.warn("ai_audit_tenant_assess_audit_log_failed", { tenant_id: auth.tenantId, message: (err as Error).message });
+    }
+
+    if (access.unlocked) {
+      return c.json({ access, offer: offerFor(access), unlocked: true, entry, report: full, catalog });
+    }
+    const order = await latestTenantOrder(auth.tenantId);
+    return c.json({
+      access,
+      offer: offerFor(access),
+      unlocked: false,
+      teaser: {
+        totalMatched: entry.totalMatched,
+        withheldCount: entry.withheldCount,
+        painSummary: full.painSummary,
+        matrixCounts: {
+          "quick-win": full.matrix["quick-win"].length,
+          "major-project": full.matrix["major-project"].length,
+          "fill-in": full.matrix["fill-in"].length,
+          ignore: full.matrix.ignore.length,
+        },
+        hoursReclaimedWeekly: full.hoursReclaimedWeekly,
+        empty: full.empty,
+      },
+      upsell: aiAuditUpsell(entry.totalMatched),
+      order,
+      catalog,
+    });
+  });
+
+  // POST /api/ai-audit/tenant/checkout — the $49 order for a logged-in tenant.
+  // Same order row + Stripe session as the public checkout, but the tenant is
+  // known: the row is claimed at insert, the email is the owner's, and the
+  // paid branch carries the 15% coupon (env). Prime never needs this (409).
+  app.post("/api/ai-audit/tenant/checkout", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return c.json({ message: "Invalid JSON body." }, 400);
+    const answers = answersFromBody(body);
+    if (answers.pains.length === 0) return c.json({ message: "Pick at least one pain first.", code: "NO_PAINS" }, 400);
+    if (!answers.businessType) return c.json({ message: "Tell us your business first.", code: "NO_BUSINESS" }, 400);
+
+    await db.setTenantId(auth.tenantId);
+    const facts = await tenantFacts(auth.tenantId);
+    const access = aiAuditAccessFor(facts);
+    if (access.unlocked) {
+      return c.json({ message: "Your plan already includes the full AI Audit.", code: "ALREADY_UNLOCKED" }, 409);
+    }
+
+    // The buyer's email: the signed-in user (JWT sub → users.supabase_auth_uid),
+    // then the workspace owner. No email → no checkout (Stripe needs one and
+    // the delivery email is the product's promise).
+    let email = "";
+    try {
+      const { rows } = await db.query<{ email: string | null }>(
+        `SELECT email FROM users WHERE supabase_auth_uid = $1 LIMIT 1`,
+        [auth.userId]
+      );
+      email = (rows[0]?.email ?? "").trim();
+      if (!email) {
+        const owner = await db.query<{ email: string | null }>(
+          `SELECT email FROM users WHERE tenant_id = $1 AND role = 'owner' AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`,
+          [auth.tenantId]
+        );
+        email = (owner.rows[0]?.email ?? "").trim();
+      }
+    } catch (err) {
+      logger.warn("ai_audit_tenant_checkout_email_lookup_failed", { tenant_id: auth.tenantId, message: (err as Error).message });
+    }
+    if (!email || !EMAIL_RE.test(email)) {
+      return c.json({ message: "We could not find an email for your account.", code: "NO_EMAIL" }, 400);
+    }
+
+    const id = randomUUID();
+    const token = randomBytes(24).toString("base64url");
+    try {
+      await db.query(
+        `INSERT INTO ai_audit_order (id, order_token, email, business_type, primary_focus, answers, status, claimed_at, claimed_by_tenant_id, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,'pending', NOW(), $7, NOW())`,
+        [
+          id,
+          token,
+          email,
+          answers.businessType,
+          answers.primaryFocus || null,
+          jsonbParam({
+            businessType: answers.businessType,
+            primaryFocus: answers.primaryFocus,
+            pains: answers.pains,
+            engines: answers.engines,
+            toolsInUse: answers.toolsInUse ?? [],
+            tenantId: auth.tenantId,
+          }),
+          auth.tenantId,
+        ]
+      );
+    } catch (err) {
+      if (isUndefinedTable(err)) return notReady(c, "tenant_checkout");
+      throw err;
+    }
+
+    const offer = offerFor(access);
+    const coupon = offer.couponApplied ? process.env["STRIPE_COUPON_AIAUDIT15"]?.trim() ?? null : null;
+    const stripeConfigured = !!process.env["STRIPE_SECRET_KEY"] && !!process.env["STRIPE_PRICE_ID_AI_AUDIT"];
+    const origin = webOrigin();
+    if (stripeConfigured) {
+      try {
+        const { url } = await createAiAuditCheckoutSession(
+          id,
+          token,
+          email,
+          `${origin}/ai-audit/${token}?session_id={CHECKOUT_SESSION_ID}&from=dashboard`,
+          `${origin}/dashboard-v3?tab=aiaudit&canceled=1`,
+          { coupon, tenantId: auth.tenantId }
+        );
+        logger.info("ai_audit_tenant_checkout_created", { tenant_id: auth.tenantId, access: access.kind, coupon_applied: !!coupon });
+        return c.json({ token, url, offer });
+      } catch (err) {
+        logger.error("ai_audit_tenant_checkout_failed", { tenant_id: auth.tenantId, message: (err as Error).message });
+        return c.json({ message: "Checkout is not available right now." }, 502);
+      }
+    }
+    if (process.env["NODE_ENV"] !== "production") {
+      return c.json({ token, url: `/ai-audit/${token}?dev_unlock=1`, offer, dev: true });
+    }
+    return c.json({ message: "Checkout is not configured.", code: "CHECKOUT_UNCONFIGURED" }, 503);
   });
 }
