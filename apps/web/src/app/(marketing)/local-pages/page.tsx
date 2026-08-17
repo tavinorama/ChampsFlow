@@ -24,6 +24,7 @@ import { PagesBuyForm } from "./PagesBuyForm";
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 import { PagesFilmHero } from "./PagesFilmHero";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "Ozvor Pages — AI-search-ready 5-page websites | Ozvor",
@@ -271,6 +272,14 @@ export default function LocalPagesSalesPage() {
           ))}
         </div>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA (SPRINT-9) */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Pages are one brick. Which AI tools come next?"
+          subline="Run the free test. Or get your AI stack picked for you, $49."
+        />
+      </div>
 
       <FounderAnnualNote
         suffix="No guaranteed citations."
