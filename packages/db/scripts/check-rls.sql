@@ -61,6 +61,8 @@ WHERE nspname = 'public'
     'waitlist',
     'lead_capture',
     'kit_order',
+    -- AI Audit Stack $49 orders (20260815000002_ai_audit_order) — kit_order posture.
+    'ai_audit_order',
     'nurture_enrollment',
     'nurture_send_log',
     'pages_order',
