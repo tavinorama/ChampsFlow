@@ -71,6 +71,8 @@ import { ownerEmailForTenant } from "../lib/tenant-email";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
+import { fulfillAiAuditOrder } from "../lib/ai-audit/fulfill";
+import { isUndefinedTable } from "../lib/ai-audit/deliverable";
 import {
   ensureMonthlyGrant,
   ensureFreeSignupResidual,
@@ -1511,6 +1513,65 @@ async function handleCheckoutSessionCompleted(
   }
 
   // ---------------------------------------------------------------------------
+  // AI Audit Stack branch (mode='payment', product='ai_audit_stack') — $49
+  // one-time (founder 2026-08-15). Same dynamic as the Kit: mark paid + bind
+  // the session (idempotent), then fulfill (build + store the deliverable,
+  // claim-by-email, delivery email WITH the result inline, suppress free_to_kit
+  // + enroll ai_audit_to_full). fulfillAiAuditOrder sends the email only when
+  // THIS call made the paid → delivered transition, so a redelivery or a race
+  // with the sync /deliver path never double-notifies.
+  // ---------------------------------------------------------------------------
+  if (session.mode === "payment" && session.metadata?.product === "ai_audit_stack") {
+    const ai_audit_order_id = session.metadata?.ai_audit_order_id;
+    const order_token = session.metadata?.order_token;
+    if (!ai_audit_order_id || !order_token) {
+      logger.warn("stripe_ai_audit_checkout_completed_missing_metadata", {
+        session_id: session.id,
+        event_id: eventId,
+      });
+      return;
+    }
+    try {
+      await db.query(
+        `UPDATE ai_audit_order SET status='paid', stripe_session_id=$2, paid_at=NOW()
+          WHERE id=$1 AND status='pending'`,
+        [ai_audit_order_id, session.id]
+      );
+      const { rows } = await db.query<{
+        id: string; order_token: string; email: string; business_type: string | null;
+        primary_focus: string | null; answers: unknown; status: string; deliverable: unknown;
+      }>(
+        `SELECT id, order_token, email, business_type, primary_focus, answers, status, deliverable
+           FROM ai_audit_order WHERE id = $1`,
+        [ai_audit_order_id]
+      );
+      const order = rows[0];
+      if (!order) {
+        logger.warn("stripe_ai_audit_order_not_found", { ai_audit_order_id, event_id: eventId });
+        return;
+      }
+      if (order.status !== "paid" && order.status !== "delivered") {
+        // refunded/failed meanwhile — never fulfil a revoked order.
+        logger.warn("stripe_ai_audit_order_not_fulfillable", { ai_audit_order_id, status: order.status, event_id: eventId });
+        return;
+      }
+      if (!order.email) {
+        order.email = (session.customer_details?.email ?? session.customer_email ?? "").trim();
+      }
+      await fulfillAiAuditOrder(db, order, { eventId, source: "webhook" });
+    } catch (err) {
+      if (isUndefinedTable(err)) {
+        // Migration not applied yet but Stripe took money: shout, and let Stripe
+        // retry (500) so the event is not lost — never acknowledge silently.
+        logger.error("stripe_ai_audit_orders_table_missing", { ai_audit_order_id, event_id: eventId });
+      }
+      throw err;
+    }
+    logger.info("stripe_ai_audit_checkout_completed_processed", { ai_audit_order_id, event_id: eventId });
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
   // Ozvor Pages branch (mode='payment', product='ozvor_pages_site') — #208 PR-2
   // $99 one-time website purchase. Mark the pages_order paid, then credit
   // tenants.extra_landing_sites for the tenant matching the buyer email; if no
@@ -2223,6 +2284,18 @@ async function handleAsyncPaymentFailed(
     return;
   }
 
+  if (session.mode === "payment" && product === "ai_audit_stack") {
+    const ai_audit_order_id = session.metadata?.ai_audit_order_id;
+    if (ai_audit_order_id) {
+      await db.query(
+        `UPDATE ai_audit_order SET status='failed' WHERE id=$1 AND status='pending'`,
+        [ai_audit_order_id]
+      );
+      logger.info("stripe_ai_audit_async_payment_failed", { ai_audit_order_id, event_id: eventId });
+    }
+    return;
+  }
+
   if (session.mode === "payment" && product === "ozvor_pages_site") {
     const pages_order_id = session.metadata?.pages_order_id;
     if (pages_order_id) {
@@ -2306,6 +2379,33 @@ async function revokeEntitlementsForCharge(
       event_id: eventId,
       kind,
     });
+    return;
+  }
+
+  // --- AI Audit Stack: order named by charge metadata ----------------------
+  if (md["product"] === "ai_audit_stack" && md["ai_audit_order_id"]) {
+    const orderId = md["ai_audit_order_id"];
+    const { rows } = await db.query<{ claimed_by_tenant_id: string | null }>(
+      `UPDATE ai_audit_order
+          SET status = 'refunded', refunded_at = NOW()
+        WHERE id = $1 AND status <> 'refunded'
+        RETURNING claimed_by_tenant_id`,
+      [orderId]
+    );
+    if (rows.length === 0) {
+      logger.info("stripe_ai_audit_revocation_noop", { ai_audit_order_id: orderId, event_id: eventId, kind });
+      return;
+    }
+    const claimedTenantId = rows[0].claimed_by_tenant_id;
+    if (claimedTenantId) {
+      await writeBillingAuditLog(db, {
+        tenantId: claimedTenantId,
+        eventType: `ai_audit_order_revoked_${kind}`,
+        planTier: null,
+        stripeEventId: eventId,
+      });
+    }
+    logger.info("stripe_ai_audit_order_revoked", { ai_audit_order_id: orderId, event_id: eventId, kind });
     return;
   }
 
