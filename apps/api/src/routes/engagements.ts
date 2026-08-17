@@ -15,6 +15,8 @@ import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
+import { suppressOnConversion } from "./nurture";
+import { ownerEmailForTenant } from "../lib/tenant-email";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -79,6 +81,16 @@ export function registerEngagementRoutes(app: Hono, db: PostgresClient): void {
       );
     } catch (err) {
       logger.warn("engagement_audit_log_failed", { message: (err as Error).message });
+    }
+
+    // OrganicPosts engagement requested = the top rung is in play. Every
+    // smaller-ticket drip stops (nurture-cadence.ts, kind "organicposts").
+    // Best-effort: never blocks the request.
+    try {
+      const nurtureEmail = email ?? (await ownerEmailForTenant(db, tenantId));
+      if (nurtureEmail) await suppressOnConversion(db, nurtureEmail.toLowerCase().trim(), "organicposts");
+    } catch (err) {
+      logger.warn("nurture_suppress_organicposts_failed", { message: (err as Error).message });
     }
 
     logger.info("engagement_requested", { tenant_id: tenantId, sku });

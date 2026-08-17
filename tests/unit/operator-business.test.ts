@@ -167,6 +167,30 @@ describe("pipeline PATCH", () => {
     expect(body.status).toBe("contacted");
   });
 
+  it("status=won suppresses every lower-rung nurture for the contact (kind organicposts)", async () => {
+    const updates: Array<{ sql: string; params?: unknown[] }> = [];
+    const db = makeDb({
+      scopes: FULL,
+      tableRows: (sql, params) => {
+        if (sql.includes("UPDATE engagement")) {
+          return [{ id: ENGAGEMENT_ID, status: "won", contact_email: "Buyer@Example.com", tenant_id: TENANT_ID }];
+        }
+        if (sql.includes("UPDATE nurture_enrollment")) updates.push({ sql, params });
+        return [];
+      },
+    });
+    const res = await buildApp(db).request(`/api/v1/operator/engagements/${ENGAGEMENT_ID}`, {
+      method: "PATCH",
+      headers: { ...AUTH, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "won" }),
+    });
+    expect(res.status).toBe(200);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]!.params?.[0]).toBe("buyer@example.com");
+    const seqs = updates[0]!.params?.[1] as string[];
+    expect(seqs).toEqual(expect.arrayContaining(["free_to_kit", "kit_to_growth", "kit_to_dfy", "ai_audit_bought", "ai_audit_to_full"]));
+  });
+
   it("400 on malformed id", async () => {
     const res = await buildApp(makeDb({ scopes: FULL })).request(
       "/api/v1/operator/engagements/not-a-uuid",

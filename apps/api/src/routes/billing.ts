@@ -71,6 +71,10 @@ import { ownerEmailForTenant } from "../lib/tenant-email";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
+import type {
+  NurtureConversionKind,
+  NurtureSequence,
+} from "../../../../packages/shared/src/nurture-cadence";
 import {
   ensureMonthlyGrant,
   ensureFreeSignupResidual,
@@ -1298,6 +1302,70 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
 // Webhook event handlers (private — not exported)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// nurtureAfterPurchase — every purchase webhook (a) kills the lower-rung
+// sequences and (b) starts the sequence for what was just bought. Best-effort
+// and NEVER throws: the money-critical grant above it is already committed and
+// the webhook must still 200. Cadence + suppression map: nurture-cadence.ts.
+// A DB CHECK that does not accept the sequence name yet is logged by
+// enrollNurture as nurture_sequence_not_allowed and skipped (no crash).
+// ---------------------------------------------------------------------------
+async function nurtureAfterPurchase(
+  db: PostgresClient,
+  params: {
+    email: string | null | undefined;
+    kind: NurtureConversionKind;
+    sequence: NurtureSequence;
+    brand: string | null | undefined;
+    metadata: Record<string, unknown>;
+    sourceKitId?: string;
+    eventId: string;
+  }
+): Promise<void> {
+  const email = (params.email ?? "").toLowerCase().trim();
+  if (!email) {
+    logger.warn("nurture_after_purchase_skipped_no_email", {
+      kind: params.kind,
+      sequence: params.sequence,
+      event_id: params.eventId,
+    });
+    return;
+  }
+  try {
+    await suppressOnConversion(db, email, params.kind);
+    await enrollNurture(db, {
+      email,
+      sequence: params.sequence,
+      brand: params.brand?.trim() || "your brand",
+      metadata: params.metadata,
+      sourceKitId: params.sourceKitId,
+      // delayMs 0: founder rule 17/08 — step 1 goes out at enrollment.
+    });
+  } catch (err) {
+    logger.warn("nurture_after_purchase_failed", {
+      kind: params.kind,
+      sequence: params.sequence,
+      event_id: params.eventId,
+      message: (err as Error).message?.slice(0, 200),
+      // NOTE: email intentionally NOT logged — hard rule (PII)
+    });
+  }
+}
+
+/** Tenant display name for nurture personalization. Never throws. */
+async function tenantBrandName(db: PostgresClient, tenantId: string | null | undefined): Promise<string | null> {
+  if (!tenantId) return null;
+  try {
+    const { rows } = await db.query<{ name: string | null }>(
+      `SELECT name FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId]
+    );
+    return rows[0]?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // checkout.session.completed — new subscription OR Kit one-time payment.
 // Also invoked for checkout.session.async_payment_succeeded (same object shape).
 async function handleCheckoutSessionCompleted(
@@ -1361,8 +1429,29 @@ async function handleCheckoutSessionCompleted(
       session_id: session.id,
       event_id: eventId,
     });
+    // Nurture: credit_pack_bought (2 steps, 0d/+2d) + kill pre-subscription rungs.
+    await nurtureAfterPurchase(db, {
+      email:
+        session.customer_details?.email ??
+        session.customer_email ??
+        (await ownerEmailForTenant(db, tenantId)),
+      kind: "credit_pack",
+      sequence: "credit_pack_bought",
+      brand: await tenantBrandName(db, tenantId),
+      metadata: { tenantId, credits, sessionId: session.id },
+      eventId,
+    });
     return;
   }
+
+  // -------------------------------------------------------------------------
+  // TODO(#479, AI Audit Stack $49): when the `ai_audit_stack` payment branch
+  // from PR #479 lands here, call:
+  //   await nurtureAfterPurchase(db, { email, kind: "ai_audit",
+  //     sequence: "ai_audit_bought", brand, metadata: { orderId }, eventId });
+  // right after the delivery email. Sequence, cadence (0d/+1d/+2d) and the
+  // three emails already exist (nurture-cadence.ts + nurture-catalog.ts).
+  // -------------------------------------------------------------------------
 
   // -------------------------------------------------------------------------
   // Kit payment branch (mode='payment', product='get_cited_kit')
@@ -1474,34 +1563,20 @@ async function handleCheckoutSessionCompleted(
     }
 
     // Best-effort: suppress free_to_kit nurture (they've converted) + enroll in
-    // kit_to_growth. The recurring plan (Growth $99/mo) is the natural next rung
-    // for a $29 buyer — the DFY jump ($1,900/mo) is a poor fit for a cold drip,
-    // so the last Growth email carries a soft OrganicPosts/book-a-call line instead.
+    // kit_to_growth (3 steps, 0d/+1d/+2d — founder rule 17/08, no 2-day wait).
+    // The recurring plan (Growth $99/mo) is the natural next rung for a $29
+    // buyer. kit_to_dfy is NOT enrolled here: the worker chains it the moment
+    // kit_to_growth completes without a subscription (nurture-send.ts).
     // Must not throw — kit delivery is already complete at this point.
-    try {
-      const kitEmail = session.customer_details?.email ?? session.customer_email ?? "";
-      if (kitEmail) {
-        await suppressOnConversion(db, kitEmail);
-        const kitBrand = brand; // already resolved from kit_order above
-        if (kitBrand) {
-          await enrollNurture(db, {
-            email: kitEmail,
-            sequence: "kit_to_growth",
-            brand: kitBrand,
-            metadata: { orderId: kit_order_id },
-            sourceKitId: kit_order_id,
-            delayMs: 2 * 24 * 60 * 60 * 1000, // 2-day delay before first step
-          });
-        }
-      }
-    } catch (err) {
-      logger.warn("nurture_kit_enroll_failed", {
-        kit_order_id,
-        event_id: eventId,
-        message: (err as Error).message,
-      });
-      // best-effort: do not block the webhook 200
-    }
+    await nurtureAfterPurchase(db, {
+      email: kitRow?.email ?? session.customer_details?.email ?? session.customer_email,
+      kind: "kit",
+      sequence: "kit_to_growth",
+      brand,
+      metadata: { orderId: kit_order_id },
+      sourceKitId: kit_order_id,
+      eventId,
+    });
 
     logger.info("stripe_kit_checkout_completed_processed", {
       kit_order_id,
@@ -1626,6 +1701,16 @@ async function handleCheckoutSessionCompleted(
         message: (err as Error).message,
       });
     }
+
+    // Nurture: pages_bought (2 steps, 0d/+2d) + kill free_to_kit.
+    await nurtureAfterPurchase(db, {
+      email: buyerEmail,
+      kind: "pages",
+      sequence: "pages_bought",
+      brand: await tenantBrandName(db, buyerTenantId),
+      metadata: { pagesOrderId: pages_order_id },
+      eventId,
+    });
 
     return;
   }
@@ -1787,6 +1872,17 @@ async function handleCheckoutSessionCompleted(
         event_id: eventId,
       });
     }
+
+    // Nurture: subscriber_onboarding (3 steps, 0d/+1d/+2d) + kill every
+    // pre-subscription rung (free_to_kit, kit_to_growth, kit_to_dfy, pages_bought).
+    await nurtureAfterPurchase(db, {
+      email: customerEmail,
+      kind: "subscription",
+      sequence: "subscriber_onboarding",
+      brand: await tenantBrandName(db, tenantId),
+      metadata: { tenantId, plan: resolvedPlanTier, annual: isAnnual },
+      eventId,
+    });
   }
 
   logger.info("stripe_checkout_completed_processed", {
@@ -2155,6 +2251,16 @@ async function handleDirectCheckoutCompleted(
       event_id: eventId,
       // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
     });
+
+    // Nurture: subscriber_onboarding + kill pre-subscription rungs.
+    await nurtureAfterPurchase(db, {
+      email: normalizedEmail,
+      kind: "subscription",
+      sequence: "subscriber_onboarding",
+      brand: await tenantBrandName(db, existingTenantId),
+      metadata: { tenantId: existingTenantId, plan: resolvedPlanTier, interval, flow: "direct" },
+      eventId,
+    });
     return;
   }
 
@@ -2189,6 +2295,17 @@ async function handleDirectCheckoutCompleted(
     billing_interval: interval,
     event_id: eventId,
     // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
+  });
+
+  // Nurture: subscriber_onboarding (they paid; the first email tells them to
+  // log in and run the audit) + kill pre-subscription rungs.
+  await nurtureAfterPurchase(db, {
+    email: normalizedEmail,
+    kind: "subscription",
+    sequence: "subscriber_onboarding",
+    brand: null,
+    metadata: { plan: planTier, interval, flow: "direct", pending: true },
+    eventId,
   });
 }
 

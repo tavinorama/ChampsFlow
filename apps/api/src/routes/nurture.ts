@@ -7,7 +7,10 @@
  * Exported helpers (called from other route modules, not HTTP routes):
  *   enrollNurture()            — create / look up a nurture_enrollment row
  *   checkNurtureEligibility()  — suppression check before enrolling
- *   suppressOnConversion()     — suppress free_to_kit sequence when a lead converts
+ *   suppressOnConversion()     — suppress lower-rung sequences when a contact buys a higher rung
+ *
+ * Cadence / steps / chain / suppression map: packages/shared/src/nurture-cadence.ts
+ * (founder rule 17/08: 0d, +1d, +2d, +2d for EVERY sequence).
  *
  * Compliance:
  *   - CAN-SPAM / LGPD Art. 18: one-click unsubscribe — token in email footer links here
@@ -32,24 +35,23 @@ import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { publicRateLimit } from "../lib/public-rate-limit";
 
 // ---------------------------------------------------------------------------
-// Sequence configuration (total steps per sequence)
+// Sequence configuration — single source of truth lives in
+// packages/shared/src/nurture-cadence.ts (steps, delays, chain, suppression).
 // ---------------------------------------------------------------------------
 
-const FREE_TO_KIT_STEPS = 4;
-const KIT_TO_DFY_STEPS = 3;
-const KIT_TO_GROWTH_STEPS = 3;
-
-const SEQUENCE_STEPS: Record<Sequence, number> = {
-  free_to_kit: FREE_TO_KIT_STEPS,
-  kit_to_dfy: KIT_TO_DFY_STEPS,
-  kit_to_growth: KIT_TO_GROWTH_STEPS,
-};
+import {
+  NURTURE_SUPPRESS_ON_CONVERSION,
+  isSequenceCheckViolation,
+  nurtureTotalSteps,
+  type NurtureConversionKind,
+  type NurtureSequence,
+} from "../../../../packages/shared/src/nurture-cadence";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type Sequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth";
+export type Sequence = NurtureSequence;
 
 interface NurtureEnrollmentRow {
   id: string;
@@ -63,6 +65,12 @@ interface NurtureEligibilityResult {
 interface EnrollResult {
   enrollmentId: string;
   alreadyEnrolled: boolean;
+  /**
+   * TRUE when the live DB CHECK constraint does not accept this sequence name
+   * yet (migration not applied). Logged as nurture_sequence_not_allowed and
+   * skipped: never a crash, never a fake "enrolled".
+   */
+  skipped?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,60 +109,75 @@ export async function enrollNurture(
 
   const id = randomUUID();
   const unsubscribeToken = randomUUID();
-  const totalSteps = SEQUENCE_STEPS[sequence];
+  const totalSteps = nurtureTotalSteps(sequence);
 
   // Build the INSERT. We use ON CONFLICT (email, sequence) DO NOTHING for idempotency.
   // Two branches for delayMs > 0 vs 0 keep all param positions explicit and unambiguous.
   // next_send_at with delay: NOW() + ($5::bigint * INTERVAL '1 millisecond')
   // next_send_at immediate: NOW() — worker picks it up on next poll cycle.
 
-  if (delayMs > 0) {
-    await db.query(
-      `INSERT INTO nurture_enrollment
-         (id, email, sequence, current_step, total_steps, enrolled_at,
-          next_send_at, suppressed, unsubscribe_token,
-          source_lead_id, source_kit_id, brand, metadata, created_at, updated_at)
-       VALUES
-         ($1, $2, $3, 0, $4, NOW(),
-          NOW() + ($5::bigint * INTERVAL '1 millisecond'), FALSE, $6,
-          $7, $8, $9, $10::jsonb, NOW(), NOW())
-       ON CONFLICT (email, sequence) DO NOTHING`,
-      [
-        id,
-        email,
+  try {
+    if (delayMs > 0) {
+      await db.query(
+        `INSERT INTO nurture_enrollment
+           (id, email, sequence, current_step, total_steps, enrolled_at,
+            next_send_at, suppressed, unsubscribe_token,
+            source_lead_id, source_kit_id, brand, metadata, created_at, updated_at)
+         VALUES
+           ($1, $2, $3, 0, $4, NOW(),
+            NOW() + ($5::bigint * INTERVAL '1 millisecond'), FALSE, $6,
+            $7, $8, $9, $10::jsonb, NOW(), NOW())
+         ON CONFLICT (email, sequence) DO NOTHING`,
+        [
+          id,
+          email,
+          sequence,
+          totalSteps,
+          String(delayMs),
+          unsubscribeToken,
+          sourceLeadId ?? null,
+          sourceKitId ?? null,
+          brand,
+          jsonbParam(metadata),
+        ]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO nurture_enrollment
+           (id, email, sequence, current_step, total_steps, enrolled_at,
+            next_send_at, suppressed, unsubscribe_token,
+            source_lead_id, source_kit_id, brand, metadata, created_at, updated_at)
+         VALUES
+           ($1, $2, $3, 0, $4, NOW(),
+            NOW(), FALSE, $5,
+            $6, $7, $8, $9::jsonb, NOW(), NOW())
+         ON CONFLICT (email, sequence) DO NOTHING`,
+        [
+          id,
+          email,
+          sequence,
+          totalSteps,
+          unsubscribeToken,
+          sourceLeadId ?? null,
+          sourceKitId ?? null,
+          brand,
+          jsonbParam(metadata),
+        ]
+      );
+    }
+  } catch (err) {
+    if (isSequenceCheckViolation(err)) {
+      // Migration widening nurture_enrollment_sequence_check not applied yet.
+      // Log loudly (this is a lost enrollment, not an "ok") and skip.
+      logger.error("nurture_sequence_not_allowed", {
         sequence,
-        totalSteps,
-        String(delayMs),
-        unsubscribeToken,
-        sourceLeadId ?? null,
-        sourceKitId ?? null,
         brand,
-        jsonbParam(metadata),
-      ]
-    );
-  } else {
-    await db.query(
-      `INSERT INTO nurture_enrollment
-         (id, email, sequence, current_step, total_steps, enrolled_at,
-          next_send_at, suppressed, unsubscribe_token,
-          source_lead_id, source_kit_id, brand, metadata, created_at, updated_at)
-       VALUES
-         ($1, $2, $3, 0, $4, NOW(),
-          NOW(), FALSE, $5,
-          $6, $7, $8, $9::jsonb, NOW(), NOW())
-       ON CONFLICT (email, sequence) DO NOTHING`,
-      [
-        id,
-        email,
-        sequence,
-        totalSteps,
-        unsubscribeToken,
-        sourceLeadId ?? null,
-        sourceKitId ?? null,
-        brand,
-        jsonbParam(metadata),
-      ]
-    );
+        message: (err as Error).message?.slice(0, 200),
+        // No email logged — PII minimization
+      });
+      return { enrollmentId: "", alreadyEnrolled: false, skipped: true };
+    }
+    throw err;
   }
 
   // Check whether the INSERT succeeded (rows affected = 1) or was a no-op.
@@ -216,16 +239,20 @@ export async function checkNurtureEligibility(
 // ---------------------------------------------------------------------------
 
 /**
- * Suppress the free_to_kit nurture sequence for the given email when they convert
- * (i.e. purchase the Kit). The kit_to_dfy sequence is unaffected.
+ * Suppress every LOWER-rung nurture sequence for an email once they buy a
+ * higher rung. The rung → sequences map lives in nurture-cadence.ts
+ * (NURTURE_SUPPRESS_ON_CONVERSION). Default kind = "kit" (the original
+ * behaviour: a Kit purchase ends free_to_kit).
  *
  * Idempotent: UPDATE has AND suppressed = FALSE so a double-call is a no-op.
  * Best-effort: callers must wrap in try/catch.
  */
 export async function suppressOnConversion(
   db: PostgresClient,
-  email: string
+  email: string,
+  kind: NurtureConversionKind = "kit"
 ): Promise<void> {
+  const sequences = NURTURE_SUPPRESS_ON_CONVERSION[kind];
   await db.query(
     `UPDATE nurture_enrollment
      SET suppressed = TRUE,
@@ -233,13 +260,14 @@ export async function suppressOnConversion(
          suppressed_reason = 'converted',
          updated_at = NOW()
      WHERE email = $1
-       AND sequence = 'free_to_kit'
+       AND sequence = ANY($2::text[])
        AND suppressed = FALSE`,
-    [email]
+    [email, [...sequences]]
   );
 
   logger.info("nurture_suppressed_conversion", {
-    sequence: "free_to_kit",
+    kind,
+    sequences,
     // No email logged — PII minimization
   });
 }
