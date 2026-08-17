@@ -39,14 +39,14 @@ describe("editorial calendar (7 days, diverse)", () => {
 
 describe("content prompts carry the calendar + the AI Audit angle", () => {
   it("signal prompts offer the AI Audit Stack as a permanent angle", () => {
-    for (const slug of ["collect-signals", "x-signal", "linkedin-signal", "blog-signal"]) {
+    for (const slug of ["collect-signals", "x-signal", "linkedin-signal", "blog-signal", "instagram-signal", "tiktok-signal", "youtube-signal"]) {
       const p = buildPrompt("task", { prompt: slug }, []) ?? "";
       expect(p, slug).toContain("AI Audit Stack");
       expect(p, slug).toContain("$49");
     }
   });
   it("briefing prompts must honor the day theme", () => {
-    for (const slug of ["write-briefing", "x-briefing", "linkedin-briefing"]) {
+    for (const slug of ["write-briefing", "x-briefing", "linkedin-briefing", "instagram-briefing", "tiktok-briefing", "youtube-briefing"]) {
       const p = buildPrompt("task", { prompt: slug }, []) ?? "";
       expect(p, slug).toContain("CALENDARIO EDITORIAL");
     }
