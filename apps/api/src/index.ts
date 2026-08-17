@@ -58,6 +58,7 @@ import { registerSystemRoutes } from "./routes/system";
 import { registerAdminRoutes } from "./routes/admin";
 import { registerChatRoutes } from "./routes/chat";
 import { registerApiKeyRoutes } from "./routes/api-keys";
+import { registerMcpRoutes } from "./routes/mcp";
 import { registerAgencyRoutes } from "./routes/agency";
 import { registerAttributionRoutes } from "./routes/attribution";
 import { registerCheckoutRoutes } from "./routes/checkout";
@@ -282,6 +283,7 @@ registerOperatorGraphRoutes(app, db);
 registerAiAuditRoutes(app, db);
 // Telegram bot webhook: approve/reject buttons → graph decisions (17/08).
 registerTelegramRoutes(app, db);
+registerMcpRoutes(app, db); // #150 Phase 1 — Streamable HTTP MCP at POST /api/mcp
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
 // GET /api/brands/:id/score, GET /api/reports/:report_token (public)
