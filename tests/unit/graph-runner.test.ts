@@ -43,6 +43,7 @@ interface FakeWorld {
   steps: Array<StepRow & { summary?: string | null }>;
   outcomes: Array<{ stepId: string; metric: string; valueAfter: number | null }>;
   telegrams: string[];
+  telegramButtons: string[][];
   published: Array<{ channel: string; post: string }>;
   clock: { now: Date };
   harvestData: { n: number; total: number };
@@ -67,6 +68,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
   const steps: FakeWorld["steps"] = [];
   const outcomes: FakeWorld["outcomes"] = [];
   const telegrams: string[] = [];
+  const telegramButtons: string[][] = [];
   const published: FakeWorld["published"] = [];
   const artifacts = new Map<string, string>();
   let stepSeq = 0;
@@ -76,6 +78,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
     steps,
     outcomes,
     telegrams,
+    telegramButtons,
     published,
     clock,
     harvestData: { n: 0, total: 0 },
@@ -145,8 +148,9 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
           artifacts.set(`${runId}:${node}`, text);
         },
       },
-      telegram: async (text) => {
+      telegram: async (text, buttons) => {
         telegrams.push(text);
+        if (buttons) world.telegramButtons.push(buttons.map((b) => b.data));
       },
       now: () => clock.now,
     },
@@ -233,7 +237,9 @@ describe("daily-video, the full life", () => {
 
   it("a failed angle fails the run fast and says so on Telegram", async () => {
     const world = makeWorld();
-    world.failTaskWhenPromptIncludes = "contrarian"; // angle-b's angle
+    // angle-b's own prompt line — not the bare word "contrarian", which the
+    // editorial calendar's [__day__] block also carries on Wednesdays.
+    world.failTaskWhenPromptIncludes = 'no angulo "contrarian"';
     await tickUntil(world, () => world.run.status !== "running");
 
     expect(world.run.status).toBe("failed");
@@ -441,6 +447,10 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     expect(world.stepByNode("finalize")?.status).toBe("succeeded");
     // Parked at the human gate; nothing on X yet.
     expect(world.published).toEqual([]);
+    // 17/08: the approval carries the two buttons the Telegram webhook maps
+    // to the #445 finish call — approve is one tap, reject asks why.
+    const stepId = world.stepByNode("approval")!.id;
+    expect(world.telegramButtons.at(-1)).toEqual([`ap:${stepId}`, `rj:${stepId}`]);
   });
 
   it("approve → publishes to channel X → harvest x_impressions closes the sphere's loop", async () => {
@@ -507,6 +517,27 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
     expect(SPHERE_BLOG_GRAPH.nodes.some((n) => n.kind === "publish" || n.kind === "spawn")).toBe(false);
     expect(world.telegrams.some((t) => t.includes("Blog da semana"))).toBe(true);
     expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the editorial calendar reaches content cells, never the brains", () => {
+  it("a marketing cell's reasoning prompts carry [__day__]; a CEO brain's do not", async () => {
+    const seen: string[] = [];
+    // sphere-x is marketing → every task/debate prompt should carry the day.
+    const cell = makeWorld(SPHERE_X_GRAPH.slug);
+    const origTask = cell.ports.hermes.task.bind(cell.ports.hermes);
+    cell.ports.hermes.task = async (prompt) => { seen.push(prompt); return origTask(prompt); };
+    await tickUntil(cell, () => cell.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const p of seen) expect(p).toContain("[__day__]");
+
+    const brainSeen: string[] = [];
+    const brain = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    const origBrain = brain.ports.hermes.task.bind(brain.ports.hermes);
+    brain.ports.hermes.task = async (prompt) => { brainSeen.push(prompt); return origBrain(prompt); };
+    await tickUntil(brain, () => brain.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+    expect(brainSeen.length).toBeGreaterThan(0);
+    for (const p of brainSeen) expect(p).not.toContain("[__day__]");
   });
 });
 

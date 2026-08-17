@@ -28,6 +28,7 @@ import {
   type GraphRunnerPorts,
   type RunRow,
   type StepRow,
+  type TelegramButton,
 } from "../../../api/src/lib/graph-runner";
 
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
@@ -75,18 +76,26 @@ async function httpJson(
   }
 }
 
-async function sendTelegram(text: string): Promise<void> {
+async function sendTelegram(text: string, buttons?: TelegramButton[]): Promise<void> {
   if (!TG_TOKEN || !TG_CHAT) {
     logger.warn("graph_tick_telegram_env_missing", { preview: text.slice(0, 120) });
     return;
   }
   try {
+    // Inline buttons (approve/reject) — one row; callback_data ≤64 bytes per
+    // Telegram's limit, which `ap:<uuid>` / `rj:<uuid>` (39 chars) respects.
+    const payload: Record<string, unknown> = { chat_id: TG_CHAT, text };
+    if (buttons && buttons.length > 0) {
+      payload["reply_markup"] = {
+        inline_keyboard: [buttons.map((b) => ({ text: b.text, callback_data: b.data.slice(0, 64) }))],
+      };
+    }
     await httpJson(
       `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: TG_CHAT, text }),
+        body: JSON.stringify(payload),
       },
       15_000
     );
@@ -191,13 +200,44 @@ async function buildSnapshot(
        ORDER BY ao.measured_at DESC
        LIMIT 60`;
 
-    if (outcomes.length === 0) return "";
+    // Founder rejections are memory too (17/08: "quando houver reject a
+    // pergunta do porquê, para alimentar a informação do grafo"). The Telegram
+    // webhook stores the reason as the failed approval step's summary
+    // ("rejected: <why>"); here the sphere reads its OWN recent rejections —
+    // graphs whose harvest metric shares this prefix — so the next briefing
+    // knows what the human said no to, and why.
+    const sphereGraphs = metricPrefix
+      ? Object.values(GRAPH_REGISTRY)
+          .filter((g) => g.nodes.some((n) => n.kind === "harvest" && String(n.config?.["metric"] ?? "").startsWith(metricPrefix.replace(/%/g, ""))))
+          .map((g) => g.slug)
+      : [];
+    const rejections =
+      sphereGraphs.length > 0
+        ? await sql<{ graph: string; summary: string; started_at: string }[]>`
+            SELECT r.graph, s.summary, s.started_at::text AS started_at
+              FROM ops.agent_step s
+              JOIN ops.agent_run r ON r.id = s.run_id
+             WHERE r.graph = ANY(${sphereGraphs})
+               AND s.status = 'failed'
+               AND s.summary LIKE 'rejected:%'
+               AND s.started_at >= NOW() - make_interval(days => ${d})
+             ORDER BY s.started_at DESC
+             LIMIT 8`
+        : [];
+
+    if (outcomes.length === 0 && rejections.length === 0) return "";
     const scope = metricPrefix ? ` · esfera ${metricPrefix}*` : "";
     const lines: string[] = [`RESULTADOS REAIS (ops.agent_outcome, ${d}d${scope}):`, ``];
     for (const o of outcomes) {
       const lift = o.lift != null ? `lift ${o.lift}` : "sem baseline";
       const val = o.value_after != null ? o.value_after : "?";
       lines.push(`- ${o.metric} (${o.graph ?? "?"}): ${val} · ${lift} · ${o.measured_at.slice(0, 10)}`);
+    }
+    if (rejections.length > 0) {
+      lines.push(``, `REJEICOES RECENTES DO FOUNDER (o que ele disse NAO, e por que — nao repita):`);
+      for (const rj of rejections) {
+        lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
+      }
     }
     return lines.join("\n");
   }
@@ -414,16 +454,17 @@ const DAILY_BRAINS = ["daily-watchdog"];
 // together — the founder reviews both briefs in one sitting.
 const WEEKLY_BRAINS = ["daily-dream", "weekly-product"];
 /**
- * Specialist cells (#156) that self-start on their own cadence. The X cell
- * runs Mon/Wed/Fri — enough volume to generate signal on a near-dead channel
- * without flooding it (the video pipeline's X thread still posts daily).
+ * Specialist cells (#156) that self-start on their own cadence. Founder 14/08:
+ * the X cell runs EVERY day now (was Mon/Wed/Fri); the editorial calendar
+ * rotates the theme so daily volume stays diverse. The legacy VPS X thread
+ * must be retired by the founder — two producers on one channel is R7.
  */
 const SPHERE_CELLS = ["sphere-x"];
 /**
- * #156 cells two and three (14/08 sprint). LinkedIn posts Tue/Thu — offset
- * from X's Mon/Wed/Fri so the founder never gets two approvals in one
- * sitting. The blog cell thinks on Thursday, so its brief+outline reaches the
- * founder before the Monday 12:00 CI autopublish; it publishes nothing.
+ * #156 cells two and three. LinkedIn posts EVERY day (founder 14/08), one
+ * hour after X so approvals never collide. The blog cell thinks on Thursday,
+ * so its brief+outline reaches the founder before the Monday 12:00 CI
+ * autopublish; it publishes nothing.
  */
 const LINKEDIN_CELLS = ["sphere-linkedin"];
 const BLOG_CELLS = ["sphere-blog"];
@@ -502,12 +543,12 @@ export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: 
   return startBrainRuns(sql, ["weekly-discovery"], 24 * 6, "cron:discovery-weekly");
 }
 
-/** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
+/** Specialist cells (#156): daily content runs. 20h look-back. */
 export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
 }
 
-/** LinkedIn cell (#156): Tue/Thu content runs. 20h look-back. */
+/** LinkedIn cell (#156): daily content runs. 20h look-back. */
 export async function runSphereLinkedinStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
   return startBrainRuns(sql, LINKEDIN_CELLS, 20, "cron:sphere-linkedin");
 }

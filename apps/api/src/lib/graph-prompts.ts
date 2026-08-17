@@ -75,6 +75,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Liste 5 sinais atuais e concretos do universo GEO/AI search que valem conteudo hoje:",
       "mudancas em motores (ChatGPT, Perplexity, Gemini, AI Overviews), estudos novos, dores de SMB/agencia.",
       "Para cada sinal: 1 linha de fato + 1 linha de por que importa para quem quer ser citado por IA.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Sem inventar dado: se nao tiver certeza de um numero, nao use numero.",
       "Formato de saida: lista numerada 1-5, nada antes nem depois.",
     ].join("\n"),
@@ -82,6 +83,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "write-briefing": (ctx) =>
     [
       "Voce e o editor-chefe da Ozvor. Dos sinais abaixo, escolha O MELHOR para um video social curto de hoje.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
       "Produza um briefing com: TESE (1 frase forte) · PUBLICO (quem sente essa dor) · PROVA (o fato que sustenta) · CTA (1a pessoa, ex: 'Quero meu teste').",
       "REGRA DE FRESCOR: o bloco [memory] abaixo lista o que JA publicamos. O briefing NAO pode repetir tema, gancho nem estetica de b-roll listados la — escolha o sinal que abre caminho NOVO.",
       "Regras de copy da casa: nivel de leitura 15-17 anos, frases <=12 palavras, sonho honesto (historia + gente real), zero jargao vazio.",
@@ -366,6 +368,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o agente de sinais da esfera X (Twitter) da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 conversas ou angulos QUENTES no X agora onde a Ozvor tem algo real a dizer: SEO morrendo/mudando, marcas sumindo das respostas de IA, casos de citacao, dores de agencia/SMB.",
       "X premia opiniao com atrito: prefira angulos que geram resposta (concordo/discordo), nao anuncios.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia engajamento HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
@@ -374,6 +377,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "x-briefing": (ctx) =>
     [
       "Voce e o editor da esfera X da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no X — leia primeiro.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
       "REGRA DA MISSAO: esse canal esta quase morto (impressions baixissimas). O briefing de hoje tem que tentar algo MENSURAVELMENTE diferente do que ja falhou — formato, gancho, ou tese. Repetir o padrao que deu ~0 nao e opcao.",
       "Dos sinais em [signal], escolha O MELHOR angulo para UM post de X hoje e produza: TESE (1 frase com atrito) · PUBLICO (quem responde) · PROVA (fato/numero real) · CTA (1a pessoa, leve — X odeia vendedor) · DIFERENTE-DE (1 linha: o que estamos deliberadamente fazendo diferente do historico em [memory]).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao.",
@@ -423,6 +427,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o agente de sinais da esfera LinkedIn da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 angulos QUENTES no LinkedIn agora onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
       "LinkedIn premia historia com licao e opiniao com dado: prefira angulos que rendam um post de 6-10 linhas com uma virada.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia comentario HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
@@ -431,6 +436,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "linkedin-briefing": (ctx) =>
     [
       "Voce e o editor da esfera LinkedIn da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no LinkedIn — leia primeiro.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
       "REGRA: o briefing de hoje tem que ser MENSURAVELMENTE diferente do que ja publicamos em [memory] — outro gancho, outra tese ou outro formato. Repetir o que ja rodou nao e opcao.",
       "Dos sinais em [signal], escolha O MELHOR angulo para UM post de LinkedIn hoje e produza: TESE (1 frase, a virada) · PUBLICO (quem comenta) · PROVA (fato/numero real ou historia real) · CTA (1a pessoa, leve, sem link na 1a linha) · DIFERENTE-DE (1 linha: o que fazemos diferente do historico em [memory]).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
@@ -480,6 +486,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o agente de sinais da esfera BLOG da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 perguntas ou temas que SMBs e agencias estao buscando/perguntando AGORA sobre aparecer nas respostas de IA (ChatGPT, Perplexity, Gemini, AI Overview): como ser citado, por que sumiram, o que muda em relacao ao SEO, como medir.",
       "Blog premia utilidade que a IA cita de volta: prefira temas com resposta concreta, passo a passo ou dado.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Para cada um: 1 linha do tema + 1 linha da intencao de busca por tras.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
