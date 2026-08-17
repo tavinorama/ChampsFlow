@@ -816,7 +816,14 @@ export async function createAiAuditCheckoutSession(
   orderToken: string,
   buyerEmail: string,
   successUrl: string,
-  cancelUrl: string
+  cancelUrl: string,
+  /**
+   * Optional Stripe coupon id (e.g. STRIPE_COUPON_AIAUDIT15 for the 15% the
+   * dashboard gives Growth/Agency subscribers). Stripe forbids `discounts`
+   * together with `allow_promotion_codes`, so a coupon session drops the
+   * promo-code box; the buyer already has the better deal applied.
+   */
+  options: { coupon?: string | null; tenantId?: string | null } = {}
 ): Promise<{ url: string }> {
   const priceId = process.env["STRIPE_PRICE_ID_AI_AUDIT"];
   if (!priceId) {
@@ -825,14 +832,16 @@ export async function createAiAuditCheckoutSession(
     throw err;
   }
   const stripe = getStripe();
-  const metadata = { ai_audit_order_id: orderId, order_token: orderToken, product: AI_AUDIT_PRODUCT };
+  const metadata: Record<string, string> = { ai_audit_order_id: orderId, order_token: orderToken, product: AI_AUDIT_PRODUCT };
+  if (options.tenantId) metadata["tenant_id"] = options.tenantId;
+  const coupon = options.coupon?.trim() || null;
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer_email: buyerEmail,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: successUrl,
     cancel_url: cancelUrl,
-    allow_promotion_codes: true,
+    ...(coupon ? { discounts: [{ coupon }] } : { allow_promotion_codes: true }),
     metadata,
     payment_intent_data: { metadata },
   });

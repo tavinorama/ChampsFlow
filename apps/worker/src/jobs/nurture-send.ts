@@ -73,6 +73,12 @@ const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 // Inter-step delays: nurtureNextStepDelayMs() (nurture-cadence.ts). No local
 // delay tables — the founder rule has one home.
 
+// book_to_dfy (/book intake → OrganicPosts call; D3 shell, cadence being
+// reworked separately): step0→step1=3d
+const BOOK_TO_DFY_NEXT_STEP_DELAY_MS: Record<number, number> = {
+  0: 3 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 3 days
+};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ import {
 } from "../../../components/PlanCard";
 import { CancelRetentionFlow } from "../../../components/CancelRetentionFlow";
 import { apiFetch } from "../../../lib/supabase-browser";
+import { useCredits, CreditsBanner, CreditsCard } from "../../../components/credits/CreditsWidgets";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -257,6 +258,8 @@ function BillingPageInner(): React.ReactElement {
   const autoCheckoutFiredRef = useRef(false);
 
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // D1: the same credits card + low/empty banner as dashboard-v3 (one rule).
+  const credits = useCredits();
 
   // -------------------------------------------------------------------------
   // Show toast from URL params (Stripe redirect result)
@@ -864,6 +867,14 @@ function BillingPageInner(): React.ReactElement {
                   </div>
                 </div>
               </div>
+            </section>
+
+            {/* ----------------------------------------------------------------
+                Section 2b: Audit credits (D1) — shared card, same rule as v3
+                -------------------------------------------------------------- */}
+            <section aria-label="Audit credits">
+              <CreditsBanner credits={credits} />
+              <CreditsCard credits={credits} />
             </section>
 
             {/* ----------------------------------------------------------------
