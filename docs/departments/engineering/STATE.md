@@ -4,7 +4,9 @@
 > **Operational source of truth for the product pipeline is `docs/STATE.md`** (managed by product-manager). VP Engineering reads its TL;DR; does not read PRDs or code directly.
 
 ## TL;DR
-Mid-Phase 5 of 7-phase product pipeline. C4 (OAuth) and C1 (AI generation) shipped. Compliance gates 0→1, 2→3, 3→4, 4→5 all passed. Remaining: capabilities C2, C3, C5, C6, then Phase 6 (QA) and Phase 7 (Deploy). Owns O1 of Q2 2026 company OKRs (ship MVP in 60 days). For day-to-day pipeline action, dispatch `product-manager` and consult `docs/STATE.md`.
+> **Rewritten 2026-08-17 to current reality** (source: `docs/company/STATE.md`).
+
+Product **LAUNCHED, live in production** (Railway: web + api + worker; Supabase; merge-to-main = deploy). Shipped and live: Ozvor Search audits (5 engines, 3 scores, weekly monitoring on paid + comped Growth/Agency), Ozvor Pages (Kimi draft on the Hermes VPS → Claude/OpenAI refine, grounded in the client's own crawl), Get-Cited Kit $29, **AI Audit Stack $49 with Stripe checkout (#479)**, self-serve Growth/Agency Stripe. Cost ledger `api_spend` measures real tokens per engine (#152) and attributes spend per tenant once the founder-gated `tenant_id` migration lands. Engineering hard rules: nothing degrades silently, every job auditable on Telegram, mock never ships in prod (integrity guards fail closed), migrations only via founder-merged PRs. Open: E2E is red-but-green on main, `starter` tier cleanup, GA4 instrumentation. Pipeline detail: `docs/STATE.md`.
 
 ## Department meta
 - **Head**: vp-engineering

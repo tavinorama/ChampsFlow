@@ -30,7 +30,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 export const metadata: Metadata = {
   title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
   description:
-    "Start free, climb when you're ready. Free AI test, $29 Get-Cited Kit, Growth $99/mo, Agency $549/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: 30% off annual + a free 5-page website.",
+    "Start free, climb when you're ready. Free AI test, $29 Get-Cited Kit, $49 AI Audit Stack, Growth $99/mo, Agency $549/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: 30% off annual + a free 5-page website.",
   alternates: { canonical: "https://ozvor.com/pricing" },
   openGraph: {
     title: "Plans — Ozvor",
@@ -59,8 +59,10 @@ const PAGE_CSS = `
   .pr-eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent-ink); font-weight: 600; }
   /* Four tiers now: Free · Kit $29 · Growth · Agency. The Kit is the tripwire
      of the funnel, so it belongs in the grid, not only on its own page. */
-  .pr-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
-  @media (max-width: 1000px) { .pr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* Five cards now (Free, Kit $29, AI Audit Stack $49, Growth, Agency). */
+  .pr-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+  @media (max-width: 1100px) { .pr-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 860px) { .pr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 620px) { .pr-grid { grid-template-columns: 1fr; } }
   .pr-cta { display:block; text-align:center; width:100%; box-sizing:border-box; font-weight:700; text-decoration:none; border-radius:var(--radius-md); padding:0.8rem 1rem; margin-top:var(--space-4); }
   .pr-cta-emerald { background:linear-gradient(135deg,#27c98a,#0c7d54); color:#06140e; box-shadow:0 10px 32px rgba(39,201,138,0.28); }
@@ -208,6 +210,14 @@ export default function PricingPage() {
           ctaAriaLabel: "Learn about OrganicPosts done-for-you GEO management",
         }}
         secondary={[
+          {
+            title: "AI Audit Stack",
+            why: "Too many AI tools. We pick the one that fits your pains. One payment, result in your inbox.",
+            price: "$49",
+            href: "/ai-audit",
+            accent: "ghost",
+            ctaAriaLabel: "Get my AI Audit Stack for $49",
+          },
           {
             title: "Book a 20-min call",
             why: "Scope the project — no commitment, no sales pitch.",

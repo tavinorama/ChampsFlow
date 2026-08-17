@@ -68,6 +68,10 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+import {
+  coverageNoticeNeeded,
+  sendAuditCoverageNoticeEmail,
+} from "../../../../packages/shared/src/emails/audit-coverage-notice";
 import { driftVerdicts, hallucinatingEnginesToday } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
@@ -1384,6 +1388,7 @@ export async function processAuditJob(
           estCents: flatOverride,
           estSource: "flat",
           ref: audit_id,
+          tenantId: tenant_id,
         });
         bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
       } else {
@@ -1400,6 +1405,7 @@ export async function processAuditJob(
             estCents: gens * rateFor(eng),
             estSource: "rate",
             ref: audit_id,
+            tenantId: tenant_id,
           });
           if (r.source === "measured") measuredEngines += 1;
           else rateEngines += 1;
@@ -1412,6 +1418,7 @@ export async function processAuditJob(
             estCents: extractionCalls * perExtractionCents,
             estSource: "rate",
             ref: audit_id,
+            tenantId: tenant_id,
           });
           bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
         }
@@ -1478,6 +1485,65 @@ export async function processAuditJob(
         message: (err as Error).message?.slice(0, 160),
         effect: "audit delivered but NOT charged — reconcile manually",
       });
+    }
+
+    // D8d — customer-facing coverage notice. When the panel was partial
+    // (comparable=false) or an engine was held back for drift, tell the
+    // owner ONCE what was and was not measured. Idempotent per audit_id: the
+    // send is claimed atomically on geo_score.provider_breakdown
+    // ('coverage_notice') so a BullMQ retry never emails twice. Best-effort —
+    // never fails a delivered audit; failure is logged loudly.
+    if (coverageNoticeNeeded(cov)) {
+      try {
+        const claimed = await sql<{ id: string }[]>`
+          UPDATE geo_score
+             SET provider_breakdown = provider_breakdown
+               || ${sql.json({ coverage_notice: { status: "pending", claimed_at: new Date().toISOString() } })}
+           WHERE audit_id = ${audit_id}
+             AND (
+               NOT (provider_breakdown ? 'coverage_notice')
+               OR provider_breakdown->'coverage_notice'->>'status' = 'failed'
+             )
+          RETURNING id`;
+        if (claimed.length > 0) {
+          const ownerRows = await sql<{ email: string }[]>`
+            SELECT email FROM users WHERE tenant_id = ${tenant_id} AND role = 'owner' LIMIT 1`;
+          const ownerEmail = ownerRows[0]?.email;
+          let status: "sent" | "failed" | "no_owner" = "no_owner";
+          let messageId: string | null = null;
+          if (ownerEmail) {
+            try {
+              const r = await sendAuditCoverageNoticeEmail({
+                to: ownerEmail,
+                brandName: brand.name,
+                auditId: audit_id,
+                answered: comparisonPanel.filter((p) => answeredProviders.has(p)),
+                missing: cov.missing,
+                paused: cov.paused,
+                degraded: cov.degraded,
+                comparable: cov.comparable,
+              });
+              status = "sent";
+              messageId = r.id || null;
+            } catch (err) {
+              status = "failed";
+              logger.error("audit_coverage_notice_send_failed", {
+                audit_id,
+                tenant_id,
+                message: (err as Error).message?.slice(0, 200),
+              });
+            }
+          }
+          await sql`
+            UPDATE geo_score
+               SET provider_breakdown = provider_breakdown
+                 || ${sql.json({ coverage_notice: { status, sent_at: new Date().toISOString(), resend_message_id: messageId } })}
+             WHERE audit_id = ${audit_id}`;
+          logger.info("audit_coverage_notice", { audit_id, tenant_id, status, comparable: cov.comparable, paused: cov.paused.length, missing: cov.missing.length });
+        }
+      } catch (err) {
+        logger.error("audit_coverage_notice_failed", { audit_id, message: (err as Error).message?.slice(0, 200) });
+      }
     }
 
     logger.info("audit_completed", {

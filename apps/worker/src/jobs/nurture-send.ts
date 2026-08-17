@@ -46,6 +46,8 @@ import { sendNurtureKit3Email } from "../../../../packages/shared/src/emails/nur
 import { sendNurtureGrowth1Email } from "../../../../packages/shared/src/emails/nurture-growth-1";
 import { sendNurtureGrowth2Email } from "../../../../packages/shared/src/emails/nurture-growth-2";
 import { sendNurtureGrowth3Email } from "../../../../packages/shared/src/emails/nurture-growth-3";
+import { sendNurtureAiAudit1Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-1";
+import { sendNurtureAiAudit2Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-2";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -73,14 +75,22 @@ const KIT_TO_GROWTH_NEXT_STEP_DELAY_MS: Record<number, number> = {
   1: 3 * 24 * 60 * 60 * 1000, // step 1 done → step 2 in 3 days
 };
 
+// ai_audit_to_full ($49 AI Audit Stack buyer → OrganicPosts bundle, then the
+// free GEO test / book-a-call rung): step0→step1=4d
+const AI_AUDIT_TO_FULL_NEXT_STEP_DELAY_MS: Record<number, number> = {
+  0: 4 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 4 days
+};
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+type NurtureSequence = "free_to_kit" | "kit_to_dfy" | "kit_to_growth" | "ai_audit_to_full";
+
 interface EnrollmentRow {
   id: string;
   email: string;
-  sequence: "free_to_kit" | "kit_to_dfy" | "kit_to_growth";
+  sequence: NurtureSequence;
   current_step: number;
   total_steps: number;
   unsubscribe_token: string;
@@ -100,7 +110,7 @@ type NurtureEmailParams = {
 };
 
 async function dispatchEmail(
-  sequence: "free_to_kit" | "kit_to_dfy" | "kit_to_growth",
+  sequence: NurtureSequence,
   step: number,
   params: NurtureEmailParams
 ): Promise<void> {
@@ -113,6 +123,9 @@ async function dispatchEmail(
     if (step === 0) return sendNurtureGrowth1Email(params);
     if (step === 1) return sendNurtureGrowth2Email(params);
     if (step === 2) return sendNurtureGrowth3Email(params);
+  } else if (sequence === "ai_audit_to_full") {
+    if (step === 0) return sendNurtureAiAudit1Email(params);
+    if (step === 1) return sendNurtureAiAudit2Email(params);
   } else {
     // kit_to_dfy
     if (step === 0) return sendNurtureKit1Email(params);
@@ -166,7 +179,9 @@ async function advanceCursor(
         ? FREE_TO_KIT_NEXT_STEP_DELAY_MS
         : row.sequence === "kit_to_growth"
           ? KIT_TO_GROWTH_NEXT_STEP_DELAY_MS
-          : KIT_TO_DFY_NEXT_STEP_DELAY_MS;
+          : row.sequence === "ai_audit_to_full"
+            ? AI_AUDIT_TO_FULL_NEXT_STEP_DELAY_MS
+            : KIT_TO_DFY_NEXT_STEP_DELAY_MS;
     const delayMs = delayTable[row.current_step] ?? 3 * 24 * 60 * 60 * 1000;
 
     await sql`

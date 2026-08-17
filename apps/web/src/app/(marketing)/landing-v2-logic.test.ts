@@ -21,6 +21,7 @@ import {
   AI_ANSWER_CITATION_INDEX,
   kitSim,
   KIT_PAGES,
+  PRICING_TIERS,
   ECOSYSTEM_CARDS,
 } from "./landing-v2-logic";
 
@@ -292,6 +293,22 @@ describe("kitSim", () => {
 
   it("covers exactly the 3 promised pages", () => {
     expect(KIT_PAGES.map((p) => p.slug)).toEqual(["faq", "compare", "schema"]);
+  });
+});
+
+describe("PRICING_TIERS — the AI Audit Stack ($49) sits next to the Kit", () => {
+  it("has a $49 one-time AI Audit Stack tier linking to /ai-audit, after the Kit", () => {
+    const names = PRICING_TIERS.map((t) => t.name);
+    const kitIdx = names.indexOf("KIT");
+    const auditIdx = names.indexOf("AI AUDIT STACK");
+    expect(kitIdx).toBeGreaterThanOrEqual(0);
+    expect(auditIdx).toBe(kitIdx + 1);
+    const tier = PRICING_TIERS[auditIdx]!;
+    expect(tier.price).toBe("$49");
+    expect(tier.per).toBe("one-time");
+    expect(tier.ctaKind).toBe("link");
+    expect(tier.href).toBe("/ai-audit");
+    expect(tier.cta).toMatch(/^Get my /);
   });
 });
 
