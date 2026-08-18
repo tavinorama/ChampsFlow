@@ -70,6 +70,7 @@ import { registerAiAuditRoutes } from "./routes/ai-audit";
 import { registerBookRoutes } from "./routes/book";
 import { registerPrimeRoutes } from "./routes/prime";
 import { registerTelegramRoutes } from "./routes/telegram";
+import { registerSignalsRoutes } from "./routes/signals";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
@@ -289,6 +290,10 @@ registerBookRoutes(app, db);
 registerPrimeRoutes(app, db);
 // Telegram bot webhook: approve/reject buttons → graph decisions (17/08).
 registerTelegramRoutes(app, db);
+// "Where to show up" (#485 product half): the Signal Engine "where to act"
+// queue as per-brand action cards. Honest not-connected state until the
+// SIGNAL_ENGINE_* env lands — never fabricates opportunities.
+registerSignalsRoutes(app, db);
 registerMcpRoutes(app, db); // #150 Phase 1 — Streamable HTTP MCP at POST /api/mcp
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
