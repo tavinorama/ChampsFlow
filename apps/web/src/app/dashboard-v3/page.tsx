@@ -32,6 +32,7 @@ import { CoverageNote, type CoverageData } from "../../components/CoverageNote";
 import { HallucinationFlag, type HallucinationInfo } from "../../components/HallucinationFlag";
 import { useCredits, CreditsPill, CreditsBanner, CreditsCard as SharedCreditsCard } from "../../components/credits/CreditsWidgets";
 import { AiAuditTab } from "./AiAuditTab";
+import { WhereToShowUpTab } from "./WhereToShowUpTab";
 import { PrimeTab, PrimeNudge, usePrimeStatus } from "./PrimeTab";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,7 @@ type TabId =
   | "competitors"
   | "sources"
   | "pages"
+  | "whereToShowUp"
   | "brands"
   | "connections"
   | "billing"
@@ -191,6 +193,7 @@ const MIGRATED: Record<TabId, boolean> = {
   competitors: true,
   sources: true,
   pages: true,
+  whereToShowUp: true,
   connections: true,
   billing: true,
   aiaudit: true,
@@ -215,6 +218,7 @@ const TAB_TITLE: Record<TabId, { h1: string; sub: string }> = {
   competitors: { h1: "Your competitors in AI", sub: "Who AI names when buyers ask" },
   sources: { h1: "Where AI gets its answers", sub: "The sources that decide who gets named" },
   pages: { h1: "Ozvor Pages", sub: "Your AI-ready mini-site" },
+  whereToShowUp: { h1: "Where to show up", sub: "Live Reddit & AI-search openings, with the exact next move" },
   brands: { h1: "Your client brands", sub: "Agency portfolio" },
   connections: { h1: "Connections", sub: "Which AIs we check + your data sources" },
   billing: { h1: "Billing", sub: "Plan & invoices" },
@@ -776,6 +780,7 @@ export default function DashboardV3() {
             <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
             <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
             <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
+            <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
             <NavItem label="AI Audit" active={tab === "aiaudit"} onClick={() => setTab("aiaudit")} />
           </nav>
 
@@ -906,6 +911,8 @@ export default function DashboardV3() {
           <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "pages" ? (
           <PagesTab sites={sites} loading={sitesLoading} />
+        ) : tab === "whereToShowUp" ? (
+          <WhereToShowUpTab brandId={activeBrandId || null} brandName={activeBrand?.name ?? null} />
         ) : tab === "connections" ? (
           <ConnectionsTab brand={activeBrand} onProfilesSaved={() => reloadBrands()} />
         ) : tab === "billing" ? (
