@@ -24,6 +24,29 @@ const ENGLISH_FIRST =
   "IDIOMA OBRIGATORIO: escreva a saida em INGLES (US English). Todo conteudo publicado da Ozvor e English-first — regra do founder, sem excecao.";
 
 /**
+ * The short-video FORMAT every video draft/synthesis carries (founder, 17/08:
+ * "o vídeo tem que parecer VIVO"). One source so daily-video, IG, TikTok and
+ * YT Shorts all speak the same shape and the VPS renderer can rely on it.
+ */
+const VIDEO_ALIVE_FORMAT = [
+  "FORMATO DO ROTEIRO (obrigatorio):",
+  "- vertical 9:16, 25-40 segundos no total;",
+  "- [HOOK] <=1 segundo: uma pergunta, uma afirmacao forte ou uma imagem — a primeira palavra ja tem que parar o dedo;",
+  "- 4 a 6 [BEAT]s rapidos; cada beat traz 'CAPTION:' (o texto GRANDE na tela, <=6 palavras) e 'SAY:' (a fala, como quem conversa, nao como quem le);",
+  "- 1 [PATTERN INTERRUPT] no meio (mudanca de enquadramento, som, silencio, zoom, objeto na mao) para segurar quem ia sair;",
+  "- [CTA] falado de forma natural, em 1a pessoa, sem tom de anuncio;",
+  "- feche com a linha exata: [STYLE] phone-shot, handheld feel, natural light, jump cuts, big captions, no stock-footage look, no corporate B-roll",
+].join("\n");
+
+/** The virality lens, shared by every short-video critic (IG/TikTok/YT). */
+const VIRALITY_LENS =
+  "LENTE VIRALIDADE (com VETO): (a) forca do gancho: eu pararia de rolar no primeiro segundo? (b) watch-time: o BEAT 2 segura quem ficou pelo gancho? (c) gatilho de share/comentario: alguem marca um amigo ou discorda? (d) parece video de celular de gente real ou parece ANUNCIO / slide deck? Se parece anuncio ou slide deck: 'VETO: parece anuncio' / 'VETO: parece slide deck'.";
+
+/** The [RENDER BRIEF] contract the VPS renderer reads. */
+const RENDER_BRIEF_FORMAT =
+  "[RENDER BRIEF] com as linhas: format: 9:16 vertical, 25-40s · style: <a linha [STYLE]> · captions: <a caption de cada beat, na ordem, separadas por ' | '> · music: <mood em 3-5 palavras> · pace: <ex: 'cut every 2-3s, jump cuts, no fades'> · voice: <ex: 'founder, natural, phone mic ok'>";
+
+/**
  * Products the founder explicitly flagged for weekly-discovery to develop.
  * Discovery must analyze each of these EVERY week (not just when it stumbles on
  * them), maturing them toward an MVP-ready spec, while staying free to surface
@@ -56,6 +79,81 @@ function upstreamBlock(upstream: Array<[string, string]>): string {
   );
 }
 
+/**
+ * One prompt family per short-video sphere (IG Reels / TikTok / YT Shorts):
+ * `<p>-signal`, `<p>-briefing`, `<p>-draft`, `<p>-critic`, `<p>-finalize`.
+ * The loop is the same everywhere (the cell pattern); what changes is the
+ * platform's native grammar — passed in as data so no family drifts from the
+ * others on the shared rules (memory, [__day__], virality veto, English).
+ */
+function shortVideoFamily(
+  p: string,
+  spec: { name: string; signalHint: string; grammar: string; finalizeExtras: string }
+): Record<string, (ctx: PromptContext) => string> {
+  return {
+    [`${p}-signal`]: (ctx) =>
+      [
+        `Voce e o agente de sinais da esfera ${spec.name} da Ozvor (visibilidade em IA / GEO).`,
+        `Liste 4 angulos QUENTES para um video curto de ${spec.name} hoje onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.`,
+        spec.signalHint,
+        "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+        "Para cada um: 1 linha do angulo + 1 linha do GANCHO de 1 segundo que ele rende (a frase exata).",
+        "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "Sem inventar dado: numero so com certeza.",
+        "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    [`${p}-briefing`]: (ctx) =>
+      [
+        `Voce e o editor da esfera ${spec.name} da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos videos recentes neste canal — leia primeiro.`,
+        "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
+        "REGRA: o briefing de hoje tem que ser MENSURAVELMENTE diferente do que ja publicamos em [memory] — outro gancho, outra tese ou outro formato. Repetir o que ja rodou nao e opcao.",
+        `Dos sinais em [signal], escolha O MELHOR angulo para UM video curto de ${spec.name} hoje e produza: TESE (1 frase) · GANCHO (a frase exata do 1o segundo) · PUBLICO (quem para de rolar) · PROVA (fato/numero real ou cena real) · CTA (1a pessoa, falado, natural) · DIFERENTE-DE (1 linha vs [memory]).`,
+        "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
+        ENGLISH_FIRST,
+        "Formato de saida: 6 linhas rotuladas TESE/GANCHO/PUBLICO/PROVA/CTA/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    [`${p}-draft`]: (ctx) =>
+      [
+        `Voce e um roteirista de ${spec.name} que fala como gente. A partir do briefing abaixo, escreva UM roteiro no estilo "${String(ctx.config["style"] ?? "talking-head")}":`,
+        "talking-head = rosto na camera, celular na mao, fala direta como quem conta para um amigo, captions grandes reforcam a fala. · caption-story = a historia e contada nas LEGENDAS grandes na tela (a fala e minima ou so som), cada beat e um card de texto sobre cena real de celular.",
+        VIDEO_ALIVE_FORMAT,
+        spec.grammar,
+        "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre). Zero cara de anuncio, zero slide deck.",
+        ENGLISH_FIRST,
+        "Formato de saida: o roteiro puro, com [HOOK], [BEAT 1..n] (CAPTION:/SAY:), [PATTERN INTERRUPT], [CTA], [STYLE]. Nada alem disso.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    [`${p}-critic`]: (ctx) =>
+      [
+        `Voce e o critico da esfera ${spec.name} da Ozvor. Abaixo: 2 roteiros (talking-head e caption-story), o briefing e o historico real do canal em [memory].`,
+        VIRALITY_LENS,
+        "LENTE COMPLIANCE (com VETO): promessa que nao cumprimos, claim sem base, dado inventado. LENTE FRESHNESS (com VETO): repete gancho/tema/formato de [memory]?",
+        "Para cada roteiro: nota 0-10 por viralidade + 1 frase do maior problema + 1 correcao concreta + os vetos, se houver.",
+        "Termine com: VENCEDOR: <talking-head|caption-story>.",
+        "Formato de saida: 2 blocos + a linha VENCEDOR.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    [`${p}-finalize`]: (ctx) =>
+      [
+        `Voce e o editor-chefe da esfera ${spec.name}. Abaixo: os 2 roteiros e a critica.`,
+        "Pegue o VENCEDOR e reescreva UMA vez aplicando as correcoes. Vetos sao lei: risco sai, padrao repetido muda, 'parece anuncio/slide deck' vira conversa de celular.",
+        VIDEO_ALIVE_FORMAT,
+        ENGLISH_FIRST,
+        "Formato de saida, nesta ordem e nada mais:",
+        "1) o roteiro final com [HOOK]/[BEAT 1..n]/[PATTERN INTERRUPT]/[CTA]/[STYLE];",
+        `2) ${RENDER_BRIEF_FORMAT};`,
+        `3) os blocos do canal: ${spec.finalizeExtras}.`,
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+  };
+}
+
 const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "video-memory": () =>
     [
@@ -69,19 +167,23 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "- <lista curta dos temas, ganchos e queries de b-roll que apareceram 2+ vezes>",
     ].join("\n"),
 
-  "collect-signals": () =>
+  "collect-signals": (ctx) =>
     [
       "Voce e o agente de sinais da Ozvor (plataforma de visibilidade em IA / GEO).",
       "Liste 5 sinais atuais e concretos do universo GEO/AI search que valem conteudo hoje:",
       "mudancas em motores (ChatGPT, Perplexity, Gemini, AI Overviews), estudos novos, dores de SMB/agencia.",
       "Para cada sinal: 1 linha de fato + 1 linha de por que importa para quem quer ser citado por IA.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Sem inventar dado: se nao tiver certeza de um numero, nao use numero.",
       "Formato de saida: lista numerada 1-5, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "write-briefing": (ctx) =>
     [
       "Voce e o editor-chefe da Ozvor. Dos sinais abaixo, escolha O MELHOR para um video social curto de hoje.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
       "Produza um briefing com: TESE (1 frase forte) · PUBLICO (quem sente essa dor) · PROVA (o fato que sustenta) · CTA (1a pessoa, ex: 'Quero meu teste').",
       "REGRA DE FRESCOR: o bloco [memory] abaixo lista o que JA publicamos. O briefing NAO pode repetir tema, gancho nem estetica de b-roll listados la — escolha o sinal que abre caminho NOVO.",
       "Regras de copy da casa: nivel de leitura 15-17 anos, frases <=12 palavras, sonho honesto (historia + gente real), zero jargao vazio.",
@@ -90,20 +192,25 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // v4 (founder, 17/08 — "o vídeo tem que parecer VIVO"): the old 30-45s
+  // three-beat script came out clean, stiff, corporate. What performs now is
+  // vertical, phone-shot, hook in the first second, fast cuts, big captions,
+  // a real voice, a bit raw. The script FORMAT encodes that so the renderer
+  // (VPS, out of this repo) has direction it can honor.
   "draft-angle": (ctx) =>
     [
-      `Voce e um roteirista. Escreva UM roteiro de video social de 30-45s no angulo "${String(ctx.config["angle"] ?? "story")}" a partir do briefing abaixo.`,
-      "Estrutura: HOOK (3s, para o dedo) -> desenvolvimento em 3 beats -> CTA em 1a pessoa.",
-      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada de promessa que o produto nao cumpre).",
+      `Voce e um roteirista de video curto que FALA como gente, nao como slide. Escreva UM roteiro no angulo "${String(ctx.config["angle"] ?? "story")}" a partir do briefing abaixo.`,
+      VIDEO_ALIVE_FORMAT,
+      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada de promessa que o produto nao cumpre). Fala de verdade: contracoes, pausa, uma imperfeicao proposital. Nada de 'in today's fast-paced world'.",
       ENGLISH_FIRST,
-      "Formato de saida: o roteiro puro, com marcacoes [HOOK], [BEAT 1-3], [CTA].",
+      "Formato de saida: o roteiro puro, com [HOOK], [BEAT 1..n] (cada um com a linha 'CAPTION:' e a linha 'SAY:'), [PATTERN INTERRUPT], [CTA] e a linha [STYLE] no final. Nada alem disso.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   critique: (ctx) =>
     [
       `Voce e um critico com a lente "${String(ctx.config["lens"] ?? "hook")}". Avalie os 3 roteiros abaixo SOMENTE por essa lente.`,
-      "lens hook = o primeiro segundo segura o dedo? · lens brand = soa Ozvor (honesto, direto, sem hype)? · lens compliance = alguma promessa que nao cumprimos ou claim juridico arriscado? · lens freshness = compare com o bloco [memory]: isso repete tema, gancho ou b-roll do que JA publicamos? novidade real ou requentado?",
+      "lens hook = o primeiro SEGUNDO segura o dedo? · lens brand = soa Ozvor (honesto, direto, sem hype)? · lens compliance = alguma promessa que nao cumprimos ou claim juridico arriscado? · lens freshness = compare com o bloco [memory]: isso repete tema, gancho ou b-roll do que JA publicamos? novidade real ou requentado? · lens virality = (a) forca do gancho: eu pararia de rolar? (b) watch-time: o BEAT 2 segura quem ficou pelo gancho? (c) gatilho de share/comentario: alguem marca um amigo ou discorda? (d) parece video de celular de gente real ou parece ANUNCIO / slide deck? Se parece anuncio ou slide deck, VETO — diga 'VETO: parece anuncio' ou 'VETO: parece slide deck' no bloco do roteiro.",
       "Para cada roteiro: nota 0-10 pela sua lente + 1 frase do maior problema + 1 sugestao concreta.",
       "Termine com: VENCEDOR: <id do melhor roteiro pela sua lente>.",
       "Formato de saida: 3 blocos (um por roteiro) + a linha VENCEDOR.",
@@ -112,11 +219,16 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
 
   synthesize: (ctx) =>
     [
-      "Voce e o diretor de conteudo. Abaixo estao 4 criticas (lentes hook/brand/compliance/freshness) sobre 3 roteiros.",
-      "Escolha o roteiro vencedor no agregado e reescreva-o UMA vez incorporando as melhores sugestoes das 4 lentes.",
-      "Duas lentes tem poder de VETO, nao so de nota: se compliance apontou risco, o risco SAI do texto; se freshness disse que repete tema/gancho/b-roll do que ja publicamos, o angulo MUDA — publicar requentado nao e opcao.",
+      "Voce e o diretor de conteudo. Abaixo estao 5 criticas (lentes hook/brand/compliance/freshness/virality) sobre 3 roteiros.",
+      "Escolha o roteiro vencedor no agregado e reescreva-o UMA vez incorporando as melhores sugestoes das 5 lentes.",
+      "Tres lentes tem poder de VETO, nao so de nota: se compliance apontou risco, o risco SAI do texto; se freshness disse que repete tema/gancho/b-roll do que ja publicamos, o angulo MUDA — publicar requentado nao e opcao; se virality disse 'parece anuncio' ou 'parece slide deck', o roteiro vira conversa de celular (gancho mais cru, beats mais rapidos, caption maior) — as correcoes de virality sao aplicadas, nao debatidas.",
+      VIDEO_ALIVE_FORMAT,
       ENGLISH_FIRST,
-      "Formato de saida: o roteiro final, com [HOOK]/[BEAT 1-3]/[CTA], e nada mais. (Este roteiro NAO vai direto ao publico — o node seguinte o adapta para o formato do canal.)",
+      "Formato de saida, em 3 blocos e nada mais:",
+      "1) o roteiro final, com [HOOK]/[BEAT 1..n]/[PATTERN INTERRUPT]/[CTA]/[STYLE];",
+      "2) um bloco [RENDER BRIEF] com as linhas: format: 9:16 vertical, 25-40s · style: <a linha [STYLE]> · captions: <a caption de cada beat, na ordem, separadas por ' | '> · music: <mood em 3-5 palavras, ex: 'lo-fi upbeat, no vocals'> · pace: <ex: 'cut every 2-3s, jump cuts, no fades'> · voice: <ex: 'founder, natural, phone mic ok'>;",
+      "3) um bloco [CHANNEL VARIANTS] com 3 linhas, uma por canal: 'IG Reels: <caption de abertura curta> · hashtags: 3-5 nicho' · 'TikTok: <caption de abertura estilo hook-culture> · hashtags: 2-3 + 1 tendencia se real' · 'YT Shorts: <titulo <=60 chars> · hashtags: #Shorts + 2 nicho'. Mesmo roteiro, so muda a abertura e a politica de hashtag.",
+      "(Este pacote NAO vai direto ao publico — o node seguinte adapta para o formato do canal.)",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -361,19 +473,23 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // (30 impressions across 8 posts on 13/08) — every post must try something
   // measurably different from what already failed.
 
-  "x-signal": () =>
+  "x-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera X (Twitter) da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 conversas ou angulos QUENTES no X agora onde a Ozvor tem algo real a dizer: SEO morrendo/mudando, marcas sumindo das respostas de IA, casos de citacao, dores de agencia/SMB.",
       "X premia opiniao com atrito: prefira angulos que geram resposta (concordo/discordo), nao anuncios.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia engajamento HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "x-briefing": (ctx) =>
     [
       "Voce e o editor da esfera X da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no X — leia primeiro.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
       "REGRA DA MISSAO: esse canal esta quase morto (impressions baixissimas). O briefing de hoje tem que tentar algo MENSURAVELMENTE diferente do que ja falhou — formato, gancho, ou tese. Repetir o padrao que deu ~0 nao e opcao.",
       "Dos sinais em [signal], escolha O MELHOR angulo para UM post de X hoje e produza: TESE (1 frase com atrito) · PUBLICO (quem responde) · PROVA (fato/numero real) · CTA (1a pessoa, leve — X odeia vendedor) · DIFERENTE-DE (1 linha: o que estamos deliberadamente fazendo diferente do historico em [memory]).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao.",
@@ -418,19 +534,23 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // proved approval→publish (13/08) AND where the raw-script incident
   // happened — so every draft is native to the feed, English, never a script.
 
-  "linkedin-signal": () =>
+  "linkedin-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera LinkedIn da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 angulos QUENTES no LinkedIn agora onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
       "LinkedIn premia historia com licao e opiniao com dado: prefira angulos que rendam um post de 6-10 linhas com uma virada.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia comentario HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "linkedin-briefing": (ctx) =>
     [
       "Voce e o editor da esfera LinkedIn da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no LinkedIn — leia primeiro.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
       "REGRA: o briefing de hoje tem que ser MENSURAVELMENTE diferente do que ja publicamos em [memory] — outro gancho, outra tese ou outro formato. Repetir o que ja rodou nao e opcao.",
       "Dos sinais em [signal], escolha O MELHOR angulo para UM post de LinkedIn hoje e produza: TESE (1 frase, a virada) · PUBLICO (quem comenta) · PROVA (fato/numero real ou historia real) · CTA (1a pessoa, leve, sem link na 1a linha) · DIFERENTE-DE (1 linha: o que fazemos diferente do historico em [memory]).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
@@ -475,14 +595,17 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // the THINKING (memory, angle, judged outline) and reports it to the
   // founder. It publishes nothing.
 
-  "blog-signal": () =>
+  "blog-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera BLOG da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 perguntas ou temas que SMBs e agencias estao buscando/perguntando AGORA sobre aparecer nas respostas de IA (ChatGPT, Perplexity, Gemini, AI Overview): como ser citado, por que sumiram, o que muda em relacao ao SEO, como medir.",
       "Blog premia utilidade que a IA cita de volta: prefira temas com resposta concreta, passo a passo ou dado.",
+      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
       "Para cada um: 1 linha do tema + 1 linha da intencao de busca por tras.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+      "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+      upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "blog-briefing": (ctx) =>
@@ -528,6 +651,74 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- Reddit sphere (18/08): the first cell built to CONSUME the Signal ------
+  // Engine's "where to act" queue. The runner injects [__signals__] into every
+  // marketing-owned graph; this family's whole job is to USE that block — the
+  // real subreddits/threads/URLs — and, when it says SEM DADO, to say so and
+  // never invent a thread. Read-only: the brief REPORTS where to show up; a
+  // human posts (there is no Reddit publish adapter). Reddit's culture is law:
+  // no astroturf, disclose affiliation where the sub requires, genuinely help.
+
+  "reddit-signal": (ctx) =>
+    [
+      "Voce e o agente de sinais da esfera REDDIT da Ozvor (visibilidade em IA / GEO).",
+      "SINAIS EXTERNOS (materia-prima desta celula): o bloco [__signals__] abaixo traz a FILA REAL de 'onde agir' do Signal Engine — conversas e oportunidades no Reddit com URL de evidencia. LEIA-O PRIMEIRO. Escolha ate 4 oportunidades onde a Ozvor tem algo REAL a dizer sobre aparecer nas respostas de IA (ser citado no ChatGPT/Perplexity/Gemini/AI Overview, o fim do SEO como era, dores de agencia/SMB).",
+      "Se o bloco [__signals__] disser SEM DADO — ou nao existir — diga literalmente 'SEM SINAL EXTERNO DO SIGNAL ENGINE' e NAO invente subreddits, threads nem URLs. Nesse caso, liste no maximo 2 subreddits ONDE a conversa costuma acontecer (ex: r/SEO, r/marketing, r/artificial) apenas como lugar a MONITORAR, deixando claro que ainda nao ha thread concreta.",
+      "Leia tambem [memory]: nao repita uma comunidade/thread onde ja atuamos.",
+      "Para cada oportunidade REAL: 1 linha do subreddit + 1 linha da thread (titulo curto + a URL de [__signals__]) + 1 linha da dor/pergunta que abre espaco honesto para a gente.",
+      "Sem inventar dado: numero e URL so se vierem de [__signals__].",
+      "Formato de saida: lista numerada (0-4), nada antes nem depois. Se SEM DADO, a primeira linha e 'SEM SINAL EXTERNO DO SIGNAL ENGINE'.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-briefing": (ctx) =>
+    [
+      "Voce e o editor da esfera Reddit da Ozvor. O bloco [memory] abaixo e onde ja engajamos e como performou — leia primeiro. Os sinais reais estao em [signal] (derivados de [__signals__]).",
+      "REGRA: a jogada desta semana tem que ser MENSURAVELMENTE diferente do que ja fizemos em [memory] — outra comunidade, outro angulo ou outro formato. Repetir nao e opcao.",
+      "Se [signal] disser que nao ha sinal externo, o briefing tem que dizer isso com honestidade ('sem thread concreta esta semana; apenas comunidades a monitorar') e NAO fabricar uma oportunidade.",
+      "Do melhor sinal, produza: SUBREDDIT (r/...) · THREAD (titulo + URL de evidencia, ou 'nenhuma — apenas monitorar') · PUBLICO (quem esta na conversa) · DOR (a pergunta/problema real) · VALOR (o que de GENUINAMENTE util a Ozvor adiciona, ligado a visibilidade em IA / GEO) · DIFERENTE-DE (1 linha vs [memory]).",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
+      ENGLISH_FIRST,
+      "Formato de saida: 6 linhas rotuladas SUBREDDIT/THREAD/PUBLICO/DOR/VALOR/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-plan": (ctx) =>
+    [
+      `Voce e um redditor experiente que representa a Ozvor. A partir do briefing abaixo, escreva UMA jogada concreta no estilo "${String(ctx.config["style"] ?? "comment")}":`,
+      "comment = responder DENTRO de uma thread de ranking/comparacao ja existente (a THREAD do briefing): um comentario que ajuda de verdade primeiro e so entao menciona a Ozvor, se fizer sentido. · post = INICIAR nossa propria thread genuinamente valiosa no subreddit (um guia, um dado, uma pergunta honesta a comunidade), nao um anuncio disfarcado.",
+      "A jogada tem que trazer, explicitamente: (a) SUBREDDIT exato (r/...); (b) para comment, a URL da thread vinda da evidencia (de [__signals__]) — se nao houver URL, diga 'sem thread concreta, nao publicar ainda'; para post, o titulo proposto da thread; (c) COMMENT-VS-POST deixado claro; (d) uma NOTA de karma/comunidade (as regras do sub, se exige disclosure de afiliacao, se contas novas sao barradas, o nivel de karma esperado); (e) o VALOR HONESTO que adicionamos, amarrado ao nosso tema real — visibilidade em IA / GEO (aparecer nas respostas do ChatGPT/Perplexity/Gemini) — sem prometer o que o produto nao entrega.",
+      "Se o sub exige revelar afiliacao, a jogada JA inclui a linha de disclosure (ex: 'Full disclosure: I work on Ozvor').",
+      "Reddit e alergico a marketing: escreva como gente que participa da comunidade, ajuda primeiro, vende quase nunca. Nada de astroturfing, nada de fingir ser usuario neutro.",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto.",
+      ENGLISH_FIRST,
+      "Formato de saida: um bloco rotulado [MOVE: <comment|post>] com as linhas SUBREDDIT / TARGET (URL da thread ou titulo do post) / DISCLOSURE (a linha, ou 'nao exigida') / KARMA-NOTE / VALUE / DRAFT (o texto do comentario ou do post, pronto para um humano colar). Nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-critic": (ctx) =>
+    [
+      "Voce e o critico da esfera Reddit da Ozvor. Abaixo: 2 jogadas (comment e post), o briefing e o historico real em [memory].",
+      "LENTE CULTURA REDDIT (com VETO): (a) parece SPAM ou autopromocao descarada? (b) e astroturfing / grassroots falso — fingir ser um usuario neutro entusiasmado? (c) o sub exige disclosure de afiliacao e a jogada NAO revela? (d) ajuda de verdade a comunidade ANTES de mencionar a Ozvor, ou so usa a thread como outdoor? Qualquer 'sim' a a/b/c ou 'nao' a d e VETO — escreva 'VETO: spam' / 'VETO: astroturfing' / 'VETO: sem disclosure' / 'VETO: nao ajuda'.",
+      "LENTE COMPLIANCE (com VETO): promessa que o produto nao cumpre, claim sem base, dado/URL inventado que nao esta em [__signals__]/[signal].",
+      "LENTE FRESHNESS (com VETO): repete comunidade/angulo/formato de [memory]?",
+      "Para cada jogada: nota 0-10 de autenticidade + 1 frase do maior problema + 1 correcao concreta + os vetos, se houver.",
+      "Termine com: VENCEDOR: <comment|post>.",
+      "Formato de saida: 2 blocos + a linha VENCEDOR.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-finalize": (ctx) =>
+    [
+      "Voce e o editor-chefe da esfera Reddit da Ozvor. Abaixo: as 2 jogadas e a critica.",
+      "Escolha as MELHORES 2-3 jogadas da semana (pode ser o vencedor + 1-2 movimentos secundarios de comunidades diferentes) e justifique cada uma em 1 linha (por que ali, por que agora, que valor real entrega). Vetos sao lei: astroturfing/spam/sem-disclosure sai, claim sem base sai, tema repetido muda.",
+      "Se NAO ha sinal externo concreto esta semana, diga isso com todas as letras: 'Sem sinal externo do Signal Engine esta semana — nenhuma thread concreta para agir. Comunidades a monitorar: ...' e NAO fabrique jogadas.",
+      "Este brief e do FOUNDER e nao publica nada: um humano posta no Reddit (nao ha adaptador de publish). Mantenha SKIMMABLE.",
+      ENGLISH_FIRST,
+      "Formato de saida: markdown com '## Onde aparecer no Reddit esta semana' e, para cada jogada, um item com SUBREDDIT · MOVE (comment|post) · TARGET (URL ou titulo) · WHY · o DRAFT pronto para colar. Nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   "experiment-finalize": (ctx) =>
     [
       "Voce e o editor-chefe da Ozvor. Abaixo estao o rascunho do post e a critica de compliance.",
@@ -535,6 +726,92 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Entregue a versao FINAL do post, incorporando a correcao, pronta para publicar. Mesmo tom, mesmo tamanho.",
       ENGLISH_FIRST,
       "Formato de saida: o texto final do post puro, nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  // --- short-video spheres (founder, 17/08: content alive on every platform) --
+  // Three families from one factory: same loop (signal → briefing → 2 drafts →
+  // critic with virality → finalize with [RENDER BRIEF]), platform-native
+  // grammar per channel. Every publishable step is English-first.
+  ...shortVideoFamily("instagram", {
+    name: "Instagram (Reels)",
+    signalHint:
+      "Reels premia relacao + estetica de celular: prefira angulos que rendam um rosto falando ou uma historia em legendas, salvaveis (a pessoa salva para ver depois) e compartilhaveis por DM.",
+    grammar:
+      "Gramatica do IG: o video e o post — a legenda complementa, nao repete. Legenda: 1a linha forte (aparece antes do 'mais'), 2-4 linhas curtas, CTA em 1a pessoa. Hashtags: 3-5 de NICHO (nada de #marketing #ai genericas), no fim da legenda. Nada de link no texto (link na bio).",
+    finalizeExtras:
+      "[CAPTION] a legenda pronta (1a linha forte + 2-4 linhas + CTA) · [HASHTAGS] 3-5 de nicho, minusculas",
+  }),
+  ...shortVideoFamily("tiktok", {
+    name: "TikTok",
+    signalHint:
+      "TikTok premia hook culture: a primeira frase e uma promessa, uma confissao ou uma provocacao ('nobody tells you this about...', 'I audited 50 brands and...'). Prefira angulos que rendam curiosidade + opiniao. Se citar um som/tendencia, so se tiver certeza de que existe agora — senao, 'som original'.",
+    grammar:
+      "Gramatica do TikTok: fala rapida, cortes a cada 2s, texto na tela desde o frame 1, tom de quem conta um segredo para um amigo, zero cara de marca. Caption curta (1 linha + pergunta), 2-3 hashtags de nicho + no maximo 1 de tendencia real. Sem link.",
+    finalizeExtras:
+      "[ON-SCREEN TEXT] o texto do frame 1 (<=8 palavras) · [CAPTION] 1 linha + 1 pergunta · [HASHTAGS] 2-3 de nicho (+1 tendencia so se real) · [SOUND] 'original' ou o nome do som se tiver certeza",
+  }),
+  ...shortVideoFamily("youtube", {
+    name: "YouTube Shorts",
+    signalHint:
+      "Shorts premia pacing e retencao: o gancho promete uma resposta e o video ENTREGA antes do fim. Prefira angulos com uma resposta concreta ou um numero real. Se o [__day__] for domingo (weekly-recap), inclua tambem 1 angulo de LONG-FORM (8-12 min) que valha um roteiro semanal.",
+    grammar:
+      "Gramatica do Shorts: 9:16, <=40s, sem intro, sem 'hey guys', a resposta chega no beat 3 no maximo, o loop final pode voltar ao gancho. Titulo <=60 caracteres com a promessa; descricao de 2 linhas + link para ozvor.com; hashtags: #Shorts + 2 de nicho.",
+    finalizeExtras:
+      "[TITLE] <=60 chars · [DESCRIPTION] 2 linhas + link · [HASHTAGS] #Shorts + 2 de nicho · se o [__day__] for domingo, adicione [LONG-FORM OUTLINE] com titulo + 5-7 secoes de 1 linha para um video de 8-12 min (semanal)",
+  }),
+
+  // --- PPC cell (founder, 17/08: paid ads, ZERO SPEND) ----------------------
+  // Read-only: the drafts go to the founder as a report; nothing here can spend.
+  // Ad copy is public → English-first. Claims obey the same honesty rules as
+  // every other public surface, and the critic has VETO on unproven promises.
+
+  "ppc-signal": (ctx) =>
+    [
+      "Voce e o analista de midia paga da Ozvor. Abaixo, em [snapshot], estao os RESULTADOS REAIS de conteudo dos ultimos 30 dias (todas as esferas: x_, linkedin_, youtube_, instagram_, tiktok_, blog_).",
+      "Sua unica pergunta: QUAIS angulos, ganchos e temas realmente ganharam alcance? Isso e o que merece virar anuncio — anuncio bom e conteudo que ja provou que segura atencao.",
+      "Se o snapshot estiver vazio ou sem lift, diga 'sem sinal organico ainda' e proponha 3 angulos padrao da casa (teste gratis de visibilidade em IA · AI Audit Stack $49 · OrganicPosts DFY), sem inventar numero.",
+      "Formato de saida: 3-5 linhas numeradas, cada uma: ANGULO (1 linha) + EVIDENCIA (o numero real de [snapshot] ou 'sem sinal') + OFERTA que ele vende (free-test | ai-audit | organicposts). Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "ppc-draft": (ctx) => {
+    const network = String(ctx.config["network"] ?? "google-search");
+    const spec =
+      network === "google-search"
+        ? "GOOGLE SEARCH (RSA): 5 HEADLINES de <=30 caracteres cada (a 1a com a palavra-chave que a pessoa busca, ex: 'AI visibility audit'), 3 DESCRIPTIONS de <=90 caracteres, 1 CTA, 1 URL final (ozvor.com/...) e 3 KEYWORDS de intencao de compra. Sem superlativos sem prova ('#1', 'best')."
+        : network === "meta"
+          ? "META (Facebook/Instagram feed + Reels): 1 PRIMARY TEXT de 2-4 linhas curtas (a 1a linha e o gancho, antes do 'ver mais'), 1 HEADLINE de <=40 caracteres, 1 DESCRIPTION de <=30, 1 CTA button (Learn More / Get Offer / Sign Up), 1 URL final, e uma linha VISUAL: <o que aparece na imagem/video, estilo celular, sem stock>. Publico sugerido em 1 linha (interesses/cargos), sem dado sensivel."
+          : "LINKEDIN (Sponsored Content): 1 INTRO TEXT de <=150 caracteres (a dor de agencia/SMB em 1a pessoa), 1 HEADLINE de <=70, 1 CTA (Learn more / Sign up), 1 URL final, e uma linha AUDIENCE: cargos + tamanho de empresa (sem dado sensivel). Tom de par para par, zero hype.";
+    return [
+      `Voce e um redator de anuncios da Ozvor. A partir de [signal], escreva UM anuncio para ${network.toUpperCase()}. Escolha o angulo com MELHOR evidencia em [signal].`,
+      spec,
+      "REGRAS DE CLAIM (inegociaveis): so prometa o que o produto entrega hoje (auditoria em 5 motores de IA, 3 scores, plano GEO, AI Audit Stack $49, OrganicPosts DFY). Nenhum numero de resultado que nao esteja em [signal]. Nada de 'garantido', 'ranqueie #1', 'em 24h'. Sem comparacao nominal com concorrente. Sem dado sensivel de audiencia.",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, sonho honesto, CTA em 1a pessoa quando couber.",
+      ENGLISH_FIRST,
+      `Formato de saida: um bloco rotulado [${network.toUpperCase()}] com os campos acima, um por linha, nada antes nem depois.`,
+      upstreamBlock(ctx.upstream),
+    ].join("\n");
+  },
+
+  "ppc-critic": (ctx) =>
+    [
+      "Voce e o critico de compliance e claims da Ozvor para midia paga. Abaixo: 3 anuncios (Google search, Meta, LinkedIn).",
+      "Avalie CADA um por 4 perguntas: 1) alguma promessa que o produto nao cumpre? 2) numero/estatistica sem base em [signal]? 3) claim proibido pelas plataformas ou juridicamente arriscado (garantia, 'melhor', comparacao nominal, dado sensivel de audiencia, promessa de resultado)? 4) respeita limite de caracteres e a gramatica da rede?",
+      "Voce tem VETO: risco apontado tem que sair antes de chegar ao founder. Nao reescreva — aponte: para cada problema, 1 linha do risco + 1 linha da correcao minima.",
+      "Se um anuncio estiver limpo, diga 'sem risco'.",
+      "Formato de saida: 3 blocos (um por rede) com no maximo 3 linhas de risco+correcao cada, ou 'sem risco'. Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "ppc-finalize": (ctx) =>
+    [
+      "Voce e o head de midia paga da Ozvor. Abaixo: os 3 anuncios e a critica de compliance/claims.",
+      "Vetos sao lei: aplique cada correcao da critica e entregue os 3 anuncios FINAIS, prontos para o founder colar nas plataformas.",
+      "Este pacote NAO ativa nada: nenhum centavo e gasto por este graph — ativar campanha e decisao do founder, fora daqui. Abra com a linha exata: 'PRONTOS PARA COLAR — 0 gasto. Ativar e decisao do founder.'",
+      "Sugira ao final, em 1 linha por rede, um orcamento de TESTE conservador (ordem de grandeza diaria) e a metrica de sucesso em 7 dias — como sugestao, nunca como acao.",
+      ENGLISH_FIRST,
+      "Formato de saida: a linha de abertura + 3 blocos [GOOGLE-SEARCH]/[META]/[LINKEDIN] com os campos finais + o bloco 'TESTE SUGERIDO' (3 linhas). Os rotulos em PT/EN como acima, o copy dos anuncios em ingles. Nada alem disso.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 };

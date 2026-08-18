@@ -15,11 +15,13 @@
  *   - flat:     a fixed per-operation number (env override, legacy writer).
  *
  * Schema tolerance: the measured columns land with migration
- * 20260815000001_api_spend_measured, which is founder-gated. Until it is
+ * 20260815000001_api_spend_measured, and `tenant_id` with
+ * 20260817000001_api_spend_tenant — both founder-gated. Until they are
  * applied, Postgres answers the wide INSERT with 42703 (undefined_column);
- * this writer then falls back to the legacy INSERT (op, est_cost_cents),
- * logs `api_spend_legacy_schema` ONCE per process, and keeps working. The
- * ledger degrades to "rate" honestly instead of losing rows.
+ * this writer then steps down: (measured + tenant_id) → (measured, no
+ * tenant_id) → legacy (op, est_cost_cents), logging `api_spend_tenant_column_absent`
+ * / `api_spend_legacy_schema` ONCE per process each, and keeps working. The
+ * ledger degrades honestly instead of losing rows.
  *
  * NEVER throws: an audit must never fail because the ledger did. Failure is
  * logged at error level (a meter that fails silently under-counts — #139)
@@ -60,6 +62,12 @@ export interface SpendInput {
   estSource?: Exclude<SpendSource, "measured">;
   /** Opaque correlation id: audit_id / job id. */
   ref?: string | null;
+  /**
+   * Tenant the spend was incurred for, when known (audit, pages_generate;
+   * free_test has none). Column lands with migration 20260817000001
+   * (founder-gated); until then the writer retries without it — see below.
+   */
+  tenantId?: string | null;
 }
 
 export interface SpendResult {
@@ -72,18 +80,29 @@ export interface SpendResult {
   estCents: number;
   /** true when the row went through the legacy (op, est_cost_cents) INSERT. */
   legacy: boolean;
+  /** true when tenant_id was persisted (column present AND tenantId given). */
+  tenantRecorded: boolean;
 }
 
 let legacySchemaLogged = false;
+let tenantColumnLogged = false;
 
-/** Test seam: reset the once-per-process legacy log flag. */
+/** Test seam: reset the once-per-process log flags. */
 export function _resetApiSpendStateForTests(): void {
   legacySchemaLogged = false;
+  tenantColumnLogged = false;
 }
 
 function isUndefinedColumn(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
   return code === "42703";
+}
+
+/** 42703 whose message names tenant_id → only that column is missing. */
+function isTenantColumnMissing(err: unknown): boolean {
+  if (!isUndefinedColumn(err)) return false;
+  const msg = String((err as { message?: unknown } | null)?.message ?? "");
+  return /tenant_id/i.test(msg);
 }
 
 function toIntCents(n: number): number {
@@ -115,20 +134,58 @@ export async function recordSpend(exec: SpendExec, input: SpendInput): Promise<S
   const estCents = toIntCents(input.estCents);
   const ref = input.ref ?? null;
 
+  const tenantId = input.tenantId ?? null;
+
   const base: SpendResult = {
     ok: false,
     source,
     measuredCents: measured,
     estCents,
     legacy: false,
+    tenantRecorded: false,
   };
+
+  const wideParams = [input.op, estCents, engine, model, inputTokens, outputTokens, measured, source, ref];
+
+  // Widest path: measured columns + tenant_id (only attempted when a tenant is known).
+  if (tenantId) {
+    try {
+      await exec(
+        `INSERT INTO api_spend
+           (op, est_cost_cents, engine, model, input_tokens, output_tokens, measured_cost_cents, source, ref, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [...wideParams, tenantId]
+      );
+      return { ...base, ok: true, tenantRecorded: true };
+    } catch (err) {
+      if (!isUndefinedColumn(err)) {
+        logger.error("api_spend_insert_failed", {
+          op: input.op,
+          engine: engine ?? "",
+          message: (err as Error)?.message?.slice(0, 200) ?? "",
+        });
+        return base;
+      }
+      if (isTenantColumnMissing(err)) {
+        if (!tenantColumnLogged) {
+          tenantColumnLogged = true;
+          logger.warn("api_spend_tenant_column_absent", {
+            note: "api_spend.tenant_id absent (migration 20260817000001 not applied) — per-tenant cost attribution is being DROPPED until the migration lands",
+          });
+        }
+        // fall through to the measured-only INSERT
+      }
+      // Any other 42703 (measured columns absent too) also falls through; the
+      // measured INSERT below will hit the same error and step down to legacy.
+    }
+  }
 
   try {
     await exec(
       `INSERT INTO api_spend
          (op, est_cost_cents, engine, model, input_tokens, output_tokens, measured_cost_cents, source, ref)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [input.op, estCents, engine, model, inputTokens, outputTokens, measured, source, ref]
+      wideParams
     );
     return { ...base, ok: true };
   } catch (err) {

@@ -20,7 +20,7 @@ import {
   type ArticlePost,
   type VideoPost,
 } from "./posts";
-import { SoftCTA } from "../../../components/marketing/SoftCTA";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { BlogCover } from "../../../components/marketing/BlogCover";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 
@@ -176,7 +176,7 @@ export default function BlogIndexPage() {
 
       {/* Soft CTA nudge */}
       <div style={{ marginTop: "var(--space-12)" }}>
-        <SoftCTA
+        <AiAuditCta
           headline="See if AI recommends your business — or a competitor"
           subline="Run the free 60-second AI Visibility Test. No card, no install."
           primary={{ label: "Run the free test →", href: "/test" }}

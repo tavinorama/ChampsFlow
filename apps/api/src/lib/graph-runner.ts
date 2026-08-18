@@ -43,11 +43,26 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_REDDIT_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
+import { dayBlock } from "./editorial-calendar";
+import {
+  X_POST_LIMIT,
+  xPostWithinLimit,
+  adaptXForPublish,
+} from "../../../../packages/shared/src/x-post-limit";
 
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
 export const SEED_ARTIFACT = "__seed__";
+/** Upstream key carrying the editorial calendar's day theme to content cells. */
+export const DAY_ARTIFACT = "__day__";
+/** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
+export const SIGNALS_ARTIFACT = "__signals__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -70,6 +85,16 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // blog (read-only thinker that feeds the CI autopublish pipeline).
   [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
   [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
+  // #485 consumer (18/08): the Reddit sphere — first cell built to consume the
+  // Signal Engine's "where to act" queue ([__signals__]). Report-only, never
+  // publishes, fails open honestly when the SIGNAL_ENGINE envs are unset.
+  [SPHERE_REDDIT_GRAPH.slug]: SPHERE_REDDIT_GRAPH,
+  // Content alive on every platform (17/08): the three short-video spheres
+  // (own memory, own approval, own harvest) + the zero-spend PPC thinker.
+  [SPHERE_INSTAGRAM_GRAPH.slug]: SPHERE_INSTAGRAM_GRAPH,
+  [SPHERE_TIKTOK_GRAPH.slug]: SPHERE_TIKTOK_GRAPH,
+  [SPHERE_YOUTUBE_GRAPH.slug]: SPHERE_YOUTUBE_GRAPH,
+  [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -135,6 +160,13 @@ export interface SubstratePort {
    * the artifacts port — the substrate only records the run.
    */
   startRun(input: { graph: string; trigger: string; vpOwner: string }): Promise<string>;
+  /**
+   * External REAL signals for content cells (Signal Engine, docs/signal-engine-
+   * integration.md): the "where to act" queue rendered as text. Optional on
+   * purpose — a worker without SIGNAL_ENGINE_* env returns null and the cell
+   * runs exactly as before. Must never throw; "SEM DADO" is a valid answer.
+   */
+  externalSignals?(): Promise<string | null>;
 }
 
 export interface HermesPort {
@@ -147,11 +179,24 @@ export interface ArtifactsPort {
   set(runId: string, node: string, text: string): Promise<void>;
 }
 
+/**
+ * One inline button under a Telegram message. `data` is what the bot receives
+ * back in the callback_query — the api's telegram webhook (routes/telegram.ts)
+ * turns `ap:<stepId>` / `rj:<stepId>` into the #445 finish call, so approving
+ * is one tap, and rejecting asks "why?" and stores the reason as the sphere's
+ * memory. Founder 17/08: "uma caixa com approve ou reject", like n8n.
+ */
+export interface TelegramButton {
+  text: string;
+  data: string;
+}
+
 export interface GraphRunnerPorts {
   substrate: SubstratePort;
   hermes: HermesPort;
   artifacts: ArtifactsPort;
-  telegram(text: string): Promise<void>;
+  /** Send a message; `buttons` (optional) renders one row of inline buttons. */
+  telegram(text: string, buttons?: TelegramButton[]): Promise<void>;
   now(): Date;
 }
 
@@ -183,6 +228,30 @@ function statesFrom(byNode: Map<string, StepRow>): NodeStates {
   const states: NodeStates = {};
   for (const [node, step] of byNode) states[node] = step.status;
   return states;
+}
+
+/** Is this publish node targeting X? (channel string is case-insensitive.) */
+function isXPublish(node: GraphNode): boolean {
+  return node.kind === "publish" && String(node.config?.["channel"] ?? "").toLowerCase() === "x";
+}
+
+/**
+ * The content node whose artifact ultimately reaches an X publish. Mirrors the
+ * publish handler's walk-back: publish → approval (dependsOn[0]) → content
+ * (approval.dependsOn[0]). Returns the set of such content-node ids so the
+ * adapt/finalize step can pre-trim to X's limit BEFORE the approval message is
+ * sent, keeping what the founder sees identical to what would publish.
+ */
+function xAdaptNodeIds(def: GraphDefinition): Set<string> {
+  const ids = new Set<string>();
+  for (const pub of def.nodes) {
+    if (!isXPublish(pub)) continue;
+    const approvalId = pub.dependsOn[0];
+    const approval = def.nodes.find((n) => n.id === approvalId);
+    const contentId = approval?.dependsOn[0] ?? approvalId;
+    if (contentId) ids.add(contentId);
+  }
+  return ids;
 }
 
 async function upstreamArtifacts(
@@ -323,6 +392,9 @@ export async function advanceRun(
 
   // 4) Start whatever became ready.
   const states = statesFrom(byNode);
+  // Content nodes whose artifact reaches an X publish — pre-trimmed to X's limit
+  // at finalize time so approval == what publishes.
+  const xAdaptNodes = xAdaptNodeIds(def);
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -335,6 +407,25 @@ export async function advanceRun(
       // launched to test. Non-seeded runs have no __seed__ — nothing changes.
       const seed = await artifacts.get(runId, SEED_ARTIFACT);
       if (seed) upstream.unshift([SEED_ARTIFACT, seed]);
+      // The editorial calendar (founder 14/08: seven different days, not one
+      // day seven times). Every reasoning node of a marketing cell sees the
+      // day's theme/angle/CTA as [__day__]; the briefing prompts must honor
+      // it. Brains (CEO-owned, read-only) do not get it — they are not content.
+      if (def.vpOwner === "marketing") {
+        upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
+        // Real conversations/opportunities from the Signal Engine, when wired.
+        // Fail-open: no env / down / bad payload → the cell keeps working on
+        // its own memory. Only signal/briefing/PPC-style nodes benefit, but
+        // giving every reasoning node the same block keeps critics honest too.
+        if (substrate.externalSignals) {
+          try {
+            const sig = await substrate.externalSignals();
+            if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
+          } catch {
+            /* fail-open by contract; the port should not throw */
+          }
+        }
+      }
       const prompt = buildPrompt(node.kind, config, upstream);
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
@@ -347,11 +438,19 @@ export async function advanceRun(
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: sha(prompt) });
       const res = await hermes.task(prompt);
       if (res.ok && res.output) {
-        await artifacts.set(runId, node.id, res.output);
+        // Adapt/finalize step for X: if this node's artifact is what the X
+        // publish will send, trim each tweet to X's limit HERE — so the founder
+        // approves exactly what would post, and an over-limit draft never
+        // reaches approval only to be rejected by Postiz (prod failure 17/08).
+        const output = xAdaptNodes.has(node.id) ? adaptXForPublish(res.output) : res.output;
+        await artifacts.set(runId, node.id, output);
         await substrate.finishStep(stepId, {
           status: "succeeded",
-          outputHash: sha(res.output),
-          summary: `${node.kind} ok via ${res.engineUsed ?? "?"}`,
+          outputHash: sha(output),
+          summary:
+            output === res.output
+              ? `${node.kind} ok via ${res.engineUsed ?? "?"}`
+              : `${node.kind} ok via ${res.engineUsed ?? "?"} (adapted to X ${X_POST_LIMIT}-char limit)`,
           ms: res.ms,
           engine: res.engineUsed,
         });
@@ -382,6 +481,11 @@ export async function advanceRun(
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
       await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
+      // Founder 17/08: approval as a BOX with two buttons (like n8n), not a
+      // route to curl. The buttons carry the step id; the api's telegram
+      // webhook maps them to the #445 finish call. Reject asks "why?" and the
+      // reason becomes the sphere's memory (routes/telegram.ts). The route
+      // hint stays as a fallback for when the webhook is not wired.
       await telegram(
         [
           `🟡 APROVAÇÃO NECESSÁRIA — graph ${def.slug} (run ${runId.slice(0, 8)})`,
@@ -390,10 +494,13 @@ export async function advanceRun(
           `Conteúdo proposto:`,
           context.slice(0, 900),
           ``,
-          `Aprovar:  finish step ${stepId} com status=succeeded`,
-          `Rejeitar: finish step ${stepId} com status=failed`,
-          `(rota #445: POST /api/v1/operator/agent-steps/${stepId}/finish)`,
-        ].join("\n")
+          `Toque em um botão. Se rejeitar, eu pergunto o porquê e a esfera aprende.`,
+          `(fallback: POST /api/v1/operator/agent-steps/${stepId}/finish status=succeeded|failed)`,
+        ].join("\n"),
+        [
+          { text: "✅ Aprovar", data: `ap:${stepId}` },
+          { text: "❌ Rejeitar", data: `rj:${stepId}` },
+        ]
       );
     } else if (node.kind === "publish") {
       const content = (await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "";
@@ -408,6 +515,19 @@ export async function advanceRun(
         continue;
       }
       const channel = String(config["channel"] ?? "linkedin");
+      // Belt-and-suspenders (prod failure 17/08): even if the adapt step was
+      // skipped or edited around, NEVER hand Postiz an over-limit X post. Fail
+      // the step honestly with a reason instead of a silent, wasted send.
+      if (isXPublish(node) && !xPostWithinLimit(post)) {
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `x post over ${X_POST_LIMIT} chars, not sent (adapt step missed it) — nothing published`,
+        });
+        await telegram(
+          `🔴 X NÃO PUBLICADO — graph ${def.slug} (run ${runId.slice(0, 8)}): post acima de ${X_POST_LIMIT} caracteres. NADA foi enviado ao Postiz. O passo de adaptação deixou passar; corrigir o finalize.`
+        );
+        continue;
+      }
       const res = await hermes.publish({ channel, post });
       if (res.ok) {
         await artifacts.set(runId, node.id, res.detail);

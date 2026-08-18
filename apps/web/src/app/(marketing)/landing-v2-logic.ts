@@ -491,6 +491,16 @@ export const PRICING_TIERS: readonly PricingTier[] = [
     href: "/kit",
   },
   {
+    name: "AI AUDIT STACK",
+    price: "$49",
+    per: "one-time",
+    popular: false,
+    features: ["One niche AI tool picked for your pains", "Why it fits, and which pains it answers", "The size of the full picture"],
+    cta: "Get my AI stack — $49",
+    ctaKind: "link",
+    href: "/ai-audit",
+  },
+  {
     name: "GROWTH",
     price: "$99",
     per: "/ month",

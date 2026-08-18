@@ -23,6 +23,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BookIntakeForm, type BookIntakeResult } from "./BookIntakeForm";
 
 const CALENDLY_SCRIPT_SRC = "https://assets.calendly.com/assets/external/widget.js";
 const SCRIPT_ID = "calendly-widget-script";
@@ -31,10 +32,28 @@ interface CalendlyEmbedSectionProps {
   calendlyUrl: string;
 }
 
+/** Calendly prefill: ?email=&name= are read by the widget from data-url. */
+export function calendlyUrlWith(base: string, intake: BookIntakeResult | null): string {
+  if (!intake) return base;
+  try {
+    const u = new URL(base);
+    if (intake.email) u.searchParams.set("email", intake.email);
+    if (intake.brand) u.searchParams.set("name", intake.brand);
+    return u.toString();
+  } catch {
+    return base;
+  }
+}
+
 export function CalendlyEmbedSection({ calendlyUrl }: CalendlyEmbedSectionProps) {
   const [height, setHeight] = useState<number | null>(null);
+  // D3 (2026-08-17): the calendar renders only after the small intake form
+  // (email required) or, for signed-in visitors, immediately. The intake makes
+  // the visit a lead we can follow up; the form itself explains why.
+  const [intake, setIntake] = useState<BookIntakeResult | null>(null);
 
   useEffect(() => {
+    if (!intake) return;
     // Guard: do not double-load the script.
     if (document.getElementById(SCRIPT_ID)) return;
     const script = document.createElement("script");
@@ -44,7 +63,7 @@ export function CalendlyEmbedSection({ calendlyUrl }: CalendlyEmbedSectionProps)
     document.body.appendChild(script);
     // Do not remove on unmount — Calendly re-initialises if reloaded; leaving it
     // attached is the correct pattern for SPA navigation.
-  }, []);
+  }, [intake]);
 
   // Size the container to Calendly's reported content height → no inner scroll.
   useEffect(() => {
@@ -101,19 +120,23 @@ export function CalendlyEmbedSection({ calendlyUrl }: CalendlyEmbedSectionProps)
           All times are in your local timezone. Video call details sent by email.
         </p>
 
-        {/* Calendly inline widget — widget.js renders the iframe from data-url.
-            When a `calendly.page_height` message arrives we set an exact height;
-            until then the .ozvor-calendly min-height floor keeps it scroll-free. */}
-        <div
-          className="calendly-inline-widget ozvor-calendly"
-          data-url={calendlyUrl}
-          aria-label="Calendly booking widget — select a date and time to book your GEO strategy call"
-          style={{
-            width: "100%",
-            minWidth: "320px",
-            height: height ? `${height}px` : undefined,
-          }}
-        />
+        {!intake ? (
+          <BookIntakeForm onDone={setIntake} />
+        ) : (
+          /* Calendly inline widget — widget.js renders the iframe from data-url.
+             When a `calendly.page_height` message arrives we set an exact height;
+             until then the .ozvor-calendly min-height floor keeps it scroll-free. */
+          <div
+            className="calendly-inline-widget ozvor-calendly"
+            data-url={calendlyUrlWith(calendlyUrl, intake)}
+            aria-label="Calendly booking widget — select a date and time to book your GEO strategy call"
+            style={{
+              width: "100%",
+              minWidth: "320px",
+              height: height ? `${height}px` : undefined,
+            }}
+          />
+        )}
       </div>
     </section>
   );

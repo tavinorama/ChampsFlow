@@ -30,6 +30,10 @@ import { EngineConfidence } from "../../components/EngineConfidence";
 import { IntentBreakdown, type IntentRow } from "../../components/IntentBreakdown";
 import { CoverageNote, type CoverageData } from "../../components/CoverageNote";
 import { HallucinationFlag, type HallucinationInfo } from "../../components/HallucinationFlag";
+import { useCredits, CreditsPill, CreditsBanner, CreditsCard as SharedCreditsCard } from "../../components/credits/CreditsWidgets";
+import { AiAuditTab } from "./AiAuditTab";
+import { WhereToShowUpTab } from "./WhereToShowUpTab";
+import { PrimeTab, PrimeNudge, usePrimeStatus } from "./PrimeTab";
 
 // ---------------------------------------------------------------------------
 // Types mirrored from the API (audits.ts)
@@ -173,9 +177,12 @@ type TabId =
   | "competitors"
   | "sources"
   | "pages"
+  | "whereToShowUp"
   | "brands"
   | "connections"
-  | "billing";
+  | "billing"
+  | "aiaudit"
+  | "prime";
 
 // Which tabs are live in this stage vs. linking out to the current page.
 const MIGRATED: Record<TabId, boolean> = {
@@ -186,8 +193,11 @@ const MIGRATED: Record<TabId, boolean> = {
   competitors: true,
   sources: true,
   pages: true,
+  whereToShowUp: true,
   connections: true,
   billing: true,
+  aiaudit: true,
+  prime: true,
 };
 
 // For not-yet-migrated tabs: where the working version lives today.
@@ -208,9 +218,12 @@ const TAB_TITLE: Record<TabId, { h1: string; sub: string }> = {
   competitors: { h1: "Your competitors in AI", sub: "Who AI names when buyers ask" },
   sources: { h1: "Where AI gets its answers", sub: "The sources that decide who gets named" },
   pages: { h1: "Ozvor Pages", sub: "Your AI-ready mini-site" },
+  whereToShowUp: { h1: "Where to show up", sub: "Live Reddit & AI-search openings, with the exact next move" },
   brands: { h1: "Your client brands", sub: "Agency portfolio" },
   connections: { h1: "Connections", sub: "Which AIs we check + your data sources" },
   billing: { h1: "Billing", sub: "Plan & invoices" },
+  aiaudit: { h1: "AI Audit Stack", sub: "The right AI tools for your real pains" },
+  prime: { h1: "OrganicPosts", sub: "Done for you. We do the work, you approve" },
 };
 
 // ---------------------------------------------------------------------------
@@ -314,6 +327,10 @@ export default function DashboardV3() {
   const [sitesLoading, setSitesLoading] = useState(false);
   const [billing, setBilling] = useState<BillingPlan | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
+  // D1: the visible credit state (pill, banners, CTA gate). One fetch, one rule.
+  const credits = useCredits();
+  // D3: real facts for the OrganicPosts tab + the nudges (one fetch per brand).
+  const { status: primeStatus } = usePrimeStatus(activeBrandId || null);
 
   // Guards against request races: the currently-selected brand. A per-brand
   // loader compares against this after its await and drops a stale response, so
@@ -413,6 +430,7 @@ export default function DashboardV3() {
       const d = (await res.json().catch(() => null)) as { message?: string; next_allowed_at?: string } | null;
       if (res.ok) {
         setAuditMsg("Audit started — running across the AI engines. Your score updates here in ~30–60s.");
+        credits.reload();
         // Re-poll the score a few times so the new run surfaces without a manual refresh.
         for (const wait of [15000, 20000, 25000]) {
           await new Promise((r) => setTimeout(r, wait));
@@ -429,7 +447,7 @@ export default function DashboardV3() {
     } finally {
       setAuditBusy(false);
     }
-  }, [loadScore]);
+  }, [loadScore, credits]);
 
   const atBrandLimit = maxBrands != null && brands.length >= maxBrands;
 
@@ -762,6 +780,13 @@ export default function DashboardV3() {
             <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
             <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
             <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
+            <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            <NavItem label="AI Audit" active={tab === "aiaudit"} onClick={() => setTab("aiaudit")} />
+          </nav>
+
+          <div style={S.navH}>Done for you</div>
+          <nav style={S.nav}>
+            <NavItem label="OrganicPosts" active={tab === "prime"} onClick={() => setTab("prime")} />
           </nav>
 
           <div style={S.navH}>Account</div>
@@ -817,19 +842,26 @@ export default function DashboardV3() {
             <h1 style={S.h1}>{title.h1}</h1>
             <div style={S.sub}>{activeBrand ? `${activeBrand.name} · ${title.sub}` : title.sub}</div>
           </div>
-          {brands.length > 0 && tab !== "brands" && (
-            <select
-              value={activeBrandId}
-              onChange={(e) => setActiveBrandId(e.target.value)}
-              style={S.pick}
-              aria-label="Switch brand"
-            >
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
+            <CreditsPill credits={credits} onOpenBilling={() => setTab("billing")} />
+            {brands.length > 0 && tab !== "brands" && (
+              <select
+                value={activeBrandId}
+                onChange={(e) => setActiveBrandId(e.target.value)}
+                style={S.pick}
+                aria-label="Switch brand"
+              >
+                {brands.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
+        <CreditsBanner credits={credits} />
+        {!loading && brands.length > 0 && (
+          <PrimeNudge status={primeStatus} email={userEmail} brandName={activeBrand?.name ?? null} onGoPrime={() => setTab("prime")} />
+        )}
 
         {loading ? (
           <div style={S.muted}>Loading your workspace…</div>
@@ -846,6 +878,8 @@ export default function DashboardV3() {
             brandId={activeBrandId}
             onRunAudit={() => runAudit(activeBrandId)}
             auditBusy={auditBusy}
+            auditBlocked={credits.level === "empty" ? "You have 0 credits. Buy 1,000 credits or upgrade to run an audit." : null}
+            onTopUp={() => void credits.buyPack()}
             auditMsg={auditMsg}
             auditId={latestAuditId}
             extraction={(breakdown as { extraction?: ExtractionTelemetry | null } | null)?.extraction ?? null}
@@ -877,10 +911,16 @@ export default function DashboardV3() {
           <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "pages" ? (
           <PagesTab sites={sites} loading={sitesLoading} />
+        ) : tab === "whereToShowUp" ? (
+          <WhereToShowUpTab brandId={activeBrandId || null} brandName={activeBrand?.name ?? null} />
         ) : tab === "connections" ? (
           <ConnectionsTab brand={activeBrand} onProfilesSaved={() => reloadBrands()} />
         ) : tab === "billing" ? (
-          <BillingTab billing={billing} loading={billingLoading} onManage={openPortal} onReload={loadBilling} />
+          <BillingTab billing={billing} loading={billingLoading} onManage={openPortal} onReload={loadBilling} credits={credits} />
+        ) : tab === "aiaudit" ? (
+          <AiAuditTab onGoPrime={() => setTab("prime")} />
+        ) : tab === "prime" ? (
+          <PrimeTab brandId={activeBrandId || null} brandName={activeBrand?.name ?? null} email={userEmail} onGoTab={(t) => setTab(t)} />
         ) : (
           <MigratingTab tab={tab} brandId={activeBrandId} />
         )}
@@ -909,7 +949,7 @@ export default function DashboardV3() {
 // ---------------------------------------------------------------------------
 
 function OverviewTab({
-  brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditMsg,
+  brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditBlocked, onTopUp, auditMsg,
   auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination,
 }: {
   brandName?: string;
@@ -921,6 +961,9 @@ function OverviewTab({
   brandId: string;
   onRunAudit: () => void;
   auditBusy: boolean;
+  /** D1: reason the CTA is disabled (0 credits), or null when it can run. */
+  auditBlocked?: string | null;
+  onTopUp?: () => void;
   auditMsg: string | null;
   /** Latest audit, for the engine-confidence read. */
   auditId: string | null;
@@ -954,8 +997,14 @@ function OverviewTab({
       : trend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "var(--space-3)" }}>
-        <button onClick={onRunAudit} disabled={auditBusy} style={{ ...S.btnPri, opacity: auditBusy ? 0.6 : 1, cursor: auditBusy ? "wait" : "pointer" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-3)", flexWrap: "wrap" }}>
+        {auditBlocked && (
+          <span style={{ fontSize: "0.82rem", color: "var(--color-badge-status-error-text)" }}>
+            {auditBlocked}{" "}
+            {onTopUp && <button type="button" onClick={onTopUp} style={{ background: "none", border: "none", padding: 0, color: "var(--color-primary)", fontWeight: 700, cursor: "pointer", font: "inherit", fontSize: "0.82rem" }}>Buy 1,000 credits</button>}
+          </span>
+        )}
+        <button onClick={onRunAudit} disabled={auditBusy || !!auditBlocked} title={auditBlocked ?? undefined} style={{ ...S.btnPri, opacity: auditBusy || auditBlocked ? 0.6 : 1, cursor: auditBusy ? "wait" : auditBlocked ? "not-allowed" : "pointer" }}>
           {auditBusy ? "Running…" : "Run audit now"}
         </button>
       </div>
@@ -1009,7 +1058,7 @@ function OverviewTab({
       ) : (
         <div style={{ ...S.card, padding: "var(--space-6)" }}>
           <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No audit yet for this brand. Run the first one — it takes ~30–60 seconds across the AI engines.</p>
-          <button onClick={onRunAudit} disabled={auditBusy} style={{ ...S.btnPri, opacity: auditBusy ? 0.6 : 1 }}>{auditBusy ? "Running…" : "Run the first audit"}</button>
+          <button onClick={onRunAudit} disabled={auditBusy || !!auditBlocked} title={auditBlocked ?? undefined} style={{ ...S.btnPri, opacity: auditBusy || auditBlocked ? 0.6 : 1 }}>{auditBusy ? "Running…" : "Run the first audit"}</button>
         </div>
       )}
 
@@ -2187,7 +2236,7 @@ function ByokRow({ provider, connected, loading, onSaved, onRemoved, first }: {
 
 const PLAN_LABEL: Record<string, string> = { free: "Free", growth: "Growth — $99/mo", agency: "Agency — $549/mo" };
 
-function BillingTab({ billing, loading, onManage, onReload }: { billing: BillingPlan | null; loading: boolean; onManage: (flow?: "payment_method_update") => void; onReload: () => void }) {
+function BillingTab({ billing, loading, onManage, onReload, credits }: { billing: BillingPlan | null; loading: boolean; onManage: (flow?: "payment_method_update") => void; onReload: () => void; credits: ReturnType<typeof useCredits> }) {
   // In-app cancellation with the compliant retention flow (survey → 30%-off
   // save-offer → confirm). Hook must run before any early return.
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -2219,7 +2268,7 @@ function BillingTab({ billing, loading, onManage, onReload }: { billing: Billing
         </div>
       </div>
 
-      <CreditsCard />
+      <SharedCreditsCard credits={credits} sectionStyle={S.secH} sectionNoteStyle={S.secN} cardStyle={{ ...S.card, padding: "var(--space-6)" }} ghostBtnStyle={S.btnGhost} />
 
       {billing.usage && (
         <>
@@ -2284,102 +2333,8 @@ function BillingTab({ billing, loading, onManage, onReload }: { billing: Billing
   );
 }
 
-/**
- * CreditsCard — the visible half of the #144 credit ledger.
- *
- * Self-contained (fetches its own data) so BillingTab doesn't grow another
- * loading dance. Two honesty rules shape the copy:
- *  - credits are NOT the gate (monthly_audits_total is, by #423's design), so
- *    a low balance is presented as information + an option, never a lock;
- *  - every number shown comes from the API's derived values — nothing here
- *    restates a plan allowance as a literal.
- */
-type CreditsInfo = {
-  plan: string;
-  balance: number;
-  granted: number;
-  cost_per_audit: number;
-  can_run_audit: boolean;
-  overage_pack: { credits: number; usd: number };
-};
-
-function CreditsCard() {
-  const [info, setInfo] = useState<CreditsInfo | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [buying, setBuying] = useState(false);
-  const [buyError, setBuyError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    apiFetch("/api/billing/credits")
-      .then(async (r) => {
-        if (!r.ok) throw new Error(String(r.status));
-        const data = (await r.json()) as CreditsInfo;
-        if (alive) setInfo(data);
-      })
-      .catch(() => { if (alive) setFailed(true); });
-    return () => { alive = false; };
-  }, []);
-
-  async function buyPack() {
-    if (buying) return;
-    setBuying(true);
-    setBuyError(null);
-    try {
-      const r = await apiFetch("/api/billing/credits/checkout", { method: "POST" });
-      const data = (await r.json()) as { url?: string };
-      if (!r.ok || !data.url) {
-        setBuyError(r.status === 403
-          ? "Only the workspace owner can buy credits."
-          : "Couldn't open checkout. Please try again.");
-        setBuying(false);
-        return;
-      }
-      window.location.href = data.url;
-    } catch {
-      setBuyError("Couldn't open checkout. Please check your connection.");
-      setBuying(false);
-    }
-  }
-
-  // Fail quiet: a billing tab that can't load credits still shows the plan.
-  if (failed) return null;
-  if (!info) return null;
-
-  const fmt = (n: number) => n.toLocaleString("en-US");
-  const low = info.balance < info.cost_per_audit;
-
-  return (
-    <>
-      <div style={S.secH}>Audit credits <span style={S.secN}>— what your audits draw from each month</span></div>
-      <div style={{ ...S.card, padding: "var(--space-6)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "var(--space-4)", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: "1.6rem", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-              {fmt(info.balance)}
-              <span style={{ color: "var(--color-muted)", fontSize: "0.9rem", fontWeight: 600 }}> of {fmt(info.granted)} this month</span>
-            </div>
-            <div style={{ color: "var(--color-muted)", fontSize: "0.86rem", marginTop: "4px" }}>
-              Each audit on your plan uses {fmt(info.cost_per_audit)} credits. Balance resets on the 1st.
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <button onClick={buyPack} disabled={buying} style={{ ...S.btnGhost, cursor: buying ? "wait" : "pointer" }}>
-              {buying ? "Opening checkout…" : `Buy ${fmt(info.overage_pack.credits)} credits — $${info.overage_pack.usd}`}
-            </button>
-            {buyError && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "4px" }}>{buyError}</div>}
-          </div>
-        </div>
-        {low && (
-          <div style={{ marginTop: "var(--space-4)", padding: "var(--space-3)", borderRadius: "8px", background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)", fontSize: "0.86rem" }}>
-            Not enough credits for another audit this month — top up above, or they refill on the 1st.
-            {info.plan === "free" && <> Upgrading to Growth is the better deal if you audit regularly.</>}
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
+// CreditsCard moved to components/credits/CreditsWidgets.tsx (D1) so the
+// header pill, the banners, this tab and /account/billing share one rule.
 
 function AddBrandModal({ onClose, onSubmit }: {
   onClose: () => void;

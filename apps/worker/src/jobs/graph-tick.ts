@@ -22,12 +22,14 @@
 import type postgres from "postgres";
 import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
+import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import {
   advanceRun,
   GRAPH_REGISTRY,
   type GraphRunnerPorts,
   type RunRow,
   type StepRow,
+  type TelegramButton,
 } from "../../../api/src/lib/graph-runner";
 
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
@@ -35,6 +37,13 @@ const HERMES_TOKEN = process.env["HERMES_TASK_TOKEN"] ?? "";
 const TG_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
 const TG_CHAT = process.env["TELEGRAM_CHAT_ID"] ?? "";
 const ARTIFACT_TTL_SECONDS = 7 * 24 * 3600;
+// Signal Engine (docs/signal-engine-integration.md): the founder's other
+// product, read as a service. Both unset → content cells run on their own
+// memory, exactly as before. Cached 6h: its queues are daily.
+const SE_URL = process.env["SIGNAL_ENGINE_URL"] ?? "";
+const SE_KEY = process.env["SIGNAL_ENGINE_API_KEY"] ?? "";
+const SE_COUNTRY = process.env["SIGNAL_ENGINE_COUNTRY"] ?? "";
+const SE_CACHE_SECONDS = 6 * 3600;
 const HERMES_TIMEOUT_MS = 240_000;
 /** Cap runs advanced per tick — a stampede of runs must not starve the queue. */
 const MAX_RUNS_PER_TICK = 5;
@@ -75,18 +84,26 @@ async function httpJson(
   }
 }
 
-async function sendTelegram(text: string): Promise<void> {
+async function sendTelegram(text: string, buttons?: TelegramButton[]): Promise<void> {
   if (!TG_TOKEN || !TG_CHAT) {
     logger.warn("graph_tick_telegram_env_missing", { preview: text.slice(0, 120) });
     return;
   }
   try {
+    // Inline buttons (approve/reject) — one row; callback_data ≤64 bytes per
+    // Telegram's limit, which `ap:<uuid>` / `rj:<uuid>` (39 chars) respects.
+    const payload: Record<string, unknown> = { chat_id: TG_CHAT, text };
+    if (buttons && buttons.length > 0) {
+      payload["reply_markup"] = {
+        inline_keyboard: [buttons.map((b) => ({ text: b.text, callback_data: b.data.slice(0, 64) }))],
+      };
+    }
     await httpJson(
       `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: TG_CHAT, text }),
+        body: JSON.stringify(payload),
       },
       15_000
     );
@@ -191,13 +208,44 @@ async function buildSnapshot(
        ORDER BY ao.measured_at DESC
        LIMIT 60`;
 
-    if (outcomes.length === 0) return "";
+    // Founder rejections are memory too (17/08: "quando houver reject a
+    // pergunta do porquê, para alimentar a informação do grafo"). The Telegram
+    // webhook stores the reason as the failed approval step's summary
+    // ("rejected: <why>"); here the sphere reads its OWN recent rejections —
+    // graphs whose harvest metric shares this prefix — so the next briefing
+    // knows what the human said no to, and why.
+    const sphereGraphs = metricPrefix
+      ? Object.values(GRAPH_REGISTRY)
+          .filter((g) => g.nodes.some((n) => n.kind === "harvest" && String(n.config?.["metric"] ?? "").startsWith(metricPrefix.replace(/%/g, ""))))
+          .map((g) => g.slug)
+      : [];
+    const rejections =
+      sphereGraphs.length > 0
+        ? await sql<{ graph: string; summary: string; started_at: string }[]>`
+            SELECT r.graph, s.summary, s.started_at::text AS started_at
+              FROM ops.agent_step s
+              JOIN ops.agent_run r ON r.id = s.run_id
+             WHERE r.graph = ANY(${sphereGraphs})
+               AND s.status = 'failed'
+               AND s.summary LIKE 'rejected:%'
+               AND s.started_at >= NOW() - make_interval(days => ${d})
+             ORDER BY s.started_at DESC
+             LIMIT 8`
+        : [];
+
+    if (outcomes.length === 0 && rejections.length === 0) return "";
     const scope = metricPrefix ? ` · esfera ${metricPrefix}*` : "";
     const lines: string[] = [`RESULTADOS REAIS (ops.agent_outcome, ${d}d${scope}):`, ``];
     for (const o of outcomes) {
       const lift = o.lift != null ? `lift ${o.lift}` : "sem baseline";
       const val = o.value_after != null ? o.value_after : "?";
       lines.push(`- ${o.metric} (${o.graph ?? "?"}): ${val} · ${lift} · ${o.measured_at.slice(0, 10)}`);
+    }
+    if (rejections.length > 0) {
+      lines.push(``, `REJEICOES RECENTES DO FOUNDER (o que ele disse NAO, e por que — nao repita):`);
+      for (const rj of rejections) {
+        lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
+      }
     }
     return lines.join("\n");
   }
@@ -340,6 +388,31 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           RETURNING id`;
         return rows[0]!.id;
       },
+      async externalSignals() {
+        if (!SE_URL || !SE_KEY) return null; // not wired: cells run as before
+        const cacheKey = `se:signals:${SE_COUNTRY || "all"}`;
+        try {
+          const cached = await redis.get(cacheKey);
+          if (cached) return cached;
+        } catch {
+          /* cache miss on redis error is fine */
+        }
+        const se = signalEngine({ baseUrl: SE_URL, apiKey: SE_KEY });
+        const r = await se.opportunities(SE_COUNTRY || undefined);
+        if (!r.ok) {
+          // Honest: the cell will see SEM DADO, and we log why (no key in log).
+          logger.warn("signal_engine_unavailable", { reason: r.reason, status: r.status ?? null });
+          return signalsBlock([], { source: `Signal Engine indisponivel (${r.reason})` });
+        }
+        const opps = listOf<SeOpportunity>(r.data, "items", "opportunities");
+        const block = signalsBlock(opps, { fetchedAt: r.fetchedAt });
+        try {
+          await redis.set(cacheKey, block, "EX", SE_CACHE_SECONDS);
+        } catch {
+          /* fine */
+        }
+        return block;
+      },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
         // harvest config names the exact metric or a TRUE prefix of it
@@ -414,19 +487,28 @@ const DAILY_BRAINS = ["daily-watchdog"];
 // together — the founder reviews both briefs in one sitting.
 const WEEKLY_BRAINS = ["daily-dream", "weekly-product"];
 /**
- * Specialist cells (#156) that self-start on their own cadence. The X cell
- * runs Mon/Wed/Fri — enough volume to generate signal on a near-dead channel
- * without flooding it (the video pipeline's X thread still posts daily).
+ * Specialist cells (#156) that self-start on their own cadence. Founder 14/08:
+ * the X cell runs EVERY day now (was Mon/Wed/Fri); the editorial calendar
+ * rotates the theme so daily volume stays diverse. The legacy VPS X thread
+ * must be retired by the founder — two producers on one channel is R7.
  */
 const SPHERE_CELLS = ["sphere-x"];
 /**
- * #156 cells two and three (14/08 sprint). LinkedIn posts Tue/Thu — offset
- * from X's Mon/Wed/Fri so the founder never gets two approvals in one
- * sitting. The blog cell thinks on Thursday, so its brief+outline reaches the
- * founder before the Monday 12:00 CI autopublish; it publishes nothing.
+ * #156 cells two and three. LinkedIn posts EVERY day (founder 14/08), one
+ * hour after X so approvals never collide. The blog cell thinks on Thursday,
+ * so its brief+outline reaches the founder before the Monday 12:00 CI
+ * autopublish; it publishes nothing.
  */
 const LINKEDIN_CELLS = ["sphere-linkedin"];
 const BLOG_CELLS = ["sphere-blog"];
+/**
+ * The Reddit sphere (#485 consumer, 18/08): the first cell built to consume the
+ * Signal Engine's "where to act" queue ([__signals__]). Report-only — it
+ * publishes nothing — so it never counts against the approvals valve. Weekly
+ * (Wed 08:00 UTC, a slot free of the other sphere crons); its brief reaches the
+ * founder with the week's real Reddit opportunities, or SEM DADO honestly.
+ */
+const REDDIT_CELLS = ["sphere-reddit"];
 /**
  * The daily video, as a GRAPH (v2/v3 — memory + adapt + correct harvest
  * metric). The structural hole of 14/08: this graph was registered and valid
@@ -437,6 +519,47 @@ const BLOG_CELLS = ["sphere-blog"];
  * screams either way, so the gap can never again be silent.
  */
 const VIDEO_CELLS = ["daily-video"];
+/**
+ * Content alive on every platform (founder, 17/08). The three short-video
+ * spheres run daily, staggered after LinkedIn (IG 11:00, TikTok 12:00, YT
+ * 14:00 UTC) so approvals land one at a time; PPC thinks weekly (Tue 08:00)
+ * and can only report — zero spend by construction. One queue, four named
+ * repeatables (see worker index).
+ */
+const PLATFORM_CELLS: Record<string, string> = {
+  "sphere-instagram": "sphere-instagram",
+  "sphere-tiktok": "sphere-tiktok",
+  "sphere-youtube": "sphere-youtube",
+  "sphere-ppc": "sphere-ppc",
+};
+
+/**
+ * Founder-load safety valve (17/08). With X, LinkedIn, IG, TikTok, YT and the
+ * daily video all asking for a yes, one day is ~6 approvals. This cap is NOT a
+ * hard rule — it is a valve: once today already STARTED >= N gated marketing
+ * runs (marketing-owned graphs that carry an approval node), further gated
+ * marketing starts are skipped, out loud (log + one Telegram note per call).
+ * Read-only cells (blog, PPC) and the CEO brains never count and never skip.
+ * Env SPHERE_MAX_DAILY_APPROVALS, default 6; 0 disables the valve.
+ */
+export const DEFAULT_MAX_DAILY_APPROVALS = 6;
+export function maxDailyApprovals(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env["SPHERE_MAX_DAILY_APPROVALS"];
+  if (raw === undefined || raw === "") return DEFAULT_MAX_DAILY_APPROVALS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_MAX_DAILY_APPROVALS;
+}
+
+/** A graph the valve counts: marketing-owned AND gated by a human approval. */
+export function isGatedMarketingGraph(slug: string): boolean {
+  const def = GRAPH_REGISTRY[slug];
+  return !!def && def.vpOwner === "marketing" && def.nodes.some((n) => n.kind === "approval");
+}
+
+/** Every registered slug the valve counts — the SQL filter for "today's gated starts". */
+export function gatedMarketingSlugs(): string[] {
+  return Object.keys(GRAPH_REGISTRY).filter(isGatedMarketingGraph);
+}
 
 /**
  * Start brain runs — idempotent by a look-back window so a worker restart or a
@@ -444,20 +567,40 @@ const VIDEO_CELLS = ["daily-video"];
  * starting a run only creates a stuck row and a false alarm, so we skip (the
  * tick's own missing-token alarm still covers a token that vanishes
  * mid-flight). The every-10-min graph-tick advances whatever this starts.
+ * Exported for the valve's unit test; the cron entry points below wrap it.
  */
-async function startBrainRuns(
+export async function startBrainRuns(
   sql: postgres.Sql,
   brains: string[],
   lookbackHours: number,
-  trigger: string
-): Promise<{ started: string[]; skipped: string[] }> {
+  trigger: string,
+  opts: { hermesToken?: string; maxDailyApprovals?: number } = {}
+): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   const started: string[] = [];
   const skipped: string[] = [];
-  if (!HERMES_TOKEN) {
+  const capped: string[] = [];
+  const token = opts.hermesToken ?? HERMES_TOKEN;
+  if (!token) {
     logger.warn("brain_start_skipped_no_executor", { brains: brains.join(","), trigger });
-    return { started, skipped: [...brains] };
+    return { started, skipped: [...brains], capped };
+  }
+  // The valve: count today's gated marketing starts ONCE per call, only when
+  // this call could add one — brains/read-only cells never pay for the query.
+  const cap = opts.maxDailyApprovals ?? maxDailyApprovals();
+  let gatedToday = -1;
+  if (cap > 0 && brains.some(isGatedMarketingGraph)) {
+    const rows = await sql<{ n: string }[]>`
+      SELECT COUNT(*)::text AS n FROM ops.agent_run
+       WHERE graph = ANY(${gatedMarketingSlugs()})
+         AND started_at >= date_trunc('day', NOW())`;
+    gatedToday = Number(rows[0]?.n ?? 0);
   }
   for (const graph of brains) {
+    if (cap > 0 && isGatedMarketingGraph(graph) && gatedToday >= cap) {
+      capped.push(graph);
+      logger.warn("brain_start_capped_daily_approvals", { graph, trigger, gatedToday, cap });
+      continue;
+    }
     const recent = await sql<{ id: string }[]>`
       SELECT id FROM ops.agent_run
        WHERE graph = ${graph}
@@ -476,20 +619,28 @@ async function startBrainRuns(
       RETURNING id`;
     started.push(`${graph}:${rows[0]!.id.slice(0, 8)}`);
     logger.info("brain_started", { graph, runId: rows[0]!.id, trigger });
+    if (isGatedMarketingGraph(graph)) gatedToday += 1;
   }
   if (started.length > 0) {
     await sendTelegram(`🧠 Cérebros iniciados (${trigger}): ${started.join(", ")}. Relatórios chegam quando os graphs concluírem.`);
   }
-  return { started, skipped };
+  if (capped.length > 0) {
+    // One note per call, never silent: the founder must know a cell did not
+    // run today because the valve closed, not because something broke.
+    await sendTelegram(
+      `🟡 VÁLVULA DE APROVAÇÕES: hoje já começaram ${gatedToday} run(s) de marketing com aprovação (limite SPHERE_MAX_DAILY_APPROVALS=${cap}). Pulei: ${capped.join(", ")} (${trigger}). Não é falha — é a válvula. Suba a env para liberar.`
+    );
+  }
+  return { started, skipped, capped };
 }
 
 /** Daily hygiene: the Watchdog. 20h look-back (once per calendar day). */
-export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+export async function runBrainDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, DAILY_BRAINS, 20, "cron:brain-daily");
 }
 
 /** Weekly strategy: the Chief Dreaming Officer. 6-day look-back (once/week). */
-export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, WEEKLY_BRAINS, 24 * 6, "cron:brain-weekly");
 }
 
@@ -498,28 +649,51 @@ export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: stri
  * matured to MVP-ready before the founder sees them. Thursday, offset from the
  * Monday strategy pair so the week has two thinking moments, not one pile.
  */
-export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, ["weekly-discovery"], 24 * 6, "cron:discovery-weekly");
 }
 
-/** Specialist cells (#156): Mon/Wed/Fri content runs. 20h look-back. */
-export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+/** Specialist cells (#156): daily content runs. 20h look-back. */
+export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
 }
 
-/** LinkedIn cell (#156): Tue/Thu content runs. 20h look-back. */
-export async function runSphereLinkedinStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+/** LinkedIn cell (#156): daily content runs. 20h look-back. */
+export async function runSphereLinkedinStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, LINKEDIN_CELLS, 20, "cron:sphere-linkedin");
 }
 
 /** Blog cell (#156): weekly thinker, Thursday. 6-day look-back. */
-export async function runSphereBlogStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+export async function runSphereBlogStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, BLOG_CELLS, 24 * 6, "cron:sphere-blog");
 }
 
+/** Reddit cell (#485): weekly thinker, Wednesday. 6-day look-back (as blog/PPC). */
+export async function runSphereRedditStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, REDDIT_CELLS, 24 * 6, "cron:sphere-reddit");
+}
+
 /** The daily video graph (v2), once per calendar day. 20h look-back. */
-export async function runVideoDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[] }> {
+export async function runVideoDaily(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, VIDEO_CELLS, 20, "cron:video-daily");
+}
+
+/**
+ * Platform cells (17/08): one entry point, keyed by the repeatable's job name.
+ * IG / TikTok / YouTube are daily (20h look-back); PPC is weekly (6-day
+ * look-back) and read-only. An unknown name starts nothing and says so.
+ */
+export async function runPlatformCellStart(
+  sql: postgres.Sql,
+  name: string
+): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  const graph = PLATFORM_CELLS[name];
+  if (!graph) {
+    logger.error("platform_cell_unknown", { name });
+    return { started: [], skipped: [name], capped: [] };
+  }
+  const lookback = graph === "sphere-ppc" ? 24 * 6 : 20;
+  return startBrainRuns(sql, [graph], lookback, `cron:${name}`);
 }
 
 /**

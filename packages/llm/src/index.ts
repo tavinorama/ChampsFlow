@@ -365,7 +365,12 @@ export {
   LANDING_DEFAULT_BRAND,
   landingSlugify,
   renderSectionsForScoring,
+  providerTextPort,
 } from "./landing-generate";
+export type { LandingTextPort } from "./landing-generate";
+// Two-stage (Kimi draft → Claude refine) pipeline, D5.
+export { buildLandingBundleStaged } from "./landing-stages";
+export type { StagedLandingBundle, LandingStages, StageStatus, LandingStagePorts } from "./landing-stages";
 
 // Static-site export (client downloads the pages for their own hosting).
 export { buildLandingExport, escapeHtml } from "./landing-export";

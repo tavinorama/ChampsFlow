@@ -71,12 +71,19 @@ import { ownerEmailForTenant } from "../lib/tenant-email";
 import { sendKitDeliveryEmail } from "../../../../packages/shared/src/emails/kit-delivery";
 import { sendPagesPurchaseEmail } from "../../../../packages/shared/src/emails/pages-purchase";
 import { enrollNurture, suppressOnConversion } from "./nurture";
+import type {
+  NurtureConversionKind,
+  NurtureSequence,
+} from "../../../../packages/shared/src/nurture-cadence";
+import { fulfillAiAuditOrder } from "../lib/ai-audit/fulfill";
+import { isUndefinedTable } from "../lib/ai-audit/deliverable";
 import {
   ensureMonthlyGrant,
   ensureFreeSignupResidual,
   creditBalance,
   overagePackUsd,
 } from "../lib/credits";
+import { creditsPct } from "../../../../packages/shared/src/credits";
 import Stripe from "stripe";
 import { asStr } from "../lib/coerce";
 
@@ -488,6 +495,10 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         granted: balance.granted,
         cost_per_audit: balance.costPerAudit,
         can_run_audit: balance.canRunAudit,
+        /** Same as `granted`, named for the header pill + low-balance banners (D1). */
+        monthly_allowance: balance.granted,
+        /** balance ÷ allowance, 0..100, clamped. The banner thresholds read this. */
+        pct: creditsPct(balance.balance, balance.granted),
         /** Price of a top-up, derived — never a figure typed into a page. */
         overage_pack: { credits: 1000, usd: overagePackUsd(1000) },
       });
@@ -1298,6 +1309,70 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
 // Webhook event handlers (private — not exported)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// nurtureAfterPurchase — every purchase webhook (a) kills the lower-rung
+// sequences and (b) starts the sequence for what was just bought. Best-effort
+// and NEVER throws: the money-critical grant above it is already committed and
+// the webhook must still 200. Cadence + suppression map: nurture-cadence.ts.
+// A DB CHECK that does not accept the sequence name yet is logged by
+// enrollNurture as nurture_sequence_not_allowed and skipped (no crash).
+// ---------------------------------------------------------------------------
+async function nurtureAfterPurchase(
+  db: PostgresClient,
+  params: {
+    email: string | null | undefined;
+    kind: NurtureConversionKind;
+    sequence: NurtureSequence;
+    brand: string | null | undefined;
+    metadata: Record<string, unknown>;
+    sourceKitId?: string;
+    eventId: string;
+  }
+): Promise<void> {
+  const email = (params.email ?? "").toLowerCase().trim();
+  if (!email) {
+    logger.warn("nurture_after_purchase_skipped_no_email", {
+      kind: params.kind,
+      sequence: params.sequence,
+      event_id: params.eventId,
+    });
+    return;
+  }
+  try {
+    await suppressOnConversion(db, email, params.kind);
+    await enrollNurture(db, {
+      email,
+      sequence: params.sequence,
+      brand: params.brand?.trim() || "your brand",
+      metadata: params.metadata,
+      sourceKitId: params.sourceKitId,
+      // delayMs 0: founder rule 17/08 — step 1 goes out at enrollment.
+    });
+  } catch (err) {
+    logger.warn("nurture_after_purchase_failed", {
+      kind: params.kind,
+      sequence: params.sequence,
+      event_id: params.eventId,
+      message: (err as Error).message?.slice(0, 200),
+      // NOTE: email intentionally NOT logged — hard rule (PII)
+    });
+  }
+}
+
+/** Tenant display name for nurture personalization. Never throws. */
+async function tenantBrandName(db: PostgresClient, tenantId: string | null | undefined): Promise<string | null> {
+  if (!tenantId) return null;
+  try {
+    const { rows } = await db.query<{ name: string | null }>(
+      `SELECT name FROM tenants WHERE id = $1 LIMIT 1`,
+      [tenantId]
+    );
+    return rows[0]?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // checkout.session.completed — new subscription OR Kit one-time payment.
 // Also invoked for checkout.session.async_payment_succeeded (same object shape).
 async function handleCheckoutSessionCompleted(
@@ -1360,6 +1435,18 @@ async function handleCheckoutSessionCompleted(
       credits,
       session_id: session.id,
       event_id: eventId,
+    });
+    // Nurture: credit_pack_bought (2 steps, 0d/+2d) + kill pre-subscription rungs.
+    await nurtureAfterPurchase(db, {
+      email:
+        session.customer_details?.email ??
+        session.customer_email ??
+        (await ownerEmailForTenant(db, tenantId)),
+      kind: "credit_pack",
+      sequence: "credit_pack_bought",
+      brand: await tenantBrandName(db, tenantId),
+      metadata: { tenantId, credits, sessionId: session.id },
+      eventId,
     });
     return;
   }
@@ -1474,39 +1561,98 @@ async function handleCheckoutSessionCompleted(
     }
 
     // Best-effort: suppress free_to_kit nurture (they've converted) + enroll in
-    // kit_to_growth. The recurring plan (Growth $99/mo) is the natural next rung
-    // for a $29 buyer — the DFY jump ($1,900/mo) is a poor fit for a cold drip,
-    // so the last Growth email carries a soft OrganicPosts/book-a-call line instead.
+    // kit_to_growth (3 steps, 0d/+1d/+2d — founder rule 17/08, no 2-day wait).
+    // The recurring plan (Growth $99/mo) is the natural next rung for a $29
+    // buyer. kit_to_dfy is NOT enrolled here: the worker chains it the moment
+    // kit_to_growth completes without a subscription (nurture-send.ts).
     // Must not throw — kit delivery is already complete at this point.
-    try {
-      const kitEmail = session.customer_details?.email ?? session.customer_email ?? "";
-      if (kitEmail) {
-        await suppressOnConversion(db, kitEmail);
-        const kitBrand = brand; // already resolved from kit_order above
-        if (kitBrand) {
-          await enrollNurture(db, {
-            email: kitEmail,
-            sequence: "kit_to_growth",
-            brand: kitBrand,
-            metadata: { orderId: kit_order_id },
-            sourceKitId: kit_order_id,
-            delayMs: 2 * 24 * 60 * 60 * 1000, // 2-day delay before first step
-          });
-        }
-      }
-    } catch (err) {
-      logger.warn("nurture_kit_enroll_failed", {
-        kit_order_id,
-        event_id: eventId,
-        message: (err as Error).message,
-      });
-      // best-effort: do not block the webhook 200
-    }
+    await nurtureAfterPurchase(db, {
+      email: kitRow?.email ?? session.customer_details?.email ?? session.customer_email,
+      kind: "kit",
+      sequence: "kit_to_growth",
+      brand,
+      metadata: { orderId: kit_order_id },
+      sourceKitId: kit_order_id,
+      eventId,
+    });
 
     logger.info("stripe_kit_checkout_completed_processed", {
       kit_order_id,
       event_id: eventId,
     });
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // AI Audit Stack branch (mode='payment', product='ai_audit_stack') — $49
+  // one-time (founder 2026-08-15). Same dynamic as the Kit: mark paid + bind
+  // the session (idempotent), then fulfill (build + store the deliverable,
+  // claim-by-email, delivery email WITH the result inline, suppress free_to_kit
+  // + enroll ai_audit_to_full). fulfillAiAuditOrder sends the email only when
+  // THIS call made the paid → delivered transition, so a redelivery or a race
+  // with the sync /deliver path never double-notifies.
+  // ---------------------------------------------------------------------------
+  if (session.mode === "payment" && session.metadata?.product === "ai_audit_stack") {
+    const ai_audit_order_id = session.metadata?.ai_audit_order_id;
+    const order_token = session.metadata?.order_token;
+    if (!ai_audit_order_id || !order_token) {
+      logger.warn("stripe_ai_audit_checkout_completed_missing_metadata", {
+        session_id: session.id,
+        event_id: eventId,
+      });
+      return;
+    }
+    try {
+      await db.query(
+        `UPDATE ai_audit_order SET status='paid', stripe_session_id=$2, paid_at=NOW()
+          WHERE id=$1 AND status='pending'`,
+        [ai_audit_order_id, session.id]
+      );
+      const { rows } = await db.query<{
+        id: string; order_token: string; email: string; business_type: string | null;
+        primary_focus: string | null; answers: unknown; status: string; deliverable: unknown;
+      }>(
+        `SELECT id, order_token, email, business_type, primary_focus, answers, status, deliverable
+           FROM ai_audit_order WHERE id = $1`,
+        [ai_audit_order_id]
+      );
+      const order = rows[0];
+      if (!order) {
+        logger.warn("stripe_ai_audit_order_not_found", { ai_audit_order_id, event_id: eventId });
+        return;
+      }
+      if (order.status !== "paid" && order.status !== "delivered") {
+        // refunded/failed meanwhile — never fulfil a revoked order.
+        logger.warn("stripe_ai_audit_order_not_fulfillable", { ai_audit_order_id, status: order.status, event_id: eventId });
+        return;
+      }
+      if (!order.email) {
+        order.email = (session.customer_details?.email ?? session.customer_email ?? "").trim();
+      }
+      const firstDelivery = order.status === "paid";
+      await fulfillAiAuditOrder(db, order, { eventId, source: "webhook" });
+      // Post-purchase onboarding (ai_audit_bought, 0/+1d/+2d) on top of the
+      // ai_audit_to_full upsell fulfil already enrolled. Only on the paid →
+      // delivered transition, so a redelivered event never re-enrolls.
+      if (firstDelivery && order.email) {
+        await nurtureAfterPurchase(db, {
+          email: order.email,
+          kind: "ai_audit",
+          sequence: "ai_audit_bought",
+          brand: null,
+          metadata: { orderId: ai_audit_order_id, sessionId: session.id },
+          eventId,
+        });
+      }
+    } catch (err) {
+      if (isUndefinedTable(err)) {
+        // Migration not applied yet but Stripe took money: shout, and let Stripe
+        // retry (500) so the event is not lost — never acknowledge silently.
+        logger.error("stripe_ai_audit_orders_table_missing", { ai_audit_order_id, event_id: eventId });
+      }
+      throw err;
+    }
+    logger.info("stripe_ai_audit_checkout_completed_processed", { ai_audit_order_id, event_id: eventId });
     return;
   }
 
@@ -1626,6 +1772,16 @@ async function handleCheckoutSessionCompleted(
         message: (err as Error).message,
       });
     }
+
+    // Nurture: pages_bought (2 steps, 0d/+2d) + kill free_to_kit.
+    await nurtureAfterPurchase(db, {
+      email: buyerEmail,
+      kind: "pages",
+      sequence: "pages_bought",
+      brand: await tenantBrandName(db, buyerTenantId),
+      metadata: { pagesOrderId: pages_order_id },
+      eventId,
+    });
 
     return;
   }
@@ -1787,6 +1943,17 @@ async function handleCheckoutSessionCompleted(
         event_id: eventId,
       });
     }
+
+    // Nurture: subscriber_onboarding (3 steps, 0d/+1d/+2d) + kill every
+    // pre-subscription rung (free_to_kit, kit_to_growth, kit_to_dfy, pages_bought).
+    await nurtureAfterPurchase(db, {
+      email: customerEmail,
+      kind: "subscription",
+      sequence: "subscriber_onboarding",
+      brand: await tenantBrandName(db, tenantId),
+      metadata: { tenantId, plan: resolvedPlanTier, annual: isAnnual },
+      eventId,
+    });
   }
 
   logger.info("stripe_checkout_completed_processed", {
@@ -2155,6 +2322,16 @@ async function handleDirectCheckoutCompleted(
       event_id: eventId,
       // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
     });
+
+    // Nurture: subscriber_onboarding + kill pre-subscription rungs.
+    await nurtureAfterPurchase(db, {
+      email: normalizedEmail,
+      kind: "subscription",
+      sequence: "subscriber_onboarding",
+      brand: await tenantBrandName(db, existingTenantId),
+      metadata: { tenantId: existingTenantId, plan: resolvedPlanTier, interval, flow: "direct" },
+      eventId,
+    });
     return;
   }
 
@@ -2190,6 +2367,17 @@ async function handleDirectCheckoutCompleted(
     event_id: eventId,
     // NOTE: email, customer_id, subscription_id intentionally NOT logged — hard rule
   });
+
+  // Nurture: subscriber_onboarding (they paid; the first email tells them to
+  // log in and run the audit) + kill pre-subscription rungs.
+  await nurtureAfterPurchase(db, {
+    email: normalizedEmail,
+    kind: "subscription",
+    sequence: "subscriber_onboarding",
+    brand: null,
+    metadata: { plan: planTier, interval, flow: "direct", pending: true },
+    eventId,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2219,6 +2407,18 @@ async function handleAsyncPaymentFailed(
         kit_order_id,
         event_id: eventId,
       });
+    }
+    return;
+  }
+
+  if (session.mode === "payment" && product === "ai_audit_stack") {
+    const ai_audit_order_id = session.metadata?.ai_audit_order_id;
+    if (ai_audit_order_id) {
+      await db.query(
+        `UPDATE ai_audit_order SET status='failed' WHERE id=$1 AND status='pending'`,
+        [ai_audit_order_id]
+      );
+      logger.info("stripe_ai_audit_async_payment_failed", { ai_audit_order_id, event_id: eventId });
     }
     return;
   }
@@ -2306,6 +2506,33 @@ async function revokeEntitlementsForCharge(
       event_id: eventId,
       kind,
     });
+    return;
+  }
+
+  // --- AI Audit Stack: order named by charge metadata ----------------------
+  if (md["product"] === "ai_audit_stack" && md["ai_audit_order_id"]) {
+    const orderId = md["ai_audit_order_id"];
+    const { rows } = await db.query<{ claimed_by_tenant_id: string | null }>(
+      `UPDATE ai_audit_order
+          SET status = 'refunded', refunded_at = NOW()
+        WHERE id = $1 AND status <> 'refunded'
+        RETURNING claimed_by_tenant_id`,
+      [orderId]
+    );
+    if (rows.length === 0) {
+      logger.info("stripe_ai_audit_revocation_noop", { ai_audit_order_id: orderId, event_id: eventId, kind });
+      return;
+    }
+    const claimedTenantId = rows[0].claimed_by_tenant_id;
+    if (claimedTenantId) {
+      await writeBillingAuditLog(db, {
+        tenantId: claimedTenantId,
+        eventType: `ai_audit_order_revoked_${kind}`,
+        planTier: null,
+        stripeEventId: eventId,
+      });
+    }
+    logger.info("stripe_ai_audit_order_revoked", { ai_audit_order_id: orderId, event_id: eventId, kind });
     return;
   }
 

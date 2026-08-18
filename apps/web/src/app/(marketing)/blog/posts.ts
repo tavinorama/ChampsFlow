@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "the-yorkshire-potter-chatgpt-started-recommending",
+    title: "The Yorkshire Potter ChatGPT Started Recommending",
+    excerpt: "A small ceramics seller's brush with ChatGPT's shopping feature shows why generative engines, not just search engines, now decide which businesses customers hear about.",
+    readTime: "6 min read",
+    publishedAt: "2026-08-17",
+    publishedAtDisplay: "17 August 2026",
+  },
+  {
+    type: "article",
     slug: "chatgpt-ads-that-talk-read-your-website-first",
     title: "ChatGPT Is Testing Ads That Talk Back. They Read Your Website First.",
     excerpt:

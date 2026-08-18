@@ -242,6 +242,14 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
         }}
         secondary={[
           {
+            title: "AI Audit Stack",
+            why: "Your Kit fixes how AI sees you. The AI Audit Stack picks the AI tool that fixes how you work. One niche tool for your pains, $49 one time.",
+            price: "$49",
+            href: "/ai-audit",
+            accent: "ghost",
+            ctaAriaLabel: "Get my AI Audit Stack for $49",
+          },
+          {
             title: "Agency Plan",
             why: "Weekly monitoring across up to 10 brands. Includes white-label reports and a client approval workflow.",
             price: "$549/mo",

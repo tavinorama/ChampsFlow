@@ -32,7 +32,7 @@ import { useDirectCheckout, type CheckoutPlan } from "../../../lib/use-direct-ch
 type Interval = "year" | "month";
 
 type Plan = {
-  id: "free" | "kit" | CheckoutPlan;
+  id: "free" | "kit" | "ai-audit" | CheckoutPlan;
   /** free = no card, onetime = one payment, sub = recurring plan. */
   kind: "free" | "onetime" | "sub";
   name: string;
@@ -92,6 +92,27 @@ const PLANS: Plan[] = [
     href: "/kit",
     guarantee: "Deliverable guarantee. Drafts not publish-ready, we refund.",
     accent: "emerald",
+  },
+  {
+    id: "ai-audit",
+    kind: "onetime",
+    name: "AI Audit Stack",
+    monthly: "$49",
+    annualYear: "$49",
+    annualPerMonth: "",
+    sub: "One payment. We pick your AI tool.",
+    features: [
+      "One niche AI tool picked for your pains",
+      "Why it fits, and which pains it answers",
+      "The size of the full picture: tools matched, quick wins",
+      "Result on the site and in your inbox",
+      "Full audit lives in OrganicPosts",
+      "No subscription",
+    ],
+    cta: "Get my AI stack — $49",
+    href: "/ai-audit",
+    guarantee: "One tool and the counts. Numbers are estimates when our catalog says so.",
+    accent: "muted",
   },
   {
     id: "growth",
