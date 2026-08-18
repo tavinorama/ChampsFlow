@@ -19,6 +19,8 @@ import {
   WEEKLY_PRODUCT_GRAPH,
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
+  SPHERE_BLOG_GRAPH,
+  SPHERE_REDDIT_GRAPH,
   SPHERE_INSTAGRAM_GRAPH,
   SPHERE_TIKTOK_GRAPH,
   SPHERE_YOUTUBE_GRAPH,
@@ -171,6 +173,25 @@ describe("validateGraph — the agent-org graphs", () => {
     expect(kinds.has("approval")).toBe(true);
     expect(kinds.has("harvest")).toBe(true);
     expect(validateGraph(CONTENT_EXPERIMENT_GRAPH).valid).toBe(true);
+  });
+
+  it("sphere-reddit (#485) is valid, marketing-owned, and PURE report-only — publishes nothing", () => {
+    const r = validateGraph(SPHERE_REDDIT_GRAPH);
+    expect(r.errors).toEqual([]);
+    expect(r.valid).toBe(true);
+    // Marketing-owned → the runner injects [__signals__] into its reasoning nodes.
+    expect(SPHERE_REDDIT_GRAPH.vpOwner).toBe("marketing");
+    // Report-only by construction: no publish/approval/harvest/spawn, and it
+    // ends in a report. This is the same read-only shape as sphere-blog, so the
+    // "nothing publishes without a human" rule holds trivially.
+    const kinds = new Set(SPHERE_REDDIT_GRAPH.nodes.map((n) => n.kind));
+    expect(kinds.has("publish"), "reddit must not publish").toBe(false);
+    expect(kinds.has("approval"), "report-only needs no approval").toBe(false);
+    expect(kinds.has("harvest")).toBe(false);
+    expect(kinds.has("spawn")).toBe(false);
+    expect(kinds.has("report"), "reddit must report").toBe(true);
+    // sphere-blog is the mold it mirrors — also report-only.
+    expect(new Set(SPHERE_BLOG_GRAPH.nodes.map((n) => n.kind)).has("publish")).toBe(false);
   });
 });
 

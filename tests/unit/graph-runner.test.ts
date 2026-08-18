@@ -184,6 +184,16 @@ describe("the registry only holds graphs the brain accepts", () => {
       expect(v.valid).toBe(true);
     }
   });
+
+  it("the marketing spheres are all registered — including sphere-reddit (#485)", () => {
+    // Registration is the ONLY way a graph becomes startable (operator route +
+    // worker crons both read this map). sphere-reddit must be here, marketing-
+    // owned (so it receives [__signals__]), or its Wed cron would start nothing.
+    for (const slug of ["sphere-blog", "sphere-reddit", "sphere-ppc"]) {
+      expect(GRAPH_REGISTRY[slug], `${slug} missing from registry`).toBeTruthy();
+      expect(GRAPH_REGISTRY[slug]!.vpOwner).toBe("marketing");
+    }
+  });
 });
 
 describe("daily-video, the full life", () => {

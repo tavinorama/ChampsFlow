@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runPlatformCellStart } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -369,17 +369,24 @@ async function registerSphereStartSchedule(): Promise<void> {
 // DAILY 10:00 UTC (founder 14/08: every day; one hour after X so approvals
 // never collide) and 'sphere-blog' Thu 08:00 UTC (the brief+outline reaches
 // the founder before Monday's 12:00 autopublish; it publishes nothing itself).
+// #485 consumer (18/08): 'sphere-reddit' rides the same queue — Wed 08:00 UTC,
+// weekly, read-only (it publishes nothing), a slot free of the other sphere
+// crons (PPC Tue 08:00, blog Thu 08:00). Its brief carries the week's REAL
+// Reddit opportunities from the Signal Engine, or SEM DADO honestly.
 const sphereMoreWorker = new Worker(
   "sphere-more",
   async (job) =>
     job.name === "sphere-blog"
       ? runSphereBlogStart(getGraphSql())
-      : runSphereLinkedinStart(getGraphSql()),
+      : job.name === "sphere-reddit"
+        ? runSphereRedditStart(getGraphSql())
+        : runSphereLinkedinStart(getGraphSql()),
   { connection, concurrency: 1, autorun: false }
 );
 const sphereMoreQueue = new Queue("sphere-more", { connection });
 const SPHERE_LINKEDIN_CRON = process.env["SPHERE_LINKEDIN_CRON"] ?? "0 10 * * *";
 const SPHERE_BLOG_CRON = process.env["SPHERE_BLOG_CRON"] ?? "0 8 * * 4";
+const SPHERE_REDDIT_CRON = process.env["SPHERE_REDDIT_CRON"] ?? "0 8 * * 3";
 
 async function registerSphereMoreSchedules(): Promise<void> {
   await sphereMoreQueue.add(
@@ -392,7 +399,12 @@ async function registerSphereMoreSchedules(): Promise<void> {
     {},
     { jobId: "sphere-blog-repeat", repeat: { pattern: SPHERE_BLOG_CRON }, removeOnComplete: 20, removeOnFail: 20 }
   );
-  logger.info("sphere_more_schedules_registered", { linkedin: SPHERE_LINKEDIN_CRON, blog: SPHERE_BLOG_CRON });
+  await sphereMoreQueue.add(
+    "sphere-reddit",
+    {},
+    { jobId: "sphere-reddit-repeat", repeat: { pattern: SPHERE_REDDIT_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("sphere_more_schedules_registered", { linkedin: SPHERE_LINKEDIN_CRON, blog: SPHERE_BLOG_CRON, reddit: SPHERE_REDDIT_CRON });
 }
 
 // Content alive on every platform (founder, 17/08). One queue, four named
