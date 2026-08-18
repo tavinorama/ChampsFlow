@@ -48,40 +48,23 @@ jobs:
           test -n "${{ secrets.HERMES_TASK_TOKEN }}" || { echo "HERMES_TASK_TOKEN missing"; exit 1; }
           test -n "${{ secrets.HERMES_BLOG_TOKEN }}" || { echo "HERMES_BLOG_TOKEN missing"; exit 1; }
 
-      - name: Generate the article on the VPS (flat-fee Claude)
+      - name: Generate the article on the VPS (robust, 3 attempts, output kept)
         env:
-          TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+          HERMES_TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
           THEME: ${{ github.event.inputs.theme }}
-        run: |
-          set -euo pipefail
-          PROMPT=$(cat <<'EOF'
-          You are the staff writer for Ozvor, a GEO / AI-search visibility platform for small businesses. Write ONE complete, publishable blog article about generative-engine optimization (how ChatGPT, Perplexity, Gemini and Google AI Overviews decide which businesses to name), grounded in something real and recent. Center it on a concrete small-business owner and a specific, true development. Human, warm, specific. British-neutral English.
-          HARD RULES: never use an em-dash or en-dash anywhere; every statistic must cite a named, dated, public source with a real URL; no fabricated numbers; end with one soft CTA to ozvor.com.
-          Return ONLY a strict JSON object, no markdown fence, with exactly these keys:
-          {"slug":"kebab-case-6-to-80-chars","title":"...","dek":"one-sentence sub-headline","category":"one of: GEO 101, GEO Playbook, How AI Works, Local & SMB, Measurement, Playbook, Research, Reviews & Trust, Strategy, Technical GEO","excerpt":"one-sentence index blurb","readTime":"N min read","keywords":["3 to 6 terms"],"takeaways":["2 to 5 short takeaways"],"body_markdown":"the full article; paragraphs separated by blank lines; use '## ' for at least one section heading","sources":["Name, quoted title (date), https://url"]}
-          EOF
-          )
-          if [ -n "${THEME:-}" ]; then PROMPT="Theme to cover: ${THEME}. ${PROMPT}"; fi
-          BODY=$(P="$PROMPT" python3 -c 'import json,os,sys; print(json.dumps({"engine":"claude","timeoutMs":540000,"prompt":os.environ["P"]}))')
-          # Normalize: accept the secret whether it holds the raw token or a
-          # "Bearer <token>" header value, and trim stray whitespace/newlines.
-          TOKEN=$(printf '%s' "$TASK_TOKEN" | sed -E 's/^[[:space:]]*[Bb]earer[[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//')
-          echo "Calling VPS to write the article (up to ~9 min)..."
-          RESP=$(curl -sS --max-time 600 -X POST https://hermes.ozvor.com/task \
-            -H "Content-Type: application/json" -H "Authorization: Bearer ${TOKEN}" \
-            -d "$BODY")
-          # /task returns { ok, output, ... }; the model's output holds the JSON article.
-          echo "$RESP" | python3 -c '
-          import json,sys,re
-          r=json.load(sys.stdin)
-          if not r.get("ok"): sys.exit("VPS task failed: "+str(r.get("error") or r.get("stderr") or r)[:300])
-          out=r.get("output") or ""
-          m=re.search(r"\{.*\}", out, re.S)
-          if not m: sys.exit("no JSON object found in the model output")
-          art=json.loads(m.group(0))
-          json.dump(art, open("article.json","w"), ensure_ascii=False, indent=2)
-          print("article slug:", art.get("slug"))
-          '
+        run: python3 scripts/blog-generate.py
+
+      # The model's raw replies are the post-mortem. Before 17/08 they were
+      # discarded and two Mondays failed with "no JSON object found" that
+      # nobody could diagnose. Kept 14 days, always (even on success).
+      - name: Keep the raw model output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blog-raw-output-${{ github.run_id }}
+          path: article.raw.*.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Ingest + validate into the site
         id: ingest
@@ -144,3 +127,30 @@ jobs:
           announce linkedin
           announce x
           echo "Announce dispatched for linkedin + x with the live URL."
+
+      # NADA DEGRADA CALADO: the blog failed silently on 04/08 (x4), 10/08 and
+      # 17/08. Any failed step now writes a loud job summary and, when the
+      # Telegram secrets exist, screams there too (same env contract as the
+      # worker). Secrets are optional so a missing secret never hides the
+      # summary itself.
+      - name: Alarm on failure (Telegram + job summary)
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "## 🔴 BLOG NÃO PUBLICOU"
+            echo ""
+            echo "O blog-autopublish falhou. Ver o log e o artifact blog-raw-output-${{ github.run_id }} (resposta crua do modelo)."
+            echo ""
+            echo "$RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="BLOG NAO PUBLICOU (blog-autopublish falhou). Segunda sem artigo. Log + resposta crua do modelo em ${RUN_URL}"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set as Actions secrets — alarm only in the job summary."
+          fi

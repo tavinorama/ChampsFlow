@@ -31,9 +31,16 @@ import {
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
+  SPHERE_LINKEDIN_GRAPH,
+  SPHERE_BLOG_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
   validateGraph,
   type GraphDefinition,
 } from "../../apps/api/src/lib/agent-graphs";
+import { X_POST_LIMIT, xPostWithinLimit } from "../../packages/shared/src/x-post-limit";
 
 interface FakeWorld {
   ports: GraphRunnerPorts;
@@ -41,6 +48,7 @@ interface FakeWorld {
   steps: Array<StepRow & { summary?: string | null }>;
   outcomes: Array<{ stepId: string; metric: string; valueAfter: number | null }>;
   telegrams: string[];
+  telegramButtons: string[][];
   published: Array<{ channel: string; post: string }>;
   clock: { now: Date };
   harvestData: { n: number; total: number };
@@ -65,6 +73,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
   const steps: FakeWorld["steps"] = [];
   const outcomes: FakeWorld["outcomes"] = [];
   const telegrams: string[] = [];
+  const telegramButtons: string[][] = [];
   const published: FakeWorld["published"] = [];
   const artifacts = new Map<string, string>();
   let stepSeq = 0;
@@ -74,6 +83,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
     steps,
     outcomes,
     telegrams,
+    telegramButtons,
     published,
     clock,
     harvestData: { n: 0, total: 0 },
@@ -143,8 +153,9 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
           artifacts.set(`${runId}:${node}`, text);
         },
       },
-      telegram: async (text) => {
+      telegram: async (text, buttons) => {
         telegrams.push(text);
+        if (buttons) world.telegramButtons.push(buttons.map((b) => b.data));
       },
       now: () => clock.now,
     },
@@ -171,6 +182,16 @@ describe("the registry only holds graphs the brain accepts", () => {
       const v = validateGraph(def);
       expect(v.errors, def.slug).toEqual([]);
       expect(v.valid).toBe(true);
+    }
+  });
+
+  it("the marketing spheres are all registered — including sphere-reddit (#485)", () => {
+    // Registration is the ONLY way a graph becomes startable (operator route +
+    // worker crons both read this map). sphere-reddit must be here, marketing-
+    // owned (so it receives [__signals__]), or its Wed cron would start nothing.
+    for (const slug of ["sphere-blog", "sphere-reddit", "sphere-ppc"]) {
+      expect(GRAPH_REGISTRY[slug], `${slug} missing from registry`).toBeTruthy();
+      expect(GRAPH_REGISTRY[slug]!.vpOwner).toBe("marketing");
     }
   });
 });
@@ -231,7 +252,9 @@ describe("daily-video, the full life", () => {
 
   it("a failed angle fails the run fast and says so on Telegram", async () => {
     const world = makeWorld();
-    world.failTaskWhenPromptIncludes = "contrarian"; // angle-b's angle
+    // angle-b's own prompt line — not the bare word "contrarian", which the
+    // editorial calendar's [__day__] block also carries on Wednesdays.
+    world.failTaskWhenPromptIncludes = 'no angulo "contrarian"';
     await tickUntil(world, () => world.run.status !== "running");
 
     expect(world.run.status).toBe("failed");
@@ -253,7 +276,10 @@ describe("daily-video, the full life", () => {
     expect(world.published).toEqual([]);
   });
 
-  it("a harvest with no data records HONEST ZERO at grace instead of hanging", async () => {
+  it("a harvest whose SOURCE is mute (0 rows at grace) SCREAMS and records NO outcome — never a fake zero", async () => {
+    // Structural hole #3 of the 14/08 sweep. Before: n=0 at grace → total=0
+    // → verdict wrote value_after=0 → the learning loop was taught "did not
+    // perform" (the 13/08 false-zero bug). Now: noData → alarm + no row.
     const world = makeWorld();
     await tickUntil(world, () => world.stepByNode("founder-approval")?.status === "waiting");
     await world.ports.substrate.finishStep(world.stepByNode("founder-approval")!.id, { status: "succeeded" });
@@ -266,8 +292,31 @@ describe("daily-video, the full life", () => {
     await tickUntil(world, () => world.run.status !== "running");
 
     expect(world.stepByNode("harvest")?.status).toBe("succeeded");
-    expect(world.stepByNode("harvest")?.summary).toContain("honest zero");
+    expect(world.stepByNode("harvest")?.summary).toContain("SEM DADO");
+    // The alarm named the mute source, and the verdict said "sem veredito".
+    expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(true);
+    expect(world.telegrams.some((t) => t.includes("SEM VEREDITO"))).toBe(true);
+    // The whole point: NO fake zero in ops.agent_outcome.
+    expect(world.outcomes).toEqual([]);
+    expect(world.stepByNode("verdict")?.status).toBe("succeeded");
+    expect(world.run.status).toBe("succeeded");
+  });
+
+  it("a REAL zero (rows exist, total 0) still records the outcome as a legitimate measurement", async () => {
+    const world = makeWorld();
+    await tickUntil(world, () => world.stepByNode("founder-approval")?.status === "waiting");
+    await world.ports.substrate.finishStep(world.stepByNode("founder-approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting");
+
+    world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+    // The source wrote rows; they just say zero. That IS a measurement.
+    world.harvestData = { n: 2, total: 0 };
+    await tickUntil(world, () => world.run.status !== "running");
+
+    expect(world.stepByNode("harvest")?.summary).toContain("n=2 total=0");
+    expect(world.outcomes).toHaveLength(1);
     expect(world.outcomes[0]!.valueAfter).toBe(0);
+    expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(false);
     expect(world.run.status).toBe("succeeded");
   });
 });
@@ -413,6 +462,10 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     expect(world.stepByNode("finalize")?.status).toBe("succeeded");
     // Parked at the human gate; nothing on X yet.
     expect(world.published).toEqual([]);
+    // 17/08: the approval carries the two buttons the Telegram webhook maps
+    // to the #445 finish call — approve is one tap, reject asks why.
+    const stepId = world.stepByNode("approval")!.id;
+    expect(world.telegramButtons.at(-1)).toEqual([`ap:${stepId}`, `rj:${stepId}`]);
   });
 
   it("approve → publishes to channel X → harvest x_impressions closes the sphere's loop", async () => {
@@ -432,6 +485,219 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     expect(world.outcomes[0]!.metric).toBe("x_impressions");
     expect(world.outcomes[0]!.valueAfter).toBe(45);
     expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the X sphere refuses to ship an over-limit post (prod failure 17/08)", () => {
+  // The x-finalize prompt marks the editor-chief node; over-limit ONLY there.
+  const FINALIZE_MARKER = "editor-chefe da esfera X";
+  const OVER_LIMIT = ("word ".repeat(120)).trim(); // ~600 chars, boundaries to trim on
+
+  it("adapts the finalized post to X's limit BEFORE approval — the founder sees what will publish", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    const orig = world.ports.hermes.task.bind(world.ports.hermes);
+    world.ports.hermes.task = async (prompt) =>
+      prompt.includes(FINALIZE_MARKER)
+        ? { ok: true, output: OVER_LIMIT, engineUsed: "claude", ms: 10 }
+        : orig(prompt);
+
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+
+    // What the approval gate holds is already compliant — no over-limit tweet.
+    const finalized = (await world.ports.artifacts.get(world.run.id, "finalize")) ?? "";
+    expect(finalized).not.toBe("");
+    expect(xPostWithinLimit(finalized)).toBe(true);
+    expect(world.stepByNode("finalize")?.summary).toContain(`adapted to X ${X_POST_LIMIT}`);
+    // The Telegram ask shows the trimmed content the founder is approving.
+    const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO"));
+    expect(ask).toContain(finalized.slice(0, 50));
+    expect(world.published).toEqual([]);
+  });
+
+  it("belt-and-suspenders: if an over-limit post reaches publish, it is NOT sent and the step fails loudly", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+
+    // Simulate the adapt step being skipped/edited around: overwrite the
+    // finalized artifact with an over-limit post AFTER it was made compliant.
+    await world.ports.artifacts.set(world.run.id, "finalize", OVER_LIMIT);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+
+    await tickUntil(world, () => world.stepByNode("publish")?.status !== undefined, 25, SPHERE_X_GRAPH);
+
+    // Nothing was handed to Postiz; the step failed with an honest reason.
+    expect(world.published).toEqual([]);
+    expect(world.stepByNode("publish")?.status).toBe("failed");
+    expect(world.stepByNode("publish")?.summary).toContain(`over ${X_POST_LIMIT} chars, not sent`);
+    expect(world.telegrams.some((t) => t.includes("X NÃO PUBLICADO"))).toBe(true);
+  });
+});
+
+describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measured", () => {
+  it("memory reads ONLY linkedin_ metrics, both drafts + critic run, parks at the human gate", async () => {
+    const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "linkedin_" }]);
+    expect(world.stepByNode("draft-story")?.status).toBe("succeeded");
+    expect(world.stepByNode("draft-contrarian")?.status).toBe("succeeded");
+    expect(world.stepByNode("critic")?.status).toBe("succeeded");
+    expect(world.stepByNode("finalize")?.status).toBe("succeeded");
+    expect(world.published).toEqual([]);
+  });
+
+  it("approve → publishes to LinkedIn → harvest linkedin_impressions closes the loop", async () => {
+    const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.published).toHaveLength(1);
+    expect(world.published[0]!.channel).toBe("linkedin");
+
+    world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+    world.harvestData = { n: 1, total: 320 };
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.outcomes[0]!.metric).toBe("linkedin_impressions");
+    expect(world.outcomes[0]!.valueAfter).toBe(320);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the blog sphere cell (#156, third) — a read-only thinker that publishes NOTHING", () => {
+  it("memory (blog_, 60d) → signal → briefing → 2 outlines → critic → finalize → REPORT; no publish, no spawn", async () => {
+    const world = makeWorld(SPHERE_BLOG_GRAPH.slug);
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_BLOG_GRAPH);
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 60, metricPrefix: "blog_" }]);
+    expect(world.stepByNode("outline-howto")?.status).toBe("succeeded");
+    expect(world.stepByNode("outline-data")?.status).toBe("succeeded");
+    expect(world.stepByNode("critic")?.status).toBe("succeeded");
+    expect(world.stepByNode("report")?.status).toBe("succeeded");
+    // The whole safety of this cell: it can only report.
+    expect(world.published).toEqual([]);
+    expect(world.spawnedRuns).toEqual([]);
+    expect(SPHERE_BLOG_GRAPH.nodes.some((n) => n.kind === "publish" || n.kind === "spawn")).toBe(false);
+    expect(world.telegrams.some((t) => t.includes("Blog da semana"))).toBe(true);
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("content alive on every platform (17/08) — IG / TikTok / YouTube spheres", () => {
+  const cells: Array<[GraphDefinition, string, string, string, number]> = [
+    [SPHERE_INSTAGRAM_GRAPH, "instagram_", "instagram", "instagram_reach", 1200],
+    [SPHERE_TIKTOK_GRAPH, "tiktok_", "tiktok", "tiktok_views", 5400],
+    [SPHERE_YOUTUBE_GRAPH, "youtube_", "youtube", "youtube_views", 830],
+  ];
+
+  for (const [def, prefix, channel, metric, total] of cells) {
+    it(`${def.slug}: memory reads ONLY ${prefix} metrics, both drafts + critic run, PARKS at the human gate`, async () => {
+      const world = makeWorld(def.slug);
+      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: prefix }]);
+      expect(world.stepByNode("draft-talking-head")?.status).toBe("succeeded");
+      expect(world.stepByNode("draft-caption-story")?.status).toBe("succeeded");
+      expect(world.stepByNode("critic")?.status).toBe("succeeded");
+      expect(world.stepByNode("finalize")?.status).toBe("succeeded");
+      expect(world.published).toEqual([]);
+      const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO"));
+      expect(ask).toContain(`publicar como POST em ${channel}`);
+    });
+
+    it(`${def.slug}: approve → publish to ${channel} → wait 72h → harvest ${metric} → verdict closes the loop`, async () => {
+      const world = makeWorld(def.slug);
+      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+      await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting", 25, def);
+      expect(world.published).toHaveLength(1);
+      expect(world.published[0]!.channel).toBe(channel);
+
+      world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
+      world.harvestData = { n: 1, total };
+      await tickUntil(world, () => world.run.status !== "running", 25, def);
+      expect(world.outcomes[0]!.metric).toBe(metric);
+      expect(world.outcomes[0]!.valueAfter).toBe(total);
+      expect(world.run.status).toBe("succeeded");
+    });
+  }
+
+  it("every new marketing cell's reasoning prompts carry [__day__] — the calendar still reaches them", async () => {
+    for (const [def] of cells) {
+      const seen: string[] = [];
+      const world = makeWorld(def.slug);
+      const orig = world.ports.hermes.task.bind(world.ports.hermes);
+      world.ports.hermes.task = async (prompt) => { seen.push(prompt); return orig(prompt); };
+      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      expect(seen.length, def.slug).toBeGreaterThan(0);
+      for (const p of seen) expect(p, def.slug).toContain("[__day__]");
+    }
+  });
+});
+
+describe("the PPC cell (17/08) — 3 ad drafts, ZERO spend, report only", () => {
+  it("snapshot(outcomes 30d, all spheres) → signal → 3 ads → critic → finalize → REPORT; no publish, no spawn", async () => {
+    const world = makeWorld(SPHERE_PPC_GRAPH.slug);
+    world.snapshotText = "RESULTADOS REAIS (ops.agent_outcome, 30d):\n- linkedin_impressions (sphere-linkedin): 320 · lift 0.4";
+    await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_PPC_GRAPH);
+    // All spheres, no prefix — ads follow whatever content resonated anywhere.
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30 }]);
+    for (const id of ["signal", "ad-google", "ad-meta", "ad-linkedin", "critic", "finalize", "report"]) {
+      expect(world.stepByNode(id)?.status, id).toBe("succeeded");
+    }
+    // The whole safety of this cell: it cannot spend, publish or launch.
+    expect(world.published).toEqual([]);
+    expect(world.spawnedRuns).toEqual([]);
+    expect(world.telegrams.some((t) => t.includes("APROVAÇÃO"))).toBe(false);
+    const report = world.telegrams.find((t) => t.includes("PPC"));
+    expect(report).toBeTruthy();
+    expect(report).toContain("sem gasto");
+    expect(report).toContain("nada foi executado");
+    expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the editorial calendar reaches content cells, never the brains", () => {
+  it("a marketing cell's reasoning prompts carry [__day__]; a CEO brain's do not", async () => {
+    const seen: string[] = [];
+    // sphere-x is marketing → every task/debate prompt should carry the day.
+    const cell = makeWorld(SPHERE_X_GRAPH.slug);
+    const origTask = cell.ports.hermes.task.bind(cell.ports.hermes);
+    cell.ports.hermes.task = async (prompt) => { seen.push(prompt); return origTask(prompt); };
+    await tickUntil(cell, () => cell.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const p of seen) expect(p).toContain("[__day__]");
+
+    const brainSeen: string[] = [];
+    const brain = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    const origBrain = brain.ports.hermes.task.bind(brain.ports.hermes);
+    brain.ports.hermes.task = async (prompt) => { brainSeen.push(prompt); return origBrain(prompt); };
+    await tickUntil(brain, () => brain.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+    expect(brainSeen.length).toBeGreaterThan(0);
+    for (const p of brainSeen) expect(p).not.toContain("[__day__]");
+  });
+});
+
+describe("external signals (Signal Engine) reach content cells, fail-open", () => {
+  it("when the substrate offers externalSignals, marketing prompts carry [__signals__]; brains never do; absent port = as before", async () => {
+    const seen: string[] = [];
+    const cell = makeWorld(SPHERE_X_GRAPH.slug);
+    cell.ports.substrate.externalSignals = async () => "SINAIS EXTERNOS REAIS: kw=\"dentist austin\" · acao=publish_own_community";
+    const orig = cell.ports.hermes.task.bind(cell.ports.hermes);
+    cell.ports.hermes.task = async (p) => { seen.push(p); return orig(p); };
+    await tickUntil(cell, () => cell.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const p of seen) expect(p).toContain("[__signals__]");
+
+    const brainSeen: string[] = [];
+    const brain = makeWorld(DAILY_WATCHDOG_GRAPH.slug);
+    brain.ports.substrate.externalSignals = async () => "should not be injected";
+    const ob = brain.ports.hermes.task.bind(brain.ports.hermes);
+    brain.ports.hermes.task = async (p) => { brainSeen.push(p); return ob(p); };
+    await tickUntil(brain, () => brain.run.status !== "running", 25, DAILY_WATCHDOG_GRAPH);
+    for (const p of brainSeen) expect(p).not.toContain("[__signals__]");
+
+    // A port that throws must not break the run (fail-open by contract).
+    const throwing = makeWorld(SPHERE_X_GRAPH.slug);
+    throwing.ports.substrate.externalSignals = async () => { throw new Error("se down"); };
+    await tickUntil(throwing, () => throwing.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    expect(throwing.stepByNode("approval")?.status).toBe("waiting");
   });
 });
 

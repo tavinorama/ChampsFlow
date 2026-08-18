@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildAuditReport,
+  buildEntryResult,
   quadrantOf,
   scoreTool,
 } from "../../apps/api/src/lib/ai-audit/engine";
@@ -44,7 +45,7 @@ describe("the seed catalog is well-formed", () => {
 
 describe("quadrantOf — the deck's 2×2", () => {
   const t = (impact: Tool["impact"], setupEffort: Tool["setupEffort"]): Tool => ({
-    id: "x", name: "X", url: "", category: "ops", niches: [], pains: ["p"],
+    id: "x", name: "X", url: "", category: "ops", niches: [], pains: ["p"], engines: [],
     monthlyCostUsd: 0, setupEffort, impact, hoursSavedWeekly: 1, oneLiner: "",
   });
   it("high impact + low effort = quick-win; high+high = major; low+low = fill-in; low+high = ignore", () => {
@@ -88,13 +89,19 @@ describe("buildAuditReport — the whole deck", () => {
     for (const s of r.recommendedSolutions) expect(ignore.has(s.tool.id)).toBe(false);
   });
 
-  it("Financial Impact computes ROI from the recommended stack", () => {
+  it("the 3 KPIs are Time, Effort and Money saved (founder pitch, 14/08)", () => {
     const r = buildAuditReport(answers(), SEED_CATALOG);
     const cost = r.recommendedSolutions.reduce((s, x) => s + x.tool.monthlyCostUsd, 0);
     const hours = r.recommendedSolutions.reduce((s, x) => s + x.tool.hoursSavedWeekly, 0);
-    expect(r.financialImpact.totalMonthlyToolCostUsd).toBeCloseTo(cost, 2);
+    const chores = new Set(r.recommendedSolutions.flatMap((x) => x.matchedPains)).size;
+    // TIME
     expect(r.financialImpact.weeklyTimeReturnedHours).toBeCloseTo(hours, 2);
+    // EFFORT — one chore per distinct pain the stack covers
+    expect(r.financialImpact.choresRemoved).toBe(chores);
+    expect(r.financialImpact.choresRemoved).toBeGreaterThan(0);
+    // MONEY (net of the supporting tool cost)
     expect(r.financialImpact.monthlyNetRoiUsd).toBeCloseTo(hours * 4.33 * 50 - cost, 2);
+    expect(r.financialImpact.totalMonthlyToolCostUsd).toBeCloseTo(cost, 2);
   });
 
   it("the 4-day plan is quick wins only, at most 4, numbered 1..n", () => {
@@ -132,6 +139,89 @@ describe("buildAuditReport — the whole deck", () => {
     expect(r.recommendedSolutions).toEqual([]);
     expect(r.topPick).toBeNull();
     expect(r.topPickReason.toLowerCase()).toContain("human review");
+  });
+
+  it("industry-aware: a dental clinic gets clinic tools, never ChatGPT (capilaridade)", () => {
+    const clinic = buildAuditReport(
+      {
+        businessType: "dental",
+        primaryFocus: "operations",
+        pains: ["no-shows", "reviews", "phone-answering", "appointment-scheduling"],
+        engines: ["convert", "run", "retain"],
+      },
+      SEED_CATALOG
+    );
+    const topIds = clinic.recommendedSolutions.map((s) => s.tool.id);
+    // The clinic-tagged tools lead the stack.
+    expect(topIds).toContain("weave");
+    expect(topIds.slice(0, 3)).toEqual(expect.arrayContaining(["weave"]));
+    // Every recommended tool serves the clinic's niche or a hurting engine.
+    for (const s of clinic.recommendedSolutions) {
+      const nicheFit = s.tool.niches.includes("dental") || s.tool.niches.includes("clinic");
+      expect(nicheFit || s.matchedEngines.length > 0, s.tool.id).toBe(true);
+    }
+    // The single entry pick for a clinic is a clinic tool, not a giant.
+    const entry = buildEntryResult(
+      { businessType: "dental", primaryFocus: "operations", pains: ["no-shows"], engines: ["convert"] },
+      SEED_CATALOG
+    );
+    expect(["weave", "nexhealth", "podium"]).toContain(entry.pick!.tool.id);
+  });
+
+  it("engine fit anchors a recommendation even with no specific pain named", () => {
+    // Client says only "my Convert engine is on fire", no specific gargalo slug.
+    const r = buildAuditReport(
+      { businessType: "saas", primaryFocus: "sales", pains: [], engines: ["convert"] },
+      SEED_CATALOG
+    );
+    expect(r.empty).toBe(false);
+    for (const s of r.recommendedSolutions) {
+      expect(s.matchedEngines).toContain("convert");
+    }
+  });
+
+  it("the low-ticket entry picks ONE niche tool, never a household-name giant", () => {
+    const e = buildEntryResult(answers(), SEED_CATALOG);
+    expect(e.empty).toBe(false);
+    expect(e.pick).not.toBeNull();
+    // ChatGPT/Claude are marked isGeneric — the entry must not surface them.
+    expect(e.pick!.tool.isGeneric).not.toBe(true);
+    expect(["chatgpt", "claude"]).not.toContain(e.pick!.tool.id);
+    // The upsell hook: it counts everything the full audit would rank, and
+    // withholds all-but-one.
+    expect(e.totalMatched).toBeGreaterThan(1);
+    expect(e.withheldCount).toBe(e.totalMatched - 1);
+  });
+
+  it("the entry prefers a tool whose niche matches the client's business type", () => {
+    // An agency should get an agency-niche tool, not a generic-niche one.
+    const e = buildEntryResult(answers({ businessType: "agency", primaryFocus: "marketing" }), SEED_CATALOG);
+    expect(e.pick!.tool.niches).toContain("agency");
+  });
+
+  it("the entry is honest-empty (never a giant) when no niche tool matches", () => {
+    // Only content-volume, and among matches the sole non-giant niche fit... if
+    // we strip niches, it still must not return a giant.
+    const e = buildEntryResult(answers({ pains: ["a-pain-no-tool-has"] }), SEED_CATALOG);
+    expect(e.empty).toBe(true);
+    expect(e.pick).toBeNull();
+    expect(e.reason.toLowerCase()).toContain("full audit");
+  });
+
+  it("no client-facing string contains an em-dash (brand copy rule, 14/08)", () => {
+    // Founder rule: zero em-dash (travessao) in ANY copy. Pin it on the strings
+    // the engine generates, plus every seed one-liner, so copy can't regress.
+    const report = buildAuditReport(answers({ pains: SEED_CATALOG.flatMap((t) => t.pains) }), SEED_CATALOG);
+    const entry = buildEntryResult(answers(), SEED_CATALOG);
+    const strings = [
+      report.painSummary, report.outcomeSummary, report.topPickReason,
+      ...report.fourDayPlan.map((s) => s.action),
+      entry.reason,
+      ...SEED_CATALOG.map((t) => t.oneLiner),
+    ];
+    for (const s of strings) {
+      expect(s, `em-dash found in: "${s}"`).not.toContain("—");
+    }
   });
 
   it("a real agency/marketing intake produces a coherent, ordered deck", () => {

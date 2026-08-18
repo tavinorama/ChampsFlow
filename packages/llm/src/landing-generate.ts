@@ -12,12 +12,22 @@
  *          invented statistics, reviews, ratings, or claims (founder hard
  *          rule — audit integrity postmortem, PR#90). This is the
  *          correctness baseline the unit tests pin.
- *   llm  — the client's BYOK key rewrites ONLY the hero headline/subheadline
- *          per page, grounded in the same input facts (name/category/service
- *          areas — nothing else is sent). Sanitized via prompt-sanitizer. On
- *          ANY failure (no key, network error, non-200, malformed response,
- *          sanitizer rejection) it silently falls back to the mock skeleton —
- *          generation never fails and never fabricates.
+ *   llm  — the PLATFORM key (never customer BYOK — #217) rewrites the hero
+ *          headline/subheadline per page and fills placeholder FAQ answers,
+ *          grounded in the same input facts. Sanitized via prompt-sanitizer.
+ *          On ANY failure (no key, network error, non-200, malformed
+ *          response, sanitizer rejection) it silently falls back to the mock
+ *          skeleton — generation never fails here and never fabricates (the
+ *          worker decides whether a mock bundle is an honest job failure).
+ *
+ * Two-stage pipeline (landing-stages.ts, D5): stage 1 "draft" (Kimi via the
+ * Hermes VPS, flat-fee) writes longer section copy from the facts; stage 2
+ * "refine" (this module's enrichWithLlmPort over Claude/OpenAI) rewrites hero
+ * copy and runs a compliance pass over the draft. LLM roles are copy ONLY:
+ * facts come from the client's own domain crawl (worker, SSRF-guarded) and
+ * their AUTHORIZED testimonials; Google Places is used for REVIEWS/photos
+ * only, never for prose. Any number not present in the input facts is
+ * rejected by the grounding validator before it can reach a page.
  *
  * ai_readiness for each generated page is scored with content-geo's shared
  * primitives (scorePage / computeContentScoreFromTraits) via
@@ -599,7 +609,7 @@ function navLinksSection(links: NavLink[]): LandingSection {
 // buildMockBundle — the deterministic correctness baseline
 // ---------------------------------------------------------------------------
 
-function buildMockBundle(input: LandingGenerateInput): LandingBundlePage[] {
+export function buildMockBundle(input: LandingGenerateInput): LandingBundlePage[] {
   const business = input.business;
   const testimonials = (input.testimonials ?? []).slice(0, 20);
   const googleReviews = (input.googleReviews ?? []).filter((r) => r.author && r.body);
@@ -838,6 +848,10 @@ async function callProviderText(
 export interface LlmEnrichment {
   pages: Array<{ slug: string; headline?: string; subheadline?: string }>;
   faqAnswers: Array<{ q: string; a: string }>;
+  /** Stage-2 compliance edits of stage-1 (Kimi) draft copy, keyed by the
+   *  draft key the prompt sent (`about`, `proof_intro`, `service:<slug>`).
+   *  Absent when no draft was supplied. See landing-stages.ts. */
+  draftEdits?: Record<string, string>;
 }
 
 /** Parse the model's STRICT-JSON reply into an enrichment (tolerant of prose/fences). */
@@ -850,7 +864,7 @@ export function parseLlmEnrichment(text: string): LlmEnrichment | null {
     return null;
   }
   if (!raw || typeof raw !== "object") return null;
-  const obj = raw as { pages?: unknown; faq_answers?: unknown };
+  const obj = raw as { pages?: unknown; faq_answers?: unknown; draft_edits?: unknown };
 
   const pages: LlmEnrichment["pages"] = [];
   if (Array.isArray(obj.pages)) {
@@ -874,8 +888,17 @@ export function parseLlmEnrichment(text: string): LlmEnrichment | null {
     }
   }
 
-  if (pages.length === 0 && faqAnswers.length === 0) return null;
-  return { pages, faqAnswers };
+  let draftEdits: Record<string, string> | undefined;
+  if (obj.draft_edits && typeof obj.draft_edits === "object" && !Array.isArray(obj.draft_edits)) {
+    draftEdits = {};
+    for (const [k, v] of Object.entries(obj.draft_edits as Record<string, unknown>)) {
+      if (typeof v === "string" && v.trim()) draftEdits[k] = v.trim();
+    }
+    if (Object.keys(draftEdits).length === 0) draftEdits = undefined;
+  }
+
+  if (pages.length === 0 && faqAnswers.length === 0 && !draftEdits) return null;
+  return { pages, faqAnswers, ...(draftEdits ? { draftEdits } : {}) };
 }
 
 const normalizeQuestion = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -929,12 +952,43 @@ export function applyLlmEnrichment(
   });
 }
 
+/**
+ * A text-completion port: (system, user, maxTokens) → raw model text or null on
+ * any failure. The staged pipeline (landing-stages.ts) injects fakes for tests
+ * and the Hermes/Kimi VPS caller for stage 1; production stage 2 uses
+ * providerTextPort() over the platform key.
+ */
+export type LandingTextPort = (systemPrompt: string, userPrompt: string, maxTokens: number) => Promise<string | null>;
+
+/** Wraps a direct provider HTTP call (anthropic/openai/gemini/perplexity) as a LandingTextPort. */
+export function providerTextPort(provider: ContentProvider, apiKey: string): LandingTextPort {
+  return (systemPrompt, userPrompt, maxTokens) => callProviderText(provider, apiKey, systemPrompt, userPrompt, maxTokens);
+}
+
 async function enrichWithLlm(
   pages: LandingBundlePage[],
   input: LandingGenerateInput,
   apiKey: string,
   provider: ContentProvider
 ): Promise<LandingBundlePage[] | null> {
+  const out = await enrichWithLlmPort(pages, input, providerTextPort(provider, apiKey));
+  return out ? out.pages : null;
+}
+
+/**
+ * Stage-2 "refine" over any text port. Rewrites hero copy + fills placeholder
+ * FAQ answers from the input facts. When `draftCopy` (stage-1 Kimi output,
+ * already grounding-validated) is supplied, the model is also asked to return
+ * `draft_edits`: the same keys, rewritten so every sentence is ≤ 12 words and
+ * every claim is traceable to the facts. Returns null on any failure so the
+ * caller can fall back honestly.
+ */
+export async function enrichWithLlmPort(
+  pages: LandingBundlePage[],
+  input: LandingGenerateInput,
+  port: LandingTextPort,
+  draftCopy?: Record<string, string>
+): Promise<{ pages: LandingBundlePage[]; enrichment: LlmEnrichment } | null> {
   const business = input.business;
   const nameCheck = sanitizeUserPrompt(business.name);
   if (nameCheck.rejected) return null;
@@ -972,13 +1026,21 @@ async function enrichWithLlm(
     .filter(Boolean)
     .join("\n");
 
+  const hasDraft = !!draftCopy && Object.keys(draftCopy).length > 0;
   const systemPrompt = [
     "You write concise, specific marketing copy for a local business website, grounded ONLY in the facts provided.",
     "Rules: use ONLY the facts given — NEVER invent prices, guarantees, awards, statistics, certifications, discounts, or any claim not stated.",
-    "Voice: warm, concrete, benefit-led; no hype, no clichés, no filler.",
+    "Voice: warm, concrete, benefit-led; no hype, no clichés, no filler. Every sentence 12 words or fewer.",
     "FAQ answers: 2–3 sentences that directly answer the question from the facts; if a specific (exact price/hours) is not provided, stay general and invite the reader to call.",
-    'Respond with STRICT JSON only, no commentary: {"pages":[{"slug":string,"headline":string,"subheadline":string}],"faq_answers":[{"q":string,"a":string}]}',
-  ].join(" ");
+    hasDraft
+      ? "You also receive DRAFT copy from a first pass. Return each draft key rewritten under \"draft_edits\": remove any claim, number, review, or superlative not present in the facts; keep every sentence 12 words or fewer; keep the meaning."
+      : "",
+    hasDraft
+      ? 'Respond with STRICT JSON only, no commentary: {"pages":[{"slug":string,"headline":string,"subheadline":string}],"faq_answers":[{"q":string,"a":string}],"draft_edits":{[key:string]:string}}'
+      : 'Respond with STRICT JSON only, no commentary: {"pages":[{"slug":string,"headline":string,"subheadline":string}],"faq_answers":[{"q":string,"a":string}]}',
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const pageList = pages.map((p) => ({ slug: p.slug, page_type: p.page_type, title: p.title }));
   const userPrompt = [
@@ -988,17 +1050,18 @@ async function enrichWithLlm(
     placeholderQuestions.length > 0
       ? `Also write a grounded answer for each of these FAQ questions (echo the question verbatim in "q"): ${JSON.stringify(placeholderQuestions)}.`
       : "",
+    hasDraft ? `DRAFT copy to review (return under "draft_edits", same keys): ${JSON.stringify(draftCopy)}` : "",
   ]
     .filter(Boolean)
     .join("\n");
 
-  const text = await callProviderText(provider, apiKey, systemPrompt, userPrompt, 2000);
+  const text = await port(systemPrompt, userPrompt, hasDraft ? 3500 : 2000);
   if (!text) return null;
 
   const enrichment = parseLlmEnrichment(text);
   if (!enrichment) return null;
 
-  return applyLlmEnrichment(pages, enrichment);
+  return { pages: applyLlmEnrichment(pages, enrichment), enrichment };
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,6 +1152,11 @@ export function renderSectionsForScoring(sections: LandingSection[]): string {
         break;
       case "text": {
         const links = Array.isArray(sec["links"]) ? (sec["links"] as Array<{ label?: string }>) : [];
+        if (links.length === 0 && typeof sec["body"] === "string") {
+          if (sec["heading"]) parts.push(`<h2>${String(sec["heading"])}</h2>`);
+          parts.push(`<p>${String(sec["body"])}</p>`);
+          break;
+        }
         parts.push(
           `<p>${String(sec["heading"] ?? "")} ${links.map((l) => `<a href="#">${String(l.label ?? "")}</a>`).join(" ")}</p>`
         );

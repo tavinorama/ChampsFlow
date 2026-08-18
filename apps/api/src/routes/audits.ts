@@ -39,6 +39,12 @@ import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
 import { asStr } from "../lib/coerce";
 import { publicRateLimit } from "../lib/public-rate-limit";
+import {
+  sharedIpRateLimiter,
+  truncateIp as truncateIpForRateLimit,
+  type IpRateLimiter,
+} from "../lib/ip-rate-limit";
+import { clientIp } from "../lib/client-ip";
 
 // ---------------------------------------------------------------------------
 // topSources helper — aggregates citation URLs from evidence rows and offsite
@@ -373,7 +379,24 @@ async function deriveExecutionProgress(db: PostgresClient, brandId: string): Pro
 // Route registration
 // ---------------------------------------------------------------------------
 
-export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
+// Per-tenant burst limit on the audit trigger (D8c pattern, 2026-08-18). The DB
+// quota guards inside POST /api/brands/:id/audit bound weekly/daily/monthly
+// SPEND, but nothing bounded the request RATE: a script could hammer the trigger
+// (each hit fans out across the engines and costs real provider money, ~$0.21-
+// $0.80 per audit). This is a cheap anti-abuse backstop keyed on the cost
+// boundary (tenant), well above any real interactive use.
+export const AUDIT_TRIGGER_LIMIT = 20;
+const AUDIT_TRIGGER_WINDOW_MS = 60 * 1000; // 20 req / minute / tenant
+
+export function registerAuditRoutes(
+  app: Hono,
+  db: PostgresClient,
+  opts: { limiter?: IpRateLimiter } = {}
+): void {
+  // Redis ZSET limiter with bounded in-process fallback (#261); tests inject a
+  // memory-only or namespaced limiter. Same shape as registerAiAuditRoutes.
+  const limiter = opts.limiter ?? sharedIpRateLimiter;
+
   // -------------------------------------------------------------------------
   // POST /api/brands — create a brand profile
   // -------------------------------------------------------------------------
@@ -885,12 +908,11 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
   // Body: partial set of linkedin_url, reddit_url, wikipedia_url, g2_url,
   //       trustpilot_url, crunchbase_url, youtube_url
   //
-  // Rate limit: this endpoint resolves up to 7 DNS lookups per request via
-  // assertPublicUrl. A per-tenant rate limit of 20 req/min should be enforced
-  // here to prevent CPU/DNS abuse.
-  // TODO (next sprint): apply Upstash Redis Ratelimit (sliding window, 20 req/min
-  // per tenant) using the same pattern as POST /api/brands/:id/audit once the
-  // Upstash client is provisioned and the UPSTASH_REDIS_REST_URL env var is set.
+  // Note: this endpoint resolves up to 7 DNS lookups per request via
+  // assertPublicUrl. It stays behind requireAuth + requireRole (owner/editor);
+  // the cost-bearing burst limiter added in this change guards the audit
+  // trigger (POST /api/brands/:id/audit), which is where real provider money is
+  // spent. This write path does not enqueue paid work.
   // -------------------------------------------------------------------------
   app.patch(
     "/api/brands/:id/profiles",
@@ -1009,6 +1031,25 @@ export function registerAuditRoutes(app: Hono, db: PostgresClient): void {
       const auth = c.get("auth");
       const { tenantId, userId } = auth;
       const brandId = c.req.param("id");
+
+      // Per-tenant burst rate limit BEFORE any DB work: sheds a hammering client
+      // cheaply, before the quota queries below and before we can enqueue a
+      // cost-bearing job. Key on tenantId (the cost boundary); fall back to a
+      // truncated IP only if a tenant is somehow absent. Redis blip → bounded
+      // memory fallback (#261), never fail-open on a paid surface.
+      const rlKey = tenantId
+        ? `audit_trigger_rl:tenant:${tenantId}`
+        : `audit_trigger_rl:ip:${truncateIpForRateLimit(clientIp(c))}`;
+      if (!(await limiter(rlKey, AUDIT_TRIGGER_LIMIT, AUDIT_TRIGGER_WINDOW_MS))) {
+        logger.warn("audit_trigger_rate_limited", { tenantId, limit: AUDIT_TRIGGER_LIMIT });
+        return c.json(
+          {
+            message: `Too many audit requests. Up to ${AUDIT_TRIGGER_LIMIT} per minute. Please slow down and try again shortly.`,
+            code: "RATE_LIMITED",
+          },
+          429
+        );
+      }
 
       await db.setTenantId(tenantId);
 

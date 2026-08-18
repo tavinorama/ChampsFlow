@@ -3,7 +3,7 @@
 > Companion to [AGENTS.md](../../AGENTS.md) and [design-autonomous-engine.md](../design-autonomous-engine.md). Governs *how OZvor runs day to day* now that the product is live. Answers issue #146: make Hermes proactive without loosening any guardrail.
 
 ## TL;DR
-This doc encodes how OZvor operates now that the product is live: **proactive but gated**. Hermes initiates market intel, opens GitHub issues, monitors and alerts, proposes plans, drafts PRs, and keeps department STATE docs current — **without waiting to be asked**. But every move that spends money, ships to customers, touches production/config/secrets, or communicates externally passes the founder's **crivo BEFORE it happens**. The **Autonomy Matrix** below is the line: green = Hermes may initiate autonomously; gated = founder approves first. It is grounded in the AGENTS.md risk levels (LOW / MEDIUM / HIGH / CRITICAL) and the principles in design-autonomous-engine.md §0 (deterministic rails; who-does-doesn't-approve; external execution only with a human; evidence pointers; never fabricate). The founder stays in control through a **single approval surface** — the Approval Queue + daily digest + weekly report (design-autonomous-engine §4.5). **This document plus AGENTS.md are the contract**: anything outside them requires a new founder decision. Nothing here authorizes spend, live/production/destructive actions, or external execution — those always need the founder.
+This doc encodes how OZvor operates now that the product is live: **proactive but gated**. Hermes initiates market intel, opens GitHub issues, monitors and alerts, proposes plans, drafts PRs, and keeps department STATE docs current — **without waiting to be asked**. But every move that spends money, ships to customers, touches production/config/secrets, or communicates externally passes the founder's **crivo BEFORE it happens**. The **Autonomy Matrix** below is the line: green = Hermes may initiate autonomously; gated = founder approves first. It is grounded in the AGENTS.md risk levels (LOW / MEDIUM / HIGH / CRITICAL) and the principles in design-autonomous-engine.md §0 (deterministic rails; who-does-doesn't-approve; external execution only with a human; evidence pointers; never fabricate). The founder stays in control through a **single approval surface** — as built (see **§3**): Telegram approvals + the operator API + the weekly Telegram briefs. **This document plus AGENTS.md are the contract**: anything outside them requires a new founder decision. Nothing here authorizes spend, live/production/destructive actions, or external execution — those always need the founder.
 
 ## Inherited principles (do not duplicate — reference only)
 - **Risk gates & roles** → [AGENTS.md §1–§2](../../AGENTS.md): LOW `claude-ready` / MEDIUM `hermes-review` / HIGH `+security-sensitive` / CRITICAL `needs-founder-approval`. Merge to `main` = deploy, so the merge gate is the deploy gate.
@@ -52,10 +52,13 @@ Codified guardrails (from design §2/§3.1 and AGENTS.md §1): a recommendation 
 
 ## 3. How the founder stays in control
 
-**One approval surface** (design-autonomous-engine §4.5 — do not build a second one):
-1. **Approval Queue** (web, batch) — filters by risk/kind; approve in bulk; "ask for more evidence" re-enqueues with feedback. Everything gated in the matrix lands here.
-2. **Daily digest** (email) — 5 lines: what ran, what's in the queue, exceptions.
-3. **Weekly report** — the cycle's proposals, decisions, and pending gates.
+**One approval surface** (design-autonomous-engine §4.5 — do not build a second one).
+**As built (14/08/2026, verified against code):** the surface IS **Telegram + the operator API**, not a web queue.
+1. **Telegram** — every graph `approval` node parks the run and posts the decision request there, naming what a "yes" triggers (channel + destination — the 13/08 incident rule). Verdicts, spawn announcements, watchdog/CDO/CPO/discovery reports and all alarms (deploy, incident, video absence, mute harvest) land in the same chat. This is the company's real "Buzz".
+2. **Operator API** — the decision itself: `POST /api/v1/operator/agent-steps/:id/finish` with `succeeded` (approve) or `failed` (reject); Hermes relays the Telegram reply into it. Runs are inspectable via `GET /api/v1/operator/graph-runs/:id`.
+3. **Weekly report** — the Monday CDO+CPO briefs and the Thursday discovery brief (graphs, delivered on Telegram).
+
+> The **web Approval Queue** and **daily digest email** described in the design doc were **never built** and are not planned for now — Telegram carries the load at ≤30 min/day. If a web queue is ever built, it must wrap the same operator route, never a second decision path.
 
 Target load: **≤30 min/day**. Escalations that must always reach the founder directly: any dept BLOCKED, any HIGH/CRITICAL PR, and any live/production/destructive/paid action.
 

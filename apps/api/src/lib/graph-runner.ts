@@ -41,11 +41,28 @@ import {
   WEEKLY_DISCOVERY_GRAPH,
   CONTENT_EXPERIMENT_GRAPH,
   SPHERE_X_GRAPH,
+  SPHERE_LINKEDIN_GRAPH,
+  SPHERE_BLOG_GRAPH,
+  SPHERE_REDDIT_GRAPH,
+  SPHERE_INSTAGRAM_GRAPH,
+  SPHERE_TIKTOK_GRAPH,
+  SPHERE_YOUTUBE_GRAPH,
+  SPHERE_PPC_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
+import { dayBlock } from "./editorial-calendar";
+import {
+  X_POST_LIMIT,
+  xPostWithinLimit,
+  adaptXForPublish,
+} from "../../../../packages/shared/src/x-post-limit";
 
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
 export const SEED_ARTIFACT = "__seed__";
+/** Upstream key carrying the editorial calendar's day theme to content cells. */
+export const DAY_ARTIFACT = "__day__";
+/** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
+export const SIGNALS_ARTIFACT = "__signals__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -64,6 +81,20 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [CONTENT_EXPERIMENT_GRAPH.slug]: CONTENT_EXPERIMENT_GRAPH,
   // #156, first specialist cell: the X sphere with its own memory.
   [SPHERE_X_GRAPH.slug]: SPHERE_X_GRAPH,
+  // #156, cells two and three (14/08 sprint): LinkedIn (full loop) and the
+  // blog (read-only thinker that feeds the CI autopublish pipeline).
+  [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
+  [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
+  // #485 consumer (18/08): the Reddit sphere — first cell built to consume the
+  // Signal Engine's "where to act" queue ([__signals__]). Report-only, never
+  // publishes, fails open honestly when the SIGNAL_ENGINE envs are unset.
+  [SPHERE_REDDIT_GRAPH.slug]: SPHERE_REDDIT_GRAPH,
+  // Content alive on every platform (17/08): the three short-video spheres
+  // (own memory, own approval, own harvest) + the zero-spend PPC thinker.
+  [SPHERE_INSTAGRAM_GRAPH.slug]: SPHERE_INSTAGRAM_GRAPH,
+  [SPHERE_TIKTOK_GRAPH.slug]: SPHERE_TIKTOK_GRAPH,
+  [SPHERE_YOUTUBE_GRAPH.slug]: SPHERE_YOUTUBE_GRAPH,
+  [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -129,6 +160,13 @@ export interface SubstratePort {
    * the artifacts port — the substrate only records the run.
    */
   startRun(input: { graph: string; trigger: string; vpOwner: string }): Promise<string>;
+  /**
+   * External REAL signals for content cells (Signal Engine, docs/signal-engine-
+   * integration.md): the "where to act" queue rendered as text. Optional on
+   * purpose — a worker without SIGNAL_ENGINE_* env returns null and the cell
+   * runs exactly as before. Must never throw; "SEM DADO" is a valid answer.
+   */
+  externalSignals?(): Promise<string | null>;
 }
 
 export interface HermesPort {
@@ -141,11 +179,24 @@ export interface ArtifactsPort {
   set(runId: string, node: string, text: string): Promise<void>;
 }
 
+/**
+ * One inline button under a Telegram message. `data` is what the bot receives
+ * back in the callback_query — the api's telegram webhook (routes/telegram.ts)
+ * turns `ap:<stepId>` / `rj:<stepId>` into the #445 finish call, so approving
+ * is one tap, and rejecting asks "why?" and stores the reason as the sphere's
+ * memory. Founder 17/08: "uma caixa com approve ou reject", like n8n.
+ */
+export interface TelegramButton {
+  text: string;
+  data: string;
+}
+
 export interface GraphRunnerPorts {
   substrate: SubstratePort;
   hermes: HermesPort;
   artifacts: ArtifactsPort;
-  telegram(text: string): Promise<void>;
+  /** Send a message; `buttons` (optional) renders one row of inline buttons. */
+  telegram(text: string, buttons?: TelegramButton[]): Promise<void>;
   now(): Date;
 }
 
@@ -157,7 +208,7 @@ export interface AdvanceResult {
 
 /** A step stuck 'running' longer than this is treated as a crash. */
 export const RUNNING_TIMEOUT_HOURS = 2;
-/** A harvest that finds nothing keeps waiting this long, then records honest zero. */
+/** A harvest that finds nothing keeps waiting this long, then finishes as noData — loud, never a fake zero. */
 export const HARVEST_GRACE_HOURS = 48;
 
 const sha = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
@@ -177,6 +228,30 @@ function statesFrom(byNode: Map<string, StepRow>): NodeStates {
   const states: NodeStates = {};
   for (const [node, step] of byNode) states[node] = step.status;
   return states;
+}
+
+/** Is this publish node targeting X? (channel string is case-insensitive.) */
+function isXPublish(node: GraphNode): boolean {
+  return node.kind === "publish" && String(node.config?.["channel"] ?? "").toLowerCase() === "x";
+}
+
+/**
+ * The content node whose artifact ultimately reaches an X publish. Mirrors the
+ * publish handler's walk-back: publish → approval (dependsOn[0]) → content
+ * (approval.dependsOn[0]). Returns the set of such content-node ids so the
+ * adapt/finalize step can pre-trim to X's limit BEFORE the approval message is
+ * sent, keeping what the founder sees identical to what would publish.
+ */
+function xAdaptNodeIds(def: GraphDefinition): Set<string> {
+  const ids = new Set<string>();
+  for (const pub of def.nodes) {
+    if (!isXPublish(pub)) continue;
+    const approvalId = pub.dependsOn[0];
+    const approval = def.nodes.find((n) => n.id === approvalId);
+    const contentId = approval?.dependsOn[0] ?? approvalId;
+    if (contentId) ids.add(contentId);
+  }
+  return ids;
 }
 
 async function upstreamArtifacts(
@@ -250,15 +325,23 @@ export async function advanceRun(
         step.status = "succeeded";
         notes.push(`harvest ${nodeId} found n=${got.n}`);
       } else if (hoursSince(step.started_at, now()) >= HARVEST_GRACE_HOURS) {
-        // Honest zero beats an eternal hang: the metric never arrived and
-        // the verdict must SAY that, not be silently never reached.
-        await artifacts.set(runId, nodeId, JSON.stringify({ metric, n: 0, total: 0 }));
+        // ZERO ROWS is not a zero RESULT. n=0 after the grace window means the
+        // outcome SOURCE went mute (the VPS 07:40 writer lives outside this
+        // repo and can die without anyone here noticing) — recording it as
+        // total=0 fabricated a "did not perform" verdict once already (the
+        // 13/08 false-zero bug). Nada degrada calado: mark the artifact
+        // noData, finish out loud, and scream on Telegram. A REAL zero
+        // (n>0, total=0) still flows through the branch above untouched.
+        await artifacts.set(runId, nodeId, JSON.stringify({ metric, n: 0, total: 0, noData: true }));
         await substrate.finishStep(step.id, {
           status: "succeeded",
-          summary: `harvest ${metric}: NOTHING after ${HARVEST_GRACE_HOURS}h grace (honest zero)`,
+          summary: `SEM DADO: fonte de outcomes muda (0 linhas para ${metric}) após ${HARVEST_GRACE_HOURS}h`,
         });
         step.status = "succeeded";
-        notes.push(`harvest ${nodeId} honest zero`);
+        await telegram(
+          `🔴 HARVEST SEM DADO — graph ${def.slug} (run ${runId.slice(0, 8)}): 0 linhas para '${metric}' após ${HARVEST_GRACE_HOURS}h de graça. O escritor de outcomes da VPS (cron 07:40) parece morto — verificar a fonte, não o graph.`
+        );
+        notes.push(`harvest ${nodeId} no data — source mute`);
       }
     } else if (node.kind === "approval") {
       // Approvals stay 'waiting' until the #445 finish route decides them — but
@@ -309,6 +392,9 @@ export async function advanceRun(
 
   // 4) Start whatever became ready.
   const states = statesFrom(byNode);
+  // Content nodes whose artifact reaches an X publish — pre-trimmed to X's limit
+  // at finalize time so approval == what publishes.
+  const xAdaptNodes = xAdaptNodeIds(def);
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -321,6 +407,25 @@ export async function advanceRun(
       // launched to test. Non-seeded runs have no __seed__ — nothing changes.
       const seed = await artifacts.get(runId, SEED_ARTIFACT);
       if (seed) upstream.unshift([SEED_ARTIFACT, seed]);
+      // The editorial calendar (founder 14/08: seven different days, not one
+      // day seven times). Every reasoning node of a marketing cell sees the
+      // day's theme/angle/CTA as [__day__]; the briefing prompts must honor
+      // it. Brains (CEO-owned, read-only) do not get it — they are not content.
+      if (def.vpOwner === "marketing") {
+        upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
+        // Real conversations/opportunities from the Signal Engine, when wired.
+        // Fail-open: no env / down / bad payload → the cell keeps working on
+        // its own memory. Only signal/briefing/PPC-style nodes benefit, but
+        // giving every reasoning node the same block keeps critics honest too.
+        if (substrate.externalSignals) {
+          try {
+            const sig = await substrate.externalSignals();
+            if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
+          } catch {
+            /* fail-open by contract; the port should not throw */
+          }
+        }
+      }
       const prompt = buildPrompt(node.kind, config, upstream);
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
@@ -333,11 +438,19 @@ export async function advanceRun(
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: sha(prompt) });
       const res = await hermes.task(prompt);
       if (res.ok && res.output) {
-        await artifacts.set(runId, node.id, res.output);
+        // Adapt/finalize step for X: if this node's artifact is what the X
+        // publish will send, trim each tweet to X's limit HERE — so the founder
+        // approves exactly what would post, and an over-limit draft never
+        // reaches approval only to be rejected by Postiz (prod failure 17/08).
+        const output = xAdaptNodes.has(node.id) ? adaptXForPublish(res.output) : res.output;
+        await artifacts.set(runId, node.id, output);
         await substrate.finishStep(stepId, {
           status: "succeeded",
-          outputHash: sha(res.output),
-          summary: `${node.kind} ok via ${res.engineUsed ?? "?"}`,
+          outputHash: sha(output),
+          summary:
+            output === res.output
+              ? `${node.kind} ok via ${res.engineUsed ?? "?"}`
+              : `${node.kind} ok via ${res.engineUsed ?? "?"} (adapted to X ${X_POST_LIMIT}-char limit)`,
           ms: res.ms,
           engine: res.engineUsed,
         });
@@ -368,6 +481,11 @@ export async function advanceRun(
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
       await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
+      // Founder 17/08: approval as a BOX with two buttons (like n8n), not a
+      // route to curl. The buttons carry the step id; the api's telegram
+      // webhook maps them to the #445 finish call. Reject asks "why?" and the
+      // reason becomes the sphere's memory (routes/telegram.ts). The route
+      // hint stays as a fallback for when the webhook is not wired.
       await telegram(
         [
           `🟡 APROVAÇÃO NECESSÁRIA — graph ${def.slug} (run ${runId.slice(0, 8)})`,
@@ -376,10 +494,13 @@ export async function advanceRun(
           `Conteúdo proposto:`,
           context.slice(0, 900),
           ``,
-          `Aprovar:  finish step ${stepId} com status=succeeded`,
-          `Rejeitar: finish step ${stepId} com status=failed`,
-          `(rota #445: POST /api/v1/operator/agent-steps/${stepId}/finish)`,
-        ].join("\n")
+          `Toque em um botão. Se rejeitar, eu pergunto o porquê e a esfera aprende.`,
+          `(fallback: POST /api/v1/operator/agent-steps/${stepId}/finish status=succeeded|failed)`,
+        ].join("\n"),
+        [
+          { text: "✅ Aprovar", data: `ap:${stepId}` },
+          { text: "❌ Rejeitar", data: `rj:${stepId}` },
+        ]
       );
     } else if (node.kind === "publish") {
       const content = (await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "";
@@ -394,6 +515,19 @@ export async function advanceRun(
         continue;
       }
       const channel = String(config["channel"] ?? "linkedin");
+      // Belt-and-suspenders (prod failure 17/08): even if the adapt step was
+      // skipped or edited around, NEVER hand Postiz an over-limit X post. Fail
+      // the step honestly with a reason instead of a silent, wasted send.
+      if (isXPublish(node) && !xPostWithinLimit(post)) {
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `x post over ${X_POST_LIMIT} chars, not sent (adapt step missed it) — nothing published`,
+        });
+        await telegram(
+          `🔴 X NÃO PUBLICADO — graph ${def.slug} (run ${runId.slice(0, 8)}): post acima de ${X_POST_LIMIT} caracteres. NADA foi enviado ao Postiz. O passo de adaptação deixou passar; corrigir o finalize.`
+        );
+        continue;
+      }
       const res = await hermes.publish({ channel, post });
       if (res.ok) {
         await artifacts.set(runId, node.id, res.detail);
@@ -422,22 +556,38 @@ export async function advanceRun(
       let metric = "unknown";
       let total = 0;
       let n = 0;
+      let noData = false;
       try {
-        const parsed = JSON.parse(raw ?? "{}") as { metric?: string; total?: number; n?: number };
+        const parsed = JSON.parse(raw ?? "{}") as { metric?: string; total?: number; n?: number; noData?: boolean };
         metric = parsed.metric ?? "unknown";
         total = Number(parsed.total ?? 0);
         n = Number(parsed.n ?? 0);
+        noData = parsed.noData === true;
       } catch {
         // verdict on a malformed harvest is still a verdict: zero, said out loud
       }
-      await substrate.recordOutcome({ stepId, metric, valueBefore: null, valueAfter: total });
-      await substrate.finishStep(stepId, {
-        status: "succeeded",
-        summary: `verdict ${metric}: total=${total} n=${n}`,
-      });
-      await telegram(
-        `🟢 VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${metric} = ${total} (n=${n}). Registrado em ops.agent_outcome.`
-      );
+      if (noData) {
+        // A mute source produced no measurement — recording total=0 here would
+        // put a FALSE ZERO in ops.agent_outcome and teach the learning loop
+        // that the content "did not perform" (the 13/08 bug, exactly). No
+        // outcome row: "sem dado, sem veredito", said out loud.
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `verdict ${metric}: SEM DADO — sem veredito, nada gravado em ops.agent_outcome`,
+        });
+        await telegram(
+          `🟠 SEM VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): '${metric}' sem dado (fonte de outcomes muda). NADA gravado em ops.agent_outcome — sem zero falso.`
+        );
+      } else {
+        await substrate.recordOutcome({ stepId, metric, valueBefore: null, valueAfter: total });
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `verdict ${metric}: total=${total} n=${n}`,
+        });
+        await telegram(
+          `🟢 VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${metric} = ${total} (n=${n}). Registrado em ops.agent_outcome.`
+        );
+      }
     } else if (node.kind === "snapshot") {
       // The runner reads the company's own record into an artifact. Honest
       // empty: if there is no data, the node still SUCCEEDS with a said-so

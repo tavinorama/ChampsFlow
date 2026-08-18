@@ -293,6 +293,69 @@ describe("suppressOnConversion", () => {
     expect(sql).toContain("$1");
     expect(db._params[0]?.[0]).toBe("convert@example.com");
     expect(sql).not.toContain("convert@example.com");
+    // Default kind = "kit" → only free_to_kit is suppressed (original behaviour)
+    expect(db._params[0]?.[1]).toEqual(["free_to_kit"]);
+  });
+
+  it("kind='subscription' suppresses every pre-subscription rung in ONE parameterized UPDATE", async () => {
+    const db = makeDb({ queryResults: [{ rows: [] }] });
+    await suppressOnConversion(
+      db as Parameters<typeof suppressOnConversion>[0],
+      "sub@example.com",
+      "subscription"
+    );
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(db._queries[0]).toContain("sequence = ANY($2::text[])");
+    expect(db._params[0]?.[1]).toEqual(["free_to_kit", "kit_to_growth", "kit_to_dfy", "pages_bought"]);
+  });
+
+  it("kind='organicposts' suppresses ai_audit_bought too", async () => {
+    const db = makeDb({ queryResults: [{ rows: [] }] });
+    await suppressOnConversion(
+      db as Parameters<typeof suppressOnConversion>[0],
+      "dfy@example.com",
+      "organicposts"
+    );
+    expect(db._params[0]?.[1]).toContain("ai_audit_bought");
+    expect(db._params[0]?.[1]).toContain("kit_to_dfy");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enrollNurture — DB CHECK constraint not widened yet
+// ---------------------------------------------------------------------------
+
+describe("enrollNurture: sequence rejected by nurture_enrollment_sequence_check", () => {
+  it("returns skipped:true, logs nurture_sequence_not_allowed, never throws", async () => {
+    const db = makeDb({ throwOn: 0 });
+    // Make the simulated error look like a Postgres CHECK violation
+    db.query.mockImplementationOnce(async () => {
+      const err = new Error(
+        'new row for relation "nurture_enrollment" violates check constraint "nurture_enrollment_sequence_check"'
+      ) as Error & { code: string };
+      err.code = "23514";
+      throw err;
+    });
+    const result = await enrollNurture(db as Parameters<typeof enrollNurture>[0], {
+      email: "x@example.com",
+      sequence: "credit_pack_bought",
+      brand: "Acme",
+      metadata: {},
+    });
+    expect(result).toEqual({ enrollmentId: "", alreadyEnrolled: false, skipped: true });
+    expect(db.query).toHaveBeenCalledTimes(1); // no follow-up SELECT
+  });
+
+  it("any other DB error still propagates (callers stay best-effort)", async () => {
+    const db = makeDb({ throwOn: 0 });
+    await expect(
+      enrollNurture(db as Parameters<typeof enrollNurture>[0], {
+        email: "x@example.com",
+        sequence: "free_to_kit",
+        brand: "Acme",
+        metadata: {},
+      })
+    ).rejects.toThrow("Simulated DB error");
   });
 });
 

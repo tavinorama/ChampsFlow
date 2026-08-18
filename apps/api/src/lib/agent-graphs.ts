@@ -271,10 +271,10 @@ export function isRunComplete(def: GraphDefinition, states: NodeStates): boolean
 
 export const DAILY_VIDEO_GRAPH: GraphDefinition = {
   slug: "daily-video",
-  version: 3,
+  version: 4,
   vpOwner: "marketing",
   description:
-    "Daily social video with MEMORY: recall what was already published (themes, hooks, b-roll) → signal → briefing that must not repeat → 3 angles → 4 critics (hook/brand/compliance/freshness) → synthesis (script) → ADAPT to a native LinkedIn post (English) → human approval → publish → wait 72h → harvest reach → verdict.",
+    "Daily social video with MEMORY: recall what was already published (themes, hooks, b-roll) → signal → briefing that must not repeat → 3 angles (vertical 9:16, 25-40s, phone-shot feel, hook ≤1s, captions per beat) → 5 critics (hook/brand/compliance/freshness/VIRALITY — the last vetoes anything that reads like an ad or a slide deck) → synthesis (script + [RENDER BRIEF] + [CHANNEL VARIANTS]) → ADAPT to a native LinkedIn post (English) → human approval → publish → wait 72h → harvest reach → verdict.",
   nodes: [
     // v2 (founder, 12/08): the videos were repeating images and hooks because
     // nothing LOOKED at what was already made. Perception before creation:
@@ -293,7 +293,13 @@ export const DAILY_VIDEO_GRAPH: GraphDefinition = {
     // v2: the freshness critic also reads the memory artifact — its whole job
     // is comparing the angles against what was already published.
     { id: "critic-freshness", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c", "memory"], config: { lens: "freshness" } },
-    { id: "synthesis", kind: "synthesis", dependsOn: ["critic-hook", "critic-brand", "critic-compliance", "critic-freshness"] },
+    // v4 (founder, 17/08 — "o vídeo tem que parecer VIVO"): the scripts were
+    // clean, stiff, corporate. This lens judges what actually performs now:
+    // hook strength, watch-time (does beat 2 hold them), share/comment
+    // trigger, "would I stop scrolling". It VETOES anything that reads like an
+    // ad or a slide deck. It also reads memory, so a hook already used loses.
+    { id: "critic-virality", kind: "debate", dependsOn: ["angle-a", "angle-b", "angle-c", "memory"], config: { lens: "virality" } },
+    { id: "synthesis", kind: "synthesis", dependsOn: ["critic-hook", "critic-brand", "critic-compliance", "critic-freshness", "critic-virality"] },
     // v3 (founder, 13/08 — "a publicação foi totalmente inadequada"): the raw
     // video script (PT, [HOOK]/[BEAT] markers) went to LinkedIn verbatim
     // because nothing adapted it to the destination. This node is the missing
@@ -509,6 +515,98 @@ export const SPHERE_X_GRAPH: GraphDefinition = {
   ],
 };
 
+/**
+ * #156, second specialist cell: LinkedIn. Same closed loop as sphere-x, its
+ * OWN memory (linkedin_* outcomes), and the channel's own grammar: LinkedIn
+ * rewards a story with a lesson, not a punch. Two drafts — a first-person
+ * story and a contrarian take — judged against what this sphere already
+ * published. LinkedIn is where the org proved approval→publish (13/08), so
+ * this cell inherits the adapt discipline: English, native to the feed,
+ * never a raw script.
+ */
+export const SPHERE_LINKEDIN_GRAPH: GraphDefinition = {
+  slug: "sphere-linkedin",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedin_* outcomes) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedin_impressions → verdict.",
+  nodes: [
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedin_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "linkedin-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "linkedin-briefing" } },
+    { id: "draft-story", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "story" } },
+    { id: "draft-contrarian", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "contrarian" } },
+    { id: "critic", kind: "debate", dependsOn: ["draft-story", "draft-contrarian", "memory"], config: { prompt: "linkedin-critic" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft-story", "draft-contrarian", "critic"], config: { prompt: "linkedin-finalize" } },
+    { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
+    { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
+    { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "linkedin_impressions" } },
+    { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+  ],
+};
+
+/**
+ * #156, third specialist cell: the blog. Different shape ON PURPOSE. The blog
+ * has no Postiz channel — articles ship through the CI blog-autopublish
+ * pipeline (Monday 12:00, PR + auto-merge). So this cell does the THINKING
+ * the pipeline lacks (memory of what was published, a real angle, an
+ * outline judged by a critic) and ends in a REPORT to the founder: the brief
+ * + outline, ready to feed the pipeline. Read-only by construction (no
+ * publish, no spawn), so it can run itself weekly and never violates the
+ * "nothing publishes without approval" rule — it publishes nothing.
+ */
+export const SPHERE_BLOG_GRAPH: GraphDefinition = {
+  slug: "sphere-blog",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "Blog specialist cell (read-only): recall what the blog already covered (blog_* outcomes + memory) → signal (what people search/ask about GEO now) → editorial briefing that must not repeat → 2 outlines (how-to vs data-story) → critic (freshness + honesty) → finalize → REPORT the brief+outline to the founder for the blog-autopublish pipeline. Publishes nothing itself.",
+  nodes: [
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 60, metricPrefix: "blog_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "blog-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "blog-briefing" } },
+    { id: "outline-howto", kind: "task", dependsOn: ["briefing"], config: { prompt: "blog-outline", style: "how-to" } },
+    { id: "outline-data", kind: "task", dependsOn: ["briefing"], config: { prompt: "blog-outline", style: "data-story" } },
+    { id: "critic", kind: "debate", dependsOn: ["outline-howto", "outline-data", "memory"], config: { prompt: "blog-critic" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["outline-howto", "outline-data", "critic"], config: { prompt: "blog-finalize" } },
+    { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "📝 Blog da semana: briefing + outline (esfera blog)" } },
+  ],
+};
+
+/**
+ * sphere-reddit (2026-08-18): the first cell built specifically to CONSUME the
+ * Signal Engine's "where to act" queue — the [__signals__] block the runner
+ * injects into every marketing-owned graph (#485). Reddit has NO publish
+ * adapter and we are not building one: this cell REPORTS ONLY. It turns the
+ * real opportunities (subreddit, thread URL, evidence) into a weekly founder
+ * brief — "here is where to show up on Reddit this week, with the exact move"
+ * — and, when the Signal Engine envs are absent, the [__signals__] block says
+ * SEM DADO, the prompts degrade honestly and the brief states plainly there is
+ * no external signal yet. It never invents threads. Read-only by construction
+ * (no publish, no approval, no harvest, no spawn), so the "nothing publishes
+ * without a human" rule holds trivially: it publishes nothing.
+ */
+export const SPHERE_REDDIT_GRAPH: GraphDefinition = {
+  slug: "sphere-reddit",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "Reddit specialist cell (read-only, publishes NOTHING): consume the Signal Engine's 'where to act' queue ([__signals__], injected because marketing-owned) → recall what we already engaged (reddit_* outcomes + memory) → signal (read the REAL opportunities from [__signals__]; if SEM DADO, say so, never invent threads) → briefing → two moves (respond in a ranking thread vs start our own valuable thread) → critic (Reddit culture: no astroturf, disclose affiliation where the sub requires, add value not spam; freshness vs memory) → finalize (best 2-3 moves) → REPORT to the founder 'onde aparecer no Reddit'. Fail-open honest when the SIGNAL_ENGINE envs are unset.",
+  nodes: [
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 60, metricPrefix: "reddit_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "reddit-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "reddit-briefing" } },
+    // Two native Reddit moves: answer inside an existing ranking thread, or
+    // start our own genuinely useful thread. Each is honest value, never spam.
+    { id: "plan-comment", kind: "task", dependsOn: ["briefing"], config: { prompt: "reddit-plan", style: "comment" } },
+    { id: "plan-post", kind: "task", dependsOn: ["briefing"], config: { prompt: "reddit-plan", style: "post" } },
+    { id: "critic", kind: "debate", dependsOn: ["plan-comment", "plan-post", "memory"], config: { prompt: "reddit-critic", lens: "compliance-authenticity" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["plan-comment", "plan-post", "critic"], config: { prompt: "reddit-finalize" } },
+    { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "👽 Reddit desta semana: onde aparecer (esfera reddit)" } },
+  ],
+};
+
 export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
   slug: "content-experiment",
   version: 1,
@@ -526,5 +624,115 @@ export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
     { id: "wait-48h", kind: "wait", dependsOn: ["publish"], config: { hours: 48 } },
     { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: "experiment_reach_48h" } },
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Content on EVERY platform (founder, 17/08): the cell pattern the X and
+// LinkedIn spheres proved, extended to the short-video channels — Instagram
+// Reels, TikTok, YouTube Shorts — each with its OWN memory (metricPrefix), its
+// own native grammar (prompts), its own approval, its own harvest. The daily
+// video graph already adapts to LinkedIn, so LinkedIn is NOT duplicated here.
+// All three are marketing-owned, so the runner injects [__day__] into every
+// reasoning node — the editorial calendar keeps the week diverse per channel.
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a short-video sphere cell. One shape, three channels: the only things
+ * that differ are the slug, the memory prefix, the publish channel, the
+ * harvest metric and the prompt family — kept as data so a fourth channel is
+ * one call, not one more hand-copied graph that can drift.
+ */
+function shortVideoSphere(input: {
+  slug: string;
+  channel: string;
+  prefix: string;
+  metric: string;
+  promptFamily: string;
+  description: string;
+}): GraphDefinition {
+  const p = input.promptFamily;
+  return {
+    slug: input.slug,
+    version: 1,
+    vpOwner: "marketing",
+    description: input.description,
+    nodes: [
+      // Perception before creation — this channel's own harvested numbers.
+      { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: input.prefix } },
+      { id: "signal", kind: "task", dependsOn: [], config: { prompt: `${p}-signal` } },
+      { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: `${p}-briefing` } },
+      // Two drafts, two native formats: face-to-camera vs caption-driven story.
+      { id: "draft-talking-head", kind: "task", dependsOn: ["briefing"], config: { prompt: `${p}-draft`, style: "talking-head" } },
+      { id: "draft-caption-story", kind: "task", dependsOn: ["briefing"], config: { prompt: `${p}-draft`, style: "caption-story" } },
+      // The critic carries the virality lens INSIDE it (hook, watch-time,
+      // share trigger) plus compliance + freshness against [memory].
+      { id: "critic", kind: "debate", dependsOn: ["draft-talking-head", "draft-caption-story", "memory"], config: { prompt: `${p}-critic` } },
+      { id: "finalize", kind: "synthesis", dependsOn: ["draft-talking-head", "draft-caption-story", "critic"], config: { prompt: `${p}-finalize` } },
+      { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
+      { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: input.channel, via: "postiz" } },
+      { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
+      { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: input.metric } },
+      { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+    ],
+  };
+}
+
+export const SPHERE_INSTAGRAM_GRAPH: GraphDefinition = shortVideoSphere({
+  slug: "sphere-instagram",
+  channel: "instagram",
+  prefix: "instagram_",
+  metric: "instagram_reach",
+  promptFamily: "instagram",
+  description:
+    "Instagram Reels specialist cell with its own memory: read this sphere's OWN harvested reach (instagram_* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, vertical, phone-shot feel) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + caption + hashtags policy) → human approval → publish to Instagram via Postiz → wait 72h → harvest instagram_reach → verdict.",
+});
+
+export const SPHERE_TIKTOK_GRAPH: GraphDefinition = shortVideoSphere({
+  slug: "sphere-tiktok",
+  channel: "tiktok",
+  prefix: "tiktok_",
+  metric: "tiktok_views",
+  promptFamily: "tiktok",
+  description:
+    "TikTok specialist cell with its own memory: read this sphere's OWN harvested views (tiktok_* outcomes) → signal (hook culture, sounds, formats) → briefing → 2 drafts (talking-head vs caption-story) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + on-screen text) → human approval → publish to TikTok via Postiz → wait 72h → harvest tiktok_views → verdict.",
+});
+
+export const SPHERE_YOUTUBE_GRAPH: GraphDefinition = shortVideoSphere({
+  slug: "sphere-youtube",
+  channel: "youtube",
+  prefix: "youtube_",
+  metric: "youtube_views",
+  promptFamily: "youtube",
+  description:
+    "YouTube Shorts specialist cell with its own memory: read this sphere's OWN harvested views (youtube_* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, Shorts pacing) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + title + description; on the weekly long-form day the finalize also carries a long-form outline) → human approval → publish to YouTube via Postiz → wait 72h → harvest youtube_views → verdict. LinkedIn is NOT touched here — the daily-video graph already owns that adaptation.",
+});
+
+// ---------------------------------------------------------------------------
+// The PPC cell (founder, 17/08): paid ads with ZERO SPEND. Ads are money, and
+// money is a founder-gated live switch (AGENTS.md) — so this cell has NO
+// publish node and NO spawn node by construction: it cannot spend, it cannot
+// launch. It reads what content actually resonated (outcomes, 30d, all
+// spheres), turns that into 3 ready-to-paste ad drafts (Google search, Meta,
+// LinkedIn), runs them through a compliance+claims critic, and REPORTS them to
+// the founder. Turning a draft into a live campaign is a human act, off-repo.
+// Weekly (Tue 08:00 UTC): ads should follow the week's evidence, not the hour.
+// ---------------------------------------------------------------------------
+
+export const SPHERE_PPC_GRAPH: GraphDefinition = {
+  slug: "sphere-ppc",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "PPC cell, READ-ONLY and ZERO SPEND: snapshot of what content resonated (outcomes 30d, all spheres) → signal (which angles/hooks earned reach) → 3 ad drafts (Google search, Meta, LinkedIn — headline/primary/CTA) → critic (compliance + claims, VETO on any promise the product does not keep) → finalize → REPORT to the founder ('3 anúncios prontos, sem gasto'). No publish node, no spawn node: this cell cannot spend a cent — activating a campaign is a founder-gated live switch outside this repo.",
+  nodes: [
+    { id: "snapshot", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30 } },
+    { id: "signal", kind: "task", dependsOn: ["snapshot"], config: { prompt: "ppc-signal" } },
+    { id: "ad-google", kind: "task", dependsOn: ["signal"], config: { prompt: "ppc-draft", network: "google-search" } },
+    { id: "ad-meta", kind: "task", dependsOn: ["signal"], config: { prompt: "ppc-draft", network: "meta" } },
+    { id: "ad-linkedin", kind: "task", dependsOn: ["signal"], config: { prompt: "ppc-draft", network: "linkedin" } },
+    { id: "critic", kind: "debate", dependsOn: ["ad-google", "ad-meta", "ad-linkedin"], config: { prompt: "ppc-critic" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["ad-google", "ad-meta", "ad-linkedin", "critic"], config: { prompt: "ppc-finalize" } },
+    { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "📣 PPC — 3 anúncios prontos, sem gasto (ativar é decisão do founder)" } },
   ],
 };

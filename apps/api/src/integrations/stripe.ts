@@ -318,12 +318,15 @@ export function tryGetStripe(): Stripe | null {
 //     Six audits per brand per month covers weekly monitoring (4.33) and still
 //     leaves two manual runs of slack.
 //
-// STILL AN ESTIMATE, DELIBERATELY FLAGGED: api_spend is a MODEL, not a meter —
-// AUDIT_COST_PER_GEN_CENTS (1.2) and AUDIT_COST_PER_EXTRACTION_CENTS (0.2) are
-// assumed rates, and eleven of the fifteen historical rows were a flat
-// AUDIT_COST_CENTS=80 override. Nobody has ever reconciled provider invoices
-// against audit counts. Until someone does, every number above rests on those
-// two constants.
+// STILL AN ESTIMATE, DELIBERATELY FLAGGED: the numbers above were derived from
+// api_spend rows that were a MODEL, not a meter — AUDIT_COST_PER_GEN_CENTS and
+// AUDIT_COST_PER_EXTRACTION_CENTS are assumed rates, and eleven of the fifteen
+// historical rows were a flat AUDIT_COST_CENTS=80 override. Since #152
+// (2026-08-16) api_spend records real tokens × list price per engine
+// (source='measured') next to the rate estimate; once enough measured rows
+// accumulate, re-derive the numbers above from
+// SUM(measured_cost_cents) WHERE source='measured' — see
+// docs/proposals/144-pricing-ledger.md, addendum 2026-08-16.
 // The plans themselves — type, price, limits — moved to
 // packages/shared/src/plan-limits.ts (2026-08-10): the public pricing page
 // must DERIVE the numbers it advertises from the same source production
@@ -793,6 +796,102 @@ export async function verifyKitCheckoutSession(
     );
   } catch (err) {
     logger.error("stripe_kit_session_verify_error", {
+      error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
+    });
+    return { ok: false, reason: "retrieve_error" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI Audit Stack — $49 one-time (founder 2026-08-15). Same shape as the Kit:
+// mode "payment", STRIPE_PRICE_ID_AI_AUDIT, metadata on the session AND the
+// payment_intent (so refunds/disputes name the order via the charge), and a
+// PURE fail-closed binding check used by the synchronous deliver path.
+// ---------------------------------------------------------------------------
+
+export const AI_AUDIT_PRODUCT = "ai_audit_stack" as const;
+
+export async function createAiAuditCheckoutSession(
+  orderId: string,
+  orderToken: string,
+  buyerEmail: string,
+  successUrl: string,
+  cancelUrl: string,
+  /**
+   * Optional Stripe coupon id (e.g. STRIPE_COUPON_AIAUDIT15 for the 15% the
+   * dashboard gives Growth/Agency subscribers). Stripe forbids `discounts`
+   * together with `allow_promotion_codes`, so a coupon session drops the
+   * promo-code box; the buyer already has the better deal applied.
+   */
+  options: { coupon?: string | null; tenantId?: string | null } = {}
+): Promise<{ url: string }> {
+  const priceId = process.env["STRIPE_PRICE_ID_AI_AUDIT"];
+  if (!priceId) {
+    const err = new Error("STRIPE_PRICE_ID_AI_AUDIT is not configured");
+    (err as NodeJS.ErrnoException).code = "missing_price_id";
+    throw err;
+  }
+  const stripe = getStripe();
+  const metadata: Record<string, string> = { ai_audit_order_id: orderId, order_token: orderToken, product: AI_AUDIT_PRODUCT };
+  if (options.tenantId) metadata["tenant_id"] = options.tenantId;
+  const coupon = options.coupon?.trim() || null;
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer_email: buyerEmail,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    ...(coupon ? { discounts: [{ coupon }] } : { allow_promotion_codes: true }),
+    metadata,
+    payment_intent_data: { metadata },
+  });
+  if (!session.url) {
+    logger.error("stripe_ai_audit_checkout_no_url", { session_id: session.id });
+    throw new Error("Stripe AI Audit checkout session created but URL is null");
+  }
+  logger.info("stripe_ai_audit_checkout_created", { session_id: session.id, ai_audit_order_id: orderId });
+  return { url: session.url };
+}
+
+/**
+ * PURE binding check for an AI Audit Stack session — same rules as
+ * evaluateKitSession: paid, payment mode, product + order id + token in the
+ * session's own metadata, and the single line item must be the configured
+ * price (missing price config → reject, fail-closed).
+ */
+export function evaluateAiAuditSession(
+  session: KitSessionShape,
+  bind: { orderId: string; orderToken: string },
+  expectedPriceId?: string | null
+): KitSessionVerification {
+  if (session.payment_status !== "paid") return { ok: false, reason: "not_paid" };
+  if (session.mode !== "payment") return { ok: false, reason: "wrong_mode" };
+  const md = session.metadata ?? {};
+  if (md["product"] !== AI_AUDIT_PRODUCT) return { ok: false, reason: "wrong_product" };
+  if (md["ai_audit_order_id"] !== bind.orderId) return { ok: false, reason: "order_mismatch" };
+  if (md["order_token"] !== bind.orderToken) return { ok: false, reason: "token_mismatch" };
+  if (!expectedPriceId) return { ok: false, reason: "price_unconfigured" };
+  const ids = (session.line_items?.data ?? [])
+    .map((li) => li?.price?.id)
+    .filter((x): x is string => Boolean(x));
+  if (ids.length !== 1 || ids[0] !== expectedPriceId) return { ok: false, reason: "price_mismatch" };
+  return { ok: true };
+}
+
+export async function verifyAiAuditCheckoutSession(
+  sessionId: string,
+  bind: { orderId: string; orderToken: string }
+): Promise<KitSessionVerification> {
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] });
+    return evaluateAiAuditSession(
+      session as unknown as KitSessionShape,
+      bind,
+      process.env["STRIPE_PRICE_ID_AI_AUDIT"] ?? null
+    );
+  } catch (err) {
+    logger.error("stripe_ai_audit_session_verify_error", {
       error_type: err instanceof Stripe.errors.StripeError ? err.type : "unknown",
     });
     return { ok: false, reason: "retrieve_error" };

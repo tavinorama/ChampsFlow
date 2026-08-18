@@ -61,6 +61,75 @@ import { fetchOperatingCadence } from "../lib/cadence";
  * Returns true if the named env var is set to a non-empty string.
  * NEVER returns the actual value — presence boolean only.
  */
+/**
+ * #152 — this month's api_spend split by HOW each row's number was obtained.
+ * measured = tokens × list price (real), rate = calls × per-call rate, flat =
+ * fixed per-op number, legacy = rows written before the source column existed.
+ * Pre-migration (42703) the split is unknowable: everything is 'legacy' and
+ * legacySchema=true says so. Never throws — an unreadable ledger is reported
+ * as null + an attention flag, not a 500 on the health page.
+ */
+export async function apiSpendBySource(db: PostgresClient): Promise<{
+  monthCents: number;
+  bySource: { measured: number; rate: number; flat: number; legacy: number };
+  rowsBySource: { measured: number; rate: number; flat: number; legacy: number };
+  measuredShare: number;
+  legacySchema: boolean;
+} | null> {
+  const empty = { measured: 0, rate: 0, flat: 0, legacy: 0 };
+  try {
+    const r = await db.query<{ source: string | null; cents: number; rows: number }>(
+      `SELECT source,
+              COALESCE(SUM(COALESCE(measured_cost_cents, est_cost_cents)), 0)::float AS cents,
+              COUNT(*)::int AS rows
+         FROM api_spend
+        WHERE created_at >= date_trunc('month', NOW())
+        GROUP BY source`
+    );
+    const bySource = { ...empty };
+    const rowsBySource = { ...empty };
+    let monthCents = 0;
+    for (const row of r.rows) {
+      const key = (row.source ?? "legacy") as keyof typeof empty;
+      const k: keyof typeof empty = key in empty ? key : "legacy";
+      bySource[k] += Number(row.cents) || 0;
+      rowsBySource[k] += Number(row.rows) || 0;
+      monthCents += Number(row.cents) || 0;
+    }
+    return {
+      monthCents: Math.round(monthCents * 100) / 100,
+      bySource,
+      rowsBySource,
+      measuredShare: monthCents > 0 ? Math.round((bySource.measured / monthCents) * 1000) / 1000 : 0,
+      legacySchema: false,
+    };
+  } catch (err) {
+    if ((err as { code?: unknown })?.code !== "42703") {
+      logger.error("admin_api_spend_read_failed", { message: (err as Error).message?.slice(0, 200) });
+      return null;
+    }
+  }
+  try {
+    const r = await db.query<{ cents: number; rows: number }>(
+      `SELECT COALESCE(SUM(est_cost_cents), 0)::float AS cents, COUNT(*)::int AS rows
+         FROM api_spend
+        WHERE created_at >= date_trunc('month', NOW())`
+    );
+    const cents = Number(r.rows[0]?.cents ?? 0);
+    const rows = Number(r.rows[0]?.rows ?? 0);
+    return {
+      monthCents: cents,
+      bySource: { ...empty, legacy: cents },
+      rowsBySource: { ...empty, legacy: rows },
+      measuredShare: 0,
+      legacySchema: true,
+    };
+  } catch (err) {
+    logger.error("admin_api_spend_read_failed", { message: (err as Error).message?.slice(0, 200) });
+    return null;
+  }
+}
+
 function present(name: string): boolean {
   const v = process.env[name];
   return typeof v === "string" && v.trim().length > 0;
@@ -582,6 +651,16 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       attentionFlags.push(`Redis is ${redisStatus === "down" ? "unreachable" : "not configured (REDIS_URL unset)"}`);
     }
 
+    // #152 — how much of this month's ledger is MEASURED (tokens × price) vs
+    // still a rate/flat estimate. Additive; the founder reads margins from
+    // `measured` once it accumulates.
+    const apiSpend = await apiSpendBySource(db);
+    if (apiSpend === null) {
+      attentionFlags.push("api_spend ledger unreadable");
+    } else if (apiSpend.legacySchema) {
+      attentionFlags.push("api_spend: measured columns missing (migration 20260815000001 not applied) — ledger is estimate-only");
+    }
+
     logger.info("admin_system_health_fetched", { postgres: postgresStatus, redis: redisStatus, mode });
 
     return c.json({
@@ -593,6 +672,7 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       envKeys,
       attentionFlags,
       mode,
+      apiSpend,
     });
   });
 

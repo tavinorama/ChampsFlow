@@ -12,6 +12,7 @@
 |---|---|---|---|---|
 | **The AI Invisibility Test** | $0 (free) | — | 1 buyer prompt across 4 AI engines → shows if the brand is cited. Lead magnet (~2¢/run on platform key). | `packages/llm/invisibility-test.ts`, `/test` |
 | **The Get-Cited Kit** | **$29** | one-time | Ozvor AI Visibility Score (3 vectors) + top fixes + content drafts + publish checklist. No subscription. | `packages/llm/kit-deliverable.ts`, `/kit` |
+| **AI Audit Stack** | **$49** | one-time | Email mandatory. Questionnaire (business, focus, engines, pains, tools in use) → ONE niche AI tool picked for the buyer's pains + why + the honest teaser of the full report (tools matched, matrix counts, hours/ROI estimates). Result on `/ai-audit/:token` AND inline in the delivery email. Full 9-section report stays the OrganicPosts $1.5k deliverable. | `apps/api/src/routes/ai-audit.ts`, `apps/api/src/lib/ai-audit/*`, `/ai-audit` |
 
 ## B. Subscription tiers (the SaaS)
 
@@ -47,6 +48,7 @@ Create these objects, then put each ID in the matching API env var:
 | Agency — monthly | recurring / month | $549 | `STRIPE_PRICE_ID_AGENCY` |
 | Agency — annual | recurring / year | $6,588 | `STRIPE_PRICE_ID_AGENCY_ANNUAL` |
 | Get-Cited Kit | one-time | $29 | `STRIPE_PRICE_ID_KIT` |
+| AI Audit Stack | one-time | $49 | `STRIPE_PRICE_ID_AI_AUDIT` — **Stripe live** (checkout + delivery by token, PR #479; unset → non-prod dev-unlock, prod 503) |
 | Founder coupon | 30% off, duration "forever" | — | `STRIPE_FOUNDER_COUPON_ID` |
 
 > The founder coupon is applied by the code **only on annual** checkouts, so a
@@ -55,5 +57,5 @@ Create these objects, then put each ID in the matching API env var:
 ---
 
 ## Open items (not products — wiring/decisions)
-- **Payment platform** still undecided (Stripe needs a non-BR entity for USD live; Lemon Squeezy/Polar = MoR work with the BR CNPJ in USD; Wise = manual invoicing first).
-- **Code cleanup to match this catalog:** (1) the phantom **`starter`** tier (in `PLAN_LIMITS` + `STRIPE_PRICE_ID_STARTER`, not marketed, limits == Free) → remove or define; (2) the in-app **`account/billing`** page still shows the stale Free/Starter/Pro $19/$49 model → reskin to Free/Growth/Agency + annual + founder.
+- **Payment platform**: **Stripe LIVE** (USD; self-serve Growth/Agency checkout, Kit $29 and AI Audit Stack $49 one-time — status 2026-08-17). The earlier MoR/Wise options are no longer under consideration.
+- **Code cleanup to match this catalog:** the phantom **`starter`** tier still lingers in `PLAN_LIMITS`, `STRIPE_PRICE_ID_STARTER`, the admin cockpit counters (`cockpit.ts`, `admin.ts`, `admin/page.tsx`, always 0), and the `billing` migration CHECK (`plan_tier IN ('free','starter','pro')`) → remove or define in a dedicated PR (touches a CHECK migration, so founder-merged). NOTE: the in-app **`account/billing`** page already renders the correct **Free / Growth / Agency** cards with the annual + founder toggle (`account/billing/page.tsx:962`) — the earlier "$19/$49 Starter/Pro" note referred to a stale docstring, now fixed.

@@ -26,8 +26,8 @@
  *  10. All integration calls wrapped in try/catch; errors classified
  */
 
-import type { ProbeQuery, ProbeResponse, UserRegion, LLMProvider } from "./types";
-import { ProviderError } from "./types";
+import type { ProbeQuery, ProbeResponse, ProbeUsage, UserRegion, LLMProvider } from "./types";
+import { ProviderError, mergeProbeUsage } from "./types";
 import { permittedProviders } from "./routing";
 import { sanitizeUserPrompt, scrubPii } from "../prompt-sanitizer";
 import { AnthropicProbeAdapter } from "./anthropic";
@@ -253,6 +253,8 @@ export async function runProbes(
         let lastText = "";
         let lastResult: ProbeResponse | null = null;
         let okRuns = 0;
+        // #152 — usage summed across the repeat runs of this pair.
+        let usage: ProbeUsage | undefined;
 
         for (let r = 0; r < repeat; r++) {
           try {
@@ -264,6 +266,7 @@ export async function runProbes(
             okRuns += 1;
             lastResult = result;
             lastText = result.rawText;
+            usage = mergeProbeUsage(usage, result.usage);
             if (result.mentioned) {
               mentions += 1;
               if (result.position && result.position > 0) {
@@ -295,8 +298,11 @@ export async function runProbes(
           mentioned,
           position: mentioned ? avgPosition : null,
           sources: [...sourceSet],
+          ...(usage ? { usage } : {}),
         };
         // Preserve any extra provider fields from the last result (defensive).
+        // The spread order matters for `usage`: lastResult carries ONE run's
+        // usage, aggregated carries the SUM — aggregated must win.
         return { ...lastResult, ...aggregated };
       })
     )

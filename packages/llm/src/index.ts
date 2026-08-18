@@ -130,11 +130,39 @@ export type {
   UserRegion,
   ProbeQuery,
   ProbeResponse,
+  ProbeUsage,
   ProviderAdapter,
   ProbeCallOptions,
   ProviderErrorKind,
 } from "./providers/types";
-export { ProviderError, mockAllowed, webSearchEnabled, providerSurface } from "./providers/types";
+export {
+  ProviderError,
+  mockAllowed,
+  webSearchEnabled,
+  providerSurface,
+  mergeProbeUsage,
+} from "./providers/types";
+
+// #152 — list-price cost of measured usage (tokens × published price)
+export {
+  PROVIDER_PRICES,
+  WEB_SEARCH_USD_PER_REQUEST,
+  priceForModel,
+  measuredCostCents,
+  type ModelPrice,
+  type MeasuredUsage,
+} from "./cost";
+
+// #152 — the one writer for api_spend (measured › rate › flat, legacy-schema tolerant)
+export {
+  recordSpend,
+  execForPostgresJs,
+  execForPg,
+  type SpendExec,
+  type SpendInput,
+  type SpendResult,
+  type SpendSource,
+} from "./api-spend";
 
 // Routing gate — single chokepoint for EU/US provider access control (GEO-A3)
 export { routeProvider, permittedProviders } from "./providers/routing";
@@ -293,7 +321,13 @@ export type { EntityGraphResult } from "./entity-graph";
 export { analyzeEntityGraph, pickEntityCompleteness } from "./entity-graph";
 
 // "The AI Invisibility Test" — free lead magnet (1 prompt × brand vs competitor).
-export type { FreeTestResult, InvisibilityTestResult, EngineResult } from "./invisibility-test";
+export type {
+  FreeTestResult,
+  InvisibilityTestResult,
+  EngineResult,
+  FreeTestUsage,
+  RunInvisibilityTestOptions,
+} from "./invisibility-test";
 export { runInvisibilityTest, buildTestPrompt } from "./invisibility-test";
 
 // "The Get-Cited Kit" — $29 one-time deliverable (audit + top-3 + 3 drafts).
@@ -331,7 +365,12 @@ export {
   LANDING_DEFAULT_BRAND,
   landingSlugify,
   renderSectionsForScoring,
+  providerTextPort,
 } from "./landing-generate";
+export type { LandingTextPort } from "./landing-generate";
+// Two-stage (Kimi draft → Claude refine) pipeline, D5.
+export { buildLandingBundleStaged } from "./landing-stages";
+export type { StagedLandingBundle, LandingStages, StageStatus, LandingStagePorts } from "./landing-stages";
 
 // Static-site export (client downloads the pages for their own hosting).
 export { buildLandingExport, escapeHtml } from "./landing-export";

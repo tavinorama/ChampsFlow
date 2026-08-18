@@ -16,11 +16,16 @@
 
 ## 1. What it is
 
-From a short intake about the client — business type, primary focus, and their
-biggest operational pains — the product returns a prioritized set of AI tools
-that reclaim time and money, sequenced into an actionable plan. It is NOT a
-generic "top AI tools" list: the value is the **pain → tool mapping per niche**
-plus the impact/effort/ROI framing.
+**The pitch (founder, 2026-08-14):** there are too many AI tools to choose from,
+and picking the right one for your business is hard. We understand your pains and
+**adapt and integrate** the right stack to your needs. The proof is three KPIs
+the report promises and quantifies: **Time saved, Effort saved, Money saved.**
+
+From a short intake about the client (business type, primary focus, and their
+biggest operational pains) the product returns a prioritized set of AI tools
+that save time, effort and money, sequenced into an actionable plan. It is NOT a
+generic "top AI tools" list: the value is the **pain to tool mapping per niche**,
+the adaptation to the client's real needs, and the three-KPI proof.
 
 ## 2. Two delivery forms
 
@@ -51,7 +56,7 @@ Every section below maps to data the engine must produce:
 5. **Recommended Solutions** — *the tool stack*: **6 tools**, each with **Cost · Setup · Saves** (monthly cost, setup effort, time/impact saved).
 6. **Your 4-Day Quick Wins Plan** — Day One / Two / Three / Four, each `Tool · <action>` — start this week.
 7. **What Comes After Quick Wins** — the next phase (the Major Projects, sequenced).
-8. **Financial Impact** — *the bottom line*: **Monthly Net ROI** · **Weekly Time Returned** · **Total Monthly Tool Cost**.
+8. **What you save** — *the bottom line*, the three promised KPIs: **Time saved** (weekly hours returned) · **Effort saved** (recurring chores removed = distinct pains covered) · **Money saved** (monthly net ROI). Tool cost is shown as a supporting number, not a headline.
 9. **Your Next Steps** — CTA: **Schedule Your Review Call** (the funnel into the $1.5k / retainer).
 
 > Design language of the template: dark ground (near-#0a0f0d), single orange
@@ -98,6 +103,38 @@ stack — no new services, no paid API, no copyleft exposure:
 > tools" product exists to fork (verified across GitHub topic searches). The
 > moat is the **curated PT-BR catalog + the rules/weights**, not the engine —
 > build on the blocks above; there is no shortcut fork.
+
+## 5b. Grounding sources — the directories we research against (founder, 2026-08-14)
+
+The founder pointed us at Corey Ganim's **"$1,000/hour Solo AI business"** video
+(youtu.be/dhbcVxYhWaQ): a **$999 AI Tools Assessment** where a client-call
+transcript is fed to an LLM that recommends real tools — grounded in AI-tool
+directories so it does not hallucinate. That is almost exactly this product (ours
+adds GEO + the OrganicPosts bundle). The video names **two directories**; the
+method is to use them as **reference to steer the LLM, not to scrape them**.
+
+The registry lives in code (`apps/api/src/lib/ai-audit/grounding-sources.ts`) so
+the legal terms travel with the data and no future catalog-builder scrapes a
+forbidden source. `/api/ai-audit/meta` exposes a **client-safe** view (name, url,
+one-liner) — product metadata for the full audit, **not** a claim on the
+self-serve result (the pure engine does not consult them live).
+
+| Source | Cited in video | Official API | Automated ingest | Use |
+|---|---|---|---|---|
+| **There's An AI For That** | ✅ | ❌ | **❌ forbidden** | Reference only |
+| **Futurepedia** | ✅ | ❌ | ❌ gray | Reference only |
+| **Product Hunt** | — | ✅ GraphQL | ✅ | Live lookup + seed |
+| **Toolify.ai** | — | ❌ (3rd-party only) | ❌ | Seed only via a license deal |
+| **G2** | — | paid/partner | ❌ | Reference/enrichment |
+
+> **The legal gate (why this is code, not a bookmark).** There's An AI For That's
+> ToS **forbids extracting its data "by any automated OR manual means"** and
+> asserts **EU Database Directive 96/9/EC** rights; Ozvor has an EU footprint
+> (founder in Lisbon). So automated ingestion of the two cited directories is off
+> the table — they are **human/LLM reference only**. The only source safe to
+> ingest automatically today is **Product Hunt** (official GraphQL API). This is
+> also the honest architecture: let the **LLM do the niche→tool mapping**,
+> grounded in these directories, rather than depending on scraped data.
 
 ## 6. Brazil entry + language
 

@@ -29,9 +29,13 @@
  *   - Missing DATABASE_URL → createWorkerDb throws → caller logs + returns
  *   - Idempotency: check nurture_send_log BEFORE every send, insert AFTER ON CONFLICT DO NOTHING
  *
- * Inter-step delays (from NOW()):
- *   free_to_kit: step0→step1 = 3 days, step1→step2 = 2 days, step2→step3 = 2 days
- *   kit_to_dfy:  step0→step1 = 4 days, step1→step2 = 3 days
+ * Inter-step delays (from NOW()): packages/shared/src/nurture-cadence.ts.
+ * Founder rule 17/08: EVERY sequence is 0d, +1d, +2d, +2d.
+ *
+ * Chain (nurture-cadence NURTURE_CHAIN): when the LAST step of kit_to_growth
+ * is sent and the buyer still has no paid subscription, the worker enrolls
+ * kit_to_dfy immediately (step 1 at 0d). If the DB CHECK constraint does not
+ * accept the chained name yet, log nurture_sequence_not_allowed and skip.
  */
 
 import postgres from "postgres";
@@ -46,6 +50,19 @@ import { sendNurtureKit3Email } from "../../../../packages/shared/src/emails/nur
 import { sendNurtureGrowth1Email } from "../../../../packages/shared/src/emails/nurture-growth-1";
 import { sendNurtureGrowth2Email } from "../../../../packages/shared/src/emails/nurture-growth-2";
 import { sendNurtureGrowth3Email } from "../../../../packages/shared/src/emails/nurture-growth-3";
+import { sendNurtureAiAudit1Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-1";
+import { sendNurtureAiAudit2Email } from "../../../../packages/shared/src/emails/nurture-ai-audit-2";
+import {
+  isCatalogSequence,
+  sendNurtureCatalogEmail,
+} from "../../../../packages/shared/src/emails/nurture-catalog";
+import {
+  NURTURE_CHAIN,
+  isSequenceCheckViolation,
+  nurtureNextStepDelayMs,
+  nurtureTotalSteps,
+  type NurtureSequence,
+} from "../../../../packages/shared/src/nurture-cadence";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -53,24 +70,13 @@ import { sendNurtureGrowth3Email } from "../../../../packages/shared/src/emails/
 
 const WEB_ORIGIN = process.env["WEB_ORIGIN"] ?? "https://ozvor.com";
 
-// Inter-step delays in milliseconds (fixed offset from NOW())
-// free_to_kit:  step0→step1=3d, step1→step2=2d, step2→step3=2d
-// kit_to_dfy:  step0→step1=4d, step1→step2=3d
-const FREE_TO_KIT_NEXT_STEP_DELAY_MS: Record<number, number> = {
+// Inter-step delays: nurtureNextStepDelayMs() (nurture-cadence.ts). No local
+// delay tables — the founder rule has one home.
+
+// book_to_dfy (/book intake → OrganicPosts call; D3 shell, cadence being
+// reworked separately): step0→step1=3d
+const BOOK_TO_DFY_NEXT_STEP_DELAY_MS: Record<number, number> = {
   0: 3 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 3 days
-  1: 2 * 24 * 60 * 60 * 1000, // step 1 done → step 2 in 2 days
-  2: 2 * 24 * 60 * 60 * 1000, // step 2 done → step 3 in 2 days
-};
-
-const KIT_TO_DFY_NEXT_STEP_DELAY_MS: Record<number, number> = {
-  0: 4 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 4 days
-  1: 3 * 24 * 60 * 60 * 1000, // step 1 done → step 2 in 3 days
-};
-
-// kit_to_growth: step0→step1=4d, step1→step2=3d
-const KIT_TO_GROWTH_NEXT_STEP_DELAY_MS: Record<number, number> = {
-  0: 4 * 24 * 60 * 60 * 1000, // step 0 done → step 1 in 4 days
-  1: 3 * 24 * 60 * 60 * 1000, // step 1 done → step 2 in 3 days
 };
 
 // ---------------------------------------------------------------------------
@@ -80,7 +86,7 @@ const KIT_TO_GROWTH_NEXT_STEP_DELAY_MS: Record<number, number> = {
 interface EnrollmentRow {
   id: string;
   email: string;
-  sequence: "free_to_kit" | "kit_to_dfy" | "kit_to_growth";
+  sequence: NurtureSequence;
   current_step: number;
   total_steps: number;
   unsubscribe_token: string;
@@ -99,11 +105,14 @@ type NurtureEmailParams = {
   metadata?: Record<string, unknown>;
 };
 
-async function dispatchEmail(
-  sequence: "free_to_kit" | "kit_to_dfy" | "kit_to_growth",
+export async function dispatchEmail(
+  sequence: NurtureSequence,
   step: number,
   params: NurtureEmailParams
 ): Promise<void> {
+  if (isCatalogSequence(sequence)) {
+    return sendNurtureCatalogEmail(sequence, step, params);
+  }
   if (sequence === "free_to_kit") {
     if (step === 0) return sendNurtureFree1Email(params);
     if (step === 1) return sendNurtureFree2Email(params);
@@ -113,12 +122,17 @@ async function dispatchEmail(
     if (step === 0) return sendNurtureGrowth1Email(params);
     if (step === 1) return sendNurtureGrowth2Email(params);
     if (step === 2) return sendNurtureGrowth3Email(params);
-  } else {
-    // kit_to_dfy
+  } else if (sequence === "kit_to_dfy") {
     if (step === 0) return sendNurtureKit1Email(params);
     if (step === 1) return sendNurtureKit2Email(params);
     if (step === 2) return sendNurtureKit3Email(params);
+  } else if (sequence === "ai_audit_to_full") {
+    // $49 AI Audit buyer → OrganicPosts bundle (#479); cadence 0/1 from
+    // nurture-cadence.ts, senders bespoke (result-aware copy).
+    if (step === 0) return sendNurtureAiAudit1Email(params);
+    if (step === 1) return sendNurtureAiAudit2Email(params);
   }
+  // Unknown pair: throw so the row is kept and retried, never marked sent.
   throw new Error(
     `Unknown nurture step: sequence=${sequence} step=${step}`
   );
@@ -159,15 +173,10 @@ async function advanceCursor(
           updated_at   = NOW()
       WHERE id = ${row.id}
     `;
+    // Chain to the next rung (kit_to_growth → kit_to_dfy) when nothing converted.
+    await enrollChainedSequence(sql, row);
   } else {
-    // Calculate next_send_at delay
-    const delayTable =
-      row.sequence === "free_to_kit"
-        ? FREE_TO_KIT_NEXT_STEP_DELAY_MS
-        : row.sequence === "kit_to_growth"
-          ? KIT_TO_GROWTH_NEXT_STEP_DELAY_MS
-          : KIT_TO_DFY_NEXT_STEP_DELAY_MS;
-    const delayMs = delayTable[row.current_step] ?? 3 * 24 * 60 * 60 * 1000;
+    const delayMs = nurtureNextStepDelayMs(row.sequence, row.current_step);
 
     await sql`
       UPDATE nurture_enrollment
@@ -176,6 +185,84 @@ async function advanceCursor(
           updated_at    = NOW()
       WHERE id = ${row.id}
     `;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Chain: sequence completed → enroll the next rung if the contact did not buy
+// ---------------------------------------------------------------------------
+
+/**
+ * Does this email belong to a workspace with a paid plan? Checked via
+ * users → tenants.plan_tier (the denormalized column every billing webhook
+ * syncs). "Paid" = anything but 'free'.
+ */
+export async function hasPaidSubscription(sql: postgres.Sql, email: string): Promise<boolean> {
+  const rows = await sql<{ one: number }[]>`
+    SELECT 1 AS one
+    FROM users u
+    JOIN tenants t ON t.id = u.tenant_id
+    WHERE lower(u.email) = lower(${email})
+      AND t.plan_tier IS NOT NULL
+      AND t.plan_tier <> 'free'
+    LIMIT 1
+  `;
+  return rows.length > 0;
+}
+
+/**
+ * Enroll the chained sequence for a completed enrollment. Best-effort:
+ * never throws (a chain failure must not undo the completion above).
+ * Idempotent through the (email, sequence) UNIQUE + ON CONFLICT DO NOTHING.
+ */
+export async function enrollChainedSequence(sql: postgres.Sql, row: EnrollmentRow): Promise<void> {
+  const next = NURTURE_CHAIN[row.sequence];
+  if (!next) return;
+  try {
+    if (await hasPaidSubscription(sql, row.email)) {
+      logger.info("nurture_chain_skipped_converted", {
+        from: row.sequence,
+        to: next,
+        enrollment_id: row.id,
+      });
+      return;
+    }
+    const totalSteps = nurtureTotalSteps(next);
+    const metadata = { ...(row.metadata ?? {}), chained_from: row.sequence };
+    const inserted = await sql<{ id: string }[]>`
+      INSERT INTO nurture_enrollment
+        (email, sequence, current_step, total_steps, enrolled_at,
+         next_send_at, suppressed, unsubscribe_token, brand, metadata,
+         created_at, updated_at)
+      VALUES
+        (${row.email}, ${next}, 0, ${totalSteps}, NOW(),
+         NOW(), FALSE, gen_random_uuid()::text, ${row.brand}, ${sql.json(metadata as never)},
+         NOW(), NOW())
+      ON CONFLICT (email, sequence) DO NOTHING
+      RETURNING id
+    `;
+    logger.info("nurture_chain_enrolled", {
+      from: row.sequence,
+      to: next,
+      enrollment_id: row.id,
+      already_enrolled: inserted.length === 0,
+    });
+  } catch (err) {
+    if (isSequenceCheckViolation(err)) {
+      logger.error("nurture_sequence_not_allowed", {
+        sequence: next,
+        chained_from: row.sequence,
+        enrollment_id: row.id,
+        message: (err as Error).message?.slice(0, 200),
+      });
+      return;
+    }
+    logger.error("nurture_chain_enroll_error", {
+      from: row.sequence,
+      to: next,
+      enrollment_id: row.id,
+      message: (err as Error).message?.slice(0, 200),
+    });
   }
 }
 

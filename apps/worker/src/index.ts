@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -336,16 +336,18 @@ async function registerDiscoverySchedule(): Promise<void> {
   logger.info("discovery_weekly_schedule_registered", { cron: DISCOVERY_WEEKLY_CRON });
 }
 
-// Specialist cells (#156): the X sphere posts Mon/Wed/Fri 09:00 UTC (~10:00
-// Lisbon) — the approval reaches the founder mid-morning, the post goes out
-// while the timeline is awake.
+// Specialist cells (#156). Founder 14/08: content EVERY day of the week, more
+// diverse than before — the editorial calendar (lib/editorial-calendar.ts)
+// gives each day its theme, so daily cadence reads as seven different things.
+// X starts 09:00 UTC (~10:00 Lisbon); LinkedIn 10:00; video 13:00 — staggered
+// so the founder never gets two approvals in the same minute.
 const sphereStartWorker = new Worker(
   "sphere-start",
   async () => runSphereStart(getGraphSql()),
   { connection, concurrency: 1, autorun: false }
 );
 const sphereStartQueue = new Queue("sphere-start", { connection });
-const SPHERE_START_CRON = process.env["SPHERE_START_CRON"] ?? "0 9 * * 1,3,5";
+const SPHERE_START_CRON = process.env["SPHERE_START_CRON"] ?? "0 9 * * *";
 
 async function registerSphereStartSchedule(): Promise<void> {
   await sphereStartQueue.add(
@@ -354,6 +356,122 @@ async function registerSphereStartSchedule(): Promise<void> {
     { jobId: "sphere-start-repeat", repeat: { pattern: SPHERE_START_CRON }, removeOnComplete: 20, removeOnFail: 20 }
   );
   logger.info("sphere_start_schedule_registered", { cron: SPHERE_START_CRON });
+}
+
+// The daily video graph (v2) + its ABSENCE watchdog (#169). The 14/08 finding:
+// the graph existed, validated, and had NO clock — while the legacy VPS video
+// job silently died on 10/08. Two repeatables on one queue: 'video-daily'
+// starts the run at 13:00 UTC (~14:00 Lisbon, the historical video hour);
+// 'video-absence' checks at 19:00 UTC that a publish actually SUCCEEDED in the
+// last 26h and screams on Telegram when it did not. The watcher stays outside
+// the watched: the check never starts or fixes anything.
+// #156 cells two and three. One queue, two named repeatables: 'sphere-linkedin'
+// DAILY 10:00 UTC (founder 14/08: every day; one hour after X so approvals
+// never collide) and 'sphere-blog' Thu 08:00 UTC (the brief+outline reaches
+// the founder before Monday's 12:00 autopublish; it publishes nothing itself).
+// #485 consumer (18/08): 'sphere-reddit' rides the same queue — Wed 08:00 UTC,
+// weekly, read-only (it publishes nothing), a slot free of the other sphere
+// crons (PPC Tue 08:00, blog Thu 08:00). Its brief carries the week's REAL
+// Reddit opportunities from the Signal Engine, or SEM DADO honestly.
+const sphereMoreWorker = new Worker(
+  "sphere-more",
+  async (job) =>
+    job.name === "sphere-blog"
+      ? runSphereBlogStart(getGraphSql())
+      : job.name === "sphere-reddit"
+        ? runSphereRedditStart(getGraphSql())
+        : runSphereLinkedinStart(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const sphereMoreQueue = new Queue("sphere-more", { connection });
+const SPHERE_LINKEDIN_CRON = process.env["SPHERE_LINKEDIN_CRON"] ?? "0 10 * * *";
+const SPHERE_BLOG_CRON = process.env["SPHERE_BLOG_CRON"] ?? "0 8 * * 4";
+const SPHERE_REDDIT_CRON = process.env["SPHERE_REDDIT_CRON"] ?? "0 8 * * 3";
+
+async function registerSphereMoreSchedules(): Promise<void> {
+  await sphereMoreQueue.add(
+    "sphere-linkedin",
+    {},
+    { jobId: "sphere-linkedin-repeat", repeat: { pattern: SPHERE_LINKEDIN_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  await sphereMoreQueue.add(
+    "sphere-blog",
+    {},
+    { jobId: "sphere-blog-repeat", repeat: { pattern: SPHERE_BLOG_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  await sphereMoreQueue.add(
+    "sphere-reddit",
+    {},
+    { jobId: "sphere-reddit-repeat", repeat: { pattern: SPHERE_REDDIT_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("sphere_more_schedules_registered", { linkedin: SPHERE_LINKEDIN_CRON, blog: SPHERE_BLOG_CRON, reddit: SPHERE_REDDIT_CRON });
+}
+
+// Content alive on every platform (founder, 17/08). One queue, four named
+// repeatables: 'sphere-instagram' 11:00 UTC, 'sphere-tiktok' 12:00,
+// 'sphere-youtube' 14:00 (each daily, staggered after LinkedIn 10:00 and
+// around the video 13:00 so approvals never collide), and 'sphere-ppc' Tue
+// 08:00 UTC — weekly, read-only, ZERO SPEND (it reports 3 ad drafts; activating
+// a campaign is a founder-gated live switch outside this repo). The daily
+// approvals valve (SPHERE_MAX_DAILY_APPROVALS, default 6) lives in
+// startBrainRuns and skips gated marketing starts out loud past the cap.
+const spherePlatformsWorker = new Worker(
+  "sphere-platforms",
+  async (job) => runPlatformCellStart(getGraphSql(), job.name),
+  { connection, concurrency: 1, autorun: false }
+);
+const spherePlatformsQueue = new Queue("sphere-platforms", { connection });
+const SPHERE_INSTAGRAM_CRON = process.env["SPHERE_INSTAGRAM_CRON"] ?? "0 11 * * *";
+const SPHERE_TIKTOK_CRON = process.env["SPHERE_TIKTOK_CRON"] ?? "0 12 * * *";
+const SPHERE_YOUTUBE_CRON = process.env["SPHERE_YOUTUBE_CRON"] ?? "0 14 * * *";
+const SPHERE_PPC_CRON = process.env["SPHERE_PPC_CRON"] ?? "0 8 * * 2";
+
+async function registerSpherePlatformsSchedules(): Promise<void> {
+  const schedules: Array<[string, string]> = [
+    ["sphere-instagram", SPHERE_INSTAGRAM_CRON],
+    ["sphere-tiktok", SPHERE_TIKTOK_CRON],
+    ["sphere-youtube", SPHERE_YOUTUBE_CRON],
+    ["sphere-ppc", SPHERE_PPC_CRON],
+  ];
+  for (const [name, pattern] of schedules) {
+    await spherePlatformsQueue.add(
+      name,
+      {},
+      { jobId: `${name}-repeat`, repeat: { pattern }, removeOnComplete: 20, removeOnFail: 20 }
+    );
+  }
+  logger.info("sphere_platforms_schedules_registered", {
+    instagram: SPHERE_INSTAGRAM_CRON,
+    tiktok: SPHERE_TIKTOK_CRON,
+    youtube: SPHERE_YOUTUBE_CRON,
+    ppc: SPHERE_PPC_CRON,
+  });
+}
+
+const videoWorker = new Worker(
+  "video-daily",
+  async (job) =>
+    job.name === "video-absence"
+      ? runVideoAbsenceCheck(getGraphSql())
+      : runVideoDaily(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const videoQueue = new Queue("video-daily", { connection });
+const VIDEO_DAILY_CRON = process.env["VIDEO_DAILY_CRON"] ?? "0 13 * * *";
+const VIDEO_ABSENCE_CRON = process.env["VIDEO_ABSENCE_CRON"] ?? "0 19 * * *";
+
+async function registerVideoSchedules(): Promise<void> {
+  await videoQueue.add(
+    "video-daily",
+    {},
+    { jobId: "video-daily-repeat", repeat: { pattern: VIDEO_DAILY_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  await videoQueue.add(
+    "video-absence",
+    {},
+    { jobId: "video-absence-repeat", repeat: { pattern: VIDEO_ABSENCE_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("video_schedules_registered", { start: VIDEO_DAILY_CRON, absence: VIDEO_ABSENCE_CRON });
 }
 
 async function registerBrainDailySchedule(): Promise<void> {
@@ -380,6 +498,9 @@ void platformKeysReady.finally(() => {
   void brainWeeklyWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
+  void videoWorker.run();
+  void sphereMoreWorker.run();
+  void spherePlatformsWorker.run();
   void registerGraphTickSchedule().catch((err: Error) => {
     // Non-fatal for audits — but the orchestrator being off must be visible.
     logger.error("graph_tick_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -395,6 +516,15 @@ void platformKeysReady.finally(() => {
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerSphereMoreSchedules().catch((err: Error) => {
+    logger.error("sphere_more_schedules_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerVideoSchedules().catch((err: Error) => {
+    logger.error("video_schedules_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerSpherePlatformsSchedules().catch((err: Error) => {
+    logger.error("sphere_platforms_schedules_register_failed", { message: err.message?.slice(0, 200) });
   });
 });
 
@@ -638,6 +768,12 @@ const shutdown = async (signal: string): Promise<void> => {
     await landingWorker.close();
     await monitorReconcileWorker.close();
     await monitorReconcileQueue.close();
+    await videoWorker.close();
+    await videoQueue.close();
+    await sphereMoreWorker.close();
+    await sphereMoreQueue.close();
+    await spherePlatformsWorker.close();
+    await spherePlatformsQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,

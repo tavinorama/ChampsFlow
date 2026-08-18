@@ -57,6 +57,10 @@ import {
   type SamplingQuery,
   type GeoLLMProvider,
   type ProbeResponse,
+  type ProbeUsage,
+  mergeProbeUsage,
+  recordSpend,
+  execForPostgresJs,
   providerSurface,
   permittedProviders,
   probeCacheEnabled,
@@ -64,10 +68,73 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+import {
+  coverageNoticeNeeded,
+  sendAuditCoverageNoticeEmail,
+} from "../../../../packages/shared/src/emails/audit-coverage-notice";
 import { driftVerdicts, hallucinatingEnginesToday } from "./drift-control";
 import { runWithTenant } from "../../../api/src/db/tenant-context";
 import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe";
 import { creditsForAudit } from "../../../api/src/lib/credits";
+import { overagePackUsd } from "../../../../packages/shared/src/credits";
+import { sendCreditsOutEmail } from "../../../../packages/shared/src/emails/credits-out";
+
+/**
+ * D1: one "You are out of credits" email per tenant per month, sent when a
+ * debit crosses the balance to zero. The month guard is an audit_log row
+ * (event_type credits_out_email); if that read fails we still send, because
+ * the crossing rule already bounds it to one per crossing. Never throws.
+ */
+export async function notifyCreditsOut(
+  sql: postgres.Sql,
+  input: { tenantId: string; brandName?: string | null; balance: number; planTier: string }
+): Promise<void> {
+  const { tenantId } = input;
+  try {
+    try {
+      const [already] = await sql<{ one: number }[]>`
+        SELECT 1 AS one FROM audit_log
+         WHERE event_type = 'credits_out_email' AND tenant_id = ${tenantId}::uuid
+           AND created_at >= date_trunc('month', NOW())
+         LIMIT 1
+      `;
+      if (already) {
+        logger.info("credits_out_email_skipped_this_month", { tenant_id: tenantId });
+        return;
+      }
+    } catch (err) {
+      logger.warn("credits_out_email_month_check_failed", { tenant_id: tenantId, message: (err as Error).message?.slice(0, 120) });
+    }
+    const [owner] = await sql<{ email: string }[]>`
+      SELECT email FROM users
+       WHERE tenant_id = ${tenantId}::uuid AND role = 'owner' AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1
+    `;
+    if (!owner?.email) {
+      logger.warn("credits_out_email_no_owner", { tenant_id: tenantId });
+      return;
+    }
+    await sendCreditsOutEmail({
+      to: owner.email,
+      brand: input.brandName ?? null,
+      balance: input.balance,
+      packCredits: 1000,
+      packUsd: overagePackUsd(1000),
+      plan: input.planTier,
+    });
+    logger.info("credits_out_email_sent", { tenant_id: tenantId, balance: input.balance });
+    try {
+      await sql`
+        INSERT INTO audit_log (event_type, tenant_id, target_entity, metadata, created_at)
+        VALUES ('credits_out_email', ${tenantId}::uuid, 'credit_ledger', ${sql.json({ balance: input.balance, plan: input.planTier })}, NOW())
+      `;
+    } catch (err) {
+      logger.warn("credits_out_email_log_failed", { tenant_id: tenantId, message: (err as Error).message?.slice(0, 120) });
+    }
+  } catch (err) {
+    logger.warn("credits_out_email_failed", { tenant_id: tenantId, message: (err as Error).message?.slice(0, 160) });
+  }
+}
 
 export interface AuditJobData {
   /** Present for on-demand audits (row pre-created by the API).
@@ -1334,11 +1401,16 @@ export async function processAuditJob(
 
       // Live generations per engine, from the same accounting generationsUsed
       // uses: cached probes are frozen seed units and cost nothing this run.
+      // #152: alongside the count, SUM the measured usage the adapters now
+      // attach (tokens, model, searches). A cached response carries no usage
+      // (the cache never stores it), so this cannot double-count.
       const gensByEngine: Record<string, number> = {};
+      const usageByEngine: Record<string, ProbeUsage | undefined> = {};
       for (const resp of responses) {
         if (resp.fromCache) continue;
         const eng = String(resp.provider);
         gensByEngine[eng] = (gensByEngine[eng] ?? 0) + (resp.runs ?? 1);
+        usageByEngine[eng] = mergeProbeUsage(usageByEngine[eng], resp.usage);
       }
 
       // B3: the extraction + verification passes are extra (cheap-tier) calls.
@@ -1355,13 +1427,71 @@ export async function processAuditJob(
       const auditCostCents = Number.isFinite(flatOverride)
         ? flatOverride
         : Math.max(1, Math.round(genCost + extractionCalls * perExtractionCents));
-      await sql`INSERT INTO api_spend (op, est_cost_cents) VALUES ('audit', ${auditCostCents})`;
+
+      // #152 — MEASURE, not estimate. One api_spend row per live engine, with
+      // engine/model/tokens and the list-price cost when the adapter reported
+      // usage (source='measured'); the per-engine RATE estimate rides along in
+      // est_cost_cents so the two can be compared. Engines whose adapter gave
+      // no usage (serp, mock, provider omitted the block) stay 'rate'. The
+      // extraction passes have no usage plumbing yet → one 'rate' row. With
+      // AUDIT_COST_CENTS set (flat override) the whole audit is ONE 'flat'
+      // row, exactly as before. Pre-migration the writer degrades to the
+      // legacy (op, est_cost_cents) INSERT — never throws.
+      const spendExec = execForPostgresJs(sql);
+      const bySource: Record<string, number> = { measured: 0, rate: 0, flat: 0 };
+      let measuredEngines = 0;
+      let rateEngines = 0;
+      if (Number.isFinite(flatOverride)) {
+        const r = await recordSpend(spendExec, {
+          op: "audit",
+          estCents: flatOverride,
+          estSource: "flat",
+          ref: audit_id,
+          tenantId: tenant_id,
+        });
+        bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
+      } else {
+        for (const [eng, gens] of Object.entries(gensByEngine)) {
+          const u = usageByEngine[eng];
+          const r = await recordSpend(spendExec, {
+            op: "audit",
+            engine: eng,
+            model: u?.model ?? null,
+            inputTokens: u?.inputTokens ?? null,
+            outputTokens: u?.outputTokens ?? null,
+            searchRequests: u?.searchRequests ?? null,
+            requests: u?.requests ?? gens,
+            estCents: gens * rateFor(eng),
+            estSource: "rate",
+            ref: audit_id,
+            tenantId: tenant_id,
+          });
+          if (r.source === "measured") measuredEngines += 1;
+          else rateEngines += 1;
+          bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
+        }
+        if (extractionCalls > 0) {
+          const r = await recordSpend(spendExec, {
+            op: "audit",
+            engine: "extraction",
+            estCents: extractionCalls * perExtractionCents,
+            estSource: "rate",
+            ref: audit_id,
+            tenantId: tenant_id,
+          });
+          bySource[r.source] = (bySource[r.source] ?? 0) + (r.measuredCents ?? r.estCents);
+        }
+      }
       // The split is the point of the change — surface it, so "the ledger says
-      // $1.10" can always be decomposed into which engines that actually was.
+      // $1.10" can always be decomposed into which engines that actually was,
+      // and (now) which of those numbers were measured vs still a rate.
       logger.info("audit_spend_recorded", {
         audit_id,
         cents: auditCostCents,
         per_engine: gensByEngine,
+        measured_engines: measuredEngines,
+        rate_engines: rateEngines,
+        by_source_cents: bySource,
       });
     } catch (err) {
       logger.warn("audit_spend_record_failed", { message: (err as Error).message });
@@ -1393,18 +1523,31 @@ export async function processAuditJob(
     // ids needed to reconcile it by hand.
     try {
       const creditCost = creditsForAudit(planTier);
-      const [row] = await sql<{ id: string }[]>`
+      const [row] = await sql<{ id: string; balance_after: number | string }[]>`
         INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
         SELECT ${tenant_id}::uuid, ${-creditCost}, 'audit', 'geo_audit', ${audit_id}::uuid,
                COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = ${tenant_id}::uuid), 0) - ${creditCost}
           ON CONFLICT (tenant_id, ref_type, ref_id)
             WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING
-          RETURNING id
+          RETURNING id, balance_after
       `;
       if (!row) {
         // Expected on a retry, and only then. Worth a line either way: if this
         // shows up without a preceding failure, the idempotency key is wrong.
         logger.info("credit_debit_already_recorded", { audit_id, tenant_id, creditCost });
+      } else {
+        // D1: the moment the balance CROSSES to zero (or below) is the one time
+        // we email "you are out of credits". Crossing = before > 0 and after
+        // <= 0, which the ledger row itself tells us; a retry never gets here
+        // (no row), so the rule is idempotent without a flag. audit_log adds
+        // the once-per-month guard for the case where a top-up and a second
+        // crossing happen inside the same month. Best-effort end to end: an
+        // email failure never touches the audit or the charge.
+        const after = Number(row.balance_after);
+        const before = after + creditCost;
+        if (Number.isFinite(after) && after <= 0 && before > 0) {
+          void notifyCreditsOut(sql, { tenantId: tenant_id, brandName: brand.name, balance: after, planTier });
+        }
       }
     } catch (err) {
       logger.error("credit_debit_failed", {
@@ -1414,6 +1557,65 @@ export async function processAuditJob(
         message: (err as Error).message?.slice(0, 160),
         effect: "audit delivered but NOT charged — reconcile manually",
       });
+    }
+
+    // D8d — customer-facing coverage notice. When the panel was partial
+    // (comparable=false) or an engine was held back for drift, tell the
+    // owner ONCE what was and was not measured. Idempotent per audit_id: the
+    // send is claimed atomically on geo_score.provider_breakdown
+    // ('coverage_notice') so a BullMQ retry never emails twice. Best-effort —
+    // never fails a delivered audit; failure is logged loudly.
+    if (coverageNoticeNeeded(cov)) {
+      try {
+        const claimed = await sql<{ id: string }[]>`
+          UPDATE geo_score
+             SET provider_breakdown = provider_breakdown
+               || ${sql.json({ coverage_notice: { status: "pending", claimed_at: new Date().toISOString() } })}
+           WHERE audit_id = ${audit_id}
+             AND (
+               NOT (provider_breakdown ? 'coverage_notice')
+               OR provider_breakdown->'coverage_notice'->>'status' = 'failed'
+             )
+          RETURNING id`;
+        if (claimed.length > 0) {
+          const ownerRows = await sql<{ email: string }[]>`
+            SELECT email FROM users WHERE tenant_id = ${tenant_id} AND role = 'owner' LIMIT 1`;
+          const ownerEmail = ownerRows[0]?.email;
+          let status: "sent" | "failed" | "no_owner" = "no_owner";
+          let messageId: string | null = null;
+          if (ownerEmail) {
+            try {
+              const r = await sendAuditCoverageNoticeEmail({
+                to: ownerEmail,
+                brandName: brand.name,
+                auditId: audit_id,
+                answered: comparisonPanel.filter((p) => answeredProviders.has(p)),
+                missing: cov.missing,
+                paused: cov.paused,
+                degraded: cov.degraded,
+                comparable: cov.comparable,
+              });
+              status = "sent";
+              messageId = r.id || null;
+            } catch (err) {
+              status = "failed";
+              logger.error("audit_coverage_notice_send_failed", {
+                audit_id,
+                tenant_id,
+                message: (err as Error).message?.slice(0, 200),
+              });
+            }
+          }
+          await sql`
+            UPDATE geo_score
+               SET provider_breakdown = provider_breakdown
+                 || ${sql.json({ coverage_notice: { status, sent_at: new Date().toISOString(), resend_message_id: messageId } })}
+             WHERE audit_id = ${audit_id}`;
+          logger.info("audit_coverage_notice", { audit_id, tenant_id, status, comparable: cov.comparable, paused: cov.paused.length, missing: cov.missing.length });
+        }
+      } catch (err) {
+        logger.error("audit_coverage_notice_failed", { audit_id, message: (err as Error).message?.slice(0, 200) });
+      }
     }
 
     logger.info("audit_completed", {
