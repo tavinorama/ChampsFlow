@@ -502,6 +502,14 @@ const SPHERE_CELLS = ["sphere-x"];
 const LINKEDIN_CELLS = ["sphere-linkedin"];
 const BLOG_CELLS = ["sphere-blog"];
 /**
+ * The Reddit sphere (#485 consumer, 18/08): the first cell built to consume the
+ * Signal Engine's "where to act" queue ([__signals__]). Report-only — it
+ * publishes nothing — so it never counts against the approvals valve. Weekly
+ * (Wed 08:00 UTC, a slot free of the other sphere crons); its brief reaches the
+ * founder with the week's real Reddit opportunities, or SEM DADO honestly.
+ */
+const REDDIT_CELLS = ["sphere-reddit"];
+/**
  * The daily video, as a GRAPH (v2/v3 — memory + adapt + correct harvest
  * metric). The structural hole of 14/08: this graph was registered and valid
  * but appeared in NO cron list, so nothing ever started it — while the legacy
@@ -658,6 +666,11 @@ export async function runSphereLinkedinStart(sql: postgres.Sql): Promise<{ start
 /** Blog cell (#156): weekly thinker, Thursday. 6-day look-back. */
 export async function runSphereBlogStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, BLOG_CELLS, 24 * 6, "cron:sphere-blog");
+}
+
+/** Reddit cell (#485): weekly thinker, Wednesday. 6-day look-back (as blog/PPC). */
+export async function runSphereRedditStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, REDDIT_CELLS, 24 * 6, "cron:sphere-reddit");
 }
 
 /** The daily video graph (v2), once per calendar day. 20h look-back. */

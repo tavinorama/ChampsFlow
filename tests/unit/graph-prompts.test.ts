@@ -21,6 +21,7 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_REDDIT_GRAPH,
   SPHERE_INSTAGRAM_GRAPH,
   SPHERE_TIKTOK_GRAPH,
   SPHERE_YOUTUBE_GRAPH,
@@ -72,7 +73,7 @@ describe("buildPrompt resolves the graph's task slugs", () => {
 
 describe("the read-only brains' prompts resolve and stay honest", () => {
   it("every Watchdog, CDO, experiment-cell and sphere-cell reasoning node has a resolvable prompt", () => {
-    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH, SPHERE_LINKEDIN_GRAPH, SPHERE_BLOG_GRAPH, SPHERE_INSTAGRAM_GRAPH, SPHERE_TIKTOK_GRAPH, SPHERE_YOUTUBE_GRAPH, SPHERE_PPC_GRAPH]) {
+    for (const def of [DAILY_WATCHDOG_GRAPH, DAILY_DREAM_GRAPH, WEEKLY_PRODUCT_GRAPH, WEEKLY_DISCOVERY_GRAPH, CONTENT_EXPERIMENT_GRAPH, SPHERE_X_GRAPH, SPHERE_LINKEDIN_GRAPH, SPHERE_BLOG_GRAPH, SPHERE_REDDIT_GRAPH, SPHERE_INSTAGRAM_GRAPH, SPHERE_TIKTOK_GRAPH, SPHERE_YOUTUBE_GRAPH, SPHERE_PPC_GRAPH]) {
       for (const node of def.nodes) {
         if (!["task", "debate", "synthesis"].includes(node.kind)) continue;
         const p = buildPrompt(node.kind, node.config ?? {}, []);
@@ -110,6 +111,11 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
       ["task", "blog-briefing"],
       ["task", "blog-outline"],
       ["synthesis", "blog-finalize"],
+      // #485 (18/08): the Reddit brief's content is drafted for a human to post
+      // publicly, so briefing/plan/finalize are English-first too.
+      ["task", "reddit-briefing"],
+      ["task", "reddit-plan"],
+      ["synthesis", "reddit-finalize"],
       // 17/08: the short-video spheres publish; PPC drafts are public ad copy.
       ["task", "instagram-briefing"],
       ["task", "instagram-draft"],
@@ -190,6 +196,48 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
     const fin = buildPrompt("synthesis", { prompt: "ppc-finalize" }, []) ?? "";
     expect(fin).toContain("0 gasto");
     expect(fin.toLowerCase()).toContain("decisao do founder");
+  });
+
+  it("Reddit signal CONSUMES [__signals__]: renders the injected queue, and degrades honestly when it says SEM DADO", () => {
+    // The runner injects the Signal Engine's queue as [__signals__] into every
+    // marketing-owned graph. #485's whole point: this cell USES that block.
+    const realSignals =
+      "SINAIS EXTERNOS (Signal Engine): 1) r/SEO — 'Is SEO dead now that ChatGPT answers everything?' https://reddit.com/r/SEO/comments/abc123";
+    const withSignals = buildPrompt("task", { prompt: "reddit-signal" }, [["__signals__", realSignals]]) ?? "";
+    // The injected block is actually rendered into the prompt the engine sees.
+    expect(withSignals).toContain("__signals__");
+    expect(withSignals).toContain("reddit.com/r/SEO/comments/abc123");
+    // And the prompt tells the engine to prefer the real queue over invention.
+    expect(withSignals).toContain("FILA REAL");
+
+    // Fail-open honesty: when the block says SEM DADO (envs unset / down), the
+    // prompt must carry the "do not invent threads" instruction and surface it.
+    const semDado =
+      "SINAIS EXTERNOS: SEM DADO (Signal Engine indisponivel). Nao invente conversas; use so o que estiver em [memory].";
+    const withoutSignals = buildPrompt("task", { prompt: "reddit-signal" }, [["__signals__", semDado]]) ?? "";
+    expect(withoutSignals).toContain("SEM DADO");
+    expect(withoutSignals).toContain("SEM SINAL EXTERNO DO SIGNAL ENGINE");
+    expect(withoutSignals.toLowerCase()).toContain("nao invente");
+  });
+
+  it("Reddit plan is a concrete move: subreddit, thread/url, comment-vs-post, karma note, honest GEO value", () => {
+    const plan = buildPrompt("task", { prompt: "reddit-plan", style: "comment" }, []) ?? "";
+    expect(plan.toLowerCase()).toContain("subreddit");
+    expect(plan).toContain("COMMENT-VS-POST");
+    expect(plan.toLowerCase()).toContain("karma");
+    expect(plan.toLowerCase()).toContain("disclosure");
+    expect(plan.toUpperCase()).toContain("GEO");
+    // The post style resolves to the same family and names starting a thread.
+    const post = buildPrompt("task", { prompt: "reddit-plan", style: "post" }, []) ?? "";
+    expect(post).toContain("[MOVE:");
+  });
+
+  it("Reddit critic enforces the culture: no astroturf, disclose affiliation, must help, freshness vs memory", () => {
+    const critic = buildPrompt("debate", { prompt: "reddit-critic" }, []) ?? "";
+    expect(critic.toUpperCase()).toContain("CULTURA REDDIT");
+    expect(critic.toLowerCase()).toContain("astroturfing");
+    expect(critic).toContain("VETO: sem disclosure");
+    expect(critic).toContain("[memory]");
   });
 
   it("the LinkedIn adapt step forbids script residue — a post, never a screenplay", () => {
