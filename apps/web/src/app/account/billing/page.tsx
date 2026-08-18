@@ -5,8 +5,9 @@
  *   1. Current plan card (plan name, price, renewal date, status pill, "Manage in Stripe" button)
  *      - Only shown when user has an active paid subscription
  *   2. Usage card (drafts this month / posts this month / connected accounts with limits)
- *   3. Upgrade flow: 3 plan cards (Free / Starter / Pro) with feature lists + "Choose plan" CTA
+ *   3. Upgrade flow: 3 plan cards (Free / Growth / Agency) with feature lists + "Choose plan" CTA
  *      - "Choose plan" → POST /api/billing/checkout → redirect to Stripe Checkout
+ *      - Annual/monthly toggle + founder discount (annual-only) applied upstream
  *   4. Past invoices link → Stripe Customer Portal
  *   5. Cancel subscription → Stripe Customer Portal
  *   - Empty state: free-plan users see only the "Choose a plan" section
