@@ -105,11 +105,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- ---------------------------------------------------------------------------
--- Nurture: allow the 'ai_audit_to_full' sequence (post-purchase → OrganicPosts
--- $1.5k bundle GEO + AI Audit). Same pattern as 20260715000001.
--- ---------------------------------------------------------------------------
-ALTER TABLE nurture_enrollment DROP CONSTRAINT IF EXISTS nurture_enrollment_sequence_check;
-ALTER TABLE nurture_enrollment
-  ADD CONSTRAINT nurture_enrollment_sequence_check
-  CHECK (sequence IN ('free_to_kit', 'kit_to_dfy', 'kit_to_growth', 'ai_audit_to_full'));
+-- NOTE: 'ai_audit_to_full' is already permitted by 20260817000001_nurture_sequences_widen
+-- (the 9-sequence CHECK). This migration deliberately does NOT touch
+-- nurture_enrollment_sequence_check, so re-narrowing cannot regress that CHECK
+-- regardless of apply order. This migration only creates ai_audit_order.
