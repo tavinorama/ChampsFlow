@@ -43,6 +43,7 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_REDDIT_GRAPH,
   SPHERE_INSTAGRAM_GRAPH,
   SPHERE_TIKTOK_GRAPH,
   SPHERE_YOUTUBE_GRAPH,
@@ -84,6 +85,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // blog (read-only thinker that feeds the CI autopublish pipeline).
   [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
   [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
+  // #485 consumer (18/08): the Reddit sphere — first cell built to consume the
+  // Signal Engine's "where to act" queue ([__signals__]). Report-only, never
+  // publishes, fails open honestly when the SIGNAL_ENGINE envs are unset.
+  [SPHERE_REDDIT_GRAPH.slug]: SPHERE_REDDIT_GRAPH,
   // Content alive on every platform (17/08): the three short-video spheres
   // (own memory, own approval, own harvest) + the zero-spend PPC thinker.
   [SPHERE_INSTAGRAM_GRAPH.slug]: SPHERE_INSTAGRAM_GRAPH,

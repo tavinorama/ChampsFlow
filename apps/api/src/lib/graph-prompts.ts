@@ -651,6 +651,74 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- Reddit sphere (18/08): the first cell built to CONSUME the Signal ------
+  // Engine's "where to act" queue. The runner injects [__signals__] into every
+  // marketing-owned graph; this family's whole job is to USE that block — the
+  // real subreddits/threads/URLs — and, when it says SEM DADO, to say so and
+  // never invent a thread. Read-only: the brief REPORTS where to show up; a
+  // human posts (there is no Reddit publish adapter). Reddit's culture is law:
+  // no astroturf, disclose affiliation where the sub requires, genuinely help.
+
+  "reddit-signal": (ctx) =>
+    [
+      "Voce e o agente de sinais da esfera REDDIT da Ozvor (visibilidade em IA / GEO).",
+      "SINAIS EXTERNOS (materia-prima desta celula): o bloco [__signals__] abaixo traz a FILA REAL de 'onde agir' do Signal Engine — conversas e oportunidades no Reddit com URL de evidencia. LEIA-O PRIMEIRO. Escolha ate 4 oportunidades onde a Ozvor tem algo REAL a dizer sobre aparecer nas respostas de IA (ser citado no ChatGPT/Perplexity/Gemini/AI Overview, o fim do SEO como era, dores de agencia/SMB).",
+      "Se o bloco [__signals__] disser SEM DADO — ou nao existir — diga literalmente 'SEM SINAL EXTERNO DO SIGNAL ENGINE' e NAO invente subreddits, threads nem URLs. Nesse caso, liste no maximo 2 subreddits ONDE a conversa costuma acontecer (ex: r/SEO, r/marketing, r/artificial) apenas como lugar a MONITORAR, deixando claro que ainda nao ha thread concreta.",
+      "Leia tambem [memory]: nao repita uma comunidade/thread onde ja atuamos.",
+      "Para cada oportunidade REAL: 1 linha do subreddit + 1 linha da thread (titulo curto + a URL de [__signals__]) + 1 linha da dor/pergunta que abre espaco honesto para a gente.",
+      "Sem inventar dado: numero e URL so se vierem de [__signals__].",
+      "Formato de saida: lista numerada (0-4), nada antes nem depois. Se SEM DADO, a primeira linha e 'SEM SINAL EXTERNO DO SIGNAL ENGINE'.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-briefing": (ctx) =>
+    [
+      "Voce e o editor da esfera Reddit da Ozvor. O bloco [memory] abaixo e onde ja engajamos e como performou — leia primeiro. Os sinais reais estao em [signal] (derivados de [__signals__]).",
+      "REGRA: a jogada desta semana tem que ser MENSURAVELMENTE diferente do que ja fizemos em [memory] — outra comunidade, outro angulo ou outro formato. Repetir nao e opcao.",
+      "Se [signal] disser que nao ha sinal externo, o briefing tem que dizer isso com honestidade ('sem thread concreta esta semana; apenas comunidades a monitorar') e NAO fabricar uma oportunidade.",
+      "Do melhor sinal, produza: SUBREDDIT (r/...) · THREAD (titulo + URL de evidencia, ou 'nenhuma — apenas monitorar') · PUBLICO (quem esta na conversa) · DOR (a pergunta/problema real) · VALOR (o que de GENUINAMENTE util a Ozvor adiciona, ligado a visibilidade em IA / GEO) · DIFERENTE-DE (1 linha vs [memory]).",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
+      ENGLISH_FIRST,
+      "Formato de saida: 6 linhas rotuladas SUBREDDIT/THREAD/PUBLICO/DOR/VALOR/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-plan": (ctx) =>
+    [
+      `Voce e um redditor experiente que representa a Ozvor. A partir do briefing abaixo, escreva UMA jogada concreta no estilo "${String(ctx.config["style"] ?? "comment")}":`,
+      "comment = responder DENTRO de uma thread de ranking/comparacao ja existente (a THREAD do briefing): um comentario que ajuda de verdade primeiro e so entao menciona a Ozvor, se fizer sentido. · post = INICIAR nossa propria thread genuinamente valiosa no subreddit (um guia, um dado, uma pergunta honesta a comunidade), nao um anuncio disfarcado.",
+      "A jogada tem que trazer, explicitamente: (a) SUBREDDIT exato (r/...); (b) para comment, a URL da thread vinda da evidencia (de [__signals__]) — se nao houver URL, diga 'sem thread concreta, nao publicar ainda'; para post, o titulo proposto da thread; (c) COMMENT-VS-POST deixado claro; (d) uma NOTA de karma/comunidade (as regras do sub, se exige disclosure de afiliacao, se contas novas sao barradas, o nivel de karma esperado); (e) o VALOR HONESTO que adicionamos, amarrado ao nosso tema real — visibilidade em IA / GEO (aparecer nas respostas do ChatGPT/Perplexity/Gemini) — sem prometer o que o produto nao entrega.",
+      "Se o sub exige revelar afiliacao, a jogada JA inclui a linha de disclosure (ex: 'Full disclosure: I work on Ozvor').",
+      "Reddit e alergico a marketing: escreva como gente que participa da comunidade, ajuda primeiro, vende quase nunca. Nada de astroturfing, nada de fingir ser usuario neutro.",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto.",
+      ENGLISH_FIRST,
+      "Formato de saida: um bloco rotulado [MOVE: <comment|post>] com as linhas SUBREDDIT / TARGET (URL da thread ou titulo do post) / DISCLOSURE (a linha, ou 'nao exigida') / KARMA-NOTE / VALUE / DRAFT (o texto do comentario ou do post, pronto para um humano colar). Nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-critic": (ctx) =>
+    [
+      "Voce e o critico da esfera Reddit da Ozvor. Abaixo: 2 jogadas (comment e post), o briefing e o historico real em [memory].",
+      "LENTE CULTURA REDDIT (com VETO): (a) parece SPAM ou autopromocao descarada? (b) e astroturfing / grassroots falso — fingir ser um usuario neutro entusiasmado? (c) o sub exige disclosure de afiliacao e a jogada NAO revela? (d) ajuda de verdade a comunidade ANTES de mencionar a Ozvor, ou so usa a thread como outdoor? Qualquer 'sim' a a/b/c ou 'nao' a d e VETO — escreva 'VETO: spam' / 'VETO: astroturfing' / 'VETO: sem disclosure' / 'VETO: nao ajuda'.",
+      "LENTE COMPLIANCE (com VETO): promessa que o produto nao cumpre, claim sem base, dado/URL inventado que nao esta em [__signals__]/[signal].",
+      "LENTE FRESHNESS (com VETO): repete comunidade/angulo/formato de [memory]?",
+      "Para cada jogada: nota 0-10 de autenticidade + 1 frase do maior problema + 1 correcao concreta + os vetos, se houver.",
+      "Termine com: VENCEDOR: <comment|post>.",
+      "Formato de saida: 2 blocos + a linha VENCEDOR.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "reddit-finalize": (ctx) =>
+    [
+      "Voce e o editor-chefe da esfera Reddit da Ozvor. Abaixo: as 2 jogadas e a critica.",
+      "Escolha as MELHORES 2-3 jogadas da semana (pode ser o vencedor + 1-2 movimentos secundarios de comunidades diferentes) e justifique cada uma em 1 linha (por que ali, por que agora, que valor real entrega). Vetos sao lei: astroturfing/spam/sem-disclosure sai, claim sem base sai, tema repetido muda.",
+      "Se NAO ha sinal externo concreto esta semana, diga isso com todas as letras: 'Sem sinal externo do Signal Engine esta semana — nenhuma thread concreta para agir. Comunidades a monitorar: ...' e NAO fabrique jogadas.",
+      "Este brief e do FOUNDER e nao publica nada: um humano posta no Reddit (nao ha adaptador de publish). Mantenha SKIMMABLE.",
+      ENGLISH_FIRST,
+      "Formato de saida: markdown com '## Onde aparecer no Reddit esta semana' e, para cada jogada, um item com SUBREDDIT · MOVE (comment|post) · TARGET (URL ou titulo) · WHY · o DRAFT pronto para colar. Nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   "experiment-finalize": (ctx) =>
     [
       "Voce e o editor-chefe da Ozvor. Abaixo estao o rascunho do post e a critica de compliance.",

@@ -574,6 +574,39 @@ export const SPHERE_BLOG_GRAPH: GraphDefinition = {
   ],
 };
 
+/**
+ * sphere-reddit (2026-08-18): the first cell built specifically to CONSUME the
+ * Signal Engine's "where to act" queue — the [__signals__] block the runner
+ * injects into every marketing-owned graph (#485). Reddit has NO publish
+ * adapter and we are not building one: this cell REPORTS ONLY. It turns the
+ * real opportunities (subreddit, thread URL, evidence) into a weekly founder
+ * brief — "here is where to show up on Reddit this week, with the exact move"
+ * — and, when the Signal Engine envs are absent, the [__signals__] block says
+ * SEM DADO, the prompts degrade honestly and the brief states plainly there is
+ * no external signal yet. It never invents threads. Read-only by construction
+ * (no publish, no approval, no harvest, no spawn), so the "nothing publishes
+ * without a human" rule holds trivially: it publishes nothing.
+ */
+export const SPHERE_REDDIT_GRAPH: GraphDefinition = {
+  slug: "sphere-reddit",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "Reddit specialist cell (read-only, publishes NOTHING): consume the Signal Engine's 'where to act' queue ([__signals__], injected because marketing-owned) → recall what we already engaged (reddit_* outcomes + memory) → signal (read the REAL opportunities from [__signals__]; if SEM DADO, say so, never invent threads) → briefing → two moves (respond in a ranking thread vs start our own valuable thread) → critic (Reddit culture: no astroturf, disclose affiliation where the sub requires, add value not spam; freshness vs memory) → finalize (best 2-3 moves) → REPORT to the founder 'onde aparecer no Reddit'. Fail-open honest when the SIGNAL_ENGINE envs are unset.",
+  nodes: [
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 60, metricPrefix: "reddit_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "reddit-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "reddit-briefing" } },
+    // Two native Reddit moves: answer inside an existing ranking thread, or
+    // start our own genuinely useful thread. Each is honest value, never spam.
+    { id: "plan-comment", kind: "task", dependsOn: ["briefing"], config: { prompt: "reddit-plan", style: "comment" } },
+    { id: "plan-post", kind: "task", dependsOn: ["briefing"], config: { prompt: "reddit-plan", style: "post" } },
+    { id: "critic", kind: "debate", dependsOn: ["plan-comment", "plan-post", "memory"], config: { prompt: "reddit-critic", lens: "compliance-authenticity" } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["plan-comment", "plan-post", "critic"], config: { prompt: "reddit-finalize" } },
+    { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "👽 Reddit desta semana: onde aparecer (esfera reddit)" } },
+  ],
+};
+
 export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
   slug: "content-experiment",
   version: 1,
