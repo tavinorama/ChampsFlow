@@ -29,6 +29,7 @@
 ---
 
 ## B. Decisões suas (mudam o que o cliente vê)
+- **B0 (nova, do #502)** — o `/dashboard-v3` ao vivo **não tem** o AppLegalStrip nem o CaliforniaBanner (decisão documentada no layout que conflita com a exigência CCPA do strip). Manter assim ou repor o strip? (teste marcado `test.fixme` até você decidir)
 - **B1** — Pacote de créditos: **$13** (fórmula `overagePackUsd`) ou **$20** (docs/memória)?
 - **B2** — Agency: **10 marcas** (`PricingPlans.tsx`) ou **15** (`docs/PRODUCTS.md`)?
 - **B3** — Válvula `SPHERE_MAX_DAILY_APPROVALS`: **6** (default) com **7** grafos de marketing gated — sobe para 7 ou aceita o rodízio?
@@ -40,7 +41,7 @@
 - **C1** — Coletores **Meta Ad Library** + **Google** no repo do Signal Engine (spec pronta em #498; roda no repo do founder, precisa do SE no ar).
 - **C2** — **Provisionamento de tenant por marca** — lado Ozvor: `provisioning.ts` + `provider_keys` (migração em PR do founder) quando o `POST /tenants` do #498 existir.
 - **C3** — CTA do AI Audit nas **~10 páginas** restantes (`/compare`, `/learn`, `/research`, `/results`, `/vs`, `/welcome`, `/blog/watch`, legais, `/support`).
-- **C4** — **E2E honesto** (#146/#170) — EM CURSO (PR do gate honesto a caminho, 21/08); depois de estável, tornar required é 1 comando do founder.
+- ✅ **C4 — E2E honesto (#146/#170) — FEITO (#502, 21/08).** Causa do falso-verde: `continue-on-error: true` no nível do job. Os 15 vermelhos do webkit-mobile eram um **bug real**: a CSP emitia `upgrade-insecure-requests` também em localhost e o WebKit matava todo o JS — corrigido (CSP de produção intacta). Chromium agora BLOQUEANTE + alarme Telegram; webkit-mobile não-bloqueante explícito. Local: 15 failed → **0 failed / 48 passed**. Tornar required = 1 comando do founder (no corpo do #502), após alguns dias estável.
 - **C5** — **webkit-mobile** (Safari mobile) real na E2E noturna (#170).
 - **C6** — Limpeza do **tier fantasma `starter`** (PLAN_LIMITS + cockpit + CHECK de migração → PR do founder).
 - **C7** — Vídeo com apresentador (HeyGen → Remotion, digital twin — apresentador a criar).
