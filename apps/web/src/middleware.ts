@@ -39,6 +39,21 @@ export async function middleware(request: NextRequest) {
     request.nextUrl.pathname === "/play" ||
     request.nextUrl.pathname === "/geo-runner.html";
 
+  // upgrade-insecure-requests, but NOT for loopback hosts (#170). WebKit —
+  // unlike Chromium, which exempts a-priori-trustworthy loopback origins —
+  // honours the directive on http://localhost and upgrades EVERY subresource
+  // (JS chunks, CSS, fonts) to https://localhost, where no TLS listener
+  // exists. Result: the page server-renders but not one byte of client JS
+  // loads, hydration never happens, and every modal/form is dead. That was
+  // the entire webkit-mobile E2E red (15/15 failures, all "element not
+  // found" for client-rendered UI). Loopback is exactly where the E2E suite
+  // and local prod-mode testing live; production hosts are never loopback,
+  // so the shipped CSP is byte-identical.
+  const cspHost = request.nextUrl.hostname;
+  const isLoopbackCspHost =
+    cspHost === "localhost" || cspHost === "127.0.0.1" || cspHost === "[::1]";
+  const upgradeInsecure = isLoopbackCspHost ? [] : ["upgrade-insecure-requests"];
+
   const gameCsp = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
@@ -55,7 +70,7 @@ export async function middleware(request: NextRequest) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
+    ...upgradeInsecure,
   ].join("; ");
 
   const appCsp = [
@@ -94,7 +109,7 @@ export async function middleware(request: NextRequest) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
+    ...upgradeInsecure,
   ].join("; ");
 
   const csp = gamePath ? gameCsp : appCsp;

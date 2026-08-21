@@ -1,16 +1,21 @@
 name: E2E Tests
 
-# Full Playwright E2E is ADVISORY — it is NOT a per-PR merge-latency gate
-# (issue #143). It has a known CI-runner SSR stall that does not reproduce in
-# dev / `next start` / Docker / Railway, so making every small PR wait ~20 min
-# for a usually-cancelled job added latency without safety. The fast required
-# signal is the "Smoke" job in ci.yml; full E2E now runs only:
-#   - on demand           (workflow_dispatch)
-#   - nightly             (scheduled regression sweep)
-#   - on PRs that touch high-risk UI / auth / billing / admin surfaces (paths)
-# Keep "Playwright E2E" OUT of branch-protection required checks (it stays
-# continue-on-error/advisory). See AGENTS.md § CI & review gates for when Hermes
-# may approve despite this job being cancelled/stalled.
+# HONEST GATE (#146): a failing blocking suite FAILS this workflow run.
+# The old job-level `continue-on-error: true` meant the nightly failed its
+# tests every single run while the workflow concluded SUCCESS — weeks of
+# invisible red. That is gone:
+#   - chromium-desktop is BLOCKING: it fails, the run is red.
+#   - webkit-mobile runs as its own explicitly NON-BLOCKING step (#170) on
+#     nightly/dispatch only — visible in the step name, never silent.
+#   - a failing run on main (schedule/dispatch) alarms on Telegram, same
+#     pattern as blog-autopublish.yml; missing secrets degrade to the job
+#     summary only, never hide the red.
+# When to run is unchanged (issue #143 — the fast required signal is the
+# "Smoke" job in ci.yml): on demand (workflow_dispatch), nightly (schedule),
+# and on PRs that touch high-risk UI / auth / billing / admin surfaces.
+# "Playwright E2E" is NOT yet a required branch-protection check — the founder
+# flips that once a few nightly runs prove the gate stable (command in the
+# #146 PR body).
 on:
   workflow_dispatch: {}
   schedule:
@@ -72,20 +77,13 @@ jobs:
   e2e:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    # E2E is a NON-REQUIRED, advisory check. It has a known CI-runner-specific
-    # SSR stall that does not reproduce in dev / `next start` / Docker / Railway,
-    # so it must never block a merge or the deploy. continue-on-error keeps the
-    # workflow (and the PR's merge state) green even when this job is flaky in
-    # the runner; the report is still uploaded for inspection. The 8-min cap was
-    # too tight to even finish setup (npm ci + build + 2 browser installs), which
-    # guaranteed a cancel — raised so the suite can actually complete. Raised
-    # again 2026-07-10: run 29092622434 PROVED the chromium-only suite passes
-    # (15/15 green in 33.2m) but the 35-min cap killed the job while the
-    # summary was flushing. Budget is now sized to MEASURED reality: ~36 min
-    # chromium-only (PR gate) and ~70 min for the nightly full matrix
-    # (chromium + webkit), each in serial workers=1 because of the documented
-    # runner SSR slowness (~2 min/test — tracked separately for a real fix).
-    continue-on-error: true
+    # NO job-level continue-on-error (#146): that one line was the whole
+    # false-green. The 2026-08-20 nightly (run 32340369795) failed 15 tests
+    # and still concluded "success" because of it. Now only the webkit-mobile
+    # STEP below is allowed to fail without failing the job — explicitly.
+    # Budget note: the 75-min cap predates the CSP fix; the same nightly ran
+    # the full matrix in ~11 min wall clock. Kept generous on purpose — a
+    # timeout now fails the run loudly instead of being swallowed.
     timeout-minutes: 75
 
     services:
@@ -161,10 +159,25 @@ jobs:
           # server") and never comes up on :3000. Pin it to 3000.
           PORT: "3000"
 
-      - name: Run Playwright E2E tests
-        # PR gate: chromium-desktop only. Full cross-browser (webkit-mobile)
-        # coverage runs nightly + on workflow_dispatch (Hermes review #220).
-        run: npx playwright test ${{ github.event_name == 'pull_request' && '--project=chromium-desktop' || '' }}
+      - name: Run Playwright E2E — chromium (BLOQUEANTE)
+        # The blocking suite (#146): a red here fails the step, the job and
+        # the workflow run. Runs on every trigger (PRs stay chromium-only per
+        # Hermes review #220; nightly/dispatch get webkit on top, below).
+        run: npx playwright test --project=chromium-desktop
+        env:
+          CI: "true"
+          BASE_URL: "http://localhost:3000"
+
+      - name: Run Playwright E2E — webkit-mobile (não-bloqueante, #170)
+        # Nightly/dispatch only, and EXPLICITLY non-blocking: this is the one
+        # place continue-on-error survives, scoped to this step and visible in
+        # its name. #170's root cause (CSP upgrade-insecure-requests killing
+        # all client JS on http://localhost in WebKit) is fixed in this PR and
+        # the project is green locally — once a few nightlies confirm it in
+        # the runner, delete the continue-on-error and let it block too.
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: npx playwright test --project=webkit-mobile
         env:
           CI: "true"
           BASE_URL: "http://localhost:3000"
@@ -184,6 +197,33 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 7
+
+      # NADA DEGRADA CALADO (#146): the blocking suite failing on main must
+      # scream, not just tint a badge nobody watches. Same env contract as
+      # blog-autopublish.yml. Secrets are optional so their absence never
+      # hides the job summary — and the job is ALREADY red at this point
+      # regardless (this step only reports; it cannot rescue the run).
+      - name: Alarm on failure (Telegram + job summary)
+        if: failure() && github.event_name != 'pull_request'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "## 🔴 E2E VERMELHO NA MAIN"
+            echo ""
+            echo "A suite Playwright bloqueante (chromium) falhou na main. Ver o log e o artifact playwright-report."
+            echo ""
+            echo "$RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="E2E VERMELHO NA MAIN (Playwright chromium falhou no run agendado). Report + traces em ${RUN_URL}"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID não configurados como Actions secrets — alarme só no job summary."
+          fi
 
       - name: Stop servers
         if: always()

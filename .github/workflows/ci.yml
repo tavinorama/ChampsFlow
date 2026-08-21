@@ -275,7 +275,9 @@ jobs:
   #   merge-latency gate. Boots the real Hono route layer in-process (app.request)
   #   and asserts routing + auth middleware are wired — no build, no browser, no
   #   DB, no service containers. Target: green in ~1 minute (npm ci + vitest).
-  #   Full browser E2E is advisory (manual/nightly/path-filtered) — see e2e.yml.
+  #   Full browser E2E (manual/nightly/path-filtered) is an honest gate since
+  #   #146 — chromium blocking, webkit-mobile explicitly non-blocking (#170).
+  #   See e2e.yml.
   # --------------------------------------------------------------------------
   smoke:
     name: Smoke
