@@ -45,8 +45,29 @@ const SE_KEY = process.env["SIGNAL_ENGINE_API_KEY"] ?? "";
 const SE_COUNTRY = process.env["SIGNAL_ENGINE_COUNTRY"] ?? "";
 const SE_CACHE_SECONDS = 6 * 3600;
 const HERMES_TIMEOUT_MS = 240_000;
-/** Cap runs advanced per tick — a stampede of runs must not starve the queue. */
+/**
+ * Cap on EXPENSIVE advances per tick (runs with an executable next step — an
+ * LLM call each). Parked runs (waiting frontier) never count against this:
+ * the 18-20/08 production freeze happened because 5 permanently-parked runs
+ * (4 approvals with no timeout + 1 harvest waiting on a mute metric) were the
+ * 5 OLDEST 'running' rows and ate every slot of every tick for three days —
+ * the whole org, watchdog included, starved behind them.
+ */
 const MAX_RUNS_PER_TICK = 5;
+/**
+ * Parked runs (frontier step 'waiting') are re-checked every tick OUTSIDE the
+ * expensive slots — wait-node timers, harvest metric polls and approval
+ * timeouts are cheap checks in advanceRun's section 2. Generous cap so a
+ * pathological pile-up still cannot make the tick unbounded.
+ */
+const MAX_PARKED_RECHECKS_PER_TICK = 50;
+/** A 'running' run with ZERO steps after this long was never picked up — starved. */
+export const STARVED_RUN_HOURS = 24;
+export const STARVED_SUMMARY = "starved: scheduler starvation (fix PR)";
+/** Early alarm: any zero-step run older than this means the scheduler is starving NOW. */
+const STARVATION_ALARM_HOURS = 2;
+/** Redis rate-limit key for the starvation alarm — at most one per 24h. */
+const STARVATION_ALARM_KEY = "graphtick:starvation-alarm:sent";
 
 let warnedMissingHermes = false;
 
@@ -747,44 +768,153 @@ export async function runVideoAbsenceCheck(
 
 export interface GraphTickResult {
   advanced: number;
-  results: Array<{ runId: string; graph: string; status: string; started: string[] }>;
+  /** Parked runs (waiting frontier) that got their cheap re-check this tick. */
+  parkedChecked: number;
+  /** Zero-step runs older than STARVED_RUN_HOURS reconciled as failed this tick. */
+  starvedFailed: number;
+  results: Array<{ runId: string; graph: string; status: string; started: string[]; pool: "exec" | "parked" }>;
 }
 
-export async function runGraphTick(sql: postgres.Sql, redis: Redis): Promise<GraphTickResult> {
-  const slugs = Object.keys(GRAPH_REGISTRY);
-  const inflight = await sql<{ id: string; graph: string }[]>`
-    SELECT id, graph FROM ops.agent_run
-     WHERE status = 'running' AND graph = ANY(${slugs})
-     ORDER BY started_at ASC
-     LIMIT ${MAX_RUNS_PER_TICK}`;
+/** Test seams — production callers pass nothing and get the real wiring. */
+export interface GraphTickOpts {
+  hermesToken?: string;
+  advance?: typeof advanceRun;
+  ports?: GraphRunnerPorts;
+  telegram?: (text: string) => Promise<void>;
+}
 
-  if (!HERMES_TOKEN) {
-    // No token + no runs = dormant, log-only. No token + RUNS WAITING = an
-    // incident: someone started a graph the orchestrator cannot execute.
-    logger.error("graph_tick_hermes_token_missing", {
-      inflight: inflight.length,
-      hint: "set HERMES_TASK_TOKEN (and optionally HERMES_TASK_URL) on the worker",
-    });
-    if (inflight.length > 0 && !warnedMissingHermes) {
-      warnedMissingHermes = true;
-      await sendTelegram(
-        `🔴 ORQUESTRADOR SEM EXECUTOR: ${inflight.length} run(s) de graph em andamento mas HERMES_TASK_TOKEN ausente no worker — nada avança até a env existir.`
-      );
-    }
-    return { advanced: 0, results: [] };
+export async function runGraphTick(
+  sql: postgres.Sql,
+  redis: Redis,
+  opts: GraphTickOpts = {}
+): Promise<GraphTickResult> {
+  const slugs = Object.keys(GRAPH_REGISTRY);
+  const telegram = opts.telegram ?? sendTelegram;
+
+  // 0) Starved-run reconciliation. A 'running' run with ZERO steps after 24h
+  // was never picked up by any tick — the 18-20/08 backlog (26 runs). Failing
+  // them here, with an auditable step row, keeps a deploy from suddenly
+  // burning LLM money on days-old briefings; the next cron starts fresh.
+  const starved = await sql<{ id: string; graph: string }[]>`
+    /* tick:starved-select */
+    SELECT r.id, r.graph FROM ops.agent_run r
+     WHERE r.status = 'running' AND r.graph = ANY(${slugs})
+       AND r.started_at < NOW() - make_interval(hours => ${STARVED_RUN_HOURS})
+       AND NOT EXISTS (SELECT 1 FROM ops.agent_step s WHERE s.run_id = r.id)
+     ORDER BY r.started_at ASC`;
+  if (starved.length > 0) {
+    const ids = starved.map((r) => r.id);
+    // One failed step per run so the failure is auditable (todo job auditável)
+    // — agent_run has no summary column; the step carries the reason.
+    await sql`
+      /* tick:starved-step */
+      INSERT INTO ops.agent_step (run_id, node, status, summary)
+      SELECT id, '__starved__', 'failed', ${STARVED_SUMMARY}
+        FROM ops.agent_run WHERE id = ANY(${ids}::uuid[])`;
+    await sql`
+      /* tick:starved-fail */
+      UPDATE ops.agent_run SET status = 'failed', ended_at = NOW()
+       WHERE id = ANY(${ids}::uuid[])`;
+    // ONE consolidated line, count per graph — not 26 messages.
+    const perGraph = new Map<string, number>();
+    for (const r of starved) perGraph.set(r.graph, (perGraph.get(r.graph) ?? 0) + 1);
+    const breakdown = [...perGraph.entries()].map(([g, n]) => `${g}×${n}`).join(", ");
+    await telegram(
+      `🔴 RECONCILIAÇÃO DE FOME: ${starved.length} run(s) com ZERO steps há >${STARVED_RUN_HOURS}h marcadas como failed ("${STARVED_SUMMARY}"): ${breakdown}. Backlog limpo — os próximos crons rodam do zero, sem queimar LLM em briefings velhos.`
+    );
+    logger.warn("graph_tick_starved_reconciled", { count: starved.length, breakdown });
   }
 
-  const ports = buildPorts(sql, redis);
-  const results: GraphTickResult["results"] = [];
-  for (const run of inflight) {
-    const def = GRAPH_REGISTRY[run.graph];
-    if (!def) continue; // registry changed underfoot; next deploy's problem
+  // 0b) Starvation alarm — cheap in-tick check, rate-limited to once per 24h.
+  // Any zero-step run older than 2h means the scheduler is starving NOW.
+  // NOTE (vigia fica fora do vigiado): this alarm lives INSIDE the tick, so a
+  // dead worker cannot fire it — the true external vigia (CI-based liveness
+  // probe on ops.agent_step recency) is follow-up work, per the house rule.
+  const hungry = await sql<{ id: string; graph: string; started_at: string }[]>`
+    /* tick:starvation-alarm */
+    SELECT r.id, r.graph, r.started_at::text AS started_at FROM ops.agent_run r
+     WHERE r.status = 'running' AND r.graph = ANY(${slugs})
+       AND r.started_at < NOW() - make_interval(hours => ${STARVATION_ALARM_HOURS})
+       AND NOT EXISTS (SELECT 1 FROM ops.agent_step s WHERE s.run_id = r.id)
+     ORDER BY r.started_at ASC
+     LIMIT 50`;
+  if (hungry.length > 0) {
+    let firstToday: unknown = "OK";
     try {
-      const res = await advanceRun(def, run.id, ports);
-      results.push({ runId: run.id, graph: run.graph, status: res.status, started: res.started });
+      firstToday = await redis.set(STARVATION_ALARM_KEY, "1", "EX", 24 * 3600, "NX");
+    } catch {
+      /* redis down: alarm anyway — better twice than never */
+    }
+    if (firstToday === "OK") {
+      const oldest = hungry[0]!;
+      await telegram(
+        `🟠 FOME NO SCHEDULER: ${hungry.length} run(s) 'running' com ZERO steps há >${STARVATION_ALARM_HOURS}h. Mais antiga: ${oldest.graph} (run ${oldest.id.slice(0, 8)}, desde ${oldest.started_at.slice(0, 16)}). O tick não está chegando nelas — verificar slots/parked runs.`
+      );
+    }
+    logger.warn("graph_tick_starvation_detected", { count: hungry.length, oldestGraph: hungry[0]!.graph });
+  }
+
+  // 1) Two-pool selection. THE 18-20/08 LESSON: a parked run must NEVER cost
+  // an advanceable run its execution slot.
+  //  - exec pool: runs with NO waiting step — their next step is real work
+  //    (an LLM call), so they get the MAX_RUNS_PER_TICK slots, oldest first.
+  //    On a healthy queue (nothing waiting) this is EXACTLY the old query.
+  //  - parked pool: runs whose frontier holds a 'waiting' step (approval /
+  //    wait / harvest). advanceRun's section 2 re-checks these cheaply every
+  //    tick (timers, metric polls, approval timeouts) — no LLM call unless
+  //    the wait actually resolves, which is precisely when we WANT one.
+  // The partition is one indexed NOT EXISTS / EXISTS over agent_step(run_id);
+  // the two sets are disjoint by construction.
+  const execPool = await sql<{ id: string; graph: string }[]>`
+    /* tick:exec-pool */
+    SELECT r.id, r.graph FROM ops.agent_run r
+     WHERE r.status = 'running' AND r.graph = ANY(${slugs})
+       AND NOT EXISTS (
+         SELECT 1 FROM ops.agent_step s
+          WHERE s.run_id = r.id AND s.status = 'waiting')
+     ORDER BY r.started_at ASC
+     LIMIT ${MAX_RUNS_PER_TICK}`;
+  const parkedPool = await sql<{ id: string; graph: string }[]>`
+    /* tick:parked-pool */
+    SELECT r.id, r.graph FROM ops.agent_run r
+     WHERE r.status = 'running' AND r.graph = ANY(${slugs})
+       AND EXISTS (
+         SELECT 1 FROM ops.agent_step s
+          WHERE s.run_id = r.id AND s.status = 'waiting')
+     ORDER BY r.started_at ASC
+     LIMIT ${MAX_PARKED_RECHECKS_PER_TICK}`;
+
+  const token = opts.hermesToken ?? HERMES_TOKEN;
+  if (!token) {
+    // No token + no runs = dormant, log-only. No token + RUNS WAITING = an
+    // incident: someone started a graph the orchestrator cannot execute.
+    const inflight = execPool.length + parkedPool.length;
+    logger.error("graph_tick_hermes_token_missing", {
+      inflight,
+      hint: "set HERMES_TASK_TOKEN (and optionally HERMES_TASK_URL) on the worker",
+    });
+    if (inflight > 0 && !warnedMissingHermes) {
+      warnedMissingHermes = true;
+      await telegram(
+        `🔴 ORQUESTRADOR SEM EXECUTOR: ${inflight} run(s) de graph em andamento mas HERMES_TASK_TOKEN ausente no worker — nada avança até a env existir.`
+      );
+    }
+    return { advanced: 0, parkedChecked: 0, starvedFailed: starved.length, results: [] };
+  }
+
+  const advance = opts.advance ?? advanceRun;
+  const ports = opts.ports ?? buildPorts(sql, redis);
+  const results: GraphTickResult["results"] = [];
+  const visit = async (run: { id: string; graph: string }, pool: "exec" | "parked") => {
+    const def = GRAPH_REGISTRY[run.graph];
+    if (!def) return; // registry changed underfoot; next deploy's problem
+    try {
+      const res = await advance(def, run.id, ports);
+      results.push({ runId: run.id, graph: run.graph, status: res.status, started: res.started, pool });
       logger.info("graph_tick_advanced", {
         runId: run.id,
         graph: run.graph,
+        pool,
         status: res.status,
         started: res.started.join(","),
         notes: res.notes.join("; ").slice(0, 300),
@@ -794,9 +924,18 @@ export async function runGraphTick(sql: postgres.Sql, redis: Redis): Promise<Gra
       logger.error("graph_tick_run_error", {
         runId: run.id,
         graph: run.graph,
+        pool,
         message: (err as Error).message?.slice(0, 200),
       });
     }
-  }
-  return { advanced: results.length, results };
+  };
+  for (const run of execPool) await visit(run, "exec");
+  for (const run of parkedPool) await visit(run, "parked");
+
+  return {
+    advanced: results.filter((r) => r.pool === "exec").length,
+    parkedChecked: results.filter((r) => r.pool === "parked").length,
+    starvedFailed: starved.length,
+    results,
+  };
 }
