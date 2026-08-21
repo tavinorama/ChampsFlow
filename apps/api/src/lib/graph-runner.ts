@@ -208,6 +208,16 @@ export interface AdvanceResult {
 
 /** A step stuck 'running' longer than this is treated as a crash. */
 export const RUNNING_TIMEOUT_HOURS = 2;
+/**
+ * Default timeout for EVERY approval node that does not declare its own
+ * config.timeoutHours. The 18-20/08 starvation was caused by four daily-video
+ * runs parked forever on a founder-approval with NO timeout — immortal runs
+ * that ate the tick's slots for three days. An approval the human never
+ * answers now resolves itself: timeout = rejection-by-silence, NEVER
+ * publication. Same mechanism daily-dream's launch-approval always used
+ * (config.timeoutHours: 96) — this only makes 96h the floor for everyone.
+ */
+export const DEFAULT_APPROVAL_TIMEOUT_HOURS = 96;
 /** A harvest that finds nothing keeps waiting this long, then finishes as noData — loud, never a fake zero. */
 export const HARVEST_GRACE_HOURS = 48;
 
@@ -345,18 +355,34 @@ export async function advanceRun(
       }
     } else if (node.kind === "approval") {
       // Approvals stay 'waiting' until the #445 finish route decides them — but
-      // an approval with config.timeoutHours does not park forever: a stale
-      // decision resolves itself, so a launch nobody answered cannot leave a
-      // run 'running' indefinitely. optional → skipped (benign, the tail just
-      // doesn't run); required → failed (a stale publish approval must not ship).
-      const timeoutHours = Number(node.config?.["timeoutHours"] ?? 0);
-      if (timeoutHours > 0 && hoursSince(step.started_at, now()) >= timeoutHours) {
+      // NO approval parks forever (18-20/08 starvation: immortal approvals ate
+      // the tick's slots for three days). An explicit config.timeoutHours wins;
+      // without one, DEFAULT_APPROVAL_TIMEOUT_HOURS applies. optional → skipped
+      // (benign, the tail just doesn't run); required → failed, out loud, with
+      // the content that died un-decided. Timeout NEVER auto-approves: silence
+      // is a rejection, and nothing reaches the public on a timeout.
+      const configured = Number(node.config?.["timeoutHours"] ?? 0);
+      const timeoutHours = configured > 0 ? configured : DEFAULT_APPROVAL_TIMEOUT_HOURS;
+      if (hoursSince(step.started_at, now()) >= timeoutHours) {
         const optional = node.config?.["optional"] === true;
         await substrate.finishStep(step.id, {
           status: optional ? "skipped" : "failed",
-          summary: `approval timed out after ${timeoutHours}h (${optional ? "optional → skipped" : "required → failed"})`,
+          summary: `approval timed out after ${timeoutHours}h — no decision (${optional ? "optional → skipped" : "timeout = rejection-by-silence, nothing published"})`,
         });
         step.status = optional ? "skipped" : "failed";
+        if (!optional) {
+          // Name the content that died — the founder must know WHAT expired,
+          // not just that something did (nada degrada calado).
+          const content = (await artifacts.get(runId, node.dependsOn[0] ?? "")) ?? "";
+          await telegram(
+            [
+              `⏳ APROVAÇÃO EXPIROU — graph ${def.slug} (run ${runId.slice(0, 8)}): sem decisão em ${timeoutHours}h.`,
+              `NADA foi publicado — timeout é rejeição por silêncio, nunca publicação.`,
+              `Conteúdo que morreu sem decisão:`,
+              content.slice(0, 400) || "(sem artefato)",
+            ].join("\n")
+          );
+        }
         notes.push(`approval ${nodeId} timed out`);
       }
     }

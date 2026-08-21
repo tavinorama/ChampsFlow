@@ -19,6 +19,7 @@ import {
   advanceRun,
   GRAPH_REGISTRY,
   HARVEST_GRACE_HOURS,
+  DEFAULT_APPROVAL_TIMEOUT_HOURS,
   type GraphRunnerPorts,
   type StepRow,
   type RunRow,
@@ -276,6 +277,34 @@ describe("daily-video, the full life", () => {
     expect(world.published).toEqual([]);
   });
 
+  it("an approval nobody answers dies at the 96h DEFAULT — rejection-by-silence, NOTHING publishes (18-20/08 immortal approvals)", async () => {
+    // daily-video's founder-approval declares NO timeoutHours — before this
+    // fix it parked forever, and four such runs ate the tick's slots for
+    // three days. Now the default applies.
+    const world = makeWorld();
+    await tickUntil(world, () => world.stepByNode("founder-approval")?.status === "waiting");
+
+    // Just under the default: still waiting — the decision is still the founder's.
+    world.clock.now = new Date(world.clock.now.getTime() + (DEFAULT_APPROVAL_TIMEOUT_HOURS - 1) * 3_600_000);
+    await tick(world);
+    expect(world.stepByNode("founder-approval")?.status).toBe("waiting");
+
+    // Past the default: the approval fails honestly and the run fails with it.
+    world.clock.now = new Date(world.clock.now.getTime() + 2 * 3_600_000);
+    await tickUntil(world, () => world.run.status !== "running");
+
+    expect(world.stepByNode("founder-approval")?.status).toBe("failed");
+    expect(world.stepByNode("founder-approval")?.summary).toContain(
+      `timed out after ${DEFAULT_APPROVAL_TIMEOUT_HOURS}h`
+    );
+    // THE rule: timeout NEVER auto-approves — nothing was handed to Postiz.
+    expect(world.published).toEqual([]);
+    expect(world.stepByNode("publish")).toBeUndefined();
+    expect(world.run.status).toBe("failed");
+    // The founder learns WHICH content died un-decided, out loud.
+    expect(world.telegrams.some((t) => t.includes("APROVAÇÃO EXPIROU"))).toBe(true);
+  });
+
   it("a harvest whose SOURCE is mute (0 rows at grace) SCREAMS and records NO outcome — never a fake zero", async () => {
     // Structural hole #3 of the 14/08 sweep. Before: n=0 at grace → total=0
     // → verdict wrote value_after=0 → the learning loop was taught "did not
@@ -388,6 +417,19 @@ describe("the Chief Dreaming Officer acts — the brief lands, the founder launc
     expect(seed, "the experiment must be seeded with the hypothesis").toBeTruthy();
     expect(world.stepByNode("launch-report")?.status).toBe("succeeded");
     expect(world.telegrams.some((t) => t.includes("EXPERIMENTO"))).toBe(true);
+    expect(world.run.status).toBe("succeeded");
+  });
+
+  it("the explicit optional 96h timeout still SKIPS (not fails) — the dream mechanism is unchanged", async () => {
+    const world = makeWorld(DAILY_DREAM_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("launch-approval")?.status === "waiting", 25, DAILY_DREAM_GRAPH);
+
+    world.clock.now = new Date(world.clock.now.getTime() + 97 * 3_600_000);
+    await tickUntil(world, () => world.run.status !== "running", 25, DAILY_DREAM_GRAPH);
+
+    // Optional approval: silence skips the acting tail, the brief still counts.
+    expect(world.stepByNode("launch-approval")?.status).toBe("skipped");
+    expect(world.spawnedRuns).toEqual([]);
     expect(world.run.status).toBe("succeeded");
   });
 
