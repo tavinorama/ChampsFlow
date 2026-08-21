@@ -93,8 +93,12 @@ test.describe("DPA Modal — EU user (L-UX-1 / CI-1)", () => {
     const modal = page.getByRole("dialog").or(page.getByTestId("dpa-modal"));
     await expect(modal).toBeVisible({ timeout: 5_000 });
 
-    // EU-specific copy: must contain GDPR reference (L-UX-1)
-    const euCopy = page.getByText(/GDPR|data processing agreement|EU/i).first();
+    // EU-specific copy: must contain GDPR reference (L-UX-1). Scoped to the
+    // modal: the page-wide locator's /EU/i alternative matched the sidebar's
+    // "Fix qUEue" span first, which is hidden on the mobile viewport — so the
+    // assertion failed on webkit-mobile while passing (for the wrong element)
+    // on desktop. The modal's actual EU copy cites "GDPR Art. 28".
+    const euCopy = modal.getByText(/GDPR|data processing agreement/i).first();
     await expect(euCopy).toBeVisible();
 
     // The gate itself is the assertion. The old line looked for a
@@ -349,7 +353,13 @@ test.describe("California banner — US user detection (CI-2)", () => {
   test("'Do Not Sell' link is present in footer on all pages", async ({ page }) => {
     await setupSession(page, { dpaAcknowledged: true, countryCode: "US" });
 
-    const pagesToCheck = ["/dashboard", "/schedule", "/account/connections"];
+    // "/dashboard" used to be checked here, and only ever passed by accident:
+    // it now server-redirects to /dashboard-v3, and the assertion ran against
+    // the TRANSIENT old app-shell chrome streamed before the client redirect
+    // fired (on webkit-mobile the redirect raced the next goto() instead —
+    // "Navigation ... interrupted by another navigation to /dashboard-v3").
+    // /dashboard-v3 itself has NO legal strip — see the fixme test below.
+    const pagesToCheck = ["/schedule", "/account/connections"];
     for (const path of pagesToCheck) {
       await page.goto(path);
       const footerLink = page
@@ -357,5 +367,23 @@ test.describe("California banner — US user detection (CI-2)", () => {
         .or(page.getByText(/do not sell or share/i).first());
       await expect(footerLink).toBeVisible({ timeout: 5_000 });
     }
+  });
+
+  // REAL product gap, not test drift (#146 investigation, rides on #170's
+  // webkit red): the LIVE dashboard (/dashboard-v3) renders neither the
+  // AppLegalStrip nor the CaliforniaBanner. apps/web/src/app/layout.tsx
+  // documents this as a deliberate fit-to-viewport decision ("NO CCPA banner
+  // here ... the CCPA control stays reachable via /ccpa + account settings"),
+  // while AppLegalStrip.tsx says the Do-Not-Sell link "must stay" on every
+  // page. Those two statements cannot both be true on the page users spend
+  // the most time on. Founder/legal call needed; enable this test when the
+  // link ships on v3.
+  test.fixme("'Do Not Sell' link on /dashboard-v3 (live dashboard) — absent by layout design, compliance decision pending", async ({ page }) => {
+    await setupSession(page, { dpaAcknowledged: true, countryCode: "US" });
+    await page.goto("/dashboard-v3");
+    const footerLink = page
+      .getByRole("link", { name: /do not sell/i })
+      .or(page.getByText(/do not sell or share/i).first());
+    await expect(footerLink).toBeVisible({ timeout: 5_000 });
   });
 });

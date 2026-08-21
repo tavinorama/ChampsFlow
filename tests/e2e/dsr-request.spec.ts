@@ -249,15 +249,21 @@ test.describe("DSR — Access request / SAR (GDPR Art. 15 / CCPA §1798.110) [Co
     await emailInput.fill("sar-user@example.com");
     await page.getByRole("button", { name: /submit|request/i }).click();
 
-    // Enter correct OTP
-    const otpInput = page.getByLabel(/code|OTP/i).or(page.getByPlaceholder(/6.digit|code/i));
-    if (await otpInput.isVisible()) {
-      await otpInput.fill("123456");
-      await page.getByRole("button", { name: /verify|confirm/i }).click();
-    }
+    // Enter correct OTP. The old `if (await otpInput.isVisible())` was a
+    // non-retrying race: on the slower webkit-mobile render the OTP step had
+    // not mounted yet, the whole verify branch was silently skipped, and the
+    // final assertion then failed. Wait for the step like a user would.
+    const otpInput = page
+      .getByLabel(/code|OTP/i)
+      .or(page.getByPlaceholder(/6.digit|code/i))
+      .first();
+    await expect(otpInput).toBeVisible({ timeout: 10_000 });
+    await otpInput.fill("123456");
+    await page.getByRole("button", { name: /verify|confirm/i }).click();
 
-    // Processing status confirmed
-    const processingMessage = page.getByText(/processing|submitted|request received/i).first();
+    // Confirmation step — the page's real copy is "Request verified … has been
+    // received and verified", asserted exactly instead of a loose regex.
+    const processingMessage = page.getByText(/received and verified/i).first();
     await expect(processingMessage).toBeVisible({ timeout: 5_000 });
   });
 });

@@ -70,7 +70,7 @@ The **required** merge gate on every PR is six fast checks:
 **Build · Unit & Integration Tests · Lint & Type Check · Security Checks · Compliance Tests · Smoke.**
 "Smoke" boots the Hono route layer in-process (routing + auth wired) in ~1 min — it is the fast required signal.
 
-Full **Playwright E2E is advisory, not a merge gate.** It has a known CI-runner SSR stall that does not reproduce in `next start` / Docker / Railway, so it is `continue-on-error` and must **not** be a branch-protection required check. It now runs only on demand (`workflow_dispatch`), nightly, or on PRs that touch high-risk UI/auth/billing/admin paths (see `.github/workflows/e2e.yml`).
+Full **Playwright E2E is an honest gate since #146**: the chromium-desktop suite is blocking — if it fails, the workflow run is red (the old job-level `continue-on-error` that kept weeks of nightly failures invisible is gone). webkit-mobile runs nightly/dispatch as an explicitly non-blocking step (#170) until a few nightlies prove it stable in the runner. A failing run on `main` alarms on Telegram (same pattern as blog-autopublish). It still runs only on demand (`workflow_dispatch`), nightly, or on PRs that touch high-risk UI/auth/billing/admin paths (see `.github/workflows/e2e.yml`), and it is **not yet** a branch-protection required check — the founder flips that once the gate has a stable green streak.
 
 **Hermes may approve/merge despite "Playwright E2E" being cancelled/stalled** when all of:
 - the six required checks are green, and
