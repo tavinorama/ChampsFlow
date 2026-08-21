@@ -70,6 +70,7 @@ import { registerAiAuditRoutes } from "./routes/ai-audit";
 import { registerBookRoutes } from "./routes/book";
 import { registerPrimeRoutes } from "./routes/prime";
 import { registerTelegramRoutes } from "./routes/telegram";
+import { ensureTelegramWebhook } from "./lib/telegram-webhook-setup";
 import { registerSignalsRoutes } from "./routes/signals";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
@@ -290,6 +291,13 @@ registerBookRoutes(app, db);
 registerPrimeRoutes(app, db);
 // Telegram bot webhook: approve/reject buttons → graph decisions (17/08).
 registerTelegramRoutes(app, db);
+// Self-register the webhook with Telegram at boot (21/08: every click died in
+// the air because setWebhook was never run — zero requests ever reached this
+// route). Idempotent, fire-and-forget, never blocks or fails the boot; the
+// module handles its own errors, this catch is for the truly unexpected.
+void ensureTelegramWebhook().catch((err: Error) => {
+  logger.error("telegram_webhook_boot_failed", { message: err.message?.slice(0, 200) });
+});
 // "Where to show up" (#485 product half): the Signal Engine "where to act"
 // queue as per-brand action cards. Honest not-connected state until the
 // SIGNAL_ENGINE_* env lands — never fabricates opportunities.
