@@ -40,6 +40,7 @@ import {
   validateGraph,
   type GraphDefinition,
 } from "../../apps/api/src/lib/agent-graphs";
+import { X_POST_LIMIT, xPostWithinLimit } from "../../packages/shared/src/x-post-limit";
 
 interface FakeWorld {
   ports: GraphRunnerPorts;
@@ -181,6 +182,16 @@ describe("the registry only holds graphs the brain accepts", () => {
       const v = validateGraph(def);
       expect(v.errors, def.slug).toEqual([]);
       expect(v.valid).toBe(true);
+    }
+  });
+
+  it("the marketing spheres are all registered — including sphere-reddit (#485)", () => {
+    // Registration is the ONLY way a graph becomes startable (operator route +
+    // worker crons both read this map). sphere-reddit must be here, marketing-
+    // owned (so it receives [__signals__]), or its Wed cron would start nothing.
+    for (const slug of ["sphere-blog", "sphere-reddit", "sphere-ppc"]) {
+      expect(GRAPH_REGISTRY[slug], `${slug} missing from registry`).toBeTruthy();
+      expect(GRAPH_REGISTRY[slug]!.vpOwner).toBe("marketing");
     }
   });
 });
@@ -474,6 +485,51 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     expect(world.outcomes[0]!.metric).toBe("x_impressions");
     expect(world.outcomes[0]!.valueAfter).toBe(45);
     expect(world.run.status).toBe("succeeded");
+  });
+});
+
+describe("the X sphere refuses to ship an over-limit post (prod failure 17/08)", () => {
+  // The x-finalize prompt marks the editor-chief node; over-limit ONLY there.
+  const FINALIZE_MARKER = "editor-chefe da esfera X";
+  const OVER_LIMIT = ("word ".repeat(120)).trim(); // ~600 chars, boundaries to trim on
+
+  it("adapts the finalized post to X's limit BEFORE approval — the founder sees what will publish", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    const orig = world.ports.hermes.task.bind(world.ports.hermes);
+    world.ports.hermes.task = async (prompt) =>
+      prompt.includes(FINALIZE_MARKER)
+        ? { ok: true, output: OVER_LIMIT, engineUsed: "claude", ms: 10 }
+        : orig(prompt);
+
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+
+    // What the approval gate holds is already compliant — no over-limit tweet.
+    const finalized = (await world.ports.artifacts.get(world.run.id, "finalize")) ?? "";
+    expect(finalized).not.toBe("");
+    expect(xPostWithinLimit(finalized)).toBe(true);
+    expect(world.stepByNode("finalize")?.summary).toContain(`adapted to X ${X_POST_LIMIT}`);
+    // The Telegram ask shows the trimmed content the founder is approving.
+    const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO"));
+    expect(ask).toContain(finalized.slice(0, 50));
+    expect(world.published).toEqual([]);
+  });
+
+  it("belt-and-suspenders: if an over-limit post reaches publish, it is NOT sent and the step fails loudly", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+
+    // Simulate the adapt step being skipped/edited around: overwrite the
+    // finalized artifact with an over-limit post AFTER it was made compliant.
+    await world.ports.artifacts.set(world.run.id, "finalize", OVER_LIMIT);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+
+    await tickUntil(world, () => world.stepByNode("publish")?.status !== undefined, 25, SPHERE_X_GRAPH);
+
+    // Nothing was handed to Postiz; the step failed with an honest reason.
+    expect(world.published).toEqual([]);
+    expect(world.stepByNode("publish")?.status).toBe("failed");
+    expect(world.stepByNode("publish")?.summary).toContain(`over ${X_POST_LIMIT} chars, not sent`);
+    expect(world.telegrams.some((t) => t.includes("X NÃO PUBLICADO"))).toBe(true);
   });
 });
 

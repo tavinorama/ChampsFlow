@@ -43,6 +43,7 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
+  SPHERE_REDDIT_GRAPH,
   SPHERE_INSTAGRAM_GRAPH,
   SPHERE_TIKTOK_GRAPH,
   SPHERE_YOUTUBE_GRAPH,
@@ -50,6 +51,11 @@ import {
 } from "./agent-graphs";
 import { buildPrompt } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
+import {
+  X_POST_LIMIT,
+  xPostWithinLimit,
+  adaptXForPublish,
+} from "../../../../packages/shared/src/x-post-limit";
 
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
 export const SEED_ARTIFACT = "__seed__";
@@ -79,6 +85,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // blog (read-only thinker that feeds the CI autopublish pipeline).
   [SPHERE_LINKEDIN_GRAPH.slug]: SPHERE_LINKEDIN_GRAPH,
   [SPHERE_BLOG_GRAPH.slug]: SPHERE_BLOG_GRAPH,
+  // #485 consumer (18/08): the Reddit sphere — first cell built to consume the
+  // Signal Engine's "where to act" queue ([__signals__]). Report-only, never
+  // publishes, fails open honestly when the SIGNAL_ENGINE envs are unset.
+  [SPHERE_REDDIT_GRAPH.slug]: SPHERE_REDDIT_GRAPH,
   // Content alive on every platform (17/08): the three short-video spheres
   // (own memory, own approval, own harvest) + the zero-spend PPC thinker.
   [SPHERE_INSTAGRAM_GRAPH.slug]: SPHERE_INSTAGRAM_GRAPH,
@@ -220,6 +230,30 @@ function statesFrom(byNode: Map<string, StepRow>): NodeStates {
   return states;
 }
 
+/** Is this publish node targeting X? (channel string is case-insensitive.) */
+function isXPublish(node: GraphNode): boolean {
+  return node.kind === "publish" && String(node.config?.["channel"] ?? "").toLowerCase() === "x";
+}
+
+/**
+ * The content node whose artifact ultimately reaches an X publish. Mirrors the
+ * publish handler's walk-back: publish → approval (dependsOn[0]) → content
+ * (approval.dependsOn[0]). Returns the set of such content-node ids so the
+ * adapt/finalize step can pre-trim to X's limit BEFORE the approval message is
+ * sent, keeping what the founder sees identical to what would publish.
+ */
+function xAdaptNodeIds(def: GraphDefinition): Set<string> {
+  const ids = new Set<string>();
+  for (const pub of def.nodes) {
+    if (!isXPublish(pub)) continue;
+    const approvalId = pub.dependsOn[0];
+    const approval = def.nodes.find((n) => n.id === approvalId);
+    const contentId = approval?.dependsOn[0] ?? approvalId;
+    if (contentId) ids.add(contentId);
+  }
+  return ids;
+}
+
 async function upstreamArtifacts(
   def: GraphDefinition,
   node: GraphNode,
@@ -358,6 +392,9 @@ export async function advanceRun(
 
   // 4) Start whatever became ready.
   const states = statesFrom(byNode);
+  // Content nodes whose artifact reaches an X publish — pre-trimmed to X's limit
+  // at finalize time so approval == what publishes.
+  const xAdaptNodes = xAdaptNodeIds(def);
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -401,11 +438,19 @@ export async function advanceRun(
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: sha(prompt) });
       const res = await hermes.task(prompt);
       if (res.ok && res.output) {
-        await artifacts.set(runId, node.id, res.output);
+        // Adapt/finalize step for X: if this node's artifact is what the X
+        // publish will send, trim each tweet to X's limit HERE — so the founder
+        // approves exactly what would post, and an over-limit draft never
+        // reaches approval only to be rejected by Postiz (prod failure 17/08).
+        const output = xAdaptNodes.has(node.id) ? adaptXForPublish(res.output) : res.output;
+        await artifacts.set(runId, node.id, output);
         await substrate.finishStep(stepId, {
           status: "succeeded",
-          outputHash: sha(res.output),
-          summary: `${node.kind} ok via ${res.engineUsed ?? "?"}`,
+          outputHash: sha(output),
+          summary:
+            output === res.output
+              ? `${node.kind} ok via ${res.engineUsed ?? "?"}`
+              : `${node.kind} ok via ${res.engineUsed ?? "?"} (adapted to X ${X_POST_LIMIT}-char limit)`,
           ms: res.ms,
           engine: res.engineUsed,
         });
@@ -470,6 +515,19 @@ export async function advanceRun(
         continue;
       }
       const channel = String(config["channel"] ?? "linkedin");
+      // Belt-and-suspenders (prod failure 17/08): even if the adapt step was
+      // skipped or edited around, NEVER hand Postiz an over-limit X post. Fail
+      // the step honestly with a reason instead of a silent, wasted send.
+      if (isXPublish(node) && !xPostWithinLimit(post)) {
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: `x post over ${X_POST_LIMIT} chars, not sent (adapt step missed it) — nothing published`,
+        });
+        await telegram(
+          `🔴 X NÃO PUBLICADO — graph ${def.slug} (run ${runId.slice(0, 8)}): post acima de ${X_POST_LIMIT} caracteres. NADA foi enviado ao Postiz. O passo de adaptação deixou passar; corrigir o finalize.`
+        );
+        continue;
+      }
       const res = await hermes.publish({ channel, post });
       if (res.ok) {
         await artifacts.set(runId, node.id, res.detail);

@@ -175,3 +175,9 @@ export interface RateLimitHeaders {
 export * from "./plan-limits";
 export * from "./credits";
 export * from "./prime-nudges";
+
+// ---------------------------------------------------------------------------
+// X (Twitter) post length limit — enforced in the sphere-x adapt + publish path
+// (prod failure 17/08: over-limit post rejected by Postiz, whole run wasted)
+// ---------------------------------------------------------------------------
+export * from "./x-post-limit";
