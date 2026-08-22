@@ -21,11 +21,12 @@
  * sign-in redirect or a returning visitor never retypes.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
 import { useVerifiedEmail } from "../../../lib/use-verified-email";
 import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
 import { trackEvent } from "../../../lib/track";
+import { readAttributionFromLocation } from "../../../lib/campaign-attribution";
 import {
   COPY,
   ENGINE_CARDS,
@@ -115,9 +116,15 @@ export function AiAuditClient() {
     };
   }, []);
 
+  // Campaign origin (?from= / utm_*) — captured once on mount so the $49
+  // checkout POST can say which cold-outreach campaign sold. It rides in a ref
+  // (survives the multi-step questionnaire) and the API re-sanitizes it.
+  const attributionRef = useRef<Record<string, string> | null>(null);
+
   // Restore the draft (social sign-in redirect / returning visitor). URL
   // params (testId from the free test) win over the draft.
   useEffect(() => {
+    attributionRef.current = readAttributionFromLocation();
     const p = new URLSearchParams(window.location.search);
     const t = p.get("testId");
     if (t) setTestId(t);
@@ -206,9 +213,12 @@ export function AiAuditClient() {
       const res = await fetch("/api/ai-audit/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          buildCheckoutPayload({ email, marketingConsent, businessType, primaryFocus, pains, engines, toolsInUseRaw, testId })
-        ),
+        body: JSON.stringify({
+          ...buildCheckoutPayload({ email, marketingConsent, businessType, primaryFocus, pains, engines, toolsInUseRaw, testId }),
+          // Compact campaign origin (?from= / utm_*) — the API sanitizes again
+          // and stores it in the order's answers jsonb + the lead's result.
+          ...(attributionRef.current ? { attribution: attributionRef.current } : {}),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { url?: string; message?: string; code?: string };
       if (res.ok && data.url) {

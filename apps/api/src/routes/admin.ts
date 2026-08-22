@@ -263,8 +263,15 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         region: string;
         source: string;
         created_at: string;
+        origin_from: string | null;
+        utm_campaign: string | null;
       }>(
-        `SELECT id, email, brand, category, region, source, created_at
+        // Campaign origin lives inside the result jsonb: /test and /ai-audit
+        // write result->'attribution' (from + utm_*); /book writes the legacy
+        // top-level result->>'from'. COALESCE covers both — no migration.
+        `SELECT id, email, brand, category, region, source, created_at,
+                COALESCE(result->'attribution'->>'from', result->>'from') AS origin_from,
+                result->'attribution'->>'utm_campaign' AS utm_campaign
          FROM lead_capture
          ORDER BY created_at DESC
          LIMIT 200`

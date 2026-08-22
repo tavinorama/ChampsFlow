@@ -118,6 +118,10 @@ interface Lead {
   region: string;
   source: string;
   created_at: string;
+  /** Campaign origin: ?from= on /test, /ai-audit or /book (result jsonb). */
+  origin_from?: string | null;
+  /** utm_campaign captured with the lead, when the link carried one. */
+  utm_campaign?: string | null;
 }
 
 // Lightweight CRM annotation, keyed by email, overlaid on leads (and reusable
@@ -2217,6 +2221,29 @@ function LeadRow({
         <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
           {[lead.region, lead.source].filter(Boolean).join(" · ") || "—"}
         </div>
+        {/* Campaign origin badge (?from= / utm_campaign) — cold outreach must
+            see which campaign each lead came from. */}
+        {(lead.origin_from || lead.utm_campaign) && (
+          <div
+            style={{
+              marginTop: 2,
+              display: "inline-block",
+              padding: "1px 6px",
+              borderRadius: "var(--radius-pill)",
+              border: "1px solid var(--color-border)",
+              fontSize: "var(--font-size-caption)",
+              color: "var(--color-accent-ink, var(--color-primary))",
+              fontWeight: 600,
+              maxWidth: 220,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={[lead.origin_from, lead.utm_campaign].filter(Boolean).join(" · ")}
+          >
+            {lead.origin_from || lead.utm_campaign}
+          </div>
+        )}
       </td>
       <td style={{ ...TD_STYLE, fontWeight: 600 }}>{lead.brand}</td>
       <td style={{ ...TD_STYLE, color: "var(--color-muted)" }}>{lead.category}</td>

@@ -198,7 +198,7 @@ function makeDb(opts: { tableExists?: boolean; users?: string[] } = {}) {
   const query = vi.fn(async (sql: string, params: unknown[] = []) => {
     if (sql.includes("FROM ai_tool")) return { rows: [] };
     if (sql.includes("INSERT INTO lead_capture")) {
-      leads.push({ id: params[0], email: params[1], source: "ai_audit", consent: params[6] });
+      leads.push({ id: params[0], email: params[1], source: "ai_audit", consent: params[6], result: params[4] });
       return { rows: [] };
     }
     if (sql.includes("FROM users u")) {
@@ -308,6 +308,37 @@ describe("POST /api/ai-audit/checkout", () => {
     const res = await post(appWith(db), "/api/ai-audit/checkout", { ...ANSWERS, email: "buyer@example.com" });
     expect(res.status).toBe(503);
     expect((await res.json()).code).toBe("AI_AUDIT_ORDERS_NOT_READY");
+  });
+
+  it("stores sanitized campaign attribution in the order answers AND the lead result jsonb (unknown keys dropped, values truncated)", async () => {
+    const { db, orders, leads } = makeDb();
+    const res = await post(appWith(db), "/api/ai-audit/checkout", {
+      ...ANSWERS,
+      email: "buyer@example.com",
+      attribution: {
+        from: "cold-atlanta-01",
+        utm_campaign: "z".repeat(300),
+        utm_source: "email",
+        gclid: "dropped",
+        utm_medium: 42,
+      },
+    });
+    expect(res.status).toBe(200);
+    const expected = { from: "cold-atlanta-01", utm_source: "email", utm_campaign: "z".repeat(100) };
+    expect((orders[0]!.answers as { attribution?: unknown }).attribution).toEqual(expected);
+    expect((leads[0]!.result as { attribution?: unknown }).attribution).toEqual(expected);
+  });
+
+  it("without attribution the answers and lead result carry no attribution key (behavior identical to before)", async () => {
+    const { db, orders, leads } = makeDb();
+    const res = await post(appWith(db), "/api/ai-audit/checkout", { ...ANSWERS, email: "buyer@example.com" });
+    expect(res.status).toBe(200);
+    expect(orders[0]!.answers).not.toHaveProperty("attribution");
+    expect(leads[0]!.result).not.toHaveProperty("attribution");
+    // A malformed object behaves like absence too.
+    const bad = await post(appWith(db), "/api/ai-audit/checkout", { ...ANSWERS, email: "b2@example.com", attribution: "from=x" });
+    expect(bad.status).toBe(200);
+    expect(orders[1]!.answers).not.toHaveProperty("attribution");
   });
 
   it("rate limits at 8 per hour per IP (same as /api/test)", async () => {
