@@ -54,38 +54,45 @@ describe("maxDailyApprovals (env parsing)", () => {
 
 describe("what the valve counts", () => {
   it("gated marketing = marketing-owned AND has an approval node; brains and read-only cells do not count", () => {
-    for (const slug of ["sphere-x", "sphere-linkedin", "sphere-instagram", "sphere-tiktok", "sphere-youtube", "daily-video", "content-experiment"]) {
+    // B5 (22/08): sphere-instagram/tiktok/youtube viraram report-only (sem
+    // approval) porque o canal exige mídia — logo NÃO contam mais na válvula.
+    for (const slug of ["sphere-x", "sphere-linkedin", "daily-video", "content-experiment"]) {
       expect(isGatedMarketingGraph(slug), slug).toBe(true);
     }
     for (const slug of ["sphere-blog", "sphere-ppc", "daily-watchdog", "daily-dream", "weekly-product", "weekly-discovery", "ghost"]) {
       expect(isGatedMarketingGraph(slug), slug).toBe(false);
     }
-    expect(gatedMarketingSlugs()).toEqual(expect.arrayContaining(["sphere-instagram", "sphere-tiktok", "sphere-youtube"]));
+    // As três células de vídeo curto NÃO têm portão desde o B5 — o teto de 6
+    // deixou de ser apertado (4 gated hoje: x, linkedin, video, experiment).
+    for (const slug of ["sphere-instagram", "sphere-tiktok", "sphere-youtube"]) {
+      expect(gatedMarketingSlugs(), slug).not.toContain(slug);
+    }
+    expect(gatedMarketingSlugs().length).toBeLessThanOrEqual(6);
   });
 });
 
 describe("startBrainRuns respects the valve", () => {
   it("under the cap: gated marketing cells start normally", async () => {
     const { sql, inserted } = fakeSql(2);
-    const res = await startBrainRuns(sql, ["sphere-instagram"], 20, "test", { hermesToken: "t", maxDailyApprovals: 6 });
+    const res = await startBrainRuns(sql, ["sphere-x"], 20, "test", { hermesToken: "t", maxDailyApprovals: 6 });
     expect(res.started).toHaveLength(1);
     expect(res.capped).toEqual([]);
-    expect(inserted).toEqual(["sphere-instagram"]);
+    expect(inserted).toEqual(["sphere-x"]);
   });
 
   it("at/over the cap: gated marketing cells are SKIPPED and reported as capped — a valve, not a failure", async () => {
     const { sql, inserted } = fakeSql(6);
-    const res = await startBrainRuns(sql, ["sphere-tiktok"], 20, "test", { hermesToken: "t", maxDailyApprovals: 6 });
+    const res = await startBrainRuns(sql, ["sphere-linkedin"], 20, "test", { hermesToken: "t", maxDailyApprovals: 6 });
     expect(res.started).toEqual([]);
-    expect(res.capped).toEqual(["sphere-tiktok"]);
+    expect(res.capped).toEqual(["sphere-linkedin"]);
     expect(inserted).toEqual([]);
   });
 
   it("the cap counts starts made in the SAME call — the Nth start closes the valve for the (N+1)th", async () => {
     const { sql, inserted } = fakeSql(5);
-    const res = await startBrainRuns(sql, ["sphere-instagram", "sphere-tiktok"], 20, "test", { hermesToken: "t", maxDailyApprovals: 6 });
-    expect(inserted).toEqual(["sphere-instagram"]);
-    expect(res.capped).toEqual(["sphere-tiktok"]);
+    const res = await startBrainRuns(sql, ["sphere-x", "sphere-linkedin"], 20, "test", { hermesToken: "t", maxDailyApprovals: 6 });
+    expect(inserted).toEqual(["sphere-x"]);
+    expect(res.capped).toEqual(["sphere-linkedin"]);
   });
 
   it("read-only cells and brains never hit the valve, even past the cap", async () => {
@@ -97,15 +104,15 @@ describe("startBrainRuns respects the valve", () => {
 
   it("cap 0 disables the valve entirely", async () => {
     const { sql, inserted } = fakeSql(99);
-    const res = await startBrainRuns(sql, ["sphere-youtube"], 20, "test", { hermesToken: "t", maxDailyApprovals: 0 });
+    const res = await startBrainRuns(sql, ["sphere-x"], 20, "test", { hermesToken: "t", maxDailyApprovals: 0 });
     expect(res.capped).toEqual([]);
-    expect(inserted).toEqual(["sphere-youtube"]);
+    expect(inserted).toEqual(["sphere-x"]);
   });
 
   it("no executor token: nothing starts, nothing is capped (the older gate still wins)", async () => {
     const { sql, inserted } = fakeSql(0);
-    const res = await startBrainRuns(sql, ["sphere-youtube"], 20, "test", { hermesToken: "", maxDailyApprovals: 6 });
-    expect(res.skipped).toEqual(["sphere-youtube"]);
+    const res = await startBrainRuns(sql, ["sphere-x"], 20, "test", { hermesToken: "", maxDailyApprovals: 6 });
+    expect(res.skipped).toEqual(["sphere-x"]);
     expect(res.capped).toEqual([]);
     expect(inserted).toEqual([]);
   });

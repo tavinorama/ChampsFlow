@@ -649,14 +649,31 @@ export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
  * that differ are the slug, the memory prefix, the publish channel, the
  * harvest metric and the prompt family — kept as data so a fourth channel is
  * one call, not one more hand-copied graph that can drift.
+ *
+ * REPORT-ONLY desde 22/08 (decisão B5). Estas três esferas produzem ROTEIRO +
+ * [RENDER BRIEF] em texto, e Instagram/TikTok/YouTube exigem um arquivo de
+ * mídia: o Postiz recusa com "You need one media" / "No video / images
+ * selected". Resultado até aqui: 0 publicações na história dos três canais, e
+ * — pior — o founder gastava cliques de aprovação em runs condenados (o
+ * sphere-youtube de 22/08 rodou 7 nós em claude, foi APROVADO às 15:20 e
+ * morreu às 15:40 no publish).
+ *
+ * Enquanto o nó de render não existir (Remotion vive na VPS; o payload do
+ * publish é {channel, post}, sem mídia), a cauda approval→publish→wait→
+ * harvest→verdict sai e a célula termina em REPORT — o roteiro chega pronto no
+ * Telegram e o founder grava/publica quando quiser. Honesto: não finge que
+ * publica. Reversível: devolver a cauda é este bloco de volta.
  */
 function shortVideoSphere(input: {
   slug: string;
   channel: string;
   prefix: string;
+  /** Kept for when the render node lands and the harvest tail returns. */
   metric: string;
   promptFamily: string;
   description: string;
+  reportIcon: string;
+  reportTitle: string;
 }): GraphDefinition {
   const p = input.promptFamily;
   return {
@@ -676,17 +693,23 @@ function shortVideoSphere(input: {
       // share trigger) plus compliance + freshness against [memory].
       { id: "critic", kind: "debate", dependsOn: ["draft-talking-head", "draft-caption-story", "memory"], config: { prompt: `${p}-critic` } },
       { id: "finalize", kind: "synthesis", dependsOn: ["draft-talking-head", "draft-caption-story", "critic"], config: { prompt: `${p}-finalize` } },
-      { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
-      { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: input.channel, via: "postiz" } },
-      { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
-      { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: input.metric } },
-      { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+      // B5 (22/08): sem nó de render, publicar aqui é falha garantida — o
+      // roteiro vai para o founder e ele grava/publica. `input.channel` e
+      // `input.metric` seguem no tipo para o dia em que a cauda voltar.
+      {
+        id: "report",
+        kind: "report",
+        dependsOn: ["finalize"],
+        config: { title: `${input.reportIcon} ${input.reportTitle} — roteiro pronto para gravar (${input.channel})` },
+      },
     ],
   };
 }
 
 export const SPHERE_INSTAGRAM_GRAPH: GraphDefinition = shortVideoSphere({
   slug: "sphere-instagram",
+  reportIcon: "📷",
+  reportTitle: "Instagram Reels",
   channel: "instagram",
   prefix: "instagram_",
   // 22/08 sweep: the VPS 07:40 collector writes 'instagramstandalone_*_7d'
@@ -695,11 +718,13 @@ export const SPHERE_INSTAGRAM_GRAPH: GraphDefinition = shortVideoSphere({
   metric: "instagramstandalone_reach",
   promptFamily: "instagram",
   description:
-    "Instagram Reels specialist cell with its own memory: read this sphere's OWN harvested reach (instagram* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, vertical, phone-shot feel) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + caption + hashtags policy) → human approval → publish to Instagram via Postiz → wait 72h → harvest instagramstandalone_reach → verdict.",
+    "Instagram Reels specialist cell with its own memory: read this sphere's OWN harvested reach (instagram* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, vertical, phone-shot feel) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + caption + hashtags policy) → REPORT the script to the founder (report-only até existir nó de render: Instagram exige mídia e o publish de texto é recusado — decisão B5, 22/08).",
 });
 
 export const SPHERE_TIKTOK_GRAPH: GraphDefinition = shortVideoSphere({
   slug: "sphere-tiktok",
+  reportIcon: "🎵",
+  reportTitle: "TikTok",
   channel: "tiktok",
   prefix: "tiktok_",
   // HONEST GAP (22/08 sweep): the VPS 07:40 collector does NOT write any
@@ -710,17 +735,19 @@ export const SPHERE_TIKTOK_GRAPH: GraphDefinition = shortVideoSphere({
   metric: "tiktok_views",
   promptFamily: "tiktok",
   description:
-    "TikTok specialist cell with its own memory: read this sphere's OWN harvested views (tiktok_* outcomes) → signal (hook culture, sounds, formats) → briefing → 2 drafts (talking-head vs caption-story) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + on-screen text) → human approval → publish to TikTok via Postiz → wait 72h → harvest tiktok_views → verdict.",
+    "TikTok specialist cell with its own memory: read this sphere's OWN harvested views (tiktok_* outcomes) → signal (hook culture, sounds, formats) → briefing → 2 drafts (talking-head vs caption-story) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + on-screen text) → REPORT the script to the founder (report-only até existir nó de render: TikTok exige mídia — decisão B5, 22/08).",
 });
 
 export const SPHERE_YOUTUBE_GRAPH: GraphDefinition = shortVideoSphere({
   slug: "sphere-youtube",
+  reportIcon: "▶️",
+  reportTitle: "YouTube Shorts",
   channel: "youtube",
   prefix: "youtube_",
   metric: "youtube_views",
   promptFamily: "youtube",
   description:
-    "YouTube Shorts specialist cell with its own memory: read this sphere's OWN harvested views (youtube_* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, Shorts pacing) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + title + description; on the weekly long-form day the finalize also carries a long-form outline) → human approval → publish to YouTube via Postiz → wait 72h → harvest youtube_views → verdict. LinkedIn is NOT touched here — the daily-video graph already owns that adaptation.",
+    "YouTube Shorts specialist cell with its own memory: read this sphere's OWN harvested views (youtube_* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, Shorts pacing) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + title + description; on the weekly long-form day the finalize also carries a long-form outline) → REPORT the script to the founder (report-only até existir nó de render: YouTube exige mídia — decisão B5, 22/08). LinkedIn is NOT touched here — the daily-video graph already owns that adaptation.",
 });
 
 // ---------------------------------------------------------------------------
