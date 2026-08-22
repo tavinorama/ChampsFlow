@@ -64,7 +64,7 @@ function fakeDb(o: { won?: boolean; scores?: Array<{ score_ai: number; recorded_
     setTenantId: async () => {},
     async query(sql: string, params?: unknown[]) {
       if (sql.includes("FROM engagement")) return { rows: o.won ? [{ sku: "geo_sprint", status: "won", created_at: "2026-08-01" }] : [] };
-      if (sql.includes("FROM brand ")) return { rows: [{ id: "b1" }] };
+      if (sql.includes("FROM brands ")) return { rows: [{ id: "b1" }] }; // real table is `brands` (prod 500 on 22/08 when it read `brand`)
       if (sql.includes("FROM geo_score")) return { rows: o.scores ?? [] };
       if (sql.includes("FROM competitor")) return { rows: [{ n: String(o.competitors ?? 0) }] };
       if (sql.includes("FROM plan_task")) return { rows: [{ n: String(o.done ?? 0) }] };
