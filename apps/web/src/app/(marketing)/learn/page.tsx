@@ -14,6 +14,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "Tutorials — Learn to use Ozvor",
@@ -187,6 +188,14 @@ export default function LearnPage() {
         </h2>
         <Link href="/test" className="lrn-cta-primary">Run the free AI test →</Link>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Tutorials work better with the right tools."
+          subline="Answer a few questions. We pick the AI tools you need."
+        />
+      </div>
     </main>
   );
 }

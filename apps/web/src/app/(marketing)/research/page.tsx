@@ -17,6 +17,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
   title: "The AI Search Shift — Research & Sources | Ozvor",
@@ -269,6 +270,14 @@ export default function ResearchPage() {
           Check my brand, free →
         </Link>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="The research is clear. AI search picks winners."
+          subline="See where you stand, free. Then get the tools to act on it."
+        />
+      </div>
     </main>
   );
 }
