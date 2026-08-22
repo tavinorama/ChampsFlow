@@ -24,6 +24,7 @@ import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
+import { createHash } from "node:crypto";
 import {
   advanceRun,
   GRAPH_REGISTRY,
@@ -990,8 +991,16 @@ export async function runGraphTick(
        ORDER BY s.started_at ASC LIMIT ${20}`;
     for (const a of pending) {
       let first: string | null = null;
+      // The 24h gate is PER BOT (22/08: the bot was swapped mid-day and the
+      // pending approvals had to reach the NEW bot immediately — a reminder
+      // sent by a dead bot must not suppress the living one). The key carries
+      // a short hash of the current token, never the token itself.
+      const botFp = createHash("sha256")
+        .update(process.env["TELEGRAM_BOT_TOKEN"] ?? "none")
+        .digest("hex")
+        .slice(0, 8);
       try {
-        first = (await redis.set(`tg:renotify:${a.id}`, "1", "EX", 24 * 3600, "NX")) as string | null;
+        first = (await redis.set(`tg:renotify:${a.id}:${botFp}`, "1", "EX", 24 * 3600, "NX")) as string | null;
       } catch {
         first = null;
       }
