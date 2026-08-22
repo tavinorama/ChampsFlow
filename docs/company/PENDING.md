@@ -1,6 +1,6 @@
 # OZvor — o que falta (lista fechada)
 
-**Atualizado:** 2026-08-21, madrugada (Lisboa) · **Verificado:** SQL de produção + `origin/main` + Railway
+**Atualizado:** 2026-08-22, 12h (Lisboa) · **Verificado:** SQL de produção + `origin/main` + Railway
 **Fonte viva:** o painel Operating Overview (artifact) e `docs/company/STATE.md`. Este arquivo é a lista enxuta, por dono.
 
 > Regra de leitura: um item só sai daqui quando a dependência **existe em produção**, não quando o PR mergeia. Migração/env é reportada como DESLIGADA até a dependência existir (regra R0).
@@ -11,6 +11,7 @@
 
 | # | Ação | Destrava | Verificado |
 |---|---|---|---|
+| A0 | **Re-autenticar claude E codex na VPS do Hermes** (`claude login` / codex login na conta Max / ChatGPT) | a org roda só em kimi desde 21/08 (fallback #505); qualidade do conteúdo foi calibrada no claude | SQL: claude+codex `ok=false`, kimi ok |
 | A1 | **Criar o price $49 no Stripe** → me passar o `price_...` (eu seto `STRIPE_PRICE_ID_AI_AUDIT`) | **o único passo até a 1ª venda** — checkout hoje = 503 CHECKOUT_UNCONFIGURED | env ausente no api |
 | A2 | Cupom `AIAUDIT15` → `STRIPE_COUPON_AIAUDIT15` | 15% do assinante na aba | — |
 | A3 | **3 envs do Telegram no serviço `api`** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`) + `setWebhook` | botão ✅/❌ funciona | SQL: 0 aprovações por botão |
@@ -25,6 +26,7 @@
 - ✅ **#488** — CHECK do nurture com as 9 sequências · ✅ **#489** — custo por tenant
 - ✅ **#463** — `ai_tool` (12 tools, verified=FALSE) · ✅ **#478** — `ai_audit_order` (21/08: mergeados por autorização direta; o CHECK-regression do #478 foi removido antes do merge)
 - ✅ **#500** — fix do incidente de starvation (18–20/08) mergeado + deployado + recuperação verificada por SQL
+- ✅ **#504** — api auto-registra o webhook do Telegram no boot (zero cliques jamais chegaram) · ✅ **#505** — cadeia de fallback claude→codex→kimi (outage #2, 26h, verificado ao vivo: kimi carregando) · ✅ **#506** — 500 em /billing/credits (tipos $2) e /prime/status (brand→brands), validados com PREPARE na produção
 
 ---
 
