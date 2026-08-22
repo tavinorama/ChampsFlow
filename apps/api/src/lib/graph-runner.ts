@@ -55,6 +55,7 @@ import {
   X_POST_LIMIT,
   xPostWithinLimit,
   adaptXForPublish,
+  splitXSegments,
 } from "../../../../packages/shared/src/x-post-limit";
 
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
@@ -541,10 +542,27 @@ export async function advanceRun(
         continue;
       }
       const channel = String(config["channel"] ?? "linkedin");
+      // X thread reality check (prod failure 22/08): a mini-thread passes the
+      // per-tweet limit, but the Postiz pipe publishes ONE post per call — the
+      // joined text got rejected with "post is too long". Until real thread
+      // support exists, publish tweet 1 (already compliant) and say so out
+      // loud; losing tweets 2..N beats losing the whole run.
+      let toSend = post;
+      let threadNote = "";
+      if (isXPublish(node)) {
+        const segments = splitXSegments(post);
+        if (segments.length > 1) {
+          toSend = segments[0]!;
+          threadNote = ` (thread de ${segments.length} tweets publicada como tweet único — pipe atual é single-post)`;
+          await telegram(
+            `🟡 X: o conteúdo aprovado era uma thread de ${segments.length} tweets; publicado só o tweet 1 (o pipe Postiz atual é single-post). Os demais não foram enviados. Suporte a thread está na fila.`
+          );
+        }
+      }
       // Belt-and-suspenders (prod failure 17/08): even if the adapt step was
       // skipped or edited around, NEVER hand Postiz an over-limit X post. Fail
       // the step honestly with a reason instead of a silent, wasted send.
-      if (isXPublish(node) && !xPostWithinLimit(post)) {
+      if (isXPublish(node) && !xPostWithinLimit(toSend)) {
         await substrate.finishStep(stepId, {
           status: "failed",
           summary: `x post over ${X_POST_LIMIT} chars, not sent (adapt step missed it) — nothing published`,
@@ -554,13 +572,13 @@ export async function advanceRun(
         );
         continue;
       }
-      const res = await hermes.publish({ channel, post });
+      const res = await hermes.publish({ channel, post: toSend });
       if (res.ok) {
         await artifacts.set(runId, node.id, res.detail);
         await substrate.finishStep(stepId, {
           status: "succeeded",
           outputHash: sha(res.detail),
-          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}`,
+          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}${threadNote}`,
         });
       } else {
         await substrate.finishStep(stepId, { status: "failed", summary: `publish failed: ${res.detail.slice(0, 120)}` });

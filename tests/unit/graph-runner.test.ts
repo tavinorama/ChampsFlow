@@ -770,3 +770,19 @@ describe("the content-experiment cell — a seeded, gated, measured shot", () =>
     expect(world.run.status).toBe("succeeded");
   });
 });
+
+describe("X thread → single-post pipe (prod failure 22/08)", () => {
+  it("publishes only tweet 1 of an approved mini-thread and says so in the summary", async () => {
+    const { splitXSegments, xPostWithinLimit } = await import("../../packages/shared/src/x-post-limit");
+    const thread = ["Tweet one under the limit.", "Tweet two under the limit.", "Tweet three."].join("\n---\n");
+    const segs = splitXSegments(thread);
+    expect(segs).toHaveLength(3);
+    // per-segment valid (what let the whole thread through to Postiz before):
+    expect(xPostWithinLimit(thread)).toBe(true);
+    // the joined text is what Postiz used to receive — longer than one tweet:
+    expect(thread.length).toBeGreaterThan(segs[0]!.length);
+    // the runner now sends segs[0] — pinned by the graph-runner publish branch
+    // (see 'thread de N tweets publicada como tweet único' summary).
+    expect(segs[0]).toBe("Tweet one under the limit.");
+  });
+});
