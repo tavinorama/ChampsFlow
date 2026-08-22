@@ -23,6 +23,7 @@ import type postgres from "postgres";
 import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
+import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
 import {
   advanceRun,
   GRAPH_REGISTRY,
@@ -45,6 +46,15 @@ const SE_KEY = process.env["SIGNAL_ENGINE_API_KEY"] ?? "";
 const SE_COUNTRY = process.env["SIGNAL_ENGINE_COUNTRY"] ?? "";
 const SE_CACHE_SECONDS = 6 * 3600;
 const HERMES_TIMEOUT_MS = 240_000;
+// Engine chain for Hermes /task (21–22/08 incident: pinned "claude" + one call
+// = 26h of total failure when the Claude OAuth session on the VPS expired,
+// fallbacks=0). House rule: kimi replaces claude AND codex. Override with
+// HERMES_ENGINES="claude,codex,kimi".
+const HERMES_ENGINES = parseEngineChain(process.env["HERMES_ENGINES"]);
+// Alarm once per window when the PRIMARY engine is down (never per step).
+const HERMES_PRIMARY_DOWN_KEY = "hermes:primary_down_alarm";
+const HERMES_ALL_DOWN_KEY = "hermes:all_down_alarm";
+const HERMES_ALARM_WINDOW_S = 6 * 3600;
 /**
  * Cap on EXPENSIVE advances per tick (runs with an executable next step — an
  * LLM call each). Parked runs (waiting frontier) never count against this:
@@ -449,22 +459,51 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
     },
     hermes: {
       async task(prompt) {
-        const { status, body } = await httpJson(
-          `${HERMES_URL}/task`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${HERMES_TOKEN}` },
-            body: JSON.stringify({ engine: "claude", timeoutMs: HERMES_TIMEOUT_MS - 20_000, prompt }),
-          },
-          HERMES_TIMEOUT_MS
-        );
-        const b = body as { ok?: boolean; output?: string; engine_used?: string; ms?: number };
-        return {
-          ok: status === 200 && b?.ok === true,
-          output: String(b?.output ?? ""),
-          engineUsed: b?.engine_used ?? null,
-          ms: typeof b?.ms === "number" ? b.ms : null,
-        };
+        const res = await callWithFallback(HERMES_ENGINES, async (engine) => {
+          const { status, body } = await httpJson(
+            `${HERMES_URL}/task`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${HERMES_TOKEN}` },
+              body: JSON.stringify({ engine, timeoutMs: HERMES_TIMEOUT_MS - 20_000, prompt }),
+            },
+            HERMES_TIMEOUT_MS
+          );
+          const b = body as { ok?: boolean; output?: string; engine_used?: string; ms?: number; error?: string };
+          const ok = status === 200 && b?.ok === true;
+          return {
+            ok,
+            output: ok ? String(b?.output ?? "") : String(b?.error ?? b?.output ?? `http_${status}`),
+            engineUsed: b?.engine_used ?? engine,
+            ms: typeof b?.ms === "number" ? b.ms : null,
+          };
+        });
+        // Primary engine down (but a fallback saved the step): shout ONCE per
+        // window with the fix, not once per step. Never silent, never spam.
+        if (res.failures.length > 0) {
+          const primary = res.failures[0]!;
+          const key = res.ok ? HERMES_PRIMARY_DOWN_KEY : HERMES_ALL_DOWN_KEY;
+          let first = true;
+          try {
+            first = (await redis.set(key, "1", "EX", HERMES_ALARM_WINDOW_S, "NX")) === "OK";
+          } catch {
+            first = true; // no Redis → prefer a duplicate alarm over silence
+          }
+          logger.warn("hermes_engine_fallback", {
+            ok: res.ok,
+            fallbacks: res.fallbacks,
+            engineUsed: res.engineUsed,
+            failures: res.failures,
+          });
+          if (first) {
+            await sendTelegram(
+              res.ok
+                ? `🟡 HERMES: engine "${primary.engine}" falhou (${primary.error}). Os grafos estão rodando em fallback "${res.engineUsed}". Para voltar ao primário: re-autentique na VPS (ex.: claude login). Este aviso repete a cada 6h enquanto durar.`
+                : `🔴 HERMES: TODOS os engines falharam (${res.failures.map((f) => f.engine).join(", ")}). Último erro: ${errorHead(primary.error, 80)}. Nenhum passo de LLM avança até um engine voltar.`
+            );
+          }
+        }
+        return { ok: res.ok, output: res.output, engineUsed: res.engineUsed, ms: res.ms };
       },
       async publish(payload) {
         const { status, body } = await httpJson(
