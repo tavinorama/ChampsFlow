@@ -13,6 +13,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { COMPETITORS } from "../vs/_data";
 
 export const metadata: Metadata = {
@@ -170,6 +171,14 @@ export default function ComparePage() {
           Check my brand, free →
         </Link>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Still comparing tools?"
+          subline="Start with your own number. Then let us pick your AI stack."
+        />
+      </div>
     </main>
   );
 }
