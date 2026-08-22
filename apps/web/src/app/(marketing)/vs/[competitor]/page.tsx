@@ -16,6 +16,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { DirectCheckoutButton } from "../../../../components/marketing/DirectCheckoutButton";
 import { COMPETITOR_SLUGS, getCompetitor } from "../_data";
 
@@ -244,6 +245,14 @@ export default async function CompetitorPage({ params }: Params) {
           <DirectCheckoutButton plan="growth" interval="year" label="Get Growth →" />
         </div>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline={`Choosing between Ozvor and ${c.name}?`}
+          subline="Either way, run on the right AI tools. Our audit picks them."
+        />
+      </div>
     </main>
   );
 }
