@@ -95,10 +95,41 @@ describe("POST /api/telegram/webhook/:secret", () => {
     expect(finished).toEqual([]);
   });
 
-  it("a tap from a stranger's chat is ignored (200, no state change)", async () => {
+  it("a tap from a stranger's chat is ignored (200, no state change) — but the callback is ANSWERED so the button never spins forever", async () => {
     const res = await post(SECRET, { callback_query: { id: "1", data: `ap:${STEP}`, message: { message_id: 1, chat: { id: "999" } } } });
     expect(res.status).toBe(200);
     expect(finished).toEqual([]);
+    const ack = tgCalls.find((c) => c.method === "answerCallbackQuery");
+    expect(ack?.body["text"]).toMatch(/não está autorizado/);
+    expect(ack?.body["show_alert"]).toBe(true);
+  });
+
+  it("a chat id pasted with whitespace in the env still matches (trimmed)", async () => {
+    process.env["TELEGRAM_CHAT_ID"] = ` ${CHAT}\n`;
+    try {
+      const res = await post(SECRET, { callback_query: { id: "cq9", data: `ap:${STEP}`, message: { message_id: 3, chat: { id: CHAT } } } });
+      expect(res.status).toBe(200);
+      expect(finished).toEqual([{ stepId: STEP, status: "succeeded", summary: "founder approved via Telegram button" }]);
+    } finally {
+      process.env["TELEGRAM_CHAT_ID"] = CHAT;
+    }
+  });
+
+  it("GET /api/telegram/status/:secret → config flags + what Telegram says about our webhook, token never returned", async () => {
+    vi.stubGlobal("fetch", async (url: string) => {
+      expect(String(url)).toContain("getWebhookInfo");
+      return new Response(JSON.stringify({ ok: true, result: {
+        url: `https://api.example/api/telegram/webhook/${SECRET}`, pending_update_count: 3,
+        last_error_date: 1700000000, last_error_message: "Wrong response from the webhook: 404 Not Found",
+      } }), { status: 200 });
+    });
+    const res = await app().request(`/api/telegram/status/${SECRET}`);
+    expect(res.status).toBe(200);
+    const j = (await res.json()) as Record<string, unknown>;
+    expect(j["configured"]).toEqual({ token: true, chat_id: true, secret: true });
+    expect(j["webhook"]).toMatchObject({ url_set: true, url_host: "api.example", url_secret_matches: true, pending_update_count: 3, last_error_message: "Wrong response from the webhook: 404 Not Found" });
+    expect(JSON.stringify(j)).not.toContain("bot-token");
+    expect((await app().request(`/api/telegram/status/wrong`)).status).toBe(404);
   });
 
   it("✅ Aprovar → step finished succeeded (the #445 door), buttons removed, ack sent", async () => {
