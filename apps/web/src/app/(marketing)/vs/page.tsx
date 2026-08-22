@@ -7,6 +7,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { COMPETITORS, OZVOR_ONELINE } from "./_data";
 
 export const metadata: Metadata = {
@@ -134,6 +135,14 @@ export default function VsIndexPage() {
           Run the free AI test →
         </Link>
       </section>
+
+      {/* AI Audit Stack — site-wide peer CTA */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="The best comparison is your own brand."
+          subline="See your own number first. Then get your AI stack sorted."
+        />
+      </div>
     </main>
   );
 }

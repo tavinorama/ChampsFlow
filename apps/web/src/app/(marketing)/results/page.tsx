@@ -13,6 +13,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { ScorecardGlyph } from "../../../components/marketing/illustrations";
 
 export const revalidate = 600;
@@ -573,6 +574,14 @@ export default async function ResultsPage() {
         recommendations are evidence-based, directional estimates &mdash; not a guarantee of citation,
         ranking, traffic, or revenue.
       </p>
+
+      {/* AI Audit Stack — site-wide peer CTA */}
+      <div style={{ marginTop: "var(--space-12)" }}>
+        <AiAuditCta
+          headline="Want numbers like these for your brand?"
+          subline="Start with the free test. Then get the tools that move your score."
+        />
+      </div>
     </main>
   );
 }

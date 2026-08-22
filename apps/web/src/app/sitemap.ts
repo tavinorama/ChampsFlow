@@ -81,6 +81,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/vs/ahrefs-brand-radar", "monthly", 0.6],
 
     // Resources — the premium GEO content (high-value citation-worthy assets)
+    ["/resources", "monthly", 0.7],
     ["/resources/what-is-geo-search", "monthly", 0.9],
     ["/resources/geo-visibility-guide", "monthly", 0.8],
     ["/resources/5-high-citation-post-templates", "monthly", 0.8],
