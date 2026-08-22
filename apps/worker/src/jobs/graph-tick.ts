@@ -819,7 +819,7 @@ export interface GraphTickOpts {
   hermesToken?: string;
   advance?: typeof advanceRun;
   ports?: GraphRunnerPorts;
-  telegram?: (text: string) => Promise<void>;
+  telegram?: (text: string, buttons?: TelegramButton[]) => Promise<void>;
 }
 
 export async function runGraphTick(
@@ -970,6 +970,60 @@ export async function runGraphTick(
   };
   for (const run of execPool) await visit(run, "exec");
   for (const run of parkedPool) await visit(run, "parked");
+
+  // ---------------------------------------------------------------------------
+  // Re-notify pending approvals (founder, 22/08: "o telegram não enviou nada
+  // para aprovar"). The original approval message goes out ONCE, when the step
+  // is created — which after a recovery burst means 3am, buried in the chat
+  // history. Any approval still waiting after 1h gets a fresh message with
+  // fresh buttons, at most once per 24h per step (Redis NX). No Redis → skip
+  // (a duplicate every 10 minutes would be worse than none).
+  // ---------------------------------------------------------------------------
+  let renotified = 0;
+  try {
+    const pending = await sql<{ id: string; run_id: string; graph: string; node: string; started_at: string }[]>`
+      /* tick:renotify-select */
+      SELECT s.id, s.run_id, r.graph, s.node, s.started_at::text AS started_at
+        FROM ops.agent_step s JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'waiting' AND s.node ILIKE ${"%approval%"}
+         AND s.started_at < NOW() - INTERVAL '1 hour'
+       ORDER BY s.started_at ASC LIMIT ${20}`;
+    for (const a of pending) {
+      let first: string | null = null;
+      try {
+        first = (await redis.set(`tg:renotify:${a.id}`, "1", "EX", 24 * 3600, "NX")) as string | null;
+      } catch {
+        first = null;
+      }
+      if (first !== "OK") continue;
+      // Best-effort content preview: the approval node's upstream artifact
+      // (synthesis/finalize) still lives in Redis for 7 days.
+      let content = "";
+      try {
+        const def = GRAPH_REGISTRY[a.graph];
+        const contentNodeId = def?.nodes.find((n) => n.id === a.node)?.dependsOn[0] ?? "";
+        content = contentNodeId ? ((await redis.get(`graphrun:${a.run_id}:${contentNodeId}`)) ?? "") : "";
+      } catch {
+        content = "";
+      }
+      const ageHours = Math.max(1, Math.round((Date.now() - new Date(a.started_at).getTime()) / 3_600_000));
+      await telegram(
+        [
+          `⏰ APROVAÇÃO PENDENTE há ${ageHours}h — ${a.graph}`,
+          content ? content.slice(0, 900) : "(conteúdo na mensagem original, mais acima no histórico do chat)",
+          `Sem decisão em 96h desde a criação, vira rejeição automática. Este lembrete repete no máximo 1x/dia.`,
+        ].join("\n\n"),
+        [
+          { text: "✅ Aprovar", data: `ap:${a.id}` },
+          { text: "❌ Rejeitar", data: `rj:${a.id}` },
+        ]
+      );
+      renotified += 1;
+      logger.info("graph_tick_approval_renotified", { stepId: a.id, graph: a.graph, ageHours });
+    }
+  } catch (err) {
+    logger.warn("graph_tick_renotify_failed", { message: (err as Error).message?.slice(0, 160) });
+  }
 
   return {
     advanced: results.filter((r) => r.pool === "exec").length,

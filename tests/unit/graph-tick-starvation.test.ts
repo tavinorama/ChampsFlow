@@ -47,9 +47,13 @@ interface TickRun {
  * the LIMIT parameter the tick passes, so the test pins the tick's USE of the
  * two pools (order, caps, disjointness), not the SQL engine.
  */
-function makeTickWorld(runs: TickRun[]) {
+function makeTickWorld(
+  runs: TickRun[],
+  pendingApprovals: Array<{ id: string; run_id: string; graph: string; node: string; started_at: string }> = []
+) {
   const insertedSteps: Array<{ runId: string; summary: string }> = [];
   const telegrams: string[] = [];
+  const telegramButtons: Array<Array<{ text: string; data: string }>> = [];
   const advanced: Array<{ graph: string; runId: string }> = [];
   let redisNxFree = true;
 
@@ -85,6 +89,9 @@ function makeTickWorld(runs: TickRun[]) {
         .slice(0, limit)
         .map(({ id, graph }) => ({ id, graph }));
     }
+    if (text.includes("tick:renotify-select")) {
+      return pendingApprovals;
+    }
     if (text.includes("tick:parked-pool")) {
       const limit = Number(values[1]);
       return oldestFirst()
@@ -103,6 +110,7 @@ function makeTickWorld(runs: TickRun[]) {
       }
       return null;
     },
+    get: async () => "POST FINAL: A honest draft about GEO.",
   } as unknown as Redis;
 
   const advance = async (def: GraphDefinition, runId: string): Promise<AdvanceResult> => {
@@ -115,12 +123,13 @@ function makeTickWorld(runs: TickRun[]) {
       hermesToken: "test-token",
       advance,
       ports: {} as GraphRunnerPorts,
-      telegram: async (t: string) => {
+      telegram: async (t: string, buttons?: Array<{ text: string; data: string }>) => {
         telegrams.push(t);
+        if (buttons) telegramButtons.push(buttons);
       },
     });
 
-  return { runs, insertedSteps, telegrams, advanced, tick };
+  return { runs, insertedSteps, telegrams, telegramButtons, advanced, tick };
 }
 
 describe("two-pool selection — a parked run never eats an execution slot", () => {
@@ -259,5 +268,36 @@ describe("starvation alarm — hunger screams, once per 24h", () => {
     ]);
     await world.tick();
     expect(world.telegrams.filter((t) => t.includes("FOME"))).toEqual([]);
+  });
+});
+
+describe("approval re-notify — a 3am decision request must come back with buttons", () => {
+  const APPROVAL = {
+    id: "step-appr-1",
+    run_id: "run-1",
+    graph: "sphere-x",
+    node: "approval",
+    started_at: "2026-08-21T02:00:00Z",
+  };
+
+  it("re-sends a pending approval with fresh ap:/rj: buttons and a content preview", async () => {
+    const world = makeTickWorld([], [APPROVAL]);
+    await world.tick();
+    const msg = world.telegrams.find((t) => t.includes("APROVAÇÃO PENDENTE"));
+    expect(msg).toBeTruthy();
+    expect(msg).toContain("sphere-x");
+    expect(msg).toContain("POST FINAL: A honest draft about GEO.");
+    expect(world.telegramButtons[0]).toEqual([
+      { text: "✅ Aprovar", data: `ap:${APPROVAL.id}` },
+      { text: "❌ Rejeitar", data: `rj:${APPROVAL.id}` },
+    ]);
+  });
+
+  it("at most once per 24h per step: the Redis NX gate blocks the second send", async () => {
+    const world = makeTickWorld([], [APPROVAL, { ...APPROVAL, id: "step-appr-2" }]);
+    await world.tick();
+    // The fake redis grants exactly ONE NX slot — only the first approval
+    // re-notifies; the second is silently gated, no spam.
+    expect(world.telegrams.filter((t) => t.includes("APROVAÇÃO PENDENTE"))).toHaveLength(1);
   });
 });
