@@ -45,6 +45,7 @@ import { signedDownloadUrl } from "../../../../packages/shared/src/download-toke
 import { clientIp } from "../lib/client-ip";
 import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 import { asStr } from "../lib/coerce";
+import { parseAttribution } from "../lib/campaign-attribution";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -175,7 +176,7 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/test — The AI Invisibility Test (free lead magnet)
   // -------------------------------------------------------------------------
   app.post("/api/test", async (c) => {
-    let body: { brand?: string; competitor?: string; competitors?: string[]; category?: string; sector?: string; country?: string; region?: string; email?: string; marketing_consent?: boolean; domain?: string };
+    let body: { brand?: string; competitor?: string; competitors?: string[]; category?: string; sector?: string; country?: string; region?: string; email?: string; marketing_consent?: boolean; domain?: string; attribution?: unknown };
     try {
       body = await c.req.json();
     } catch {
@@ -196,6 +197,14 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
     const domain = asStr(body.domain) || null;
     // LGPD Art. 7(I) / GDPR Art. 6(1)(a): marketing consent must be explicitly true
     const marketingConsent = body.marketing_consent === true;
+    // Campaign attribution (?from= / utm_*) forwarded by the /test page so cold
+    // outreach knows which campaign sold. Sanitized to the six known keys,
+    // truncated; rides inside the result jsonb (no migration). Values are
+    // NEVER logged — key names/count only (PII-free log rule).
+    const attribution = parseAttribution(body.attribution);
+    if (attribution) {
+      logger.info("free_test_attribution_captured", { keys: Object.keys(attribution) });
+    }
 
     // The landing page promises "your website and your email — that is all we
     // need to begin", and then the form revealed brand and category as REQUIRED,
@@ -385,7 +394,15 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
       await db.query(
         `INSERT INTO lead_capture (id, email, brand, competitor, category, region, sector, country, result, source, ip_truncated, marketing_consent, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'invisibility_test',$10,$11, NOW())`,
-        [leadId, email, effectiveBrand, competitor, category, region, sector, country, jsonbParam(result), ip ? truncateIp(ip) : null, marketingConsent]
+        [
+          leadId, email, effectiveBrand, competitor, category, region, sector, country,
+          // The result jsonb, with the campaign origin attached when present —
+          // same precedent as /api/book/intake's result = { from, consent }.
+          // Readers of this column parse the keys they know; the extra
+          // `attribution` key is inert for them.
+          jsonbParam(attribution ? { ...(result as unknown as Record<string, unknown>), attribution } : result),
+          ip ? truncateIp(ip) : null, marketingConsent,
+        ]
       );
       testId = leadId;
     } catch (err) {

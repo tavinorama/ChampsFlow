@@ -41,6 +41,7 @@ import { getSharedRedis } from "../shared-redis";
 import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 import { clientIp } from "../lib/client-ip";
 import { asStr } from "../lib/coerce";
+import { parseAttribution } from "../lib/campaign-attribution";
 import { truncateIp } from "./dpa";
 import { loadCatalog } from "../lib/ai-audit/catalog-repo";
 import { buildAuditReport, buildEntryResult } from "../lib/ai-audit/engine";
@@ -289,6 +290,16 @@ export function registerAiAuditRoutes(
     // LGPD Art. 7(I) / GDPR Art. 6(1)(a): explicit opt-in only, never inferred.
     const marketingConsent = body["marketing_consent"] === true;
 
+    // Campaign attribution (?from= / utm_*) forwarded by the /ai-audit page —
+    // the $49 checkout is a direct cold-email destination, so the founder must
+    // see which campaign sold. Sanitized (six known keys, truncated); rides
+    // inside jsonb columns that already exist (no migration). Values are NEVER
+    // logged — key names/count only (PII-free log rule).
+    const attribution = parseAttribution(body["attribution"]);
+    if (attribution) {
+      logger.info("ai_audit_attribution_captured", { keys: Object.keys(attribution) });
+    }
+
     // Rate limit (8/h/IP). Redis blip → bounded in-process limiter (#261).
     const rawIp = clientIp(c);
     const ipTruncated = rawIp ? truncateIpForRateLimit(rawIp) : "unknown";
@@ -336,7 +347,12 @@ export function registerAiAuditRoutes(
           email,
           answers.businessType,
           answers.primaryFocus || "ai-audit",
-          jsonbParam({ pains: answers.pains, engines: answers.engines, priorLeadId }),
+          jsonbParam({
+            pains: answers.pains,
+            engines: answers.engines,
+            priorLeadId,
+            ...(attribution ? { attribution } : {}),
+          }),
           rawIp ? truncateIp(rawIp) : null,
           marketingConsent,
         ]
@@ -387,6 +403,7 @@ export function registerAiAuditRoutes(
             pains: answers.pains,
             engines: answers.engines,
             toolsInUse: answers.toolsInUse ?? [],
+            ...(attribution ? { attribution } : {}),
           }),
           leadCaptureId,
         ]

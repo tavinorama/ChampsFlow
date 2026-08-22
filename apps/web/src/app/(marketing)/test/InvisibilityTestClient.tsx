@@ -17,6 +17,7 @@ import { SocialAuthButtons } from "../../../components/auth/SocialAuthButtons";
 import { useVerifiedEmail } from "../../../lib/use-verified-email";
 import { saveFormDraft, loadFormDraft, clearFormDraft } from "../../../lib/form-draft";
 import { trackEvent } from "../../../lib/track";
+import { readAttributionFromLocation } from "../../../lib/campaign-attribution";
 
 const FREE_TEST_DRAFT_KEY = "free-test";
 
@@ -1235,6 +1236,15 @@ export function InvisibilityTestClient() {
   // Collapsible "Add details" state
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // Campaign origin (?from= / utm_*) — captured ONCE on mount into a ref so it
+  // survives the form → loading → results state machine, then sent with the
+  // POST so the founder knows which cold-outreach campaign sold. Cold links:
+  // ozvor.com/test?from=cold-atlanta-01.
+  const attributionRef = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    attributionRef.current = readAttributionFromLocation();
+  }, []);
+
   // Progressive disclosure: the visitor first sees two boxes only (website and
   // email). Brand and category appear once those two are valid. Both stay
   // REQUIRED in the payload — /api/test cannot run a real audit without them,
@@ -1378,6 +1388,9 @@ export function InvisibilityTestClient() {
           region,
           email: email.trim(),
           marketing_consent: marketingConsent,
+          // Compact campaign origin — only present keys, values capped. The
+          // API sanitizes again and stores it inside the lead's result jsonb.
+          ...(attributionRef.current ? { attribution: attributionRef.current } : {}),
         }),
       });
 
