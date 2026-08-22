@@ -26,7 +26,9 @@ import {
   runGraphTick,
   STARVED_RUN_HOURS,
   STARVED_SUMMARY,
+  ORPHAN_SUMMARY,
 } from "../../apps/worker/src/jobs/graph-tick";
+import { GRAPH_REGISTRY } from "../../apps/api/src/lib/graph-runner";
 import type { GraphRunnerPorts, AdvanceResult, GraphDefinition } from "../../apps/api/src/lib/graph-runner";
 
 interface TickRun {
@@ -39,6 +41,11 @@ interface TickRun {
   zeroSteps: boolean;
   /** True = the run has a step with status 'waiting' (parked frontier). */
   hasWaiting: boolean;
+  /**
+   * Hours since the run's LAST step (or since started_at when stepless) —
+   * the orphan reconcile's inactivity clock. Defaults to ageHours.
+   */
+  lastActivityAgeHours?: number;
 }
 
 /**
@@ -72,6 +79,27 @@ function makeTickWorld(
       return [];
     }
     if (text.includes("tick:starved-fail")) {
+      const ids = values[0] as string[];
+      for (const r of runs) if (ids.includes(r.id)) r.status = "failed";
+      return [];
+    }
+    if (text.includes("tick:orphan-select")) {
+      // Off-registry 'running' runs whose last activity is older than 24h.
+      return oldestFirst()
+        .filter(
+          (r) =>
+            r.status === "running" &&
+            !(r.graph in GRAPH_REGISTRY) &&
+            (r.lastActivityAgeHours ?? r.ageHours) > STARVED_RUN_HOURS
+        )
+        .map(({ id, graph }) => ({ id, graph }));
+    }
+    if (text.includes("tick:orphan-step")) {
+      const summary = String(values[0]);
+      for (const id of values[1] as string[]) insertedSteps.push({ runId: id, summary });
+      return [];
+    }
+    if (text.includes("tick:orphan-fail")) {
       const ids = values[0] as string[];
       for (const r of runs) if (ids.includes(r.id)) r.status = "failed";
       return [];
@@ -240,6 +268,80 @@ describe("starved-run reconciliation — the 18-20/08 backlog clears itself on d
     expect(world.insertedSteps).toEqual([]);
     // …it gets an exec slot instead.
     expect(world.advanced.map((a) => a.runId)).toEqual(["young"]);
+  });
+});
+
+describe("orphan reconciliation — an off-registry run cannot be a forever-zombie", () => {
+  it("the real 17/08 zombie shape: a 'hermes-task-server' run idle >24h is failed with the orphan summary and ONE consolidated line", async () => {
+    const world = makeTickWorld([
+      // The zombie: created via the operator API, graph not in GRAPH_REGISTRY,
+      // no activity for days — no tick query can ever reach it.
+      { id: "zombie", graph: "hermes-task-server", ageHours: 120, status: "running", zeroSteps: false, hasWaiting: false, lastActivityAgeHours: 120 },
+      // A registered healthy run keeps advancing normally.
+      { id: "ok", graph: "daily-video", ageHours: 1, status: "running", zeroSteps: false, hasWaiting: false },
+    ]);
+    const res = await world.tick();
+
+    expect(res.orphanFailed).toBe(1);
+    expect(world.runs.find((r) => r.id === "zombie")!.status).toBe("failed");
+    // Auditable failed step with the honest reason.
+    expect(world.insertedSteps).toEqual([{ runId: "zombie", summary: ORPHAN_SUMMARY }]);
+    const recon = world.telegrams.filter((t) => t.includes("RECONCILIAÇÃO DE ÓRFÃOS"));
+    expect(recon).toHaveLength(1);
+    expect(recon[0]).toContain("hermes-task-server×1");
+    // The orphan never reached an execution pool; the healthy run advanced.
+    expect(world.advanced.map((a) => a.runId)).toEqual(["ok"]);
+  });
+
+  it("a LEGITIMATE short-lived hermes-task-server run (recent activity) is NEVER touched — the criterion is age, not the name", async () => {
+    const world = makeTickWorld([
+      // Started long ago but its last step is recent: still working, hands off.
+      { id: "long-lived", graph: "hermes-task-server", ageHours: 48, status: "running", zeroSteps: false, hasWaiting: false, lastActivityAgeHours: 1 },
+      // Fresh run, no steps yet: hands off too.
+      { id: "fresh", graph: "hermes-task-server", ageHours: 2, status: "running", zeroSteps: true, hasWaiting: false },
+    ]);
+    const res = await world.tick();
+
+    expect(res.orphanFailed).toBe(0);
+    expect(world.runs.every((r) => r.status === "running")).toBe(true);
+    expect(world.telegrams.filter((t) => t.includes("ÓRFÃOS"))).toEqual([]);
+  });
+
+  it("a REGISTERED graph idle >24h is not an orphan — the parked pool owns it", async () => {
+    const world = makeTickWorld([
+      { id: "parked", graph: "daily-video", ageHours: 60, status: "running", zeroSteps: false, hasWaiting: true, lastActivityAgeHours: 60 },
+    ]);
+    const res = await world.tick();
+    expect(res.orphanFailed).toBe(0);
+    expect(world.runs[0]!.status).toBe("running");
+    expect(res.parkedChecked).toBe(1);
+  });
+});
+
+describe("liveness heartbeat — a completed tick stamps graphtick:last_ok", () => {
+  it("the tick's final act writes the stamp with a TTL (the external vigia reads it)", async () => {
+    const setCalls: Array<unknown[]> = [];
+    const spyRedis = {
+      set: async (...args: unknown[]) => {
+        setCalls.push(args);
+        return "OK";
+      },
+      get: async () => null,
+    } as unknown as Redis;
+    // An empty queue: every marker query legitimately returns no rows.
+    const sqlEmpty = (async () => []) as unknown as postgres.Sql;
+    await runGraphTick(sqlEmpty, spyRedis, {
+      hermesToken: "test-token",
+      advance: async () => ({ status: "in-flight", started: [], notes: [] }),
+      ports: {} as GraphRunnerPorts,
+      telegram: async () => {},
+    });
+    const stamp = setCalls.find((c) => c[0] === "graphtick:last_ok");
+    expect(stamp, "the tick must stamp graphtick:last_ok").toBeTruthy();
+    // ISO timestamp + EX TTL — the stamp expires on its own if the worker dies.
+    expect(String(stamp![1])).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(stamp![2]).toBe("EX");
+    expect(Number(stamp![3])).toBeGreaterThan(0);
   });
 });
 

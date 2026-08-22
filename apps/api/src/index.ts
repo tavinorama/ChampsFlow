@@ -72,6 +72,7 @@ import { registerPrimeRoutes } from "./routes/prime";
 import { registerTelegramRoutes } from "./routes/telegram";
 import { ensureTelegramWebhook } from "./lib/telegram-webhook-setup";
 import { registerSignalsRoutes } from "./routes/signals";
+import { registerLivenessRoutes } from "./routes/liveness";
 import { refreshPlatformKeys } from "./lib/platform-keys";
 
 // ---------------------------------------------------------------------------
@@ -302,6 +303,9 @@ void ensureTelegramWebhook().catch((err: Error) => {
 // queue as per-brand action cards. Honest not-connected state until the
 // SIGNAL_ENGINE_* env lands — never fabricates opportunities.
 registerSignalsRoutes(app, db);
+// Agent-org liveness (R9/C10): GET /api/v1/agent-org/liveness — PUBLIC,
+// read-only, fail-open pulse for the CI vigia (agent-org-liveness.yml).
+registerLivenessRoutes(app, db);
 registerMcpRoutes(app, db); // #150 Phase 1 — Streamable HTTP MCP at POST /api/mcp
 // C1: GEO Audit Engine (Ozvor)
 // POST /api/brands, POST /api/brands/:id/audit, GET /api/audits/:id,
