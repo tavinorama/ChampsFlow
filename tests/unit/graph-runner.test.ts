@@ -587,7 +587,7 @@ describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measure
     expect(world.published).toEqual([]);
   });
 
-  it("approve → publishes to LinkedIn → harvest linkedin_impressions closes the loop", async () => {
+  it("approve → publishes to LinkedIn → harvest linkedinpage_impressions (the collector's real prefix) closes the loop", async () => {
     const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
     await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
     await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
@@ -598,7 +598,7 @@ describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measure
     world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
     world.harvestData = { n: 1, total: 320 };
     await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_LINKEDIN_GRAPH);
-    expect(world.outcomes[0]!.metric).toBe("linkedin_impressions");
+    expect(world.outcomes[0]!.metric).toBe("linkedinpage_impressions");
     expect(world.outcomes[0]!.valueAfter).toBe(320);
     expect(world.run.status).toBe("succeeded");
   });
@@ -624,7 +624,7 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
 
 describe("content alive on every platform (17/08) — IG / TikTok / YouTube spheres", () => {
   const cells: Array<[GraphDefinition, string, string, string, number]> = [
-    [SPHERE_INSTAGRAM_GRAPH, "instagram_", "instagram", "instagram_reach", 1200],
+    [SPHERE_INSTAGRAM_GRAPH, "instagram_", "instagram", "instagramstandalone_reach", 1200],
     [SPHERE_TIKTOK_GRAPH, "tiktok_", "tiktok", "tiktok_views", 5400],
     [SPHERE_YOUTUBE_GRAPH, "youtube_", "youtube", "youtube_views", 830],
   ];
@@ -765,7 +765,9 @@ describe("the content-experiment cell — a seeded, gated, measured shot", () =>
     await tickUntil(world, () => world.run.status !== "running", 25, CONTENT_EXPERIMENT_GRAPH);
 
     expect(world.stepByNode("verdict")?.status).toBe("succeeded");
-    expect(world.outcomes[0]!.metric).toBe("experiment_reach_48h");
+    // 22/08: the experiment publishes to LinkedIn, so it harvests the same
+    // collector rows as the LinkedIn sphere (linkedinpage_*_7d).
+    expect(world.outcomes[0]!.metric).toBe("linkedinpage_impressions");
     expect(world.outcomes[0]!.valueAfter).toBe(180);
     expect(world.run.status).toBe("succeeded");
   });

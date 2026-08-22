@@ -75,6 +75,19 @@ const MAX_PARKED_RECHECKS_PER_TICK = 50;
 /** A 'running' run with ZERO steps after this long was never picked up — starved. */
 export const STARVED_RUN_HOURS = 24;
 export const STARVED_SUMMARY = "starved: scheduler starvation (fix PR)";
+/**
+ * Orphan reconciliation (22/08 sweep): a 'running' run whose graph is NOT in
+ * GRAPH_REGISTRY is invisible to every tick query (they all filter
+ * graph = ANY(slugs)) — it can never advance and never finish, a zombie by
+ * construction (real case: a 'hermes-task-server' run stuck since 17/08).
+ * CAREFUL: hermes-task-server runs are created via the operator API on purpose
+ * and have legitimate SHORT lives — the criterion is INACTIVITY (last step, or
+ * started_at when stepless, older than 24h), NEVER the graph name.
+ */
+export const ORPHAN_SUMMARY = "orphan: graph fora do registry";
+/** Redis key stamped at the end of every completed tick — the external
+ *  liveness vigia (GET /api/v1/agent-org/liveness + CI cron) reads it. */
+export const GRAPHTICK_LAST_OK_KEY = "graphtick:last_ok";
 /** Early alarm: any zero-step run older than this means the scheduler is starving NOW. */
 const STARVATION_ALARM_HOURS = 2;
 /** Redis rate-limit key for the starvation alarm — at most one per 24h. */
@@ -812,6 +825,8 @@ export interface GraphTickResult {
   parkedChecked: number;
   /** Zero-step runs older than STARVED_RUN_HOURS reconciled as failed this tick. */
   starvedFailed: number;
+  /** Off-registry 'running' runs idle >STARVED_RUN_HOURS reconciled as failed this tick. */
+  orphanFailed: number;
   results: Array<{ runId: string; graph: string; status: string; started: string[]; pool: "exec" | "parked" }>;
 }
 
@@ -863,6 +878,43 @@ export async function runGraphTick(
       `🔴 RECONCILIAÇÃO DE FOME: ${starved.length} run(s) com ZERO steps há >${STARVED_RUN_HOURS}h marcadas como failed ("${STARVED_SUMMARY}"): ${breakdown}. Backlog limpo — os próximos crons rodam do zero, sem queimar LLM em briefings velhos.`
     );
     logger.warn("graph_tick_starved_reconciled", { count: starved.length, breakdown });
+  }
+
+  // 0a) Orphan reconciliation — SAME block, the other zombie shape. A run whose
+  // graph left (or never entered) GRAPH_REGISTRY is filtered out of every pool
+  // query above and below: no tick will ever advance or finish it. Real case:
+  // a 'hermes-task-server' run (created via the operator API, by design outside
+  // the registry) stuck 'running' since 17/08. The criterion is INACTIVITY —
+  // last step (or started_at when stepless) older than STARVED_RUN_HOURS —
+  // never the name: hermes-task-server also has legitimate short-lived runs.
+  const orphans = await sql<{ id: string; graph: string }[]>`
+    /* tick:orphan-select */
+    SELECT r.id, r.graph FROM ops.agent_run r
+     WHERE r.status = 'running' AND NOT (r.graph = ANY(${slugs}))
+       AND COALESCE(
+             (SELECT MAX(s.started_at) FROM ops.agent_step s WHERE s.run_id = r.id),
+             r.started_at
+           ) < NOW() - make_interval(hours => ${STARVED_RUN_HOURS})
+     ORDER BY r.started_at ASC`;
+  if (orphans.length > 0) {
+    const ids = orphans.map((r) => r.id);
+    // Auditable, like the starved path: one failed step names the reason.
+    await sql`
+      /* tick:orphan-step */
+      INSERT INTO ops.agent_step (run_id, node, status, summary)
+      SELECT id, '__orphan__', 'failed', ${ORPHAN_SUMMARY}
+        FROM ops.agent_run WHERE id = ANY(${ids}::uuid[])`;
+    await sql`
+      /* tick:orphan-fail */
+      UPDATE ops.agent_run SET status = 'failed', ended_at = NOW()
+       WHERE id = ANY(${ids}::uuid[])`;
+    const perGraph = new Map<string, number>();
+    for (const r of orphans) perGraph.set(r.graph, (perGraph.get(r.graph) ?? 0) + 1);
+    const breakdown = [...perGraph.entries()].map(([g, n]) => `${g}×${n}`).join(", ");
+    await telegram(
+      `🟠 RECONCILIAÇÃO DE ÓRFÃOS: ${orphans.length} run(s) 'running' com graph FORA do registry e sem atividade há >${STARVED_RUN_HOURS}h marcadas como failed ("${ORPHAN_SUMMARY}"): ${breakdown}. Nenhum tick consegue avançá-las — zumbis por construção.`
+    );
+    logger.warn("graph_tick_orphans_reconciled", { count: orphans.length, breakdown });
   }
 
   // 0b) Starvation alarm — cheap in-tick check, rate-limited to once per 24h.
@@ -939,7 +991,7 @@ export async function runGraphTick(
         `🔴 ORQUESTRADOR SEM EXECUTOR: ${inflight} run(s) de graph em andamento mas HERMES_TASK_TOKEN ausente no worker — nada avança até a env existir.`
       );
     }
-    return { advanced: 0, parkedChecked: 0, starvedFailed: starved.length, results: [] };
+    return { advanced: 0, parkedChecked: 0, starvedFailed: starved.length, orphanFailed: orphans.length, results: [] };
   }
 
   const advance = opts.advance ?? advanceRun;
@@ -1034,10 +1086,23 @@ export async function runGraphTick(
     logger.warn("graph_tick_renotify_failed", { message: (err as Error).message?.slice(0, 160) });
   }
 
+  // Liveness heartbeat for the EXTERNAL vigia (R9/C10 — the 18-20/08 lesson:
+  // the watchdog died inside the engine). The tick that reaches this line did
+  // its full pass; the CI cron (agent-org-liveness.yml) reads this stamp via
+  // GET /api/v1/agent-org/liveness and screams when it goes stale. Best-effort:
+  // a Redis blip must not fail the tick — a missing stamp makes the vigia
+  // scream, which is exactly the safe direction.
+  try {
+    await redis.set(GRAPHTICK_LAST_OK_KEY, new Date().toISOString(), "EX", 24 * 3600);
+  } catch {
+    logger.warn("graph_tick_liveness_stamp_failed", {});
+  }
+
   return {
     advanced: results.filter((r) => r.pool === "exec").length,
     parkedChecked: results.filter((r) => r.pool === "parked").length,
     starvedFailed: starved.length,
+    orphanFailed: orphans.length,
     results,
   };
 }

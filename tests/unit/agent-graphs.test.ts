@@ -281,7 +281,7 @@ describe("the first graph is the company's own loop", () => {
 describe("content alive on every platform (17/08) — the new cells", () => {
   it("IG / TikTok / YouTube spheres validate, are marketing-owned, gated, and close their own loop", () => {
     const expected: Array<[GraphDefinition, string, string, string]> = [
-      [SPHERE_INSTAGRAM_GRAPH, "instagram", "instagram_", "instagram_reach"],
+      [SPHERE_INSTAGRAM_GRAPH, "instagram", "instagram_", "instagramstandalone_reach"],
       [SPHERE_TIKTOK_GRAPH, "tiktok", "tiktok_", "tiktok_views"],
       [SPHERE_YOUTUBE_GRAPH, "youtube", "youtube_", "youtube_views"],
     ];
