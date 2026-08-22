@@ -529,7 +529,7 @@ export const SPHERE_LINKEDIN_GRAPH: GraphDefinition = {
   version: 1,
   vpOwner: "marketing",
   description:
-    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedin_* outcomes) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedin_impressions → verdict.",
+    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedin* outcomes) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedinpage_impressions → verdict.",
   nodes: [
     { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedin_" } },
     { id: "signal", kind: "task", dependsOn: [], config: { prompt: "linkedin-signal" } },
@@ -541,7 +541,10 @@ export const SPHERE_LINKEDIN_GRAPH: GraphDefinition = {
     { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
     { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
     { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
-    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "linkedin_impressions" } },
+    // 22/08 sweep: the VPS 07:40 collector writes 'linkedinpage_*_7d' (never
+    // 'linkedin_*') — the old 'linkedin_impressions' prefix-matched NOTHING and
+    // this sphere closed blind. Same class as the 13/08 'yt_views' bug.
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "linkedinpage_impressions" } },
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
   ],
 };
@@ -622,7 +625,11 @@ export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
     { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
     { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
     { id: "wait-48h", kind: "wait", dependsOn: ["publish"], config: { hours: 48 } },
-    { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: "experiment_reach_48h" } },
+    // 22/08 sweep: NO collector writes 'experiment_reach_48h' — the old name
+    // matched nothing and every experiment verdict was blind. The experiment
+    // publishes to LinkedIn (node above), so it reads the same collector rows
+    // as the LinkedIn sphere: the VPS writes 'linkedinpage_*_7d'.
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: "linkedinpage_impressions" } },
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
   ],
 };
@@ -682,16 +689,24 @@ export const SPHERE_INSTAGRAM_GRAPH: GraphDefinition = shortVideoSphere({
   slug: "sphere-instagram",
   channel: "instagram",
   prefix: "instagram_",
-  metric: "instagram_reach",
+  // 22/08 sweep: the VPS 07:40 collector writes 'instagramstandalone_*_7d'
+  // (Postiz's channel name), never 'instagram_*' — the old 'instagram_reach'
+  // prefix-matched NOTHING and this sphere closed blind after the 48h grace.
+  metric: "instagramstandalone_reach",
   promptFamily: "instagram",
   description:
-    "Instagram Reels specialist cell with its own memory: read this sphere's OWN harvested reach (instagram_* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, vertical, phone-shot feel) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + caption + hashtags policy) → human approval → publish to Instagram via Postiz → wait 72h → harvest instagram_reach → verdict.",
+    "Instagram Reels specialist cell with its own memory: read this sphere's OWN harvested reach (instagram* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, vertical, phone-shot feel) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + caption + hashtags policy) → human approval → publish to Instagram via Postiz → wait 72h → harvest instagramstandalone_reach → verdict.",
 });
 
 export const SPHERE_TIKTOK_GRAPH: GraphDefinition = shortVideoSphere({
   slug: "sphere-tiktok",
   channel: "tiktok",
   prefix: "tiktok_",
+  // HONEST GAP (22/08 sweep): the VPS 07:40 collector does NOT write any
+  // tiktok_* outcome yet — this harvest closes SEM DADO via the 48h grace
+  // (no false zero, says so on Telegram) until a TikTok collector exists on
+  // the VPS (founder's item, off-repo). The name stays as the contract that
+  // collector must write to.
   metric: "tiktok_views",
   promptFamily: "tiktok",
   description:

@@ -103,6 +103,10 @@ attempts = [
     ("claude", BASE_PROMPT),
     ("claude", REPAIR_PROMPT),
     ("codex", BASE_PROMPT),
+    # 21/08: claude E codex cairam juntos por 26h (sessao OAuth expirada na
+    # VPS). Regra da casa: kimi substitui claude E codex — sem esta 4a
+    # tentativa, um apagao duplo deixaria a segunda-feira sem blog.
+    ("kimi", BASE_PROMPT),
 ]
 last_reason = "no attempts"
 for i, (engine, prompt) in enumerate(attempts, 1):

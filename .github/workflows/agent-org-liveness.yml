@@ -1,0 +1,143 @@
+# Agent-org liveness vigia (R9/C10) — o vigia fica FORA do vigiado.
+#
+# Lição do incidente 18-20/08: o alarme de fome vivia DENTRO do graph-tick, e
+# um worker morto nunca reporta a própria morte. Este cron roda no GitHub (fora
+# da Railway, fora do worker, fora da VPS), lê o pulso público
+# GET /api/v1/agent-org/liveness e GRITA quando:
+#   1. last_tick_at está ausente ou mais velho que 30 min (o tick roda a cada
+#      10 min — três batidas perdidas = worker parado), OU
+#   2. running_runs > 0 e newest_step_at ausente/mais velho que 90 min (há
+#      trabalho na fila e NENHUM step novo — os runs estão presos).
+#
+# A rota é fail-open (Redis/DB caídos → campos null, HTTP 200): quem decide
+# gritar é ESTE job, e null conta como estale — nunca um verde mentiroso.
+# Telegram usa o MESMO contrato de secrets do blog-autopublish.yml; sem os
+# secrets o job ainda FALHA vermelho com o resumo (nada degrada calado).
+
+name: Agent-org liveness (30 min)
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "Base URL of the API (no trailing slash)"
+        required: false
+        default: "https://api-production-2052.up.railway.app"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe the liveness route
+        id: probe
+        env:
+          API_URL: ${{ github.event.inputs.api_url || 'https://api-production-2052.up.railway.app' }}
+        run: |
+          set -euo pipefail
+          URL="${API_URL%/}/api/v1/agent-org/liveness"
+          echo "Probing $URL"
+          BODY=$(curl -sS --max-time 30 "$URL" || echo "")
+          echo "body=$(printf '%s' "$BODY" | head -c 1000)" >> "$GITHUB_OUTPUT"
+          printf '%s' "$BODY" > liveness.json
+          echo "Response: $BODY"
+
+      - name: Decide — scream or stay quiet
+        id: decide
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import json, os, sys
+          from datetime import datetime, timezone
+
+          def parse(ts):
+              """ISO from Redis ('2026-08-22T10:00:00.000Z') or Postgres ::text
+              ('2026-08-22 10:00:00.123+00'). None on anything unparsable —
+              unparsable counts as stale, never as fresh."""
+              if not ts:
+                  return None
+              t = str(ts).strip().replace(" ", "T")
+              if t.endswith("Z"):
+                  t = t[:-1] + "+00:00"
+              import re
+              m = re.search(r"([+-]\d{2})(:?(\d{2}))?$", t)
+              if m and not m.group(3):
+                  t = t + ":00"
+              try:
+                  d = datetime.fromisoformat(t)
+              except ValueError:
+                  return None
+              if d.tzinfo is None:
+                  d = d.replace(tzinfo=timezone.utc)
+              return d
+
+          try:
+              data = json.load(open("liveness.json"))
+          except Exception:
+              data = {}
+
+          now = datetime.now(timezone.utc)
+          def age_min(ts):
+              d = parse(ts)
+              return None if d is None else (now - d).total_seconds() / 60
+
+          tick_age = age_min(data.get("last_tick_at"))
+          step_age = age_min(data.get("newest_step_at"))
+          running = data.get("running_runs")
+
+          problems = []
+          if tick_age is None:
+              problems.append("last_tick_at ausente/ilegivel (rota fora do ar, Redis caido, ou o worker nunca completou um tick)")
+          elif tick_age > 30:
+              problems.append(f"last_tick_at com {tick_age:.0f} min (limite 30): o graph-tick parou de bater")
+          if isinstance(running, (int, float)) and running > 0:
+              if step_age is None:
+                  problems.append(f"{int(running)} run(s) 'running' e newest_step_at ausente: ha trabalho na fila e nenhum step registrado")
+              elif step_age > 90:
+                  problems.append(f"{int(running)} run(s) 'running' e nenhum step novo ha {step_age:.0f} min (limite 90): os runs estao presos")
+
+          out = open(os.environ["GITHUB_OUTPUT"], "a")
+          if problems:
+              msg = "AGENT-ORG SEM PULSO: " + " | ".join(problems) + ". Verificar: worker na Railway (servico worker, logs graph_tick_*), Redis, e ops.agent_run/agent_step. Rota: /api/v1/agent-org/liveness"
+              out.write("alarm=1\n")
+              out.write("msg=" + msg.replace("\n", " ") + "\n")
+              print(msg)
+          else:
+              out.write("alarm=0\n")
+              print(f"OK: tick ha {tick_age:.0f} min, running_runs={running}, ultimo step " + (f"ha {step_age:.0f} min" if step_age is not None else "(sem steps ainda)"))
+          EOF
+
+      - name: Quiet when alive
+        if: steps.decide.outputs.alarm == '0'
+        run: echo "OK — o agent-org tem pulso."
+
+      # Mesmo padrão do blog-autopublish.yml: resumo sempre; Telegram quando os
+      # secrets existem; e o job FALHA vermelho de qualquer jeito — os secrets
+      # ausentes nunca compram um verde mentiroso.
+      - name: SCREAM when the pulse is gone (Telegram + job summary + red)
+        if: steps.decide.outputs.alarm == '1'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MSG: ${{ steps.decide.outputs.msg }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "## 🔴 AGENT-ORG SEM PULSO"
+            echo ""
+            echo "$MSG"
+            echo ""
+            echo "$RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export FULL_MSG="$MSG Log: $RUN_URL"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["FULL_MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set as Actions secrets — alarm only in the job summary."
+          fi
+          exit 1
