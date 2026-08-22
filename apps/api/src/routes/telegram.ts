@@ -33,10 +33,11 @@ import { tryGetSharedRedis } from "../shared-redis";
 
 // Read lazily (per call): env may be injected after import (tests, hot boots).
 const env = () => ({
-  token: process.env["TELEGRAM_BOT_TOKEN"] ?? "",
-  chat: process.env["TELEGRAM_CHAT_ID"] ?? "",
-  secret: process.env["TELEGRAM_WEBHOOK_SECRET"] ?? "",
+  token: (process.env["TELEGRAM_BOT_TOKEN"] ?? "").trim(),
+  chat: (process.env["TELEGRAM_CHAT_ID"] ?? "").trim(),
+  secret: (process.env["TELEGRAM_WEBHOOK_SECRET"] ?? "").trim(),
 });
+const tail = (s: string): string => (s.length <= 4 ? "****" : `…${s.slice(-4)}`);
 const PENDING_TTL_S = 24 * 3600;
 
 interface TgUpdate {
@@ -90,8 +91,16 @@ export function registerTelegramRoutes(app: Hono, db: PostgresClient): void {
   app.post("/api/telegram/webhook/:secret", async (c) => {
     // Not wired → 404 (no hint that the route exists).
     const { token: TG_TOKEN, chat: TG_CHAT, secret: TG_SECRET } = env();
-    if (!TG_SECRET || !TG_CHAT) return c.notFound();
-    if (c.req.param("secret") !== TG_SECRET) return c.notFound();
+    if (!TG_SECRET || !TG_CHAT) {
+      // A click REACHED us but the route is not wired: say so (21–22/08 the
+      // button "loaded but did nothing" for days with zero log lines).
+      logger.warn("telegram_webhook_request_but_not_configured", { has_secret: Boolean(TG_SECRET), has_chat: Boolean(TG_CHAT) });
+      return c.notFound();
+    }
+    if (c.req.param("secret") !== TG_SECRET) {
+      logger.warn("telegram_webhook_secret_mismatch", { got_tail: tail(c.req.param("secret")) });
+      return c.notFound();
+    }
 
     const update = (await c.req.json().catch(() => null)) as TgUpdate | null;
     if (!update) return c.json({ ok: true });
@@ -99,8 +108,16 @@ export function registerTelegramRoutes(app: Hono, db: PostgresClient): void {
     // ---- 1) a button was tapped --------------------------------------------
     const cq = update.callback_query;
     if (cq) {
-      const chatId = String(cq.message?.chat.id ?? "");
-      if (chatId !== TG_CHAT) return c.json({ ok: true }); // stranger: ignore
+      const chatId = String(cq.message?.chat.id ?? "").trim();
+      if (chatId !== TG_CHAT) {
+        // Not the founder's chat. Still ANSWER the callback — an unanswered
+        // callback is the "button loads but never accepts" spinner — and log
+        // it: a chat-id mismatch (group vs private, a pasted space) must be
+        // diagnosable from the logs, not guessed.
+        logger.warn("telegram_callback_ignored_chat_mismatch", { got_tail: tail(chatId), want_tail: tail(TG_CHAT) });
+        await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Este chat não está autorizado (TELEGRAM_CHAT_ID não bate).", show_alert: true });
+        return c.json({ ok: true });
+      }
       const decision = parseDecision(cq.data);
       if (!decision) {
         await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Botão desconhecido." });
@@ -154,8 +171,11 @@ export function registerTelegramRoutes(app: Hono, db: PostgresClient): void {
     // ---- 2) a reply to our "why?" prompt -----------------------------------
     const msg = update.message;
     if (msg && msg.reply_to_message && typeof msg.text === "string") {
-      const chatId = String(msg.chat.id);
-      if (chatId !== TG_CHAT) return c.json({ ok: true });
+      const chatId = String(msg.chat.id).trim();
+      if (chatId !== TG_CHAT) {
+        logger.warn("telegram_message_ignored_chat_mismatch", { got_tail: tail(chatId), want_tail: tail(TG_CHAT) });
+        return c.json({ ok: true });
+      }
       const redis = tryGetSharedRedis();
       if (!redis) return c.json({ ok: true });
       const key = `tg:pending_reason:${chatId}:${msg.reply_to_message.message_id}`;
@@ -175,5 +195,40 @@ export function registerTelegramRoutes(app: Hono, db: PostgresClient): void {
     }
 
     return c.json({ ok: true });
+  });
+
+  // Founder-facing diagnostic (same secret as the webhook): open it in the
+  // browser and see, in one screen, whether the route is configured and what
+  // Telegram itself thinks of our webhook — `last_error_message` is the exact
+  // reason a click dies (404, timeout, wrong host). Token never returned.
+  app.get("/api/telegram/status/:secret", async (c) => {
+    const { token: TG_TOKEN, chat: TG_CHAT, secret: TG_SECRET } = env();
+    if (!TG_SECRET || c.req.param("secret") !== TG_SECRET) return c.notFound();
+    let webhook: Record<string, unknown> | { error: string } = { error: "no_token" };
+    if (TG_TOKEN) {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/getWebhookInfo`, { signal: AbortSignal.timeout(10_000) });
+        const j = (await res.json()) as { ok?: boolean; result?: Record<string, unknown> };
+        const r = j?.result ?? {};
+        const url = typeof r["url"] === "string" ? (r["url"] as string) : "";
+        webhook = {
+          url_set: url.length > 0,
+          url_host: url ? new URL(url).host : null,
+          url_secret_matches: url ? url.endsWith(`/api/telegram/webhook/${TG_SECRET}`) : false,
+          pending_update_count: r["pending_update_count"] ?? 0,
+          last_error_date: r["last_error_date"] ?? null,
+          last_error_message: r["last_error_message"] ?? null,
+          allowed_updates: r["allowed_updates"] ?? null,
+        };
+      } catch (err) {
+        webhook = { error: (err as Error).message?.slice(0, 120) ?? "fetch_failed" };
+      }
+    }
+    return c.json({
+      configured: { token: Boolean(TG_TOKEN), chat_id: Boolean(TG_CHAT), secret: true },
+      chat_id_tail: tail(TG_CHAT),
+      webhook,
+      hint: "url_secret_matches=false → the api boot did not register (check telegram_webhook_* logs). last_error_message → why Telegram's delivery fails. Click a button, refresh: pending_update_count should not grow.",
+    });
   });
 }
