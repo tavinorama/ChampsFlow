@@ -76,8 +76,8 @@ export function registerPrimeRoutes(app: Hono, db: PostgresClient): void {
     // Brand: the one asked for (must belong to the tenant, RLS enforces) or the first.
     try {
       const { rows } = wantBrand
-        ? await db.query<{ id: string }>(`SELECT id FROM brand WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [wantBrand, auth.tenantId])
-        : await db.query<{ id: string }>(`SELECT id FROM brand WHERE tenant_id = $1 ORDER BY created_at ASC LIMIT 1`, [auth.tenantId]);
+        ? await db.query<{ id: string }>(`SELECT id FROM brands WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [wantBrand, auth.tenantId])
+        : await db.query<{ id: string }>(`SELECT id FROM brands WHERE tenant_id = $1 ORDER BY created_at ASC LIMIT 1`, [auth.tenantId]);
       out.brandId = rows[0]?.id ?? null;
     } catch (err) {
       logger.warn("prime_status_brand_failed", { tenant_id: auth.tenantId, message: (err as Error).message?.slice(0, 120) });

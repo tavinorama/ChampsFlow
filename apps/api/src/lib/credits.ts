@@ -42,8 +42,8 @@ export async function ensureFreeSignupResidual(
   if (tier !== "free") return;
   await db.query(
     `INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
-     SELECT $1, $2, 'adjustment', 'signup_residual', $1::uuid,
-            COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1), 0) + $2
+     SELECT $1::uuid, $2::integer, 'adjustment', 'signup_residual', $1::uuid,
+            (COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1::uuid), 0) + $2::integer)::integer
       ON CONFLICT (tenant_id, ref_type, ref_id)
         WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING`,
     [tenantId, FREE_SIGNUP_RESIDUAL_CREDITS]
@@ -83,8 +83,8 @@ export async function ensureMonthlyGrant(
   const amount = monthlyCreditsFor(tier);
   await db.query(
     `INSERT INTO credit_ledger (tenant_id, delta, reason, period, balance_after)
-     SELECT $1, $2, 'monthly_grant', $3::date,
-            COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1), 0) + $2
+     SELECT $1::uuid, $2::integer, 'monthly_grant', $3::date,
+            (COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1::uuid), 0) + $2::integer)::integer
       ON CONFLICT (tenant_id, period) WHERE reason = 'monthly_grant' DO NOTHING`,
     [tenantId, amount, period]
   );
@@ -138,8 +138,8 @@ export async function debitForAudit(
   const amount = creditsForAudit(tier);
   const res = await db.query<{ id: string }>(
     `INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
-     SELECT $1, $2, 'audit', 'geo_audit', $3::uuid,
-            COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1), 0) + $2
+     SELECT $1::uuid, $2::integer, 'audit', 'geo_audit', $3::uuid,
+            (COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1::uuid), 0) + $2::integer)::integer
       ON CONFLICT (tenant_id, ref_type, ref_id)
         WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING
       RETURNING id`,
