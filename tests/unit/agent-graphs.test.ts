@@ -279,25 +279,32 @@ describe("the first graph is the company's own loop", () => {
 });
 
 describe("content alive on every platform (17/08) — the new cells", () => {
-  it("IG / TikTok / YouTube spheres validate, are marketing-owned, gated, and close their own loop", () => {
-    const expected: Array<[GraphDefinition, string, string, string]> = [
-      [SPHERE_INSTAGRAM_GRAPH, "instagram", "instagram_", "instagramstandalone_reach"],
-      [SPHERE_TIKTOK_GRAPH, "tiktok", "tiktok_", "tiktok_views"],
-      [SPHERE_YOUTUBE_GRAPH, "youtube", "youtube_", "youtube_views"],
+  it("IG / TikTok / YouTube spheres validate, are marketing-owned e são REPORT-ONLY (B5, 22/08)", () => {
+    const expected: Array<[GraphDefinition, string, string]> = [
+      [SPHERE_INSTAGRAM_GRAPH, "instagram", "instagram_"],
+      [SPHERE_TIKTOK_GRAPH, "tiktok", "tiktok_"],
+      [SPHERE_YOUTUBE_GRAPH, "youtube", "youtube_"],
     ];
-    for (const [def, channel, prefix, metric] of expected) {
+    for (const [def, channel, prefix] of expected) {
       const v = validateGraph(def);
       expect(v.errors, def.slug).toEqual([]);
       expect(def.vpOwner).toBe("marketing");
       const byId = new Map(def.nodes.map((n) => [n.id, n]));
       expect(byId.get("memory")!.config?.["metricPrefix"]).toBe(prefix);
-      expect(byId.get("publish")!.config?.["channel"]).toBe(channel);
-      expect(byId.get("publish")!.dependsOn).toEqual(["approval"]);
-      expect(byId.get("harvest")!.config?.["metric"]).toBe(metric);
       // Two drafts, one critic that also reads memory (freshness against the record).
       expect(byId.get("draft-talking-head")).toBeTruthy();
       expect(byId.get("draft-caption-story")).toBeTruthy();
       expect(byId.get("critic")!.dependsOn).toContain("memory");
+      // B5: enquanto não existir nó de render, estas células NÃO publicam nem
+      // pedem aprovação — o canal exige mídia e o publish de texto é recusado
+      // pelo Postiz depois de o founder já ter gasto o clique.
+      expect(byId.get("publish"), def.slug).toBeUndefined();
+      expect(byId.get("approval"), def.slug).toBeUndefined();
+      expect(byId.get("harvest"), def.slug).toBeUndefined();
+      const report = byId.get("report");
+      expect(report, def.slug).toBeTruthy();
+      expect(report!.dependsOn).toEqual(["finalize"]);
+      expect(String(report!.config?.["title"] ?? "")).toContain(channel);
     }
   });
 

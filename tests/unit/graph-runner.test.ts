@@ -629,33 +629,28 @@ describe("content alive on every platform (17/08) — IG / TikTok / YouTube sphe
     [SPHERE_YOUTUBE_GRAPH, "youtube_", "youtube", "youtube_views", 830],
   ];
 
-  for (const [def, prefix, channel, metric, total] of cells) {
-    it(`${def.slug}: memory reads ONLY ${prefix} metrics, both drafts + critic run, PARKS at the human gate`, async () => {
+  // B5 (22/08): estas três células são REPORT-ONLY até existir um nó de render.
+  // IG/TikTok/YouTube exigem um arquivo de mídia e o publish manda texto — o
+  // Postiz recusava ("You need one media" / "No video / images selected") DEPOIS
+  // de o founder gastar um clique de aprovação (o sphere-youtube de 22/08 foi
+  // aprovado às 15:20 e morreu às 15:40). O roteiro agora chega pronto por
+  // Telegram e o founder grava/publica.
+  for (const [def, prefix, channel] of cells) {
+    it(`${def.slug}: memory só ${prefix}, 2 drafts + crítico, e termina em REPORT — sem gate, sem publish`, async () => {
       const world = makeWorld(def.slug);
-      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
+      await tickUntil(world, () => world.run.status !== "running", 25, def);
       expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: prefix }]);
       expect(world.stepByNode("draft-talking-head")?.status).toBe("succeeded");
       expect(world.stepByNode("draft-caption-story")?.status).toBe("succeeded");
       expect(world.stepByNode("critic")?.status).toBe("succeeded");
       expect(world.stepByNode("finalize")?.status).toBe("succeeded");
+      expect(world.stepByNode("report")?.status).toBe("succeeded");
+      // O ponto do B5: nada publica e NENHUMA aprovação é pedida.
       expect(world.published).toEqual([]);
-      const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO"));
-      expect(ask).toContain(`publicar como POST em ${channel}`);
-    });
-
-    it(`${def.slug}: approve → publish to ${channel} → wait 72h → harvest ${metric} → verdict closes the loop`, async () => {
-      const world = makeWorld(def.slug);
-      await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, def);
-      await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
-      await tickUntil(world, () => world.stepByNode("wait-72h")?.status === "waiting", 25, def);
-      expect(world.published).toHaveLength(1);
-      expect(world.published[0]!.channel).toBe(channel);
-
-      world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
-      world.harvestData = { n: 1, total };
-      await tickUntil(world, () => world.run.status !== "running", 25, def);
-      expect(world.outcomes[0]!.metric).toBe(metric);
-      expect(world.outcomes[0]!.valueAfter).toBe(total);
+      expect(world.stepByNode("approval")).toBeUndefined();
+      expect(world.telegrams.some((t) => t.includes("APROVAÇÃO"))).toBe(false);
+      // O roteiro chega ao founder, nomeando o canal para ele gravar/postar.
+      expect(world.telegrams.some((t) => t.includes("roteiro pronto para gravar") && t.includes(channel))).toBe(true);
       expect(world.run.status).toBe("succeeded");
     });
   }
