@@ -4,7 +4,9 @@
  * The 18-20/08 lesson: the starvation alarm lives inside the graph tick, so a
  * dead worker never reports its own death. The CI vigia (agent-org-liveness.yml)
  * curls this route every 30 min; these tests pin the route's whole contract:
- *  - three fields, exactly: last_tick_at, running_runs, newest_step_at;
+ *  - five fields: last_tick_at, running_runs, advanceable_runs, parked_runs,
+ *    newest_step_at (advanceable/parked split added 24/08 after 6 false alarms
+ *    on the first night: parked wait-72h runs are silent BY DESIGN);
  *  - NO auth: the request carries no Authorization header and still gets 200;
  *  - fail-open: Redis down → last_tick_at null; DB down → the two DB fields
  *    null — ALWAYS HTTP 200. The vigia decides to scream, never this route
@@ -45,7 +47,7 @@ function appWith(db: PostgresClient): Hono {
 
 const healthyDb = {
   async query() {
-    return { rows: [{ running_runs: "3", newest_step_at: STEP_TS }] };
+    return { rows: [{ running_runs: "3", advanceable_runs: "1", newest_step_at: STEP_TS }] };
   },
 } as unknown as PostgresClient;
 
@@ -70,6 +72,8 @@ describe("GET /api/v1/agent-org/liveness", () => {
     expect(body).toEqual({
       last_tick_at: TICK_ISO,
       running_runs: 3,
+      advanceable_runs: 1,
+      parked_runs: 2,
       newest_step_at: STEP_TS,
     });
   });
@@ -81,6 +85,8 @@ describe("GET /api/v1/agent-org/liveness", () => {
     expect(await res.json()).toEqual({
       last_tick_at: null,
       running_runs: null,
+      advanceable_runs: null,
+      parked_runs: null,
       newest_step_at: null,
     });
   });
@@ -92,6 +98,8 @@ describe("GET /api/v1/agent-org/liveness", () => {
     expect(await res.json()).toEqual({
       last_tick_at: null,
       running_runs: 3,
+      advanceable_runs: 1,
+      parked_runs: 2,
       newest_step_at: STEP_TS,
     });
   });
@@ -100,7 +108,7 @@ describe("GET /api/v1/agent-org/liveness", () => {
     h.redisGet.mockResolvedValue(TICK_ISO);
     const idleDb = {
       async query() {
-        return { rows: [{ running_runs: "0", newest_step_at: null }] };
+        return { rows: [{ running_runs: "0", advanceable_runs: "0", newest_step_at: null }] };
       },
     } as unknown as PostgresClient;
     const res = await appWith(idleDb).request("/api/v1/agent-org/liveness");
@@ -108,6 +116,8 @@ describe("GET /api/v1/agent-org/liveness", () => {
     expect(await res.json()).toEqual({
       last_tick_at: TICK_ISO,
       running_runs: 0,
+      advanceable_runs: 0,
+      parked_runs: 0,
       newest_step_at: null,
     });
   });
