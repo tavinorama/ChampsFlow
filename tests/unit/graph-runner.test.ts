@@ -16,6 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  channelDailyCap,
   advanceRun,
   GRAPH_REGISTRY,
   HARVEST_GRACE_HOURS,
@@ -53,6 +54,8 @@ interface FakeWorld {
   published: Array<{ channel: string; post: string }>;
   clock: { now: Date };
   harvestData: { n: number; total: number };
+  /** Cadence valve counter the fake substrate reports (default 0 = slot free). */
+  publishedTodayCount?: number;
   failTaskWhenPromptIncludes: string | null;
   /** What the substrate.snapshot port returns — the read-only brains' fuel. */
   snapshotText: string;
@@ -120,6 +123,7 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
           outcomes.push({ stepId: input.stepId, metric: input.metric, valueAfter: input.valueAfter });
           return `outcome-${outcomes.length}`;
         },
+        publishedToday: async () => world.publishedTodayCount ?? 0,
         async readHarvest() {
           return { ...world.harvestData };
         },
@@ -781,5 +785,60 @@ describe("X thread → single-post pipe (prod failure 22/08)", () => {
     // the runner now sends segs[0] — pinned by the graph-runner publish branch
     // (see 'thread de N tweets publicada como tweet único' summary).
     expect(segs[0]).toBe("Tweet one under the limit.");
+  });
+});
+
+describe("cadence valve — three producers must not flood one channel (24/08)", () => {
+  it("cap reached → the approved publish PARKS as waiting (never dropped), telegram says deferred", async () => {
+    const world = makeWorld("sphere-linkedin");
+    world.publishedTodayCount = 2; // linkedin default cap = 2, both slots used
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("publish") != null, 25, SPHERE_LINKEDIN_GRAPH);
+    const pub = world.stepByNode("publish")!;
+    expect(pub.status).toBe("waiting");
+    expect(pub.summary).toContain("channel cadence");
+    expect(world.published).toEqual([]);
+    expect(world.run.status).toBe("running"); // parked, not failed
+    expect(world.telegrams.some((t) => t.includes("CADÊNCIA LINKEDIN") && t.includes("ADIADO"))).toBe(true);
+  });
+
+  it("the slot frees (00:00 UTC rolls the counter) → the deferred publish ships with the cadence note", async () => {
+    const world = makeWorld("sphere-linkedin");
+    world.publishedTodayCount = 2;
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("publish")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    world.publishedTodayCount = 0; // midnight reset
+    await tickUntil(world, () => world.stepByNode("publish")?.status === "succeeded", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.published).toHaveLength(1);
+    expect(world.published[0]!.channel).toBe("linkedin");
+    expect(world.stepByNode("publish")!.summary).toContain("apos adiamento de cadencia");
+  });
+
+  it("under the cap → publishes immediately, exactly as before the valve", async () => {
+    const world = makeWorld("sphere-linkedin");
+    world.publishedTodayCount = 1; // one slot left
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
+    await world.ports.substrate.finishStep(world.stepByNode("approval")!.id, { status: "succeeded" });
+    await tickUntil(world, () => world.stepByNode("publish")?.status === "succeeded", 25, SPHERE_LINKEDIN_GRAPH);
+    expect(world.published).toHaveLength(1);
+  });
+
+  it("channelDailyCap: linkedin defaults to 2, others unlimited, env overrides win, 0 disables", () => {
+    expect(channelDailyCap("linkedin")).toBe(2);
+    expect(channelDailyCap("x")).toBeNull();
+    process.env["CHANNEL_DAILY_CAP_LINKEDIN"] = "1";
+    process.env["CHANNEL_DAILY_CAP_X"] = "3";
+    process.env["CHANNEL_DAILY_CAP_TIKTOK"] = "0";
+    try {
+      expect(channelDailyCap("linkedin")).toBe(1);
+      expect(channelDailyCap("x")).toBe(3);
+      expect(channelDailyCap("tiktok")).toBeNull();
+    } finally {
+      delete process.env["CHANNEL_DAILY_CAP_LINKEDIN"];
+      delete process.env["CHANNEL_DAILY_CAP_X"];
+      delete process.env["CHANNEL_DAILY_CAP_TIKTOK"];
+    }
   });
 });

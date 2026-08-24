@@ -145,6 +145,12 @@ export interface SubstratePort {
   /** Aggregate harvested outcomes for a metric since a moment (from #162's cron). */
   readHarvest(metric: string, sinceIso: string): Promise<{ n: number; total: number }>;
   /**
+   * Succeeded publishes to a channel since 00:00 UTC today — the cadence
+   * valve's counter (24/08: LinkedIn got 3 producers — sphere, video adapt,
+   * experiment — and the founder's feed showed it).
+   */
+  publishedToday(channel: string): Promise<number>;
+  /**
    * A bounded, PII-free digest of the company's own record, for the read-only
    * brains (Watchdog, CDO). The engines cannot reach the DB — the runner, which
    * can, reads here and injects the text so the LLM lenses reason over facts.
@@ -241,6 +247,24 @@ function statesFrom(byNode: Map<string, StepRow>): NodeStates {
   return states;
 }
 
+/**
+ * Daily publish cap per channel — the cadence valve. LinkedIn is the only
+ * channel with THREE producers (sphere-linkedin, daily-video's adaptation,
+ * content-experiment); 3 posts/day on a company page reads as spam and the
+ * founder noticed (24/08). Default: linkedin 2/day; everything else
+ * unlimited. Override per channel: CHANNEL_DAILY_CAP_LINKEDIN=1 etc.
+ * A capped publish is DEFERRED (parked as waiting, released after 00:00 UTC),
+ * never dropped — content survives, the feed breathes.
+ */
+export function channelDailyCap(channel: string): number | null {
+  const envRaw = process.env[`CHANNEL_DAILY_CAP_${channel.toUpperCase()}`];
+  if (envRaw !== undefined && envRaw.trim() !== "") {
+    const n = Number(envRaw);
+    if (Number.isFinite(n)) return n <= 0 ? null : Math.floor(n); // 0/neg = sem cap
+  }
+  return channel.toLowerCase() === "linkedin" ? 2 : null;
+}
+
 /** Is this publish node targeting X? (channel string is case-insensitive.) */
 function isXPublish(node: GraphNode): boolean {
   return node.kind === "publish" && String(node.config?.["channel"] ?? "").toLowerCase() === "x";
@@ -323,6 +347,51 @@ export async function advanceRun(
         await substrate.finishStep(step.id, { status: "succeeded", summary: `waited ${hours}h` });
         step.status = "succeeded";
         notes.push(`wait ${nodeId} elapsed`);
+      }
+    } else if (node.kind === "publish") {
+      // A cadence-deferred publish (24/08). Re-check the slot every tick;
+      // after 00:00 UTC the counter resets and the content ships. Same X
+      // handling as the fresh path: thread → tweet 1, hard limit guard.
+      const channel = String(node.config?.["channel"] ?? "linkedin");
+      const cap = channelDailyCap(channel);
+      if (cap === null || (await substrate.publishedToday(channel)) < cap) {
+        const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
+        const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+        const post =
+          ((await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "") ||
+          ((await artifacts.get(runId, contentNodeId)) ?? "");
+        if (!post) {
+          await substrate.finishStep(step.id, { status: "failed", summary: "deferred publish lost its content artifact (TTL)" });
+          step.status = "failed";
+        } else {
+          let toSend = post;
+          let threadNote = "";
+          if (isXPublish(node)) {
+            const segments = splitXSegments(post);
+            if (segments.length > 1) {
+              toSend = segments[0]!;
+              threadNote = ` (thread de ${segments.length} tweets publicada como tweet único — pipe atual é single-post)`;
+            }
+          }
+          if (isXPublish(node) && !xPostWithinLimit(toSend)) {
+            await substrate.finishStep(step.id, { status: "failed", summary: `x post over ${X_POST_LIMIT} chars, not sent — nothing published` });
+            step.status = "failed";
+          } else {
+            const res = await hermes.publish({ channel, post: toSend });
+            if (res.ok) {
+              await artifacts.set(runId, nodeId, res.detail);
+              await substrate.finishStep(step.id, {
+                status: "succeeded",
+                outputHash: sha(res.detail),
+                summary: `published via ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote} (apos adiamento de cadencia)`,
+              });
+              step.status = "succeeded";
+              notes.push(`deferred publish ${nodeId} released`);
+            }
+            // res.ok=false → keep waiting; next tick retries (Postiz blip must
+            // not kill an approved, cadence-deferred post).
+          }
+        }
       }
     } else if (node.kind === "harvest") {
       const metric = String(node.config?.["metric"] ?? "");
@@ -542,6 +611,20 @@ export async function advanceRun(
         continue;
       }
       const channel = String(config["channel"] ?? "linkedin");
+      // Cadence valve (24/08: three producers landed on LinkedIn the same
+      // day). Over the cap → PARK, don't drop: section 2 re-checks every tick
+      // and releases after 00:00 UTC when a slot frees up.
+      const cap = channelDailyCap(channel);
+      if (cap !== null && (await substrate.publishedToday(channel)) >= cap) {
+        await substrate.finishStep(stepId, {
+          status: "waiting",
+          summary: `channel cadence: ${channel} ja publicou ${cap}/${cap} hoje — adiado (sai apos 00:00 UTC)`,
+        });
+        await telegram(
+          `🟡 CADÊNCIA ${channel.toUpperCase()} — graph ${def.slug}: já saíram ${cap} publicações hoje nesse canal. Este conteúdo (aprovado) foi ADIADO e publica sozinho depois das 00:00 UTC. Cap por canal: env CHANNEL_DAILY_CAP_${channel.toUpperCase()}.`
+        );
+        continue;
+      }
       // X thread reality check (prod failure 22/08): a mini-thread passes the
       // per-tweet limit, but the Postiz pipe publishes ONE post per call — the
       // joined text got rejected with "post is too long". Until real thread
