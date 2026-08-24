@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "bristol-bakery-ai-search-visibility-geo",
+    title: "The Bakery ChatGPT Forgot: A Small Business Owner's Wake-Up Call on AI Search",
+    excerpt: "A Bristol bakery owner discovers she's invisible to ChatGPT and Google's AI Overviews, and fixes it with plain facts, specific reviews and consistent listings rather than a website redesign.",
+    readTime: "6 min read",
+    publishedAt: "2026-08-24",
+    publishedAtDisplay: "24 August 2026",
+  },
+  {
+    type: "article",
     slug: "the-yorkshire-potter-chatgpt-started-recommending",
     title: "The Yorkshire Potter ChatGPT Started Recommending",
     excerpt: "A small ceramics seller's brush with ChatGPT's shopping feature shows why generative engines, not just search engines, now decide which businesses customers hear about.",
