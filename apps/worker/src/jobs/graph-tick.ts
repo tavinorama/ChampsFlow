@@ -470,6 +470,19 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
              AND measured_at >= ${sinceIso}::timestamptz`;
         return { n: Number(rows[0]?.n ?? 0), total: Number(rows[0]?.total ?? 0) };
       },
+      async publishedToday(channel) {
+        // Counter of the cadence valve (24/08): succeeded publishes to this
+        // channel since 00:00 UTC. The channel travels in the step summary
+        // ("published via postiz channel=<ch>..."), so LIKE on the marker is
+        // the join — channels are single tokens, no prefix collisions.
+        const rows = await sql<{ n: string }[]>`
+          SELECT COUNT(*)::text AS n
+            FROM ops.agent_step
+           WHERE node = 'publish' AND status = 'succeeded'
+             AND summary LIKE ${"%channel=" + channel + "%"}
+             AND started_at >= date_trunc('day', now() AT TIME ZONE 'utc')`;
+        return Number(rows[0]?.n ?? 0);
+      },
     },
     hermes: {
       async task(prompt) {
