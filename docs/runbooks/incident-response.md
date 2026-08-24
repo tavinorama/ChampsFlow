@@ -75,3 +75,19 @@ We will follow up with a full post-mortem within 5 business days.
 | LLM generation timeouts | Anthropic / Bedrock outage | Check Anthropic status page; EU tenants can temporarily switch to direct API by updating `DEFAULT_TENANT_REGION` — only if US DPA covers the switch |
 | Supabase connection errors | Connection pool saturation or Supabase outage | Check Supabase status page; verify `pg_pool_connections_used` metric |
 | Stripe webhook failures | Webhook signing key mismatch or Stripe outage | Verify `STRIPE_WEBHOOK_SECRET` matches the key in Stripe dashboard |
+
+## Agent-org freeze (adicionado 24/08, após os incidentes 18–22/08)
+
+Sintoma: nenhuma publicação/relatório há horas, ou o vigia externo (workflow "Agent-org liveness") vermelho.
+
+1. **Pulso:** `curl -s https://api-production-2052.up.railway.app/api/v1/agent-org/liveness`
+   - `last_tick_at` > 30 min → o worker parou: Railway → serviço worker → logs (`graph_tick_*`); Redis vivo?
+   - `advanceable_runs > 0` e `newest_step_at` velho → o tick não chega neles: procurar `graph_tick_run_error` nos logs.
+   - Só `parked_runs` e steps velhos → **noite normal** (wait/harvest/aprovação), não é incidente.
+2. **O que espera humano** (a pergunta certa é sobre STEPS): `SELECT r.graph, s.node, s.started_at FROM ops.agent_step s JOIN ops.agent_run r ON r.id=s.run_id WHERE s.status='waiting' ORDER BY s.started_at;`
+3. **Falhas recentes com causa:** `SELECT r.graph, s.node, s.summary, s.started_at FROM ops.agent_step s JOIN ops.agent_run r ON r.id=s.run_id WHERE s.status='failed' AND s.started_at > now()-interval '24 hours' ORDER BY s.started_at DESC;`
+   - `OAuth session expired` → re-login do engine na VPS (`claude` + `/login`; `codex login`) + `systemctl restart hermes.service`. A cadeia kimi segura a operação enquanto isso.
+   - `You need one media` / `No video` → canal exige mídia; a célula não devia ter nó publish (ver #516).
+4. **Botão do Telegram mudo:** abrir `/api/telegram/status/<TELEGRAM_WEBHOOK_SECRET>` — `configured`, `url_secret_matches` e `last_error_message` respondem em 10 segundos.
+5. **Hermes:** `curl -s https://hermes.ozvor.com/health` · engines: última linha por engine em `engine_drift_check`.
+6. Registrar o postmortem em `docs/learning/postmortems/` e o padrão novo em `docs/learning/anti-patterns.md` (três exemplos desta semana já estão lá).
