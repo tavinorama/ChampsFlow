@@ -45,14 +45,32 @@ export function registerLivenessRoutes(app: Hono, db: PostgresClient): void {
     }
 
     let runningRuns: number | null = null;
+    let advanceableRuns: number | null = null;
+    let parkedRuns: number | null = null;
     let newestStepAt: string | null = null;
     try {
-      const { rows } = await db.query<{ running_runs: string; newest_step_at: string | null }>(
+      // 24/08, first night on watch: 6 false alarms. All 6 'running' runs sat
+      // at wait-72h — published, waiting to harvest. A parked run creates no
+      // steps for HOURS and that is a healthy quiet night, so "running > 0 and
+      // steps stale" cannot alarm by itself. Split the count with the SAME
+      // waiting-frontier predicate the tick's two-pool selector uses: the
+      // vigia alarms on ADVANCEABLE runs going nowhere, never on parked ones.
+      const { rows } = await db.query<{
+        running_runs: string;
+        advanceable_runs: string;
+        newest_step_at: string | null;
+      }>(
         `SELECT (SELECT COUNT(*) FROM ops.agent_run WHERE status = 'running')::text AS running_runs,
+                (SELECT COUNT(*) FROM ops.agent_run r
+                  WHERE r.status = 'running'
+                    AND NOT EXISTS (SELECT 1 FROM ops.agent_step s
+                                     WHERE s.run_id = r.id AND s.status = 'waiting'))::text AS advanceable_runs,
                 (SELECT MAX(started_at) FROM ops.agent_step)::text AS newest_step_at`
       );
       if (rows[0]) {
         runningRuns = Number(rows[0].running_runs);
+        advanceableRuns = Number(rows[0].advanceable_runs);
+        parkedRuns = runningRuns - advanceableRuns;
         newestStepAt = rows[0].newest_step_at ?? null;
       }
     } catch (err) {
@@ -63,6 +81,10 @@ export function registerLivenessRoutes(app: Hono, db: PostgresClient): void {
     return c.json({
       last_tick_at: lastTickAt,
       running_runs: runningRuns,
+      /** Runs the tick can actually move — the only ones whose silence is bad. */
+      advanceable_runs: advanceableRuns,
+      /** Runs parked on wait/harvest/approval — silent for hours BY DESIGN. */
+      parked_runs: parkedRuns,
       newest_step_at: newestStepAt,
     });
   });

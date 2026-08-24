@@ -88,17 +88,26 @@ jobs:
           tick_age = age_min(data.get("last_tick_at"))
           step_age = age_min(data.get("newest_step_at"))
           running = data.get("running_runs")
+          # 24/08, primeira noite de guarda: 6 falsos alarmes. Os 6 runs
+          # 'running' estavam TODOS em wait-72h (publicaram, esperando a
+          # colheita) — run estacionado nao gera step por horas e isso e uma
+          # noite saudavel. O criterio agora usa advanceable_runs (frontier
+          # sem 'waiting', mesmo predicado dos pools do tick). Fallback: rota
+          # antiga sem o campo -> trata running como advanceable (conservador).
+          advanceable = data.get("advanceable_runs")
+          if not isinstance(advanceable, (int, float)):
+              advanceable = running
 
           problems = []
           if tick_age is None:
               problems.append("last_tick_at ausente/ilegivel (rota fora do ar, Redis caido, ou o worker nunca completou um tick)")
           elif tick_age > 30:
               problems.append(f"last_tick_at com {tick_age:.0f} min (limite 30): o graph-tick parou de bater")
-          if isinstance(running, (int, float)) and running > 0:
+          if isinstance(advanceable, (int, float)) and advanceable > 0:
               if step_age is None:
-                  problems.append(f"{int(running)} run(s) 'running' e newest_step_at ausente: ha trabalho na fila e nenhum step registrado")
+                  problems.append(f"{int(advanceable)} run(s) avancavel(is) e newest_step_at ausente: ha trabalho executavel e nenhum step registrado")
               elif step_age > 90:
-                  problems.append(f"{int(running)} run(s) 'running' e nenhum step novo ha {step_age:.0f} min (limite 90): os runs estao presos")
+                  problems.append(f"{int(advanceable)} run(s) avancavel(is) e nenhum step novo ha {step_age:.0f} min (limite 90): o tick nao esta chegando neles")
 
           out = open(os.environ["GITHUB_OUTPUT"], "a")
           if problems:
