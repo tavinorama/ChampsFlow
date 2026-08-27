@@ -603,7 +603,8 @@ export async function buildSnapshot(
   return "";
 }
 
-function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
+/** Exported for tests (the fake sql routes on the queries' own markers). */
+export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
   return {
     substrate: {
       async getRun(runId) {
@@ -1072,7 +1073,8 @@ export async function memoryLessonStoreReady(sql: postgres.Sql): Promise<boolean
  * CEO-owned and approval-gated, but never counted by the marketing valve.
  */
 export async function runMemoryConsolidationMonthly(
-  sql: postgres.Sql
+  sql: postgres.Sql,
+  opts: { hermesToken?: string } = {}
 ): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   if (!(await memoryLessonStoreReady(sql))) {
     logger.warn("memory_consolidation_off_no_table", { action: MEMORY_STORE_MISSING_ACTION });
@@ -1081,7 +1083,7 @@ export async function runMemoryConsolidationMonthly(
     );
     return { started: [], skipped: ["memory-consolidation"], capped: [] };
   }
-  return startBrainRuns(sql, ["memory-consolidation"], 24 * 27, "cron:memory-consolidation");
+  return startBrainRuns(sql, ["memory-consolidation"], 24 * 27, "cron:memory-consolidation", opts);
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */
