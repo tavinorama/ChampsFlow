@@ -467,9 +467,287 @@ export async function buildSnapshot(
     return lines.join("\n");
   }
 
+  if (source === "incidents") {
+    // 5.D.2: the postmortem's evidence node. The SAME SQL detection the daily
+    // cron ran to decide "there IS an incident" re-aggregates the facts here,
+    // at node time, into the block the compose step is allowed to use. Every
+    // number in the draft comes from these queries; the LLM only writes.
+    return incidentEvidenceBlock(await detectIncidentSignatures(sql, d * 24));
+  }
+
   // Unknown source: honest empty, not a throw — the graph author named it, the
   // validator required it non-empty, so this is a typo, not an outage.
   return "";
+}
+
+// ---------------------------------------------------------------------------
+// incident-postmortem (5.D.2) — DETECTION IS SQL/CODE, NEVER AN LLM GUESS
+// ("o vigia também mente": agregação é query, o modelo só redige).
+//
+// Three incident signatures, straight from the week the founder wrote three
+// postmortems by hand (18-22/08):
+//  1. failure-cluster  — >= FAILURE_CLUSTER_MIN steps falhados no MESMO graph
+//     em 24h (o apagão de engines de 21/08 era isso, em todo graph);
+//  2. reconciliation   — QUALQUER step '__starved__'/'__orphan__' na janela
+//     (a fome de 18-20/08 e os zumbis fora do registry; 1 já é incidente);
+//  3. approval-timeout-mass — >= APPROVAL_TIMEOUT_MASS_MIN aprovações
+//     expiradas por silêncio na janela (aprovações apodrecendo em massa foi
+//     o tampão da fome de 18/08).
+// Rejeições do founder ("rejected: ...") NÃO são incidente — são decisão
+// humana — e as falhas de approval são tratadas só pela assinatura 3, então a
+// assinatura 1 exclui nodes de approval e os steps sintéticos de
+// reconciliação (senão o mesmo fato contaria duas vezes).
+//
+// The thresholds live in TS (not in SQL HAVING) so the unit tests pin the
+// REAL decision logic: 2 failures ≠ incident, 3 = incident.
+// ---------------------------------------------------------------------------
+
+/** Steps falhados no mesmo graph/24h a partir do qual é incidente. */
+export const FAILURE_CLUSTER_MIN = 3;
+/** Aprovações expiradas na janela a partir do qual é "em massa". */
+export const APPROVAL_TIMEOUT_MASS_MIN = 3;
+/** Summary do step auditável gravado num dia SEM incidente (zero Telegram). */
+export const QUIET_SUMMARY = "sem incidente nas ultimas 24h (scan SQL: 0 assinaturas)";
+/** Cap de cada resumo literal de erro que entra na evidência. */
+const ERROR_SAMPLE_CAP = 160;
+
+export interface IncidentSignature {
+  kind: "failure-cluster" | "reconciliation" | "approval-timeout-mass";
+  /** Graph afetado (failure-cluster) ou null nas assinaturas cross-graph. */
+  graph: string | null;
+  count: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  /** Fatos literais, com tamanho capado (erros / graphs afetados). */
+  detail: string;
+}
+
+/**
+ * Scan the last `hours` of ops.* for incident signatures. Pure aggregation:
+ * counts, first/last timestamps, affected graphs, literal error summaries
+ * capped at ERROR_SAMPLE_CAP chars. Returns [] on a healthy window.
+ */
+export async function detectIncidentSignatures(
+  sql: postgres.Sql,
+  hours = 24
+): Promise<IncidentSignature[]> {
+  const h = Math.min(24 * 7, Math.max(1, Math.round(hours) || 24));
+  const out: IncidentSignature[] = [];
+
+  // 1) Failure clusters per graph. Approval nodes are excluded (rejection is
+  // a human decision; timeout is signature 3) and so are the synthetic
+  // reconciliation steps (signature 2 owns them).
+  const clusters = await sql<{ graph: string; fails: string; first_at: string; last_at: string }[]>`
+    /* pm:failed-clusters */
+    SELECT r.graph,
+           COUNT(*)::text AS fails,
+           MIN(s.started_at)::text AS first_at,
+           MAX(s.started_at)::text AS last_at
+      FROM ops.agent_step s
+      JOIN ops.agent_run r ON r.id = s.run_id
+     WHERE s.status = 'failed'
+       AND s.started_at >= NOW() - make_interval(hours => ${h})
+       AND s.node NOT IN ('__starved__', '__orphan__')
+       AND NOT (s.node ILIKE '%approval%')
+     GROUP BY r.graph
+     ORDER BY COUNT(*) DESC
+     LIMIT 10`;
+  const hot = clusters.filter((c) => Number(c.fails) >= FAILURE_CLUSTER_MIN);
+  if (hot.length > 0) {
+    // Literal error samples (capped) for the hot graphs only — the draft may
+    // quote these verbatim; it may not paraphrase them into invention.
+    const samples = await sql<{ graph: string; summary: string }[]>`
+      /* pm:failed-samples */
+      SELECT graph, summary FROM (
+        SELECT r.graph,
+               LEFT(COALESCE(s.summary, 'sem resumo'), ${ERROR_SAMPLE_CAP}) AS summary,
+               ROW_NUMBER() OVER (PARTITION BY r.graph ORDER BY s.started_at DESC) AS rn
+          FROM ops.agent_step s
+          JOIN ops.agent_run r ON r.id = s.run_id
+         WHERE s.status = 'failed'
+           AND s.started_at >= NOW() - make_interval(hours => ${h})
+           AND r.graph = ANY(${hot.map((c) => c.graph)})
+           AND s.node NOT IN ('__starved__', '__orphan__')
+           AND NOT (s.node ILIKE '%approval%')
+      ) ranked
+      WHERE rn <= 3`;
+    const byGraph = new Map<string, string[]>();
+    for (const smp of samples) {
+      const list = byGraph.get(smp.graph) ?? [];
+      list.push(`"${smp.summary}"`);
+      byGraph.set(smp.graph, list);
+    }
+    for (const c of hot) {
+      out.push({
+        kind: "failure-cluster",
+        graph: c.graph,
+        count: Number(c.fails),
+        firstAt: c.first_at,
+        lastAt: c.last_at,
+        detail: `erros: ${(byGraph.get(c.graph) ?? ["sem resumo"]).join(" | ")}`,
+      });
+    }
+  }
+
+  // 2) Starved/orphan reconciliations — ONE is already an incident: the tick
+  // only writes these steps when a run died without ever being served.
+  const recon = await sql<{ node: string; n: string; first_at: string; last_at: string; graphs: string }[]>`
+    /* pm:reconciliations */
+    SELECT s.node,
+           COUNT(*)::text AS n,
+           MIN(s.started_at)::text AS first_at,
+           MAX(s.started_at)::text AS last_at,
+           STRING_AGG(DISTINCT r.graph, ', ') AS graphs
+      FROM ops.agent_step s
+      JOIN ops.agent_run r ON r.id = s.run_id
+     WHERE s.node IN ('__starved__', '__orphan__')
+       AND s.started_at >= NOW() - make_interval(hours => ${h})
+     GROUP BY s.node`;
+  for (const rc of recon) {
+    if (Number(rc.n) < 1) continue;
+    out.push({
+      kind: "reconciliation",
+      graph: null,
+      count: Number(rc.n),
+      firstAt: rc.first_at,
+      lastAt: rc.last_at,
+      detail: `${rc.node} · graphs: ${rc.graphs || "?"}`,
+    });
+  }
+
+  // 3) Approval timeouts en masse. The runner writes the exact summary prefix
+  // 'approval timed out' (graph-runner.ts); rejections ('rejected: ...') never
+  // match — a human's no is not an incident.
+  const timeouts = await sql<{ n: string; first_at: string | null; last_at: string | null; graphs: string | null }[]>`
+    /* pm:approval-timeouts */
+    SELECT COUNT(*)::text AS n,
+           MIN(s.started_at)::text AS first_at,
+           MAX(s.started_at)::text AS last_at,
+           STRING_AGG(DISTINCT r.graph, ', ') AS graphs
+      FROM ops.agent_step s
+      JOIN ops.agent_run r ON r.id = s.run_id
+     WHERE s.status = 'failed'
+       AND s.node ILIKE ${"%approval%"}
+       AND s.summary LIKE ${"approval timed out%"}
+       AND s.started_at >= NOW() - make_interval(hours => ${h})`;
+  const t = timeouts[0];
+  if (t && Number(t.n) >= APPROVAL_TIMEOUT_MASS_MIN) {
+    out.push({
+      kind: "approval-timeout-mass",
+      graph: null,
+      count: Number(t.n),
+      firstAt: t.first_at,
+      lastAt: t.last_at,
+      detail: `graphs: ${t.graphs ?? "?"}`,
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Render the detected signatures as the [evidence] block the compose prompt
+ * reads. Pure formatter: every number in it arrived from SQL. "" when the
+ * window is healthy — the runner turns that into its honest SEM DADOS marker.
+ */
+export function incidentEvidenceBlock(signatures: IncidentSignature[]): string {
+  if (signatures.length === 0) return "";
+  const label: Record<IncidentSignature["kind"], string> = {
+    "failure-cluster": "CLUSTER DE FALHAS",
+    reconciliation: "RECONCILIACAO (run morta sem ser servida)",
+    "approval-timeout-mass": "TIMEOUTS DE APROVACAO EM MASSA",
+  };
+  const lines: string[] = [`ASSINATURAS DE INCIDENTE (scan SQL sobre ops.*, ultimas 24h):`, ``];
+  for (const s of signatures) {
+    const where = s.graph ? ` em ${s.graph}` : "";
+    const window = s.firstAt && s.lastAt ? ` · janela ${s.firstAt} → ${s.lastAt} (UTC)` : "";
+    lines.push(`- ${label[s.kind]}${where}: ${s.count} ocorrencia(s)${window} · ${s.detail}`);
+  }
+  lines.push(
+    ``,
+    `(Todo numero acima veio de agregacao SQL sobre ops.agent_step/ops.agent_run — nada foi estimado. O rascunho so pode usar o que esta neste bloco.)`
+  );
+  return lines.join("\n");
+}
+
+/**
+ * 5.D.2 daily scan (07:00 UTC): decide by SQL whether the last 24h carry an
+ * incident signature and, ONLY then, start an incident-postmortem run for the
+ * 10-min tick to advance (evidence → compose → founder gate → report).
+ *
+ * Quiet day: NO run of the graph starts, NO Telegram — a daily 🟢 would train
+ * the founder to ignore the channel (the watchdog already reports daily). The
+ * scan still leaves an AUDITABLE record ("todo job auditável"): one already-
+ * succeeded ops.agent_run row with a single '__quiet__' step saying "sem
+ * incidente nas últimas 24h". Verifiable in the substrate, invisible on the
+ * phone.
+ *
+ * No executor (HERMES_TASK_TOKEN missing) + an incident found is itself an
+ * incident: scream on Telegram with the unlocking action, start nothing (a
+ * run no tick can execute would just rot into the starved pool).
+ */
+export async function runIncidentPostmortemDaily(
+  sql: postgres.Sql,
+  opts: { hermesToken?: string; telegram?: (text: string) => Promise<void> } = {}
+): Promise<{ started: string[]; skipped: string[]; quiet: boolean; signatures: IncidentSignature[] }> {
+  const telegram = opts.telegram ?? sendTelegram;
+  const graph = "incident-postmortem";
+
+  // Idempotent per calendar day: a worker restart or a second instance must
+  // not double-scan (same look-back pattern as startBrainRuns). ANY run in
+  // the window counts — including a quiet-day record.
+  const recent = await sql<{ id: string }[]>`
+    /* pm:recent-run */
+    SELECT id FROM ops.agent_run
+     WHERE graph = ${graph}
+       AND started_at >= NOW() - make_interval(hours => ${20})
+     LIMIT 1`;
+  if (recent.length > 0) {
+    return { started: [], skipped: [graph], quiet: false, signatures: [] };
+  }
+
+  const signatures = await detectIncidentSignatures(sql, 24);
+
+  if (signatures.length === 0) {
+    // Quiet day: auditable record, zero noise, zero LLM spend.
+    const rows = await sql<{ id: string }[]>`
+      /* pm:quiet-run */
+      INSERT INTO ops.agent_run (graph, trigger, vp_owner, status, ended_at)
+      VALUES (${graph}, 'cron:incident-postmortem', ${GRAPH_REGISTRY[graph]?.vpOwner ?? "ceo"}, 'succeeded', NOW())
+      RETURNING id`;
+    await sql`
+      /* pm:quiet-step */
+      INSERT INTO ops.agent_step (run_id, node, status, summary)
+      VALUES (${rows[0]!.id}::uuid, '__quiet__', 'succeeded', ${QUIET_SUMMARY})`;
+    logger.info("incident_scan_quiet", { runId: rows[0]!.id });
+    return { started: [], skipped: [], quiet: true, signatures: [] };
+  }
+
+  const kinds = signatures.map((s) => `${s.kind}${s.graph ? `(${s.graph})` : ""}×${s.count}`).join(", ");
+
+  const token = opts.hermesToken ?? HERMES_TOKEN;
+  if (!token) {
+    // Incident found and no executor to draft it: nada degrada calado.
+    logger.error("incident_postmortem_no_executor", { signatures: kinds });
+    await telegram(
+      `🔴 INCIDENTE DETECTADO E SEM EXECUTOR — scan SQL achou ${signatures.length} assinatura(s) nas últimas 24h (${kinds}), mas HERMES_TASK_TOKEN está ausente no worker: o rascunho de postmortem NÃO será redigido. Ação que destrava: setar HERMES_TASK_TOKEN no serviço worker.`
+    );
+    return { started: [], skipped: [graph], quiet: false, signatures };
+  }
+
+  const rows = await sql<{ id: string }[]>`
+    /* pm:incident-run */
+    INSERT INTO ops.agent_run (graph, trigger, vp_owner)
+    VALUES (${graph}, 'cron:incident-postmortem', ${GRAPH_REGISTRY[graph]?.vpOwner ?? "ceo"})
+    RETURNING id`;
+  const runId = rows[0]!.id;
+  logger.warn("incident_postmortem_started", { runId, signatures: kinds });
+  // An incident IS a legitimately loud event — one line, with what was seen.
+  // The draft itself arrives via the approval message when compose finishes.
+  await telegram(
+    `🚨 INCIDENTE DETECTADO (scan SQL, últimas 24h): ${kinds}. Rascunho de postmortem em produção (run ${runId.slice(0, 8)}) — chega para a sua aprovação no Telegram; o commit em docs/learning/ segue manual.`
+  );
+  return { started: [`${graph}:${runId.slice(0, 8)}`], skipped: [], quiet: false, signatures };
 }
 
 function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
