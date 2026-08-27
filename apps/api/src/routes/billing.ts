@@ -478,7 +478,23 @@ export function registerBillingRoutes(app: Hono, db: PostgresClient): void {
         [auth.tenantId]
       );
       const raw = rows[0]?.plan_tier;
-      const tier: PlanTier = raw === "growth" || raw === "agency" ? raw : "free";
+      const subTier: PlanTier | null = raw === "growth" || raw === "agency" ? raw : null;
+
+      // EFFECTIVE plan, same rule as GET /api/billing above: a Stripe
+      // subscription when one exists, else the tenant's denormalized
+      // plan_tier (manually granted plans — e.g. the founder account).
+      // Reading ONLY billing_subscriptions made a manually granted Agency
+      // resolve as free here, so the pill showed balance/1,000 and — worse —
+      // the NEXT ensureMonthlyGrant would grant free-level credits.
+      let tier: PlanTier = subTier ?? "free";
+      if (!subTier) {
+        const tenantTierRes = await db.query<{ plan_tier: string | null }>(
+          `SELECT plan_tier FROM tenants WHERE id = $1`,
+          [auth.tenantId]
+        );
+        const t = tenantTierRes.rows[0]?.plan_tier;
+        tier = t === "growth" || t === "agency" ? t : "free";
+      }
 
       // PLATFORM writes, deliberately outside the tenant scope: the ledger's
       // write policy (#439) lets tenant sessions record debits only, so these
