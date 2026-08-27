@@ -16,6 +16,8 @@ Ozvor (Brazilian MEI, CNPJ 67.609.444/0001-08; formerly referred to in this docu
 
 **Update 2026-07-28**: A new Evidence Store category (raw engine responses linked to citation claims via signed URLs, 12-month retention, commercial-query-only) has been added under founder-approved Product Decision 4-A — see Section 11-GEO. This does NOT alter the existing 90-day purge for `citation_check` metadata (URLs/position/cited flag), which is a separate, already-closed data category (GEO-A2/GEO-D2) and remains unchanged.
 
+**Update 2026-08-24**: Six production capabilities added to scope via new Section 13-GEO and the corresponding ROPA activities G21–G26: (1) AI Audit Stack $49 (buyer email + questionnaire answers, Stripe checkout, Resend delivery, explicit marketing opt-in, DSR-safe `ON DELETE SET NULL` lead linkage); (2) campaign attribution labels (six sanitized UTM/`from` keys, campaign identifiers not person identifiers); (3) Signal Engine consumption (public-source signals with per-source legal basis; NO tenant data outbound today — provisioning registered as planned processing, gated); (4) legacy video/social pipeline own-channel aggregate metrics; (5) Telegram approvals bot (founder's own decision text, internal-ops); (6) per-tenant API cost ledger (`api_spend.tenant_id`, no PII, erasure-safe by design). Two new risks (GEO-R14, GEO-R15) and four new conditions (GEO-D6 through GEO-D9, recorded in ropa.md). None of this changes the LOW-to-MEDIUM residual risk finding.
+
 ---
 
 ## SECTION A — ARCHIVED: Social-Scheduling Product (Organic Posts v1 — 2026-05-02)
@@ -343,11 +345,16 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 14. DSR handling — GDPR Art. 15–22, LGPD Art. 18, US state privacy law rights (legal obligation)
 15. Breach notification preparation — GDPR Art. 33, LGPD Art. 48, US state notification laws (legal obligation)
 16. Evidence store — retaining full-text raw responses from AI search engines for commercial/buyer-category probe queries as an accountability record backing each citation claim in a delivered report, linked via short-lived signed URL (contract performance / legitimate interests). **Added 2026-07-28, Product Decision 4-A — see Section 11-GEO for the full assessment.**
+17. AI Audit Stack $49 — one-time paid product: collect buyer email + business questionnaire answers, take payment via Stripe, deliver the recommendation by email (Resend) and tokenized URL; mint a `lead_capture` row with explicit marketing opt-in (contract performance; consent for marketing). **Added 2026-08-24 — see Section 13-GEO.**
+18. Campaign attribution — record which campaign label (`?from=` / `utm_*`, sanitized) produced a lead or order (legitimate interests). **Added 2026-08-24 — see Section 13-GEO.**
+19. Signal Engine consumption — read public-platform signals and an action queue from the founder-operated Signal Engine service; no tenant data sent today, tenant provisioning is planned future processing (legitimate interests). **Added 2026-08-24 — see Section 13-GEO.**
+20. Per-tenant API cost attribution — `api_spend.tenant_id` for margin/billing analysis (legitimate interests). **Added 2026-08-24 — see Section 13-GEO.**
 
 ### Data Subjects
 
 - **Primary**: Business customers (B2B) — SMB operators, their staff who access the platform; email addresses are account identifiers
 - **Secondary (incidental, minimised)**: Named individuals appearing in LLM probe response snippets, SERP results, or public source profiles (competitor executives, Reddit post authors, Wikidata persons) — not collected purposefully; stored only as aggregate citation metrics where possible. **Also secondary (incidental, from 2026-07-28): named individuals appearing in the full-text raw commercial-query responses persisted to the Evidence Store (Section 11-GEO) — e.g., a professional or business owner recommended by an AI engine.**
+- **Buyers/leads (from 2026-08-24)**: purchasers of the AI Audit Stack $49 and free-test leads — natural persons identified by email who are typically NOT platform account holders; their DSRs run against `lead_capture` / `ai_audit_order`, not the tenant erasure cascade (Section 13-GEO).
 
 ### Personal Data Categories
 
@@ -364,6 +371,10 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Content drafts | AI-generated text awaiting human approval; ai_generated flag | Low |
 | Third-party personal data (incidental) | Named individuals in SERP snippets or LLM citation passages (e.g. competitor CEO names); minimised — aggregate metrics preferred; not exported to clients in personal-data form | Medium (GDPR Art. 14 obligation) |
 | Evidence store — raw engine response text (NEW 2026-07-28) | Full-text AI engine responses to commercial/buyer-category probe queries only; may incidentally name a real professional/business owner in a commercial-recommendation context; retained 12 months in a private Storage bucket, accessed only via short-lived signed URL | Medium (GDPR Art. 14 obligation; see Section 11-GEO) |
+| AI Audit order + lead (NEW 2026-08-24) | Buyer email (CITEXT), questionnaire `answers` jsonb (business pains/niche/focus — business-level content keyed to the buyer's email, so the record is personal data of the buyer), order status/token, Stripe session ID, truncated IP, `marketing_consent` flag | Low |
+| Campaign attribution labels (NEW 2026-08-24) | Six sanitized keys (`from` + five `utm_*`), ≤100 chars each, inside the lead/order jsonb; campaign identifiers chosen by the controller, not identifiers of the person; never logged | Low |
+| Founder approval decisions (NEW 2026-08-24) | Founder's approve/reject decision + free-text rejection reason in `ops.agent_step.summary`; internal-ops content authored by the founder, no customer content | Low |
+| Per-tenant cost attribution (NEW 2026-08-24) | Nullable `tenant_id` UUID on `api_spend` rows; account-level operational data linked to a business tenant; no PII, no FK (erasure-safe by design) | Low |
 
 ### Recipients and Sub-Processors
 
@@ -380,6 +391,8 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Upstash Redis | Job queue payloads (audit job IDs, no content) | EU endpoint | DPA available. No Art. 44 transfer on EU path. |
 | Resend | Account email + notification content | EU infrastructure | DPA available. Verify EU infrastructure at account level (Gate 7). |
 | Supabase Storage (evidence store, NEW 2026-07-28) | Full-text raw engine responses (commercial queries only), private bucket, signed-URL access | eu-central-1 (EU tenants, to be confirmed — EV-7) / us-east-1 (US/BR tenants) | Region-routing mirroring the existing Postgres split must be confirmed (EV-7, Section 11-GEO). DPA must be confirmed to cover Storage specifically, not only Postgres/Auth (EV-9). |
+| Telegram Bot API (NEW 2026-08-24) | Internal approval content + founder decisions ONLY — no customer personal data permitted (GEO-D7 constraint) | Global (Telegram) | No standard DPA — terms review owed (GEO-D7, ropa.md). Internal-ops channel, not a product-data recipient. |
+| Signal Engine — founder-operated service (NEW 2026-08-24) | TODAY: nothing outbound (read-only consumption of public-source signals). PLANNED: brand keywords + competitors + country at tenant provisioning — blocked until GEO-D8 closes | Railway-hosted, region TBC | Bearer-key API; written processing instruction owed before provisioning (GEO-D8, ropa.md). |
 
 ### Retention Periods
 
@@ -397,6 +410,10 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Billing identifiers (Stripe IDs) | Account life; Stripe governs card data |
 | DSR records | Closed_at + 30 days, then deleted |
 | Audit log (compliance events) | 3 years |
+| AI Audit order + lead_capture (NEW 2026-08-24) | Not yet set in code (no purge job; app role cannot DELETE orders) — retention policy owed under condition GEO-D6 (ropa.md); lead row erasable on DSR without breaking the paid order (`ON DELETE SET NULL`) |
+| Campaign attribution labels (NEW 2026-08-24) | Same as host record (lead/order jsonb) — no separate store |
+| Signal Engine signals (NEW 2026-08-24) | Redis cache ≤6h per endpoint/tenant; no persistent copy in Ozvor DB |
+| api_spend ledger incl. tenant_id (NEW 2026-08-24) | Align to 3-year financial/accountability window; erased tenants leave an opaque orphaned UUID (no re-identification path) |
 
 > **Note (2026-07-28)**: the Evidence Store row above is a NEW, separate data category (raw full-text model responses) added under founder-approved Product Decision 4-A. It does NOT alter the Citation evidence (`citation_check`) row's 90-day purge, which continues to cover only URLs/position/cited-flag metadata per GEO-A2/GEO-D2 and remains unchanged. See Section 11-GEO for the full assessment.
 
@@ -421,6 +438,12 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | DSR handling | Art. 6(1)(c) — legal obligation | GDPR Art. 15–22; LGPD Art. 18; US state laws |
 | Security monitoring / audit log | Art. 6(1)(c) — legal obligation | GDPR Art. 32; LGPD Art. 46 |
 | Evidence store — raw engine response retention (NEW 2026-07-28) | Art. 6(1)(f) — legitimate interests | Controller's and customer's shared interest in auditable, tamper-evident evidence backing a paid report deliverable. Full LIA in Section 11-GEO. |
+| AI Audit Stack $49 — order and delivery (NEW 2026-08-24) | Art. 6(1)(b) — contract | One-time purchase: email is necessary for checkout binding and delivery; answers are the input to the contracted deliverable |
+| AI Audit Stack — marketing follow-up (NEW 2026-08-24) | Art. 6(1)(a) — consent | Explicit opt-in only (`marketing_consent === true`, never inferred from purchase) |
+| Campaign attribution (NEW 2026-08-24) | Art. 6(1)(f) — legitimate interests | Marketing performance measurement with campaign-level labels; no person-level tracking identifiers; minimal impact on data subjects |
+| Signal Engine consumption (NEW 2026-08-24) | Art. 6(1)(f) — legitimate interests | Market/visibility intelligence from public sources with per-source declared legal basis; no tenant data outbound today |
+| Telegram approvals bot (NEW 2026-08-24) | Art. 6(1)(f) — legitimate interests | Internal operations; data subject is the founder (own decision text) |
+| Per-tenant cost ledger (NEW 2026-08-24) | Art. 6(1)(f) — legitimate interests | Cost accounting/margin analysis for the controller's own service; tenant-level identifier only, no PII |
 
 ### LGPD Legal Bases (Art. 7)
 
@@ -434,12 +457,18 @@ High-risk processing confirmed under GDPR Art. 35(1) and WP29/EDPB DPIA guidelin
 | Security / audit log | Art. 7(II) — compliance with legal obligation | LGPD Art. 46 security obligations |
 | Billing (Stripe) | Art. 7(V) — execution of contract | |
 | Evidence store — raw engine response retention (NEW 2026-07-28) | Art. 7(IX) — legítimo interesse | Subject to LGPD Art. 10 balancing test; see Section 11-GEO |
+| AI Audit Stack $49 — order and delivery (NEW 2026-08-24) | Art. 7(V) — execution of contract | |
+| AI Audit Stack — marketing follow-up (NEW 2026-08-24) | Art. 7(I) — consentimento | Explicit opt-in, revocable (Art. 18(IX)) |
+| Campaign attribution (NEW 2026-08-24) | Art. 7(IX) — legítimo interesse | Art. 10 balancing: campaign labels only, no person-level identifiers |
+| Signal Engine consumption (NEW 2026-08-24) | Art. 7(IX) — legítimo interesse | Public-source data; Art. 7 §4 publicly-accessible-data treatment still requires purpose limitation and good faith |
+| Telegram approvals bot (NEW 2026-08-24) | Art. 7(IX) — legítimo interesse | Internal operations; founder's own data |
+| Per-tenant cost ledger (NEW 2026-08-24) | Art. 7(IX) — legítimo interesse | No PII; account-level cost accounting |
 
 No LGPD Art. 11 sensitive data (dados sensíveis) identified: no health, racial, religious, biometric, genetic, sexual orientation, or political data processed.
 
 ### CCPA/CPRA Basis
 
-All processing is for service delivery (business purpose under CCPA § 1798.140(e)). No sale or sharing of personal information for targeted advertising. BYOK keys are not "personal information" under CCPA when encrypted and used solely for the customer's own service delivery. The "Do Not Sell or Share" opt-out obligation applies from launch for California residents accessing the platform. The evidence store (Section 11-GEO) is likewise an internal business-purpose use (providing the contracted service; audit/security) and does not constitute a sale or share.
+All processing is for service delivery (business purpose under CCPA § 1798.140(e)). No sale or sharing of personal information for targeted advertising. BYOK keys are not "personal information" under CCPA when encrypted and used solely for the customer's own service delivery. The "Do Not Sell or Share" opt-out obligation applies from launch for California residents accessing the platform. The evidence store (Section 11-GEO) is likewise an internal business-purpose use (providing the contracted service; audit/security) and does not constitute a sale or share. **2026-08-24**: the AI Audit Stack, campaign attribution, Signal Engine consumption, Telegram bot, and per-tenant cost ledger are all business-purpose uses under § 1798.140(e); campaign attribution uses first-party campaign labels, not cross-context behavioral advertising identifiers, so no sale/share arises and no new opt-out obligation is created; marketing email to AI Audit buyers is a first-party communication sent only on explicit opt-in, with opt-out honored.
 
 ### Special-Category Basis (GDPR Art. 9)
 
@@ -565,10 +594,14 @@ A TIA covering Anthropic, OpenAI, and Stripe (the three US-hosted providers most
 | GEO-R11 | DEV_AUTH_BYPASS enabled in production | L | H | 3 | NODE_ENV gating confirmed in code; Gate 7 devops verification required | Low (1) — gating confirmed; devops verifies in prod |
 | GEO-R12 | Off-site SERP queries identify individual Reddit/LinkedIn users — stored personal data without Art. 14 notice | M | M | 4 | Off-site signal stores per-source presence score only (not individual user profiles); offsiteScore is aggregated; minimisation confirmed in offsite-signal.ts | Low (2) — aggregation minimises personal data; residual risk in live SERP query result handling |
 | GEO-R13 | Evidence store (raw engine responses, 12-month retention, Product Decision 4-A) contains incidental third-party personal data — named individuals (e.g. professionals, business owners) in commercial-query AI responses, retained in a private bucket for 12 months | M | M | 4 | Commercial-query-only write-gate (EV-1); no PII in object key (EV-2); pre-persistence content screen (EV-3); private bucket + short-TTL signed URLs (EV-4); tenant-ownership check on URL minting (EV-5); targeted delete-by-evidence-id DSR pathway (EV-6) — full detail in Section 11-GEO | Medium (4) — open until EV-1 through EV-6 close before the evidence-store slice ships to production |
+| GEO-R14 | AI Audit lead/order data retained indefinitely — buyer emails and questionnaire answers accumulate with no purge (no retention set in code), and the $49 funnel is a cold-email destination, raising consent-hygiene stakes for the lead pool | M | M | 4 | Explicit opt-in only for marketing (never inferred from purchase); `ON DELETE SET NULL` decouples lead erasure from the paid order; truncated IP; PII-free logging (attribution values never logged); condition GEO-D6 requires a retention policy + purge job | Medium (4) — open until GEO-D6 closes; drops to Low once retention is enforced |
+| GEO-R15 | Signal Engine provisioning drift — tenant brand keywords/competitors sent to the founder-operated service before the processing is registered and instruction-bounded, or a collector without a declared legal basis goes live | L | M | 2 | Provisioning is NOT live; client is read-only today; per-source `legal_basis` declared in the service; condition GEO-D8 gates activation on registration + written processing instruction + region confirmation | Low (2) — structural (no provisioning code path active) plus GEO-D8 gate |
 
 **Overall residual risk (GEO platform): LOW to MEDIUM.** Three open conditions (GEO-D1 through GEO-D3) reduce to LOW once closed. Gate 7 hard stops (EU Art. 27 representative, Encarregado) are deployment prerequisites.
 
 **Addendum (2026-07-28)**: GEO-R13 (Evidence Store) is newly added under Product Decision 4-A and does not change the LOW-to-MEDIUM overall characterization above; it carries its own Medium (4) residual pending closure of conditions EV-1 through EV-6 (Section 11-GEO), tracked separately from GEO-D1/D2/D3.
+
+**Addendum (2026-08-24)**: GEO-R14 (AI Audit lead/order retention) and GEO-R15 (Signal Engine provisioning drift) are newly added — see Section 13-GEO. Neither changes the LOW-to-MEDIUM overall characterization; GEO-R14 is Medium (4) pending GEO-D6 (retention policy), GEO-R15 is Low (2) with the GEO-D8 gate. Conditions GEO-D6 through GEO-D9 are recorded in `ropa.md` (2026-08-24 section).
 
 ---
 
@@ -724,6 +757,71 @@ The third-party DSR-against-AI-evidence scenario (a non-customer natural person 
 
 ---
 
+## 13-GEO. Growth Products, Attribution & Ops Telemetry Addendum — 2026-08-24
+
+> Added by `legal-privacy-officer`. Six capabilities shipped to production since the 2026-07-28 update, all verified in code (apps/api/src/routes/ai-audit.ts + billing.ts webhook branch, apps/api/src/lib/campaign-attribution.ts, packages/llm/src/signal-engine.ts + docs/signal-engine-integration.md, migrations 20260815000002_ai_audit_order and 20260817000001_api_spend_tenant). ROPA activities G21–G26 and Sub-Processor Register rows SP-15–SP-18 record the same capabilities; conditions GEO-D6 through GEO-D9 live in `ropa.md`. Each assessment below covers purpose, basis (GDPR Art. 6 + LGPD Art. 7 explicit), data categories, sub-processors, retention/erasure, and the CCPA posture, per the house rule that every compliance artifact addresses Brazil + EU + US.
+
+### 13.1 AI Audit Stack $49 (ROPA G21; risk GEO-R14)
+
+- **Purpose**: sell and deliver a one-time $49 AI-stack recommendation. Buyer submits email (mandatory) + a business questionnaire; payment via Stripe Checkout; on `checkout.session.completed` the order is marked paid and the deliverable email is sent via Resend; delivery also available at the tokenized URL `/ai-audit/:token`.
+- **Basis**: GDPR Art. 6(1)(b) / LGPD Art. 7(V) for order + delivery. Marketing follow-up: GDPR Art. 6(1)(a) / LGPD Art. 7(I) — the code records `marketing_consent = true` only on an explicit affirmative (`body["marketing_consent"] === true`, "explicit opt-in only, never inferred" per the in-code comment); purchase alone triggers only the contracted delivery and the post-purchase `ai_audit_to_full` sequence tied to the offer presented at checkout.
+- **Data**: buyer email (CITEXT), `answers` jsonb (pains/niche/focus/engines/tools — content is about the BUSINESS, but the row is keyed to the buyer's email so the record as a whole is personal data of the buyer; where the business is a sole proprietor/MEI the answers may describe the person's professional situation — no Art. 9 / LGPD Art. 11 data is solicited), status, unguessable `order_token`, Stripe session ID (UNIQUE partial index — one paid session unlocks at most one order), deliverable jsonb, truncated IP on the lead row, `marketing_consent` flag.
+- **Sub-processors**: Stripe (SP-3, accepted), Resend (SP-4, accepted), Supabase (SP-1, accepted) — all already registered; no new sub-processor is introduced by this capability.
+- **Retention/erasure**: `lead_capture_id` is `ON DELETE SET NULL`, so DSR erasure of the lead never breaks or blocks the paid order — deliberate erasure-safe design. The order table itself has NO purge in code and the app role cannot DELETE — retention policy is owed (GEO-D6); interim DSR posture: pseudonymize the buyer email on the order row (hash-replace, Art. 17(3)(e) reasoning) while the transactional record stands.
+- **CCPA**: business-purpose processing (§ 1798.140(e)); no sale or share; marketing email is first-party, opt-in, opt-out honored.
+- **Security posture** (inherited, verified in migration): FORCE RLS, `service_only` policy, tenant-claimed read only, PostgREST `anon`/`authenticated` revoked, identity-claim continuity (`claimed_by_tenant_id`).
+
+### 13.2 Campaign Attribution (#513; ROPA G22)
+
+- **Purpose**: attribute leads/orders to outreach campaigns (`ozvor.com/test?from=cold-atlanta-01` and `utm_*`).
+- **Basis**: GDPR Art. 6(1)(f) / LGPD Art. 7(IX). LIA in brief: purpose (marketing measurement) legitimate; necessity satisfied by the minimal six-key design; balancing favorable because the stored values are campaign identifiers CHOSEN BY THE CONTROLLER, not identifiers of the person — no click IDs, no fingerprints, no cross-site identifiers, no person-level enrichment.
+- **Minimization (verified in `campaign-attribution.ts`, the single gate between the untrusted body field and the jsonb column)**: only six known keys survive (`from`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`); string-typed, trimmed, truncated to 100 chars; empty result → nothing written; values arrive from a URL so they are never logged (loggers record key names/counts only — PII-free log rule).
+- **Retention/erasure**: rides inside `lead_capture.result` / `ai_audit_order.answers` — no separate store; follows the host record's lifecycle and erasure.
+- **CCPA**: first-party analytics; not cross-context behavioral advertising; no sale/share, no new opt-out obligation.
+
+### 13.3 Signal Engine (ROPA G23; SP-16; risk GEO-R15)
+
+- **Purpose**: consume REAL public-platform conversations and a "where to act" queue (SEO/GEO/PPC) from the founder-operated Signal Engine service (reddit-signal-infrastructure — separate FastAPI service on Railway, coupled as a SERVICE, never re-implemented here).
+- **Basis**: GDPR Art. 6(1)(f) / LGPD Art. 7(IX) for consuming public-source signals. The service itself declares a `legal_basis` per source (official_api — e.g. Reddit official API — / licensed_provider / reseller_api / third_party_scraper with provenance label), and Ozvor renders that provenance; sources without a licensed path are not shown ("ainda não coletamos Meta"). LGPD note: Art. 7 §4 treatment of publicly accessible data still binds processing to purpose limitation and good faith — satisfied by the visibility-intelligence purpose and evidence-URL discipline.
+- **Data boundary (the key finding)**: **no Ozvor tenant or customer data is sent to the Signal Engine today** — the TS client (`packages/llm/src/signal-engine.ts`) is read-only consumption over a bearer key, fail-open, never logs the bearer. Third-party personal data (public post authors) transits as evidence URLs/quotes, cached ≤6h in Redis, with no persistent copy in Ozvor's DB — the Art. 14(5)(b) aggregate/minimized reasoning of Section 8-GEO items (2)–(3) applies.
+- **Planned future processing (registered now, not live)**: per-brand tenant provisioning (`POST /tenants`) would send brand keywords + competitor names + country, with the tenant key stored encrypted in `provider_keys`. Gated by GEO-D8: before activation — update the ROPA to live, confirm the per-source legal-basis register, put a written processing instruction in place (founder-operated but separate infrastructure ⇒ instruction-boundary documentation is owed even intra-controller), confirm hosting region.
+- **CCPA**: business-purpose; public-source data; no sale/share.
+
+### 13.4 Legacy Video/Social Pipeline (VPS) (ROPA G24; SP-11/SP-17/SP-18)
+
+- **Purpose**: publish Ozvor's OWN marketing video/social content (HeyGen→Remotion render → Postiz to IG/TikTok/YouTube → Notion archive) and harvest aggregate engagement metrics of Ozvor's OWN channels (`ozvor-social-harvest.mjs`).
+- **Basis**: GDPR Art. 6(1)(f) / LGPD Art. 7(IX) (controller's own marketing). Founder likeness in the video output is already assessed under G18/GEO-D5 (founder is both controller and data subject; no Art. 9 issue).
+- **Data**: channel-level aggregate metrics only (views, likes, counts) — **no PII of viewers/commenters is collected by the harvest by design**; render/publish metadata archived in Notion; Pexels supplies stock media (nothing personal outbound). VPS retains no accumulated media (publish → register in Notion → delete local).
+- **Sub-processors**: Postiz (SP-11, already registered, still NOT ASSESSED), Pexels (SP-17, new — no personal data shared, low priority), Notion (SP-18, new — internal-ops metadata; constraint: no customer personal data into pipeline pages until assessed). All three sit in the second-wave DPA review (GEO-D9 with SP-11–SP-13).
+- **CCPA**: not applicable in substance — no consumer personal information is collected or shared by this activity.
+
+### 13.5 Telegram Approvals Bot (ROPA G25; SP-15)
+
+- **Purpose**: route internal content/deployment approvals to the founder on Telegram; persist the decision and, on rejection, the founder's free-text reason in `ops.agent_step.summary`.
+- **Basis**: GDPR Art. 6(1)(f) / LGPD Art. 7(IX) — internal operations. The stored text is authored by the FOUNDER about internal work product, not customer content; the primary data subject is the founder himself (his decision text and Telegram chat/user ID).
+- **Recipients**: Telegram Bot API (SP-15) — global infrastructure, no standard enterprise DPA. Standing constraint (GEO-D7): approval payloads carry internal content and founder decisions ONLY — no customer emails, no lead content, no customer personal data in Telegram messages; terms review owed in the second wave.
+- **Retention**: `ops.agent_step` follows the append-only ops-log posture; Telegram-side messages per Telegram's own retention.
+- **CCPA**: internal-ops; no consumer personal information.
+
+### 13.6 Per-Tenant API Cost Ledger (`api_spend.tenant_id`) (ROPA G26)
+
+- **Purpose**: attribute API/LLM spend to the tenant it was incurred for — per-plan margin analysis and cost alerts (billing/margin finality).
+- **Basis**: GDPR Art. 6(1)(f) / LGPD Art. 7(IX) — cost accounting for the controller's own service. Account-level operational data linked to a business tenant; the ledger holds op/engine/tokens/cents plus a nullable `tenant_id` UUID — **no PII** (verified in migration 20260817000001).
+- **Erasure-safe by design**: deliberately NO foreign key — a tenant erased under GDPR Art. 17 / LGPD Art. 18(IV) neither cascades into nor is blocked by the cost ledger; the UUID remains as an opaque, orphaned attribution key with no re-identification path once the tenant row is gone (effective anonymization post-erasure).
+- **Retention**: align to the 3-year financial/accountability window already used for the audit log; flagged for inclusion in the GEO-D6 retention-policy pass.
+- **CCPA**: internal business purpose; no sale/share.
+
+### Conditions issued by this addendum (recorded in ropa.md, 2026-08-24 section)
+
+- **GEO-D6** [MEDIUM]: retention/purge policy for `ai_audit_order` + `lead_capture` (none in code today); include the `api_spend` ledger window in the same pass. Owner: founder + backend-coder.
+- **GEO-D7** [LOW]: Telegram Bot API terms review; constraint active meanwhile — no customer personal data in approval payloads. Owner: legal-privacy-officer.
+- **GEO-D8** [MEDIUM]: Signal Engine tenant provisioning gate — ROPA update to live + legal-basis register confirmation + written processing instruction + region confirmation BEFORE the first provisioning call. Owner: founder + legal-privacy-officer.
+- **GEO-D9** [LOW]: Pexels/Notion (with Postiz SP-11) data-processing terms + regions — second-wave DPA review. Owner: founder.
+
+**Effect on the DPIA**: none of 13.1–13.6 re-triggers the Art. 35(1) high-risk threshold on its own (no new large-scale systematic monitoring, no new innovative-technology category; the AI Audit questionnaire is a low-volume, low-sensitivity funnel). Overall residual risk remains **LOW to MEDIUM** (Section 9-GEO unchanged). Gaps requiring a founder decision: the GEO-D6 retention policy, the GEO-D8 provisioning instruction, and the SP-15–SP-18 terms reviews (GEO-D7/D9).
+
+---
+
 ## Approval (GEO Platform)
 
 - DPIA/RIPD author: legal-privacy-officer agent
@@ -732,6 +830,7 @@ The third-party DSR-against-AI-evidence scenario (a non-customer natural person 
 - Jurisdictions covered: Brazil (LGPD RIPD), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5 — informing risk assessment)
 - Reviewed by (human): _____ (required before EU/BR launch)
 - Next mandatory review trigger: new LLM provider activation, new geographic market, >50% change in data volume/categories, or annual cycle (2027-06)
+- **Update log**: 2026-08-24 — new Section 13-GEO added (Growth Products, Attribution & Ops Telemetry: AI Audit Stack $49, campaign attribution, Signal Engine consumption, legacy video/social pipeline, Telegram approvals bot, per-tenant API cost ledger). Incremental updates: Processing Purposes 17–20, Data Subjects (buyers/leads), Personal Data Categories table (+4 rows), Recipients table (+2 rows: Telegram, Signal Engine), Retention Periods table (+4 rows) — all Section 1-GEO; GDPR Art. 6 and LGPD Art. 7 lawful-basis tables and CCPA paragraph — Section 2-GEO; Risk Assessment — Section 6-GEO, new rows GEO-R14/GEO-R15 + addendum. TL;DR addendum appended. Four new conditions (GEO-D6 through GEO-D9), recorded in `ropa.md` alongside new activities G21–G26 and sub-processor rows SP-15–SP-18. Overall residual risk unchanged (LOW to MEDIUM). No gate-log verdict exists yet for this update.
 - **Update log**: 2026-07-28 — new Section 11-GEO added (Evidence Store — raw engine responses, 12-month retention, Product Decision 4-A, founder-approved); Retention Periods table (Section 1-GEO), Personal Data Categories table (Section 1-GEO), Sub-Processors table (Section 1-GEO), Processing Purposes list (Section 1-GEO), Lawful Basis tables (Section 2-GEO), Data Minimization Assessment (Section 2-GEO), DSR design (Section 3-GEO), Art. 44-46 assessment (Section 4-GEO), Security Measures (Section 5-GEO), Risk Assessment table (Section 6-GEO, new row GEO-R13), and Art. 14 assessment (Section 8-GEO) all updated with cross-references. TL;DR addendum appended. Nine new conditions issued (EV-1 through EV-9); EV-8 flagged for external counsel review as a novel question. This does NOT alter the existing 90-day citation_check purge (GEO-A2/GEO-D2), which is unchanged. Gate verdict: see gate-log.md 2026-07-28 entry.
 - **Update log**: 2026-07-24 (merged via PR #404) — added Section 12-GEO (sub-processor register cross-reference and non-product processing: Postiz, HeyGen, n8n cloud, Google Workspace; drafted 2026-07-24 as Section 11-GEO and renumbered 12-GEO at merge because 11-GEO was assigned to the Evidence Store on 2026-07-28); TL;DR addendum appended. No change to the residual risk finding in Section 9-GEO. **No Gate 7 verdict has been logged for this update** — `docs/compliance/gate-log.md` has no 2026-07-24 entry. The two still-open Gate 7 hard stops (EU Art. 27 representative, LGPD Encarregado) and the finding that the live Privacy Policy overstates their appointment status are recorded in `docs/compliance/ropa.md` under "Appointment Records". A Gate 7 review of these additions, and the resulting gate-log entry, are still owed.
 - **Update log**: 2026-07-10 — brand/entity naming alignment in the live Section B (TL;DR sentence, Art. 14 assessment heading) and a superseded-marker under the Section B heading, per issue #213. Substantive DPIA content unchanged; the controlling identity statement remains the Section 1-GEO block (2026-07-09).
