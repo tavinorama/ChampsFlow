@@ -48,8 +48,9 @@ import {
   SPHERE_TIKTOK_GRAPH,
   SPHERE_YOUTUBE_GRAPH,
   SPHERE_PPC_GRAPH,
+  WEEKLY_REPORT_GRAPH,
 } from "./agent-graphs";
-import { buildPrompt } from "./graph-prompts";
+import { buildPrompt, CONTENT_LESSONS } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
 import {
   X_POST_LIMIT,
@@ -64,6 +65,15 @@ export const SEED_ARTIFACT = "__seed__";
 export const DAY_ARTIFACT = "__day__";
 /** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
 export const SIGNALS_ARTIFACT = "__signals__";
+/**
+ * Upstream key carrying the house CONTENT LESSONS (5.F.3) to the CRITICS.
+ * Same pattern as [__day__] — a constant, no I/O — but narrower: only the
+ * debate nodes of marketing graphs receive it. The critics already see
+ * [memory] (outcomes) and the founder's rejections; this adds the
+ * INSTITUTIONAL lessons (X limits, media-only channels, cadence valve, copy
+ * rules) as a veto ruler, so a lesson learned once is enforced everywhere.
+ */
+export const LESSONS_ARTIFACT = "__lessons__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -96,6 +106,8 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [SPHERE_TIKTOK_GRAPH.slug]: SPHERE_TIKTOK_GRAPH,
   [SPHERE_YOUTUBE_GRAPH.slug]: SPHERE_YOUTUBE_GRAPH,
   [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
+  // 5.E.5: o relatório de segunda ao founder — read-only, Monday 07:30 UTC.
+  [WEEKLY_REPORT_GRAPH.slug]: WEEKLY_REPORT_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -508,6 +520,13 @@ export async function advanceRun(
       // day's theme/angle/CTA as [__day__]; the briefing prompts must honor
       // it. Brains (CEO-owned, read-only) do not get it — they are not content.
       if (def.vpOwner === "marketing") {
+        // 5.F.3: institutional content lessons reach ONLY the critics (debate
+        // nodes) — the creators stay free to draft; the vetoers carry the
+        // memory. Constant, no I/O — the exact [__day__] pattern. Brains
+        // (CEO/engineering-owned) never receive it: they are not content.
+        if (node.kind === "debate") {
+          upstream.unshift([LESSONS_ARTIFACT, CONTENT_LESSONS]);
+        }
         upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
         // Real conversations/opportunities from the Signal Engine, when wired.
         // Fail-open: no env / down / bad payload → the cell keeps working on

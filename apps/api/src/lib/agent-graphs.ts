@@ -761,6 +761,34 @@ export const SPHERE_YOUTUBE_GRAPH: GraphDefinition = shortVideoSphere({
 // Weekly (Tue 08:00 UTC): ads should follow the week's evidence, not the hour.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// weekly-report (5.E.5): o relatório de segunda ao founder, hoje montado à
+// mão. O 15º grafo fecha esse buraco com o molde do Watchdog: read-only por
+// construção (sem publish, sem approval, sem spawn — validateGraph nem
+// aceitaria um publish aqui sem gate), dois snapshots paralelos da própria
+// semana (ops 7d ‖ outcomes 7d) → um único nó de composição → report no
+// Telegram. Segunda 07:30 UTC — depois dos brains das 06:30 (CDO/CPO), antes
+// do dia útil começar: o founder abre a semana com o retrato dela pronta.
+// Relatório INTERNO ao founder = PT (a regra English-first é sobre o que o
+// PÚBLICO vê; o watchdog e o CPO já reportam em PT pelo mesmo motivo).
+// ---------------------------------------------------------------------------
+
+export const WEEKLY_REPORT_GRAPH: GraphDefinition = {
+  slug: "weekly-report",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Relatório semanal ao founder (segunda 07:30 UTC), read-only: snapshot ops 7d ‖ snapshot outcomes 7d → compose (PT, denso, honesto — SÓ o que está nos snapshots, nunca inventa número: publicações por canal, falhas, custo total e por tenant se houver, aprovações, lift/vereditos, a semana que vem) → report no Telegram. Sem publish, sem spend, sem approval.",
+  nodes: [
+    // Duas leituras paralelas da MESMA semana: a operação (runs, falhas,
+    // custo) e o resultado (lift por métrica/canal + rejeições do founder).
+    { id: "ops-week", kind: "snapshot", dependsOn: [], config: { source: "ops", days: 7 } },
+    { id: "outcomes-week", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 7 } },
+    { id: "compose", kind: "task", dependsOn: ["ops-week", "outcomes-week"], config: { prompt: "weekly-report-compose" } },
+    { id: "report", kind: "report", dependsOn: ["compose"], config: { title: "🗞️ Semana da Ozvor — o relatório de segunda" } },
+  ],
+};
+
 export const SPHERE_PPC_GRAPH: GraphDefinition = {
   slug: "sphere-ppc",
   version: 1,
