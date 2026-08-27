@@ -45,6 +45,10 @@
 | 2.4 | sphere-reddit: 1º brief real (qua 08:00) — depende das envs 4.1 | ⚙️ | — | 🟡 |
 | 2.5 | Canais de citação #118–#123 (GSC, Bing, GA4, Reddit, LinkedIn company, GBP) | 👤 | M | 🔴 |
 | 2.6 | Revisar calendário editorial com 1 semana de dados | ⚙️ | S | 🟡 |
+| 2.7 | **Skill claude-seo ADOTADA (27/08)** — instalada no Mac (runtime ok, Python 3.12 via `CLAUDE_SEO_PYTHON`), 1ª análise GEO de ozvor.com feita: **63/100** | ⚙️ | — | 🟢 |
+| 2.8 | GEO do nosso site (do 63→80+): headings-pergunta + blocos-resposta 134-167 palavras no prompt do blog-writer · BlogPosting+Person schema no template do blog · fontes inline no /research · `/llms.txt` | ⚙️ | S–M | 🔴 derivado da análise 2.7 |
+| 2.9 | `/seo drift baseline` mensal em ozvor.com (vigia de regressão SEO) + `/seo audit` completo 1×/mês | ⚙️ | S | 🔴 |
+| 2.10 | **Auditoria-de-discovery no playbook de vendas**: rodar `/seo audit`+`/seo geo` no site do prospect antes do e-mail 2 e citar 2-3 achados concretos (liga com 5.A.1) | ⚙️+👤 | S | 🔴 arma de venda |
 
 ## BLOCO 3 — PRODUTO
 
@@ -93,7 +97,7 @@
 
 ### 5.D Produto/Engenharia
 | 5.D.1 | Loop discovery → spec → build → review (discovery hoje só reporta) | L |
-| 5.D.2 | Postmortem AUTOMÁTICO (os 3 desta semana foram manuais; o agente existe) | M |
+| 5.D.2 | ~~Postmortem AUTOMÁTICO~~ 🟢 feito (#532): grafo diário 07:00 detecta assinaturas por SQL (3+ steps falhados/starved/timeouts em massa), rascunha no formato da casa, gate no Telegram; dia quieto = silêncio auditável | M |
 | 5.D.3 | Anti-patterns alimentados por incidentes automaticamente (12 entradas manuais em #521) | S–M |
 | 5.D.4 | Gate de deploy (E2E required + smoke pós-deploy) | M |
 
@@ -109,7 +113,7 @@
 
 | # | O que | Esf. | O gap exato |
 |---|---|---|---|
-| 5.F.1 | **Consolidação de memória por esfera**: grafo mensal que destila outcomes+vereditos+rejeições em lições duráveis, gated pelo founder | M | 🟡 EM CONSTRUÇÃO 27/08 (agente despachado) |
+| 5.F.1 | ~~Consolidação de memória~~ 🟢 código mergeado (#530); **DESLIGADA até o founder mergear+aplicar a migração #531** (`ops.memory_lesson`) | M | fechado no código |
 | 5.F.2 | **Prompt-tuning gated**: os prompts das esferas são ESTÁTICOS no código; melhorá-los exige PR humano. Caminho: overrides de prompt em banco, propostos por um grafo "tuner" que lê os vereditos, **aprovados pelo founder**, com rollback | L | o verdict grava e ninguém age |
 | 5.F.3 | ~~Anti-patterns → críticos~~ 🟢 feito (#525): `[__lessons__]` (CONTENT_LESSONS) injetado nos nós de debate/crítica dos grafos de marketing | S–M | fechado |
 | 5.F.4 | **Experimentos contínuos**: 1 experimento/semana (CDO) → rotina de A/B por ângulo/canal com o lift decidindo o vencedor | M | aprendizado por tentativa é pontual |
