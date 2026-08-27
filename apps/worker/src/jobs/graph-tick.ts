@@ -409,6 +409,137 @@ export async function buildSnapshot(
     return lines.join("\n");
   }
 
+  if (source === "memory") {
+    // 5.F.1 — the memory-consolidation graph's fuel: the last ~30 days of REAL
+    // outcomes as AGGREGATED FACTS, per channel. Aggregation is SQL/code here;
+    // the compose LLM downstream only WRITES lessons from these lines ("vigia
+    // também mente": the model never guesses schema and never invents a
+    // number). Everything below lives in ops.* — slugs, statuses, bounded
+    // summaries and numbers; no tenant data, no PII.
+    const pubs = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:memory-publishes */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'succeeded'
+         AND s.summary LIKE 'published via%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 80`;
+
+    const metrics = await sql<
+      { metric: string; n: string; total: string | null; avg: string | null; last: string }[]
+    >`
+      /* snap:memory-metrics */
+      SELECT metric,
+             COUNT(*)::text AS n,
+             SUM(value_after)::text AS total,
+             AVG(value_after)::text AS avg,
+             MAX(measured_at)::text AS last
+        FROM ops.agent_outcome
+       WHERE measured_at >= NOW() - make_interval(days => ${d})
+       GROUP BY metric
+       ORDER BY metric`;
+
+    // Founder REJECTIONS with the literal reason the Telegram webhook stored
+    // ("rejected: <why>") — the strongest lesson signal there is.
+    const rejections = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:memory-rejections */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'failed'
+         AND s.summary LIKE 'rejected:%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 30`;
+
+    // Approvals that timed out (timeout = rejection-by-silence): a channel the
+    // founder keeps NOT deciding on is itself a lesson.
+    const timeouts = await sql<{ graph: string; n: string }[]>`
+      /* snap:memory-timeouts */
+      SELECT r.graph, COUNT(*)::text AS n
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.summary LIKE 'approval timed out%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY r.graph
+       ORDER BY COUNT(*) DESC`;
+
+    // Closed verdicts — the durable trace of every harvest→verdict loop
+    // ("verdict <metric>: total=X n=Y" / "SEM DADO").
+    const verdicts = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:memory-verdicts */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.node = 'verdict'
+         AND s.status = 'succeeded'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 40`;
+
+    if (
+      pubs.length === 0 &&
+      metrics.length === 0 &&
+      rejections.length === 0 &&
+      timeouts.length === 0 &&
+      verdicts.length === 0
+    ) {
+      return ""; // honest empty — the runner turns this into SEM DADOS
+    }
+
+    // Channel attribution: the publish summary carries "channel=<ch>" (the
+    // cadence valve's own marker) — parse it; fall back to the graph slug.
+    const channelOf = (summary: string, graph: string): string => {
+      const m = /channel=([a-z0-9_-]+)/i.exec(summary);
+      return m?.[1]?.toLowerCase() ?? graph;
+    };
+    const pubsByChannel = new Map<string, Map<string, number>>();
+    for (const p of pubs) {
+      const ch = channelOf(p.summary, p.graph);
+      const perGraph = pubsByChannel.get(ch) ?? new Map<string, number>();
+      perGraph.set(p.graph, (perGraph.get(p.graph) ?? 0) + 1);
+      pubsByChannel.set(ch, perGraph);
+    }
+
+    const lines: string[] = [
+      `HISTORICO PARA CONSOLIDACAO DE MEMORIA (ops.*, ${d}d — fatos agregados por codigo; nada abaixo foi estimado):`,
+    ];
+    if (pubsByChannel.size > 0) {
+      lines.push(``, `PUBLICACOES CONCLUIDAS (por canal):`);
+      for (const [ch, perGraph] of pubsByChannel) {
+        const total = [...perGraph.values()].reduce((a, b) => a + b, 0);
+        const detail = [...perGraph.entries()].map(([g, n]) => `${g}×${n}`).join(", ");
+        lines.push(`- ${ch}: ${total} publicacao(oes) (${detail})`);
+      }
+    }
+    if (metrics.length > 0) {
+      lines.push(``, `METRICAS COLHIDAS (ops.agent_outcome, por metrica):`);
+      for (const m of metrics) {
+        const avg = m.avg != null ? Math.round(Number(m.avg)) : "?";
+        lines.push(
+          `- ${m.metric}: n=${m.n} · total=${m.total ?? "?"} · media=${avg} · ultima ${m.last.slice(0, 10)}`
+        );
+      }
+    }
+    if (rejections.length > 0) {
+      lines.push(``, `REJEICOES DO FOUNDER (motivo literal registrado — o sinal mais forte):`);
+      for (const rj of rejections) {
+        lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
+      }
+    }
+    if (timeouts.length > 0) {
+      lines.push(``, `APROVACOES EXPIRADAS POR SILENCIO (timeout = rejeicao):`);
+      for (const t of timeouts) lines.push(`- ${t.graph}: ${t.n} aprovacao(oes) expiraram sem decisao`);
+    }
+    if (verdicts.length > 0) {
+      lines.push(``, `VEREDITOS FECHADOS (o loop leu o proprio resultado):`);
+      for (const v of verdicts) lines.push(`- ${v.started_at.slice(0, 10)} (${v.graph}): ${v.summary}`);
+    }
+    return lines.join("\n");
+  }
+
   if (source === "product") {
     // The CPO's fuel (founder, 13/08: "na estrutura falta o responsável pelo
     // produto"): what the PRODUCT is actually delivering, as AGGREGATES ONLY.
@@ -472,7 +603,8 @@ export async function buildSnapshot(
   return "";
 }
 
-function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
+/** Exported for tests (the fake sql routes on the queries' own markers). */
+export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
   return {
     substrate: {
       async getRun(runId) {
@@ -571,6 +703,49 @@ function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           /* fine */
         }
         return block;
+      },
+      async activeMemoryLessons() {
+        // 5.F.1: the newest founder-approved lessons batch — the store is
+        // append-only, newest row wins. Fail-open by contract: before the
+        // ops.memory_lesson migration is applied (42P01) or on any read blip,
+        // return null and the critics run exactly as before ([__memory__]
+        // simply is not injected — never a placeholder).
+        try {
+          const rows = await sql<{ lessons: string }[]>`
+            /* memory:active-read */
+            SELECT lessons FROM ops.memory_lesson
+             ORDER BY approved_at DESC
+             LIMIT 1`;
+          const text = rows[0]?.lessons?.trim() ?? "";
+          return text.length > 0 ? text : null;
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? "";
+          if (code !== "42P01") {
+            logger.warn("memory_lessons_read_failed", { code, message: (err as Error).message?.slice(0, 160) });
+          }
+          return null;
+        }
+      },
+      async storeMemoryLessons(input) {
+        // Append-only insert — an approved lessons batch is a record, never an
+        // edit. On a deploy where the migration is not applied yet (42P01),
+        // fail SOFT with the exact unlocking action named: the runner fails
+        // the step out loud and nothing pretends to be on.
+        try {
+          await sql`
+            /* memory:store */
+            INSERT INTO ops.memory_lesson (source_run_id, lessons)
+            VALUES (${input.runId}::uuid, ${input.lessons})`;
+          return { ok: true };
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? "";
+          const reason =
+            code === "42P01"
+              ? `tabela ops.memory_lesson ausente — ${MEMORY_STORE_MISSING_ACTION}`
+              : `${code || "erro"}: ${(err as Error).message?.slice(0, 120)}`;
+          logger.error("memory_lessons_store_failed", { code, message: (err as Error).message?.slice(0, 160) });
+          return { ok: false, reason };
+        }
       },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
@@ -862,6 +1037,53 @@ export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: 
  */
 export async function runWeeklyReport(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, ["weekly-report"], 24 * 6, "cron:weekly-report");
+}
+
+/**
+ * 5.F.1: the exact action that unlocks memory-consolidation in production —
+ * named in every OFF report ("mergeado não é produção": a feature whose
+ * dependency is missing reports itself OFF with the nominal fix, never as ok).
+ */
+export const MEMORY_STORE_MISSING_ACTION =
+  "founder aplica a migracao 20260827000001_ops_memory_lesson (PR feat/memory-consolidation-migration — migracao NUNCA em auto-merge)";
+
+/**
+ * Does the durable memory store exist in THIS database? to_regclass is a
+ * cheap catalog lookup (null when absent, no exception). Any error counts as
+ * "not ready" — the safe direction is OFF, said out loud by the caller.
+ */
+export async function memoryLessonStoreReady(sql: postgres.Sql): Promise<boolean> {
+  try {
+    const rows = await sql<{ t: string | null }[]>`
+      /* memory:table-check */
+      SELECT to_regclass('ops.memory_lesson')::text AS t`;
+    return rows[0]?.t != null;
+  } catch (err) {
+    logger.warn("memory_table_check_failed", { message: (err as Error).message?.slice(0, 160) });
+    return false;
+  }
+}
+
+/**
+ * memory-consolidation (5.F.1): monthly, 1st of month 06:30 UTC. Gated on the
+ * durable store existing FIRST: without ops.memory_lesson a run would burn an
+ * LLM compose and a founder approval only to fail at the store — so the cron
+ * declares the feature OFF (log + Telegram, with the unlocking action) and
+ * starts nothing. 27-day look-back = once per calendar month, restart-safe.
+ * CEO-owned and approval-gated, but never counted by the marketing valve.
+ */
+export async function runMemoryConsolidationMonthly(
+  sql: postgres.Sql,
+  opts: { hermesToken?: string } = {}
+): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  if (!(await memoryLessonStoreReady(sql))) {
+    logger.warn("memory_consolidation_off_no_table", { action: MEMORY_STORE_MISSING_ACTION });
+    await sendTelegram(
+      `🟡 MEMÓRIA (5.F.1) DESLIGADA: a tabela ops.memory_lesson não existe neste banco — nenhum run de memory-consolidation foi iniciado (não gasto LLM num run que morreria no store). Ação que destrava: ${MEMORY_STORE_MISSING_ACTION}.`
+    );
+    return { started: [], skipped: ["memory-consolidation"], capped: [] };
+  }
+  return startBrainRuns(sql, ["memory-consolidation"], 24 * 27, "cron:memory-consolidation", opts);
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */

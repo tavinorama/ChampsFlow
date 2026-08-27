@@ -342,6 +342,26 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- memory-consolidation (5.F.1): lições duráveis por canal ---------------
+  // O compose lê UM bloco [history] (snapshot source 'memory': fatos agregados
+  // por SQL — publicações, métricas, rejeições, timeouts, vereditos) e ESCREVE
+  // as lições. O modelo nunca agrega nem adivinha: agregação é código, o LLM
+  // só redige ("vigia também mente"). Saída em PT: memória interna, os
+  // críticos leem PT como o [__lessons__].
+
+  "memory-consolidation-compose": (ctx) =>
+    [
+      "Voce e o consolidador de memoria da Ozvor (5.F.1). O bloco [history] abaixo traz os FATOS agregados dos ultimos 30 dias: publicacoes concluidas por canal, metricas colhidas, rejeicoes do founder (com o motivo literal), aprovacoes expiradas por silencio e vereditos fechados.",
+      "Sua tarefa: destilar LICOES DURAVEIS por canal — o que o registro mostra que funciona, o que falha e o que o founder rejeita — no formato de regua de veto que os criticos ja usam ([__lessons__]).",
+      "REGRA INEGOCIAVEL (vigia tambem mente): use SOMENTE os fatos do bloco [history]. NUNCA invente numero, canal ou motivo; licao sem evidencia listada la nao entra.",
+      "Cada licao: 1 linha, comecando com o canal, com a evidencia entre parenteses. Ex: '- linkedin: evitar tom vendedor no gancho (3 rejeicoes por tom vendedor em ago).'",
+      "Maximo de 12 licoes. Menos e melhor: so o que o registro sustenta. Licao generica sem numero e lixo — corte.",
+      "Se [history] disser SEM DADOS ou nao sustentar licao nenhuma, sua saida inteira e: 'SEM LICOES NOVAS ESTE MES — registro insuficiente.' e nada mais.",
+      "Escreva EM PORTUGUES (memoria interna ao time de criticos; nada disto e publicado).",
+      "Formato de saida: a linha de titulo 'LICOES CONSOLIDADAS (ultimos 30d — regua de VETO, nao sugestao):' seguida de ate 12 linhas '- <canal>: <licao> (<evidencia>)'. Nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   // --- Chief Dreaming Officer (agent-org core) ------------------------------
   // Each lens reads the SAME outcome snapshot [outcome-snapshot] (real lift per
   // metric/graph) and imagines the 10x FROM those numbers — grounded, not vibes.
