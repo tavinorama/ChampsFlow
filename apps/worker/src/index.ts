@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -317,6 +317,27 @@ const brainWeeklyWorker = new Worker(
 const brainWeeklyQueue = new Queue("brain-weekly", { connection });
 const BRAIN_WEEKLY_CRON = process.env["BRAIN_WEEKLY_CRON"] ?? "30 6 * * 1";
 
+// weekly-report (5.E.5): o relatório de segunda ao founder — Monday 07:30 UTC,
+// uma hora depois dos brains das 06:30 (CDO/CPO), antes do dia útil. O grafo é
+// read-only (snapshot ops 7d ‖ outcomes 7d → compose → report), então este
+// cron só cria o run; o tick de 10 min o executa como qualquer outro.
+const weeklyReportWorker = new Worker(
+  "weekly-report",
+  async () => runWeeklyReport(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const weeklyReportQueue = new Queue("weekly-report", { connection });
+const WEEKLY_REPORT_CRON = process.env["WEEKLY_REPORT_CRON"] ?? "30 7 * * 1";
+
+async function registerWeeklyReportSchedule(): Promise<void> {
+  await weeklyReportQueue.add(
+    "weekly-report",
+    {},
+    { jobId: "weekly-report-repeat", repeat: { pattern: WEEKLY_REPORT_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("weekly_report_schedule_registered", { cron: WEEKLY_REPORT_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -496,6 +517,7 @@ void platformKeysReady.finally(() => {
   void graphWorker.run();
   void brainDailyWorker.run();
   void brainWeeklyWorker.run();
+  void weeklyReportWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -513,6 +535,9 @@ void platformKeysReady.finally(() => {
   });
   void registerSphereStartSchedule().catch((err: Error) => {
     logger.error("sphere_start_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerWeeklyReportSchedule().catch((err: Error) => {
+    logger.error("weekly_report_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -772,6 +797,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await videoQueue.close();
     await sphereMoreWorker.close();
     await sphereMoreQueue.close();
+    await weeklyReportWorker.close();
+    await weeklyReportQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
   } catch (err) {

@@ -854,6 +854,16 @@ export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: 
   return startBrainRuns(sql, ["weekly-discovery"], 24 * 6, "cron:discovery-weekly");
 }
 
+/**
+ * weekly-report (5.E.5): o relatório de segunda ao founder. Monday 07:30 UTC —
+ * depois dos brains das 06:30 (o CDO/CPO pensam primeiro; o relatório abre o
+ * dia útil), antes do expediente. Read-only por construção, então nunca conta
+ * na válvula de aprovações. 6-day look-back (uma vez por semana).
+ */
+export async function runWeeklyReport(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, ["weekly-report"], 24 * 6, "cron:weekly-report");
+}
+
 /** Specialist cells (#156): daily content runs. 20h look-back. */
 export async function runSphereStart(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, SPHERE_CELLS, 20, "cron:sphere-start");
