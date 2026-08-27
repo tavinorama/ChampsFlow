@@ -24,6 +24,7 @@ import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
+import { PLAN_PRICE_USD } from "../../../../packages/shared/src/plan-limits";
 import { createHash } from "node:crypto";
 import {
   advanceRun,
@@ -158,16 +159,127 @@ async function sendTelegram(text: string, buttons?: TelegramButton[]): Promise<v
 }
 
 /**
+ * "CUSTO POR TENANT" block of the ops snapshot (master list 5.C.2).
+ * api_spend.tenant_id records since 22/08 and NOTHING read it — the margin
+ * question ("does this tenant cost more than the plan it pays?") had the data
+ * and no reader. This hands it to the brain that already looks at cost every
+ * day: the Watchdog's lens-cost eats this same [ops] snapshot.
+ *
+ * Bounded by design: top 10 tenants by spend in the window, top 3 ops each,
+ * dollars with 2 decimals. Cost per row = measured_cost_cents when the LLM
+ * client measured tokens, est_cost_cents otherwise (the ledger's own fallback
+ * order). A tenant with an ACTIVE subscription carries `plan=$X/mes` next to
+ * the cost — the number the pricing decision (5.C.4) expects side by side.
+ * tenant_id NULL (free test, drift-checks, system spend) aggregates into one
+ * honest "sem tenant (plataforma)" line.
+ *
+ * On a deploy where the table/column does not exist yet (42P01/42703) the
+ * section degrades to ONE honest line — it never breaks the snapshot the
+ * other lenses depend on.
+ */
+async function tenantCostSection(sql: postgres.Sql, d: number): Promise<string[]> {
+  try {
+    const tenants = await sql<
+      { tenant_id: string; tenant_name: string | null; plan_tier: string | null; cost_cents: string; ops: string }[]
+    >`
+      /* snap:tenant-cost */
+      SELECT a.tenant_id::text AS tenant_id,
+             t.name AS tenant_name,
+             bs.plan_tier,
+             SUM(COALESCE(a.measured_cost_cents, a.est_cost_cents))::text AS cost_cents,
+             COUNT(*)::text AS ops
+        FROM api_spend a
+        LEFT JOIN tenants t ON t.id = a.tenant_id
+        LEFT JOIN billing_subscriptions bs
+               ON bs.tenant_id = a.tenant_id AND bs.status = 'active'
+       WHERE a.tenant_id IS NOT NULL
+         AND a.created_at >= NOW() - make_interval(days => ${d})
+       GROUP BY a.tenant_id, t.name, bs.plan_tier
+       ORDER BY SUM(COALESCE(a.measured_cost_cents, a.est_cost_cents)) DESC
+       LIMIT 10`;
+
+    const topOps = await sql<{ tenant_id: string; op: string; cost_cents: string }[]>`
+      /* snap:tenant-ops */
+      SELECT tenant_id, op, cost_cents
+        FROM (SELECT a.tenant_id::text AS tenant_id,
+                     a.op,
+                     SUM(COALESCE(a.measured_cost_cents, a.est_cost_cents))::text AS cost_cents,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY a.tenant_id
+                       ORDER BY SUM(COALESCE(a.measured_cost_cents, a.est_cost_cents)) DESC
+                     ) AS rn
+                FROM api_spend a
+               WHERE a.tenant_id IS NOT NULL
+                 AND a.created_at >= NOW() - make_interval(days => ${d})
+               GROUP BY a.tenant_id, a.op) ranked
+       WHERE rn <= 3`;
+
+    const platform = await sql<{ cost_cents: string | null; ops: string }[]>`
+      /* snap:platform-cost */
+      SELECT SUM(COALESCE(measured_cost_cents, est_cost_cents))::text AS cost_cents,
+             COUNT(*)::text AS ops
+        FROM api_spend
+       WHERE tenant_id IS NULL
+         AND created_at >= NOW() - make_interval(days => ${d})`;
+
+    const p = platform[0];
+    if (tenants.length === 0 && (!p || Number(p.ops) === 0)) return [];
+
+    const usd = (cents: string | number | null | undefined) => `$${(Number(cents ?? 0) / 100).toFixed(2)}`;
+    const opsByTenant = new Map<string, string[]>();
+    for (const o of topOps) {
+      const list = opsByTenant.get(o.tenant_id) ?? [];
+      list.push(`${o.op} ${usd(o.cost_cents)}`);
+      opsByTenant.set(o.tenant_id, list);
+    }
+
+    const lines: string[] = [``, `CUSTO POR TENANT (api_spend, ${d}d):`];
+    for (const t of tenants) {
+      const name = t.tenant_name ?? `tenant ${t.tenant_id.slice(0, 8)}`;
+      // Margin data only when there IS an active subscription. A tier whose
+      // price we cannot map (legacy value) shows the tier name and no invented
+      // dollar figure — honesty beats completeness here.
+      const price = t.plan_tier != null ? (PLAN_PRICE_USD as Record<string, number | undefined>)[t.plan_tier] : undefined;
+      const plan = t.plan_tier == null ? "sem assinatura" : price != null ? `plan=$${price}/mes` : `plan=${t.plan_tier}`;
+      const top = opsByTenant.get(t.tenant_id) ?? [];
+      lines.push(
+        `- ${name}: ${plan} · custo ${d}d=${usd(t.cost_cents)} · ${t.ops} ops${top.length > 0 ? ` · top: ${top.join(", ")}` : ""}`
+      );
+    }
+    if (p && Number(p.ops) > 0) {
+      lines.push(`- sem tenant (plataforma): ${usd(p.cost_cents)} (${p.ops} ops)`);
+    }
+    return lines;
+  } catch (err) {
+    // Old deploy (42P01 table absent / 42703 column absent) or any read
+    // failure: one honest line in the snapshot, loud in the log — the lenses
+    // must never lose the rest of the ops digest over this section.
+    const code = (err as { code?: string }).code ?? "";
+    logger.warn("snapshot_tenant_cost_unavailable", {
+      code,
+      message: (err as Error).message?.slice(0, 160),
+    });
+    return [
+      ``,
+      `CUSTO POR TENANT: indisponivel neste deploy (api_spend/tenant_id ausente ou ilegivel${code ? ` — ${code}` : ""}).`,
+    ];
+  }
+}
+
+/**
  * The read-only brains' fuel: a bounded, PII-free digest of ops.* as text.
  * ops.* holds slugs, statuses, hashes and numbers — no tenant data is touched,
  * so this stays inside the company's own record. Two sources:
  *  - 'ops'      → run/step health, cost, cycle time, failure hotspots,
- *                 repeated inputs (the Watchdog's raw material);
+ *                 repeated inputs (the Watchdog's raw material) + the
+ *                 per-tenant api_spend digest (tenant name + plan price only —
+ *                 the margin lens; no emails, no brands, no domains);
  *  - 'outcomes' → agent_outcome lift per metric/graph (the CDO's raw material).
  * Returns "" when there is genuinely nothing — the runner turns that into an
  * honest "SEM DADOS" marker so the lenses never invent a number.
+ * Exported for tests (the fake sql routes on the queries' own markers).
  */
-async function buildSnapshot(
+export async function buildSnapshot(
   sql: postgres.Sql,
   source: string,
   days: number,
@@ -233,6 +345,8 @@ async function buildSnapshot(
       lines.push(``, `Inputs repetidos (mesmo hash rodado varias vezes):`);
       for (const dp of dupes) lines.push(`- node '${dp.node}': input identico rodou ${dp.n}x`);
     }
+    // 5.C.2 — the tenant-level spend the ledger records but nobody read.
+    lines.push(...(await tenantCostSection(sql, d)));
     return lines.join("\n");
   }
 
@@ -738,6 +852,16 @@ export async function runBrainWeekly(sql: postgres.Sql): Promise<{ started: stri
  */
 export async function runDiscoveryWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, ["weekly-discovery"], 24 * 6, "cron:discovery-weekly");
+}
+
+/**
+ * weekly-report (5.E.5): o relatório de segunda ao founder. Monday 07:30 UTC —
+ * depois dos brains das 06:30 (o CDO/CPO pensam primeiro; o relatório abre o
+ * dia útil), antes do expediente. Read-only por construção, então nunca conta
+ * na válvula de aprovações. 6-day look-back (uma vez por semana).
+ */
+export async function runWeeklyReport(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, ["weekly-report"], 24 * 6, "cron:weekly-report");
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */

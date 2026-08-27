@@ -38,6 +38,32 @@ const VIDEO_ALIVE_FORMAT = [
   "- feche com a linha exata: [STYLE] phone-shot, handheld feel, natural light, jump cuts, big captions, no stock-footage look, no corporate B-roll",
 ].join("\n");
 
+/**
+ * CONTENT_LESSONS (5.F.3): a memória institucional de conteúdo, destilada das
+ * lições REAIS desta semana e das regras da casa. O runner injeta este bloco
+ * como artefato [__lessons__] APENAS nos nós de crítica (debate) dos grafos de
+ * marketing — mesmo padrão do [__day__]: constante, sem I/O. Os críticos a
+ * usam como RÉGUA DE VETO, não como sugestão: jogada que viola uma lição é
+ * vetada. Uma lição nova entra AQUI (uma fonte) e todos os críticos a herdam.
+ */
+export const CONTENT_LESSONS = [
+  "LICOES DA CASA (memoria institucional de conteudo — regua de VETO, nao sugestao):",
+  "- Nunca repetir tema, gancho ou b-roll recente: se [memory] ja mostra, muda ou veta.",
+  "- X: cada tweet tem <=280 caracteres e o pipe publica UM post por vez — thread vira tweet unico; o tweet 1 tem que se sustentar sozinho.",
+  "- Canal que exige midia (Instagram/TikTok/YouTube) NAO recebe texto puro: roteiro vai como report ao founder, nunca como publish.",
+  "- LinkedIn: no maximo 2 posts/dia (valvula de cadencia) — excedente ADIA para o dia seguinte, nao empilha no feed.",
+  "- Copy nivel 15-17 anos: frases <=12 palavras, CTA em 1a pessoa, sem travessao.",
+  "- Sonho honesto: historia, personagem, gente real — e NUNCA inventar dado; numero so com fonte.",
+  "- Conteudo publico e English-first, sem excecao (relatorio interno ao founder segue em PT).",
+].join("\n");
+
+/**
+ * A linha que todo crítico de esfera carrega: cita [__lessons__] como régua de
+ * veto. Uma fonte — se o contrato do bloco mudar, todos os críticos mudam.
+ */
+const LESSONS_VETO_RULE =
+  "LICOES INSTITUCIONAIS (com VETO): o bloco [__lessons__] abaixo e a memoria de conteudo da casa. Jogada que viola uma licao de la e VETADA, nao anotada — escreva 'VETO: licao da casa — <qual>'.";
+
 /** The virality lens, shared by every short-video critic (IG/TikTok/YT). */
 const VIRALITY_LENS =
   "LENTE VIRALIDADE (com VETO): (a) forca do gancho: eu pararia de rolar no primeiro segundo? (b) watch-time: o BEAT 2 segura quem ficou pelo gancho? (c) gatilho de share/comentario: alguem marca um amigo ou discorda? (d) parece video de celular de gente real ou parece ANUNCIO / slide deck? Se parece anuncio ou slide deck: 'VETO: parece anuncio' / 'VETO: parece slide deck'.";
@@ -133,6 +159,7 @@ function shortVideoFamily(
         `Voce e o critico da esfera ${spec.name} da Ozvor. Abaixo: 2 roteiros (talking-head e caption-story), o briefing e o historico real do canal em [memory].`,
         VIRALITY_LENS,
         "LENTE COMPLIANCE (com VETO): promessa que nao cumprimos, claim sem base, dado inventado. LENTE FRESHNESS (com VETO): repete gancho/tema/formato de [memory]?",
+        LESSONS_VETO_RULE,
         "Para cada roteiro: nota 0-10 por viralidade + 1 frase do maior problema + 1 correcao concreta + os vetos, se houver.",
         "Termine com: VENCEDOR: <talking-head|caption-story>.",
         "Formato de saida: 2 blocos + a linha VENCEDOR.",
@@ -211,6 +238,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       `Voce e um critico com a lente "${String(ctx.config["lens"] ?? "hook")}". Avalie os 3 roteiros abaixo SOMENTE por essa lente.`,
       "lens hook = o primeiro SEGUNDO segura o dedo? · lens brand = soa Ozvor (honesto, direto, sem hype)? · lens compliance = alguma promessa que nao cumprimos ou claim juridico arriscado? · lens freshness = compare com o bloco [memory]: isso repete tema, gancho ou b-roll do que JA publicamos? novidade real ou requentado? · lens virality = (a) forca do gancho: eu pararia de rolar? (b) watch-time: o BEAT 2 segura quem ficou pelo gancho? (c) gatilho de share/comentario: alguem marca um amigo ou discorda? (d) parece video de celular de gente real ou parece ANUNCIO / slide deck? Se parece anuncio ou slide deck, VETO — diga 'VETO: parece anuncio' ou 'VETO: parece slide deck' no bloco do roteiro.",
+      LESSONS_VETO_RULE,
       "Para cada roteiro: nota 0-10 pela sua lente + 1 frase do maior problema + 1 sugestao concreta.",
       "Termine com: VENCEDOR: <id do melhor roteiro pela sua lente>.",
       "Formato de saida: 3 blocos (um por roteiro) + a linha VENCEDOR.",
@@ -256,6 +284,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o Watchdog LEAN da Ozvor, lente CUSTO-POR-RESULTADO. Abaixo esta o registro operacional real da empresa (ops.*): runs por graph, sucesso/falha, custo em centavos, tempo.",
       "Sua unica pergunta: onde a empresa GASTA sem RETORNO proporcional? Graphs que custam muito e falham/entregam pouco; custo que sobe sem outcome que suba junto.",
+      "Se o registro trouxer o bloco 'CUSTO POR TENANT', aponte tambem tenant cujo custo na janela e desproporcional ao plano que paga (custo se aproximando ou passando do preco mensal); sem esse bloco, nao afirme nada sobre tenants.",
       "Regra de honestidade: so aponte o que os numeros abaixo mostram. Se um custo nao tem dado de resultado ao lado, diga 'sem outcome medido' — nao invente ROI.",
       "Formato de saida: 1-3 achados, cada um em 2 linhas — ACHADO (o desperdicio, com o numero) + CORTE (a acao concreta, barata). Nada alem disso.",
       upstreamBlock(ctx.upstream),
@@ -286,6 +315,30 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce PROPOE, nao executa: cada item e uma recomendacao para o founder decidir — nunca escreva como se ja tivesse mudado algo.",
       "Se as 3 lentes disseram 'sem dados suficientes', diga isso em 1 linha e pare — nao fabrique problema.",
       "Formato de saida: no maximo 5 itens numerados, cada um: '<corte/correcao em 1 frase> — porque: <numero/fato> — esforco: baixo/medio/alto'. Um cabecalho de 1 linha com o veredito geral. Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  // --- weekly-report (5.E.5): o relatório de segunda ao founder --------------
+  // Um único nó de composição lê os DOIS snapshots da semana (ops 7d em
+  // [ops-week], outcomes 7d em [outcomes-week]) e monta o relatório que o
+  // founder hoje pede à mão. Relatório interno = PT (como o watchdog). A regra
+  // inegociável é a honestidade: SÓ o que está nos snapshots — seção sem dado
+  // diz "sem dado", nunca um número inventado.
+
+  "weekly-report-compose": (ctx) =>
+    [
+      "Voce e o redator do relatorio semanal da Ozvor ao founder. Abaixo: o registro operacional da semana em [ops-week] (runs, falhas, custo, ciclo) e os resultados reais em [outcomes-week] (lift por metrica/canal, vereditos, rejeicoes do founder).",
+      "Monte o relatorio de segunda-feira EM PORTUGUES: denso, honesto, skimmable — o founder le em 2 minutos e sabe como a empresa passou a semana.",
+      "REGRA INEGOCIAVEL: use SOMENTE os numeros que estao nos blocos abaixo. Secao sem dado no snapshot escreve 'sem dado esta semana' — NUNCA invente numero, estimativa ou tendencia.",
+      "Secoes, nesta ordem (cada uma com titulo em 1 linha + 2-5 bullets):",
+      "1) PUBLICACOES DA SEMANA — o que saiu, por canal (conte pelos graphs/metricas de [ops-week] e [outcomes-week]; canal sem publicacao aparece como zero, dito com todas as letras).",
+      "2) FALHAS E O QUE GRITOU — runs que falharam, nodes que mais quebraram, o que o sistema alarmou; sem falha registrada = diga isso.",
+      "3) CUSTO — o total da semana em USD somando os graphs de [ops-week]; se o snapshot trouxer uma secao de custo POR TENANT, inclua os maiores; se nao trouxer, escreva 'custo por tenant: sem secao no snapshot'.",
+      "4) APROVACOES DO FOUNDER — quantas decisoes apareceram na semana (aprovacoes/rejeicoes visiveis nos snapshots, incluindo o bloco de rejeicoes de [outcomes-week]); tempo medio de decisao SO se houver dado; rejeicoes citadas com o motivo registrado.",
+      "5) LIFT E VEREDITOS — as metricas de [outcomes-week] que fecharam veredito: valor, lift quando houver baseline, e 'sem baseline' quando nao houver.",
+      "6) A SEMANA QUE VEM — os compromissos de calendario ja conhecidos da casa: brains segunda de manha, PPC terca, Reddit quarta, blog+discovery quinta, e as esferas diarias (X, LinkedIn, video, IG, TikTok, YT). Apenas o que e cron fixo — nada de previsao de resultado.",
+      "Tom: direto, sem cerimonia, sem adjetivo vazio. Numero ruim aparece igual a numero bom — o relatorio existe para contar a verdade da semana, nao para vender a semana.",
+      "Formato de saida: as 6 secoes em markdown leve (titulo + bullets), nada antes nem depois.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -361,6 +414,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "experiment-critic": (ctx) =>
     [
       "Voce e o critico de compliance da Ozvor. Avalie o post abaixo SOMENTE pela lente de risco: alguma promessa que o produto nao cumpre? claim juridico/estatistico sem base? algo que exponha a marca?",
+      LESSONS_VETO_RULE,
       "Nao reescreva — aponte. Para cada problema: 1 linha do risco + 1 linha da correcao minima.",
       "Se nao houver risco, diga 'sem risco' em 1 linha.",
       "Formato de saida: no maximo 3 linhas de risco+correcao, ou 'sem risco'. Nada alem disso.",
@@ -512,6 +566,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o critico da esfera X da Ozvor. Abaixo: 2 versoes (punchy e mini-thread), o briefing e o historico real do canal em [memory].",
       "Avalie por 3 perguntas: 1) o primeiro segundo para o dedo? 2) isso repete o padrao que ja deu ~0 impressions em [memory]? 3) algum risco de compliance (promessa que nao cumprimos, claim sem base)?",
+      LESSONS_VETO_RULE,
       "Para cada versao: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
       "Compliance e freshness tem VETO: risco apontado tem que sair; padrao repetido tem que mudar.",
       "Termine com: VENCEDOR: <punchy|mini-thread>.",
@@ -573,6 +628,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o critico da esfera LinkedIn da Ozvor. Abaixo: 2 versoes (story e contrarian), o briefing e o historico real do canal em [memory].",
       "Avalie por 3 perguntas: 1) as 2 primeiras linhas fazem clicar em 'ver mais'? 2) isso repete o padrao de [memory]? 3) algum risco de compliance (promessa que nao cumprimos, claim sem base, dado inventado)?",
+      LESSONS_VETO_RULE,
       "Para cada versao: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
       "Compliance e freshness tem VETO: risco apontado tem que sair; padrao repetido tem que mudar.",
       "Termine com: VENCEDOR: <story|contrarian>.",
@@ -634,6 +690,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o critico do blog da Ozvor. Abaixo: 2 outlines (how-to e data-story), o briefing e o historico do blog em [memory].",
       "Avalie por 3 perguntas: 1) uma IA citaria este artigo como resposta? (utilidade concreta) 2) repete tema/angulo de [memory]? 3) algum claim sem fonte ou promessa que nao cumprimos?",
+      LESSONS_VETO_RULE,
       "Para cada outline: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
       "Honestidade e freshness tem VETO: claim sem fonte vira [a pesquisar] ou sai; tema repetido muda de angulo.",
       "Termine com: VENCEDOR: <how-to|data-story>.",
@@ -702,6 +759,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "LENTE CULTURA REDDIT (com VETO): (a) parece SPAM ou autopromocao descarada? (b) e astroturfing / grassroots falso — fingir ser um usuario neutro entusiasmado? (c) o sub exige disclosure de afiliacao e a jogada NAO revela? (d) ajuda de verdade a comunidade ANTES de mencionar a Ozvor, ou so usa a thread como outdoor? Qualquer 'sim' a a/b/c ou 'nao' a d e VETO — escreva 'VETO: spam' / 'VETO: astroturfing' / 'VETO: sem disclosure' / 'VETO: nao ajuda'.",
       "LENTE COMPLIANCE (com VETO): promessa que o produto nao cumpre, claim sem base, dado/URL inventado que nao esta em [__signals__]/[signal].",
       "LENTE FRESHNESS (com VETO): repete comunidade/angulo/formato de [memory]?",
+      LESSONS_VETO_RULE,
       "Para cada jogada: nota 0-10 de autenticidade + 1 frase do maior problema + 1 correcao concreta + os vetos, se houver.",
       "Termine com: VENCEDOR: <comment|post>.",
       "Formato de saida: 2 blocos + a linha VENCEDOR.",
@@ -798,6 +856,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o critico de compliance e claims da Ozvor para midia paga. Abaixo: 3 anuncios (Google search, Meta, LinkedIn).",
       "Avalie CADA um por 4 perguntas: 1) alguma promessa que o produto nao cumpre? 2) numero/estatistica sem base em [signal]? 3) claim proibido pelas plataformas ou juridicamente arriscado (garantia, 'melhor', comparacao nominal, dado sensivel de audiencia, promessa de resultado)? 4) respeita limite de caracteres e a gramatica da rede?",
+      LESSONS_VETO_RULE,
       "Voce tem VETO: risco apontado tem que sair antes de chegar ao founder. Nao reescreva — aponte: para cada problema, 1 linha do risco + 1 linha da correcao minima.",
       "Se um anuncio estiver limpo, diga 'sem risco'.",
       "Formato de saida: 3 blocos (um por rede) com no maximo 3 linhas de risco+correcao cada, ou 'sem risco'. Nada alem disso.",
