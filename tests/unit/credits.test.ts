@@ -122,6 +122,27 @@ describe("grants are PLATFORM writes — the proof of 2026-08-11", () => {
   });
 });
 
+describe("effective tier — the 53,750/1,000 pill of 2026-08-27", () => {
+  it("/api/billing/credits falls back to tenants.plan_tier when Stripe has no subscription", () => {
+    // The founder's Agency is manually granted (tenants.plan_tier, no Stripe
+    // row). Resolving the tier from billing_subscriptions alone showed the
+    // header pill as balance/1,000 (free allowance) AND would have made the
+    // next ensureMonthlyGrant grant free-level credits. The credits handler
+    // must apply the same effective-tier rule as GET /api/billing: Stripe
+    // subscription when present, else the tenant's denormalized plan_tier.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const billing = readFileSync(join(__dirname, "../../apps/api/src/routes/billing.ts"), "utf8");
+    const start = billing.indexOf('"/api/billing/credits"');
+    expect(start).toBeGreaterThan(-1);
+    const handler = billing.slice(start, billing.indexOf("app.", start + 1000));
+    expect(handler).toContain("subTier");
+    expect(handler).toContain("SELECT plan_tier FROM tenants");
+    // The grant must be fed the RESOLVED tier, not the sub-only one.
+    expect(handler).toContain("ensureMonthlyGrant(db, auth.tenantId, tier)");
+  });
+});
+
 describe("credits — derived from PLAN_LIMITS, never restated", () => {
   it("an audit costs depth × the unit price, on every tier", () => {
     for (const t of TIERS) {
