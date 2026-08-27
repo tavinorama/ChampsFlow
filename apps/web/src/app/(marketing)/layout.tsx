@@ -33,6 +33,7 @@ import { ChatWidget } from "../../components/ChatWidget";
 import { SiteFooter } from "../../components/SiteFooter";
 import { TrustpilotBadge } from "../../components/TrustpilotBadge";
 import { FreeTestCta } from "../../components/marketing/FreeTestCta";
+import { AttributionCapture } from "../../components/marketing/AttributionCapture";
 
 // ---------------------------------------------------------------------------
 // Marketing CSS classes
@@ -477,6 +478,11 @@ export default function MarketingLayout({
 
       {/* Floating chat widget — overlay, does not affect layout flow */}
       <ChatWidget />
+
+      {/* Campaign origin (?from=/utm_*) is stored on ANY public landing, so
+          the /test and /ai-audit funnels still see it after the lead browses
+          around and the query string is gone. Renders nothing. */}
+      <AttributionCapture />
     </div>
   );
 }
