@@ -1,6 +1,6 @@
 # OZvor — TUDO que falta (lista mestra v3)
 
-**Refeita:** 2026-08-24, 16h30 (Lisboa) · verificada por SQL de produção, HTTP público, `origin/main`, Railway, GitHub Actions **e o raio-X da VPS** (hermes-task-server.mjs 293 linhas + ozvor-video-job.mjs + crontab).
+**Refeita:** 2026-08-24 · **atualizada 2026-08-27, 13h (Lisboa)** — Bloco 0 fechado com compra real · verificada por SQL de produção, HTTP público, `origin/main`, Railway, GitHub Actions **e o raio-X da VPS** (hermes-task-server.mjs 293 linhas + ozvor-video-job.mjs + crontab).
 **Escopo:** absolutamente tudo — da primeira venda à **autonomia 100% com memória e auto-melhoria**.
 
 > **Como ler.** Dono: 👤 founder · ⚙️ engenharia · ⚖️ decisão. Esforço: S ≤2h · M ≤2 dias · L >2 dias. Estado = *funcionando em produção*, nunca "mergeado".
@@ -12,11 +12,13 @@
 
 | # | O que | Dono | Esf. | Estado |
 |---|---|---|---|---|
-| 0.1 | Compra-teste real de $49 (+refund) — prova os 5 elos que só dinheiro prova | 👤 | S | 🔴 adiada a pedido do founder (24/08); segue sendo A prova |
-| 0.2 | Cupom `AIAUDIT15` no Stripe (env já setada) | 👤 | S | 🟡 não confirmado |
-| 0.3 | Links de campanha `?from=`/`utm_*` (/test, /ai-audit, /book) | 👤 | S | 🟢 pronto para usar (#513; origem visível no /admin) |
-| 0.4 | Webhook SmartLead nas campanhas do warm-up | 👤 | S | 🟡 endpoint provado (10/08); falta registrar |
-| 0.5 | Dry-run: e-mail → clique → lead com origem no admin | 👤 | S | 🔴 |
+| 0.1 | Compra-teste real de $49 — prova os 5 elos que só dinheiro prova | 👤 | S | 🟢 **PROVADO 27/08**: 11h15 checkout → 11h18 pago+entregue no mesmo minuto → e-mail com resultado → 2 nurtures; cupom de teste 100% desativado |
+| 0.2 | Cupom `AIAUDIT15` no Stripe (env já setada) | 👤 | S | 🟢 confirmado pelo founder 27/08 |
+| 0.3 | Links de campanha `?from=`/`utm_*` (/test, /ai-audit, /book) | 👤 | S | 🟢 #513 + **bug real achado no teste de fogo e corrigido no mesmo dia (#527)**: a origem se perdia quando o lead navegava antes de comprar; agora first-touch em sessionStorage, capturado em qualquer página pública |
+| 0.4 | Webhook SmartLead | 👤 | S | 🟢 **registrado GLOBAL e provado fim-a-fim 27/08** (Test → `smartlead_event` → CRM `contacted` em 1s). Warm-up é por caixa, sem campanha — webhook por campanha entra no checklist do dia do disparo |
+| 0.5 | Dry-run: e-mail → clique → lead com origem no admin | 👤 | S | 🟡 teste de fogo provou clique→lead→compra; a ORIGEM falhou (era o bug do 0.3) — re-teste de 2 min após o deploy do #527: abrir `/ai-audit?from=x` numa aba anônima, navegar, voltar e conferir no admin |
+
+> **Checklist do dia do disparo (1ª campanha real):** 1º e-mail SEM nenhum link (regra 27/08; deliverability) · links `?from=` só do 2º e-mail em diante · webhook por campanha (se o global não cobrir) · correlação do 1º toque é por e-mail do lead.
 
 ## BLOCO 1 — VÍDEO AUTOMÁTICO *(reescrito 24/08 após o raio-X da VPS)*
 
@@ -26,7 +28,7 @@
 |---|---|---|---|---|
 | 1.1 | ⚖️ **D-vídeo**: até o gate existir — (a) aceitar o legado sem portão como exceção DOCUMENTADA (status quo, recomendado) ou (b) pausar o disparo (canais mudos) | ⚖️ | 5 min | 🔴 decide o resto |
 | 1.2 | **Onde o n8n chama `/video-job`** (qual workflow; tem aprovação antes?) | 👤 | S | 🔴 pendente de resposta |
-| 1.3 | **Fase 1 — gate por injeção de roteiro** (spec pronta a escrever): `/video-job` repassa body→env (`VIDEOJOB_SCRIPT/FORMAT/CHANNELS`) e o job usa o roteiro recebido em vez do `claudeJSON` (~15 linhas na VPS) → grafo produz → founder aprova → worker chama com o roteiro aprovado | ⚙️+👤(aplicar na VPS) | S–M | 🔴 |
+| 1.3 | **Fase 1 — gate por injeção de roteiro** (🟡 spec PRONTA e mergeada: `docs/specs/video-gate-fase1.md`, #523; falta founder aplicar o patch na VPS + responder o grep dos PROMPTS): `/video-job` repassa body→env (`VIDEOJOB_SCRIPT/FORMAT/CHANNELS`) e o job usa o roteiro recebido em vez do `claudeJSON` (~15 linhas na VPS) → grafo produz → founder aprova → worker chama com o roteiro aprovado | ⚙️+👤(aplicar na VPS) | S–M | 🔴 |
 | 1.4 | Fase 2 — porta `hermes.render()` no worker + reverter o report-only (#516) nas 3 esferas | ⚙️ | M | depois de 1.3 |
 | 1.5 | ⚖️ 1 vídeo/dia para os 3 canais (como o legado) ou 1 por canal (3 renders)? E qual grafo alimenta o roteiro | ⚖️ | 5 min | 🔴 |
 | 1.6 | **IG com IMAGEM já** (independente de vídeo): `/postiz-schedule` aceita `image[]`; card brandado via `renderCardPng` existe — religar sphere-instagram com card + legenda | ⚙️(+patch VPS mínimo) | S–M | 🔴 ganho rápido |
@@ -85,7 +87,7 @@
 
 ### 5.C Finanças
 | 5.C.1 | P&L automático mensal | M |
-| 5.C.2 | Alerta de margem por plano (api_spend.tenant_id grava; ninguém lê) | M |
+| 5.C.2 | ~~Alerta de margem por plano~~ 🟢 feito (#524): custo/margem por tenant no snapshot diário do watchdog | M |
 | 5.C.3 | Reconciliação Stripe ↔ ledger ↔ custo | M |
 | 5.C.4 | ⚖️ Preço com dado medido (Agency lê negativo no modelo) | M |
 
@@ -100,16 +102,16 @@
 | 5.E.2 | Approval Queue web | M |
 | 5.E.3 | Grafos de departamento (VP Sales/CX/Finance com rotina própria) | L |
 | 5.E.4 | n8n → cron VPS (teto 2.5k/mês; só Incident Watch migrou) | M |
-| 5.E.5 | Relatório semanal consolidado ao founder (hoje: manual) | M |
+| 5.E.5 | ~~Relatório semanal consolidado~~ 🟢 feito (#525): grafo weekly-report, 1ª edição seg 07h30 UTC | M |
 
 ### 5.F — MEMÓRIA E AUTO-MELHORIA *(novo, 24/08 — o pedido de autonomia 100%)*
 > O que existe: memória por esfera (outcomes 30–60d + rejeições do founder com o porquê), lift real vs baseline, verdict por run, calendário anti-repetição, anti-patterns/postmortems escritos. **O que falta é fechar o círculo: o sistema aprender SOZINHO com o próprio registro.**
 
 | # | O que | Esf. | O gap exato |
 |---|---|---|---|
-| 5.F.1 | **Consolidação de memória por esfera**: nó mensal que destila outcomes+vereditos+rejeições em lições duráveis (hoje a "memória" é uma janela deslizante que esquece) | M | snapshot ≠ aprendizado acumulado |
+| 5.F.1 | **Consolidação de memória por esfera**: grafo mensal que destila outcomes+vereditos+rejeições em lições duráveis, gated pelo founder | M | 🟡 EM CONSTRUÇÃO 27/08 (agente despachado) |
 | 5.F.2 | **Prompt-tuning gated**: os prompts das esferas são ESTÁTICOS no código; melhorá-los exige PR humano. Caminho: overrides de prompt em banco, propostos por um grafo "tuner" que lê os vereditos, **aprovados pelo founder**, com rollback | L | o verdict grava e ninguém age |
-| 5.F.3 | **Anti-patterns → críticos**: os críticos das esferas não leem `anti-patterns.md`; injetar as entradas relevantes no contexto dos críticos (mesmo padrão do `[__day__]`) | S–M | a memória institucional não chega a quem decide |
+| 5.F.3 | ~~Anti-patterns → críticos~~ 🟢 feito (#525): `[__lessons__]` (CONTENT_LESSONS) injetado nos nós de debate/crítica dos grafos de marketing | S–M | fechado |
 | 5.F.4 | **Experimentos contínuos**: 1 experimento/semana (CDO) → rotina de A/B por ângulo/canal com o lift decidindo o vencedor | M | aprendizado por tentativa é pontual |
 | 5.F.5 | **Cadência auto-ajustada**: caps por canal (#520) fixos → derivados do lift colhido (que horário/frequência rende mais) | M | a válvula é estática |
 | 5.F.6 | **Auto-cura ampliada**: retry budget por node + circuit breaker por canal Postiz (hoje: crash-recovery 2h, starved reconcile, orphans) | M | falha repetida do mesmo node vira loop de custo |
@@ -127,7 +129,7 @@
 | 6.6 | webkit-mobile estabilizar e voltar a bloquear (#170) | ⚙️ | M |
 | 6.7 | SSH direto do Mac (chave ed25519) — fim dos intermediários | 👤 | S |
 | 6.8 | Backup/restore do Postgres testado (nunca exercitado) | 👤+⚙️ | M |
-| 6.9 | Simulado de incidente com o runbook novo (#521) | ⚙️ | S |
+| 6.9 | ~~Simulado de incidente~~ 🟢 drill do runbook "Agent-org freeze" executado ao vivo 27/08 | ⚙️ | S |
 
 ## BLOCO 7 — LEGAL
 
@@ -135,7 +137,7 @@
 | 7.2 | GDPR Art. 27 documentado sem nome civil | 👤 | S |
 | 7.3 | DPAs com sub-processadores | 👤 | M |
 | 7.4 | Gate 7 com veredito registrado | ⚙️ | S |
-| 7.5 | DPIA/ROPA atualizados (AI Audit, Signal Engine, atribuição, vídeo) | ⚙️ | M |
+| 7.5 | ~~DPIA/ROPA atualizados~~ 🟢 feito (#526): G21–G26, SP-15–18, seção 13-GEO, riscos R14/R15; **decisões GEO-D6..D9 continuam com o founder** | ⚙️ | M |
 
 ## BLOCO 8 — DECISÕES (⚖️ 5 min cada)
 
@@ -158,6 +160,7 @@
 
 ## APÊNDICE — FEITO E PROVADO (não volta à fila)
 
+**27/08:** **BLOCO 0 FECHADO** — funil $49 provado com compra real (lead→pago→entregue no mesmo minuto→e-mail→2 nurtures) · webhook SmartLead global provado fim-a-fim (Test→CRM 1s) · bug de atribuição achado no teste de fogo e corrigido no dia (#527, first-touch sessionStorage) · regra nova: 1º cold email SEM link · anel 2 entregue (#524 custo/tenant, #525 weekly-report+lessons, #526 DPIA/ROPA) · drill do runbook passou ao vivo · 25+ cliques de aprovação acumulados.
 **24/08:** blog passou NO CRON (1ª vez; #518) · fim de semana com 0 falhas e 7 publicações · X voltou (#511 provado sáb+seg) · experimento do CDO publicado (ciclo sonho→spawn→aprovação→post) · vigia calibrado (#519, estacionado≠parado) · **válvula de cadência (#520, provada ao vivo: vídeo adiado às 14:10 com 2/2 no LinkedIn)** · postmortems+12 anti-patterns+runbook (#521) · 17 cliques de botão · raio-X completo da VPS (endpoints, mídia no Postiz, video-job vivo com guard ok).
 **22/08:** fallback claude→codex→kimi (#505, provado) · 500s credits/prime (#506, PREPARE) · webhook auto-registro + status (#504/#508) · lembretes por bot (#509/#510) · CTAs+/resources (#512) · atribuição UTM (#513) · métricas de harvest + vigia externo (#514) · report-only IG/TikTok/YT (#516) · operator key viva · price $49 setado · bot próprio de aprovações (7 primeiros cliques).
 **Antes:** #500 fome do tick · #502 E2E honesto · #486/#488 nurture 9 seqs · #489 custo/tenant · #490 dashboard · #491 CTA site-wide · #463/#478 tabelas $49 · #496/#497 Signal Engine consumidor · #451 MCP · 38 e-mails renderizados · specs (#498).
