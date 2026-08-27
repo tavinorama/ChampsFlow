@@ -49,6 +49,7 @@ import {
   SPHERE_YOUTUBE_GRAPH,
   SPHERE_PPC_GRAPH,
   WEEKLY_REPORT_GRAPH,
+  MEMORY_CONSOLIDATION_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt, CONTENT_LESSONS } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
@@ -74,6 +75,17 @@ export const SIGNALS_ARTIFACT = "__signals__";
  * rules) as a veto ruler, so a lesson learned once is enforced everywhere.
  */
 export const LESSONS_ARTIFACT = "__lessons__";
+/**
+ * Upstream key carrying the CONSOLIDATED memory lessons (5.F.1) to the
+ * CRITICS of marketing graphs — the durable sibling of [__lessons__]. Where
+ * [__lessons__] is a static ruler in code, [__memory__] is the last batch of
+ * lessons the memory-consolidation graph distilled from 30 days of REAL
+ * outcomes AND the founder explicitly approved on Telegram. Read from
+ * ops.memory_lesson at tick time via the optional activeMemoryLessons port;
+ * empty store (or the migration not applied yet) → no artifact injected at
+ * all — never a placeholder.
+ */
+export const MEMORY_ARTIFACT = "__memory__";
 
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
@@ -108,6 +120,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
   // 5.E.5: o relatório de segunda ao founder — read-only, Monday 07:30 UTC.
   [WEEKLY_REPORT_GRAPH.slug]: WEEKLY_REPORT_GRAPH,
+  // 5.F.1: consolidação mensal de memória — dia 1, 06:30 UTC. Fatos agregados
+  // por SQL → lições escritas pelo LLM → gate do founder → só o aprovado vira
+  // [__memory__] dos críticos. Nada se auto-ativa.
+  [MEMORY_CONSOLIDATION_GRAPH.slug]: MEMORY_CONSOLIDATION_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -186,6 +202,20 @@ export interface SubstratePort {
    * runs exactly as before. Must never throw; "SEM DADO" is a valid answer.
    */
   externalSignals?(): Promise<string | null>;
+  /**
+   * The ACTIVE approved memory lessons (5.F.1) — the newest row the founder
+   * approved in ops.memory_lesson, or null when the store is empty OR the
+   * migration has not been applied yet (feature OFF, fail-open: the cells run
+   * exactly as before). Optional on purpose, must never throw.
+   */
+  activeMemoryLessons?(): Promise<string | null>;
+  /**
+   * Persist an APPROVED lessons batch as the new active memory (5.F.1) —
+   * append-only into ops.memory_lesson (newest row wins on read). Returns
+   * ok:false with a human-readable reason (naming the unlocking action) when
+   * the table does not exist yet — "mergeado não é produção".
+   */
+  storeMemoryLessons?(input: { runId: string; lessons: string }): Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface HermesPort {
@@ -526,6 +556,19 @@ export async function advanceRun(
         // (CEO/engineering-owned) never receive it: they are not content.
         if (node.kind === "debate") {
           upstream.unshift([LESSONS_ARTIFACT, CONTENT_LESSONS]);
+          // 5.F.1: the CONSOLIDATED, founder-approved lessons — the durable
+          // sibling of [__lessons__], read from ops.memory_lesson at tick
+          // time. Fail-open by contract: empty store, missing migration or a
+          // read error all mean NO artifact (never placeholder text), and the
+          // critic reasons exactly as before.
+          if (substrate.activeMemoryLessons) {
+            try {
+              const mem = await substrate.activeMemoryLessons();
+              if (mem && mem.trim()) upstream.unshift([MEMORY_ARTIFACT, mem]);
+            } catch {
+              /* fail-open by contract; the port should not throw */
+            }
+          }
         }
         upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
         // Real conversations/opportunities from the Signal Engine, when wired.
@@ -586,13 +629,15 @@ export async function advanceRun(
       // — the human must know exactly what a "yes" sets in motion.
       const downstream = def.nodes.filter(
         (n) =>
-          (n.kind === "publish" || n.kind === "spawn") &&
+          (n.kind === "publish" || n.kind === "spawn" || n.kind === "store") &&
           n.dependsOn.some((d) => d === node.id)
       );
       const destinations = downstream.map((n) =>
         n.kind === "publish"
           ? `publicar como POST em ${String(n.config?.["channel"] ?? "linkedin")} (via ${String(n.config?.["via"] ?? "postiz")})`
-          : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
+          : n.kind === "store"
+            ? `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
+            : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
       await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
@@ -793,6 +838,44 @@ export async function advanceRun(
         outputHash: sha(bodyText),
         summary: `reported ${bodyText.length} chars to founder`,
       });
+    } else if (node.kind === "store") {
+      // 5.F.1: persist the APPROVED lessons as the new active memory. Only
+      // reachable after a human approval (validateGraph hard rule), so
+      // whatever text arrives here carries the founder's explicit yes. The
+      // content lives on the approval's own upstream (the compose) — same
+      // one-edge-back walk as publish.
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
+      const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+      const lessons = ((await artifacts.get(runId, contentNodeId)) ?? "").trim();
+      if (!lessons) {
+        await substrate.finishStep(stepId, { status: "failed", summary: "store had no approved content artifact (TTL?)" });
+        continue; // next tick's fail-fast closes the run, out loud
+      }
+      if (!substrate.storeMemoryLessons) {
+        // A runner wired without the port cannot persist — honest failure with
+        // the exact gap named, never a silent success ("mergeado ≠ produção").
+        await substrate.finishStep(stepId, {
+          status: "failed",
+          summary: "store port ausente neste worker — memoria NAO gravada (feature desligada)",
+        });
+        continue;
+      }
+      const res = await substrate.storeMemoryLessons({ runId, lessons });
+      if (res.ok) {
+        await artifacts.set(runId, node.id, lessons);
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          outputHash: sha(lessons),
+          summary: `stored ${lessons.split("\n").length} linha(s) como memoria ativa (${String(config["target"] ?? "memory-lessons")})`,
+        });
+      } else {
+        const reason = (res.reason ?? "motivo desconhecido").slice(0, 200);
+        await substrate.finishStep(stepId, { status: "failed", summary: `store falhou: ${reason}` });
+        await telegram(
+          `🔴 MEMÓRIA NÃO GRAVADA — graph ${def.slug} (run ${runId.slice(0, 8)}): as lições foram APROVADAS mas o store falhou: ${reason}. Nada mudou nos críticos ([__memory__] segue como estava).`
+        );
+      }
     } else if (node.kind === "spawn") {
       // The acting primitive: launch experiment runs of other graphs, seeded
       // with the approved hypothesis. Guarded upstream by an approval (the

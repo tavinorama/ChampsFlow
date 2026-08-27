@@ -52,7 +52,8 @@ export type NodeKind =
   | "verdict"
   | "snapshot"
   | "report"
-  | "spawn";
+  | "spawn"
+  | "store";
 
 export interface GraphNode {
   /** Node slug, unique within the graph — becomes ops.agent_step.node. */
@@ -203,6 +204,11 @@ export function validateGraph(def: GraphDefinition): GraphValidationResult {
     if (n.kind === "report" && n.dependsOn.length === 0) {
       errors.push(`report node '${n.id}' has no upstream to deliver — a root report reports nothing`);
     }
+    // A store must name WHERE it persists — the runner routes on it, and an
+    // unnamed target is a write that lands nowhere (silent-empty memory).
+    if (n.kind === "store" && typeof n.config?.["target"] !== "string") {
+      errors.push(`store node '${n.id}' must declare config.target`);
+    }
     // A spawn must name what it launches; an empty spawn is a no-op that looks
     // like an action — the exact kind of silent nothing this system forbids.
     if (n.kind === "spawn") {
@@ -226,6 +232,24 @@ export function validateGraph(def: GraphDefinition): GraphValidationResult {
     if (!hasApproval) {
       errors.push(
         `spawn node '${n.id}' has no approval node upstream — nothing spawns an experiment without a human (hard rule)`
+      );
+    }
+  }
+
+  // HARD RULE (5.F.1): nothing self-activates as durable memory without a
+  // human. A store node persists text that will steer every future critic —
+  // it is gated by an approval upstream exactly like publish and spawn.
+  // Enforced at definition time: a graph that would write its own memory
+  // without the founder's yes cannot exist.
+  for (const n of def.nodes) {
+    if (n.kind !== "store") continue;
+    const ancestors = upstreamOf(def, n.id);
+    const hasApproval = [...ancestors].some(
+      (id) => def.nodes.find((x) => x.id === id)?.kind === "approval"
+    );
+    if (!hasApproval) {
+      errors.push(
+        `store node '${n.id}' has no approval node upstream — nothing self-activates as durable memory without a human (hard rule)`
       );
     }
   }
@@ -786,6 +810,58 @@ export const WEEKLY_REPORT_GRAPH: GraphDefinition = {
     { id: "outcomes-week", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 7 } },
     { id: "compose", kind: "task", dependsOn: ["ops-week", "outcomes-week"], config: { prompt: "weekly-report-compose" } },
     { id: "report", kind: "report", dependsOn: ["compose"], config: { title: "🗞️ Semana da Ozvor — o relatório de segunda" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// memory-consolidation (5.F.1): a memória das esferas deixa de ser janela
+// deslizante. Hoje o CONTENT_LESSONS é uma régua estática de 7 linhas no
+// código e o contexto por-run esquece tudo a cada mês. Este grafo mensal
+// (dia 1, 06:30 UTC) destila os últimos ~30 dias de RESULTADOS REAIS —
+// publicações por canal, métricas colhidas, rejeições do founder (com o
+// motivo literal), aprovações expiradas e vereditos — em lições duráveis por
+// canal, no formato de régua de veto que os críticos já usam.
+//
+// A aggregação é SQL/código (snapshot source 'memory'); o LLM só ESCREVE as
+// lições a partir dos fatos agregados — nunca adivinha schema nem inventa
+// número (a regra do "vigia também mente"). As lições passam pelo gate padrão
+// do Telegram (timeout 96h = rejeição) e SÓ as aprovadas viram memória ativa:
+// o nó 'store' (validateGraph exige approval upstream, como publish/spawn)
+// grava em ops.memory_lesson, e o runner injeta a última versão aprovada como
+// [__memory__] nos críticos de marketing, ao lado de [__lessons__].
+//
+// CEO-owned de propósito: memória institucional é preocupação da organização,
+// não de um canal — e assim o grafo nunca conta na válvula de aprovações de
+// marketing nem recebe as injeções de conteúdo ([__day__] etc.) no próprio
+// compose, que deve ver SÓ os fatos agregados.
+// ---------------------------------------------------------------------------
+
+export const MEMORY_CONSOLIDATION_GRAPH: GraphDefinition = {
+  slug: "memory-consolidation",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Consolidação mensal de memória (5.F.1): snapshot dos fatos reais de 30d (publicações por canal, métricas colhidas, rejeições do founder com motivo, aprovações expiradas, vereditos) → compose (PT, máx 12 lições duráveis por canal, cada uma citando a evidência — SÓ fatos do snapshot, nunca inventa) → aprovação do founder no Telegram (96h; silêncio = rejeição, nada ativa) → store em ops.memory_lesson (só o aprovado vira [__memory__] dos críticos) → report. Nada se auto-ativa.",
+  nodes: [
+    // Aggregation is SQL/code — the runner reads the record, the LLM only writes.
+    { id: "history", kind: "snapshot", dependsOn: [], config: { source: "memory", days: 30 } },
+    { id: "compose", kind: "task", dependsOn: ["history"], config: { prompt: "memory-consolidation-compose" } },
+    // Founder gate: only APPROVED lessons become active memory. Timeout 96h =
+    // rejection-by-silence (the runner's default, declared here for clarity).
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["compose"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = estas lições viram a memória ATIVA ([__memory__]) dos críticos de marketing até a próxima consolidação. Rejeitar ou silêncio (96h) = nada muda.",
+      },
+    },
+    // Durable write — gated by the approval above (validateGraph hard rule).
+    { id: "store", kind: "store", dependsOn: ["approval"], config: { target: "memory-lessons" } },
+    { id: "report", kind: "report", dependsOn: ["store"], config: { title: "🧠 MEMÓRIA DO MÊS — lições consolidadas e ATIVADAS" } },
   ],
 };
 
