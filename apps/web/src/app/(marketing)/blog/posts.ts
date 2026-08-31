@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "why-chatgpt-doesnt-know-your-business-exists-yet",
+    title: "Why ChatGPT Doesn't Know Your Business Exists Yet",
+    excerpt: "When a regular customer found a small Bristol bakery through ChatGPT instead of Google, its owner learned that AI search engines choose who to name using very different rules.",
+    readTime: "5 min read",
+    publishedAt: "2026-08-31",
+    publishedAtDisplay: "31 August 2026",
+  },
+  {
+    type: "article",
     slug: "bristol-bakery-ai-search-visibility-geo",
     title: "The Bakery ChatGPT Forgot: A Small Business Owner's Wake-Up Call on AI Search",
     excerpt: "A Bristol bakery owner discovers she's invisible to ChatGPT and Google's AI Overviews, and fixes it with plain facts, specific reviews and consistent listings rather than a website redesign.",
