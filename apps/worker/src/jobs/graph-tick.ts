@@ -598,6 +598,120 @@ export async function buildSnapshot(
     return lines.join("\n");
   }
 
+  if (source === "tuning") {
+    // 5.F.2 — o combustível do prompt-tuner: os últimos ~21d de sinal REAL
+    // sobre o que os grafos produzem, agregado por SQL POR GRAPH/área de
+    // prompt. O compose downstream só ESCREVE a proposta a partir destas
+    // linhas ("vigia também mente": o modelo nunca conta nem agrega). Tudo
+    // vem de ops.* — slugs, statuses, resumos capados e números; sem PII.
+    const verdicts = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:tuning-verdicts */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.node = 'verdict'
+         AND s.status = 'succeeded'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 40`;
+
+    // Rejeições com o motivo LITERAL do founder — o sinal mais forte que um
+    // afinador de prompts pode ter.
+    const rejections = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:tuning-rejections */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'failed'
+         AND s.summary LIKE 'rejected:%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 30`;
+
+    // Contagem de rejeições POR GRAPH — a agregação é SQL, o modelo só lê.
+    const rejectionCounts = await sql<{ graph: string; n: string }[]>`
+      /* snap:tuning-rejection-counts */
+      SELECT r.graph, COUNT(*)::text AS n
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'failed'
+         AND s.summary LIKE 'rejected:%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY r.graph
+       ORDER BY COUNT(*) DESC`;
+
+    // Timeouts de aprovação por graph (timeout = rejeição por silêncio).
+    const timeouts = await sql<{ graph: string; n: string }[]>`
+      /* snap:tuning-timeouts */
+      SELECT r.graph, COUNT(*)::text AS n
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.summary LIKE 'approval timed out%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY r.graph
+       ORDER BY COUNT(*) DESC`;
+
+    // Overrides já ativos — para o tuner saber o estado atual e nunca propor
+    // no escuro. Fail-soft: tabela ausente = linha honesta, nunca um throw
+    // (o snapshot inteiro não pode morrer por causa desta seção).
+    let overrides: Array<{ prompt_key: string; body_len: string; approved_at: string }> = [];
+    let overridesUnavailable = false;
+    try {
+      overrides = await sql<{ prompt_key: string; body_len: string; approved_at: string }[]>`
+        /* snap:tuning-overrides */
+        SELECT DISTINCT ON (prompt_key)
+               prompt_key,
+               LENGTH(body)::text AS body_len,
+               approved_at::text AS approved_at
+          FROM ops.prompt_override
+         ORDER BY prompt_key, approved_at DESC`;
+    } catch (err) {
+      overridesUnavailable = true;
+      const code = (err as { code?: string }).code ?? "";
+      if (code !== "42P01") {
+        logger.warn("snapshot_tuning_overrides_unavailable", { code, message: (err as Error).message?.slice(0, 160) });
+      }
+    }
+
+    if (verdicts.length === 0 && rejections.length === 0 && timeouts.length === 0 && overrides.length === 0) {
+      return ""; // honest empty — the runner turns this into SEM DADOS
+    }
+
+    const lines: string[] = [
+      `EVIDENCIA PARA TUNING DE PROMPTS (ops.*, ${d}d — fatos agregados por codigo; nada abaixo foi estimado):`,
+    ];
+    if (verdicts.length > 0) {
+      lines.push(``, `VEREDITOS FECHADOS (por graph — o loop leu o proprio resultado):`);
+      for (const v of verdicts) lines.push(`- ${v.started_at.slice(0, 10)} (${v.graph}): ${v.summary}`);
+    }
+    if (rejectionCounts.length > 0) {
+      lines.push(``, `REJEICOES DO FOUNDER POR GRAPH (contagem por SQL):`);
+      for (const rc of rejectionCounts) lines.push(`- ${rc.graph}: ${rc.n} rejeicao(oes)`);
+    }
+    if (rejections.length > 0) {
+      lines.push(``, `REJEICOES DO FOUNDER (motivo literal registrado — o sinal mais forte):`);
+      for (const rj of rejections) {
+        lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
+      }
+    }
+    if (timeouts.length > 0) {
+      lines.push(``, `APROVACOES EXPIRADAS POR SILENCIO POR GRAPH (timeout = rejeicao):`);
+      for (const t of timeouts) lines.push(`- ${t.graph}: ${t.n} aprovacao(oes) expiraram sem decisao`);
+    }
+    if (overrides.length > 0) {
+      lines.push(``, `OVERRIDES DE PROMPT JA ATIVOS (ops.prompt_override — linha mais nova por chave):`);
+      for (const o of overrides) {
+        const state = Number(o.body_len) === 0 ? "body vazio = revertido ao prompt estatico" : `${o.body_len} chars`;
+        lines.push(`- ${o.prompt_key}: desde ${o.approved_at.slice(0, 10)} (${state})`);
+      }
+    } else if (overridesUnavailable) {
+      lines.push(``, `OVERRIDES DE PROMPT: tabela ops.prompt_override indisponivel neste deploy — nenhum override ativo.`);
+    } else {
+      lines.push(``, `OVERRIDES DE PROMPT: nenhum ativo — todos os grafos rodam nos prompts estaticos do codigo.`);
+    }
+    return lines.join("\n");
+  }
+
   if (source === "incidents") {
     // 5.D.2: the postmortem's evidence node. The SAME SQL detection the daily
     // cron ran to decide "there IS an incident" re-aggregates the facts here,
@@ -883,6 +997,11 @@ export async function runIncidentPostmortemDaily(
 
 /** Exported for tests (the fake sql routes on the queries' own markers). */
 export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
+  // 5.F.2: cache dos overrides POR TICK — buildPorts é criado uma vez por
+  // runGraphTick, então este closure vive um tick. Uma query serve todas as
+  // runs do tick; nunca uma tempestade por-node (o advanceRun ainda faz o
+  // próprio cache por-run em cima deste).
+  let promptOverridesCache: Promise<Record<string, string> | null> | null = null;
   return {
     substrate: {
       async getRun(runId) {
@@ -1022,6 +1141,57 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
               ? `tabela ops.memory_lesson ausente — ${MEMORY_STORE_MISSING_ACTION}`
               : `${code || "erro"}: ${(err as Error).message?.slice(0, 120)}`;
           logger.error("memory_lessons_store_failed", { code, message: (err as Error).message?.slice(0, 160) });
+          return { ok: false, reason };
+        }
+      },
+      async activePromptOverrides() {
+        // 5.F.2: a linha mais NOVA por prompt_key — append-only, a mais nova
+        // vence; body vazio viaja no mapa e o buildPrompt o trata como
+        // "reverte ao estatico". Fail-open por contrato: antes da migração
+        // ops.prompt_override (42P01) ou em qualquer blip de leitura, null —
+        // todos os grafos seguem nos prompts estáticos do código.
+        if (!promptOverridesCache) {
+          promptOverridesCache = (async (): Promise<Record<string, string> | null> => {
+            try {
+              const rows = await sql<{ prompt_key: string; body: string }[]>`
+                /* override:active-read */
+                SELECT DISTINCT ON (prompt_key) prompt_key, body
+                  FROM ops.prompt_override
+                 ORDER BY prompt_key, approved_at DESC`;
+              if (rows.length === 0) return null;
+              const map: Record<string, string> = {};
+              for (const r of rows) map[r.prompt_key] = r.body;
+              return map;
+            } catch (err) {
+              const code = (err as { code?: string }).code ?? "";
+              if (code !== "42P01") {
+                logger.warn("prompt_overrides_read_failed", { code, message: (err as Error).message?.slice(0, 160) });
+              }
+              return null;
+            }
+          })();
+        }
+        return promptOverridesCache;
+      },
+      async storePromptOverride(input) {
+        // Append-only insert — um override aprovado é registro, nunca edit.
+        // Reverter = linha nova (body anterior, ou '' para o estático). Numa
+        // deploy sem a migração (42P01), fail SOFT com a ação nominal que
+        // destrava: o runner falha o step em voz alta e nada finge estar on.
+        try {
+          await sql`
+            /* override:store */
+            INSERT INTO ops.prompt_override (source_run_id, prompt_key, body)
+            VALUES (${input.runId}::uuid, ${input.promptKey}, ${input.body})`;
+          promptOverridesCache = null; // a próxima leitura do tick vê a linha nova
+          return { ok: true };
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? "";
+          const reason =
+            code === "42P01"
+              ? `tabela ops.prompt_override ausente — ${PROMPT_OVERRIDE_MISSING_ACTION}`
+              : `${code || "erro"}: ${(err as Error).message?.slice(0, 120)}`;
+          logger.error("prompt_override_store_failed", { code, message: (err as Error).message?.slice(0, 160) });
           return { ok: false, reason };
         }
       },
@@ -1362,6 +1532,54 @@ export async function runMemoryConsolidationMonthly(
     return { started: [], skipped: ["memory-consolidation"], capped: [] };
   }
   return startBrainRuns(sql, ["memory-consolidation"], 24 * 27, "cron:memory-consolidation", opts);
+}
+
+/**
+ * 5.F.2: the exact action that unlocks prompt-tuning in production — named in
+ * every OFF report ("mergeado não é produção": a feature whose dependency is
+ * missing reports itself OFF with the nominal fix, never as ok).
+ */
+export const PROMPT_OVERRIDE_MISSING_ACTION =
+  "founder aplica a migracao 20260831000001_ops_prompt_override (PR feat/prompt-tuning-migration — migracao NUNCA em auto-merge)";
+
+/**
+ * Does the prompt-override store exist in THIS database? Same cheap
+ * to_regclass catalog lookup as memoryLessonStoreReady — any error counts as
+ * "not ready" (the safe direction is OFF, said out loud by the caller).
+ */
+export async function promptOverrideStoreReady(sql: postgres.Sql): Promise<boolean> {
+  try {
+    const rows = await sql<{ t: string | null }[]>`
+      /* override:table-check */
+      SELECT to_regclass('ops.prompt_override')::text AS t`;
+    return rows[0]?.t != null;
+  } catch (err) {
+    logger.warn("prompt_override_table_check_failed", { message: (err as Error).message?.slice(0, 160) });
+    return false;
+  }
+}
+
+/**
+ * prompt-tuner (5.F.2): weekly, Tuesday 06:30 UTC — offset from the Monday
+ * brains/report and the Thursday discovery. Gated on the durable store
+ * existing FIRST: without ops.prompt_override a run would burn an LLM compose
+ * and a founder approval only to fail at the store — so the cron declares the
+ * feature OFF (log + Telegram, with the unlocking action) and starts nothing.
+ * 6-day look-back = once per week, restart-safe. CEO-owned and
+ * approval-gated, but never counted by the marketing valve.
+ */
+export async function runPromptTunerWeekly(
+  sql: postgres.Sql,
+  opts: { hermesToken?: string } = {}
+): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  if (!(await promptOverrideStoreReady(sql))) {
+    logger.warn("prompt_tuner_off_no_table", { action: PROMPT_OVERRIDE_MISSING_ACTION });
+    await sendTelegram(
+      `🟡 PROMPT-TUNING (5.F.2) DESLIGADO: a tabela ops.prompt_override não existe neste banco — nenhum run de prompt-tuner foi iniciado (não gasto LLM num run que morreria no store). Os grafos seguem nos prompts estáticos do código. Ação que destrava: ${PROMPT_OVERRIDE_MISSING_ACTION}.`
+    );
+    return { started: [], skipped: ["prompt-tuner"], capped: [] };
+  }
+  return startBrainRuns(sql, ["prompt-tuner"], 24 * 6, "cron:prompt-tuner", opts);
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */

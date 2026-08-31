@@ -865,6 +865,63 @@ export const MEMORY_CONSOLIDATION_GRAPH: GraphDefinition = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// prompt-tuner (5.F.2): os prompts das esferas eram CÓDIGO ESTÁTICO — melhorar
+// um prompt exigia PR humano, então os vereditos e as rejeições registrados
+// toda semana não mudavam nada no que os grafos escrevem. Este grafo semanal
+// (terça 06:30 UTC — fora da segunda dos brains/relatório e da quinta do
+// discovery) fecha o loop, founder-gated:
+//
+//  - evidence (snapshot source 'tuning'): 21d de vereditos, rejeições do
+//    founder (motivo literal) e timeouts de aprovação, agregados por SQL —
+//    o modelo nunca conta ("vigia também mente");
+//  - compose (via cadeia de fallback, nunca engine pinado): propõe NO MÁXIMO
+//    UMA mudança de prompt, restrita à allowlist TUNABLE_PROMPT_KEYS
+//    (drafts/críticos de marketing — nunca approval/publish/store, nunca os
+//    prompts do próprio tuner: sem auto-modificação);
+//  - approval (Telegram, 96h; silêncio = rejeição): nada muda um prompt sem o
+//    sim explícito do founder;
+//  - store (target 'prompt-override'): o MESMO kind do 5.F.1, roteado pelo
+//    target — grava em ops.prompt_override (append-only, linha mais nova por
+//    prompt_key vence; body vazio = reverter ao estático). A allowlist é
+//    re-checada NO STORE: proposta fora dela falha ali, alto e claro;
+//  - report: o founder vê o que ficou decidido.
+//
+// CEO-owned de propósito (como memory-consolidation): afinar prompts é
+// preocupação da organização, não de um canal — fora da válvula de marketing
+// e sem as injeções de conteúdo ([__day__]/[__signals__]/[__lessons__]) no
+// próprio compose, que deve ver SÓ os fatos agregados.
+// ---------------------------------------------------------------------------
+
+export const PROMPT_TUNER_GRAPH: GraphDefinition = {
+  slug: "prompt-tuner",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Afinador semanal de prompts (5.F.2): snapshot dos fatos de 21d (vereditos por graph, rejeições do founder com motivo literal, timeouts de aprovação, overrides já ativos) → compose (propõe NO MÁXIMO UMA mudança de prompt, só na allowlist de drafts/críticos de marketing — nunca approval/publish/store nem o próprio tuner) → aprovação do founder no Telegram (96h; silêncio = rejeição, nada muda) → store em ops.prompt_override (append-only; a mais nova por chave vence; body vazio = volta ao prompt estático; allowlist re-checada no store) → report. Nada se auto-ativa.",
+  nodes: [
+    // Aggregation is SQL/code — the runner reads the record, the LLM only writes.
+    { id: "evidence", kind: "snapshot", dependsOn: [], config: { source: "tuning", days: 21 } },
+    { id: "compose", kind: "task", dependsOn: ["evidence"], config: { prompt: "prompt-tuner-compose" } },
+    // Founder gate: only an APPROVED proposal may become an active override.
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["compose"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = esta proposta vira o prompt ATIVO (override em ops.prompt_override) na próxima execução dos grafos. Rejeitar ou silêncio (96h) = nenhum prompt muda. Rollback: aprovar depois uma linha nova com o body anterior, ou body vazio para voltar ao prompt do código.",
+      },
+    },
+    // Durable write — gated by the approval above (validateGraph hard rule);
+    // the same 'store' kind as 5.F.1, routed by config.target.
+    { id: "store", kind: "store", dependsOn: ["approval"], config: { target: "prompt-override" } },
+    { id: "report", kind: "report", dependsOn: ["store"], config: { title: "🔧 PROMPT-TUNER — decisão da semana sobre prompts" } },
+  ],
+};
+
 export const SPHERE_PPC_GRAPH: GraphDefinition = {
   slug: "sphere-ppc",
   version: 1,
