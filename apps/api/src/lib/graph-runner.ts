@@ -52,6 +52,7 @@ import {
   INCIDENT_POSTMORTEM_GRAPH,
   MEMORY_CONSOLIDATION_GRAPH,
   PROMPT_TUNER_GRAPH,
+  AB_EXPERIMENT_GRAPH,
 } from "./agent-graphs";
 import {
   buildPrompt,
@@ -142,6 +143,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // marketing, sem auto-modificação) → gate do founder → só o aprovado vira
   // override em ops.prompt_override. Nada se auto-ativa.
   [PROMPT_TUNER_GRAPH.slug]: PROMPT_TUNER_GRAPH,
+  // 5.F.4: o A/B semanal — sexta 06:30 UTC. Duas variantes, UM eixo declarado,
+  // mesmo canal, uma aprovação combinada, veredito por código com a linha
+  // `ab-winner:` que a consolidação (5.F.1) e o tuner (5.F.2) leem.
+  [AB_EXPERIMENT_GRAPH.slug]: AB_EXPERIMENT_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
