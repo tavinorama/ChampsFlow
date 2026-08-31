@@ -51,8 +51,15 @@ import {
   WEEKLY_REPORT_GRAPH,
   INCIDENT_POSTMORTEM_GRAPH,
   MEMORY_CONSOLIDATION_GRAPH,
+  PROMPT_TUNER_GRAPH,
 } from "./agent-graphs";
-import { buildPrompt, CONTENT_LESSONS } from "./graph-prompts";
+import {
+  buildPrompt,
+  CONTENT_LESSONS,
+  parsePromptProposal,
+  isTunablePromptKey,
+  TUNABLE_PROMPT_KEYS,
+} from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
 import {
   X_POST_LIMIT,
@@ -130,6 +137,11 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // por SQL → lições escritas pelo LLM → gate do founder → só o aprovado vira
   // [__memory__] dos críticos. Nada se auto-ativa.
   [MEMORY_CONSOLIDATION_GRAPH.slug]: MEMORY_CONSOLIDATION_GRAPH,
+  // 5.F.2: afinador semanal de prompts — terça 06:30 UTC. Evidência agregada
+  // por SQL → UMA proposta de mudança (allowlist de drafts/críticos de
+  // marketing, sem auto-modificação) → gate do founder → só o aprovado vira
+  // override em ops.prompt_override. Nada se auto-ativa.
+  [PROMPT_TUNER_GRAPH.slug]: PROMPT_TUNER_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -141,6 +153,13 @@ export interface StepRow {
   node: string;
   status: "running" | "succeeded" | "failed" | "skipped" | "waiting";
   started_at: string; // ISO
+  /**
+   * 5.F.6: the bounded summary now travels back into the runner — it is the
+   * ONLY memory the retry logic has (attempt provenance, gate markers,
+   * circuit parks are all summary prefixes; no schema change, the substrate
+   * stays the state). Optional so old fakes/ports keep compiling.
+   */
+  summary?: string | null;
 }
 
 export interface RunRow {
@@ -222,6 +241,23 @@ export interface SubstratePort {
    * the table does not exist yet — "mergeado não é produção".
    */
   storeMemoryLessons?(input: { runId: string; lessons: string }): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * The ACTIVE prompt overrides (5.F.2): newest ops.prompt_override row per
+   * prompt_key, as { key: body }. null when the store is empty OR the
+   * migration has not been applied yet (feature OFF, fail-open: every graph
+   * keeps the static code prompts). Loaded once per tick (buildPorts caches),
+   * once per run advance (advanceRun caches) — never a per-node query storm.
+   * Optional on purpose, must never throw.
+   */
+  activePromptOverrides?(): Promise<Record<string, string> | null>;
+  /**
+   * Persist an APPROVED prompt override (5.F.2) — append-only into
+   * ops.prompt_override (newest row per prompt_key wins on read; body '' =
+   * revert to the static code prompt). Returns ok:false with a human-readable
+   * reason (naming the unlocking action) when the table does not exist yet —
+   * "mergeado não é produção".
+   */
+  storePromptOverride?(input: { runId: string; promptKey: string; body: string }): Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface HermesPort {
@@ -246,6 +282,25 @@ export interface TelegramButton {
   data: string;
 }
 
+/**
+ * 5.F.6 — circuit breaker per Postiz channel. Tracks CONSECUTIVE publish
+ * failures per channel (Redis `circuit:<channel>` in production, pattern-copy
+ * of the hermes-fallback NX alarm). >= CIRCUIT_BREAKER_THRESHOLD consecutive
+ * failures = circuit OPEN: subsequent publishes to that channel PARK as
+ * waiting (the cadence-valve deferred machinery) instead of burning the
+ * attempt. One success closes it (reset). Optional on purpose — a runner
+ * wired without it behaves exactly as before (fail-open), and every method
+ * must never throw its way into killing a run.
+ */
+export interface CircuitPort {
+  /** Current state for a channel: consecutive failures + open verdict. */
+  status(channel: string): Promise<{ open: boolean; failures: number }>;
+  /** Record one publish attempt result; returns the post-record state. */
+  record(channel: string, ok: boolean): Promise<{ open: boolean; failures: number }>;
+  /** NX gate for the open-circuit alarm — true only once per window per channel. */
+  alarmOnce(channel: string): Promise<boolean>;
+}
+
 export interface GraphRunnerPorts {
   substrate: SubstratePort;
   hermes: HermesPort;
@@ -253,6 +308,8 @@ export interface GraphRunnerPorts {
   /** Send a message; `buttons` (optional) renders one row of inline buttons. */
   telegram(text: string, buttons?: TelegramButton[]): Promise<void>;
   now(): Date;
+  /** 5.F.6 circuit breaker per Postiz channel — optional, fail-open when absent. */
+  circuit?: CircuitPort;
 }
 
 export interface AdvanceResult {
@@ -275,6 +332,96 @@ export const RUNNING_TIMEOUT_HOURS = 2;
 export const DEFAULT_APPROVAL_TIMEOUT_HOURS = 96;
 /** A harvest that finds nothing keeps waiting this long, then finishes as noData — loud, never a fake zero. */
 export const HARVEST_GRACE_HOURS = 48;
+
+// ---------------------------------------------------------------------------
+// 5.F.6 — auto-cura ampliada: retry budget por node + circuit breaker por
+// canal Postiz. The gap this closes: a node that failed once kept the run
+// failed FOREVER (one shot — the approved LinkedIn publish lost to a worker
+// crash on sat 29/08 needed exactly one retry), and a channel outage burned
+// every graph publishing there, day after day, each failure costing LLM
+// spend and founder attention.
+// ---------------------------------------------------------------------------
+
+/**
+ * Max RETRIES per node (attempts = 1 + budget). Env NODE_RETRY_BUDGET
+ * overrides; 0 disables retries entirely (old fail-fast behavior).
+ */
+export const DEFAULT_NODE_RETRY_BUDGET = 2;
+export function nodeRetryBudget(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env["NODE_RETRY_BUDGET"];
+  if (raw === undefined || raw.trim() === "") return DEFAULT_NODE_RETRY_BUDGET;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : DEFAULT_NODE_RETRY_BUDGET;
+}
+
+/**
+ * Node kinds SAFE to re-execute. Everything else is NEVER retried:
+ *  - approval: a human decision is not retryable;
+ *  - store: append-only INSERT into ops.memory_lesson / ops.prompt_override —
+ *    NOT idempotent (checked 31/08: a crash between the INSERT committing and
+ *    finishStep would make a retry write the same batch twice; newest-wins on
+ *    read softens memory-lessons, but prompt_override rows are the audit
+ *    record and a duplicate is a corrupted record);
+ *  - verdict: recordOutcome appends to ops.agent_outcome (append-only ledger,
+ *    a doubled outcome poisons the learning loop's baselines);
+ *  - spawn: startRun is a side effect — a retry could double-launch
+ *    experiments, each with its own LLM spend;
+ *  - wait/harvest/report: park-and-poll or messaging shapes with no failure
+ *    mode a blind re-run fixes;
+ *  - synthetic reconciliation steps (__starved__/__orphan__): not graph nodes
+ *    at all — def.nodes.find() never matches them, excluded by construction.
+ * publish IS retryable, but only through the idempotency guard below.
+ */
+const RETRYABLE_NODE_KINDS = new Set<string>(["task", "debate", "synthesis", "snapshot", "publish"]);
+
+/**
+ * Summary of the founder-gate step parked on an AMBIGUOUS publish failure
+ * (worker crash after approval — the sat-29/08 shape). Routing marker for
+ * section 2's waiting maintenance; must never contain 'channel=' (the
+ * publishedToday counter greps for that token).
+ */
+export const RETRY_GATE_SUMMARY = "retry de publish aguarda decisao do founder (falha ambigua pos-aprovacao)";
+
+/** Consecutive Postiz failures on one channel that OPEN its circuit. */
+export const CIRCUIT_BREAKER_THRESHOLD = 3;
+/** Summary prefix of a publish parked because its channel's circuit is open. */
+export const CIRCUIT_PARK_SUMMARY_PREFIX = "circuito aberto";
+
+/**
+ * Publish-failure summaries that PROVE nothing reached the public — Postiz
+ * answered an error, or a local guard refused before sending. These are safe
+ * to retry blind. Everything else (chiefly the crash-recovery stale marker)
+ * is AMBIGUOUS: the Postiz call may have succeeded before the crash, and our
+ * own record cannot prove it either way (publishedToday only counts steps
+ * that FINISHED as succeeded) — so the retry is gated on the founder.
+ */
+function publishKnownNotSent(summary: string): boolean {
+  return (
+    summary.startsWith("publish failed:") ||
+    summary.startsWith("publish had no content artifact") ||
+    summary.startsWith("x post over") ||
+    summary.startsWith("deferred publish lost its content artifact")
+  );
+}
+
+/** The founder (or 96h of silence) already said NO to retrying this — honor it. */
+function isRetryRefusal(summary: string): boolean {
+  return (
+    summary.startsWith("founder rejected via Telegram button") ||
+    summary.startsWith("rejected:") ||
+    summary.startsWith("retry de publish nao confirmado")
+  );
+}
+
+/** The one loud line per open circuit — sent at most 1x/6h per channel (NX). */
+function circuitOpenAlarm(channel: string, failures: number): string {
+  return (
+    `🔴 CIRCUITO ABERTO — canal ${channel}: ${failures} falhas consecutivas de publish no Postiz. ` +
+    `Publishes APROVADOS para esse canal ficam ADIADOS (waiting, nunca descartados) e saem sozinhos quando o canal voltar. ` +
+    `O que cura: reconectar/reautorizar o canal no Postiz; o circuito re-testa sozinho (janela de 6h) e fecha no primeiro publish OK. ` +
+    `Este aviso repete no máximo 1x/6h por canal.`
+  );
+}
 
 const sha = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
 const hoursSince = (iso: string, now: Date): number =>
@@ -369,16 +516,37 @@ export async function advanceRun(
     return { status: "not-running", started, notes: [`run ${runId} not running`] };
   }
 
-  const byNode = latestByNode(await substrate.loadSteps(runId));
+  // 5.F.6: the RAW step list stays around — retry attempts are counted from
+  // failed sibling steps of the same node in the same run (the substrate is
+  // the state; no attempt column, no migration).
+  const allSteps = await substrate.loadSteps(runId);
+  const byNode = latestByNode(allSteps);
+
+  // 5.F.6 — record a publish attempt on the channel's circuit and, when the
+  // failure just OPENED it, alarm once per window. Fail-open by contract: a
+  // broken circuit reader/writer must never kill a run.
+  const recordCircuit = async (channel: string, ok: boolean): Promise<void> => {
+    if (!ports.circuit) return;
+    try {
+      const st = await ports.circuit.record(channel, ok);
+      if (!ok && st.open && (await ports.circuit.alarmOnce(channel))) {
+        await telegram(circuitOpenAlarm(channel, st.failures));
+      }
+    } catch {
+      /* fail-open by contract */
+    }
+  };
 
   // 1) Crash recovery: 'running' past the timeout = failed, out loud.
   for (const [node, step] of byNode) {
     if (step.status === "running" && hoursSince(step.started_at, now()) > RUNNING_TIMEOUT_HOURS) {
+      const staleSummary = `stale running step (>${RUNNING_TIMEOUT_HOURS}h) — worker crash presumed`;
       await substrate.finishStep(step.id, {
         status: "failed",
-        summary: `stale running step (>${RUNNING_TIMEOUT_HOURS}h) — worker crash presumed`,
+        summary: staleSummary,
       });
       step.status = "failed";
+      step.summary = staleSummary; // the retry logic (2c) routes on this marker
       notes.push(`crash-recovered ${node} as failed`);
     }
   }
@@ -397,10 +565,48 @@ export async function advanceRun(
         notes.push(`wait ${nodeId} elapsed`);
       }
     } else if (node.kind === "publish") {
-      // A cadence-deferred publish (24/08). Re-check the slot every tick;
-      // after 00:00 UTC the counter resets and the content ships. Same X
-      // handling as the fresh path: thread → tweet 1, hard limit guard.
+      const parkedSummary = step.summary ?? "";
+      // 5.F.6: a publish parked on the FOUNDER's retry decision (ambiguous
+      // post-approval failure) is NOT a cadence/circuit park — it never
+      // auto-releases; only the #445 finish door (the Telegram buttons)
+      // moves it. Same rejection-by-silence timeout as any approval: 96h
+      // without a decision = failed, nothing republished, out loud.
+      if (parkedSummary.startsWith(RETRY_GATE_SUMMARY)) {
+        if (hoursSince(step.started_at, now()) >= DEFAULT_APPROVAL_TIMEOUT_HOURS) {
+          const timeoutSummary = `retry de publish nao confirmado em ${DEFAULT_APPROVAL_TIMEOUT_HOURS}h — rejeicao por silencio, nada republicado`;
+          await substrate.finishStep(step.id, { status: "failed", summary: timeoutSummary });
+          step.status = "failed";
+          step.summary = timeoutSummary;
+          await telegram(
+            `⏳ RETRY DE PUBLISH EXPIROU — graph ${def.slug} (run ${runId.slice(0, 8)}): sem decisão em ${DEFAULT_APPROVAL_TIMEOUT_HOURS}h sobre repostar após a falha ambígua. NADA foi republicado — silêncio nunca vira post.`
+          );
+          notes.push(`publish retry gate ${nodeId} timed out`);
+        }
+        continue;
+      }
+      // A cadence-deferred publish (24/08) — or a circuit-parked one (5.F.6).
+      // Re-check the slot every tick; after 00:00 UTC the counter resets and
+      // the content ships. Same X handling as the fresh path: thread →
+      // tweet 1, hard limit guard.
       const channel = String(node.config?.["channel"] ?? "linkedin");
+      // 5.F.6 circuit breaker: an OPEN channel keeps EVERY parked publish
+      // parked (circuit park and cadence park alike) — re-firing into a dead
+      // channel would only burn the attempt. Releases the tick the circuit
+      // closes (a success elsewhere, or the 6h re-test window elapsing in
+      // the Redis key). Fail-open: no port / port error = as before.
+      if (ports.circuit) {
+        try {
+          const st = await ports.circuit.status(channel);
+          if (st.open) {
+            if (await ports.circuit.alarmOnce(channel)) {
+              await telegram(circuitOpenAlarm(channel, st.failures));
+            }
+            continue;
+          }
+        } catch {
+          /* fail-open by contract */
+        }
+      }
       const cap = channelDailyCap(channel);
       if (cap === null || (await substrate.publishedToday(channel)) < cap) {
         const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
@@ -411,6 +617,7 @@ export async function advanceRun(
         if (!post) {
           await substrate.finishStep(step.id, { status: "failed", summary: "deferred publish lost its content artifact (TTL)" });
           step.status = "failed";
+          step.summary = "deferred publish lost its content artifact (TTL)";
         } else {
           let toSend = post;
           let threadNote = "";
@@ -424,16 +631,29 @@ export async function advanceRun(
           if (isXPublish(node) && !xPostWithinLimit(toSend)) {
             await substrate.finishStep(step.id, { status: "failed", summary: `x post over ${X_POST_LIMIT} chars, not sent — nothing published` });
             step.status = "failed";
+            step.summary = `x post over ${X_POST_LIMIT} chars, not sent — nothing published`;
           } else {
             const res = await hermes.publish({ channel, post: toSend });
+            await recordCircuit(channel, res.ok);
             if (res.ok) {
+              // Honest release note: a circuit park releases because the
+              // CHANNEL healed, not because midnight rolled the counter.
+              const releaseNote = parkedSummary.startsWith(CIRCUIT_PARK_SUMMARY_PREFIX)
+                ? " (apos circuito fechado)"
+                : " (apos adiamento de cadencia)";
+              const releasedSummary = `published via ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote}${releaseNote}`;
               await artifacts.set(runId, nodeId, res.detail);
               await substrate.finishStep(step.id, {
                 status: "succeeded",
                 outputHash: sha(res.detail),
-                summary: `published via ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote} (apos adiamento de cadencia)`,
+                summary: releasedSummary,
               });
               step.status = "succeeded";
+              // Mirror the summary in memory too: section 2c routes on the
+              // 'published via' prefix — without it, a JUST-released publish
+              // would look like an approved retry gate and fire AGAIN in the
+              // same tick (a duplicate publish nobody approved).
+              step.summary = releasedSummary;
               notes.push(`deferred publish ${nodeId} released`);
             }
             // res.ok=false → keep waiting; next tick retries (Postiz blip must
@@ -519,6 +739,82 @@ export async function advanceRun(
     }
   }
 
+  // 2c) 5.F.6 — retry budget per node. A node that fails no longer kills the
+  // run on the first shot: safe-to-re-execute kinds get up to
+  // NODE_RETRY_BUDGET fresh attempts. The mechanism IS the substrate: a
+  // re-attempted node is a new step row (latestByNode already says so), and
+  // attempts are counted from failed sibling steps of the same node in the
+  // same run — no attempt column, no migration. Forgetting the failed
+  // frontier entry (byNode.delete) makes readyNodes see the node as
+  // unstarted and section 4 starts it fresh.
+  const budget = nodeRetryBudget();
+  const failedAttempts = (nodeId: string): number =>
+    allSteps.filter((s) => s.node === nodeId && s.status === "failed").length;
+  if (budget > 0) {
+    for (const [nodeId, step] of [...byNode.entries()]) {
+      const node = def.nodes.find((n) => n.id === nodeId);
+      if (!node || !RETRYABLE_NODE_KINDS.has(node.kind)) continue;
+      // A retry gate the founder ANSWERED with yes: the latest publish step
+      // is 'succeeded' but carries no 'published via' record (the webhook
+      // wrote its own approval summary). The tap authorized exactly one
+      // thing — re-executing the publish for real — so forget the frontier
+      // and let section 4 publish (circuit + cadence + X guards re-apply).
+      if (
+        node.kind === "publish" &&
+        step.status === "succeeded" &&
+        !(step.summary ?? "").startsWith("published via")
+      ) {
+        byNode.delete(nodeId);
+        notes.push(`publish ${nodeId}: retry autorizado pelo founder — re-executando`);
+        continue;
+      }
+      if (step.status !== "failed") continue;
+      const failedSummary = step.summary ?? "";
+      // The founder (or 96h of silence) already refused this retry: honor
+      // the no — section 3 fails the run honestly, no new gate, no loop.
+      if (isRetryRefusal(failedSummary)) continue;
+      const attempts = failedAttempts(nodeId);
+      if (attempts > budget) continue; // esgotado — section 3 fails the run, stamped
+      if (node.kind === "publish" && !publishKnownNotSent(failedSummary)) {
+        // AMBIGUOUS failure after the founder's yes (the sat-29/08 shape: a
+        // worker crash between the Postiz call and the step finish). The
+        // post may already be live — a blind retry could DUPLICATE a
+        // publication nobody approved, and a duplicate publish is a publish
+        // without approval. Certainty is impossible from our own record
+        // (publishedToday only counts steps that FINISHED as succeeded), so
+        // the retry is gated on the founder: park + ask. Honest > clever.
+        const channel = String(node.config?.["channel"] ?? "linkedin");
+        const gateId = await substrate.startStep({ runId, node: nodeId, parentStepId: step.id });
+        await substrate.finishStep(gateId, { status: "waiting", summary: RETRY_GATE_SUMMARY });
+        byNode.set(nodeId, {
+          id: gateId,
+          node: nodeId,
+          status: "waiting",
+          started_at: now().toISOString(),
+          summary: RETRY_GATE_SUMMARY,
+        });
+        await telegram(
+          [
+            `🟡 PUBLISH FALHOU APÓS APROVAÇÃO — graph ${def.slug} (run ${runId.slice(0, 8)}), canal ${channel}.`,
+            `A falha foi AMBÍGUA (ex.: crash do worker: "${failedSummary.slice(0, 120) || "sem resumo"}") — não dá para provar se o post chegou ao Postiz.`,
+            `retry automatico seguro? Se o post JÁ estiver no ar, repostar duplicaria uma publicação que ninguém aprovou.`,
+            `Confira o canal e toque: ✅ reposta · ❌ encerra sem repostar. Sem decisão em ${DEFAULT_APPROVAL_TIMEOUT_HOURS}h, encerro sem repostar.`,
+          ].join("\n"),
+          [
+            { text: "✅ Sim, repostar", data: `ap:${gateId}` },
+            { text: "❌ Não", data: `rj:${gateId}` },
+          ]
+        );
+        notes.push(`publish ${nodeId}: falha ambigua pos-aprovacao — retry gated no founder`);
+        continue;
+      }
+      // Safe to re-execute (LLM/snapshot compose, or a publish PROVEN not
+      // sent): forget the failed frontier so section 4 starts a fresh step.
+      byNode.delete(nodeId);
+      notes.push(`retry ${nodeId} (tentativa ${attempts + 1}/${budget + 1})`);
+    }
+  }
+
   // 3) Fail-fast: any failed node fails the run and skips the stragglers.
   const failed = [...byNode.entries()].filter(([, s]) => s.status === "failed");
   if (failed.length > 0) {
@@ -528,10 +824,18 @@ export async function advanceRun(
       }
     }
     await substrate.finishRun(runId, "failed");
+    // 5.F.6: when the node HAD a retry budget and burned it, the failure
+    // says so — the founder must see the loop was already tried.
+    const failedNodeId = failed[0]![0];
+    const failedNode = def.nodes.find((n) => n.id === failedNodeId);
+    const exhausted =
+      budget > 0 && failedNode && RETRYABLE_NODE_KINDS.has(failedNode.kind) && failedAttempts(failedNodeId) > budget
+        ? ` — retry budget esgotado (${failedAttempts(failedNodeId)} tentativas)`
+        : "";
     await telegram(
-      `🔴 GRAPH ${def.slug} FALHOU (run ${runId.slice(0, 8)}): node '${failed[0]![0]}' falhou. Steps: ${byNode.size}/${def.nodes.length}.`
+      `🔴 GRAPH ${def.slug} FALHOU (run ${runId.slice(0, 8)}): node '${failedNodeId}' falhou${exhausted}. Steps: ${byNode.size}/${def.nodes.length}.`
     );
-    return { status: "failed", started, notes: [...notes, `failed at ${failed[0]![0]}`] };
+    return { status: "failed", started, notes: [...notes, `failed at ${failedNodeId}${exhausted}`] };
   }
 
   // 4) Start whatever became ready.
@@ -539,6 +843,24 @@ export async function advanceRun(
   // Content nodes whose artifact reaches an X publish — pre-trimmed to X's limit
   // at finalize time so approval == what publishes.
   const xAdaptNodes = xAdaptNodeIds(def);
+  // 5.F.2: founder-approved prompt overrides, loaded LAZILY and at most once
+  // per advance (the port itself caches per tick) — never per node. Fail-open
+  // by contract: port absent, store empty or read error → static prompts.
+  let promptOverrides: Record<string, string> | null = null;
+  let promptOverridesLoaded = false;
+  const loadPromptOverrides = async (): Promise<Record<string, string> | null> => {
+    if (!promptOverridesLoaded) {
+      promptOverridesLoaded = true;
+      if (substrate.activePromptOverrides) {
+        try {
+          promptOverrides = await substrate.activePromptOverrides();
+        } catch {
+          promptOverrides = null; // fail-open by contract; the port should not throw
+        }
+      }
+    }
+    return promptOverrides;
+  };
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -590,7 +912,7 @@ export async function advanceRun(
           }
         }
       }
-      const prompt = buildPrompt(node.kind, config, upstream);
+      const prompt = buildPrompt(node.kind, config, upstream, await loadPromptOverrides());
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
         await substrate.finishStep(stepId, {
@@ -642,7 +964,9 @@ export async function advanceRun(
         n.kind === "publish"
           ? `publicar como POST em ${String(n.config?.["channel"] ?? "linkedin")} (via ${String(n.config?.["via"] ?? "postiz")})`
           : n.kind === "store"
-            ? `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
+            ? String(n.config?.["target"] ?? "") === "prompt-override"
+              ? `ativar como OVERRIDE de prompt (ops.prompt_override) — os grafos passam a montar esse prompt com o texto aprovado no próximo tick`
+              : `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
             : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
@@ -695,6 +1019,30 @@ export async function advanceRun(
         );
         continue;
       }
+      // 5.F.6 circuit breaker: >= CIRCUIT_BREAKER_THRESHOLD consecutive
+      // Postiz failures on this channel = the channel is down (e.g. LinkedIn
+      // OAuth broken); a fresh attempt would only burn it. PARK instead of
+      // firing (same waiting machinery as the cadence valve — section 2
+      // releases the tick the circuit closes), and say why, out loud but
+      // rate-limited to 1x/6h per channel. Fail-open when the port is absent
+      // or errors: publishing must never die because the breaker did.
+      if (ports.circuit) {
+        try {
+          const st = await ports.circuit.status(channel);
+          if (st.open) {
+            await substrate.finishStep(stepId, {
+              status: "waiting",
+              summary: `${CIRCUIT_PARK_SUMMARY_PREFIX}: canal ${channel} com ${st.failures} falhas consecutivas no Postiz — publish aprovado ADIADO (sai sozinho quando o canal voltar)`,
+            });
+            if (await ports.circuit.alarmOnce(channel)) {
+              await telegram(circuitOpenAlarm(channel, st.failures));
+            }
+            continue;
+          }
+        } catch {
+          /* fail-open by contract */
+        }
+      }
       // X thread reality check (prod failure 22/08): a mini-thread passes the
       // per-tweet limit, but the Postiz pipe publishes ONE post per call — the
       // joined text got rejected with "post is too long". Until real thread
@@ -726,6 +1074,7 @@ export async function advanceRun(
         continue;
       }
       const res = await hermes.publish({ channel, post: toSend });
+      await recordCircuit(channel, res.ok);
       if (res.ok) {
         await artifacts.set(runId, node.id, res.detail);
         await substrate.finishStep(stepId, {
@@ -845,8 +1194,8 @@ export async function advanceRun(
         summary: `reported ${bodyText.length} chars to founder`,
       });
     } else if (node.kind === "store") {
-      // 5.F.1: persist the APPROVED lessons as the new active memory. Only
-      // reachable after a human approval (validateGraph hard rule), so
+      // 5.F.1/5.F.2: persist APPROVED content durably, routed by config.target.
+      // Only reachable after a human approval (validateGraph hard rule), so
       // whatever text arrives here carries the founder's explicit yes. The
       // content lives on the approval's own upstream (the compose) — same
       // one-edge-back walk as publish.
@@ -857,6 +1206,66 @@ export async function advanceRun(
       if (!lessons) {
         await substrate.finishStep(stepId, { status: "failed", summary: "store had no approved content artifact (TTL?)" });
         continue; // next tick's fail-fast closes the run, out loud
+      }
+      const storeTarget = String(config["target"] ?? "memory-lessons");
+      if (storeTarget === "prompt-override") {
+        // 5.F.2: the approved proposal becomes a prompt override — AFTER the
+        // structural checks re-run HERE, at store time. The prompt asked the
+        // model to stay in the allowlist; the store does not trust the ask.
+        const parsed = parsePromptProposal(lessons);
+        if (parsed.kind === "none") {
+          // An approved "SEM MUDANCA" is a valid week: nothing to write.
+          await artifacts.set(runId, node.id, lessons);
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            summary: `sem mudanca de prompt esta rodada — nada gravado (${parsed.reason.slice(0, 120)})`,
+          });
+          continue;
+        }
+        if (parsed.kind === "invalid") {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `proposta ilegivel no store: ${parsed.reason.slice(0, 200)}`,
+          });
+          continue; // next tick's fail-fast closes the run, out loud
+        }
+        if (!isTunablePromptKey(parsed.promptKey)) {
+          // The safety rail, enforced where it counts: at write time. A
+          // proposal touching approval/publish/store prompts, the tuner's own
+          // prompts or anything else off the allowlist DIES here even if it
+          // slipped past the compose prompt and the founder's glance.
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `override RECUSADO no store: chave '${parsed.promptKey}' fora da allowlist de prompts tunaveis`,
+          });
+          await telegram(
+            `🔴 OVERRIDE RECUSADO NO STORE — graph ${def.slug} (run ${runId.slice(0, 8)}): a proposta aprovada aponta a chave '${parsed.promptKey}', que NÃO está na allowlist de prompts tunáveis (${TUNABLE_PROMPT_KEYS.join(", ")}). Nada foi gravado — nenhum prompt mudou. Prompts de approval/publish/store e do próprio tuner nunca são tunáveis.`
+          );
+          continue; // next tick's fail-fast closes the run, out loud
+        }
+        if (!substrate.storePromptOverride) {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: "store port ausente neste worker — override NAO gravado (feature desligada)",
+          });
+          continue;
+        }
+        const res = await substrate.storePromptOverride({ runId, promptKey: parsed.promptKey, body: parsed.body });
+        if (res.ok) {
+          await artifacts.set(runId, node.id, lessons);
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            outputHash: sha(lessons),
+            summary: `override gravado para '${parsed.promptKey}' (${parsed.body === "" ? "body vazio = volta ao prompt estatico" : `${parsed.body.length} chars`}) — ativo no proximo tick`,
+          });
+        } else {
+          const reason = (res.reason ?? "motivo desconhecido").slice(0, 200);
+          await substrate.finishStep(stepId, { status: "failed", summary: `store falhou: ${reason}` });
+          await telegram(
+            `🔴 OVERRIDE NÃO GRAVADO — graph ${def.slug} (run ${runId.slice(0, 8)}): a proposta foi APROVADA mas o store falhou: ${reason}. Nenhum prompt mudou (os grafos seguem nos prompts estáticos/override anterior).`
+          );
+        }
+        continue;
       }
       if (!substrate.storeMemoryLessons) {
         // A runner wired without the port cannot persist — honest failure with
@@ -924,15 +1333,41 @@ export async function advanceRun(
   }
 
   // 5) Done? Recompute from the substrate — the record decides, not memory.
-  const finalStates = statesFrom(latestByNode(await substrate.loadSteps(runId)));
+  const finalSteps = await substrate.loadSteps(runId);
+  const finalByNode = latestByNode(finalSteps);
+  const finalStates = statesFrom(finalByNode);
   if (isRunComplete(def, finalStates)) {
     const anyFailed = Object.values(finalStates).some((s) => s === "failed");
+    // 5.F.6: a failed node that still has retry budget (and was not refused
+    // by the founder) is NOT a closed run — the NEXT tick's retry pass (2c)
+    // re-executes it, or gates it on the founder. Without this, the run
+    // would be buried in the same tick the first attempt failed and no
+    // retry would ever happen.
+    if (anyFailed && budget > 0) {
+      const retryPending = [...finalByNode.entries()].some(([nodeId, st]) => {
+        if (st.status !== "failed") return false;
+        const n = def.nodes.find((x) => x.id === nodeId);
+        if (!n || !RETRYABLE_NODE_KINDS.has(n.kind)) return false;
+        if (isRetryRefusal(st.summary ?? "")) return false;
+        const attempts = finalSteps.filter((s) => s.node === nodeId && s.status === "failed").length;
+        return attempts <= budget;
+      });
+      if (retryPending) {
+        return { status: "in-flight", started, notes: [...notes, "node falhado aguarda retry no proximo tick"] };
+      }
+    }
     await substrate.finishRun(runId, anyFailed ? "failed" : "succeeded");
     if (anyFailed) {
       const firstFailed =
         Object.entries(finalStates).find(([, s]) => s === "failed")?.[0] ?? "?";
+      const failedDef = def.nodes.find((n) => n.id === firstFailed);
+      const finalAttempts = finalSteps.filter((s) => s.node === firstFailed && s.status === "failed").length;
+      const exhaustedNote =
+        budget > 0 && failedDef && RETRYABLE_NODE_KINDS.has(failedDef.kind) && finalAttempts > budget
+          ? ` — retry budget esgotado (${finalAttempts} tentativas)`
+          : "";
       await telegram(
-        `🔴 GRAPH ${def.slug} FALHOU (run ${runId.slice(0, 8)}): node '${firstFailed}' falhou e bloqueou o resto.`
+        `🔴 GRAPH ${def.slug} FALHOU (run ${runId.slice(0, 8)}): node '${firstFailed}' falhou${exhaustedNote} e bloqueou o resto.`
       );
     } else {
       await telegram(`✅ GRAPH ${def.slug} COMPLETO (run ${runId.slice(0, 8)}): ${def.nodes.length} nodes.`);

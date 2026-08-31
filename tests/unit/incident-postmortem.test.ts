@@ -54,6 +54,15 @@ interface FailedStep {
   graph: string;
   node: string;
   summary: string;
+  /** O run deste step tem um approval 'succeeded'? (assinatura 4, 5.D.5) */
+  approvedRun?: boolean;
+  /** Run deste step — default 'run-1' (5.F.6: a contagem é por (run, node)). */
+  runId?: string;
+  /**
+   * 5.F.6: existe um step succeeded do MESMO (run, node) igual/depois deste
+   * (um retry que SALVOU o node)? O NOT EXISTS das queries o exclui.
+   */
+  laterSucceeded?: boolean;
 }
 
 function makeScanWorld(input: {
@@ -67,7 +76,13 @@ function makeScanWorld(input: {
 
   const isSynthetic = (n: string) => n === "__starved__" || n === "__orphan__";
   const isApproval = (n: string) => n.toLowerCase().includes("approval");
-  const clusterable = failed.filter((s) => !isSynthetic(s.node) && !isApproval(s.node));
+  // 5.F.6: o NOT EXISTS das queries — um step salvo por retry posterior do
+  // mesmo (run, node) sai da conta; e a contagem é por (run, node), nunca
+  // por tentativa (o retry escreve um step falhado POR attempt).
+  const runNodeKey = (s: FailedStep) => `${s.runId ?? "run-1"}:${s.node}`;
+  const clusterable = failed.filter(
+    (s) => !isSynthetic(s.node) && !isApproval(s.node) && !s.laterSucceeded
+  );
 
   const sql = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const text = strings.join("$");
@@ -75,14 +90,18 @@ function makeScanWorld(input: {
       return input.hasRecentRun ? [{ id: "run-recent" }] : [];
     }
     if (text.includes("pm:failed-clusters")) {
-      const byGraph = new Map<string, number>();
-      for (const s of clusterable) byGraph.set(s.graph, (byGraph.get(s.graph) ?? 0) + 1);
+      const byGraph = new Map<string, Set<string>>();
+      for (const s of clusterable) {
+        const set = byGraph.get(s.graph) ?? new Set<string>();
+        set.add(runNodeKey(s)); // COUNT(DISTINCT run:node)
+        byGraph.set(s.graph, set);
+      }
       return [...byGraph.entries()]
-        .sort((a, b) => b[1] - a[1])
+        .sort((a, b) => b[1].size - a[1].size)
         .slice(0, 10)
-        .map(([graph, fails]) => ({
+        .map(([graph, keys]) => ({
           graph,
-          fails: String(fails),
+          fails: String(keys.size),
           first_at: "2026-08-26T09:00:00Z",
           last_at: "2026-08-26T21:00:00Z",
         }));
@@ -128,6 +147,31 @@ function makeScanWorld(input: {
           graphs: t.length > 0 ? [...new Set(t.map((s) => s.graph))].sort().join(", ") : null,
         },
       ];
+    }
+    if (text.includes("pm:approved-lost")) {
+      // EXISTS(approval succeeded no mesmo run) + node ILIKE '%publish%'
+      // + 5.F.6: NOT EXISTS(succeeded posterior do mesmo (run, node)) e
+      // contagem DISTINCT por (run, node).
+      const lost = failed.filter(
+        (st) => st.node.toLowerCase().includes("publish") && st.approvedRun && !st.laterSucceeded
+      );
+      const byGraph = new Map<string, { keys: Set<string>; sample: string }>();
+      for (const st of lost) {
+        const e = byGraph.get(st.graph) ?? { keys: new Set<string>(), sample: "" };
+        e.keys.add(runNodeKey(st));
+        e.sample = (st.summary || "sem resumo").slice(0, 160); // MAX() ~ último
+        byGraph.set(st.graph, e);
+      }
+      return [...byGraph.entries()]
+        .sort((a, b) => b[1].keys.size - a[1].keys.size)
+        .slice(0, 10)
+        .map(([graph, e]) => ({
+          graph,
+          n: String(e.keys.size),
+          first_at: "2026-08-29T11:31:00Z",
+          last_at: "2026-08-29T11:31:00Z",
+          sample: e.sample,
+        }));
     }
     if (text.includes("pm:quiet-run")) {
       inserts.push({ marker: "pm:quiet-run", values });
@@ -299,6 +343,75 @@ describe("detecção — SQL decide, com thresholds testáveis", () => {
     expect(sigs).toHaveLength(1);
     expect(sigs[0]).toMatchObject({ kind: "approval-timeout-mass", count: 3 });
     expect(sigs[0]!.detail).toContain("graph-0");
+  });
+
+  it("5.D.5 — a regressão de sáb 29/08: UM publish perdido após aprovação já é incidente (n=1)", async () => {
+    const world = makeScanWorld({
+      failedSteps: [
+        {
+          graph: "sphere-linkedin",
+          node: "publish",
+          summary: "stale running step (>2h) — worker crash presumed",
+          approvedRun: true,
+        },
+      ],
+    });
+    const sigs = await detectIncidentSignatures(world.sql, 24);
+    const lost = sigs.filter((s) => s.kind === "approved-content-lost");
+    expect(lost).toHaveLength(1);
+    expect(lost[0]).toMatchObject({ graph: "sphere-linkedin", count: 1 });
+    expect(lost[0]!.detail).toContain("APOS aprovacao do founder");
+    expect(lost[0]!.detail).toContain("worker crash presumed");
+    // 1 falha isolada continua não sendo cluster — a especialização é que grita.
+    expect(sigs.filter((s) => s.kind === "failure-cluster")).toEqual([]);
+  });
+
+  it("5.F.6 — 3 tentativas falhadas do MESMO node no MESMO run contam como 1: retries nunca fabricam cluster", async () => {
+    // O retry budget (default 2) escreve até 3 steps falhados para UM node
+    // flaky. Antes do COUNT(DISTINCT run:node) isso fingiria um cluster >=3.
+    const world = makeScanWorld({
+      failedSteps: [1, 2, 3].map(() => ({
+        graph: "sphere-linkedin",
+        node: "briefing",
+        runId: "run-a",
+        summary: "hermes task failed: timeout",
+      })),
+    });
+    const sigs = await detectIncidentSignatures(world.sql, 24);
+    expect(sigs.filter((s) => s.kind === "failure-cluster")).toEqual([]);
+  });
+
+  it("5.F.6 — tentativa que um retry posterior SALVOU (succeeded do mesmo run/node) não é ruído: nem cluster, nem assinatura 4", async () => {
+    const world = makeScanWorld({
+      failedSteps: [
+        // Um publish aprovado que falhou e o retry salvou: auto-cura funcionou.
+        {
+          graph: "sphere-linkedin",
+          node: "publish",
+          runId: "run-a",
+          summary: "publish failed: postiz 502",
+          approvedRun: true,
+          laterSucceeded: true,
+        },
+        // Dois composes salvos por retry em runs diferentes: também fora.
+        { graph: "sphere-linkedin", node: "briefing", runId: "run-b", summary: "hermes task failed", laterSucceeded: true },
+        { graph: "sphere-linkedin", node: "critic", runId: "run-c", summary: "hermes task failed", laterSucceeded: true },
+      ],
+    });
+    const sigs = await detectIncidentSignatures(world.sql, 24);
+    expect(sigs.filter((s) => s.kind === "failure-cluster")).toEqual([]);
+    expect(sigs.filter((s) => s.kind === "approved-content-lost")).toEqual([]);
+  });
+
+  it("publish falhado SEM aprovação no run não dispara a assinatura 4", async () => {
+    const world = makeScanWorld({
+      failedSteps: [
+        { graph: "sphere-x", node: "publish", summary: "postiz 500", approvedRun: false },
+        { graph: "sphere-x", node: "publish", summary: "postiz 500" },
+      ],
+    });
+    const sigs = await detectIncidentSignatures(world.sql, 24);
+    expect(sigs.filter((s) => s.kind === "approved-content-lost")).toEqual([]);
   });
 
   it("resumo de erro entra LITERAL mas com tamanho capado (160 chars por amostra)", async () => {
