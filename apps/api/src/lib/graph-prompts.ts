@@ -97,6 +97,94 @@ export interface PromptContext {
   upstream: Array<[string, string]>;
 }
 
+// ---------------------------------------------------------------------------
+// Prompt tuning (5.F.2) — a allowlist, o parser da proposta e a resolução de
+// overrides. Os prompts eram só código: melhorar um exigia PR humano, então
+// os vereditos/rejeições registrados toda semana não mudavam nada. O grafo
+// prompt-tuner propõe UMA mudança por semana; o founder aprova no Telegram;
+// o aprovado vira uma linha em ops.prompt_override; e buildPrompt resolve o
+// slug primeiro no override (linha mais nova por chave vence; body vazio ou
+// sem linha → o prompt estático abaixo).
+// ---------------------------------------------------------------------------
+
+/**
+ * As ÚNICAS chaves de prompt que o tuner pode mudar — só criação (draft) e
+ * crítica (debate) dos grafos de MARKETING. Fora daqui, por construção:
+ * approval/publish/store não têm prompt e jamais teriam override; os prompts
+ * dos brains (watchdog/dream/product/discovery/report/postmortem/memory) são
+ * leitura do registro e não são conteúdo; e o compose do próprio prompt-tuner
+ * NUNCA entra (sem auto-modificação). A allowlist vale nos DOIS lados: o nó
+ * store recusa chave fora dela, e a resolução em buildPrompt ignora um
+ * override de chave não-tunável mesmo que uma linha exista no banco.
+ */
+export const TUNABLE_PROMPT_KEYS: readonly string[] = [
+  // Drafts (criação) das células de marketing.
+  "draft-angle",
+  "x-draft",
+  "linkedin-draft",
+  "blog-outline",
+  "reddit-plan",
+  "instagram-draft",
+  "tiktok-draft",
+  "youtube-draft",
+  "experiment-draft",
+  "ppc-draft",
+  // Críticos (debate) das células de marketing.
+  "critique",
+  "x-critic",
+  "linkedin-critic",
+  "blog-critic",
+  "reddit-critic",
+  "instagram-critic",
+  "tiktok-critic",
+  "youtube-critic",
+  "experiment-critic",
+  "ppc-critic",
+];
+
+/** É uma chave que um override pode tocar? (allowlist em código, uma fonte.) */
+export function isTunablePromptKey(key: string): boolean {
+  return TUNABLE_PROMPT_KEYS.includes(key);
+}
+
+/** O que o parser extraiu da saída do compose do prompt-tuner. */
+export type PromptProposal =
+  | { kind: "none"; reason: string }
+  | { kind: "proposal"; promptKey: string; body: string }
+  | { kind: "invalid"; reason: string };
+
+/**
+ * Parse da proposta do tuner — o contrato de saída do prompt
+ * 'prompt-tuner-compose'. Puro e estrito: mais de um PROMPT_KEY num run é
+ * INVÁLIDO (o contrato é NO MÁXIMO UMA mudança por rodada — enforced aqui,
+ * não só pedido no prompt); sem bloco [BODY]...[/BODY] é inválido; a saída
+ * 'SEM MUDANCA...' é o "nada a propor" honesto. Body vazio é VÁLIDO: é a
+ * proposta de reverter ao prompt estático (o contrato de rollback da
+ * migração ops.prompt_override).
+ */
+export function parsePromptProposal(text: string): PromptProposal {
+  const t = text.trim();
+  if (t === "") return { kind: "invalid", reason: "proposta vazia" };
+  if (/^SEM MUDANCA/i.test(t)) {
+    return { kind: "none", reason: t.split("\n")[0]!.slice(0, 200) };
+  }
+  const keyMatches = [...t.matchAll(/^PROMPT_KEY:\s*(\S+)\s*$/gim)];
+  if (keyMatches.length === 0) {
+    return { kind: "invalid", reason: "sem linha PROMPT_KEY" };
+  }
+  if (keyMatches.length > 1) {
+    return {
+      kind: "invalid",
+      reason: `${keyMatches.length} propostas num run — o contrato e NO MAXIMO UMA mudanca por rodada`,
+    };
+  }
+  const bodyMatch = /\[BODY\]\n?([\s\S]*?)\n?\[\/BODY\]/.exec(t);
+  if (!bodyMatch) {
+    return { kind: "invalid", reason: "sem bloco [BODY]...[/BODY]" };
+  }
+  return { kind: "proposal", promptKey: keyMatches[0]![1]!, body: bodyMatch[1]!.trim() };
+}
+
 function upstreamBlock(upstream: Array<[string, string]>): string {
   if (upstream.length === 0) return "";
   return (
@@ -912,6 +1000,35 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- prompt-tuner (5.F.2): o afinador semanal de prompts ------------------
+  // O compose lê UM bloco [evidence] (snapshot source 'tuning': vereditos,
+  // rejeições do founder com motivo literal e timeouts de aprovação dos
+  // últimos 21d, agregados por SQL) e propõe NO MÁXIMO UMA mudança de prompt,
+  // restrita à allowlist TUNABLE_PROMPT_KEYS (drafts/críticos de marketing —
+  // nunca approval/publish/store, nunca o próprio tuner). O modelo nunca
+  // conta nem agrega ("vigia também mente"); só redige a proposta. Nada ativa
+  // sem o sim do founder no Telegram (96h = rejeição por silêncio).
+
+  "prompt-tuner-compose": (ctx) =>
+    [
+      "Voce e o afinador de prompts da Ozvor (5.F.2). O bloco [evidence] abaixo traz os FATOS agregados dos ultimos 21 dias: vereditos fechados por graph, rejeicoes do founder (com o motivo literal), aprovacoes expiradas por silencio e os overrides de prompt ja ativos.",
+      "Sua tarefa: propor NO MAXIMO UMA mudanca de prompt — a de MAIOR evidencia — para melhorar o conteudo que os grafos de marketing produzem. Uma mudanca por semana, cirurgica; menos e melhor.",
+      "REGRA INEGOCIAVEL (vigia tambem mente): use SOMENTE os fatos do bloco [evidence]. NUNCA invente numero, rejeicao ou padrao; mudanca sem evidencia listada la nao e proposta.",
+      `CHAVES PERMITIDAS (allowlist — qualquer outra e RECUSADA no store): ${TUNABLE_PROMPT_KEYS.join(", ")}.`,
+      "PROIBIDO (trilho de seguranca): propor mudanca em prompts de aprovacao/publicacao/store, em qualquer chave fora da allowlist, ou em qualquer prompt do proprio prompt-tuner — o afinador NUNCA se auto-modifica.",
+      "O body proposto e o PROMPT NOVO COMPLETO (nao um diff): escreva-o inteiro, preservando o contrato de saida do prompt original e as regras da casa (nivel 15-17 anos, sonho honesto, English-first no que e publicado). As licoes institucionais ([__lessons__]/regua de veto e a memoria [__memory__]) sao reinjetadas pelo runner por fora do prompt e NAO podem ser desligadas pela sua proposta.",
+      "Se a evidencia nao sustentar mudanca nenhuma, sua saida INTEIRA e: 'SEM MUDANCA ESTA SEMANA — <motivo em 1 frase>.' e nada mais.",
+      "Formato de saida (exato, nesta ordem, nada antes nem depois):",
+      "PROMPT_KEY: <uma unica chave da allowlist>",
+      "DIFF: <1-3 linhas: o que muda vs o prompt atual e por que>",
+      "EVIDENCIA: <as linhas literais de [evidence] que justificam a mudanca>",
+      "ROLLBACK: para reverter, aprovar na proxima rodada uma linha nova com o body anterior — ou body vazio para voltar ao prompt estatico do codigo",
+      "[BODY]",
+      "<o prompt novo completo>",
+      "[/BODY]",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   "ppc-finalize": (ctx) =>
     [
       "Voce e o head de midia paga da Ozvor. Abaixo: os 3 anuncios e a critica de compliance/claims.",
@@ -925,14 +1042,49 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
 };
 
 /**
+ * Os slugs de crítico cujo prompt estático carrega a LESSONS_VETO_RULE —
+ * computado do TEXTO real dos prompts (não de convenção de nome), memoizado.
+ * Um override nesses slugs recebe a régua de veto REAPENDADA por baixo: a
+ * garantia de que nenhuma proposta do tuner desliga as lições institucionais
+ * é estrutural, não pedida por favor no prompt do tuner.
+ */
+let criticSlugsWithLessonsCache: Set<string> | null = null;
+function criticSlugsWithLessons(): Set<string> {
+  if (!criticSlugsWithLessonsCache) {
+    criticSlugsWithLessonsCache = new Set(
+      Object.keys(PROMPTS).filter((slug) => {
+        try {
+          return PROMPTS[slug]!({ config: {}, upstream: [] }).includes(LESSONS_VETO_RULE);
+        } catch {
+          return false;
+        }
+      })
+    );
+  }
+  return criticSlugsWithLessonsCache;
+}
+
+/**
  * Resolve a node's prompt. Task nodes name their slug in config.prompt;
  * debate nodes default to 'critique' and synthesis nodes to 'synthesize',
  * so graph authors only override when they mean to.
+ *
+ * 5.F.2 — overrides do banco (ops.prompt_override, via o runner): quando o
+ * mapa `overrides` traz o slug com body NÃO-vazio E o slug está na allowlist
+ * TUNABLE_PROMPT_KEYS, o body do override substitui o corpo estático — e o
+ * runner segue apendando o contexto upstream normalmente. Body vazio (o
+ * contrato de rollback da migração) ou chave fora da allowlist → o prompt
+ * estático, exatamente como sem override. As GARANTIAS que um override nunca
+ * remove: (a) CONTENT_LESSONS chega aos críticos como artefato [__lessons__]
+ * injetado pelo runner ANTES do buildPrompt — fora do alcance de qualquer
+ * override; (b) a LESSONS_VETO_RULE é reapendada aqui embaixo em todo slug
+ * cujo prompt estático a carrega.
  */
 export function buildPrompt(
   kind: string,
   config: Record<string, unknown>,
-  upstream: Array<[string, string]>
+  upstream: Array<[string, string]>,
+  overrides?: Record<string, string> | null
 ): string | null {
   const slug =
     typeof config["prompt"] === "string"
@@ -945,6 +1097,14 @@ export function buildPrompt(
   if (!slug) return null;
   const fn = PROMPTS[slug];
   if (!fn) return null;
+  const override = overrides?.[slug];
+  if (typeof override === "string" && override.trim() !== "" && isTunablePromptKey(slug)) {
+    const parts = [override.trim()];
+    // A régua de veto institucional nunca sai com o override — reapendada.
+    if (criticSlugsWithLessons().has(slug)) parts.push(LESSONS_VETO_RULE);
+    parts.push(upstreamBlock(upstream));
+    return parts.join("\n");
+  }
   return fn({ config, upstream });
 }
 

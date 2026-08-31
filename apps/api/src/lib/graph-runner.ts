@@ -51,8 +51,15 @@ import {
   WEEKLY_REPORT_GRAPH,
   INCIDENT_POSTMORTEM_GRAPH,
   MEMORY_CONSOLIDATION_GRAPH,
+  PROMPT_TUNER_GRAPH,
 } from "./agent-graphs";
-import { buildPrompt, CONTENT_LESSONS } from "./graph-prompts";
+import {
+  buildPrompt,
+  CONTENT_LESSONS,
+  parsePromptProposal,
+  isTunablePromptKey,
+  TUNABLE_PROMPT_KEYS,
+} from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
 import {
   X_POST_LIMIT,
@@ -130,6 +137,11 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // por SQL → lições escritas pelo LLM → gate do founder → só o aprovado vira
   // [__memory__] dos críticos. Nada se auto-ativa.
   [MEMORY_CONSOLIDATION_GRAPH.slug]: MEMORY_CONSOLIDATION_GRAPH,
+  // 5.F.2: afinador semanal de prompts — terça 06:30 UTC. Evidência agregada
+  // por SQL → UMA proposta de mudança (allowlist de drafts/críticos de
+  // marketing, sem auto-modificação) → gate do founder → só o aprovado vira
+  // override em ops.prompt_override. Nada se auto-ativa.
+  [PROMPT_TUNER_GRAPH.slug]: PROMPT_TUNER_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -222,6 +234,23 @@ export interface SubstratePort {
    * the table does not exist yet — "mergeado não é produção".
    */
   storeMemoryLessons?(input: { runId: string; lessons: string }): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * The ACTIVE prompt overrides (5.F.2): newest ops.prompt_override row per
+   * prompt_key, as { key: body }. null when the store is empty OR the
+   * migration has not been applied yet (feature OFF, fail-open: every graph
+   * keeps the static code prompts). Loaded once per tick (buildPorts caches),
+   * once per run advance (advanceRun caches) — never a per-node query storm.
+   * Optional on purpose, must never throw.
+   */
+  activePromptOverrides?(): Promise<Record<string, string> | null>;
+  /**
+   * Persist an APPROVED prompt override (5.F.2) — append-only into
+   * ops.prompt_override (newest row per prompt_key wins on read; body '' =
+   * revert to the static code prompt). Returns ok:false with a human-readable
+   * reason (naming the unlocking action) when the table does not exist yet —
+   * "mergeado não é produção".
+   */
+  storePromptOverride?(input: { runId: string; promptKey: string; body: string }): Promise<{ ok: boolean; reason?: string }>;
 }
 
 export interface HermesPort {
@@ -539,6 +568,24 @@ export async function advanceRun(
   // Content nodes whose artifact reaches an X publish — pre-trimmed to X's limit
   // at finalize time so approval == what publishes.
   const xAdaptNodes = xAdaptNodeIds(def);
+  // 5.F.2: founder-approved prompt overrides, loaded LAZILY and at most once
+  // per advance (the port itself caches per tick) — never per node. Fail-open
+  // by contract: port absent, store empty or read error → static prompts.
+  let promptOverrides: Record<string, string> | null = null;
+  let promptOverridesLoaded = false;
+  const loadPromptOverrides = async (): Promise<Record<string, string> | null> => {
+    if (!promptOverridesLoaded) {
+      promptOverridesLoaded = true;
+      if (substrate.activePromptOverrides) {
+        try {
+          promptOverrides = await substrate.activePromptOverrides();
+        } catch {
+          promptOverrides = null; // fail-open by contract; the port should not throw
+        }
+      }
+    }
+    return promptOverrides;
+  };
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -590,7 +637,7 @@ export async function advanceRun(
           }
         }
       }
-      const prompt = buildPrompt(node.kind, config, upstream);
+      const prompt = buildPrompt(node.kind, config, upstream, await loadPromptOverrides());
       if (!prompt) {
         const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
         await substrate.finishStep(stepId, {
@@ -642,7 +689,9 @@ export async function advanceRun(
         n.kind === "publish"
           ? `publicar como POST em ${String(n.config?.["channel"] ?? "linkedin")} (via ${String(n.config?.["via"] ?? "postiz")})`
           : n.kind === "store"
-            ? `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
+            ? String(n.config?.["target"] ?? "") === "prompt-override"
+              ? `ativar como OVERRIDE de prompt (ops.prompt_override) — os grafos passam a montar esse prompt com o texto aprovado no próximo tick`
+              : `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
             : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
@@ -845,8 +894,8 @@ export async function advanceRun(
         summary: `reported ${bodyText.length} chars to founder`,
       });
     } else if (node.kind === "store") {
-      // 5.F.1: persist the APPROVED lessons as the new active memory. Only
-      // reachable after a human approval (validateGraph hard rule), so
+      // 5.F.1/5.F.2: persist APPROVED content durably, routed by config.target.
+      // Only reachable after a human approval (validateGraph hard rule), so
       // whatever text arrives here carries the founder's explicit yes. The
       // content lives on the approval's own upstream (the compose) — same
       // one-edge-back walk as publish.
@@ -857,6 +906,66 @@ export async function advanceRun(
       if (!lessons) {
         await substrate.finishStep(stepId, { status: "failed", summary: "store had no approved content artifact (TTL?)" });
         continue; // next tick's fail-fast closes the run, out loud
+      }
+      const storeTarget = String(config["target"] ?? "memory-lessons");
+      if (storeTarget === "prompt-override") {
+        // 5.F.2: the approved proposal becomes a prompt override — AFTER the
+        // structural checks re-run HERE, at store time. The prompt asked the
+        // model to stay in the allowlist; the store does not trust the ask.
+        const parsed = parsePromptProposal(lessons);
+        if (parsed.kind === "none") {
+          // An approved "SEM MUDANCA" is a valid week: nothing to write.
+          await artifacts.set(runId, node.id, lessons);
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            summary: `sem mudanca de prompt esta rodada — nada gravado (${parsed.reason.slice(0, 120)})`,
+          });
+          continue;
+        }
+        if (parsed.kind === "invalid") {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `proposta ilegivel no store: ${parsed.reason.slice(0, 200)}`,
+          });
+          continue; // next tick's fail-fast closes the run, out loud
+        }
+        if (!isTunablePromptKey(parsed.promptKey)) {
+          // The safety rail, enforced where it counts: at write time. A
+          // proposal touching approval/publish/store prompts, the tuner's own
+          // prompts or anything else off the allowlist DIES here even if it
+          // slipped past the compose prompt and the founder's glance.
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `override RECUSADO no store: chave '${parsed.promptKey}' fora da allowlist de prompts tunaveis`,
+          });
+          await telegram(
+            `🔴 OVERRIDE RECUSADO NO STORE — graph ${def.slug} (run ${runId.slice(0, 8)}): a proposta aprovada aponta a chave '${parsed.promptKey}', que NÃO está na allowlist de prompts tunáveis (${TUNABLE_PROMPT_KEYS.join(", ")}). Nada foi gravado — nenhum prompt mudou. Prompts de approval/publish/store e do próprio tuner nunca são tunáveis.`
+          );
+          continue; // next tick's fail-fast closes the run, out loud
+        }
+        if (!substrate.storePromptOverride) {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: "store port ausente neste worker — override NAO gravado (feature desligada)",
+          });
+          continue;
+        }
+        const res = await substrate.storePromptOverride({ runId, promptKey: parsed.promptKey, body: parsed.body });
+        if (res.ok) {
+          await artifacts.set(runId, node.id, lessons);
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            outputHash: sha(lessons),
+            summary: `override gravado para '${parsed.promptKey}' (${parsed.body === "" ? "body vazio = volta ao prompt estatico" : `${parsed.body.length} chars`}) — ativo no proximo tick`,
+          });
+        } else {
+          const reason = (res.reason ?? "motivo desconhecido").slice(0, 200);
+          await substrate.finishStep(stepId, { status: "failed", summary: `store falhou: ${reason}` });
+          await telegram(
+            `🔴 OVERRIDE NÃO GRAVADO — graph ${def.slug} (run ${runId.slice(0, 8)}): a proposta foi APROVADA mas o store falhou: ${reason}. Nenhum prompt mudou (os grafos seguem nos prompts estáticos/override anterior).`
+          );
+        }
+        continue;
       }
       if (!substrate.storeMemoryLessons) {
         // A runner wired without the port cannot persist — honest failure with

@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -384,6 +384,29 @@ async function registerMemoryConsolidationSchedule(): Promise<void> {
   logger.info("memory_consolidation_schedule_registered", { cron: MEMORY_CONSOLIDATION_CRON });
 }
 
+// prompt-tuner (5.F.2): weekly, Tuesday 06:30 UTC — offset from the Monday
+// brains/report (06:30/07:30) and the Thursday discovery. The starter itself
+// gates on the ops.prompt_override table existing (feature OFF, out loud,
+// until the founder applies the migration); the 10-min graph-tick advances
+// the run like any other, and the founder's Telegram approval decides
+// whether any prompt changes at all.
+const promptTunerWorker = new Worker(
+  "prompt-tuner",
+  async () => runPromptTunerWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const promptTunerQueue = new Queue("prompt-tuner", { connection });
+const PROMPT_TUNER_CRON = process.env["PROMPT_TUNER_CRON"] ?? "30 6 * * 2";
+
+async function registerPromptTunerSchedule(): Promise<void> {
+  await promptTunerQueue.add(
+    "prompt-tuner",
+    {},
+    { jobId: "prompt-tuner-repeat", repeat: { pattern: PROMPT_TUNER_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("prompt_tuner_schedule_registered", { cron: PROMPT_TUNER_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -566,6 +589,7 @@ void platformKeysReady.finally(() => {
   void weeklyReportWorker.run();
   void incidentPostmortemWorker.run();
   void memoryConsolidationWorker.run();
+  void promptTunerWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -589,6 +613,9 @@ void platformKeysReady.finally(() => {
   });
   void registerMemoryConsolidationSchedule().catch((err: Error) => {
     logger.error("memory_consolidation_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerPromptTunerSchedule().catch((err: Error) => {
+    logger.error("prompt_tuner_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
