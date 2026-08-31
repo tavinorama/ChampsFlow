@@ -99,6 +99,8 @@
 | 5.D.1 | Loop discovery → spec → build → review (discovery hoje só reporta) | L |
 | 5.D.2 | ~~Postmortem AUTOMÁTICO~~ 🟢 feito (#532): grafo diário 07:00 detecta assinaturas por SQL (3+ steps falhados/starved/timeouts em massa), rascunha no formato da casa, gate no Telegram; dia quieto = silêncio auditável | M |
 | 5.D.3 | Anti-patterns alimentados por incidentes automaticamente (12 entradas manuais em #521) | S–M |
+| 5.D.5 | **Apertar limiar do postmortem-scan**: post APROVADO perdido em crash = incidente com n=1 (caso real sáb 29/08: LinkedIn aprovado 10h50 sumiu no crash do worker; limiar atual de 3+ não teria disparado) | S |
+| 5.D.6 | **Resiliência a pulo de cron do GitHub**: agendador pulou o blog de seg 31/08 (workflow ativo, cron certo); detecção manual 13h30 → dispatch 13h31. Caminho: absence-watch ganha auto-dispatch (não só alarme) | S |
 | 5.D.4 | Gate de deploy (E2E required + smoke pós-deploy) | M |
 
 ### 5.E Governança/Orquestração
@@ -114,7 +116,7 @@
 | # | O que | Esf. | O gap exato |
 |---|---|---|---|
 | 5.F.1 | ~~Consolidação de memória~~ 🟢 código mergeado (#530); **DESLIGADA até o founder mergear+aplicar a migração #531** (`ops.memory_lesson`) | M | fechado no código |
-| 5.F.2 | **Prompt-tuning gated**: os prompts das esferas são ESTÁTICOS no código; melhorá-los exige PR humano. Caminho: overrides de prompt em banco, propostos por um grafo "tuner" que lê os vereditos, **aprovados pelo founder**, com rollback | L | o verdict grava e ninguém age |
+| 5.F.2 | ~~Prompt-tuning gated~~ 🟢 código mergeado (#536, 31 testes): tuner semanal (3ª 06h30) propõe ≤1 mudança com evidência, allowlist dura (nunca approval/publish/self), rollback por linha nova; **OFF até o founder mergear+aplicar a migração #537** (`ops.prompt_override`) | L | fechado no código |
 | 5.F.3 | ~~Anti-patterns → críticos~~ 🟢 feito (#525): `[__lessons__]` (CONTENT_LESSONS) injetado nos nós de debate/crítica dos grafos de marketing | S–M | fechado |
 | 5.F.4 | **Experimentos contínuos**: 1 experimento/semana (CDO) → rotina de A/B por ângulo/canal com o lift decidindo o vencedor | M | aprendizado por tentativa é pontual |
 | 5.F.5 | **Cadência auto-ajustada**: caps por canal (#520) fixos → derivados do lift colhido (que horário/frequência rende mais) | M | a válvula é estática |
