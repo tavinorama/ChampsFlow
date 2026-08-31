@@ -54,6 +54,8 @@ interface FailedStep {
   graph: string;
   node: string;
   summary: string;
+  /** O run deste step tem um approval 'succeeded'? (assinatura 4, 5.D.5) */
+  approvedRun?: boolean;
 }
 
 function makeScanWorld(input: {
@@ -128,6 +130,27 @@ function makeScanWorld(input: {
           graphs: t.length > 0 ? [...new Set(t.map((s) => s.graph))].sort().join(", ") : null,
         },
       ];
+    }
+    if (text.includes("pm:approved-lost")) {
+      // EXISTS(approval succeeded no mesmo run) + node ILIKE '%publish%'
+      const lost = failed.filter((st) => st.node.toLowerCase().includes("publish") && st.approvedRun);
+      const byGraph = new Map<string, { n: number; sample: string }>();
+      for (const st of lost) {
+        const e = byGraph.get(st.graph) ?? { n: 0, sample: "" };
+        e.n += 1;
+        e.sample = (st.summary || "sem resumo").slice(0, 160); // MAX() ~ último
+        byGraph.set(st.graph, e);
+      }
+      return [...byGraph.entries()]
+        .sort((a, b) => b[1].n - a[1].n)
+        .slice(0, 10)
+        .map(([graph, e]) => ({
+          graph,
+          n: String(e.n),
+          first_at: "2026-08-29T11:31:00Z",
+          last_at: "2026-08-29T11:31:00Z",
+          sample: e.sample,
+        }));
     }
     if (text.includes("pm:quiet-run")) {
       inserts.push({ marker: "pm:quiet-run", values });
@@ -299,6 +322,38 @@ describe("detecção — SQL decide, com thresholds testáveis", () => {
     expect(sigs).toHaveLength(1);
     expect(sigs[0]).toMatchObject({ kind: "approval-timeout-mass", count: 3 });
     expect(sigs[0]!.detail).toContain("graph-0");
+  });
+
+  it("5.D.5 — a regressão de sáb 29/08: UM publish perdido após aprovação já é incidente (n=1)", async () => {
+    const world = makeScanWorld({
+      failedSteps: [
+        {
+          graph: "sphere-linkedin",
+          node: "publish",
+          summary: "stale running step (>2h) — worker crash presumed",
+          approvedRun: true,
+        },
+      ],
+    });
+    const sigs = await detectIncidentSignatures(world.sql, 24);
+    const lost = sigs.filter((s) => s.kind === "approved-content-lost");
+    expect(lost).toHaveLength(1);
+    expect(lost[0]).toMatchObject({ graph: "sphere-linkedin", count: 1 });
+    expect(lost[0]!.detail).toContain("APOS aprovacao do founder");
+    expect(lost[0]!.detail).toContain("worker crash presumed");
+    // 1 falha isolada continua não sendo cluster — a especialização é que grita.
+    expect(sigs.filter((s) => s.kind === "failure-cluster")).toEqual([]);
+  });
+
+  it("publish falhado SEM aprovação no run não dispara a assinatura 4", async () => {
+    const world = makeScanWorld({
+      failedSteps: [
+        { graph: "sphere-x", node: "publish", summary: "postiz 500", approvedRun: false },
+        { graph: "sphere-x", node: "publish", summary: "postiz 500" },
+      ],
+    });
+    const sigs = await detectIncidentSignatures(world.sql, 24);
+    expect(sigs.filter((s) => s.kind === "approved-content-lost")).toEqual([]);
   });
 
   it("resumo de erro entra LITERAL mas com tamanho capado (160 chars por amostra)", async () => {
