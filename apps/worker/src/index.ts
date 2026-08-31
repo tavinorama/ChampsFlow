@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runMemoryConsolidationMonthly } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -338,6 +338,30 @@ async function registerWeeklyReportSchedule(): Promise<void> {
   logger.info("weekly_report_schedule_registered", { cron: WEEKLY_REPORT_CRON });
 }
 
+// incident-postmortem (5.D.2): o scan diário de incidentes — 07:00 UTC,
+// depois dos brains das 06:30, antes do relatório de segunda das 07:30. O
+// cron decide POR SQL se as últimas 24h têm assinatura de incidente: dia
+// quieto grava só um registro auditável (zero Telegram, zero run do grafo);
+// dia com incidente inicia o run incident-postmortem, que o tick de 10 min
+// executa (evidence → compose → gate do founder → report). O commit do
+// postmortem em docs/learning/ segue humano.
+const incidentPostmortemWorker = new Worker(
+  "incident-postmortem",
+  async () => runIncidentPostmortemDaily(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const incidentPostmortemQueue = new Queue("incident-postmortem", { connection });
+const INCIDENT_POSTMORTEM_CRON = process.env["INCIDENT_POSTMORTEM_CRON"] ?? "0 7 * * *";
+
+async function registerIncidentPostmortemSchedule(): Promise<void> {
+  await incidentPostmortemQueue.add(
+    "incident-postmortem",
+    {},
+    { jobId: "incident-postmortem-repeat", repeat: { pattern: INCIDENT_POSTMORTEM_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("incident_postmortem_schedule_registered", { cron: INCIDENT_POSTMORTEM_CRON });
+}
+
 // memory-consolidation (5.F.1): monthly, 1st of month 06:30 UTC — the same
 // morning slot as the brains, once a month. The starter itself gates on the
 // ops.memory_lesson table existing (feature OFF, out loud, until the founder
@@ -540,6 +564,7 @@ void platformKeysReady.finally(() => {
   void brainDailyWorker.run();
   void brainWeeklyWorker.run();
   void weeklyReportWorker.run();
+  void incidentPostmortemWorker.run();
   void memoryConsolidationWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
@@ -567,6 +592,9 @@ void platformKeysReady.finally(() => {
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerIncidentPostmortemSchedule().catch((err: Error) => {
+    logger.error("incident_postmortem_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerSphereMoreSchedules().catch((err: Error) => {
     logger.error("sphere_more_schedules_register_failed", { message: err.message?.slice(0, 200) });

@@ -342,6 +342,35 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
+  // --- incident-postmortem (5.D.2): o rascunho de postmortem ----------------
+  // O compose lê UM bloco [evidence] (snapshot source 'incidents': assinaturas
+  // de incidente re-agregadas por SQL — contagens, primeiro/último timestamp,
+  // graphs afetados, resumos literais de erro capados) e REDIGE o rascunho no
+  // formato exato de docs/learning/postmortems/*.md. O modelo nunca detecta
+  // nem agrega: detecção é SQL no cron, agregação é código, o LLM só escreve
+  // ("vigia também mente"). Causa raiz é sempre HIPÓTESE; o texto declara-se
+  // RASCUNHO DE MÁQUINA; o commit nos docs é do humano.
+
+  "postmortem-compose": (ctx) =>
+    [
+      "Voce e o redator de postmortems da Ozvor (5.D.2). O bloco [evidence] abaixo traz as assinaturas de incidente das ultimas 24h, agregadas por SQL: clusters de steps falhados por graph, reconciliacoes starved/orfas, timeouts de aprovacao — com contagens, primeiro/ultimo timestamp e resumos LITERAIS de erro.",
+      "Sua tarefa: redigir UM rascunho de postmortem EM PORTUGUES, no formato exato dos postmortems da casa (docs/learning/postmortems/).",
+      "REGRA INEGOCIAVEL (vigia tambem mente): use SOMENTE os numeros, timestamps, graphs e mensagens de erro do bloco [evidence]. NUNCA invente numero, causa, sistema ou linha do tempo; o que a evidencia nao mostra escreve-se 'sem dado no scan'.",
+      "Se [evidence] disser SEM DADOS ou nao trouxer nenhuma assinatura, sua saida inteira e: 'SEM INCIDENTE CONFIRMADO NA RE-CHECAGEM — nada a redigir.' e nada mais.",
+      "Estrutura de saida, nesta ordem e nada alem dela:",
+      "1) A linha exata: '> RASCUNHO DE MAQUINA (incident-postmortem) — pendente validacao humana. Todo numero abaixo veio do scan SQL; nada foi verificado por uma pessoa.'",
+      "2) '# Postmortem — <titulo curto e concreto do incidente, a partir da assinatura dominante>'",
+      "3) '**Periodo:** <primeiro timestamp> → <ultimo timestamp> (UTC) · **SEV-? (proposta)** · **Deteccao:** scan SQL automatico (incident-postmortem, 24h)' — a severidade e uma PROPOSTA sua em 3-6 palavras de justificativa, marcada como proposta.",
+      "4) '## O que aconteceu' — 3-6 linhas contando o que o registro mostra: quais graphs, quantos steps/runs, em que janela, com 1-2 mensagens de erro literais entre aspas.",
+      "5) '## Hipotese de causa raiz (HIPOTESE — nao confirmada por humano)' — 1-3 hipoteses numeradas, cada uma ancorada num fato de [evidence]; se a evidencia nao sustenta hipotese, diga 'evidencia insuficiente para hipotese honesta'.",
+      "6) '## Impacto' — o que deixou de acontecer/quebrou, SO pelo que os numeros mostram; cliente afetado so se a evidencia disser.",
+      "7) '## O que nos protegeu / o que nao' — que mecanismo da casa gritou ou reconciliou (se aparece na evidencia: reconciliacao, timeout, alarme) vs. o que ficou em silencio.",
+      "8) '## Licoes propostas (→ anti-patterns)' — 1-3 entradas candidatas no formato do anti-patterns.md: 'NUNCA <padrao>. Em vez disso: <pratica>' — propostas, o humano decide se entram.",
+      "9) A linha exata: 'PROXIMO PASSO (humano): colar este rascunho em docs/learning/postmortems/ e, se as licoes valerem, em docs/learning/anti-patterns.md — a maquina nao escreve nos docs.'",
+      "Tom: seco, tecnico, honesto — numero ruim aparece igual a numero bom. Sem adjetivo vazio, sem drama.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
   // --- memory-consolidation (5.F.1): lições duráveis por canal ---------------
   // O compose lê UM bloco [history] (snapshot source 'memory': fatos agregados
   // por SQL — publicações, métricas, rejeições, timeouts, vereditos) e ESCREVE

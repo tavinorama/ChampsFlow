@@ -49,6 +49,7 @@ import {
   SPHERE_YOUTUBE_GRAPH,
   SPHERE_PPC_GRAPH,
   WEEKLY_REPORT_GRAPH,
+  INCIDENT_POSTMORTEM_GRAPH,
   MEMORY_CONSOLIDATION_GRAPH,
 } from "./agent-graphs";
 import { buildPrompt, CONTENT_LESSONS } from "./graph-prompts";
@@ -120,6 +121,11 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   [SPHERE_PPC_GRAPH.slug]: SPHERE_PPC_GRAPH,
   // 5.E.5: o relatório de segunda ao founder — read-only, Monday 07:30 UTC.
   [WEEKLY_REPORT_GRAPH.slug]: WEEKLY_REPORT_GRAPH,
+  // 5.D.2: postmortem automático — o run SÓ nasce quando o scan SQL diário
+  // detecta assinatura de incidente (dia quieto = zero runs, zero Telegram).
+  // evidence (SQL) → compose (rascunho) → gate do founder → report; o commit
+  // em docs/learning/ segue humano.
+  [INCIDENT_POSTMORTEM_GRAPH.slug]: INCIDENT_POSTMORTEM_GRAPH,
   // 5.F.1: consolidação mensal de memória — dia 1, 06:30 UTC. Fatos agregados
   // por SQL → lições escritas pelo LLM → gate do founder → só o aprovado vira
   // [__memory__] dos críticos. Nada se auto-ativa.

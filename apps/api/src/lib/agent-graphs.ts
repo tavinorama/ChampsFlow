@@ -882,3 +882,76 @@ export const SPHERE_PPC_GRAPH: GraphDefinition = {
     { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "📣 PPC — 3 anúncios prontos, sem gasto (ativar é decisão do founder)" } },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// incident-postmortem (5.D.2): os 3 postmortems da semana de 18-22/08 foram
+// escritos à mão, depois que o founder achou o buraco. Este grafo fecha a
+// metade AUTOMATIZÁVEL do ritual: detectar → juntar evidência → redigir o
+// RASCUNHO → gate do founder. O commit final em docs/learning/ segue humano —
+// a máquina propõe o postmortem, nunca o registra sozinha.
+//
+// A DETECÇÃO NÃO ESTÁ NESTE GRAFO — e isso é a regra "o vigia também mente"
+// aplicada duas vezes: (1) quem decide "houve incidente?" é SQL puro no cron
+// diário (runIncidentPostmortemDaily, graph-tick.ts), nunca um LLM; (2) num
+// dia quieto o cron NEM INICIA este run — grava um run 'succeeded' com um
+// step '__quiet__' ("sem incidente nas últimas 24h") e zero Telegram. Um 🟢
+// diário treinaria o founder a ignorar o canal (o daily-watchdog já reporta
+// todo dia; este grafo só fala quando há sangue no registro).
+//
+// Quando o scan ACHA assinaturas (cluster de steps falhados >=3 no mesmo
+// graph/24h, qualquer reconciliação starved/órfã, timeouts de aprovação em
+// massa), o run nasce e:
+//  - evidence (snapshot source 'incidents'): o runner re-agrega os FATOS por
+//    SQL — contagens, primeiro/último timestamp, graphs afetados, resumos
+//    literais de erro com tamanho capado. Todo número vem de query;
+//  - compose (LLM via cadeia de fallback — nunca engine pinado): redige o
+//    rascunho no formato exato de docs/learning/postmortems/*.md, em PT,
+//    causa raiz marcada como HIPÓTESE, e declarando-se RASCUNHO DE MÁQUINA;
+//  - approval (Telegram, 96h; silêncio = rejeição, padrão da casa): nada é
+//    entregue como postmortem sem o sim do founder;
+//  - report: o rascunho APROVADO chega inteiro ao founder com a instrução do
+//    passo humano (colar em docs/learning/postmortems/ + anti-patterns.md).
+//    v1 honesta: NÃO há store durável aqui — o ledger ops.memory_lesson do
+//    5.F.1 (#530) ainda não está na main, e criar uma tabela paralela agora
+//    seria acoplamento especulativo. O texto integral vive no report step +
+//    Telegram; o commit nos docs é o passo manual listado no próprio report.
+//
+// CEO-owned: incidente é preocupação da organização, não de um canal — e
+// assim nunca conta na válvula de aprovações de marketing nem recebe as
+// injeções de conteúdo ([__day__]/[__signals__]/[__lessons__]).
+// ---------------------------------------------------------------------------
+
+export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
+  slug: "incident-postmortem",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Postmortem automático (5.D.2): SÓ roda quando o scan SQL diário (07:00 UTC) detecta assinatura de incidente nas últimas 24h (cluster >=3 steps falhados no mesmo graph, reconciliação starved/órfã, timeouts de aprovação em massa) — dia quieto não inicia run nem toca o Telegram. evidence (snapshot 'incidents': fatos re-agregados por SQL — contagens, timestamps, graphs, erros literais capados) → compose (rascunho PT no formato da casa, causa raiz como HIPÓTESE, declarado RASCUNHO DE MÁQUINA) → aprovação do founder (96h; silêncio = rejeição, nada vira postmortem) → report com o rascunho aprovado INTEIRO + o passo humano (commit manual em docs/learning/). Sem publish, sem spawn, sem store: a máquina propõe, o humano registra.",
+  nodes: [
+    // Every number the draft may use is aggregated HERE, by the runner's SQL —
+    // the compose step downstream is forbidden to invent beyond this block.
+    { id: "evidence", kind: "snapshot", dependsOn: [], config: { source: "incidents", days: 1 } },
+    { id: "compose", kind: "task", dependsOn: ["evidence"], config: { prompt: "postmortem-compose" } },
+    // Standard waiting gate: timeout = rejection-by-silence (runner default is
+    // 96h; declared here so the contract is visible in the definition).
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["compose"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = aceito este RASCUNHO de postmortem; o commit em docs/learning/ (postmortem + anti-pattern) continua sendo meu, manual. Rejeitar ou silêncio (96h) = rascunho descartado, nada é registrado.",
+      },
+    },
+    // The report also depends on compose: an approval step carries no
+    // artifact, so the draft the founder approved is what gets delivered.
+    {
+      id: "report",
+      kind: "report",
+      dependsOn: ["approval", "compose"],
+      config: { title: "📋 POSTMORTEM APROVADO (rascunho de máquina) — commit manual em docs/learning/postmortems/" },
+    },
+  ],
+};
