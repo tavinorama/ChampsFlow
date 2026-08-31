@@ -29,10 +29,13 @@ import { createHash } from "node:crypto";
 import {
   advanceRun,
   GRAPH_REGISTRY,
+  CIRCUIT_BREAKER_THRESHOLD,
+  channelDailyCap,
   type GraphRunnerPorts,
   type RunRow,
   type StepRow,
   type TelegramButton,
+  INCIDENT_LESSON_PREFIX,
 } from "../../../api/src/lib/graph-runner";
 
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
@@ -57,6 +60,21 @@ const HERMES_ENGINES = parseEngineChain(process.env["HERMES_ENGINES"]);
 const HERMES_PRIMARY_DOWN_KEY = "hermes:primary_down_alarm";
 const HERMES_ALL_DOWN_KEY = "hermes:all_down_alarm";
 const HERMES_ALARM_WINDOW_S = 6 * 3600;
+/**
+ * 5.F.6 circuit breaker per Postiz channel. `circuit:<channel>` holds the
+ * CONSECUTIVE publish-failure count (INCR on failure, DEL on success); open =
+ * count >= CIRCUIT_BREAKER_THRESHOLD. The key's TTL is the half-open re-test
+ * window: while parked publishes stop producing new failures, the counter
+ * expires after 6h and the next tick releases ONE wave of parked publishes as
+ * a probe — success closes the circuit for good, failure re-opens it. The
+ * founder healing the channel in Postiz therefore needs no manual reset.
+ * `circuit:alarm:<channel>` is the NX alarm gate (1 Telegram / 6h / channel)
+ * — the exact hermes-fallback alarm pattern.
+ */
+const CIRCUIT_RETEST_WINDOW_S = 6 * 3600;
+const CIRCUIT_ALARM_WINDOW_S = 6 * 3600;
+const circuitKey = (channel: string) => `circuit:${channel.toLowerCase()}`;
+const circuitAlarmKey = (channel: string) => `circuit:alarm:${channel.toLowerCase()}`;
 /**
  * Cap on EXPENSIVE advances per tick (runs with an executable next step — an
  * LLM call each). Parked runs (waiting frontier) never count against this:
@@ -266,6 +284,171 @@ async function tenantCostSection(sql: postgres.Sql, d: number): Promise<string[]
   }
 }
 
+// ---------------------------------------------------------------------------
+// 5.F.5 — cadência auto-ajustada, a camada MEDIDA (founder-gated).
+// A válvula (channelDailyCap) continua ESTÁTICA no código, com override por
+// env CHANNEL_DAILY_CAP_<CANAL>. O que este bloco adiciona é a MEDIÇÃO: por
+// canal, posts/dia vs média de resultado por post — 100% SQL/código (o modelo
+// nunca toca nestes números: a seção viaja VERBATIM do snapshot para o report
+// de segunda, sem passar pelo compose). A recomendação fecha o loop; o gate é
+// o founder mudando a env. NADA aqui aplica cap sozinho — cap auto-aplicado
+// seria auto-ativação, proibida pelas regras da casa.
+// ---------------------------------------------------------------------------
+
+/** Amostra mínima por canal para recomendar algo (abaixo disso: dito, sem estatística inventada). */
+export const CADENCE_MIN_SAMPLE = 10;
+/** Queda relativa da média-por-post (pico vs base) que sustenta recomendar um cap menor. */
+export const CADENCE_DROP_THRESHOLD = 0.3;
+/** Dias após o publish em que o resultado colhido conta para aquele dia de publicação. */
+export const CADENCE_OUTCOME_WINDOW_DAYS = 3;
+/**
+ * Canal → prefixo de métrica em ops.agent_outcome (o que o coletor da VPS
+ * escreve). Mapa EXPLÍCITO de propósito: derivar do registry seria errado
+ * (daily-video publica em linkedin mas colhe youtube_views). Canal fora do
+ * mapa = "sem métrica mapeada", nunca um palpite.
+ */
+export const CHANNEL_METRIC_PREFIX: Record<string, string> = {
+  linkedin: "linkedinpage_",
+  x: "x_",
+  instagram: "instagramstandalone_",
+  tiktok: "tiktok_",
+  youtube: "youtube_",
+};
+
+/**
+ * A seção de cadência do relatório de segunda — PURA (exportada para teste
+ * unitário direto). Entra: publishes bem-sucedidos (summary com channel=) e
+ * outcomes crus da janela. Sai: uma linha de RECOMENDAÇÃO por canal, cada uma
+ * nomeando a ação do founder (env CHANNEL_DAILY_CAP_<CANAL>). Guardas:
+ *  - < CADENCE_MIN_SAMPLE posts → "sem amostra suficiente (N posts)";
+ *  - canal sem métrica mapeada → dito, sem recomendação;
+ *  - sem variação de posts/dia na janela → nada a comparar, dito;
+ *  - média-base sem valor utilizável → dito.
+ * String vazia quando não há publish nenhum (o runner vira SEM DADOS).
+ */
+export function computeCadenceSection(
+  pubs: Array<{ summary: string; started_at: string }>,
+  outcomes: Array<{ metric: string; value_after: string | null; measured_at: string }>,
+  days: number
+): string {
+  const byChannel = new Map<string, Map<string, number>>(); // canal → dia UTC → posts
+  for (const p of pubs) {
+    const ch = /channel=([a-z0-9_-]+)/i.exec(p.summary)?.[1]?.toLowerCase();
+    if (!ch) continue;
+    const day = p.started_at.slice(0, 10);
+    const m = byChannel.get(ch) ?? new Map<string, number>();
+    m.set(day, (m.get(day) ?? 0) + 1);
+    byChannel.set(ch, m);
+  }
+  if (byChannel.size === 0) return "";
+
+  const lines: string[] = [
+    `VALVULA DE CADENCIA — camada medida (5.F.5, ${days}d; calculo 100% por codigo, o modelo nao toca nestes numeros):`,
+    `O cap segue estatico no codigo. NADA muda sozinho: agir = founder definir env CHANNEL_DAILY_CAP_<CANAL> (0 ou negativo = sem cap).`,
+    ``,
+  ];
+  for (const [ch, dayCounts] of [...byChannel.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const total = [...dayCounts.values()].reduce((a, b) => a + b, 0);
+    const cap = channelDailyCap(ch);
+    const capStr = cap === null ? "sem cap" : `${cap}/dia`;
+    if (total < CADENCE_MIN_SAMPLE) {
+      lines.push(
+        `- ${ch}: sem amostra suficiente (${total} post(s) em ${days}d; minimo ${CADENCE_MIN_SAMPLE}) — cap atual mantido (${capStr}), sem estatistica inventada.`
+      );
+      continue;
+    }
+    const prefix = CHANNEL_METRIC_PREFIX[ch];
+    if (!prefix) {
+      lines.push(`- ${ch}: ${total} posts, mas sem metrica mapeada para o canal — sem recomendacao honesta possivel.`);
+      continue;
+    }
+    const chOutcomes = outcomes.filter((o) => o.metric.startsWith(prefix) && o.value_after != null);
+    // Média de resultado POR POST nos dias com k posts: para cada dia de
+    // publicação, soma dos outcomes do canal medidos em (dia, dia+3] ÷ k.
+    const perK = new Map<number, { nDays: number; perPostSum: number }>();
+    for (const [day, k] of dayCounts) {
+      const dayStart = Date.parse(`${day}T00:00:00Z`);
+      const windowEnd = dayStart + CADENCE_OUTCOME_WINDOW_DAYS * 86_400_000;
+      const harvested = chOutcomes
+        .filter((o) => {
+          const t = Date.parse(o.measured_at);
+          return t > dayStart && t <= windowEnd;
+        })
+        .reduce((acc, o) => acc + Number(o.value_after), 0);
+      const bucket = perK.get(k) ?? { nDays: 0, perPostSum: 0 };
+      bucket.nDays += 1;
+      bucket.perPostSum += harvested / k;
+      perK.set(k, bucket);
+    }
+    const ks = [...perK.keys()].sort((a, b) => a - b);
+    const kMin = ks[0]!;
+    const kMax = ks[ks.length - 1]!;
+    if (kMin === kMax) {
+      lines.push(
+        `- ${ch}: ${total} posts, sempre ${kMax}/dia na janela — sem variacao de cadencia para comparar; cap atual mantido (${capStr}).`
+      );
+      continue;
+    }
+    const avgOf = (k: number): number => {
+      const b = perK.get(k)!;
+      return b.perPostSum / b.nDays;
+    };
+    const base = avgOf(kMin);
+    const top = avgOf(kMax);
+    if (base <= 0) {
+      lines.push(
+        `- ${ch}: ${total} posts, mas a metrica ${prefix}* nao trouxe valor utilizavel na janela — sem recomendacao honesta possivel.`
+      );
+      continue;
+    }
+    const drop = 1 - top / base;
+    if (drop >= CADENCE_DROP_THRESHOLD) {
+      const pct = Math.round(drop * 100);
+      lines.push(
+        `- ${ch}: dados sugerem ${kMax - 1}/dia em vez de ${capStr} — media por post cai ${pct}% nos dias com ${kMax} posts (${Math.round(base)} → ${Math.round(top)} por post; ${total} posts em ${days}d). Agir = env CHANNEL_DAILY_CAP_${ch.toUpperCase()}=${kMax - 1}.`
+      );
+    } else {
+      lines.push(
+        `- ${ch}: cap atual (${capStr}) mantem — media por post estavel entre ${kMin} e ${kMax} posts/dia (variacao ${Math.round(Math.max(drop, 0) * 100)}%; ${total} posts em ${days}d).`
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * 5.F.7 — the active incident lessons (approved postmortems → ops.memory_lesson
+ * rows starting with INCIDENT_LESSON_PREFIX), rendered for the 'ops' snapshot.
+ * Newest 3 rows, size-capped. Fail-open by contract: missing table (42P01,
+ * migration 5.F.1 pending) or any read blip → no section at all, the snapshot
+ * stays exactly as before — never a placeholder, never a broken digest.
+ */
+async function incidentLessonsSection(sql: postgres.Sql): Promise<string[]> {
+  try {
+    const rows = await sql<{ lessons: string; approved_at: string }[]>`
+      /* snap:incident-lessons */
+      SELECT lessons, approved_at::text AS approved_at
+        FROM ops.memory_lesson
+       WHERE lessons LIKE ${INCIDENT_LESSON_PREFIX + "%"}
+       ORDER BY approved_at DESC
+       LIMIT 3`;
+    if (rows.length === 0) return [];
+    const lines = ["", "Licoes de incidentes ativas (postmortems aprovados — ops.memory_lesson):"];
+    for (const r of rows) {
+      // Each row is already "PREFIX (postmortem aprovado <date>):\n- NUNCA ...".
+      // Cap at 8 lines/row so a malformed giant row can never flood the digest.
+      for (const l of r.lessons.split("\n").slice(0, 8)) lines.push(`  ${l.slice(0, 300)}`);
+    }
+    return lines;
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? "";
+    if (code !== "42P01") {
+      logger.warn("incident_lessons_read_failed", { code, message: (err as Error).message?.slice(0, 160) });
+    }
+    return [];
+  }
+}
+
 /**
  * The read-only brains' fuel: a bounded, PII-free digest of ops.* as text.
  * ops.* holds slugs, statuses, hashes and numbers — no tenant data is touched,
@@ -347,6 +530,12 @@ export async function buildSnapshot(
     }
     // 5.C.2 — the tenant-level spend the ledger records but nobody read.
     lines.push(...(await tenantCostSection(sql, d)));
+    // 5.F.7 — active incident lessons: the approved-postmortem lessons the
+    // store-lessons node wrote into ops.memory_lesson (INCIDENT_LESSON_PREFIX
+    // rows). They are OPS lessons, so they surface to the ops brain (the
+    // daily-watchdog and the weekly report read this snapshot) — the
+    // marketing critics' [__memory__] deliberately excludes them.
+    lines.push(...(await incidentLessonsSection(sql)));
     return lines.join("\n");
   }
 
@@ -598,6 +787,144 @@ export async function buildSnapshot(
     return lines.join("\n");
   }
 
+  if (source === "tuning") {
+    // 5.F.2 — o combustível do prompt-tuner: os últimos ~21d de sinal REAL
+    // sobre o que os grafos produzem, agregado por SQL POR GRAPH/área de
+    // prompt. O compose downstream só ESCREVE a proposta a partir destas
+    // linhas ("vigia também mente": o modelo nunca conta nem agrega). Tudo
+    // vem de ops.* — slugs, statuses, resumos capados e números; sem PII.
+    const verdicts = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:tuning-verdicts */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.node = 'verdict'
+         AND s.status = 'succeeded'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 40`;
+
+    // Rejeições com o motivo LITERAL do founder — o sinal mais forte que um
+    // afinador de prompts pode ter.
+    const rejections = await sql<{ graph: string; summary: string; started_at: string }[]>`
+      /* snap:tuning-rejections */
+      SELECT r.graph, s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'failed'
+         AND s.summary LIKE 'rejected:%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at DESC
+       LIMIT 30`;
+
+    // Contagem de rejeições POR GRAPH — a agregação é SQL, o modelo só lê.
+    const rejectionCounts = await sql<{ graph: string; n: string }[]>`
+      /* snap:tuning-rejection-counts */
+      SELECT r.graph, COUNT(*)::text AS n
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.status = 'failed'
+         AND s.summary LIKE 'rejected:%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY r.graph
+       ORDER BY COUNT(*) DESC`;
+
+    // Timeouts de aprovação por graph (timeout = rejeição por silêncio).
+    const timeouts = await sql<{ graph: string; n: string }[]>`
+      /* snap:tuning-timeouts */
+      SELECT r.graph, COUNT(*)::text AS n
+        FROM ops.agent_step s
+        JOIN ops.agent_run r ON r.id = s.run_id
+       WHERE s.summary LIKE 'approval timed out%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       GROUP BY r.graph
+       ORDER BY COUNT(*) DESC`;
+
+    // Overrides já ativos — para o tuner saber o estado atual e nunca propor
+    // no escuro. Fail-soft: tabela ausente = linha honesta, nunca um throw
+    // (o snapshot inteiro não pode morrer por causa desta seção).
+    let overrides: Array<{ prompt_key: string; body_len: string; approved_at: string }> = [];
+    let overridesUnavailable = false;
+    try {
+      overrides = await sql<{ prompt_key: string; body_len: string; approved_at: string }[]>`
+        /* snap:tuning-overrides */
+        SELECT DISTINCT ON (prompt_key)
+               prompt_key,
+               LENGTH(body)::text AS body_len,
+               approved_at::text AS approved_at
+          FROM ops.prompt_override
+         ORDER BY prompt_key, approved_at DESC`;
+    } catch (err) {
+      overridesUnavailable = true;
+      const code = (err as { code?: string }).code ?? "";
+      if (code !== "42P01") {
+        logger.warn("snapshot_tuning_overrides_unavailable", { code, message: (err as Error).message?.slice(0, 160) });
+      }
+    }
+
+    if (verdicts.length === 0 && rejections.length === 0 && timeouts.length === 0 && overrides.length === 0) {
+      return ""; // honest empty — the runner turns this into SEM DADOS
+    }
+
+    const lines: string[] = [
+      `EVIDENCIA PARA TUNING DE PROMPTS (ops.*, ${d}d — fatos agregados por codigo; nada abaixo foi estimado):`,
+    ];
+    if (verdicts.length > 0) {
+      lines.push(``, `VEREDITOS FECHADOS (por graph — o loop leu o proprio resultado):`);
+      for (const v of verdicts) lines.push(`- ${v.started_at.slice(0, 10)} (${v.graph}): ${v.summary}`);
+    }
+    if (rejectionCounts.length > 0) {
+      lines.push(``, `REJEICOES DO FOUNDER POR GRAPH (contagem por SQL):`);
+      for (const rc of rejectionCounts) lines.push(`- ${rc.graph}: ${rc.n} rejeicao(oes)`);
+    }
+    if (rejections.length > 0) {
+      lines.push(``, `REJEICOES DO FOUNDER (motivo literal registrado — o sinal mais forte):`);
+      for (const rj of rejections) {
+        lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
+      }
+    }
+    if (timeouts.length > 0) {
+      lines.push(``, `APROVACOES EXPIRADAS POR SILENCIO POR GRAPH (timeout = rejeicao):`);
+      for (const t of timeouts) lines.push(`- ${t.graph}: ${t.n} aprovacao(oes) expiraram sem decisao`);
+    }
+    if (overrides.length > 0) {
+      lines.push(``, `OVERRIDES DE PROMPT JA ATIVOS (ops.prompt_override — linha mais nova por chave):`);
+      for (const o of overrides) {
+        const state = Number(o.body_len) === 0 ? "body vazio = revertido ao prompt estatico" : `${o.body_len} chars`;
+        lines.push(`- ${o.prompt_key}: desde ${o.approved_at.slice(0, 10)} (${state})`);
+      }
+    } else if (overridesUnavailable) {
+      lines.push(``, `OVERRIDES DE PROMPT: tabela ops.prompt_override indisponivel neste deploy — nenhum override ativo.`);
+    } else {
+      lines.push(``, `OVERRIDES DE PROMPT: nenhum ativo — todos os grafos rodam nos prompts estaticos do codigo.`);
+    }
+    return lines.join("\n");
+  }
+
+  if (source === "cadence") {
+    // 5.F.5 — a válvula medida. DUAS queries marcadas trazem os fatos crus
+    // (publishes com channel= no summary; outcomes da janela); TODO o cálculo
+    // e a redação das recomendações são código puro (computeCadenceSection).
+    // Este texto vai VERBATIM ao report de segunda — nunca passa pelo compose.
+    const pubs = await sql<{ summary: string; started_at: string }[]>`
+      /* snap:cadence-publishes */
+      SELECT s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+       WHERE s.status = 'succeeded'
+         AND s.summary LIKE 'published via%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at
+       LIMIT 500`;
+    const outcomes = await sql<{ metric: string; value_after: string | null; measured_at: string }[]>`
+      /* snap:cadence-outcomes */
+      SELECT metric, value_after::text AS value_after, measured_at::text AS measured_at
+        FROM ops.agent_outcome
+       WHERE measured_at >= NOW() - make_interval(days => ${d})
+       ORDER BY measured_at
+       LIMIT 2000`;
+    return computeCadenceSection(pubs, outcomes, d);
+  }
+
   if (source === "incidents") {
     // 5.D.2: the postmortem's evidence node. The SAME SQL detection the daily
     // cron ran to decide "there IS an incident" re-aggregates the facts here,
@@ -623,7 +950,10 @@ export async function buildSnapshot(
 //     (a fome de 18-20/08 e os zumbis fora do registry; 1 já é incidente);
 //  3. approval-timeout-mass — >= APPROVAL_TIMEOUT_MASS_MIN aprovações
 //     expiradas por silêncio na janela (aprovações apodrecendo em massa foi
-//     o tampão da fome de 18/08).
+//     o tampão da fome de 18/08);
+//  4. approved-content-lost — publish falhado num run com approval succeeded,
+//     n=1 POR DESENHO (5.D.5, sáb 29/08: LinkedIn aprovado 10h50 perdido em
+//     crash do worker — o cluster de 3+ nunca veria).
 // Rejeições do founder ("rejected: ...") NÃO são incidente — são decisão
 // humana — e as falhas de approval são tratadas só pela assinatura 3, então a
 // assinatura 1 exclui nodes de approval e os steps sintéticos de
@@ -643,7 +973,11 @@ export const QUIET_SUMMARY = "sem incidente nas ultimas 24h (scan SQL: 0 assinat
 const ERROR_SAMPLE_CAP = 160;
 
 export interface IncidentSignature {
-  kind: "failure-cluster" | "reconciliation" | "approval-timeout-mass";
+  kind:
+    | "failure-cluster"
+    | "reconciliation"
+    | "approval-timeout-mass"
+    | "approved-content-lost";
   /** Graph afetado (failure-cluster) ou null nas assinaturas cross-graph. */
   graph: string | null;
   count: number;
@@ -668,10 +1002,18 @@ export async function detectIncidentSignatures(
   // 1) Failure clusters per graph. Approval nodes are excluded (rejection is
   // a human decision; timeout is signature 3) and so are the synthetic
   // reconciliation steps (signature 2 owns them).
+  // 5.F.6 INTERPLAY WITH THE RETRY BUDGET — decision documented here and
+  // pinned by test: the runner now writes one failed step PER ATTEMPT of the
+  // same node (default budget 2 → up to 3 failed rows for ONE flaky node), so
+  // counting rows would let a single node fake a >=3 cluster. Two guards:
+  //  (a) count per (run, node), never per attempt — COUNT(DISTINCT run:node);
+  //  (b) an attempt a LATER retry of the same (run, node) SAVED (a succeeded
+  //      sibling at or after it) is not failure-cluster noise at all — the
+  //      self-healing worked, the incident is the one that STAYS failed.
   const clusters = await sql<{ graph: string; fails: string; first_at: string; last_at: string }[]>`
     /* pm:failed-clusters */
     SELECT r.graph,
-           COUNT(*)::text AS fails,
+           COUNT(DISTINCT s.run_id::text || ':' || s.node)::text AS fails,
            MIN(s.started_at)::text AS first_at,
            MAX(s.started_at)::text AS last_at
       FROM ops.agent_step s
@@ -680,8 +1022,14 @@ export async function detectIncidentSignatures(
        AND s.started_at >= NOW() - make_interval(hours => ${h})
        AND s.node NOT IN ('__starved__', '__orphan__')
        AND NOT (s.node ILIKE '%approval%')
+       AND NOT EXISTS (
+             SELECT 1 FROM ops.agent_step ok
+              WHERE ok.run_id = s.run_id
+                AND ok.node = s.node
+                AND ok.status = 'succeeded'
+                AND ok.started_at >= s.started_at)
      GROUP BY r.graph
-     ORDER BY COUNT(*) DESC
+     ORDER BY COUNT(DISTINCT s.run_id::text || ':' || s.node) DESC
      LIMIT 10`;
   const hot = clusters.filter((c) => Number(c.fails) >= FAILURE_CLUSTER_MIN);
   if (hot.length > 0) {
@@ -700,6 +1048,12 @@ export async function detectIncidentSignatures(
            AND r.graph = ANY(${hot.map((c) => c.graph)})
            AND s.node NOT IN ('__starved__', '__orphan__')
            AND NOT (s.node ILIKE '%approval%')
+           AND NOT EXISTS (
+                 SELECT 1 FROM ops.agent_step ok
+                  WHERE ok.run_id = s.run_id
+                    AND ok.node = s.node
+                    AND ok.status = 'succeeded'
+                    AND ok.started_at >= s.started_at)
       ) ranked
       WHERE rn <= 3`;
     const byGraph = new Map<string, string[]>();
@@ -773,6 +1127,55 @@ export async function detectIncidentSignatures(
     });
   }
 
+  // 4) Approved content lost — n=1 BY DESIGN (5.D.5, caso real de sáb 29/08:
+  // LinkedIn aprovado pelo founder às 10h50 sumiu num crash do worker no
+  // publish; o cluster de 3+ nunca dispararia). Um publish que falha DEPOIS
+  // do sim humano é sempre incidente: o founder gastou um clique e o público
+  // não recebeu nada. Especialização da assinatura 1 (um cluster grande de
+  // publishes mostra as duas — fatos distintos, não contagem dupla).
+  const lost = await sql<{ graph: string; n: string; first_at: string; last_at: string; sample: string }[]>`
+    /* pm:approved-lost */
+    -- 5.F.6: um publish que uma retry POSTERIOR do mesmo (run, node) salvou
+    -- (step succeeded igual/depois dele) NAO e conteudo perdido — a auto-cura
+    -- funcionou. Só o que TERMINA falhado dispara; e a contagem é por
+    -- (run, node), nunca por tentativa (o retry escreve um step por attempt).
+    SELECT r.graph,
+           COUNT(DISTINCT s.run_id::text || ':' || s.node)::text AS n,
+           MIN(s.started_at)::text AS first_at,
+           MAX(s.started_at)::text AS last_at,
+           LEFT(MAX(COALESCE(s.summary, 'sem resumo')), ${ERROR_SAMPLE_CAP}) AS sample
+      FROM ops.agent_step s
+      JOIN ops.agent_run r ON r.id = s.run_id
+     WHERE s.status = 'failed'
+       AND s.node ILIKE '%publish%'
+       AND s.started_at >= NOW() - make_interval(hours => ${h})
+       AND EXISTS (
+             SELECT 1 FROM ops.agent_step a
+              WHERE a.run_id = s.run_id
+                AND a.node ILIKE '%approval%'
+                AND a.status = 'succeeded'
+           )
+       AND NOT EXISTS (
+             SELECT 1 FROM ops.agent_step ok
+              WHERE ok.run_id = s.run_id
+                AND ok.node = s.node
+                AND ok.status = 'succeeded'
+                AND ok.started_at >= s.started_at)
+     GROUP BY r.graph
+     ORDER BY COUNT(DISTINCT s.run_id::text || ':' || s.node) DESC
+     LIMIT 10`;
+  for (const l of lost) {
+    if (Number(l.n) < 1) continue;
+    out.push({
+      kind: "approved-content-lost",
+      graph: l.graph,
+      count: Number(l.n),
+      firstAt: l.first_at,
+      lastAt: l.last_at,
+      detail: `publish falhou APOS aprovacao do founder · ultimo erro: "${l.sample}"`,
+    });
+  }
+
   return out;
 }
 
@@ -787,6 +1190,7 @@ export function incidentEvidenceBlock(signatures: IncidentSignature[]): string {
     "failure-cluster": "CLUSTER DE FALHAS",
     reconciliation: "RECONCILIACAO (run morta sem ser servida)",
     "approval-timeout-mass": "TIMEOUTS DE APROVACAO EM MASSA",
+    "approved-content-lost": "CONTEUDO APROVADO PERDIDO (publish falhou apos o sim do founder)",
   };
   const lines: string[] = [`ASSINATURAS DE INCIDENTE (scan SQL sobre ops.*, ultimas 24h):`, ``];
   for (const s of signatures) {
@@ -883,6 +1287,11 @@ export async function runIncidentPostmortemDaily(
 
 /** Exported for tests (the fake sql routes on the queries' own markers). */
 export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
+  // 5.F.2: cache dos overrides POR TICK — buildPorts é criado uma vez por
+  // runGraphTick, então este closure vive um tick. Uma query serve todas as
+  // runs do tick; nunca uma tempestade por-node (o advanceRun ainda faz o
+  // próprio cache por-run em cima deste).
+  let promptOverridesCache: Promise<Record<string, string> | null> | null = null;
   return {
     substrate: {
       async getRun(runId) {
@@ -892,8 +1301,10 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         return rows[0] ?? null;
       },
       async loadSteps(runId) {
+        // 5.F.6: summary travels back to the runner — it is the retry logic's
+        // only memory (crash markers, gate markers, circuit parks).
         const rows = await sql<StepRow[]>`
-          SELECT id, node, status, started_at::text AS started_at
+          SELECT id, node, status, summary, started_at::text AS started_at
             FROM ops.agent_step WHERE run_id = ${runId}::uuid
            ORDER BY started_at ASC`;
         return rows;
@@ -987,11 +1398,16 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // append-only, newest row wins. Fail-open by contract: before the
         // ops.memory_lesson migration is applied (42P01) or on any read blip,
         // return null and the critics run exactly as before ([__memory__]
-        // simply is not injected — never a placeholder).
+        // simply is not injected — never a placeholder). 5.F.7: incident
+        // lessons live in the SAME table under INCIDENT_LESSON_PREFIX and are
+        // EXCLUDED here — [__memory__] stays the monthly consolidation for
+        // the marketing critics; an incident row (ops-flavored, read by the
+        // watchdog's ops snapshot) must never displace it via newest-wins.
         try {
           const rows = await sql<{ lessons: string }[]>`
             /* memory:active-read */
             SELECT lessons FROM ops.memory_lesson
+             WHERE lessons NOT LIKE ${INCIDENT_LESSON_PREFIX + "%"}
              ORDER BY approved_at DESC
              LIMIT 1`;
           const text = rows[0]?.lessons?.trim() ?? "";
@@ -1022,6 +1438,57 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
               ? `tabela ops.memory_lesson ausente — ${MEMORY_STORE_MISSING_ACTION}`
               : `${code || "erro"}: ${(err as Error).message?.slice(0, 120)}`;
           logger.error("memory_lessons_store_failed", { code, message: (err as Error).message?.slice(0, 160) });
+          return { ok: false, reason };
+        }
+      },
+      async activePromptOverrides() {
+        // 5.F.2: a linha mais NOVA por prompt_key — append-only, a mais nova
+        // vence; body vazio viaja no mapa e o buildPrompt o trata como
+        // "reverte ao estatico". Fail-open por contrato: antes da migração
+        // ops.prompt_override (42P01) ou em qualquer blip de leitura, null —
+        // todos os grafos seguem nos prompts estáticos do código.
+        if (!promptOverridesCache) {
+          promptOverridesCache = (async (): Promise<Record<string, string> | null> => {
+            try {
+              const rows = await sql<{ prompt_key: string; body: string }[]>`
+                /* override:active-read */
+                SELECT DISTINCT ON (prompt_key) prompt_key, body
+                  FROM ops.prompt_override
+                 ORDER BY prompt_key, approved_at DESC`;
+              if (rows.length === 0) return null;
+              const map: Record<string, string> = {};
+              for (const r of rows) map[r.prompt_key] = r.body;
+              return map;
+            } catch (err) {
+              const code = (err as { code?: string }).code ?? "";
+              if (code !== "42P01") {
+                logger.warn("prompt_overrides_read_failed", { code, message: (err as Error).message?.slice(0, 160) });
+              }
+              return null;
+            }
+          })();
+        }
+        return promptOverridesCache;
+      },
+      async storePromptOverride(input) {
+        // Append-only insert — um override aprovado é registro, nunca edit.
+        // Reverter = linha nova (body anterior, ou '' para o estático). Numa
+        // deploy sem a migração (42P01), fail SOFT com a ação nominal que
+        // destrava: o runner falha o step em voz alta e nada finge estar on.
+        try {
+          await sql`
+            /* override:store */
+            INSERT INTO ops.prompt_override (source_run_id, prompt_key, body)
+            VALUES (${input.runId}::uuid, ${input.promptKey}, ${input.body})`;
+          promptOverridesCache = null; // a próxima leitura do tick vê a linha nova
+          return { ok: true };
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? "";
+          const reason =
+            code === "42P01"
+              ? `tabela ops.prompt_override ausente — ${PROMPT_OVERRIDE_MISSING_ACTION}`
+              : `${code || "erro"}: ${(err as Error).message?.slice(0, 120)}`;
+          logger.error("prompt_override_store_failed", { code, message: (err as Error).message?.slice(0, 160) });
           return { ok: false, reason };
         }
       },
@@ -1126,6 +1593,43 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
     },
     telegram: sendTelegram,
     now: () => new Date(),
+    // 5.F.6 — the circuit breaker's Redis half. Every method fails OPEN (a
+    // Redis blip must never stop a publish or kill a run); the runner treats
+    // a throwing/absent circuit as "closed" by contract.
+    circuit: {
+      async status(channel) {
+        try {
+          const raw = await redis.get(circuitKey(channel));
+          const failures = Number(raw ?? 0) || 0;
+          return { open: failures >= CIRCUIT_BREAKER_THRESHOLD, failures };
+        } catch {
+          return { open: false, failures: 0 };
+        }
+      },
+      async record(channel, ok) {
+        try {
+          if (ok) {
+            // A success CLOSES the circuit — consecutive means consecutive.
+            await redis.del(circuitKey(channel));
+            return { open: false, failures: 0 };
+          }
+          const failures = await redis.incr(circuitKey(channel));
+          await redis.expire(circuitKey(channel), CIRCUIT_RETEST_WINDOW_S);
+          const open = failures >= CIRCUIT_BREAKER_THRESHOLD;
+          if (open) logger.warn("postiz_circuit_open", { channel, failures });
+          return { open, failures };
+        } catch {
+          return { open: false, failures: 0 };
+        }
+      },
+      async alarmOnce(channel) {
+        try {
+          return (await redis.set(circuitAlarmKey(channel), "1", "EX", CIRCUIT_ALARM_WINDOW_S, "NX")) === "OK";
+        } catch {
+          return true; // no Redis → prefer a duplicate alarm over silence
+        }
+      },
+    },
   };
 }
 
@@ -1362,6 +1866,67 @@ export async function runMemoryConsolidationMonthly(
     return { started: [], skipped: ["memory-consolidation"], capped: [] };
   }
   return startBrainRuns(sql, ["memory-consolidation"], 24 * 27, "cron:memory-consolidation", opts);
+}
+
+/**
+ * 5.F.2: the exact action that unlocks prompt-tuning in production — named in
+ * every OFF report ("mergeado não é produção": a feature whose dependency is
+ * missing reports itself OFF with the nominal fix, never as ok).
+ */
+export const PROMPT_OVERRIDE_MISSING_ACTION =
+  "founder aplica a migracao 20260831000001_ops_prompt_override (PR feat/prompt-tuning-migration — migracao NUNCA em auto-merge)";
+
+/**
+ * Does the prompt-override store exist in THIS database? Same cheap
+ * to_regclass catalog lookup as memoryLessonStoreReady — any error counts as
+ * "not ready" (the safe direction is OFF, said out loud by the caller).
+ */
+export async function promptOverrideStoreReady(sql: postgres.Sql): Promise<boolean> {
+  try {
+    const rows = await sql<{ t: string | null }[]>`
+      /* override:table-check */
+      SELECT to_regclass('ops.prompt_override')::text AS t`;
+    return rows[0]?.t != null;
+  } catch (err) {
+    logger.warn("prompt_override_table_check_failed", { message: (err as Error).message?.slice(0, 160) });
+    return false;
+  }
+}
+
+/**
+ * prompt-tuner (5.F.2): weekly, Tuesday 06:30 UTC — offset from the Monday
+ * brains/report and the Thursday discovery. Gated on the durable store
+ * existing FIRST: without ops.prompt_override a run would burn an LLM compose
+ * and a founder approval only to fail at the store — so the cron declares the
+ * feature OFF (log + Telegram, with the unlocking action) and starts nothing.
+ * 6-day look-back = once per week, restart-safe. CEO-owned and
+ * approval-gated, but never counted by the marketing valve.
+ */
+export async function runPromptTunerWeekly(
+  sql: postgres.Sql,
+  opts: { hermesToken?: string } = {}
+): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  if (!(await promptOverrideStoreReady(sql))) {
+    logger.warn("prompt_tuner_off_no_table", { action: PROMPT_OVERRIDE_MISSING_ACTION });
+    await sendTelegram(
+      `🟡 PROMPT-TUNING (5.F.2) DESLIGADO: a tabela ops.prompt_override não existe neste banco — nenhum run de prompt-tuner foi iniciado (não gasto LLM num run que morreria no store). Os grafos seguem nos prompts estáticos do código. Ação que destrava: ${PROMPT_OVERRIDE_MISSING_ACTION}.`
+    );
+    return { started: [], skipped: ["prompt-tuner"], capped: [] };
+  }
+  return startBrainRuns(sql, ["prompt-tuner"], 24 * 6, "cron:prompt-tuner", opts);
+}
+
+/**
+ * ab-experiment (5.F.4): o A/B semanal — sexta 06:30 UTC, o único slot de
+ * manhã ainda livre (segunda: brains 06:30 + relatório 07:30; terça: tuner
+ * 06:30; quinta: discovery 06:30). Marketing-owned e gated por approval, então
+ * CONTA na válvula de aprovações diárias (startBrainRuns aplica) — um A/B é
+ * exatamente o tipo de pedido de atenção que a válvula existe para limitar.
+ * 6-day look-back = uma vez por semana, restart-safe. Sem gate de migração:
+ * reusa agent_run/agent_step/agent_outcome que já existem.
+ */
+export async function runAbExperimentWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, ["ab-experiment"], 24 * 6, "cron:ab-experiment");
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */

@@ -99,6 +99,8 @@
 | 5.D.1 | Loop discovery → spec → build → review (discovery hoje só reporta) | L |
 | 5.D.2 | ~~Postmortem AUTOMÁTICO~~ 🟢 feito (#532): grafo diário 07:00 detecta assinaturas por SQL (3+ steps falhados/starved/timeouts em massa), rascunha no formato da casa, gate no Telegram; dia quieto = silêncio auditável | M |
 | 5.D.3 | Anti-patterns alimentados por incidentes automaticamente (12 entradas manuais em #521) | S–M |
+| 5.D.5 | ~~Apertar limiar~~ 🟢 feito (#539): assinatura 4 `approved-content-lost`, n=1, com a regressão de sábado como teste | S |
+| 5.D.6 | ~~Resiliência a pulo de cron~~ 🟢 feito (#539): absence-watch re-dispara o autopublish, com trava anti-dupla-publicação | S |
 | 5.D.4 | Gate de deploy (E2E required + smoke pós-deploy) | M |
 
 ### 5.E Governança/Orquestração
@@ -114,12 +116,12 @@
 | # | O que | Esf. | O gap exato |
 |---|---|---|---|
 | 5.F.1 | ~~Consolidação de memória~~ 🟢 código mergeado (#530); **DESLIGADA até o founder mergear+aplicar a migração #531** (`ops.memory_lesson`) | M | fechado no código |
-| 5.F.2 | **Prompt-tuning gated**: os prompts das esferas são ESTÁTICOS no código; melhorá-los exige PR humano. Caminho: overrides de prompt em banco, propostos por um grafo "tuner" que lê os vereditos, **aprovados pelo founder**, com rollback | L | o verdict grava e ninguém age |
+| 5.F.2 | ~~Prompt-tuning gated~~ 🟢 código mergeado (#536, 31 testes): tuner semanal (3ª 06h30) propõe ≤1 mudança com evidência, allowlist dura (nunca approval/publish/self), rollback por linha nova; **OFF até o founder mergear+aplicar a migração #537** (`ops.prompt_override`) | L | fechado no código |
 | 5.F.3 | ~~Anti-patterns → críticos~~ 🟢 feito (#525): `[__lessons__]` (CONTENT_LESSONS) injetado nos nós de debate/crítica dos grafos de marketing | S–M | fechado |
-| 5.F.4 | **Experimentos contínuos**: 1 experimento/semana (CDO) → rotina de A/B por ângulo/canal com o lift decidindo o vencedor | M | aprendizado por tentativa é pontual |
-| 5.F.5 | **Cadência auto-ajustada**: caps por canal (#520) fixos → derivados do lift colhido (que horário/frequência rende mais) | M | a válvula é estática |
-| 5.F.6 | **Auto-cura ampliada**: retry budget por node + circuit breaker por canal Postiz (hoje: crash-recovery 2h, starved reconcile, orphans) | M | falha repetida do mesmo node vira loop de custo |
-| 5.F.7 | **Postmortem→código**: quando o postmortem automático (5.D.2) existir, ligar ao 5.F.3 — incidente → anti-pattern → contexto dos agentes, sem humano no meio | M | fecha o ciclo institucional |
+| 5.F.4 | ~~Experimentos contínuos~~ 🟢 código em PR (feat/learning-loop, 13 testes): grafo `ab-experiment` semanal (6ª 06h30) — duas variantes/UM eixo declarado, mesmo canal, UMA aprovação combinada (rejeição = cancela o par, nunca variante solitária), válvula respeitada (2ª variante adia; janela deslocada registrada), veredito por CÓDIGO grava vencedor em `agent_outcome` + linha `ab-winner: axis=… variant=… lift=…` que 5.F.1/5.F.2 já leem; liga no deploy do worker, sem env/migração | M | fechado no código |
+| 5.F.5 | ~~Cadência auto-ajustada~~ 🟢 código em PR (feat/learning-loop, 10 testes): weekly-report v2 ganha seção de cadência 100% SQL/código (posts/dia vs média por post, 30d, amostra mínima 10) colada VERBATIM no relatório de 2ª; founder aplica via env `CHANNEL_DAILY_CAP_<CANAL>` — **cap nunca muda sozinho (por desenho)**; liga no deploy do worker | M | fechado no código |
+| 5.F.6 | ~~Auto-cura ampliada~~ 🟢 código em PR (#540, 18 testes): retry budget 2/node (aprovação/store NUNCA), publish ambíguo pergunta ao founder (silêncio nunca reposta), circuit breaker 3-falhas/canal, alarme 1×/6h; liga no deploy do worker, sem env/migração | M | fechado no código |
+| 5.F.7 | ~~Postmortem→código~~ 🟢 código mergeado (#542, 20 testes): aprovar o rascunho do postmortem grava as lições propostas (verbatim, extração por regex) em ops.memory_lesson → watchdog/weekly-report as leem; críticos de marketing seguem com a memória mensal (domínios separados); anti-patterns.md segue 100% humano; perna do store OFF até a migração #531 | M | **BLOCO 5.F INTEIRO EM CÓDIGO 31/08** |
 
 ## BLOCO 6 — INFRA, QUALIDADE, SEGURANÇA
 
@@ -164,6 +166,7 @@
 
 ## APÊNDICE — FEITO E PROVADO (não volta à fila)
 
+**31/08:** **ANEL DE AUTONOMIA INTEIRO EM CÓDIGO NUM DIA** — #536 tuner gated · #539 incidente n=1 + auto-retry blog · #540 auto-cura (retry budget + circuit breaker) · #541 A/B contínuo + cadência medida · #542 incidente→memória · tudo com 2.368 testes verdes; faltam só as migrações #531/#537 (founder) para memória e tuner ligarem. Também: 1º weekly-report entregue 07h50 · cron do blog pulado pelo GitHub, detectado e re-disparado (post citável no ar 13h45) · fim de semana 28-30 100% autônomo.
 **27/08:** **BLOCO 0 FECHADO** — funil $49 provado com compra real (lead→pago→entregue no mesmo minuto→e-mail→2 nurtures) · webhook SmartLead global provado fim-a-fim (Test→CRM 1s) · bug de atribuição achado no teste de fogo e corrigido no dia (#527, first-touch sessionStorage) · regra nova: 1º cold email SEM link · anel 2 entregue (#524 custo/tenant, #525 weekly-report+lessons, #526 DPIA/ROPA) · drill do runbook passou ao vivo · 25+ cliques de aprovação acumulados.
 **24/08:** blog passou NO CRON (1ª vez; #518) · fim de semana com 0 falhas e 7 publicações · X voltou (#511 provado sáb+seg) · experimento do CDO publicado (ciclo sonho→spawn→aprovação→post) · vigia calibrado (#519, estacionado≠parado) · **válvula de cadência (#520, provada ao vivo: vídeo adiado às 14:10 com 2/2 no LinkedIn)** · postmortems+12 anti-patterns+runbook (#521) · 17 cliques de botão · raio-X completo da VPS (endpoints, mídia no Postiz, video-job vivo com guard ok).
 **22/08:** fallback claude→codex→kimi (#505, provado) · 500s credits/prime (#506, PREPARE) · webhook auto-registro + status (#504/#508) · lembretes por bot (#509/#510) · CTAs+/resources (#512) · atribuição UTM (#513) · métricas de harvest + vigia externo (#514) · report-only IG/TikTok/YT (#516) · operator key viva · price $49 setado · bot próprio de aprovações (7 primeiros cliques).

@@ -1,0 +1,22 @@
+# Ozvor
+> Ozvor is an AI-search visibility (GEO) platform for small businesses. People ask ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews who to hire; Ozvor checks whether AI names your business, then fixes it. Free 60-second test; paid audits, monitoring and done-for-you content.
+
+## Main pages
+- [Home](https://ozvor.com/): What Ozvor does and the free AI Invisibility Test
+- [Free test](https://ozvor.com/test): Check in 60 seconds whether AI engines name your business
+- [How it works](https://ozvor.com/how-it-works): The audit, fix and monitoring loop, step by step
+- [AI Audit Stack ($49)](https://ozvor.com/ai-audit): Which AI tools fit your business, delivered by email
+- [Get-Cited Kit ($29)](https://ozvor.com/kit): Audit, fixes, drafts and a citation tracker
+- [Pricing](https://ozvor.com/pricing): Growth and Agency plans
+- [Research](https://ozvor.com/research): The shift to AI search, in numbers
+- [How we measure](https://ozvor.com/how-we-measure): Methodology behind the visibility score
+- [Blog](https://ozvor.com/blog): GEO guides and small-business stories
+- [Compare](https://ozvor.com/compare): Ozvor vs. alternatives
+- [FAQ](https://ozvor.com/faq): Common questions
+- [OrganicPosts](https://ozvor.com/organicposts): Done-for-you GEO consultancy
+
+## Key facts
+- Ozvor measures visibility across five AI engines: ChatGPT, Claude, Perplexity, Gemini and Google AI Overviews.
+- The free test takes about 60 seconds and produces a visibility score.
+- Paid plans include weekly monitoring and competitor benchmarking.
+- Company site: https://ozvor.com · Contact: see https://ozvor.com/support
