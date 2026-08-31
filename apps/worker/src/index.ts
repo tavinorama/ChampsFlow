@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -362,6 +362,28 @@ async function registerIncidentPostmortemSchedule(): Promise<void> {
   logger.info("incident_postmortem_schedule_registered", { cron: INCIDENT_POSTMORTEM_CRON });
 }
 
+// memory-consolidation (5.F.1): monthly, 1st of month 06:30 UTC — the same
+// morning slot as the brains, once a month. The starter itself gates on the
+// ops.memory_lesson table existing (feature OFF, out loud, until the founder
+// applies the migration); the 10-min graph-tick advances the run like any
+// other, and the founder's Telegram approval decides what becomes memory.
+const memoryConsolidationWorker = new Worker(
+  "memory-consolidation",
+  async () => runMemoryConsolidationMonthly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const memoryConsolidationQueue = new Queue("memory-consolidation", { connection });
+const MEMORY_CONSOLIDATION_CRON = process.env["MEMORY_CONSOLIDATION_CRON"] ?? "30 6 1 * *";
+
+async function registerMemoryConsolidationSchedule(): Promise<void> {
+  await memoryConsolidationQueue.add(
+    "memory-consolidation",
+    {},
+    { jobId: "memory-consolidation-repeat", repeat: { pattern: MEMORY_CONSOLIDATION_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("memory_consolidation_schedule_registered", { cron: MEMORY_CONSOLIDATION_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -543,6 +565,7 @@ void platformKeysReady.finally(() => {
   void brainWeeklyWorker.run();
   void weeklyReportWorker.run();
   void incidentPostmortemWorker.run();
+  void memoryConsolidationWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -563,6 +586,9 @@ void platformKeysReady.finally(() => {
   });
   void registerWeeklyReportSchedule().catch((err: Error) => {
     logger.error("weekly_report_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerMemoryConsolidationSchedule().catch((err: Error) => {
+    logger.error("memory_consolidation_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -827,6 +853,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await sphereMoreQueue.close();
     await weeklyReportWorker.close();
     await weeklyReportQueue.close();
+    await memoryConsolidationWorker.close();
+    await memoryConsolidationQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
   } catch (err) {
