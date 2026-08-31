@@ -52,7 +52,8 @@ export type NodeKind =
   | "verdict"
   | "snapshot"
   | "report"
-  | "spawn";
+  | "spawn"
+  | "store";
 
 export interface GraphNode {
   /** Node slug, unique within the graph — becomes ops.agent_step.node. */
@@ -203,6 +204,11 @@ export function validateGraph(def: GraphDefinition): GraphValidationResult {
     if (n.kind === "report" && n.dependsOn.length === 0) {
       errors.push(`report node '${n.id}' has no upstream to deliver — a root report reports nothing`);
     }
+    // A store must name WHERE it persists — the runner routes on it, and an
+    // unnamed target is a write that lands nowhere (silent-empty memory).
+    if (n.kind === "store" && typeof n.config?.["target"] !== "string") {
+      errors.push(`store node '${n.id}' must declare config.target`);
+    }
     // A spawn must name what it launches; an empty spawn is a no-op that looks
     // like an action — the exact kind of silent nothing this system forbids.
     if (n.kind === "spawn") {
@@ -226,6 +232,24 @@ export function validateGraph(def: GraphDefinition): GraphValidationResult {
     if (!hasApproval) {
       errors.push(
         `spawn node '${n.id}' has no approval node upstream — nothing spawns an experiment without a human (hard rule)`
+      );
+    }
+  }
+
+  // HARD RULE (5.F.1): nothing self-activates as durable memory without a
+  // human. A store node persists text that will steer every future critic —
+  // it is gated by an approval upstream exactly like publish and spawn.
+  // Enforced at definition time: a graph that would write its own memory
+  // without the founder's yes cannot exist.
+  for (const n of def.nodes) {
+    if (n.kind !== "store") continue;
+    const ancestors = upstreamOf(def, n.id);
+    const hasApproval = [...ancestors].some(
+      (id) => def.nodes.find((x) => x.id === id)?.kind === "approval"
+    );
+    if (!hasApproval) {
+      errors.push(
+        `store node '${n.id}' has no approval node upstream — nothing self-activates as durable memory without a human (hard rule)`
       );
     }
   }
@@ -775,17 +799,135 @@ export const SPHERE_YOUTUBE_GRAPH: GraphDefinition = shortVideoSphere({
 
 export const WEEKLY_REPORT_GRAPH: GraphDefinition = {
   slug: "weekly-report",
-  version: 1,
+  // v2 (5.F.5): +nó 'cadence' — a válvula de cadência ganha a camada MEDIDA.
+  version: 2,
   vpOwner: "ceo",
   description:
-    "Relatório semanal ao founder (segunda 07:30 UTC), read-only: snapshot ops 7d ‖ snapshot outcomes 7d → compose (PT, denso, honesto — SÓ o que está nos snapshots, nunca inventa número: publicações por canal, falhas, custo total e por tenant se houver, aprovações, lift/vereditos, a semana que vem) → report no Telegram. Sem publish, sem spend, sem approval.",
+    "Relatório semanal ao founder (segunda 07:30 UTC), read-only: snapshot ops 7d ‖ snapshot outcomes 7d → compose (PT, denso, honesto — SÓ o que está nos snapshots, nunca inventa número: publicações por canal, falhas, custo total e por tenant se houver, aprovações, lift/vereditos, a semana que vem) → report no Telegram. v2 (5.F.5): + snapshot 'cadence' 30d — recomendação de cap por canal calculada 100% por código (posts/dia vs média por post), anexada VERBATIM ao report (o LLM nunca toca nesses números); o founder age via env CHANNEL_DAILY_CAP_<CANAL>, nada muda sozinho. Sem publish, sem spend, sem approval.",
   nodes: [
     // Duas leituras paralelas da MESMA semana: a operação (runs, falhas,
     // custo) e o resultado (lift por métrica/canal + rejeições do founder).
     { id: "ops-week", kind: "snapshot", dependsOn: [], config: { source: "ops", days: 7 } },
     { id: "outcomes-week", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 7 } },
+    // 5.F.5 — a válvula medida. 30d de janela (7d não dá amostra honesta para
+    // estatística de cadência; a guarda de amostra mínima vive no código do
+    // snapshot). O texto que sai daqui É a recomendação final, gerada por
+    // SQL/código; por isso o nó alimenta o REPORT diretamente (verbatim),
+    // nunca o compose — o modelo não pode reescrever número de cadência.
+    { id: "cadence", kind: "snapshot", dependsOn: [], config: { source: "cadence", days: 30 } },
     { id: "compose", kind: "task", dependsOn: ["ops-week", "outcomes-week"], config: { prompt: "weekly-report-compose" } },
-    { id: "report", kind: "report", dependsOn: ["compose"], config: { title: "🗞️ Semana da Ozvor — o relatório de segunda" } },
+    // O report junta compose + cadence na ordem de dependsOn: o relatório do
+    // LLM primeiro, a seção de cadência (código puro) colada embaixo.
+    { id: "report", kind: "report", dependsOn: ["compose", "cadence"], config: { title: "🗞️ Semana da Ozvor — o relatório de segunda" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// memory-consolidation (5.F.1): a memória das esferas deixa de ser janela
+// deslizante. Hoje o CONTENT_LESSONS é uma régua estática de 7 linhas no
+// código e o contexto por-run esquece tudo a cada mês. Este grafo mensal
+// (dia 1, 06:30 UTC) destila os últimos ~30 dias de RESULTADOS REAIS —
+// publicações por canal, métricas colhidas, rejeições do founder (com o
+// motivo literal), aprovações expiradas e vereditos — em lições duráveis por
+// canal, no formato de régua de veto que os críticos já usam.
+//
+// A aggregação é SQL/código (snapshot source 'memory'); o LLM só ESCREVE as
+// lições a partir dos fatos agregados — nunca adivinha schema nem inventa
+// número (a regra do "vigia também mente"). As lições passam pelo gate padrão
+// do Telegram (timeout 96h = rejeição) e SÓ as aprovadas viram memória ativa:
+// o nó 'store' (validateGraph exige approval upstream, como publish/spawn)
+// grava em ops.memory_lesson, e o runner injeta a última versão aprovada como
+// [__memory__] nos críticos de marketing, ao lado de [__lessons__].
+//
+// CEO-owned de propósito: memória institucional é preocupação da organização,
+// não de um canal — e assim o grafo nunca conta na válvula de aprovações de
+// marketing nem recebe as injeções de conteúdo ([__day__] etc.) no próprio
+// compose, que deve ver SÓ os fatos agregados.
+// ---------------------------------------------------------------------------
+
+export const MEMORY_CONSOLIDATION_GRAPH: GraphDefinition = {
+  slug: "memory-consolidation",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Consolidação mensal de memória (5.F.1): snapshot dos fatos reais de 30d (publicações por canal, métricas colhidas, rejeições do founder com motivo, aprovações expiradas, vereditos) → compose (PT, máx 12 lições duráveis por canal, cada uma citando a evidência — SÓ fatos do snapshot, nunca inventa) → aprovação do founder no Telegram (96h; silêncio = rejeição, nada ativa) → store em ops.memory_lesson (só o aprovado vira [__memory__] dos críticos) → report. Nada se auto-ativa.",
+  nodes: [
+    // Aggregation is SQL/code — the runner reads the record, the LLM only writes.
+    { id: "history", kind: "snapshot", dependsOn: [], config: { source: "memory", days: 30 } },
+    { id: "compose", kind: "task", dependsOn: ["history"], config: { prompt: "memory-consolidation-compose" } },
+    // Founder gate: only APPROVED lessons become active memory. Timeout 96h =
+    // rejection-by-silence (the runner's default, declared here for clarity).
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["compose"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = estas lições viram a memória ATIVA ([__memory__]) dos críticos de marketing até a próxima consolidação. Rejeitar ou silêncio (96h) = nada muda.",
+      },
+    },
+    // Durable write — gated by the approval above (validateGraph hard rule).
+    { id: "store", kind: "store", dependsOn: ["approval"], config: { target: "memory-lessons" } },
+    { id: "report", kind: "report", dependsOn: ["store"], config: { title: "🧠 MEMÓRIA DO MÊS — lições consolidadas e ATIVADAS" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// prompt-tuner (5.F.2): os prompts das esferas eram CÓDIGO ESTÁTICO — melhorar
+// um prompt exigia PR humano, então os vereditos e as rejeições registrados
+// toda semana não mudavam nada no que os grafos escrevem. Este grafo semanal
+// (terça 06:30 UTC — fora da segunda dos brains/relatório e da quinta do
+// discovery) fecha o loop, founder-gated:
+//
+//  - evidence (snapshot source 'tuning'): 21d de vereditos, rejeições do
+//    founder (motivo literal) e timeouts de aprovação, agregados por SQL —
+//    o modelo nunca conta ("vigia também mente");
+//  - compose (via cadeia de fallback, nunca engine pinado): propõe NO MÁXIMO
+//    UMA mudança de prompt, restrita à allowlist TUNABLE_PROMPT_KEYS
+//    (drafts/críticos de marketing — nunca approval/publish/store, nunca os
+//    prompts do próprio tuner: sem auto-modificação);
+//  - approval (Telegram, 96h; silêncio = rejeição): nada muda um prompt sem o
+//    sim explícito do founder;
+//  - store (target 'prompt-override'): o MESMO kind do 5.F.1, roteado pelo
+//    target — grava em ops.prompt_override (append-only, linha mais nova por
+//    prompt_key vence; body vazio = reverter ao estático). A allowlist é
+//    re-checada NO STORE: proposta fora dela falha ali, alto e claro;
+//  - report: o founder vê o que ficou decidido.
+//
+// CEO-owned de propósito (como memory-consolidation): afinar prompts é
+// preocupação da organização, não de um canal — fora da válvula de marketing
+// e sem as injeções de conteúdo ([__day__]/[__signals__]/[__lessons__]) no
+// próprio compose, que deve ver SÓ os fatos agregados.
+// ---------------------------------------------------------------------------
+
+export const PROMPT_TUNER_GRAPH: GraphDefinition = {
+  slug: "prompt-tuner",
+  version: 1,
+  vpOwner: "ceo",
+  description:
+    "Afinador semanal de prompts (5.F.2): snapshot dos fatos de 21d (vereditos por graph, rejeições do founder com motivo literal, timeouts de aprovação, overrides já ativos) → compose (propõe NO MÁXIMO UMA mudança de prompt, só na allowlist de drafts/críticos de marketing — nunca approval/publish/store nem o próprio tuner) → aprovação do founder no Telegram (96h; silêncio = rejeição, nada muda) → store em ops.prompt_override (append-only; a mais nova por chave vence; body vazio = volta ao prompt estático; allowlist re-checada no store) → report. Nada se auto-ativa.",
+  nodes: [
+    // Aggregation is SQL/code — the runner reads the record, the LLM only writes.
+    { id: "evidence", kind: "snapshot", dependsOn: [], config: { source: "tuning", days: 21 } },
+    { id: "compose", kind: "task", dependsOn: ["evidence"], config: { prompt: "prompt-tuner-compose" } },
+    // Founder gate: only an APPROVED proposal may become an active override.
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["compose"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = esta proposta vira o prompt ATIVO (override em ops.prompt_override) na próxima execução dos grafos. Rejeitar ou silêncio (96h) = nenhum prompt muda. Rollback: aprovar depois uma linha nova com o body anterior, ou body vazio para voltar ao prompt do código.",
+      },
+    },
+    // Durable write — gated by the approval above (validateGraph hard rule);
+    // the same 'store' kind as 5.F.1, routed by config.target.
+    { id: "store", kind: "store", dependsOn: ["approval"], config: { target: "prompt-override" } },
+    { id: "report", kind: "report", dependsOn: ["store"], config: { title: "🔧 PROMPT-TUNER — decisão da semana sobre prompts" } },
   ],
 };
 
@@ -804,5 +946,189 @@ export const SPHERE_PPC_GRAPH: GraphDefinition = {
     { id: "critic", kind: "debate", dependsOn: ["ad-google", "ad-meta", "ad-linkedin"], config: { prompt: "ppc-critic" } },
     { id: "finalize", kind: "synthesis", dependsOn: ["ad-google", "ad-meta", "ad-linkedin", "critic"], config: { prompt: "ppc-finalize" } },
     { id: "report", kind: "report", dependsOn: ["finalize"], config: { title: "📣 PPC — 3 anúncios prontos, sem gasto (ativar é decisão do founder)" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// incident-postmortem (5.D.2): os 3 postmortems da semana de 18-22/08 foram
+// escritos à mão, depois que o founder achou o buraco. Este grafo fecha a
+// metade AUTOMATIZÁVEL do ritual: detectar → juntar evidência → redigir o
+// RASCUNHO → gate do founder. O commit final em docs/learning/ segue humano —
+// a máquina propõe o postmortem, nunca o registra sozinha.
+//
+// A DETECÇÃO NÃO ESTÁ NESTE GRAFO — e isso é a regra "o vigia também mente"
+// aplicada duas vezes: (1) quem decide "houve incidente?" é SQL puro no cron
+// diário (runIncidentPostmortemDaily, graph-tick.ts), nunca um LLM; (2) num
+// dia quieto o cron NEM INICIA este run — grava um run 'succeeded' com um
+// step '__quiet__' ("sem incidente nas últimas 24h") e zero Telegram. Um 🟢
+// diário treinaria o founder a ignorar o canal (o daily-watchdog já reporta
+// todo dia; este grafo só fala quando há sangue no registro).
+//
+// Quando o scan ACHA assinaturas (cluster de steps falhados >=3 no mesmo
+// graph/24h, qualquer reconciliação starved/órfã, timeouts de aprovação em
+// massa), o run nasce e:
+//  - evidence (snapshot source 'incidents'): o runner re-agrega os FATOS por
+//    SQL — contagens, primeiro/último timestamp, graphs afetados, resumos
+//    literais de erro com tamanho capado. Todo número vem de query;
+//  - compose (LLM via cadeia de fallback — nunca engine pinado): redige o
+//    rascunho no formato exato de docs/learning/postmortems/*.md, em PT,
+//    causa raiz marcada como HIPÓTESE, e declarando-se RASCUNHO DE MÁQUINA;
+//  - approval (Telegram, 96h; silêncio = rejeição, padrão da casa): nada é
+//    entregue como postmortem sem o sim do founder;
+//  - report: o rascunho APROVADO chega inteiro ao founder com a instrução do
+//    passo humano (colar em docs/learning/postmortems/ + anti-patterns.md).
+//    (Na v1 não havia store durável — o ledger ops.memory_lesson do 5.F.1
+//    ainda não estava na main; ver v2 abaixo.)
+//
+// v2 (5.F.7, 31/08 — postmortem→código): a seção "## Licoes propostas" do
+// rascunho aprovado morria no report — um humano precisava copiá-la para
+// docs/learning/anti-patterns.md, e os críticos dos grafos nunca leem esse
+// arquivo (leem [__memory__]/[__lessons__]). A cauda store-lessons fecha o
+// loop SEM segundo gate e SEM commit de máquina em docs/:
+//  - a aprovação do RASCUNHO é a aprovação das lições — são linhas verbatim
+//    que o founder leu na caixa do Telegram;
+//  - o runner EXTRAI a seção por CÓDIGO (regex no header + formato pinado
+//    'NUNCA <padrao>. Em vez disso: <pratica>' — nunca um LLM) e grava UMA
+//    linha em ops.memory_lesson com o prefixo LICOES DE INCIDENTE, visível ao
+//    daily-watchdog (snapshot 'ops') — os críticos de marketing NÃO a veem
+//    ([__memory__] segue sendo só a consolidação mensal do 5.F.1);
+//  - seção ausente/fora do formato = NADA gravado, aviso alto (nunca palpite);
+//  - tabela ausente (migração 5.F.1 pendente) = store SKIP com a ação nominal
+//    que destrava; o postmortem em si (report) sai exatamente como antes.
+//  - docs/learning/ segue 100% humano: o report ainda nomeia o passo manual.
+//
+// CEO-owned: incidente é preocupação da organização, não de um canal — e
+// assim nunca conta na válvula de aprovações de marketing nem recebe as
+// injeções de conteúdo ([__day__]/[__signals__]/[__lessons__]).
+// ---------------------------------------------------------------------------
+
+export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
+  slug: "incident-postmortem",
+  version: 2,
+  vpOwner: "ceo",
+  description:
+    "Postmortem automático (5.D.2 + 5.F.7): SÓ roda quando o scan SQL diário (07:00 UTC) detecta assinatura de incidente nas últimas 24h (cluster >=3 steps falhados no mesmo graph, reconciliação starved/órfã, timeouts de aprovação em massa) — dia quieto não inicia run nem toca o Telegram. evidence (snapshot 'incidents': fatos re-agregados por SQL — contagens, timestamps, graphs, erros literais capados) → compose (rascunho PT no formato da casa, causa raiz como HIPÓTESE, declarado RASCUNHO DE MÁQUINA) → aprovação do founder (96h; silêncio = rejeição, nada vira postmortem) → store-lessons (5.F.7: extração POR CÓDIGO da seção '## Licoes propostas' do rascunho aprovado → uma linha em ops.memory_lesson com prefixo LICOES DE INCIDENTE, lida pelo daily-watchdog; seção ausente/malformada = nada gravado; tabela ausente = skip com ação nominal) ‖ report com o rascunho aprovado INTEIRO + o passo humano (commit manual em docs/learning/ — segue 100% humano). Sem publish, sem spawn: a máquina propõe, o humano registra nos docs.",
+  nodes: [
+    // Every number the draft may use is aggregated HERE, by the runner's SQL —
+    // the compose step downstream is forbidden to invent beyond this block.
+    { id: "evidence", kind: "snapshot", dependsOn: [], config: { source: "incidents", days: 1 } },
+    { id: "compose", kind: "task", dependsOn: ["evidence"], config: { prompt: "postmortem-compose" } },
+    // Standard waiting gate: timeout = rejection-by-silence (runner default is
+    // 96h; declared here so the contract is visible in the definition).
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["compose"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = aceito este RASCUNHO de postmortem; as linhas de '## Licoes propostas' (que estão neste texto, verbatim) viram memória de incidentes ativa (ops.memory_lesson, lida pelo watchdog) — e o commit em docs/learning/ (postmortem + anti-pattern) continua sendo meu, manual. Rejeitar ou silêncio (96h) = rascunho descartado, nada é registrado.",
+      },
+    },
+    // 5.F.7: the approved draft's "## Licoes propostas" section becomes ONE
+    // durable ops.memory_lesson row (incident prefix, read by the watchdog's
+    // ops snapshot — NOT by [__memory__], which stays the monthly 5.F.1 batch).
+    // Extraction is CODE (regex on the pinned format), never an LLM; empty or
+    // malformed section stores NOTHING. Gated by the approval above
+    // (validateGraph hard rule) — the founder's yes on the draft IS the yes on
+    // its lessons, verbatim lines he read. The report does NOT depend on this
+    // node: a missing table (5.F.1 migration pending) skips the store and the
+    // postmortem still reaches the founder exactly as in v1.
+    { id: "store-lessons", kind: "store", dependsOn: ["approval"], config: { target: "incident-lessons" } },
+    // The report also depends on compose: an approval step carries no
+    // artifact, so the draft the founder approved is what gets delivered.
+    {
+      id: "report",
+      kind: "report",
+      dependsOn: ["approval", "compose"],
+      config: { title: "📋 POSTMORTEM APROVADO (rascunho de máquina) — commit manual em docs/learning/postmortems/" },
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// ab-experiment (5.F.4): o aprendizado por tentativa deixa de ser pontual.
+// O content-experiment do CDO é um tiro único (uma variante, quando o founder
+// aprova a aposta da semana). Este grafo SEMANAL (sexta 06:30 UTC) roda um A/B
+// DE VERDADE: duas variantes da MESMA ideia de conteúdo, diferindo em UM eixo
+// declarado (angle | hook | format), publicadas no MESMO canal (LinkedIn — o
+// único canal com métrica colhida e publish de texto funcionando).
+//
+// Decisões que carregam as regras da casa:
+//  - UMA aprovação COMBINADA (o founder vê o eixo + as duas variantes íntegras
+//    e decide o PAR): é o que a maquinaria existente suporta com menos
+//    superfície nova, e elimina por construção o risco de "variante solitária"
+//    — rejeitar qualquer variante rejeita o experimento inteiro. A aprovação é
+//    optional + cancelNote: a rejeição degrada HONESTAMENTE para o aviso
+//    "experimento cancelado — variante rejeitada" (nada publica, o run fecha
+//    sem fingir A/B).
+//  - Cada publish declara config.contentNode: o que publica é EXATAMENTE o
+//    artefato do draft que o founder viu na caixa de aprovação ("o que se
+//    valida é exatamente o que se envia").
+//  - A VÁLVULA DE CADÊNCIA MANDA: se o cap do canal bloquear a 2ª variante no
+//    dia, ela ESTACIONA (waiting) e sai depois das 00:00 UTC — nunca fura o
+//    cap, nunca descarta; o veredito registra que a janela de comparação se
+//    deslocou.
+//  - O VEREDITO É CÓDIGO (compare:'ab'): lê os DOIS artefatos de harvest
+//    (janela de cada variante via harvest config.sinceNode = seu publish),
+//    compara a MESMA métrica, grava o vencedor em ops.agent_outcome
+//    (valueBefore=perdedor, valueAfter=vencedor) e escreve no summary a linha
+//    machine-findable `ab-winner: axis=<eixo> variant=<A|B> lift=+<n>%` — o
+//    CONTRATO que a consolidação mensal (5.F.1, snapshot 'memory' lê summaries
+//    de node='verdict') e o tuner (5.F.2, snapshot 'tuning' idem) consomem.
+//    Vencedores acumulam como aprendizado durável SEM store novo.
+//  - Empate numérico ou fonte muda = SEM vencedor, dito em voz alta — nada de
+//    estatística inventada.
+// ---------------------------------------------------------------------------
+
+export const AB_EXPERIMENT_GRAPH: GraphDefinition = {
+  slug: "ab-experiment",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "A/B semanal (5.F.4): memória do canal → brief que declara UM eixo (angle|hook|format) e as duas variantes → draft A ‖ draft B (mesma ideia, só o eixo muda) → critic (um eixo só, compliance, freshness) → UMA aprovação combinada (o founder vê eixo + as duas variantes; rejeitar = cancela o experimento inteiro — nunca publica variante solitária) → publish A + publish B no MESMO canal (LinkedIn; a válvula de cadência pode adiar a 2ª para o dia seguinte — janela deslocada é registrada, o cap nunca é furado) → wait 48h por variante → harvest da MESMA métrica por janela de variante → veredito A/B por CÓDIGO: vencedor + lift em ops.agent_outcome e a linha `ab-winner: axis=... variant=... lift=...` no summary (contrato lido pela consolidação 5.F.1 e pelo tuner 5.F.2).",
+  nodes: [
+    // Perception before creation — o registro real do canal do experimento.
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedinpage_" } },
+    // O brief declara o EIXO (linha 'EIXO: <angle|hook|format>') e as duas
+    // variantes — o veredito extrai o eixo daqui por regex (código, não LLM).
+    { id: "brief", kind: "task", dependsOn: ["memory"], config: { prompt: "ab-brief" } },
+    { id: "draft-a", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "A" } },
+    { id: "draft-b", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "B" } },
+    // O crítico valida o DESENHO do experimento: um eixo só, mesmo canal,
+    // compliance — com veto.
+    { id: "critic", kind: "debate", dependsOn: ["brief", "draft-a", "draft-b", "memory"], config: { prompt: "ab-critic" } },
+    // UMA aprovação combinada: a caixa mostra o brief (eixo), as DUAS
+    // variantes na íntegra e o parecer do crítico (aprovação multi-dep junta
+    // os artefatos rotulados). optional + cancelNote = rejeição/silêncio vira
+    // cancelamento honesto, nunca run "FALHOU" nem variante solitária.
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["brief", "draft-a", "draft-b", "critic"],
+      config: {
+        channel: "telegram",
+        optional: true,
+        timeoutHours: 96,
+        question:
+          "Aprovar = publicar AS DUAS variantes acima no LinkedIn como A/B (a válvula de cadência pode adiar a 2ª para amanhã). Rejeitar ou silêncio (96h) = experimento inteiro cancelado — nunca publicamos variante solitária.",
+        cancelNote:
+          "🧪 EXPERIMENTO CANCELADO — variante rejeitada (ou 96h sem decisão). NENHUMA variante foi publicada: um A/B com uma variante só não é A/B, e variante solitária nunca sai como se fosse experimento.",
+      },
+    },
+    // Duas publicações, MESMO canal. contentNode aponta o draft exato que o
+    // founder viu — a aprovação combinada gate as duas de uma vez.
+    { id: "publish-a", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-a" } },
+    { id: "publish-b", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-b" } },
+    { id: "wait-a", kind: "wait", dependsOn: ["publish-a"], config: { hours: 48 } },
+    { id: "wait-b", kind: "wait", dependsOn: ["publish-b"], config: { hours: 48 } },
+    // A MESMA métrica para as duas variantes; a janela de cada harvest começa
+    // no PUBLISH da própria variante (sinceNode) — se a válvula adiou a B, a
+    // janela dela desloca junto e o veredito diz isso.
+    { id: "harvest-a", kind: "harvest", dependsOn: ["wait-a"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-a" } },
+    { id: "harvest-b", kind: "harvest", dependsOn: ["wait-b"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-b" } },
+    // Veredito A/B — matemática em código, o contrato ab-winner no summary.
+    { id: "verdict", kind: "verdict", dependsOn: ["harvest-a", "harvest-b"], config: { compare: "ab", axisFrom: "brief" } },
   ],
 };

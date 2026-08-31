@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -338,6 +338,96 @@ async function registerWeeklyReportSchedule(): Promise<void> {
   logger.info("weekly_report_schedule_registered", { cron: WEEKLY_REPORT_CRON });
 }
 
+// incident-postmortem (5.D.2): o scan diário de incidentes — 07:00 UTC,
+// depois dos brains das 06:30, antes do relatório de segunda das 07:30. O
+// cron decide POR SQL se as últimas 24h têm assinatura de incidente: dia
+// quieto grava só um registro auditável (zero Telegram, zero run do grafo);
+// dia com incidente inicia o run incident-postmortem, que o tick de 10 min
+// executa (evidence → compose → gate do founder → report). O commit do
+// postmortem em docs/learning/ segue humano.
+const incidentPostmortemWorker = new Worker(
+  "incident-postmortem",
+  async () => runIncidentPostmortemDaily(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const incidentPostmortemQueue = new Queue("incident-postmortem", { connection });
+const INCIDENT_POSTMORTEM_CRON = process.env["INCIDENT_POSTMORTEM_CRON"] ?? "0 7 * * *";
+
+async function registerIncidentPostmortemSchedule(): Promise<void> {
+  await incidentPostmortemQueue.add(
+    "incident-postmortem",
+    {},
+    { jobId: "incident-postmortem-repeat", repeat: { pattern: INCIDENT_POSTMORTEM_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("incident_postmortem_schedule_registered", { cron: INCIDENT_POSTMORTEM_CRON });
+}
+
+// memory-consolidation (5.F.1): monthly, 1st of month 06:30 UTC — the same
+// morning slot as the brains, once a month. The starter itself gates on the
+// ops.memory_lesson table existing (feature OFF, out loud, until the founder
+// applies the migration); the 10-min graph-tick advances the run like any
+// other, and the founder's Telegram approval decides what becomes memory.
+const memoryConsolidationWorker = new Worker(
+  "memory-consolidation",
+  async () => runMemoryConsolidationMonthly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const memoryConsolidationQueue = new Queue("memory-consolidation", { connection });
+const MEMORY_CONSOLIDATION_CRON = process.env["MEMORY_CONSOLIDATION_CRON"] ?? "30 6 1 * *";
+
+async function registerMemoryConsolidationSchedule(): Promise<void> {
+  await memoryConsolidationQueue.add(
+    "memory-consolidation",
+    {},
+    { jobId: "memory-consolidation-repeat", repeat: { pattern: MEMORY_CONSOLIDATION_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("memory_consolidation_schedule_registered", { cron: MEMORY_CONSOLIDATION_CRON });
+}
+
+// prompt-tuner (5.F.2): weekly, Tuesday 06:30 UTC — offset from the Monday
+// brains/report (06:30/07:30) and the Thursday discovery. The starter itself
+// gates on the ops.prompt_override table existing (feature OFF, out loud,
+// until the founder applies the migration); the 10-min graph-tick advances
+// the run like any other, and the founder's Telegram approval decides
+// whether any prompt changes at all.
+const promptTunerWorker = new Worker(
+  "prompt-tuner",
+  async () => runPromptTunerWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const promptTunerQueue = new Queue("prompt-tuner", { connection });
+const PROMPT_TUNER_CRON = process.env["PROMPT_TUNER_CRON"] ?? "30 6 * * 2";
+
+async function registerPromptTunerSchedule(): Promise<void> {
+  await promptTunerQueue.add(
+    "prompt-tuner",
+    {},
+    { jobId: "prompt-tuner-repeat", repeat: { pattern: PROMPT_TUNER_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("prompt_tuner_schedule_registered", { cron: PROMPT_TUNER_CRON });
+}
+
+// ab-experiment (5.F.4): o A/B semanal — sexta 06:30 UTC, o slot de manhã que
+// sobrava na semana (segunda brains/relatório, terça tuner, quinta discovery).
+// O cron só cria o run; o tick de 10 min o executa. Marketing + approval →
+// conta na válvula SPHERE_MAX_DAILY_APPROVALS como qualquer célula gated.
+const abExperimentWorker = new Worker(
+  "ab-experiment",
+  async () => runAbExperimentWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const abExperimentQueue = new Queue("ab-experiment", { connection });
+const AB_EXPERIMENT_CRON = process.env["AB_EXPERIMENT_CRON"] ?? "30 6 * * 5";
+
+async function registerAbExperimentSchedule(): Promise<void> {
+  await abExperimentQueue.add(
+    "ab-experiment",
+    {},
+    { jobId: "ab-experiment-repeat", repeat: { pattern: AB_EXPERIMENT_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("ab_experiment_schedule_registered", { cron: AB_EXPERIMENT_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -518,6 +608,10 @@ void platformKeysReady.finally(() => {
   void brainDailyWorker.run();
   void brainWeeklyWorker.run();
   void weeklyReportWorker.run();
+  void incidentPostmortemWorker.run();
+  void memoryConsolidationWorker.run();
+  void promptTunerWorker.run();
+  void abExperimentWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -539,8 +633,20 @@ void platformKeysReady.finally(() => {
   void registerWeeklyReportSchedule().catch((err: Error) => {
     logger.error("weekly_report_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
+  void registerMemoryConsolidationSchedule().catch((err: Error) => {
+    logger.error("memory_consolidation_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerPromptTunerSchedule().catch((err: Error) => {
+    logger.error("prompt_tuner_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerAbExperimentSchedule().catch((err: Error) => {
+    logger.error("ab_experiment_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerIncidentPostmortemSchedule().catch((err: Error) => {
+    logger.error("incident_postmortem_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerSphereMoreSchedules().catch((err: Error) => {
     logger.error("sphere_more_schedules_register_failed", { message: err.message?.slice(0, 200) });
@@ -799,6 +905,10 @@ const shutdown = async (signal: string): Promise<void> => {
     await sphereMoreQueue.close();
     await weeklyReportWorker.close();
     await weeklyReportQueue.close();
+    await memoryConsolidationWorker.close();
+    await memoryConsolidationQueue.close();
+    await abExperimentWorker.close();
+    await abExperimentQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
   } catch (err) {
