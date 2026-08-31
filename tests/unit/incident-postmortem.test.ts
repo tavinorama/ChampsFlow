@@ -210,14 +210,19 @@ describe("incident-postmortem (5.D.2) — o desenho", () => {
     expect(def).toBe(INCIDENT_POSTMORTEM_GRAPH);
     expect(def!.vpOwner).toBe("ceo");
     expect(validateGraph(def!).errors).toEqual([]);
-    expect(def!.nodes.map((n) => n.id)).toEqual(["evidence", "compose", "approval", "report"]);
+    expect(def!.nodes.map((n) => n.id)).toEqual(["evidence", "compose", "approval", "store-lessons", "report"]);
   });
 
-  it("a máquina propõe, nunca registra: sem publish, sem spawn, sem harvest, sem store", () => {
+  it("a máquina propõe, nunca registra nos docs: sem publish, sem spawn, sem harvest (5.F.7: o store é gated e grava só em ops.memory_lesson)", () => {
     const kinds = new Set(INCIDENT_POSTMORTEM_GRAPH.nodes.map((n) => String(n.kind)));
-    for (const forbidden of ["publish", "spawn", "harvest", "store"]) {
+    for (const forbidden of ["publish", "spawn", "harvest"]) {
       expect(kinds.has(forbidden), `incident-postmortem não pode ter nó '${forbidden}'`).toBe(false);
     }
+    // 5.F.7: o único store é o de lições, gated pelo approval do rascunho.
+    const stores = INCIDENT_POSTMORTEM_GRAPH.nodes.filter((n) => n.kind === "store");
+    expect(stores.map((n) => n.id)).toEqual(["store-lessons"]);
+    expect(stores[0]!.dependsOn).toEqual(["approval"]);
+    expect(stores[0]!.config).toMatchObject({ target: "incident-lessons" });
   });
 
   it("evidência é SQL (snapshot source 'incidents', 24h) e o gate fica ANTES do report", () => {

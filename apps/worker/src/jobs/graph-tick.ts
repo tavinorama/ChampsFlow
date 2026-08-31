@@ -35,6 +35,7 @@ import {
   type RunRow,
   type StepRow,
   type TelegramButton,
+  INCIDENT_LESSON_PREFIX,
 } from "../../../api/src/lib/graph-runner";
 
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
@@ -416,6 +417,39 @@ export function computeCadenceSection(
 }
 
 /**
+ * 5.F.7 — the active incident lessons (approved postmortems → ops.memory_lesson
+ * rows starting with INCIDENT_LESSON_PREFIX), rendered for the 'ops' snapshot.
+ * Newest 3 rows, size-capped. Fail-open by contract: missing table (42P01,
+ * migration 5.F.1 pending) or any read blip → no section at all, the snapshot
+ * stays exactly as before — never a placeholder, never a broken digest.
+ */
+async function incidentLessonsSection(sql: postgres.Sql): Promise<string[]> {
+  try {
+    const rows = await sql<{ lessons: string; approved_at: string }[]>`
+      /* snap:incident-lessons */
+      SELECT lessons, approved_at::text AS approved_at
+        FROM ops.memory_lesson
+       WHERE lessons LIKE ${INCIDENT_LESSON_PREFIX + "%"}
+       ORDER BY approved_at DESC
+       LIMIT 3`;
+    if (rows.length === 0) return [];
+    const lines = ["", "Licoes de incidentes ativas (postmortems aprovados — ops.memory_lesson):"];
+    for (const r of rows) {
+      // Each row is already "PREFIX (postmortem aprovado <date>):\n- NUNCA ...".
+      // Cap at 8 lines/row so a malformed giant row can never flood the digest.
+      for (const l of r.lessons.split("\n").slice(0, 8)) lines.push(`  ${l.slice(0, 300)}`);
+    }
+    return lines;
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? "";
+    if (code !== "42P01") {
+      logger.warn("incident_lessons_read_failed", { code, message: (err as Error).message?.slice(0, 160) });
+    }
+    return [];
+  }
+}
+
+/**
  * The read-only brains' fuel: a bounded, PII-free digest of ops.* as text.
  * ops.* holds slugs, statuses, hashes and numbers — no tenant data is touched,
  * so this stays inside the company's own record. Two sources:
@@ -496,6 +530,12 @@ export async function buildSnapshot(
     }
     // 5.C.2 — the tenant-level spend the ledger records but nobody read.
     lines.push(...(await tenantCostSection(sql, d)));
+    // 5.F.7 — active incident lessons: the approved-postmortem lessons the
+    // store-lessons node wrote into ops.memory_lesson (INCIDENT_LESSON_PREFIX
+    // rows). They are OPS lessons, so they surface to the ops brain (the
+    // daily-watchdog and the weekly report read this snapshot) — the
+    // marketing critics' [__memory__] deliberately excludes them.
+    lines.push(...(await incidentLessonsSection(sql)));
     return lines.join("\n");
   }
 
@@ -1358,11 +1398,16 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // append-only, newest row wins. Fail-open by contract: before the
         // ops.memory_lesson migration is applied (42P01) or on any read blip,
         // return null and the critics run exactly as before ([__memory__]
-        // simply is not injected — never a placeholder).
+        // simply is not injected — never a placeholder). 5.F.7: incident
+        // lessons live in the SAME table under INCIDENT_LESSON_PREFIX and are
+        // EXCLUDED here — [__memory__] stays the monthly consolidation for
+        // the marketing critics; an incident row (ops-flavored, read by the
+        // watchdog's ops snapshot) must never displace it via newest-wins.
         try {
           const rows = await sql<{ lessons: string }[]>`
             /* memory:active-read */
             SELECT lessons FROM ops.memory_lesson
+             WHERE lessons NOT LIKE ${INCIDENT_LESSON_PREFIX + "%"}
              ORDER BY approved_at DESC
              LIMIT 1`;
           const text = rows[0]?.lessons?.trim() ?? "";
