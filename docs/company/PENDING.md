@@ -99,8 +99,8 @@
 | 5.D.1 | Loop discovery → spec → build → review (discovery hoje só reporta) | L |
 | 5.D.2 | ~~Postmortem AUTOMÁTICO~~ 🟢 feito (#532): grafo diário 07:00 detecta assinaturas por SQL (3+ steps falhados/starved/timeouts em massa), rascunha no formato da casa, gate no Telegram; dia quieto = silêncio auditável | M |
 | 5.D.3 | Anti-patterns alimentados por incidentes automaticamente (12 entradas manuais em #521) | S–M |
-| 5.D.5 | **Apertar limiar do postmortem-scan**: post APROVADO perdido em crash = incidente com n=1 (caso real sáb 29/08: LinkedIn aprovado 10h50 sumiu no crash do worker; limiar atual de 3+ não teria disparado) | S |
-| 5.D.6 | **Resiliência a pulo de cron do GitHub**: agendador pulou o blog de seg 31/08 (workflow ativo, cron certo); detecção manual 13h30 → dispatch 13h31. Caminho: absence-watch ganha auto-dispatch (não só alarme) | S |
+| 5.D.5 | ~~Apertar limiar~~ 🟢 feito (#539): assinatura 4 `approved-content-lost`, n=1, com a regressão de sábado como teste | S |
+| 5.D.6 | ~~Resiliência a pulo de cron~~ 🟢 feito (#539): absence-watch re-dispara o autopublish, com trava anti-dupla-publicação | S |
 | 5.D.4 | Gate de deploy (E2E required + smoke pós-deploy) | M |
 
 ### 5.E Governança/Orquestração
@@ -118,9 +118,9 @@
 | 5.F.1 | ~~Consolidação de memória~~ 🟢 código mergeado (#530); **DESLIGADA até o founder mergear+aplicar a migração #531** (`ops.memory_lesson`) | M | fechado no código |
 | 5.F.2 | ~~Prompt-tuning gated~~ 🟢 código mergeado (#536, 31 testes): tuner semanal (3ª 06h30) propõe ≤1 mudança com evidência, allowlist dura (nunca approval/publish/self), rollback por linha nova; **OFF até o founder mergear+aplicar a migração #537** (`ops.prompt_override`) | L | fechado no código |
 | 5.F.3 | ~~Anti-patterns → críticos~~ 🟢 feito (#525): `[__lessons__]` (CONTENT_LESSONS) injetado nos nós de debate/crítica dos grafos de marketing | S–M | fechado |
-| 5.F.4 | **Experimentos contínuos**: 1 experimento/semana (CDO) → rotina de A/B por ângulo/canal com o lift decidindo o vencedor | M | aprendizado por tentativa é pontual |
-| 5.F.5 | **Cadência auto-ajustada**: caps por canal (#520) fixos → derivados do lift colhido (que horário/frequência rende mais) | M | a válvula é estática |
-| 5.F.6 | **Auto-cura ampliada**: retry budget por node + circuit breaker por canal Postiz (hoje: crash-recovery 2h, starved reconcile, orphans) | M | falha repetida do mesmo node vira loop de custo |
+| 5.F.4 | **Experimentos contínuos** (A/B real por eixo, válvula respeitada, vencedor gravado para memória+tuner) | M | 🟡 EM CONSTRUÇÃO 31/08 |
+| 5.F.5 | **Cadência auto-ajustada** (análise SQL mensal → recomendação no relatório; founder aplica via env — cap nunca muda sozinho) | M | 🟡 EM CONSTRUÇÃO 31/08 |
+| 5.F.6 | ~~Auto-cura ampliada~~ 🟢 código em PR (#540, 18 testes): retry budget 2/node (aprovação/store NUNCA), publish ambíguo pergunta ao founder (silêncio nunca reposta), circuit breaker 3-falhas/canal, alarme 1×/6h; liga no deploy do worker, sem env/migração | M | fechado no código |
 | 5.F.7 | **Postmortem→código**: quando o postmortem automático (5.D.2) existir, ligar ao 5.F.3 — incidente → anti-pattern → contexto dos agentes, sem humano no meio | M | fecha o ciclo institucional |
 
 ## BLOCO 6 — INFRA, QUALIDADE, SEGURANÇA
