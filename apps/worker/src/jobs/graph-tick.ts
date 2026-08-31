@@ -29,6 +29,7 @@ import { createHash } from "node:crypto";
 import {
   advanceRun,
   GRAPH_REGISTRY,
+  CIRCUIT_BREAKER_THRESHOLD,
   type GraphRunnerPorts,
   type RunRow,
   type StepRow,
@@ -57,6 +58,21 @@ const HERMES_ENGINES = parseEngineChain(process.env["HERMES_ENGINES"]);
 const HERMES_PRIMARY_DOWN_KEY = "hermes:primary_down_alarm";
 const HERMES_ALL_DOWN_KEY = "hermes:all_down_alarm";
 const HERMES_ALARM_WINDOW_S = 6 * 3600;
+/**
+ * 5.F.6 circuit breaker per Postiz channel. `circuit:<channel>` holds the
+ * CONSECUTIVE publish-failure count (INCR on failure, DEL on success); open =
+ * count >= CIRCUIT_BREAKER_THRESHOLD. The key's TTL is the half-open re-test
+ * window: while parked publishes stop producing new failures, the counter
+ * expires after 6h and the next tick releases ONE wave of parked publishes as
+ * a probe — success closes the circuit for good, failure re-opens it. The
+ * founder healing the channel in Postiz therefore needs no manual reset.
+ * `circuit:alarm:<channel>` is the NX alarm gate (1 Telegram / 6h / channel)
+ * — the exact hermes-fallback alarm pattern.
+ */
+const CIRCUIT_RETEST_WINDOW_S = 6 * 3600;
+const CIRCUIT_ALARM_WINDOW_S = 6 * 3600;
+const circuitKey = (channel: string) => `circuit:${channel.toLowerCase()}`;
+const circuitAlarmKey = (channel: string) => `circuit:alarm:${channel.toLowerCase()}`;
 /**
  * Cap on EXPENSIVE advances per tick (runs with an executable next step — an
  * LLM call each). Parked runs (waiting frontier) never count against this:
@@ -789,10 +805,18 @@ export async function detectIncidentSignatures(
   // 1) Failure clusters per graph. Approval nodes are excluded (rejection is
   // a human decision; timeout is signature 3) and so are the synthetic
   // reconciliation steps (signature 2 owns them).
+  // 5.F.6 INTERPLAY WITH THE RETRY BUDGET — decision documented here and
+  // pinned by test: the runner now writes one failed step PER ATTEMPT of the
+  // same node (default budget 2 → up to 3 failed rows for ONE flaky node), so
+  // counting rows would let a single node fake a >=3 cluster. Two guards:
+  //  (a) count per (run, node), never per attempt — COUNT(DISTINCT run:node);
+  //  (b) an attempt a LATER retry of the same (run, node) SAVED (a succeeded
+  //      sibling at or after it) is not failure-cluster noise at all — the
+  //      self-healing worked, the incident is the one that STAYS failed.
   const clusters = await sql<{ graph: string; fails: string; first_at: string; last_at: string }[]>`
     /* pm:failed-clusters */
     SELECT r.graph,
-           COUNT(*)::text AS fails,
+           COUNT(DISTINCT s.run_id::text || ':' || s.node)::text AS fails,
            MIN(s.started_at)::text AS first_at,
            MAX(s.started_at)::text AS last_at
       FROM ops.agent_step s
@@ -801,8 +825,14 @@ export async function detectIncidentSignatures(
        AND s.started_at >= NOW() - make_interval(hours => ${h})
        AND s.node NOT IN ('__starved__', '__orphan__')
        AND NOT (s.node ILIKE '%approval%')
+       AND NOT EXISTS (
+             SELECT 1 FROM ops.agent_step ok
+              WHERE ok.run_id = s.run_id
+                AND ok.node = s.node
+                AND ok.status = 'succeeded'
+                AND ok.started_at >= s.started_at)
      GROUP BY r.graph
-     ORDER BY COUNT(*) DESC
+     ORDER BY COUNT(DISTINCT s.run_id::text || ':' || s.node) DESC
      LIMIT 10`;
   const hot = clusters.filter((c) => Number(c.fails) >= FAILURE_CLUSTER_MIN);
   if (hot.length > 0) {
@@ -821,6 +851,12 @@ export async function detectIncidentSignatures(
            AND r.graph = ANY(${hot.map((c) => c.graph)})
            AND s.node NOT IN ('__starved__', '__orphan__')
            AND NOT (s.node ILIKE '%approval%')
+           AND NOT EXISTS (
+                 SELECT 1 FROM ops.agent_step ok
+                  WHERE ok.run_id = s.run_id
+                    AND ok.node = s.node
+                    AND ok.status = 'succeeded'
+                    AND ok.started_at >= s.started_at)
       ) ranked
       WHERE rn <= 3`;
     const byGraph = new Map<string, string[]>();
@@ -902,8 +938,12 @@ export async function detectIncidentSignatures(
   // publishes mostra as duas — fatos distintos, não contagem dupla).
   const lost = await sql<{ graph: string; n: string; first_at: string; last_at: string; sample: string }[]>`
     /* pm:approved-lost */
+    -- 5.F.6: um publish que uma retry POSTERIOR do mesmo (run, node) salvou
+    -- (step succeeded igual/depois dele) NAO e conteudo perdido — a auto-cura
+    -- funcionou. Só o que TERMINA falhado dispara; e a contagem é por
+    -- (run, node), nunca por tentativa (o retry escreve um step por attempt).
     SELECT r.graph,
-           COUNT(*)::text AS n,
+           COUNT(DISTINCT s.run_id::text || ':' || s.node)::text AS n,
            MIN(s.started_at)::text AS first_at,
            MAX(s.started_at)::text AS last_at,
            LEFT(MAX(COALESCE(s.summary, 'sem resumo')), ${ERROR_SAMPLE_CAP}) AS sample
@@ -918,8 +958,14 @@ export async function detectIncidentSignatures(
                 AND a.node ILIKE '%approval%'
                 AND a.status = 'succeeded'
            )
+       AND NOT EXISTS (
+             SELECT 1 FROM ops.agent_step ok
+              WHERE ok.run_id = s.run_id
+                AND ok.node = s.node
+                AND ok.status = 'succeeded'
+                AND ok.started_at >= s.started_at)
      GROUP BY r.graph
-     ORDER BY COUNT(*) DESC
+     ORDER BY COUNT(DISTINCT s.run_id::text || ':' || s.node) DESC
      LIMIT 10`;
   for (const l of lost) {
     if (Number(l.n) < 1) continue;
@@ -1058,8 +1104,10 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         return rows[0] ?? null;
       },
       async loadSteps(runId) {
+        // 5.F.6: summary travels back to the runner — it is the retry logic's
+        // only memory (crash markers, gate markers, circuit parks).
         const rows = await sql<StepRow[]>`
-          SELECT id, node, status, started_at::text AS started_at
+          SELECT id, node, status, summary, started_at::text AS started_at
             FROM ops.agent_step WHERE run_id = ${runId}::uuid
            ORDER BY started_at ASC`;
         return rows;
@@ -1343,6 +1391,43 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
     },
     telegram: sendTelegram,
     now: () => new Date(),
+    // 5.F.6 — the circuit breaker's Redis half. Every method fails OPEN (a
+    // Redis blip must never stop a publish or kill a run); the runner treats
+    // a throwing/absent circuit as "closed" by contract.
+    circuit: {
+      async status(channel) {
+        try {
+          const raw = await redis.get(circuitKey(channel));
+          const failures = Number(raw ?? 0) || 0;
+          return { open: failures >= CIRCUIT_BREAKER_THRESHOLD, failures };
+        } catch {
+          return { open: false, failures: 0 };
+        }
+      },
+      async record(channel, ok) {
+        try {
+          if (ok) {
+            // A success CLOSES the circuit — consecutive means consecutive.
+            await redis.del(circuitKey(channel));
+            return { open: false, failures: 0 };
+          }
+          const failures = await redis.incr(circuitKey(channel));
+          await redis.expire(circuitKey(channel), CIRCUIT_RETEST_WINDOW_S);
+          const open = failures >= CIRCUIT_BREAKER_THRESHOLD;
+          if (open) logger.warn("postiz_circuit_open", { channel, failures });
+          return { open, failures };
+        } catch {
+          return { open: false, failures: 0 };
+        }
+      },
+      async alarmOnce(channel) {
+        try {
+          return (await redis.set(circuitAlarmKey(channel), "1", "EX", CIRCUIT_ALARM_WINDOW_S, "NX")) === "OK";
+        } catch {
+          return true; // no Redis → prefer a duplicate alarm over silence
+        }
+      },
+    },
   };
 }
 
