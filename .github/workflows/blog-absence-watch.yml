@@ -5,8 +5,12 @@ name: Blog absence watch (Monday 15:00 UTC)
 # on a failed run — a run that never starts, or a PR that never merges, is
 # silence). This watcher runs 3h later and asks the only question that matters:
 # "is there a merged content/blog-* PR today?" If not, it screams (job summary
-# always; Telegram when the secrets exist). The watcher stays outside the
-# watched: it never generates or publishes anything.
+# always; Telegram when the secrets exist) AND — 5.D.6, from 31/08 when
+# GitHub's scheduler silently SKIPPED the 12:00 cron — re-dispatches the
+# autopublish workflow once, but ONLY when no successful autopublish run
+# exists today (so a branch-naming drift can never cause a double publish).
+# The watcher still never generates or publishes anything itself; it only
+# rings the bell and presses the same button the founder-approved cron does.
 
 on:
   schedule:
@@ -16,6 +20,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  actions: write   # 5.D.6: re-dispatch blog-autopublish when the cron was skipped
 
 jobs:
   watch:
@@ -37,6 +42,27 @@ jobs:
         if: steps.look.outputs.merged_today != '0'
         run: echo "OK — the blog published today (${{ steps.look.outputs.merged_today }} merged PR)."
 
+      - name: Auto-dispatch retry when the cron was skipped (5.D.6)
+        id: retry
+        if: steps.look.outputs.merged_today == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TODAY=$(date -u +%Y-%m-%d)
+          # Double-publish guard: a SUCCESSFUL autopublish run today means the
+          # pipeline ran and the gap is elsewhere (e.g. branch naming drift) —
+          # re-running it could publish twice. Only dispatch on true absence.
+          OK_RUNS=$(gh run list --repo "${{ github.repository }}" --workflow blog-autopublish.yml --created "$TODAY" --status success --json databaseId --jq 'length' 2>/dev/null || echo 0)
+          if [ "$OK_RUNS" = "0" ]; then
+            gh workflow run blog-autopublish.yml --repo "${{ github.repository }}"
+            echo "retried=1" >> "$GITHUB_OUTPUT"
+            echo "Dispatched blog-autopublish retry (no successful run today)."
+          else
+            echo "retried=0" >> "$GITHUB_OUTPUT"
+            echo "NOT retrying: $OK_RUNS successful autopublish run(s) today — gap is elsewhere; scream only."
+          fi
+
       - name: SCREAM when nothing published
         if: steps.look.outputs.merged_today == '0'
         env:
@@ -49,10 +75,17 @@ jobs:
             echo ""
             echo "Nenhum PR content/blog-* mergeado hoje. O autopublish das 12:00 UTC não entregou (não rodou, falhou, ou o PR não mergeou)."
             echo ""
+            if [ "${{ steps.retry.outputs.retried }}" = "1" ]; then
+              echo "Re-dispatch automático do autopublish FEITO agora (5.D.6) — conferir em ~15 min."
+            fi
             echo "$RUNS_URL"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
-            export MSG="SEGUNDA SEM BLOG: nenhum PR content/blog-* mergeado hoje. Ver ${RUNS_URL}"
+            if [ "${{ steps.retry.outputs.retried }}" = "1" ]; then
+              export MSG="SEGUNDA SEM BLOG: cron das 12:00 nao entregou. RE-DISPAREI o autopublish agora (5.D.6) — confira em ~15 min. ${RUNS_URL}"
+            else
+              export MSG="SEGUNDA SEM BLOG: nenhum PR content/blog-* mergeado hoje (e ha run de autopublish com sucesso — o furo e outro, ex. naming). Ver ${RUNS_URL}"
+            fi
             PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
             curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
           else

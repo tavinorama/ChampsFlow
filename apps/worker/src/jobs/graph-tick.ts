@@ -737,7 +737,10 @@ export async function buildSnapshot(
 //     (a fome de 18-20/08 e os zumbis fora do registry; 1 já é incidente);
 //  3. approval-timeout-mass — >= APPROVAL_TIMEOUT_MASS_MIN aprovações
 //     expiradas por silêncio na janela (aprovações apodrecendo em massa foi
-//     o tampão da fome de 18/08).
+//     o tampão da fome de 18/08);
+//  4. approved-content-lost — publish falhado num run com approval succeeded,
+//     n=1 POR DESENHO (5.D.5, sáb 29/08: LinkedIn aprovado 10h50 perdido em
+//     crash do worker — o cluster de 3+ nunca veria).
 // Rejeições do founder ("rejected: ...") NÃO são incidente — são decisão
 // humana — e as falhas de approval são tratadas só pela assinatura 3, então a
 // assinatura 1 exclui nodes de approval e os steps sintéticos de
@@ -757,7 +760,11 @@ export const QUIET_SUMMARY = "sem incidente nas ultimas 24h (scan SQL: 0 assinat
 const ERROR_SAMPLE_CAP = 160;
 
 export interface IncidentSignature {
-  kind: "failure-cluster" | "reconciliation" | "approval-timeout-mass";
+  kind:
+    | "failure-cluster"
+    | "reconciliation"
+    | "approval-timeout-mass"
+    | "approved-content-lost";
   /** Graph afetado (failure-cluster) ou null nas assinaturas cross-graph. */
   graph: string | null;
   count: number;
@@ -887,6 +894,45 @@ export async function detectIncidentSignatures(
     });
   }
 
+  // 4) Approved content lost — n=1 BY DESIGN (5.D.5, caso real de sáb 29/08:
+  // LinkedIn aprovado pelo founder às 10h50 sumiu num crash do worker no
+  // publish; o cluster de 3+ nunca dispararia). Um publish que falha DEPOIS
+  // do sim humano é sempre incidente: o founder gastou um clique e o público
+  // não recebeu nada. Especialização da assinatura 1 (um cluster grande de
+  // publishes mostra as duas — fatos distintos, não contagem dupla).
+  const lost = await sql<{ graph: string; n: string; first_at: string; last_at: string; sample: string }[]>`
+    /* pm:approved-lost */
+    SELECT r.graph,
+           COUNT(*)::text AS n,
+           MIN(s.started_at)::text AS first_at,
+           MAX(s.started_at)::text AS last_at,
+           LEFT(MAX(COALESCE(s.summary, 'sem resumo')), ${ERROR_SAMPLE_CAP}) AS sample
+      FROM ops.agent_step s
+      JOIN ops.agent_run r ON r.id = s.run_id
+     WHERE s.status = 'failed'
+       AND s.node ILIKE '%publish%'
+       AND s.started_at >= NOW() - make_interval(hours => ${h})
+       AND EXISTS (
+             SELECT 1 FROM ops.agent_step a
+              WHERE a.run_id = s.run_id
+                AND a.node ILIKE '%approval%'
+                AND a.status = 'succeeded'
+           )
+     GROUP BY r.graph
+     ORDER BY COUNT(*) DESC
+     LIMIT 10`;
+  for (const l of lost) {
+    if (Number(l.n) < 1) continue;
+    out.push({
+      kind: "approved-content-lost",
+      graph: l.graph,
+      count: Number(l.n),
+      firstAt: l.first_at,
+      lastAt: l.last_at,
+      detail: `publish falhou APOS aprovacao do founder · ultimo erro: "${l.sample}"`,
+    });
+  }
+
   return out;
 }
 
@@ -901,6 +947,7 @@ export function incidentEvidenceBlock(signatures: IncidentSignature[]): string {
     "failure-cluster": "CLUSTER DE FALHAS",
     reconciliation: "RECONCILIACAO (run morta sem ser servida)",
     "approval-timeout-mass": "TIMEOUTS DE APROVACAO EM MASSA",
+    "approved-content-lost": "CONTEUDO APROVADO PERDIDO (publish falhou apos o sim do founder)",
   };
   const lines: string[] = [`ASSINATURAS DE INCIDENTE (scan SQL sobre ops.*, ultimas 24h):`, ``];
   for (const s of signatures) {
