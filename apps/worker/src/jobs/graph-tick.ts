@@ -30,6 +30,7 @@ import {
   advanceRun,
   GRAPH_REGISTRY,
   CIRCUIT_BREAKER_THRESHOLD,
+  channelDailyCap,
   type GraphRunnerPorts,
   type RunRow,
   type StepRow,
@@ -280,6 +281,138 @@ async function tenantCostSection(sql: postgres.Sql, d: number): Promise<string[]
       `CUSTO POR TENANT: indisponivel neste deploy (api_spend/tenant_id ausente ou ilegivel${code ? ` — ${code}` : ""}).`,
     ];
   }
+}
+
+// ---------------------------------------------------------------------------
+// 5.F.5 — cadência auto-ajustada, a camada MEDIDA (founder-gated).
+// A válvula (channelDailyCap) continua ESTÁTICA no código, com override por
+// env CHANNEL_DAILY_CAP_<CANAL>. O que este bloco adiciona é a MEDIÇÃO: por
+// canal, posts/dia vs média de resultado por post — 100% SQL/código (o modelo
+// nunca toca nestes números: a seção viaja VERBATIM do snapshot para o report
+// de segunda, sem passar pelo compose). A recomendação fecha o loop; o gate é
+// o founder mudando a env. NADA aqui aplica cap sozinho — cap auto-aplicado
+// seria auto-ativação, proibida pelas regras da casa.
+// ---------------------------------------------------------------------------
+
+/** Amostra mínima por canal para recomendar algo (abaixo disso: dito, sem estatística inventada). */
+export const CADENCE_MIN_SAMPLE = 10;
+/** Queda relativa da média-por-post (pico vs base) que sustenta recomendar um cap menor. */
+export const CADENCE_DROP_THRESHOLD = 0.3;
+/** Dias após o publish em que o resultado colhido conta para aquele dia de publicação. */
+export const CADENCE_OUTCOME_WINDOW_DAYS = 3;
+/**
+ * Canal → prefixo de métrica em ops.agent_outcome (o que o coletor da VPS
+ * escreve). Mapa EXPLÍCITO de propósito: derivar do registry seria errado
+ * (daily-video publica em linkedin mas colhe youtube_views). Canal fora do
+ * mapa = "sem métrica mapeada", nunca um palpite.
+ */
+export const CHANNEL_METRIC_PREFIX: Record<string, string> = {
+  linkedin: "linkedinpage_",
+  x: "x_",
+  instagram: "instagramstandalone_",
+  tiktok: "tiktok_",
+  youtube: "youtube_",
+};
+
+/**
+ * A seção de cadência do relatório de segunda — PURA (exportada para teste
+ * unitário direto). Entra: publishes bem-sucedidos (summary com channel=) e
+ * outcomes crus da janela. Sai: uma linha de RECOMENDAÇÃO por canal, cada uma
+ * nomeando a ação do founder (env CHANNEL_DAILY_CAP_<CANAL>). Guardas:
+ *  - < CADENCE_MIN_SAMPLE posts → "sem amostra suficiente (N posts)";
+ *  - canal sem métrica mapeada → dito, sem recomendação;
+ *  - sem variação de posts/dia na janela → nada a comparar, dito;
+ *  - média-base sem valor utilizável → dito.
+ * String vazia quando não há publish nenhum (o runner vira SEM DADOS).
+ */
+export function computeCadenceSection(
+  pubs: Array<{ summary: string; started_at: string }>,
+  outcomes: Array<{ metric: string; value_after: string | null; measured_at: string }>,
+  days: number
+): string {
+  const byChannel = new Map<string, Map<string, number>>(); // canal → dia UTC → posts
+  for (const p of pubs) {
+    const ch = /channel=([a-z0-9_-]+)/i.exec(p.summary)?.[1]?.toLowerCase();
+    if (!ch) continue;
+    const day = p.started_at.slice(0, 10);
+    const m = byChannel.get(ch) ?? new Map<string, number>();
+    m.set(day, (m.get(day) ?? 0) + 1);
+    byChannel.set(ch, m);
+  }
+  if (byChannel.size === 0) return "";
+
+  const lines: string[] = [
+    `VALVULA DE CADENCIA — camada medida (5.F.5, ${days}d; calculo 100% por codigo, o modelo nao toca nestes numeros):`,
+    `O cap segue estatico no codigo. NADA muda sozinho: agir = founder definir env CHANNEL_DAILY_CAP_<CANAL> (0 ou negativo = sem cap).`,
+    ``,
+  ];
+  for (const [ch, dayCounts] of [...byChannel.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const total = [...dayCounts.values()].reduce((a, b) => a + b, 0);
+    const cap = channelDailyCap(ch);
+    const capStr = cap === null ? "sem cap" : `${cap}/dia`;
+    if (total < CADENCE_MIN_SAMPLE) {
+      lines.push(
+        `- ${ch}: sem amostra suficiente (${total} post(s) em ${days}d; minimo ${CADENCE_MIN_SAMPLE}) — cap atual mantido (${capStr}), sem estatistica inventada.`
+      );
+      continue;
+    }
+    const prefix = CHANNEL_METRIC_PREFIX[ch];
+    if (!prefix) {
+      lines.push(`- ${ch}: ${total} posts, mas sem metrica mapeada para o canal — sem recomendacao honesta possivel.`);
+      continue;
+    }
+    const chOutcomes = outcomes.filter((o) => o.metric.startsWith(prefix) && o.value_after != null);
+    // Média de resultado POR POST nos dias com k posts: para cada dia de
+    // publicação, soma dos outcomes do canal medidos em (dia, dia+3] ÷ k.
+    const perK = new Map<number, { nDays: number; perPostSum: number }>();
+    for (const [day, k] of dayCounts) {
+      const dayStart = Date.parse(`${day}T00:00:00Z`);
+      const windowEnd = dayStart + CADENCE_OUTCOME_WINDOW_DAYS * 86_400_000;
+      const harvested = chOutcomes
+        .filter((o) => {
+          const t = Date.parse(o.measured_at);
+          return t > dayStart && t <= windowEnd;
+        })
+        .reduce((acc, o) => acc + Number(o.value_after), 0);
+      const bucket = perK.get(k) ?? { nDays: 0, perPostSum: 0 };
+      bucket.nDays += 1;
+      bucket.perPostSum += harvested / k;
+      perK.set(k, bucket);
+    }
+    const ks = [...perK.keys()].sort((a, b) => a - b);
+    const kMin = ks[0]!;
+    const kMax = ks[ks.length - 1]!;
+    if (kMin === kMax) {
+      lines.push(
+        `- ${ch}: ${total} posts, sempre ${kMax}/dia na janela — sem variacao de cadencia para comparar; cap atual mantido (${capStr}).`
+      );
+      continue;
+    }
+    const avgOf = (k: number): number => {
+      const b = perK.get(k)!;
+      return b.perPostSum / b.nDays;
+    };
+    const base = avgOf(kMin);
+    const top = avgOf(kMax);
+    if (base <= 0) {
+      lines.push(
+        `- ${ch}: ${total} posts, mas a metrica ${prefix}* nao trouxe valor utilizavel na janela — sem recomendacao honesta possivel.`
+      );
+      continue;
+    }
+    const drop = 1 - top / base;
+    if (drop >= CADENCE_DROP_THRESHOLD) {
+      const pct = Math.round(drop * 100);
+      lines.push(
+        `- ${ch}: dados sugerem ${kMax - 1}/dia em vez de ${capStr} — media por post cai ${pct}% nos dias com ${kMax} posts (${Math.round(base)} → ${Math.round(top)} por post; ${total} posts em ${days}d). Agir = env CHANNEL_DAILY_CAP_${ch.toUpperCase()}=${kMax - 1}.`
+      );
+    } else {
+      lines.push(
+        `- ${ch}: cap atual (${capStr}) mantem — media por post estavel entre ${kMin} e ${kMax} posts/dia (variacao ${Math.round(Math.max(drop, 0) * 100)}%; ${total} posts em ${days}d).`
+      );
+    }
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -726,6 +859,30 @@ export async function buildSnapshot(
       lines.push(``, `OVERRIDES DE PROMPT: nenhum ativo — todos os grafos rodam nos prompts estaticos do codigo.`);
     }
     return lines.join("\n");
+  }
+
+  if (source === "cadence") {
+    // 5.F.5 — a válvula medida. DUAS queries marcadas trazem os fatos crus
+    // (publishes com channel= no summary; outcomes da janela); TODO o cálculo
+    // e a redação das recomendações são código puro (computeCadenceSection).
+    // Este texto vai VERBATIM ao report de segunda — nunca passa pelo compose.
+    const pubs = await sql<{ summary: string; started_at: string }[]>`
+      /* snap:cadence-publishes */
+      SELECT s.summary, s.started_at::text AS started_at
+        FROM ops.agent_step s
+       WHERE s.status = 'succeeded'
+         AND s.summary LIKE 'published via%'
+         AND s.started_at >= NOW() - make_interval(days => ${d})
+       ORDER BY s.started_at
+       LIMIT 500`;
+    const outcomes = await sql<{ metric: string; value_after: string | null; measured_at: string }[]>`
+      /* snap:cadence-outcomes */
+      SELECT metric, value_after::text AS value_after, measured_at::text AS measured_at
+        FROM ops.agent_outcome
+       WHERE measured_at >= NOW() - make_interval(days => ${d})
+       ORDER BY measured_at
+       LIMIT 2000`;
+    return computeCadenceSection(pubs, outcomes, d);
   }
 
   if (source === "incidents") {
@@ -1712,6 +1869,19 @@ export async function runPromptTunerWeekly(
     return { started: [], skipped: ["prompt-tuner"], capped: [] };
   }
   return startBrainRuns(sql, ["prompt-tuner"], 24 * 6, "cron:prompt-tuner", opts);
+}
+
+/**
+ * ab-experiment (5.F.4): o A/B semanal — sexta 06:30 UTC, o único slot de
+ * manhã ainda livre (segunda: brains 06:30 + relatório 07:30; terça: tuner
+ * 06:30; quinta: discovery 06:30). Marketing-owned e gated por approval, então
+ * CONTA na válvula de aprovações diárias (startBrainRuns aplica) — um A/B é
+ * exatamente o tipo de pedido de atenção que a válvula existe para limitar.
+ * 6-day look-back = uma vez por semana, restart-safe. Sem gate de migração:
+ * reusa agent_run/agent_step/agent_outcome que já existem.
+ */
+export async function runAbExperimentWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, ["ab-experiment"], 24 * 6, "cron:ab-experiment");
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */

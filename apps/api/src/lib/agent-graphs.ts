@@ -799,17 +799,26 @@ export const SPHERE_YOUTUBE_GRAPH: GraphDefinition = shortVideoSphere({
 
 export const WEEKLY_REPORT_GRAPH: GraphDefinition = {
   slug: "weekly-report",
-  version: 1,
+  // v2 (5.F.5): +nó 'cadence' — a válvula de cadência ganha a camada MEDIDA.
+  version: 2,
   vpOwner: "ceo",
   description:
-    "Relatório semanal ao founder (segunda 07:30 UTC), read-only: snapshot ops 7d ‖ snapshot outcomes 7d → compose (PT, denso, honesto — SÓ o que está nos snapshots, nunca inventa número: publicações por canal, falhas, custo total e por tenant se houver, aprovações, lift/vereditos, a semana que vem) → report no Telegram. Sem publish, sem spend, sem approval.",
+    "Relatório semanal ao founder (segunda 07:30 UTC), read-only: snapshot ops 7d ‖ snapshot outcomes 7d → compose (PT, denso, honesto — SÓ o que está nos snapshots, nunca inventa número: publicações por canal, falhas, custo total e por tenant se houver, aprovações, lift/vereditos, a semana que vem) → report no Telegram. v2 (5.F.5): + snapshot 'cadence' 30d — recomendação de cap por canal calculada 100% por código (posts/dia vs média por post), anexada VERBATIM ao report (o LLM nunca toca nesses números); o founder age via env CHANNEL_DAILY_CAP_<CANAL>, nada muda sozinho. Sem publish, sem spend, sem approval.",
   nodes: [
     // Duas leituras paralelas da MESMA semana: a operação (runs, falhas,
     // custo) e o resultado (lift por métrica/canal + rejeições do founder).
     { id: "ops-week", kind: "snapshot", dependsOn: [], config: { source: "ops", days: 7 } },
     { id: "outcomes-week", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 7 } },
+    // 5.F.5 — a válvula medida. 30d de janela (7d não dá amostra honesta para
+    // estatística de cadência; a guarda de amostra mínima vive no código do
+    // snapshot). O texto que sai daqui É a recomendação final, gerada por
+    // SQL/código; por isso o nó alimenta o REPORT diretamente (verbatim),
+    // nunca o compose — o modelo não pode reescrever número de cadência.
+    { id: "cadence", kind: "snapshot", dependsOn: [], config: { source: "cadence", days: 30 } },
     { id: "compose", kind: "task", dependsOn: ["ops-week", "outcomes-week"], config: { prompt: "weekly-report-compose" } },
-    { id: "report", kind: "report", dependsOn: ["compose"], config: { title: "🗞️ Semana da Ozvor — o relatório de segunda" } },
+    // O report junta compose + cadence na ordem de dependsOn: o relatório do
+    // LLM primeiro, a seção de cadência (código puro) colada embaixo.
+    { id: "report", kind: "report", dependsOn: ["compose", "cadence"], config: { title: "🗞️ Semana da Ozvor — o relatório de segunda" } },
   ],
 };
 
@@ -1010,5 +1019,91 @@ export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
       dependsOn: ["approval", "compose"],
       config: { title: "📋 POSTMORTEM APROVADO (rascunho de máquina) — commit manual em docs/learning/postmortems/" },
     },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// ab-experiment (5.F.4): o aprendizado por tentativa deixa de ser pontual.
+// O content-experiment do CDO é um tiro único (uma variante, quando o founder
+// aprova a aposta da semana). Este grafo SEMANAL (sexta 06:30 UTC) roda um A/B
+// DE VERDADE: duas variantes da MESMA ideia de conteúdo, diferindo em UM eixo
+// declarado (angle | hook | format), publicadas no MESMO canal (LinkedIn — o
+// único canal com métrica colhida e publish de texto funcionando).
+//
+// Decisões que carregam as regras da casa:
+//  - UMA aprovação COMBINADA (o founder vê o eixo + as duas variantes íntegras
+//    e decide o PAR): é o que a maquinaria existente suporta com menos
+//    superfície nova, e elimina por construção o risco de "variante solitária"
+//    — rejeitar qualquer variante rejeita o experimento inteiro. A aprovação é
+//    optional + cancelNote: a rejeição degrada HONESTAMENTE para o aviso
+//    "experimento cancelado — variante rejeitada" (nada publica, o run fecha
+//    sem fingir A/B).
+//  - Cada publish declara config.contentNode: o que publica é EXATAMENTE o
+//    artefato do draft que o founder viu na caixa de aprovação ("o que se
+//    valida é exatamente o que se envia").
+//  - A VÁLVULA DE CADÊNCIA MANDA: se o cap do canal bloquear a 2ª variante no
+//    dia, ela ESTACIONA (waiting) e sai depois das 00:00 UTC — nunca fura o
+//    cap, nunca descarta; o veredito registra que a janela de comparação se
+//    deslocou.
+//  - O VEREDITO É CÓDIGO (compare:'ab'): lê os DOIS artefatos de harvest
+//    (janela de cada variante via harvest config.sinceNode = seu publish),
+//    compara a MESMA métrica, grava o vencedor em ops.agent_outcome
+//    (valueBefore=perdedor, valueAfter=vencedor) e escreve no summary a linha
+//    machine-findable `ab-winner: axis=<eixo> variant=<A|B> lift=+<n>%` — o
+//    CONTRATO que a consolidação mensal (5.F.1, snapshot 'memory' lê summaries
+//    de node='verdict') e o tuner (5.F.2, snapshot 'tuning' idem) consomem.
+//    Vencedores acumulam como aprendizado durável SEM store novo.
+//  - Empate numérico ou fonte muda = SEM vencedor, dito em voz alta — nada de
+//    estatística inventada.
+// ---------------------------------------------------------------------------
+
+export const AB_EXPERIMENT_GRAPH: GraphDefinition = {
+  slug: "ab-experiment",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "A/B semanal (5.F.4): memória do canal → brief que declara UM eixo (angle|hook|format) e as duas variantes → draft A ‖ draft B (mesma ideia, só o eixo muda) → critic (um eixo só, compliance, freshness) → UMA aprovação combinada (o founder vê eixo + as duas variantes; rejeitar = cancela o experimento inteiro — nunca publica variante solitária) → publish A + publish B no MESMO canal (LinkedIn; a válvula de cadência pode adiar a 2ª para o dia seguinte — janela deslocada é registrada, o cap nunca é furado) → wait 48h por variante → harvest da MESMA métrica por janela de variante → veredito A/B por CÓDIGO: vencedor + lift em ops.agent_outcome e a linha `ab-winner: axis=... variant=... lift=...` no summary (contrato lido pela consolidação 5.F.1 e pelo tuner 5.F.2).",
+  nodes: [
+    // Perception before creation — o registro real do canal do experimento.
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedinpage_" } },
+    // O brief declara o EIXO (linha 'EIXO: <angle|hook|format>') e as duas
+    // variantes — o veredito extrai o eixo daqui por regex (código, não LLM).
+    { id: "brief", kind: "task", dependsOn: ["memory"], config: { prompt: "ab-brief" } },
+    { id: "draft-a", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "A" } },
+    { id: "draft-b", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "B" } },
+    // O crítico valida o DESENHO do experimento: um eixo só, mesmo canal,
+    // compliance — com veto.
+    { id: "critic", kind: "debate", dependsOn: ["brief", "draft-a", "draft-b", "memory"], config: { prompt: "ab-critic" } },
+    // UMA aprovação combinada: a caixa mostra o brief (eixo), as DUAS
+    // variantes na íntegra e o parecer do crítico (aprovação multi-dep junta
+    // os artefatos rotulados). optional + cancelNote = rejeição/silêncio vira
+    // cancelamento honesto, nunca run "FALHOU" nem variante solitária.
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["brief", "draft-a", "draft-b", "critic"],
+      config: {
+        channel: "telegram",
+        optional: true,
+        timeoutHours: 96,
+        question:
+          "Aprovar = publicar AS DUAS variantes acima no LinkedIn como A/B (a válvula de cadência pode adiar a 2ª para amanhã). Rejeitar ou silêncio (96h) = experimento inteiro cancelado — nunca publicamos variante solitária.",
+        cancelNote:
+          "🧪 EXPERIMENTO CANCELADO — variante rejeitada (ou 96h sem decisão). NENHUMA variante foi publicada: um A/B com uma variante só não é A/B, e variante solitária nunca sai como se fosse experimento.",
+      },
+    },
+    // Duas publicações, MESMO canal. contentNode aponta o draft exato que o
+    // founder viu — a aprovação combinada gate as duas de uma vez.
+    { id: "publish-a", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-a" } },
+    { id: "publish-b", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-b" } },
+    { id: "wait-a", kind: "wait", dependsOn: ["publish-a"], config: { hours: 48 } },
+    { id: "wait-b", kind: "wait", dependsOn: ["publish-b"], config: { hours: 48 } },
+    // A MESMA métrica para as duas variantes; a janela de cada harvest começa
+    // no PUBLISH da própria variante (sinceNode) — se a válvula adiou a B, a
+    // janela dela desloca junto e o veredito diz isso.
+    { id: "harvest-a", kind: "harvest", dependsOn: ["wait-a"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-a" } },
+    { id: "harvest-b", kind: "harvest", dependsOn: ["wait-b"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-b" } },
+    // Veredito A/B — matemática em código, o contrato ab-winner no summary.
+    { id: "verdict", kind: "verdict", dependsOn: ["harvest-a", "harvest-b"], config: { compare: "ab", axisFrom: "brief" } },
   ],
 };

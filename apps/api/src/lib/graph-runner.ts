@@ -52,6 +52,7 @@ import {
   INCIDENT_POSTMORTEM_GRAPH,
   MEMORY_CONSOLIDATION_GRAPH,
   PROMPT_TUNER_GRAPH,
+  AB_EXPERIMENT_GRAPH,
 } from "./agent-graphs";
 import {
   buildPrompt,
@@ -142,6 +143,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // marketing, sem auto-modificação) → gate do founder → só o aprovado vira
   // override em ops.prompt_override. Nada se auto-ativa.
   [PROMPT_TUNER_GRAPH.slug]: PROMPT_TUNER_GRAPH,
+  // 5.F.4: o A/B semanal — sexta 06:30 UTC. Duas variantes, UM eixo declarado,
+  // mesmo canal, uma aprovação combinada, veredito por código com a linha
+  // `ab-winner:` que a consolidação (5.F.1) e o tuner (5.F.2) leem.
+  [AB_EXPERIMENT_GRAPH.slug]: AB_EXPERIMENT_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -466,9 +471,25 @@ function isXPublish(node: GraphNode): boolean {
 }
 
 /**
- * The content node whose artifact ultimately reaches an X publish. Mirrors the
- * publish handler's walk-back: publish → approval (dependsOn[0]) → content
- * (approval.dependsOn[0]). Returns the set of such content-node ids so the
+ * The node whose artifact a publish node sends. Two shapes:
+ *  - config.contentNode (5.F.4): the publish NAMES its content node. Needed
+ *    when ONE combined approval gates TWO publishes (the A/B pair) — the
+ *    walk-back below would resolve both to the same artifact. What the founder
+ *    approved (the drafts, shown verbatim in the multi-dep approval box) is
+ *    exactly what each publish sends.
+ *  - default walk-back: publish → approval (dependsOn[0]) → content
+ *    (approval.dependsOn[0]) — every pre-5.F.4 graph, unchanged.
+ */
+function publishContentNodeId(def: GraphDefinition, node: GraphNode): string {
+  const named = node.config?.["contentNode"];
+  if (typeof named === "string" && named) return named;
+  const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
+  return approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+}
+
+/**
+ * The content node whose artifact ultimately reaches an X publish. Mirrors
+ * publishContentNodeId. Returns the set of such content-node ids so the
  * adapt/finalize step can pre-trim to X's limit BEFORE the approval message is
  * sent, keeping what the founder sees identical to what would publish.
  */
@@ -476,9 +497,7 @@ function xAdaptNodeIds(def: GraphDefinition): Set<string> {
   const ids = new Set<string>();
   for (const pub of def.nodes) {
     if (!isXPublish(pub)) continue;
-    const approvalId = pub.dependsOn[0];
-    const approval = def.nodes.find((n) => n.id === approvalId);
-    const contentId = approval?.dependsOn[0] ?? approvalId;
+    const contentId = publishContentNodeId(def, pub);
     if (contentId) ids.add(contentId);
   }
   return ids;
@@ -609,8 +628,7 @@ export async function advanceRun(
       }
       const cap = channelDailyCap(channel);
       if (cap === null || (await substrate.publishedToday(channel)) < cap) {
-        const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
-        const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+        const contentNodeId = publishContentNodeId(def, node);
         const post =
           ((await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "") ||
           ((await artifacts.get(runId, contentNodeId)) ?? "");
@@ -663,7 +681,14 @@ export async function advanceRun(
       }
     } else if (node.kind === "harvest") {
       const metric = String(node.config?.["metric"] ?? "");
-      const got = await substrate.readHarvest(metric, run.started_at);
+      // 5.F.4 — config.sinceNode anchors the window on ANOTHER node's step
+      // (the variant's own publish) instead of the run start. Without it, the
+      // A/B's two harvests would read identical windows and every comparison
+      // would be a fake tie. If the valve deferred that publish, its window
+      // shifts along — recorded by the verdict. Default: run start, as ever.
+      const sinceNodeId = typeof node.config?.["sinceNode"] === "string" ? (node.config["sinceNode"] as string) : "";
+      const sinceIso = (sinceNodeId ? byNode.get(sinceNodeId)?.started_at : undefined) ?? run.started_at;
+      const got = await substrate.readHarvest(metric, sinceIso);
       if (got.n > 0) {
         await artifacts.set(runId, nodeId, JSON.stringify({ metric, ...got }));
         await substrate.finishStep(step.id, {
@@ -708,6 +733,12 @@ export async function advanceRun(
           summary: `approval timed out after ${timeoutHours}h — no decision (${optional ? "optional → skipped" : "timeout = rejection-by-silence, nothing published"})`,
         });
         step.status = optional ? "skipped" : "failed";
+        // 5.F.4 — an optional approval may declare config.cancelNote: the
+        // honest one-liner the founder gets when silence cancels the tail
+        // (the A/B's "experimento cancelado" — nada degrada calado).
+        if (optional && typeof node.config?.["cancelNote"] === "string") {
+          await telegram(`${String(node.config["cancelNote"])} (graph ${def.slug}, run ${runId.slice(0, 8)} — ${timeoutHours}h sem decisão)`);
+        }
         if (!optional) {
           // Name the content that died — the founder must know WHAT expired,
           // not just that something did (nada degrada calado).
@@ -735,6 +766,12 @@ export async function advanceRun(
     if (node?.kind === "approval" && node.config?.["optional"] === true) {
       await substrate.finishStep(step.id, { status: "skipped", summary: "founder declined optional approval — tail skipped" });
       step.status = "skipped";
+      // 5.F.4 — declared cancelNote: the decline is announced honestly (the
+      // A/B degrades to "experimento cancelado", never a silent no-op and
+      // never a lone-variant publish).
+      if (typeof node.config?.["cancelNote"] === "string") {
+        await telegram(`${String(node.config["cancelNote"])} (graph ${def.slug}, run ${runId.slice(0, 8)})`);
+      }
       notes.push(`optional approval ${nodeId} declined → skipped (run continues)`);
     }
   }
@@ -950,7 +987,16 @@ export async function advanceRun(
       }
     } else if (node.kind === "approval") {
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
-      const context = (await artifacts.get(runId, node.dependsOn[0] ?? "")) ?? "(sem artefato)";
+      // 5.F.4 — a COMBINED approval (multiple dependsOn) shows EVERY upstream
+      // artifact, labeled: the A/B box must carry the axis (brief) and BOTH
+      // variants verbatim, or the founder would approve blind. Single-dep
+      // approvals keep the exact pre-5.F.4 rendering.
+      const multiDep = node.dependsOn.length > 1;
+      const context = multiDep
+        ? (await upstreamArtifacts(def, node, runId, artifacts))
+            .map(([id, text]) => `[${id}]\n${text}`)
+            .join("\n\n") || "(sem artefato)"
+        : ((await artifacts.get(runId, node.dependsOn[0] ?? "")) ?? "(sem artefato)");
       // v3 (founder, 13/08): the first approval never said WHERE the content
       // would land, so a raw script was approved thinking of the video. The
       // ask now names every publish/spawn destination downstream of this gate
@@ -982,7 +1028,9 @@ export async function advanceRun(
           destinations.length > 0 ? `Aprovar vai: ${destinations.join(" · ")}` : `Aprovar destrava o resto do graph (sem publicação direta neste passo).`,
           ...(question ? [question] : []),
           `Conteúdo proposto:`,
-          context.slice(0, 900),
+          // A combined box needs room for both variants — still far under
+          // Telegram's 4096 total cap with the header lines above.
+          context.slice(0, multiDep ? 2400 : 900),
           ``,
           `Toque em um botão. Se rejeitar, eu pergunto o porquê e a esfera aprende.`,
           `(fallback: POST /api/v1/operator/agent-steps/${stepId}/finish status=succeeded|failed)`,
@@ -993,11 +1041,14 @@ export async function advanceRun(
         ]
       );
     } else if (node.kind === "publish") {
-      const content = (await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "";
-      // dependsOn[0] of publish is the approval node; the CONTENT lives on
-      // the approval's own upstream (the synthesis). Walk one edge back.
-      const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
-      const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
+      // config.contentNode (5.F.4) names the content; otherwise dependsOn[0]
+      // of publish is the approval node and the CONTENT lives on the
+      // approval's own upstream (the synthesis) — walk one edge back.
+      const contentNodeId = publishContentNodeId(def, node);
+      const content =
+        typeof node.config?.["contentNode"] === "string"
+          ? ""
+          : ((await artifacts.get(runId, node.dependsOn.length ? node.dependsOn[0]! : "")) ?? "");
       const post = content || ((await artifacts.get(runId, contentNodeId)) ?? "");
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: post ? sha(post) : null });
       if (!post) {
@@ -1095,6 +1146,83 @@ export async function advanceRun(
       // Park as waiting; section 2 retries it every tick until data or grace.
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
       await substrate.finishStep(stepId, { status: "waiting", summary: `awaiting metric ${String(config["metric"])}` });
+    } else if (node.kind === "verdict" && config["compare"] === "ab") {
+      // 5.F.4 — the A/B verdict is CODE, end to end: parse both harvest
+      // artifacts, extract the declared axis by regex, compare the SAME
+      // metric, record winner+loser in ops.agent_outcome (valueBefore=loser,
+      // valueAfter=winner — the lift delta lives in the row itself) and stamp
+      // the machine-findable CONTRACT line in the step summary:
+      //   ab-winner: axis=<angle|hook|format> variant=<A|B> lift=+<n>%
+      // Consumers: 5.F.1's memory consolidation (snapshot 'memory' reads
+      // node='verdict' summaries) and 5.F.2's tuner (snapshot 'tuning', idem)
+      // — accumulated winners become durable learning with NO new store.
+      // lift% = (winner-loser)/max(loser,1) — base-zero documented, never NaN.
+      // The model writes nothing here; SEM DADO and ties stay honest.
+      const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
+      const parseHarvest = async (nid: string) => {
+        try {
+          const p = JSON.parse((await artifacts.get(runId, nid)) ?? "{}") as {
+            metric?: string;
+            total?: number;
+            n?: number;
+            noData?: boolean;
+          };
+          return { metric: p.metric ?? "unknown", total: Number(p.total ?? 0), n: Number(p.n ?? 0), noData: p.noData === true };
+        } catch {
+          return { metric: "unknown", total: 0, n: 0, noData: true };
+        }
+      };
+      const a = await parseHarvest(node.dependsOn[0] ?? "");
+      const b = await parseHarvest(node.dependsOn[1] ?? "");
+      // The axis was DECLARED upstream (the brief's 'EIXO:' line) — regex, not
+      // an LLM guess. An undeclared axis is reported as such, out loud.
+      const axisNodeId = typeof config["axisFrom"] === "string" ? (config["axisFrom"] as string) : "brief";
+      const axisText = (await artifacts.get(runId, axisNodeId)) ?? "";
+      const axis = /EIXO:\s*(angle|hook|format)/i.exec(axisText)?.[1]?.toLowerCase() ?? "desconhecido";
+      // Comparison-window shift: a publish the valve (or circuit) deferred
+      // carries the release note in its summary — the verdict records it.
+      const shifted = def.nodes
+        .filter((n) => n.kind === "publish")
+        .filter((n) => {
+          const s = byNode.get(n.id)?.summary ?? "";
+          return s.includes("apos adiamento de cadencia") || s.includes("apos circuito fechado");
+        })
+        .map((n) => n.id);
+      const shiftNote = shifted.length > 0 ? ` — janela de comparacao deslocada pela valvula (${shifted.join(", ")})` : "";
+      if (a.noData || b.noData || a.n === 0 || b.n === 0) {
+        // A mute source on EITHER side breaks the comparison — no winner, no
+        // outcome row, said out loud (the 13/08 false-zero rule, doubled).
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `verdict A/B ${a.metric}: SEM DADO em pelo menos uma variante (A n=${a.n}, B n=${b.n}) — sem vencedor, nada gravado em ops.agent_outcome${shiftNote}`,
+        });
+        await telegram(
+          `🟠 A/B SEM VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): '${a.metric}' sem dado em pelo menos uma variante (A n=${a.n}, B n=${b.n}). NADA gravado — sem zero falso, sem vencedor inventado.`
+        );
+      } else if (a.total === b.total) {
+        // Equal totals = the channel-window measurement could not distinguish
+        // the variants. An invented winner would be fake statistics.
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `verdict A/B ${a.metric}: empate (A=${a.total} B=${b.total}) — indistinguivel, sem vencedor gravado${shiftNote}`,
+        });
+        await telegram(
+          `🟡 A/B EMPATE — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, '${a.metric}' identico nas duas janelas (A=${a.total}, B=${b.total}). Sem vencedor gravado — empate nao vira estatistica.`
+        );
+      } else {
+        const winner = a.total > b.total ? "A" : "B";
+        const w = Math.max(a.total, b.total);
+        const l = Math.min(a.total, b.total);
+        const liftPct = Math.round(((w - l) / Math.max(l, 1)) * 100);
+        await substrate.recordOutcome({ stepId, metric: `ab_${axis}`, valueBefore: l, valueAfter: w });
+        await substrate.finishStep(stepId, {
+          status: "succeeded",
+          summary: `ab-winner: axis=${axis} variant=${winner} lift=+${liftPct}% (metric=${a.metric} A=${a.total} B=${b.total})${shiftNote}`,
+        });
+        await telegram(
+          `🧪 VEREDITO A/B — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, vencedora a variante ${winner} (+${liftPct}% em ${a.metric}: A=${a.total}, B=${b.total})${shiftNote}. Registrado em ops.agent_outcome (ab_${axis}).`
+        );
+      }
     } else if (node.kind === "verdict") {
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
       const harvestNodeId = node.dependsOn[0] ?? "";

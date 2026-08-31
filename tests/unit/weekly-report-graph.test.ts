@@ -88,6 +88,10 @@ function makeWorld(): FakeWorld {
         },
         async snapshot(input) {
           world.snapshotCalls.push({ source: input.source, days: input.days });
+          if (input.source === "cadence") {
+            // 5.F.5: o texto da cadência É a recomendação final (código puro).
+            return "VALVULA DE CADENCIA — camada medida (5.F.5, 30d):\n- linkedin: cap atual (2/dia) mantem — media por post estavel (14 posts em 30d).";
+          }
           return input.source === "ops"
             ? "REGISTRO OPERACIONAL (ops.*, 7d):\n- sphere-linkedin: 7 runs (6 ok / 1 falha) · 1.20 USD"
             : "RESULTADOS REAIS (ops.agent_outcome, 7d):\n- linkedinpage_impressions_7d (sphere-linkedin): 340 · lift 0.15 · 2026-08-22";
@@ -125,14 +129,24 @@ function makeWorld(): FakeWorld {
 }
 
 describe("weekly-report (5.E.5) — o desenho", () => {
-  it("está no registry, valida, é do CEO e tem os 4 nós do desenho", () => {
+  it("está no registry, valida, é do CEO e tem os 5 nós do desenho (v2 = +cadence)", () => {
     const def = GRAPH_REGISTRY["weekly-report"];
     expect(def, "weekly-report fora do registry — o cron de segunda não iniciaria nada").toBeTruthy();
     expect(def).toBe(WEEKLY_REPORT_GRAPH);
     expect(def!.vpOwner).toBe("ceo");
     const v = validateGraph(def!);
     expect(v.errors).toEqual([]);
-    expect(def!.nodes.map((n) => n.id)).toEqual(["ops-week", "outcomes-week", "compose", "report"]);
+    expect(def!.nodes.map((n) => n.id)).toEqual(["ops-week", "outcomes-week", "cadence", "compose", "report"]);
+  });
+
+  it("5.F.5: o nó 'cadence' (30d) alimenta o REPORT direto — nunca o compose (o modelo não toca nos números de cadência)", () => {
+    const cadence = WEEKLY_REPORT_GRAPH.nodes.find((n) => n.id === "cadence")!;
+    expect(cadence.kind).toBe("snapshot");
+    expect(cadence.config).toMatchObject({ source: "cadence", days: 30 });
+    const compose = WEEKLY_REPORT_GRAPH.nodes.find((n) => n.id === "compose")!;
+    expect(compose.dependsOn).not.toContain("cadence");
+    const report = WEEKLY_REPORT_GRAPH.nodes.find((n) => n.id === "report")!;
+    expect(report.dependsOn).toEqual(["compose", "cadence"]);
   });
 
   it("é read-only POR CONSTRUÇÃO: sem publish, sem approval, sem spawn, sem harvest", () => {
@@ -177,30 +191,35 @@ describe("weekly-report — o run inteiro no harness do runner", () => {
     }
   }
 
-  it("snapshot ops 7d ‖ outcomes 7d → compose → report no Telegram, run SUCCEEDED", async () => {
+  it("snapshot ops 7d ‖ outcomes 7d ‖ cadence 30d → compose → report no Telegram, run SUCCEEDED", async () => {
     const world = makeWorld();
     await tickUntil(world, () => world.run.status !== "running");
 
-    // O runner leu as DUAS fontes da semana — e só elas.
-    expect(world.snapshotCalls).toHaveLength(2);
+    // O runner leu as TRÊS fontes — e só elas.
+    expect(world.snapshotCalls).toHaveLength(3);
     expect(world.snapshotCalls).toContainEqual({ source: "ops", days: 7 });
     expect(world.snapshotCalls).toContainEqual({ source: "outcomes", days: 7 });
+    expect(world.snapshotCalls).toContainEqual({ source: "cadence", days: 30 });
 
-    // O compose recebeu os dois snapshots como contexto — relatório sobre
-    // fatos, não sobre nada.
+    // O compose recebeu os dois snapshots da semana como contexto — e NUNCA a
+    // seção de cadência (o modelo não pode reescrever esses números).
     const composePrompt = world.taskPromptsByNode["compose"] ?? "";
     expect(composePrompt).toContain("[ops-week]");
     expect(composePrompt).toContain("[outcomes-week]");
     expect(composePrompt).toContain("REGISTRO OPERACIONAL");
     expect(composePrompt).toContain("RESULTADOS REAIS");
+    expect(composePrompt).not.toContain("VALVULA DE CADENCIA");
 
     expect(world.stepByNode("compose")?.status).toBe("succeeded");
     expect(world.stepByNode("report")?.status).toBe("succeeded");
 
-    // O relatório chegou ao founder com o título de segunda, como proposta.
+    // O relatório chegou ao founder com o título de segunda, como proposta —
+    // e a seção de cadência (5.F.5) colada VERBATIM, direto do snapshot.
     const report = world.telegrams.find((t) => t.includes("Semana da Ozvor"));
     expect(report, "o report de segunda não chegou ao Telegram").toBeTruthy();
     expect(report).toContain("relatório de segunda");
+    expect(report).toContain("VALVULA DE CADENCIA");
+    expect(report).toContain("cap atual (2/dia) mantem");
 
     // Read-only de ponta a ponta: nada publicado, run fechado com sucesso.
     expect(world.published).toEqual([]);

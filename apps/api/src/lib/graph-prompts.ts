@@ -128,6 +128,7 @@ export const TUNABLE_PROMPT_KEYS: readonly string[] = [
   "tiktok-draft",
   "youtube-draft",
   "experiment-draft",
+  "ab-draft",
   "ppc-draft",
   // Críticos (debate) das células de marketing.
   "critique",
@@ -139,6 +140,7 @@ export const TUNABLE_PROMPT_KEYS: readonly string[] = [
   "tiktok-critic",
   "youtube-critic",
   "experiment-critic",
+  "ab-critic",
   "ppc-critic",
 ];
 
@@ -555,6 +557,50 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Nao reescreva — aponte. Para cada problema: 1 linha do risco + 1 linha da correcao minima.",
       "Se nao houver risco, diga 'sem risco' em 1 linha.",
       "Formato de saida: no maximo 3 linhas de risco+correcao, ou 'sem risco'. Nada alem disso.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  // --- ab-experiment (5.F.4): o A/B semanal, um eixo por vez ---------------
+  // O brief DECLARA o eixo na linha 'EIXO:' — o veredito (codigo) extrai por
+  // regex; os drafts variam SO nesse eixo; o critico veta experimento sujo
+  // (mais de um eixo mudando = resultado ilegivel).
+
+  "ab-brief": (ctx) =>
+    [
+      "Voce e o desenhista de experimentos A/B da Ozvor. O bloco [memory] abaixo e o alcance REAL do canal (LinkedIn) nos ultimos 30 dias — leia primeiro.",
+      "Sua tarefa: desenhar UM experimento A/B honesto para HOJE — UMA ideia de conteudo, DUAS variantes que diferem em EXATAMENTE UM eixo.",
+      "Escolha o eixo pelo que [memory] sugere que mais importa testar agora: angle (a tese/abordagem), hook (a 1a linha) ou format (a estrutura do post).",
+      "REGRA DO EXPERIMENTO LIMPO: tudo que NAO e o eixo fica IGUAL nas duas variantes — mesma ideia, mesmo CTA, mesmo tamanho aproximado, mesmo canal. Duas coisas mudando = resultado ilegivel.",
+      "Formato de saida, nesta ordem e nada mais (rotulos em PT, conteudo do experimento em ingles onde couber):",
+      "EIXO: <angle|hook|format>",
+      "IDEIA: <a ideia unica de conteudo, 1 frase>",
+      "VARIANTE A: <o que a variante A faz no eixo escolhido, 1-2 frases>",
+      "VARIANTE B: <o que a variante B faz no eixo escolhido, 1-2 frases>",
+      "CONSTANTES: <o que fica igual nas duas, 1 linha>",
+      "METRICA: linkedinpage_impressions (janela de 48h por variante)",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "ab-draft": (ctx) =>
+    [
+      `Voce e roteirista da Ozvor. Do desenho de experimento abaixo, escreva a VARIANTE ${String(ctx.config["variant"] ?? "A")} como um post curto de LinkedIn (40-90 palavras).`,
+      "Siga o brief A LETRA: implemente exatamente o que a linha da SUA variante pede no eixo declarado, e mantenha as CONSTANTES identicas a outra variante.",
+      "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
+      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre).",
+      ENGLISH_FIRST,
+      "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois (sem rotulo de variante, sem comentario).",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "ab-critic": (ctx) =>
+    [
+      "Voce e o critico de experimentos da Ozvor. Abaixo: o brief do A/B (com a linha EIXO:), as duas variantes e o historico real do canal em [memory].",
+      "LENTE EXPERIMENTO LIMPO (com VETO): as duas variantes diferem em EXATAMENTE o eixo declarado? Se mudou mais de uma coisa (eixo + CTA, eixo + tamanho muito diferente), escreva 'VETO: experimento sujo — <o que mais mudou>'.",
+      "LENTE COMPLIANCE (com VETO): promessa que nao cumprimos, claim sem base, dado inventado — em QUALQUER variante.",
+      "LENTE FRESHNESS: alguma variante repete gancho/tema recente de [memory]?",
+      LESSONS_VETO_RULE,
+      "Para cada variante: 1 frase de avaliacao + correcao minima se houver. NAO declare vencedor — quem decide o vencedor e a metrica colhida, nunca voce.",
+      "Formato de saida: bloco A, bloco B, e a linha final 'EXPERIMENTO: <limpo|VETO: motivo>'. Nada alem disso.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 

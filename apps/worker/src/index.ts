@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -407,6 +407,27 @@ async function registerPromptTunerSchedule(): Promise<void> {
   logger.info("prompt_tuner_schedule_registered", { cron: PROMPT_TUNER_CRON });
 }
 
+// ab-experiment (5.F.4): o A/B semanal — sexta 06:30 UTC, o slot de manhã que
+// sobrava na semana (segunda brains/relatório, terça tuner, quinta discovery).
+// O cron só cria o run; o tick de 10 min o executa. Marketing + approval →
+// conta na válvula SPHERE_MAX_DAILY_APPROVALS como qualquer célula gated.
+const abExperimentWorker = new Worker(
+  "ab-experiment",
+  async () => runAbExperimentWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const abExperimentQueue = new Queue("ab-experiment", { connection });
+const AB_EXPERIMENT_CRON = process.env["AB_EXPERIMENT_CRON"] ?? "30 6 * * 5";
+
+async function registerAbExperimentSchedule(): Promise<void> {
+  await abExperimentQueue.add(
+    "ab-experiment",
+    {},
+    { jobId: "ab-experiment-repeat", repeat: { pattern: AB_EXPERIMENT_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("ab_experiment_schedule_registered", { cron: AB_EXPERIMENT_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -590,6 +611,7 @@ void platformKeysReady.finally(() => {
   void incidentPostmortemWorker.run();
   void memoryConsolidationWorker.run();
   void promptTunerWorker.run();
+  void abExperimentWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -616,6 +638,9 @@ void platformKeysReady.finally(() => {
   });
   void registerPromptTunerSchedule().catch((err: Error) => {
     logger.error("prompt_tuner_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerAbExperimentSchedule().catch((err: Error) => {
+    logger.error("ab_experiment_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -882,6 +907,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await weeklyReportQueue.close();
     await memoryConsolidationWorker.close();
     await memoryConsolidationQueue.close();
+    await abExperimentWorker.close();
+    await abExperimentQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
   } catch (err) {
