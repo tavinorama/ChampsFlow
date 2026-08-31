@@ -1407,7 +1407,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           const rows = await sql<{ lessons: string }[]>`
             /* memory:active-read */
             SELECT lessons FROM ops.memory_lesson
-             WHERE lessons NOT LIKE ${'${'}INCIDENT_LESSON_PREFIX + "%"}
+             WHERE lessons NOT LIKE ${INCIDENT_LESSON_PREFIX + "%"}
              ORDER BY approved_at DESC
              LIMIT 1`;
           const text = rows[0]?.lessons?.trim() ?? "";
