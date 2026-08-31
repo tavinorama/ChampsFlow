@@ -977,10 +977,25 @@ export const SPHERE_PPC_GRAPH: GraphDefinition = {
 //    entregue como postmortem sem o sim do founder;
 //  - report: o rascunho APROVADO chega inteiro ao founder com a instrução do
 //    passo humano (colar em docs/learning/postmortems/ + anti-patterns.md).
-//    v1 honesta: NÃO há store durável aqui — o ledger ops.memory_lesson do
-//    5.F.1 (#530) ainda não está na main, e criar uma tabela paralela agora
-//    seria acoplamento especulativo. O texto integral vive no report step +
-//    Telegram; o commit nos docs é o passo manual listado no próprio report.
+//    (Na v1 não havia store durável — o ledger ops.memory_lesson do 5.F.1
+//    ainda não estava na main; ver v2 abaixo.)
+//
+// v2 (5.F.7, 31/08 — postmortem→código): a seção "## Licoes propostas" do
+// rascunho aprovado morria no report — um humano precisava copiá-la para
+// docs/learning/anti-patterns.md, e os críticos dos grafos nunca leem esse
+// arquivo (leem [__memory__]/[__lessons__]). A cauda store-lessons fecha o
+// loop SEM segundo gate e SEM commit de máquina em docs/:
+//  - a aprovação do RASCUNHO é a aprovação das lições — são linhas verbatim
+//    que o founder leu na caixa do Telegram;
+//  - o runner EXTRAI a seção por CÓDIGO (regex no header + formato pinado
+//    'NUNCA <padrao>. Em vez disso: <pratica>' — nunca um LLM) e grava UMA
+//    linha em ops.memory_lesson com o prefixo LICOES DE INCIDENTE, visível ao
+//    daily-watchdog (snapshot 'ops') — os críticos de marketing NÃO a veem
+//    ([__memory__] segue sendo só a consolidação mensal do 5.F.1);
+//  - seção ausente/fora do formato = NADA gravado, aviso alto (nunca palpite);
+//  - tabela ausente (migração 5.F.1 pendente) = store SKIP com a ação nominal
+//    que destrava; o postmortem em si (report) sai exatamente como antes.
+//  - docs/learning/ segue 100% humano: o report ainda nomeia o passo manual.
 //
 // CEO-owned: incidente é preocupação da organização, não de um canal — e
 // assim nunca conta na válvula de aprovações de marketing nem recebe as
@@ -989,10 +1004,10 @@ export const SPHERE_PPC_GRAPH: GraphDefinition = {
 
 export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
   slug: "incident-postmortem",
-  version: 1,
+  version: 2,
   vpOwner: "ceo",
   description:
-    "Postmortem automático (5.D.2): SÓ roda quando o scan SQL diário (07:00 UTC) detecta assinatura de incidente nas últimas 24h (cluster >=3 steps falhados no mesmo graph, reconciliação starved/órfã, timeouts de aprovação em massa) — dia quieto não inicia run nem toca o Telegram. evidence (snapshot 'incidents': fatos re-agregados por SQL — contagens, timestamps, graphs, erros literais capados) → compose (rascunho PT no formato da casa, causa raiz como HIPÓTESE, declarado RASCUNHO DE MÁQUINA) → aprovação do founder (96h; silêncio = rejeição, nada vira postmortem) → report com o rascunho aprovado INTEIRO + o passo humano (commit manual em docs/learning/). Sem publish, sem spawn, sem store: a máquina propõe, o humano registra.",
+    "Postmortem automático (5.D.2 + 5.F.7): SÓ roda quando o scan SQL diário (07:00 UTC) detecta assinatura de incidente nas últimas 24h (cluster >=3 steps falhados no mesmo graph, reconciliação starved/órfã, timeouts de aprovação em massa) — dia quieto não inicia run nem toca o Telegram. evidence (snapshot 'incidents': fatos re-agregados por SQL — contagens, timestamps, graphs, erros literais capados) → compose (rascunho PT no formato da casa, causa raiz como HIPÓTESE, declarado RASCUNHO DE MÁQUINA) → aprovação do founder (96h; silêncio = rejeição, nada vira postmortem) → store-lessons (5.F.7: extração POR CÓDIGO da seção '## Licoes propostas' do rascunho aprovado → uma linha em ops.memory_lesson com prefixo LICOES DE INCIDENTE, lida pelo daily-watchdog; seção ausente/malformada = nada gravado; tabela ausente = skip com ação nominal) ‖ report com o rascunho aprovado INTEIRO + o passo humano (commit manual em docs/learning/ — segue 100% humano). Sem publish, sem spawn: a máquina propõe, o humano registra nos docs.",
   nodes: [
     // Every number the draft may use is aggregated HERE, by the runner's SQL —
     // the compose step downstream is forbidden to invent beyond this block.
@@ -1008,9 +1023,19 @@ export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
         channel: "telegram",
         timeoutHours: 96,
         question:
-          "Aprovar = aceito este RASCUNHO de postmortem; o commit em docs/learning/ (postmortem + anti-pattern) continua sendo meu, manual. Rejeitar ou silêncio (96h) = rascunho descartado, nada é registrado.",
+          "Aprovar = aceito este RASCUNHO de postmortem; as linhas de '## Licoes propostas' (que estão neste texto, verbatim) viram memória de incidentes ativa (ops.memory_lesson, lida pelo watchdog) — e o commit em docs/learning/ (postmortem + anti-pattern) continua sendo meu, manual. Rejeitar ou silêncio (96h) = rascunho descartado, nada é registrado.",
       },
     },
+    // 5.F.7: the approved draft's "## Licoes propostas" section becomes ONE
+    // durable ops.memory_lesson row (incident prefix, read by the watchdog's
+    // ops snapshot — NOT by [__memory__], which stays the monthly 5.F.1 batch).
+    // Extraction is CODE (regex on the pinned format), never an LLM; empty or
+    // malformed section stores NOTHING. Gated by the approval above
+    // (validateGraph hard rule) — the founder's yes on the draft IS the yes on
+    // its lessons, verbatim lines he read. The report does NOT depend on this
+    // node: a missing table (5.F.1 migration pending) skips the store and the
+    // postmortem still reaches the founder exactly as in v1.
+    { id: "store-lessons", kind: "store", dependsOn: ["approval"], config: { target: "incident-lessons" } },
     // The report also depends on compose: an approval step carries no
     // artifact, so the draft the founder approved is what gets delivered.
     {

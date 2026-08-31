@@ -96,6 +96,61 @@ export const LESSONS_ARTIFACT = "__lessons__";
  */
 export const MEMORY_ARTIFACT = "__memory__";
 
+// ---------------------------------------------------------------------------
+// 5.F.7 — postmortem→código: the approved postmortem draft's "## Licoes
+// propostas" section becomes durable, OPERATIONAL memory instead of dying in
+// the report. Extraction is CODE (regex on the section header + the pinned
+// line format), never an LLM — the founder approved the DRAFT, so only lines
+// he literally read may be stored, verbatim. Rows carry this prefix so their
+// origin is visible and so the reads can route on it: the daily-watchdog's
+// ops snapshot surfaces them (incidents are ops lessons), while the marketing
+// critics' [__memory__] read EXCLUDES them (that slot stays the monthly 5.F.1
+// consolidation — an incident row must never displace it, newest-wins).
+// ---------------------------------------------------------------------------
+
+/** Prefix of every incident-lesson row in ops.memory_lesson — the routing key. */
+export const INCIDENT_LESSON_PREFIX = "LICOES DE INCIDENTE";
+
+/**
+ * Extract the lesson lines from an approved postmortem draft — pure code, no
+ * LLM. The compose prompt pins the format: a '## Licoes propostas' section
+ * whose entries read 'NUNCA <padrao>. Em vez disso: <pratica>'. Tolerates
+ * accents ("Lições"), bullets/numbering, and the optional "(→ anti-patterns)"
+ * suffix. A line missing either half of the pinned format is DROPPED — never
+ * store a guess. Returns [] when the section is absent, empty or malformed.
+ */
+export function extractIncidentLessons(draft: string): string[] {
+  const headerRe = /^#{2,}\s*Li[cç][oõ]es propostas.*$/im;
+  const m = headerRe.exec(draft);
+  if (!m) return [];
+  const after = draft.slice(m.index + m[0].length);
+  const nextSection = after.search(/^#{1,}\s/m);
+  const section = nextSection >= 0 ? after.slice(0, nextSection) : after;
+  const lessons: string[] = [];
+  for (const raw of section.split("\n")) {
+    // Strip list markers ("- ", "* ", "1) ", "1. ") and surrounding quotes.
+    const line = raw
+      .trim()
+      .replace(/^(?:[-*•]|\d+[.)])\s*/, "")
+      .replace(/^['"“]|['"”]$/g, "")
+      .trim();
+    // Both halves of the pinned format are required, or the line is dropped.
+    if (/^NUNCA\s+\S/i.test(line) && /Em vez disso:/i.test(line)) lessons.push(line);
+  }
+  return lessons;
+}
+
+/**
+ * Render the extracted lessons as the ONE row stored in ops.memory_lesson —
+ * prefixed so the origin (and the approval date the founder gave) is visible,
+ * and so reads can route on INCIDENT_LESSON_PREFIX.
+ */
+export function incidentLessonBlock(lessons: string[], approvedIsoDate: string): string {
+  return [`${INCIDENT_LESSON_PREFIX} (postmortem aprovado ${approvedIsoDate}):`, ...lessons.map((l) => `- ${l}`)].join(
+    "\n"
+  );
+}
+
 /**
  * Every runnable graph, by slug. Adding a graph here is the ONLY way to make
  * it startable — the operator route and the worker tick both read this map,
@@ -1012,7 +1067,9 @@ export async function advanceRun(
           : n.kind === "store"
             ? String(n.config?.["target"] ?? "") === "prompt-override"
               ? `ativar como OVERRIDE de prompt (ops.prompt_override) — os grafos passam a montar esse prompt com o texto aprovado no próximo tick`
-              : `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
+              : String(n.config?.["target"] ?? "") === "incident-lessons"
+                ? `ativar as linhas de '## Licoes propostas' deste rascunho como memória de incidentes (ops.memory_lesson, prefixo LICOES DE INCIDENTE) — lida pelo watchdog diário; docs/learning/ segue manual`
+                : `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
             : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
@@ -1331,11 +1388,65 @@ export async function advanceRun(
       const approvalNode = def.nodes.find((n) => n.id === node.dependsOn[0]);
       const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
       const lessons = ((await artifacts.get(runId, contentNodeId)) ?? "").trim();
+      const storeTarget = String(config["target"] ?? "memory-lessons");
+      if (storeTarget === "incident-lessons") {
+        // 5.F.7: the approved postmortem draft's "## Licoes propostas" section
+        // becomes ONE ops.memory_lesson row. Extraction is CODE on the pinned
+        // format — an absent/malformed section stores NOTHING (never a guess).
+        // Nothing downstream depends on this node, and every non-happy path
+        // finishes SOFT (succeeded no-op / skipped OFF): the postmortem itself
+        // — approval box, report, run status — completes exactly as before
+        // 5.F.7, whether or not the 5.F.1 migration exists in this database.
+        const extracted = extractIncidentLessons(lessons);
+        if (extracted.length === 0) {
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            summary:
+              "sem licoes extraiveis no rascunho aprovado (secao '## Licoes propostas' ausente ou fora do formato 'NUNCA ... Em vez disso: ...') — nada gravado, nunca um palpite",
+          });
+          await telegram(
+            `🟠 LIÇÕES DE INCIDENTE NÃO EXTRAÍDAS — graph ${def.slug} (run ${runId.slice(0, 8)}): o rascunho aprovado não traz a seção '## Licoes propostas' no formato pinado ('NUNCA <padrao>. Em vez disso: <pratica>'), então NADA foi gravado em ops.memory_lesson (nunca gravamos um palpite). O postmortem foi entregue normalmente; o commit manual em docs/learning/ continua valendo.`
+          );
+          continue;
+        }
+        const block = incidentLessonBlock(extracted, now().toISOString().slice(0, 10));
+        if (!substrate.storeMemoryLessons) {
+          await substrate.finishStep(stepId, {
+            status: "skipped",
+            summary:
+              "store port ausente neste worker — licoes de incidente NAO gravadas (feature OFF); o postmortem seguiu normalmente",
+          });
+          continue;
+        }
+        const res = await substrate.storeMemoryLessons({ runId, lessons: block });
+        if (res.ok) {
+          await artifacts.set(runId, node.id, block);
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            outputHash: sha(block),
+            summary: `licoes de incidente gravadas (${extracted.length} linha(s), prefixo '${INCIDENT_LESSON_PREFIX}') — visiveis ao watchdog diario`,
+          });
+        } else {
+          // Missing table (5.F.1 migration pending) or any write error: the
+          // store leg declares itself OFF with the unlocking action the port
+          // named — loud on Telegram, soft on the run ("mergeado ≠ produção",
+          // but a postmortem must never die because its side-memory could not
+          // be written).
+          const reason = (res.reason ?? "motivo desconhecido").slice(0, 200);
+          await substrate.finishStep(stepId, {
+            status: "skipped",
+            summary: `store OFF: ${reason} — licoes de incidente nao gravadas; o postmortem seguiu normalmente`,
+          });
+          await telegram(
+            `🟠 LIÇÕES DE INCIDENTE NÃO GRAVADAS — graph ${def.slug} (run ${runId.slice(0, 8)}): ${reason}. O postmortem aprovado foi entregue normalmente; as lições vivem só no report/Telegram até a ação acima destravar.`
+          );
+        }
+        continue;
+      }
       if (!lessons) {
         await substrate.finishStep(stepId, { status: "failed", summary: "store had no approved content artifact (TTL?)" });
         continue; // next tick's fail-fast closes the run, out loud
       }
-      const storeTarget = String(config["target"] ?? "memory-lessons");
       if (storeTarget === "prompt-override") {
         // 5.F.2: the approved proposal becomes a prompt override — AFTER the
         // structural checks re-run HERE, at store time. The prompt asked the
