@@ -18,6 +18,13 @@
 | 0.4 | Webhook SmartLead | 👤 | S | 🟢 **registrado GLOBAL e provado fim-a-fim 27/08** (Test → `smartlead_event` → CRM `contacted` em 1s). Warm-up é por caixa, sem campanha — webhook por campanha entra no checklist do dia do disparo |
 | 0.5 | Dry-run: e-mail → clique → lead com origem no admin | 👤 | S | 🟡 teste de fogo provou clique→lead→compra; a ORIGEM falhou (era o bug do 0.3) — re-teste de 2 min após o deploy do #527: abrir `/ai-audit?from=x` numa aba anônima, navegar, voltar e conferir no admin |
 
+### NOVO 01/09 — diretivas do founder
+| # | O que | Dono | Esf. | Estado |
+|---|---|---|---|---|
+| 0.6 | **Dois ICPs separados-e-conectados** (GEO tool + AI Stack $49): `prospect-batch` alimenta as DUAS trilhas; cada lote separa por produto | ⚙️ | S–M | 🟡 EM CONSTRUÇÃO 01/09 |
+| 0.7 | **Campanha SmartLead do AI Stack**: kit pronto (`docs/departments/sales/aistack-campaign-kit.md` — ICP-2 + 3 e-mails EN nos padrões + passos de carga); founder cria a campanha no SmartLead com o 1º lote | 👤 (kit ⚙️ ✅) | S | 🟡 kit entregue; carga é sua |
+| 0.8 | **Anti-genérico permanente**: críticos recebem as últimas N publicações do canal e vetam repetição de ângulo/gancho/estrutura; genericidade = veto; ciclo verificar→criar→aplicar→auditar em TODA publicação, TODA plataforma (alcance, views, integrações, participação) | ⚙️ | M | 🟡 EM CONSTRUÇÃO 01/09 (a metade "auditar→aprender" já existe: harvest/verdict/memória/tuner — as migrações #531/#537 ligam) |
+
 > **Checklist do dia do disparo (1ª campanha real):** 1º e-mail SEM nenhum link (regra 27/08; deliverability) · links `?from=` só do 2º e-mail em diante · webhook por campanha (se o global não cobrir) · correlação do 1º toque é por e-mail do lead.
 
 ## BLOCO 1 — VÍDEO AUTOMÁTICO *(reescrito 24/08 após o raio-X da VPS)*
