@@ -1,0 +1,134 @@
+name: SmartLead classify Ozvor 1 (one-shot, founder-triggered)
+
+# Classifica as leads da campanha "Ozvor 1" entre as trilhas GEO e AISTACK
+# (regra do founder 01/09: 2 ICPs separados-e-conectados). Determinístico:
+# keywords de categoria em company/website. Leads com sinal CLARO de
+# não-local (saas/ecommerce/agency/software/…) são MOVIDAS para a campanha
+# aistack (3888686, DRAFTED — nada é enviado): add lá + remove do Ozvor 1,
+# com contabilidade exata. Ambíguas FICAM onde estão (honestidade > palpite).
+# Saída: SÓ AGREGADOS. workflow_dispatch apenas.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_moves:
+        description: "Máximo de leads a mover nesta execução"
+        required: false
+        default: "2500"
+      dry_run:
+        description: "true = só classifica e conta, não move nada"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Classify + move (deterministic)
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          MAX_MOVES: ${{ github.event.inputs.max_moves }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, re, time, urllib.request, urllib.error
+
+          KEY = os.environ["SL_KEY"]
+          MAX_MOVES = int(os.environ.get("MAX_MOVES") or 2500)
+          DRY = (os.environ.get("DRY_RUN") or "false").lower() == "true"
+          BASE = "https://server.smartlead.ai/api/v1"
+          SRC = 3741204      # Ozvor 1 (mista)
+          DST = 3888686      # aistack-2026-09-08 (DRAFTED)
+          UA = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json",
+                "Content-Type": "application/json"}
+
+          def call(method, path, payload=None):
+              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(url, data=data, headers=UA, method=method)
+              for attempt in range(3):
+                  try:
+                      with urllib.request.urlopen(req, timeout=60) as r:
+                          body = r.read().decode()
+                          return json.loads(body) if body.strip() else {}
+                  except urllib.error.HTTPError as e:
+                      if e.code == 429:
+                          time.sleep(3 * (attempt + 1)); continue
+                      return {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:160]}
+                  except Exception as e:
+                      if attempt < 2:
+                          time.sleep(2); continue
+                      return {"_error": type(e).__name__}
+              return {"_error": "retries_exhausted"}
+
+          # Sinais CLAROS de não-local → trilha AISTACK. Ambíguo fica.
+          AISTACK_RE = re.compile(
+              r"saas|software|app\b|ecommerce|e-commerce|\bstore\b|\bshop\b|shopify|"
+              r"agency|agencia|marketing|consult|studio|digital|media|design|brand|"
+              r"tech\b|solutions|systems|platform|online|web\s?dev|seo\b|creative", re.I)
+          # Sinais claros de local-service → fica (trilha GEO).
+          GEO_RE = re.compile(
+              r"roof|plumb|hvac|electric|landscap|contractor|construction|remodel|"
+              r"dental|dentist|clinic|chiro|vet\b|salon|spa\b|barber|restaurant|"
+              r"cafe|bakery|law\b|attorney|legal|realty|real\s?estate|insurance|"
+              r"auto\b|repair|clean|pest|mov(er|ing)|stor(age|e front)", re.I)
+
+          offset, page = 0, 100
+          total = geo = aistack = ambiguous = noinfo = 0
+          to_move = []   # (lead_id, email) — mantidos SÓ em memória, nunca impressos
+          while True:
+              res = call("GET", f"/campaigns/{SRC}/leads?offset={offset}&limit={page}")
+              if not isinstance(res, dict) or "data" not in res:
+                  print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"leads fetch falhou em offset {offset}: {str(res)[:160]}"}))
+                  raise SystemExit(1)
+              rows = res["data"]
+              if not rows:
+                  break
+              for row in rows:
+                  lead = row.get("lead") or row
+                  total += 1
+                  text = " ".join(str(lead.get(k) or "") for k in ("company_name", "website", "company_url", "custom_fields"))
+                  if not text.strip():
+                      noinfo += 1; continue
+                  is_geo = bool(GEO_RE.search(text)); is_ai = bool(AISTACK_RE.search(text))
+                  if is_ai and not is_geo:
+                      aistack += 1
+                      if lead.get("id") and lead.get("email"):
+                          to_move.append((lead["id"], lead["email"]))
+                  elif is_geo and not is_ai:
+                      geo += 1
+                  else:
+                      ambiguous += 1
+              offset += page
+              if offset > 12000:
+                  break
+
+          moved = add_fail = del_fail = 0
+          if not DRY:
+              batch = to_move[:MAX_MOVES]
+              # Add em lotes de 100 na aistack (DRAFTED — nada envia)
+              for i in range(0, len(batch), 100):
+                  chunk = batch[i:i+100]
+                  add = call("POST", f"/campaigns/{DST}/leads",
+                             {"lead_list": [{"email": em} for (_id, em) in chunk]})
+                  if isinstance(add, dict) and ("_http_error" in add or "_error" in add):
+                      add_fail += len(chunk); continue
+                  for (lid, _em) in chunk:
+                      d = call("DELETE", f"/campaigns/{SRC}/leads/{lid}")
+                      if isinstance(d, dict) and ("_http_error" in d or "_error" in d):
+                          del_fail += 1
+                      else:
+                          moved += 1
+
+          print("RESULTADO_OZVOR" + json.dumps({
+              "ok": True, "dry_run": DRY, "total_analisadas": total,
+              "trilha_geo_fica": geo, "trilha_aistack_detectadas": aistack,
+              "ambiguas_ficam": ambiguous, "sem_info_ficam": noinfo,
+              "movidas_para_aistack": moved, "falhas_add": add_fail, "falhas_delete": del_fail,
+          }, ensure_ascii=False))
+          PYEOF
