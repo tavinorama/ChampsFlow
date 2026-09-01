@@ -1,0 +1,69 @@
+name: Post-deploy smoke (main)
+
+# 5.D.4 (metade smoke): todo merge na main dispara deploy automático no
+# Railway — e até hoje ninguém conferia se o deploy ACORDOU. Este workflow
+# espera o deploy assentar e bate nos endpoints públicos vitais; qualquer
+# resposta errada grita no Telegram (padrão blog-absence-watch: summary
+# sempre; Telegram quando os secrets existem). Vigia fora do vigiado:
+# só GETs públicos, zero mutação, zero secrets de app.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-smoke
+  cancel-in-progress: true   # só interessa o smoke do ÚLTIMO deploy
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Railway deploy to settle
+        run: sleep 240
+
+      - name: Probe vital endpoints
+        id: probe
+        run: |
+          set -uo pipefail
+          FAILS=""
+          check () { # nome url [substring-esperada]
+            local name="$1" url="$2" want="${3:-}"
+            local body code
+            body=$(curl -sS --max-time 30 -w "\n%{http_code}" "$url" 2>/dev/null) || { FAILS="$FAILS $name(curl)"; return; }
+            code=$(echo "$body" | tail -1)
+            [ "$code" = "200" ] || { FAILS="$FAILS $name($code)"; return; }
+            if [ -n "$want" ] && ! echo "$body" | grep -q "$want"; then FAILS="$FAILS $name(conteudo)"; fi
+          }
+          check web https://ozvor.com "Ozvor"
+          check blog https://ozvor.com/blog "Blog"
+          check api-liveness https://api-production-2052.up.railway.app/api/v1/agent-org/liveness "last_tick_at"
+          check ai-audit-meta https://api-production-2052.up.railway.app/api/ai-audit/meta ""
+          echo "fails=${FAILS}" >> "$GITHUB_OUTPUT"
+          echo "Falhas:${FAILS:-nenhuma}"
+
+      - name: Quiet when healthy
+        if: steps.probe.outputs.fails == ''
+        run: echo "Deploy saudável — 4/4 endpoints ok."
+
+      - name: SCREAM on failure
+        if: steps.probe.outputs.fails != ''
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          {
+            echo "## 🔴 SMOKE PÓS-DEPLOY FALHOU"
+            echo ""
+            echo "Endpoints com problema:${{ steps.probe.outputs.fails }}"
+            echo "Commit: ${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="SMOKE POS-DEPLOY FALHOU:${{ steps.probe.outputs.fails }} — commit ${GITHUB_SHA:0:8}. Ver Actions."
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          fi
+          exit 1
