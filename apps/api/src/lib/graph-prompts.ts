@@ -1138,9 +1138,10 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "prospect-draft": (ctx) =>
     [
       "Voce e o founder da Ozvor (Otavio) escrevendo cold emails, um por um, como gente de verdade. O bloco [prospects] abaixo traz negocios US REAIS, verificados por codigo, cada um com ACHADOS tecnicos verificados no proprio site.",
+      "DUAS TRILHAS (0.6, founder 01/09): cada prospect traz as linhas 'TRILHA:' e 'CAMPANHA:' no proprio bloco — respeite-as. trilha geo = dor de visibilidade em IA; a oferta e o teste gratis. trilha aistack = dor de ferramenta/processo (paga tools demais, faz trabalho chato na mao); a oferta e o AI Stack Audit de $49: 5 perguntas, 60 segundos, indica a UNICA ferramenta de IA certa para o gargalo dele, devolucao em 30 dias. O kit docs/departments/sales/aistack-campaign-kit.md e o MOLDE da trilha aistack — mesma intencao, mas escreva FRESCO por prospect, nunca cole o molde.",
       "Para CADA prospect do bloco, escreva uma sequencia de 3 e-mails frios.",
-      "REGRA INEGOCIAVEL DO EMAIL 1 (validada por CODIGO — o step FALHA se violar): texto puro, ZERO links, ZERO URLs, ZERO dominios escritos (nem ozvor.com, nem o site deles). UMA unica pergunta, buscando RESPOSTA. Cite UM achado do bloco em palavras simples (ex.: 'your site tells ChatGPT's crawler to stay out'), sem jargao. 40-80 palavras. Assine 'Otavio'.",
-      "EMAILS 2 e 3: podem ter NO MAXIMO um link para ozvor.com, SEMPRE com ?from=<CAMPANHA> — use exatamente o valor da linha 'CAMPANHA:' do bloco [prospects] (ex.: https://ozvor.com/?from=cold-2026-09-02). Email 2 aprofunda o achado e mostra o caminho; email 3 e o ultimo toque, curto e educado, porta aberta.",
+      "REGRA INEGOCIAVEL DO EMAIL 1 (validada por CODIGO — o step FALHA se violar; vale para AS DUAS trilhas): texto puro, ZERO links, ZERO URLs, ZERO dominios escritos (nem ozvor.com, nem o site deles). UMA unica pergunta, buscando RESPOSTA. Cite UM achado do bloco em palavras simples (ex.: 'your site tells ChatGPT's crawler to stay out'), sem jargao. 40-80 palavras. Assine 'Otavio'.",
+      "EMAILS 2 e 3: no maximo um link, SEMPRE com ?from=<a CAMPANHA do proprio prospect>. TRILHA geo: o link e https://ozvor.com/test?from=<campanha> (ou a raiz ozvor.com) — o teste gratis. TRILHA aistack: o link e https://ozvor.com/ai-audit?from=<campanha> — e o EMAIL 2 TRAZ esse link da oferta (validado por codigo). Email 2 aprofunda o achado/dor e mostra o caminho; email 3 e o ultimo toque, curto e educado, porta aberta.",
       "Regras da casa: frases <=12 palavras, nivel 15-17 anos, CTA em 1a pessoa, sonho honesto (dor real, gente real), NUNCA inventar numero ou achado — so o que esta no bloco. Sem travessao.",
       ENGLISH_FIRST,
       "Formato de saida EXATO, para cada prospect do bloco, nada antes nem depois:",
@@ -1165,6 +1166,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "- LINK NO EMAIL 1: qualquer URL, dominio ou www no email 1 (assunto incluso) = 'VETO: link no email 1' (regra do founder 27/08 — 1o toque frio e texto puro).",
       "- DADO INVENTADO: numero, achado ou promessa que NAO esta em [prospects] = 'VETO: dado inventado'. O achado citado tem que ser o do proprio prospect.",
       "- ATRIBUICAO: link ozvor.com sem ?from=<campanha> nos emails 2-3 = 'VETO: sem from'.",
+      "- TRILHA ERRADA (0.6): prospect da trilha aistack com link fora de /ai-audit, ou ?from= fora da campanha aistack-* dele = 'VETO: trilha errada'. Prospect da trilha geo linkando /ai-audit = 'VETO: trilha errada'. A trilha de cada prospect esta na linha TRILHA: do bloco [prospects].",
       "- VOZ: soa mala direta / template de agencia em massa = 'VETO: parece spam'. Tem que ler como UMA pessoa que olhou O site deles.",
       "- COPY DA CASA: frase >12 palavras, jargao, CTA fora da 1a pessoa — aponte a correcao concreta.",
       "Para cada prospect: 1-2 linhas de parecer + os vetos, se houver. NAO reescreva os e-mails.",
@@ -1175,7 +1177,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "prospect-finalize": (ctx) =>
     [
       "Voce e o editor final de outbound da Ozvor. Abaixo: o lote [draft], a critica [critic] e o bloco verificado [prospects].",
-      "Aplique TODOS os vetos e correcoes da critica e entregue o lote FINAL. Vetos sao lei: link no email 1 SAI, dado sem fonte SAI, link ozvor.com ganha ?from=<CAMPANHA do bloco [prospects]>, frase longa encurta, template vira conversa.",
+      "Aplique TODOS os vetos e correcoes da critica e entregue o lote FINAL. Vetos sao lei: link no email 1 SAI, dado sem fonte SAI, link ozvor.com ganha ?from=<a CAMPANHA do proprio prospect no bloco [prospects]>, trilha errada corrige (geo -> /test ou raiz; aistack -> /ai-audit, com o link da oferta no email 2), frase longa encurta, template vira conversa.",
       "Mantenha a regra do email 1: texto puro, zero links/dominios, UMA pergunta, um achado real em palavras simples, assinado 'Otavio'. (Um validador de CODIGO reprova a saida se violar.)",
       ENGLISH_FIRST,
       "Formato de saida: EXATAMENTE o mesmo contrato do draft — blocos '=== PROSPECT: <nome> ===' com [EMAIL 1]/[EMAIL 2]/[EMAIL 3] (cada um com SUBJECT: e corpo) — para todos os prospects, nada antes nem depois. Lote vazio: repita a linha 'SEM PROSPECTS VERIFICADOS...' e nada mais.",

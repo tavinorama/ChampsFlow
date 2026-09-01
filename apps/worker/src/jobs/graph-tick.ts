@@ -25,6 +25,7 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
 import { buildProspectBatchBlock } from "../lib/prospect-probe";
+import { crmNoteFor } from "../../../api/src/lib/prospecting";
 import { PLAN_PRICE_USD } from "../../../../packages/shared/src/plan-limits";
 import { createHash } from "node:crypto";
 import {
@@ -1564,7 +1565,10 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         let inserted = 0;
         try {
           for (const c of input.contacts) {
-            const note = `[prospect-batch] ${input.campaign} — ${c.finding || "sem achado registrado"} — ${c.website}`;
+            // 0.6: a nota nomeia a TRILHA (geo|aistack) + a campanha do
+            // contato — é o que deixa o founder carregar cada trilha na SUA
+            // campanha do SmartLead. Uma fonte: crmNoteFor (prospecting.ts).
+            const note = crmNoteFor({ ...c, track: c.track === "aistack" ? "aistack" : "geo" });
             const rows = await sql<{ inserted: boolean }[]>`
               /* prospect:crm-store */
               INSERT INTO crm_contact (email, stage, note, updated_at)

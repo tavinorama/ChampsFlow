@@ -360,7 +360,7 @@ export interface SubstratePort {
   storeCrmContacts?(input: {
     runId: string;
     campaign: string;
-    contacts: Array<{ email: string; name: string; website: string; finding: string }>;
+    contacts: Array<{ email: string; name: string; website: string; finding: string; track: string; campaign: string }>;
   }): Promise<{ ok: boolean; inserted: number; reason?: string }>;
   /**
    * The newest SUCCEEDED publishes (0.8 anti-generic): rows read from
@@ -1141,7 +1141,11 @@ export async function advanceRun(
       // 27/08 rule: EMAIL 1 with any link/URL/domain (or without a question)
       // fails HERE — a prompt line asks, this line enforces.
       if (res.ok && res.output && config["validate"] === "cold-email-batch") {
-        const v = validateColdSequenceBatch(res.output);
+        // 0.6 — the validator routes PER TRACK on the code-generated
+        // [prospects] block (an upstream of both draft and finalize): the
+        // track/campaign of each prospect come from code, never the LLM.
+        const prospectsCtx = upstream.find(([id]) => id === "prospects")?.[1] ?? null;
+        const v = validateColdSequenceBatch(res.output, prospectsCtx);
         if (!v.ok) {
           await substrate.finishStep(stepId, {
             status: "failed",
@@ -1205,7 +1209,7 @@ export async function advanceRun(
             ? String(n.config?.["target"] ?? "") === "prompt-override"
               ? `ativar como OVERRIDE de prompt (ops.prompt_override) — os grafos passam a montar esse prompt com o texto aprovado no próximo tick`
               : String(n.config?.["target"] ?? "") === "crm-contacts"
-                ? `inserir os prospects VERIFICADOS no CRM (crm_contact, stage 'new', nota com lote + achado; só e-mails extraídos do site por código) — a máquina NÃO envia e-mail: o SmartLead envia, depois que você carregar a campanha`
+                ? `inserir os prospects VERIFICADOS no CRM (crm_contact, stage 'new', nota com trilha=geo|aistack + campanha + achado; só e-mails extraídos do site por código) — a máquina NÃO envia e-mail: o SmartLead envia, depois que você carregar UMA campanha por trilha`
                 : String(n.config?.["target"] ?? "") === "incident-lessons"
                 ? `ativar as linhas de '## Licoes propostas' deste rascunho como memória de incidentes (ops.memory_lesson, prefixo LICOES DE INCIDENTE) — lida pelo watchdog diário; docs/learning/ segue manual`
                 : `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`

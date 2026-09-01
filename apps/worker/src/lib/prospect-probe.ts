@@ -29,10 +29,14 @@ import {
   probeSite,
   extractContactEmails,
   nameMatchesHtml,
-  renderProspectBlock,
+  renderDualProspectBlock,
   campaignSlug,
   DEFAULT_PROSPECT_ICP,
+  DEFAULT_PROSPECT_ICP_AISTACK,
   DEFAULT_PROSPECT_BATCH_CAP,
+  PROSPECT_TRACKS,
+  type ProspectTrack,
+  type TrackBatch,
   type VerifiedProspect,
   type DroppedCandidate,
 } from "../../../api/src/lib/prospecting";
@@ -75,8 +79,24 @@ export const defaultFetchText: FetchTextFn = async (url, timeoutMs = FETCH_TIMEO
   }
 };
 
-/** The ICP handed to the engines — env override wins, source always named. */
-export function prospectIcp(env: NodeJS.ProcessEnv = process.env): { text: string; source: string } {
+/**
+ * The ICP handed to the engines, per track — env override wins, source always
+ * named. Track 'geo' keeps the historic env PROSPECT_ICP; 'aistack' (0.6)
+ * reads env PROSPECT_ICP_AISTACK, defaulting to the kit's ICP-2.
+ */
+export function prospectIcp(
+  env: NodeJS.ProcessEnv = process.env,
+  track: ProspectTrack = "geo"
+): { text: string; source: string } {
+  if (track === "aistack") {
+    const override = env["PROSPECT_ICP_AISTACK"]?.trim();
+    if (override) return { text: override, source: "env PROSPECT_ICP_AISTACK (override do founder)" };
+    return {
+      text: DEFAULT_PROSPECT_ICP_AISTACK,
+      source:
+        "docs/departments/sales/aistack-campaign-kit.md (ICP-2 da trilha AI STACK, 01/09; override: env PROSPECT_ICP_AISTACK)",
+    };
+  }
   const override = env["PROSPECT_ICP"]?.trim();
   if (override) return { text: override, source: "env PROSPECT_ICP (override do founder)" };
   return {
@@ -92,6 +112,26 @@ export function prospectBatchCap(env: NodeJS.ProcessEnv = process.env): number {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : DEFAULT_PROSPECT_BATCH_CAP;
 }
 
+/**
+ * 0.6 — the weekly cap SPLITS between the two tracks. Default: half/half of
+ * the total (PROSPECT_BATCH_CAP, default 10 → 5+5; odd totals give geo the
+ * extra slot). Per-track envs win: PROSPECT_BATCH_CAP_GEO /
+ * PROSPECT_BATCH_CAP_AISTACK (0 = track OFF this week, honest and explicit).
+ */
+export function prospectTrackCaps(env: NodeJS.ProcessEnv = process.env): Record<ProspectTrack, number> {
+  const total = prospectBatchCap(env);
+  const readTrack = (key: string, fallback: number): number => {
+    const raw = env[key];
+    if (raw === undefined || raw.trim() === "") return fallback;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
+  };
+  return {
+    geo: readTrack("PROSPECT_BATCH_CAP_GEO", Math.ceil(total / 2)),
+    aistack: readTrack("PROSPECT_BATCH_CAP_AISTACK", Math.floor(total / 2)),
+  };
+}
+
 /** The sourcing ask — candidates only; every claim is verified by code after. */
 export function candidateSourcingPrompt(icpText: string): string {
   return [
@@ -99,7 +139,7 @@ export function candidateSourcingPrompt(icpText: string): string {
     `List up to ${MAX_CANDIDATES_TO_VERIFY + 4} REAL, currently-operating US small businesses matching this ICP:`,
     icpText,
     "Only list businesses you are confident actually exist, each with its real public website.",
-    "Every entry will be VERIFIED by code (HTTP fetch of the site, name check in the HTML) — invented or dead entries are dropped and waste the slot, so prefer well-established local businesses with live websites.",
+    "Every entry will be VERIFIED by code (HTTP fetch of the site, name check in the HTML) — invented or dead entries are dropped and waste the slot, so prefer well-established small businesses with live websites.",
     "Do NOT list Fortune-500 companies, franchises' national HQs, directories, or aggregator sites.",
     "Output format, one per line, nothing before or after:",
     "Business Name | https://website.com",
@@ -115,34 +155,21 @@ export interface ProspectProbeDeps {
 }
 
 /**
- * Build the [prospects] artifact: engines suggest → code verifies → code
- * probes → code renders. Every number in the block (verified, dropped and
- * why) comes from this function, never from a model. Zero verified prospects
- * renders the honest EMPTY sentinel block — downstream degrades honestly.
+ * Verify one track's candidate list — the SAME truth gate for both tracks
+ * (0.6: "verification/probing identical"). Shared `seenHosts` dedups across
+ * tracks (a business must not receive two sequences in one batch); shared
+ * `deadline` keeps the whole dual run inside one tick slot.
  */
-export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<string> {
-  const fetchText = deps.fetchText ?? defaultFetchText;
-  const now = deps.now ?? ((): Date => new Date());
-  const env = deps.env ?? process.env;
-  const icp = prospectIcp(env);
-  const cap = prospectBatchCap(env);
-  const campaign = campaignSlug(now());
-
-  const sourced = await deps.task(candidateSourcingPrompt(icp.text));
-  if (!sourced.ok || !sourced.output.trim()) {
-    return renderProspectBlock({
-      campaign,
-      icpSource: icp.source,
-      listed: 0,
-      verified: [],
-      dropped: [{ name: "(sourcing)", website: "-", reason: `engines indisponiveis: ${sourced.output.slice(0, 120) || "sem saida"}` }],
-    });
-  }
-
-  const candidates = parseCandidateList(sourced.output, MAX_CANDIDATES_TO_VERIFY + 8);
+async function verifyCandidates(input: {
+  candidates: Array<{ name: string; website: string }>;
+  cap: number;
+  fetchText: FetchTextFn;
+  deadline: number;
+  seenHosts: Set<string>;
+}): Promise<{ verified: VerifiedProspect[]; dropped: DroppedCandidate[] }> {
+  const { candidates, cap, fetchText, deadline, seenHosts } = input;
   const verified: VerifiedProspect[] = [];
   const dropped: DroppedCandidate[] = [];
-  const deadline = Date.now() + VERIFY_DEADLINE_MS;
   let attempted = 0;
 
   for (const candidate of candidates) {
@@ -150,6 +177,16 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
     if (attempted >= MAX_CANDIDATES_TO_VERIFY) break;
     if (Date.now() > deadline) {
       dropped.push({ name: candidate.name, website: candidate.website, reason: "tempo de verificacao esgotado (deadline do tick)" });
+      continue;
+    }
+    let host = candidate.website;
+    try {
+      host = new URL(candidate.website).hostname.toLowerCase();
+    } catch {
+      /* parseCandidateList already normalized; keep as-is */
+    }
+    if (seenHosts.has(host)) {
+      dropped.push({ name: candidate.name, website: candidate.website, reason: "mesmo site ja verificado na outra trilha deste lote" });
       continue;
     }
     attempted += 1;
@@ -189,6 +226,7 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
       if (contact && contact.status === 200) emails = extractContactEmails(contact.text);
     }
 
+    seenHosts.add(host);
     verified.push({
       name: candidate.name,
       website: candidate.website,
@@ -196,12 +234,57 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
       findings,
     });
   }
+  return { verified, dropped };
+}
 
-  return renderProspectBlock({
-    campaign,
-    icpSource: icp.source,
-    listed: candidates.length,
-    verified,
-    dropped,
-  });
+/**
+ * Build the [prospects] artifact — now DUAL-TRACK (0.6): engines are asked
+ * per track (geo ICP + aistack ICP-2), code verifies both lists with the
+ * SAME gate, and the block separates the tracks with per-prospect TRILHA +
+ * CAMPANHA lines. Every number comes from this function, never from a model.
+ * Zero verified prospects across both tracks renders the honest EMPTY
+ * sentinel first line — downstream degrades honestly.
+ */
+export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<string> {
+  const fetchText = deps.fetchText ?? defaultFetchText;
+  const now = deps.now ?? ((): Date => new Date());
+  const env = deps.env ?? process.env;
+  const caps = prospectTrackCaps(env);
+  const deadline = Date.now() + VERIFY_DEADLINE_MS;
+  const seenHosts = new Set<string>();
+  const batches: TrackBatch[] = [];
+
+  for (const track of PROSPECT_TRACKS) {
+    const icp = prospectIcp(env, track);
+    const campaign = campaignSlug(now(), track);
+    const cap = caps[track];
+    if (cap === 0) {
+      batches.push({
+        track,
+        campaign,
+        icpSource: icp.source,
+        listed: 0,
+        verified: [],
+        dropped: [{ name: "(trilha)", website: "-", reason: `trilha desligada por env (cap 0)` }],
+      });
+      continue;
+    }
+    const sourced = await deps.task(candidateSourcingPrompt(icp.text));
+    if (!sourced.ok || !sourced.output.trim()) {
+      batches.push({
+        track,
+        campaign,
+        icpSource: icp.source,
+        listed: 0,
+        verified: [],
+        dropped: [{ name: "(sourcing)", website: "-", reason: `engines indisponiveis: ${sourced.output.slice(0, 120) || "sem saida"}` }],
+      });
+      continue;
+    }
+    const candidates = parseCandidateList(sourced.output, MAX_CANDIDATES_TO_VERIFY + 8);
+    const { verified, dropped } = await verifyCandidates({ candidates, cap, fetchText, deadline, seenHosts });
+    batches.push({ track, campaign, icpSource: icp.source, listed: candidates.length, verified, dropped });
+  }
+
+  return renderDualProspectBlock(batches);
 }
