@@ -53,10 +53,13 @@ import {
   MEMORY_CONSOLIDATION_GRAPH,
   PROMPT_TUNER_GRAPH,
   AB_EXPERIMENT_GRAPH,
+  PROSPECT_BATCH_GRAPH,
 } from "./agent-graphs";
+import { validateColdSequenceBatch, parseProspectsForCrm } from "./prospecting";
 import {
   buildPrompt,
   CONTENT_LESSONS,
+  ANTI_GENERIC_RULE,
   parsePromptProposal,
   isTunablePromptKey,
   TUNABLE_PROMPT_KEYS,
@@ -95,6 +98,26 @@ export const LESSONS_ARTIFACT = "__lessons__";
  * all — never a placeholder.
  */
 export const MEMORY_ARTIFACT = "__memory__";
+/**
+ * Upstream key carrying the LAST REAL PUBLISHES to the creation-and-critique
+ * nodes of marketing graphs (0.8, founder 01/09: "as publicações têm sido
+ * muito genéricas e com um padrão repetido demais"). The VERIFY half of the
+ * anti-generic loop, at CREATION time: the runner reads the newest succeeded
+ * publish steps from ops.agent_step (durable, Postgres) via the optional
+ * recentPublishes port and recovers each piece's TEXT from the content node's
+ * Redis artifact — honestly limited: artifacts expire after 7 days (TTL), and
+ * the durable step summary records only "published via <via> channel=<ch>",
+ * never the text. Inside the TTL the block quotes the real piece; past it,
+ * the entry says so and carries the record line (date/graph/channel) — even
+ * that beats drafting blind. No publishes at all → no artifact (never a
+ * placeholder). Injection surface = the tuner allowlist (drafts + critics),
+ * which is exactly the create/critique surface of marketing.
+ */
+export const RECENT_ARTIFACT = "__recent__";
+/** How many recent publishes the [__recent__] block carries. */
+export const RECENT_PUBLISHES_LIMIT = 5;
+/** Per-piece char cap inside [__recent__] — hooks/structure, not full reprint. */
+export const RECENT_PIECE_CHAR_CAP = 700;
 
 // ---------------------------------------------------------------------------
 // 5.F.7 — postmortem→código: the approved postmortem draft's "## Licoes
@@ -202,6 +225,11 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // mesmo canal, uma aprovação combinada, veredito por código com a linha
   // `ab-winner:` que a consolidação (5.F.1) e o tuner (5.F.2) leem.
   [AB_EXPERIMENT_GRAPH.slug]: AB_EXPERIMENT_GRAPH,
+  // 5.A.1 + 2.10: o lote semanal de prospecção (quarta 07:30 UTC). Vendas,
+  // não marketing — nunca conta na válvula de aprovações de conteúdo. A
+  // máquina nunca envia: o grafo termina em artefato aprovado + CRM; quem
+  // dispara e-mail é o SmartLead, carregado pelo founder.
+  [PROSPECT_BATCH_GRAPH.slug]: PROSPECT_BATCH_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -318,6 +346,34 @@ export interface SubstratePort {
    * "mergeado não é produção".
    */
   storePromptOverride?(input: { runId: string; promptKey: string; body: string }): Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Persist APPROVED, code-verified prospects into crm_contact (5.A.1) —
+   * stage 'new', note naming the batch + the finding. Only reachable behind a
+   * founder approval (validateGraph hard rule on 'store'). Mirrors the
+   * SmartLead webhook's write shape (email-keyed upsert, note append) and,
+   * like it, NEVER moves an existing row's stage — a prospect the founder
+   * already qualified must not be downgraded to 'new' by a re-run. Returns
+   * ok:false with a human-readable reason (naming the unlocking action) when
+   * the table does not exist — "mergeado não é produção". Optional on
+   * purpose: a runner wired without it declares the CRM leg OFF.
+   */
+  storeCrmContacts?(input: {
+    runId: string;
+    campaign: string;
+    contacts: Array<{ email: string; name: string; website: string; finding: string; track: string; campaign: string }>;
+  }): Promise<{ ok: boolean; inserted: number; reason?: string }>;
+  /**
+   * The newest SUCCEEDED publishes (0.8 anti-generic): rows read from
+   * ops.agent_step summaries ('published via ... channel=<ch>'), newest
+   * first. channel null = all channels (for marketing graphs that publish
+   * nothing directly — blog/reddit/ppc/IG/TikTok/YT reports — cross-channel
+   * context still beats none). Optional on purpose, must never throw; a
+   * runner wired without it injects no [__recent__] and the cells run
+   * exactly as before (fail-open).
+   */
+  recentPublishes?(input: { channel: string | null; limit: number }): Promise<
+    Array<{ runId: string; node: string; graph: string; channel: string; publishedAt: string; summary: string }>
+  >;
 }
 
 export interface HermesPort {
@@ -953,6 +1009,51 @@ export async function advanceRun(
     }
     return promptOverrides;
   };
+  // 0.8 anti-generic — the [__recent__] block, built LAZILY and at most once
+  // per advance. AGGREGATION IS CODE ("o vigia também mente"): which pieces
+  // are "recent" comes from the durable publish record (ops.agent_step), and
+  // the text recovery walks the SAME publish→content edge the publisher used
+  // (publishContentNodeId over GRAPH_REGISTRY). What is honestly recoverable:
+  //  - the publish STEP row (Postgres) → date, graph, channel — always;
+  //  - the piece's TEXT → only while the content node's Redis artifact lives
+  //    (TTL 7d). Past the TTL the entry says so instead of pretending.
+  // Fail-open by contract: no port / port error / zero rows → no artifact.
+  let recentBlock: string | null = null;
+  let recentBlockLoaded = false;
+  const loadRecentBlock = async (): Promise<string | null> => {
+    if (recentBlockLoaded) return recentBlock;
+    recentBlockLoaded = true;
+    if (!substrate.recentPublishes) return null;
+    try {
+      const firstPublish = def.nodes.find((n) => n.kind === "publish");
+      const channel = firstPublish ? String(firstPublish.config?.["channel"] ?? "linkedin") : null;
+      const rows = await substrate.recentPublishes({ channel, limit: RECENT_PUBLISHES_LIMIT });
+      if (!rows || rows.length === 0) return null;
+      const parts: string[] = [
+        channel
+          ? `ULTIMAS PUBLICACOES REAIS do canal ${channel} (mais novas primeiro). Regua anti-repeticao: NAO repita angulo, gancho nem estrutura de NENHUMA peca abaixo.`
+          : "ULTIMAS PUBLICACOES REAIS (todos os canais — este grafo nao publica direto; mais novas primeiro). Regua anti-repeticao: NAO repita angulo, gancho nem estrutura de NENHUMA peca abaixo.",
+      ];
+      for (const row of rows.slice(0, RECENT_PUBLISHES_LIMIT)) {
+        let text: string | null = null;
+        const rowDef = GRAPH_REGISTRY[row.graph];
+        const pubNode = rowDef?.nodes.find((n) => n.id === row.node && n.kind === "publish");
+        if (rowDef && pubNode) {
+          text = await artifacts.get(row.runId, publishContentNodeId(rowDef, pubNode));
+        }
+        parts.push(`--- ${row.publishedAt.slice(0, 10)} · ${row.graph} · canal ${row.channel} ---`);
+        parts.push(
+          text
+            ? text.slice(0, RECENT_PIECE_CHAR_CAP)
+            : `(texto nao recuperavel — o artefato Redis expirou apos 7d; registro duravel: ${row.summary.slice(0, 120)})`
+        );
+      }
+      recentBlock = parts.join("\n");
+    } catch {
+      recentBlock = null; // fail-open by contract; the port should not throw
+    }
+    return recentBlock;
+  };
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -974,8 +1075,26 @@ export async function advanceRun(
         // nodes) — the creators stay free to draft; the vetoers carry the
         // memory. Constant, no I/O — the exact [__day__] pattern. Brains
         // (CEO/engineering-owned) never receive it: they are not content.
+        // 0.8: the CREATE-and-CRITIQUE surface gets the last real publishes
+        // as [__recent__]. That surface already has a name in code: the
+        // tuner's allowlist (marketing drafts + critics) — reused so the two
+        // never drift. Resolved the same way buildPrompt resolves the slug.
+        const promptSlug =
+          typeof config["prompt"] === "string"
+            ? (config["prompt"] as string)
+            : node.kind === "debate"
+              ? "critique"
+              : node.kind === "synthesis"
+                ? "synthesize"
+                : null;
+        if (promptSlug && isTunablePromptKey(promptSlug)) {
+          const recent = await loadRecentBlock();
+          if (recent) upstream.unshift([RECENT_ARTIFACT, recent]);
+        }
         if (node.kind === "debate") {
-          upstream.unshift([LESSONS_ARTIFACT, CONTENT_LESSONS]);
+          // 0.8: the anti-generic ruler travels WITH the institutional
+          // lessons — same artifact, same override-proof guarantee.
+          upstream.unshift([LESSONS_ARTIFACT, `${CONTENT_LESSONS}\n${ANTI_GENERIC_RULE}`]);
           // 5.F.1: the CONSOLIDATED, founder-approved lessons — the durable
           // sibling of [__lessons__], read from ops.memory_lesson at tick
           // time. Fail-open by contract: empty store, missing migration or a
@@ -1015,6 +1134,28 @@ export async function advanceRun(
       }
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId, inputHash: sha(prompt) });
       const res = await hermes.task(prompt);
+      // 5.A.1 — CODE-enforced output contracts. A node may declare
+      // config.validate; the runner then REFUSES an output that violates the
+      // contract, failing the step (retry budget gives the model fresh shots)
+      // so a bad artifact never reaches approval. 'cold-email-batch' is the
+      // 27/08 rule: EMAIL 1 with any link/URL/domain (or without a question)
+      // fails HERE — a prompt line asks, this line enforces.
+      if (res.ok && res.output && config["validate"] === "cold-email-batch") {
+        // 0.6 — the validator routes PER TRACK on the code-generated
+        // [prospects] block (an upstream of both draft and finalize): the
+        // track/campaign of each prospect come from code, never the LLM.
+        const prospectsCtx = upstream.find(([id]) => id === "prospects")?.[1] ?? null;
+        const v = validateColdSequenceBatch(res.output, prospectsCtx);
+        if (!v.ok) {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `validador cold-email reprovou: ${v.errors.slice(0, 2).join(" · ").slice(0, 400)}`,
+            ms: res.ms,
+            engine: res.engineUsed,
+          });
+          continue; // retry pass (2c) re-attempts; exhausted budget fails the run
+        }
+      }
       if (res.ok && res.output) {
         // Adapt/finalize step for X: if this node's artifact is what the X
         // publish will send, trim each tweet to X's limit HERE — so the founder
@@ -1067,7 +1208,9 @@ export async function advanceRun(
           : n.kind === "store"
             ? String(n.config?.["target"] ?? "") === "prompt-override"
               ? `ativar como OVERRIDE de prompt (ops.prompt_override) — os grafos passam a montar esse prompt com o texto aprovado no próximo tick`
-              : String(n.config?.["target"] ?? "") === "incident-lessons"
+              : String(n.config?.["target"] ?? "") === "crm-contacts"
+                ? `inserir os prospects VERIFICADOS no CRM (crm_contact, stage 'new', nota com trilha=geo|aistack + campanha + achado; só e-mails extraídos do site por código) — a máquina NÃO envia e-mail: o SmartLead envia, depois que você carregar UMA campanha por trilha`
+                : String(n.config?.["target"] ?? "") === "incident-lessons"
                 ? `ativar as linhas de '## Licoes propostas' deste rascunho como memória de incidentes (ops.memory_lesson, prefixo LICOES DE INCIDENTE) — lida pelo watchdog diário; docs/learning/ segue manual`
                 : `ativar como memória durável (${String(n.config?.["target"] ?? "?")}) — vira [__memory__] dos críticos de marketing`
             : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
@@ -1389,6 +1532,57 @@ export async function advanceRun(
       const contentNodeId = approvalNode?.dependsOn[0] ?? node.dependsOn[0] ?? "";
       const lessons = ((await artifacts.get(runId, contentNodeId)) ?? "").trim();
       const storeTarget = String(config["target"] ?? "memory-lessons");
+      if (storeTarget === "crm-contacts") {
+        // 5.A.1: the founder's yes turns the CODE-VERIFIED prospect block into
+        // crm_contact rows (stage 'new'). The source is config.contactsNode —
+        // the code-generated [prospects] artifact — NEVER the LLM sequences:
+        // a model rewrite can never alter what lands in the CRM. Only
+        // prospects whose email was extracted from their own site by code
+        // have a row to insert (crm_contact is email-keyed). Every non-happy
+        // path is SOFT (succeeded no-op / skipped OFF, loud on Telegram): the
+        // approved sequences must still reach the founder via the report even
+        // when the CRM leg cannot write.
+        const contactsNodeId = typeof config["contactsNode"] === "string" ? (config["contactsNode"] as string) : "";
+        const block = (await artifacts.get(runId, contactsNodeId)) ?? "";
+        const parsed = parseProspectsForCrm(block);
+        if (!block || parsed.contacts.length === 0) {
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            summary: block
+              ? "0 prospects com e-mail extraido do site por codigo — nenhuma linha no CRM (honesto: sem e-mail verificado, sem contato)"
+              : "artefato de prospects ausente (TTL?) — nenhuma linha no CRM",
+          });
+          await telegram(
+            `🟠 CRM SEM LINHAS — graph ${def.slug} (run ${runId.slice(0, 8)}): ${block ? "nenhum prospect do lote aprovado tinha e-mail extraido do proprio site por codigo" : "o artefato de prospects expirou (TTL)"} — 0 contatos inseridos. As sequencias aprovadas seguem no report; e-mails ficam por conta do founder.`
+          );
+          continue;
+        }
+        if (!substrate.storeCrmContacts) {
+          await substrate.finishStep(stepId, {
+            status: "skipped",
+            summary: "store port ausente neste worker — CRM OFF; o lote aprovado seguiu no report",
+          });
+          continue;
+        }
+        const res = await substrate.storeCrmContacts({ runId, campaign: parsed.campaign, contacts: parsed.contacts });
+        if (res.ok) {
+          await artifacts.set(runId, node.id, JSON.stringify({ campaign: parsed.campaign, contacts: parsed.contacts.length, inserted: res.inserted }));
+          await substrate.finishStep(stepId, {
+            status: "succeeded",
+            summary: `crm: ${res.inserted} contato(s) novo(s) de ${parsed.contacts.length} verificados no lote ${parsed.campaign} (stage 'new'; existentes so ganharam nota, stage intocado)`,
+          });
+        } else {
+          const reason = (res.reason ?? "motivo desconhecido").slice(0, 200);
+          await substrate.finishStep(stepId, {
+            status: "skipped",
+            summary: `CRM OFF: ${reason} — contatos nao gravados; o lote aprovado seguiu no report`,
+          });
+          await telegram(
+            `🟠 CRM NÃO GRAVADO — graph ${def.slug} (run ${runId.slice(0, 8)}): ${reason}. O lote aprovado foi entregue normalmente no report; reconciliar os contatos à mão se necessário.`
+          );
+        }
+        continue;
+      }
       if (storeTarget === "incident-lessons") {
         // 5.F.7: the approved postmortem draft's "## Licoes propostas" section
         // becomes ONE ops.memory_lesson row. Extraction is CODE on the pinned

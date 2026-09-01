@@ -37,6 +37,80 @@ if not TOKEN:
 
 REQUIRED_KEYS = ["slug", "title", "dek", "category", "excerpt", "readTime", "keywords", "takeaways", "body_markdown", "sources"]
 
+# ---------------------------------------------------------------------------
+# Anti-repetição REAL (0.8, founder 01/09: "publicações genéricas e com um
+# padrão repetido demais" — vale para TODO pipeline que cria conteúdo, e o
+# blog de segunda é um deles). A agregação é CÓDIGO: os títulos+deks dos
+# últimos posts são lidos DO FONTE do site (o workflow faz checkout completo
+# antes de rodar este script), nunca pedidos ao modelo. O que é recuperável
+# por código aqui: título, dek/excerpt e data de cada post publicado — o
+# corpo não é injetado (o padrão repetido vive no ângulo/gancho, e 8 corpos
+# estourariam o prompt). Se os arquivos não estiverem legíveis (ex.: rodar o
+# script fora do checkout), seguimos SEM a lista e dizemos isso no log —
+# honesto, nunca inventado.
+# ---------------------------------------------------------------------------
+
+RECENT_POSTS_LIMIT = 8
+BLOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "apps", "web", "src", "app", "(marketing)", "blog")
+
+_STR = r'"((?:[^"\\]|\\.)*)"'
+
+
+def _parse_entries(src: str, title_key: str, dek_key: str, date_key: str):
+    """Walk key: "value" pairs in source order; a new title starts a record."""
+    out = []
+    current = None
+    for m in re.finditer(r"\b(title|dek|excerpt|datePublished|publishedAt):\s*" + _STR, src):
+        key, raw = m.group(1), m.group(2)
+        val = raw.encode().decode("unicode_escape") if "\\" in raw else raw
+        if key == title_key:
+            current = {"title": val, "dek": "", "date": ""}
+            out.append(current)
+        elif current is not None and key == dek_key and not current["dek"]:
+            current["dek"] = val
+        elif current is not None and key == date_key and not current["date"]:
+            current["date"] = val
+    return out
+
+
+def recent_posts(limit: int = RECENT_POSTS_LIMIT):
+    """Last published posts (title+dek+date), newest first, read by CODE."""
+    entries = []
+    for fname, dek_key, date_key in (("posts.ts", "excerpt", "publishedAt"), ("_content.ts", "dek", "datePublished")):
+        try:
+            with open(os.path.join(BLOG_DIR, fname), encoding="utf-8") as fh:
+                entries.extend(_parse_entries(fh.read(), "title", dek_key, date_key))
+        except OSError as e:
+            print(f"[recent-posts] {fname} unreadable ({e}) — following without it", file=sys.stderr, flush=True)
+    seen, dedup = set(), []
+    for e in entries:
+        k = e["title"].strip().lower()
+        if e["title"] and k not in seen:
+            seen.add(k)
+            dedup.append(e)
+    dedup.sort(key=lambda e: e["date"], reverse=True)
+    return dedup[:limit]
+
+
+def anti_generic_block() -> str:
+    posts = recent_posts()
+    if not posts:
+        print("[recent-posts] no posts recoverable from the checkout — anti-repetition list unavailable, generic-rule still applies", flush=True)
+        recent = "(recent-post list unavailable in this run — still: do not reuse the angles this blog always uses.)\n"
+    else:
+        print(f"[recent-posts] injecting {len(posts)} recent titles+deks into the prompt", flush=True)
+        recent = "RECENTLY PUBLISHED ON THIS BLOG (newest first — do NOT repeat their angle, hook or structure):\n" + "".join(
+            f"- {p['date'] or '????-??-??'} \"{p['title']}\" — {p['dek']}\n" for p in posts
+        )
+    return (
+        recent
+        + "ANTI-GENERIC RULES (hard): pick an angle, opening scene and structure DELIBERATELY different "
+        "from every item above; no opener that could fit any business ('in today's digital world', "
+        "'AI is changing everything'); every claim names something concrete (a real niche, a sourced "
+        "number, a specific scenario); include the extra JSON key \"angle_note\" (one sentence: the "
+        "chosen angle and why it differs from the recent list).\n"
+    )
+
 BASE_PROMPT = (
     "You are the staff writer for Ozvor, a GEO / AI-search visibility platform for small businesses. "
     "Write ONE complete, publishable blog article about generative-engine optimization (how ChatGPT, "
@@ -63,6 +137,9 @@ BASE_PROMPT = (
     "(at least 700 words); paragraphs separated by blank lines; use '## ' for at least one section heading\","
     "\"sources\":[\"Name, quoted title (date), https://url\"]}"
 )
+# 0.8: a lista real do que já saiu + a regra anti-genérico entram ANTES do
+# contrato de saída — lidas por código, nunca lembradas pelo modelo.
+BASE_PROMPT = anti_generic_block() + BASE_PROMPT
 if THEME:
     BASE_PROMPT = f"Theme to cover: {THEME}. " + BASE_PROMPT
 
