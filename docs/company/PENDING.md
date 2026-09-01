@@ -35,7 +35,7 @@
 
 | # | O que | Dono | Esf. | Estado |
 |---|---|---|---|---|
-| 1.1 | ⚖️ **D-vídeo**: até o gate existir — (a) aceitar o legado sem portão como exceção DOCUMENTADA (status quo, recomendado) ou (b) pausar o disparo (canais mudos) | ⚖️ | 5 min | 🔴 decide o resto |
+| 1.1 | ~~D-vídeo~~ ⚖️ **DECIDIDO 01/09 pelo founder: ACEITO** — o pipeline legado de vídeo (VPS, Pexels+Remotion → IG/TikTok/YT diário) segue publicando SEM portão como **exceção documentada e temporária** à regra "nada publica sem aprovação", até a Fase 1 do gate (spec #523) ser aplicada na VPS. Esta linha é o registro da exceção. | ⚖️ | — | 🟢 decidido |
 | 1.2 | **Onde o n8n chama `/video-job`** (qual workflow; tem aprovação antes?) | 👤 | S | 🔴 pendente de resposta |
 | 1.3 | **Fase 1 — gate por injeção de roteiro** (🟡 spec PRONTA e mergeada: `docs/specs/video-gate-fase1.md`, #523; falta founder aplicar o patch na VPS + responder o grep dos PROMPTS): `/video-job` repassa body→env (`VIDEOJOB_SCRIPT/FORMAT/CHANNELS`) e o job usa o roteiro recebido em vez do `claudeJSON` (~15 linhas na VPS) → grafo produz → founder aprova → worker chama com o roteiro aprovado | ⚙️+👤(aplicar na VPS) | S–M | 🔴 |
 | 1.4 | Fase 2 — porta `hermes.render()` no worker + reverter o report-only (#516) nas 3 esferas | ⚙️ | M | depois de 1.3 |
