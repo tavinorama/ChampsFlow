@@ -38,7 +38,10 @@ import {
   nameMatchesHtml,
   campaignSlug,
   renderProspectBlock,
+  renderDualProspectBlock,
   parseProspectsForCrm,
+  prospectTracksFromBlock,
+  crmNoteFor,
   containsLink,
   splitProspectSequences,
   validateColdSequenceBatch,
@@ -49,6 +52,7 @@ import {
   buildProspectBatchBlock,
   prospectIcp,
   prospectBatchCap,
+  prospectTrackCaps,
 } from "../../apps/worker/src/lib/prospect-probe";
 
 // ---------------------------------------------------------------------------
@@ -92,7 +96,7 @@ const VALID_BATCH = [
   "Otavio",
   "[EMAIL 3]",
   "SUBJECT: last note from me",
-  "Closing the loop. The audit link stays open: https://ozvor.com/ai-audit?from=cold-2026-09-02. Door is open.",
+  "Closing the loop. The free test stays open: https://ozvor.com/test?from=cold-2026-09-02. Door is open.",
   "Otavio",
 ].join("\n");
 
@@ -111,7 +115,7 @@ interface FakeWorld {
   run: RunRow;
   steps: Array<StepRow & { summary?: string | null }>;
   telegrams: string[];
-  crmStored: Array<{ campaign: string; contacts: Array<{ email: string; name: string; website: string; finding: string }> }>;
+  crmStored: Array<{ campaign: string; contacts: Array<{ email: string; name: string; website: string; finding: string; track: string; campaign: string }> }>;
   clock: { now: Date };
   stepByNode(node: string): (StepRow & { summary?: string | null }) | undefined;
 }
@@ -187,7 +191,7 @@ function makeWorld(
               async storeCrmContacts(input: {
                 runId: string;
                 campaign: string;
-                contacts: Array<{ email: string; name: string; website: string; finding: string }>;
+                contacts: Array<{ email: string; name: string; website: string; finding: string; track: string; campaign: string }>;
               }) {
                 world.crmStored.push({ campaign: input.campaign, contacts: input.contacts });
                 return opts.crmResult ?? { ok: true, inserted: input.contacts.length };
@@ -381,12 +385,17 @@ describe("prospecting — bloco verificado ↔ CRM (round-trip)", () => {
         name: "Acme Roofing",
         website: "https://acmeroofing.com",
         finding: "robots.txt blocks GPTBot — those AI crawlers cannot read the site",
+        // Bloco legado sem linhas TRILHA degrada honesto: geo + campanha global.
+        track: "geo",
+        campaign: "cold-2026-09-02",
       },
     ]);
   });
 
-  it("campaignSlug: cold-<data ISO>", () => {
+  it("campaignSlug: cold-<data ISO> na trilha geo; aistack-<data ISO> na trilha aistack (kit 01/09)", () => {
     expect(campaignSlug(new Date("2026-09-02T07:30:00Z"))).toBe("cold-2026-09-02");
+    expect(campaignSlug(new Date("2026-09-02T07:30:00Z"), "geo")).toBe("cold-2026-09-02");
+    expect(campaignSlug(new Date("2026-09-02T07:30:00Z"), "aistack")).toBe("aistack-2026-09-02");
   });
 
   it("lote vazio rende o sentinel honesto na primeira linha", () => {
@@ -564,7 +573,10 @@ describe("prospect-batch — a perna CRM é fail-soft; as sequências sempre che
       ],
       dropped: [],
     });
-    const world = makeWorld({ prospectsBlock: noEmailBlock });
+    // As sequências têm que nomear o prospect DO bloco (o validador reprova
+    // nome fora do bloco verificado — 0.6).
+    const brightBatch = VALID_BATCH.replace("=== PROSPECT: Acme Roofing ===", "=== PROSPECT: Bright Dental Austin ===");
+    const world = makeWorld({ prospectsBlock: noEmailBlock, draftOutput: brightBatch });
     await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting");
     world.stepByNode("approval")!.status = "succeeded";
     await tickUntil(world, () => world.run.status !== "running");
@@ -573,6 +585,252 @@ describe("prospect-batch — a perna CRM é fail-soft; as sequências sempre che
     expect(world.crmStored).toEqual([]); // o port nem foi chamado
     expect(world.stepByNode("store-crm")?.status).toBe("succeeded");
     expect(world.telegrams.join("\n")).toContain("CRM SEM LINHAS");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0.6 — dual-ICP (founder 01/09): trilha GEO + trilha AISTACK no mesmo lote
+// ---------------------------------------------------------------------------
+
+const DUAL_BLOCK = renderDualProspectBlock([
+  {
+    track: "geo",
+    campaign: "cold-2026-09-02",
+    icpSource: "docs/departments/sales/icp.md (teste)",
+    listed: 3,
+    verified: [
+      {
+        name: "Acme Roofing",
+        website: "https://acmeroofing.com",
+        email: "info@acmeroofing.com",
+        findings: ["robots.txt blocks GPTBot — those AI crawlers cannot read the site"],
+      },
+    ],
+    dropped: [],
+  },
+  {
+    track: "aistack",
+    campaign: "aistack-2026-09-02",
+    icpSource: "docs/departments/sales/aistack-campaign-kit.md (teste)",
+    listed: 2,
+    verified: [
+      {
+        name: "Lakeside Books",
+        website: "https://lakesidebooks.com",
+        email: "owner@lakesidebooks.com",
+        findings: ["homepage has no meta description"],
+      },
+    ],
+    dropped: [],
+  },
+]);
+
+const AISTACK_SEQUENCE = [
+  "=== PROSPECT: Lakeside Books ===",
+  "[EMAIL 1]",
+  "SUBJECT: quick question about your tools",
+  "Hi. Most shops your size pay for five tools. And still do the boring work by hand. If one audit named the ONE AI tool for your worst bottleneck, would you want it?",
+  "Otavio",
+  "[EMAIL 2]",
+  "SUBJECT: the one tool for Lakeside Books",
+  "I built a 60 second audit for this. Five questions. It names the right AI tool for your worst pain. It costs $49, money back in 30 days. I want to see my stack: https://ozvor.com/ai-audit?from=aistack-2026-09-02",
+  "Otavio",
+  "[EMAIL 3]",
+  "SUBJECT: closing the loop",
+  "Last note from me. Wrong tools cost hours every week. The door stays open: https://ozvor.com/ai-audit?from=aistack-2026-09-02",
+  "Otavio",
+].join("\n");
+
+const DUAL_VALID_BATCH = `${VALID_BATCH}\n${AISTACK_SEQUENCE}`;
+
+describe("0.6 — o bloco dual separa as trilhas e o CRM carrega trilha+campanha", () => {
+  it("renderDualProspectBlock: seções por trilha, cada prospect com TRILHA e CAMPANHA próprias", () => {
+    expect(DUAL_BLOCK).toContain("LOTE DE PROSPECCAO DUAL");
+    expect(DUAL_BLOCK).toContain("TRILHAS: geo (campanha cold-2026-09-02) + aistack (campanha aistack-2026-09-02)");
+    expect(DUAL_BLOCK).toContain("--- TRILHA GEO — campanha cold-2026-09-02 ---");
+    expect(DUAL_BLOCK).toContain("--- TRILHA AISTACK — campanha aistack-2026-09-02 ---");
+    expect(DUAL_BLOCK).toContain("TRILHA: aistack");
+    expect(DUAL_BLOCK).toContain("docs/departments/sales/aistack-campaign-kit.md (teste)");
+  });
+
+  it("parseProspectsForCrm: cada contato sai com a trilha e a campanha da SUA seção", () => {
+    const parsed = parseProspectsForCrm(DUAL_BLOCK);
+    expect(parsed.campaign).toBe("cold-2026-09-02+aistack-2026-09-02");
+    expect(parsed.contacts).toEqual([
+      expect.objectContaining({ email: "info@acmeroofing.com", track: "geo", campaign: "cold-2026-09-02" }),
+      expect.objectContaining({ email: "owner@lakesidebooks.com", track: "aistack", campaign: "aistack-2026-09-02" }),
+    ]);
+    const map = prospectTracksFromBlock(DUAL_BLOCK);
+    expect(map.get("Acme Roofing")).toEqual({ track: "geo", campaign: "cold-2026-09-02" });
+    expect(map.get("Lakeside Books")).toEqual({ track: "aistack", campaign: "aistack-2026-09-02" });
+  });
+
+  it("a nota do CRM nomeia a trilha e a campanha — o founder carrega cada trilha na SUA campanha SmartLead", () => {
+    const note = crmNoteFor({
+      email: "owner@lakesidebooks.com",
+      name: "Lakeside Books",
+      website: "https://lakesidebooks.com",
+      finding: "homepage has no meta description",
+      track: "aistack",
+      campaign: "aistack-2026-09-02",
+    });
+    expect(note).toContain("trilha=aistack");
+    expect(note).toContain("campanha=aistack-2026-09-02");
+    expect(note).toContain("https://lakesidebooks.com");
+  });
+
+  it("ambas as trilhas vazias = sentinel honesto na PRIMEIRA linha do bloco dual", () => {
+    const empty = renderDualProspectBlock([
+      { track: "geo", campaign: "cold-x", icpSource: "t", listed: 2, verified: [], dropped: [] },
+      { track: "aistack", campaign: "aistack-x", icpSource: "t", listed: 1, verified: [], dropped: [] },
+    ]);
+    expect(empty.startsWith(EMPTY_BATCH_SENTINEL)).toBe(true);
+    expect(empty).toContain("3 candidato(s) nas 2 trilhas");
+  });
+});
+
+describe("0.6 — o validador roteia POR TRILHA (a trilha vem do bloco de código, nunca do LLM)", () => {
+  it("lote dual válido passa: geo → /test|raiz com ?from=cold-*, aistack → /ai-audit com ?from=aistack-*", () => {
+    expect(validateColdSequenceBatch(DUAL_VALID_BATCH, DUAL_BLOCK)).toEqual({ ok: true, errors: [] });
+  });
+
+  it("REPROVA prospect aistack linkando fora de /ai-audit (trilha errada)", () => {
+    const wrong = DUAL_VALID_BATCH.replaceAll("https://ozvor.com/ai-audit?from=aistack-2026-09-02", "https://ozvor.com/?from=aistack-2026-09-02");
+    const v = validateColdSequenceBatch(wrong, DUAL_BLOCK);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("linka fora de /ai-audit");
+  });
+
+  it("REPROVA prospect aistack com ?from= de outra campanha (ex.: cold-*)", () => {
+    const wrong = DUAL_VALID_BATCH.replaceAll("from=aistack-2026-09-02", "from=cold-2026-09-02");
+    const v = validateColdSequenceBatch(wrong, DUAL_BLOCK);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("fora da campanha aistack-2026-09-02");
+  });
+
+  it("REPROVA email 2 da trilha aistack SEM o link da oferta /ai-audit", () => {
+    const noOffer = DUAL_VALID_BATCH.replace(
+      "I want to see my stack: https://ozvor.com/ai-audit?from=aistack-2026-09-02",
+      "I want to see my stack. Reply and I send it."
+    );
+    const v = validateColdSequenceBatch(noOffer, DUAL_BLOCK);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("EMAIL 2 (trilha aistack) sem o link da oferta");
+  });
+
+  it("REPROVA prospect geo linkando /ai-audit (a oferta geo é o teste grátis)", () => {
+    const wrong = DUAL_VALID_BATCH.replace(
+      "https://ozvor.com/test?from=cold-2026-09-02",
+      "https://ozvor.com/ai-audit?from=cold-2026-09-02"
+    );
+    const v = validateColdSequenceBatch(wrong, DUAL_BLOCK);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("trilha geo) linka /ai-audit");
+  });
+
+  it("REPROVA sequência para prospect FORA do bloco verificado (nome inventado nunca chega à aprovação)", () => {
+    const invented = DUAL_VALID_BATCH.replace("=== PROSPECT: Acme Roofing ===", "=== PROSPECT: Totally Invented Co ===");
+    const v = validateColdSequenceBatch(invented, DUAL_BLOCK);
+    expect(v.ok).toBe(false);
+    expect(v.errors.join(" ")).toContain("fora do bloco verificado");
+  });
+
+  it("sem o bloco de contexto (chamada legada), as regras por trilha não se aplicam — as 27/08 continuam", () => {
+    expect(validateColdSequenceBatch(DUAL_VALID_BATCH).ok).toBe(true);
+    expect(validateColdSequenceBatch(INVALID_BATCH).ok).toBe(false);
+  });
+});
+
+describe("0.6 — split do cap e ICP por trilha no worker", () => {
+  it("prospectTrackCaps: default 5+5; total ímpar dá o extra à geo; envs por trilha vencem; 0 desliga a trilha", () => {
+    expect(prospectTrackCaps({})).toEqual({ geo: 5, aistack: 5 });
+    expect(prospectTrackCaps({ PROSPECT_BATCH_CAP: "7" })).toEqual({ geo: 4, aistack: 3 });
+    expect(prospectTrackCaps({ PROSPECT_BATCH_CAP_GEO: "2", PROSPECT_BATCH_CAP_AISTACK: "8" })).toEqual({ geo: 2, aistack: 8 });
+    expect(prospectTrackCaps({ PROSPECT_BATCH_CAP_AISTACK: "0" })).toEqual({ geo: 5, aistack: 0 });
+  });
+
+  it("prospectIcp por trilha: aistack usa o ICP-2 do kit (override próprio); geo segue como sempre", () => {
+    expect(prospectIcp({}, "aistack").source).toContain("aistack-campaign-kit.md");
+    expect(prospectIcp({}, "aistack").text).toContain("$49");
+    expect(prospectIcp({ PROSPECT_ICP_AISTACK: "meu icp 2" }, "aistack")).toEqual({
+      text: "meu icp 2",
+      source: "env PROSPECT_ICP_AISTACK (override do founder)",
+    });
+    // O override da geo NÃO vaza para a aistack.
+    expect(prospectIcp({ PROSPECT_ICP: "so geo" }, "aistack").text).toContain("$49");
+  });
+
+  it("buildProspectBatchBlock: engines consultados POR trilha (ICPs distintos), cap dividido honrado, dedup entre trilhas", async () => {
+    const prompts: string[] = [];
+    const html = (name: string) => `<html><head><title>${name}</title></head><body><h1>${name}</h1></body></html>`;
+    const fetchMap: Record<string, { status: number; text: string }> = {};
+    for (const h of ["a.com", "b.com", "c.com", "d.com"]) {
+      fetchMap[`https://${h}`] = { status: 200, text: html(h.split(".")[0]!.toUpperCase() + " Shop") };
+      fetchMap[`https://${h}/robots.txt`] = { status: 404, text: "" };
+      fetchMap[`https://${h}/contact`] = { status: 404, text: "" };
+    }
+    const block = await buildProspectBatchBlock({
+      task: async (prompt) => {
+        prompts.push(prompt);
+        // Geo lista A e B; aistack lista B (duplicado — deve cair) e C e D.
+        const out = prompts.length === 1
+          ? ["A Shop | https://a.com", "B Shop | https://b.com"].join("\n")
+          : ["B Shop | https://b.com", "C Shop | https://c.com", "D Shop | https://d.com"].join("\n");
+        return { ok: true, output: out, engineUsed: "claude", ms: 5 };
+      },
+      fetchText: async (url: string) => fetchMap[url] ?? { status: 404, text: "" },
+      now: () => new Date("2026-09-02T07:30:00Z"),
+      env: { PROSPECT_BATCH_CAP_GEO: "2", PROSPECT_BATCH_CAP_AISTACK: "1" },
+    });
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain("roofers"); // ICP geo (local services)
+    expect(prompts[1]).toContain("$49 audit"); // ICP-2 aistack (dor de ferramenta)
+    expect(block).toContain("--- TRILHA GEO — campanha cold-2026-09-02 ---");
+    expect(block).toContain("--- TRILHA AISTACK — campanha aistack-2026-09-02 ---");
+    // Geo (cap 2) verificou A e B; aistack pulou o B (dup entre trilhas, dito
+    // no bloco) e gastou seu cap 1 no C — D nunca foi tentado.
+    expect(block).toContain("=== PROSPECT: A Shop ===");
+    expect(block).toContain("=== PROSPECT: B Shop ===");
+    expect(block).not.toContain("=== PROSPECT: B Shop ===\nTRILHA: aistack");
+    expect(block).toContain("mesmo site ja verificado na outra trilha deste lote");
+    expect(block).toContain("=== PROSPECT: C Shop ===");
+    expect(block).not.toContain("=== PROSPECT: D Shop ===");
+  });
+});
+
+describe("0.6 — runner: o lote dual atravessa validação, aprovação e CRM com as trilhas separadas", () => {
+  it("caminho feliz dual: aprovação nomeia as trilhas; CRM recebe contato geo E aistack, cada um com sua campanha", async () => {
+    const world = makeWorld({ prospectsBlock: DUAL_BLOCK, draftOutput: DUAL_VALID_BATCH });
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting");
+
+    const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO NECESSÁRIA"));
+    expect(ask).toBeTruthy();
+    expect(ask).toContain("trilha=geo|aistack");
+    expect(ask).toContain("UMA campanha por trilha");
+
+    world.stepByNode("approval")!.status = "succeeded";
+    await tickUntil(world, () => world.run.status !== "running");
+
+    expect(world.run.status).toBe("succeeded");
+    expect(world.crmStored).toHaveLength(1);
+    expect(world.crmStored[0]!.campaign).toBe("cold-2026-09-02+aistack-2026-09-02");
+    expect(world.crmStored[0]!.contacts).toEqual([
+      expect.objectContaining({ email: "info@acmeroofing.com", track: "geo", campaign: "cold-2026-09-02" }),
+      expect.objectContaining({ email: "owner@lakesidebooks.com", track: "aistack", campaign: "aistack-2026-09-02" }),
+    ]);
+  });
+
+  it("finalize que troca a trilha de um prospect (aistack → raiz) FALHA no validador de código", async () => {
+    const wrongFinalize = DUAL_VALID_BATCH.replaceAll(
+      "https://ozvor.com/ai-audit?from=aistack-2026-09-02",
+      "https://ozvor.com/?from=aistack-2026-09-02"
+    );
+    const world = makeWorld({ prospectsBlock: DUAL_BLOCK, draftOutput: DUAL_VALID_BATCH, finalizeOutput: wrongFinalize });
+    await tickUntil(world, () => world.run.status !== "running");
+    expect(world.run.status).toBe("failed");
+    expect(world.stepByNode("finalize")?.summary).toContain("validador cold-email");
+    expect(world.crmStored).toEqual([]);
   });
 });
 

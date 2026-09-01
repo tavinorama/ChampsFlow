@@ -1117,10 +1117,10 @@ export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
 
 export const PROSPECT_BATCH_GRAPH: GraphDefinition = {
   slug: "prospect-batch",
-  version: 1,
+  version: 2,
   vpOwner: "sales",
   description:
-    "Lote semanal de prospecção (5.A.1 + 2.10), quarta 07:30 UTC: engines listam candidatos US do ICP (docs/departments/sales/icp.md, segmento B local-services; override via env PROSPECT_ICP) → CÓDIGO verifica cada site (200 + nome no HTML; não-verificado é descartado e contado) e roda o mini-GEO-probe (robots×AI crawlers, JSON-LD, title/meta, palavras SSR) → LLM escreve 3 e-mails frios por prospect em INGLÊS (email 1: zero links + uma pergunta, validado por CÓDIGO; emails 2-3: links ozvor.com só com ?from=<campanha>) → crítico → finalize (re-validado) → aprovação do founder no Telegram (96h; silêncio = rejeição) → store em crm_contact (stage 'new', só e-mails extraídos do site por código; parse do bloco de CÓDIGO, nunca do LLM) ‖ report com as sequências prontas para o SmartLead. A MÁQUINA NUNCA ENVIA: quem dispara é o SmartLead, carregado pelo founder.",
+    "Lote semanal de prospecção DUAL-ICP (5.A.1 + 2.10 + 0.6), quarta 07:30 UTC, DUAS trilhas com o cap dividido (default 5+5; env PROSPECT_BATCH_CAP_GEO/PROSPECT_BATCH_CAP_AISTACK): trilha GEO = ICP local-services (docs/departments/sales/icp.md; campanha cold-<data>; oferta = teste grátis) e trilha AISTACK = ICP-2 do kit (docs/departments/sales/aistack-campaign-kit.md; campanha aistack-<data>; oferta = AI Stack Audit $49 em /ai-audit). Engines listam candidatos POR trilha → CÓDIGO verifica cada site (200 + nome no HTML; não-verificado é descartado e contado; dedup entre trilhas) e roda o mini-GEO-probe → LLM escreve 3 e-mails frios por prospect em INGLÊS (email 1: zero links + uma pergunta, validado por CÓDIGO nas duas trilhas; emails 2-3: geo → ozvor.com/test (ou raiz) com ?from=cold-*, aistack → /ai-audit com ?from=aistack-*, validado por CÓDIGO) → crítico → finalize (re-validado) → aprovação do founder no Telegram (96h; silêncio = rejeição) → store em crm_contact (stage 'new', nota com trilha+campanha; parse do bloco de CÓDIGO, nunca do LLM) ‖ report com as sequências separadas por trilha, prontas para UMA campanha SmartLead por trilha. A MÁQUINA NUNCA ENVIA: quem dispara é o SmartLead, carregado pelo founder.",
   nodes: [
     // Sourcing + verificação + probe: TUDO código (worker, source 'prospects').
     // O artefato deste nó é a única fonte de verdade de nomes/sites/e-mails/
@@ -1141,7 +1141,7 @@ export const PROSPECT_BATCH_GRAPH: GraphDefinition = {
         channel: "telegram",
         timeoutHours: 96,
         question:
-          "Aprovar = os prospects verificados (com e-mail extraído do site) entram no CRM como stage 'new' e as sequências ficam prontas para VOCÊ colar no SmartLead — a máquina não envia nada. Rejeitar ou silêncio (96h) = lote descartado, zero linhas no CRM.",
+          "Aprovar = os prospects verificados (com e-mail extraído do site) entram no CRM como stage 'new' — a nota de cada um diz trilha=geo|aistack e a campanha — e as sequências ficam prontas para VOCÊ colar no SmartLead, UMA campanha por trilha (cold-<data> e aistack-<data>) — a máquina não envia nada. Rejeitar ou silêncio (96h) = lote descartado, zero linhas no CRM.",
       },
     },
     // Só depois do sim: linhas em crm_contact, parseadas do bloco de CÓDIGO.
