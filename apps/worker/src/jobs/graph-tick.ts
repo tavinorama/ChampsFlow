@@ -24,6 +24,7 @@ import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
+import { buildProspectBatchBlock } from "../lib/prospect-probe";
 import { PLAN_PRICE_USD } from "../../../../packages/shared/src/plan-limits";
 import { createHash } from "node:crypto";
 import {
@@ -1292,6 +1293,58 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
   // runs do tick; nunca uma tempestade por-node (o advanceRun ainda faz o
   // próprio cache por-run em cima deste).
   let promptOverridesCache: Promise<Record<string, string> | null> | null = null;
+  // Extraído do hermes port (5.A.1) para que o snapshot 'prospects' use a
+  // MESMA cadeia de fallback + os MESMOS alarmes NX — nunca uma segunda via
+  // com engine pinado (anti-pattern 21/08).
+  const hermesTaskCall = async (
+    prompt: string
+  ): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null }> => {
+    const res = await callWithFallback(HERMES_ENGINES, async (engine) => {
+      const { status, body } = await httpJson(
+        `${HERMES_URL}/task`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${HERMES_TOKEN}` },
+          body: JSON.stringify({ engine, timeoutMs: HERMES_TIMEOUT_MS - 20_000, prompt }),
+        },
+        HERMES_TIMEOUT_MS
+      );
+      const b = body as { ok?: boolean; output?: string; engine_used?: string; ms?: number; error?: string };
+      const ok = status === 200 && b?.ok === true;
+      return {
+        ok,
+        output: ok ? String(b?.output ?? "") : String(b?.error ?? b?.output ?? `http_${status}`),
+        engineUsed: b?.engine_used ?? engine,
+        ms: typeof b?.ms === "number" ? b.ms : null,
+      };
+    });
+    // Primary engine down (but a fallback saved the step): shout ONCE per
+    // window with the fix, not once per step. Never silent, never spam.
+    if (res.failures.length > 0) {
+      const primary = res.failures[0]!;
+      const key = res.ok ? HERMES_PRIMARY_DOWN_KEY : HERMES_ALL_DOWN_KEY;
+      let first = true;
+      try {
+        first = (await redis.set(key, "1", "EX", HERMES_ALARM_WINDOW_S, "NX")) === "OK";
+      } catch {
+        first = true; // no Redis → prefer a duplicate alarm over silence
+      }
+      logger.warn("hermes_engine_fallback", {
+        ok: res.ok,
+        fallbacks: res.fallbacks,
+        engineUsed: res.engineUsed,
+        failures: res.failures,
+      });
+      if (first) {
+        await sendTelegram(
+          res.ok
+            ? `🟡 HERMES: engine "${primary.engine}" falhou (${primary.error}). Os grafos estão rodando em fallback "${res.engineUsed}". Para voltar ao primário: re-autentique na VPS (ex.: claude login). Este aviso repete a cada 6h enquanto durar.`
+            : `🔴 HERMES: TODOS os engines falharam (${res.failures.map((f) => f.engine).join(", ")}). Último erro: ${errorHead(primary.error, 80)}. Nenhum passo de LLM avança até um engine voltar.`
+        );
+      }
+    }
+    return { ok: res.ok, output: res.output, engineUsed: res.engineUsed, ms: res.ms };
+  };
   return {
     substrate: {
       async getRun(runId) {
@@ -1359,6 +1412,14 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         return rows[0]!.id;
       },
       async snapshot(input) {
+        // 5.A.1 — o snapshot 'prospects' não lê ops.*: ele executa o pipeline
+        // sugestão-de-engine → verificação-por-código → mini-GEO-probe do
+        // prospect-batch. Vive aqui (e não em buildSnapshot) porque precisa
+        // dos ports de I/O do tick: a MESMA cadeia hermes (callWithFallback,
+        // alarmes NX) e HTTP de verificação. Todo número do bloco é código.
+        if (input.source === "prospects") {
+          return buildProspectBatchBlock({ task: hermesTaskCall });
+        }
         return buildSnapshot(sql, input.source, input.days, input.metricPrefix);
       },
       async startRun(input) {
@@ -1492,6 +1553,39 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           return { ok: false, reason };
         }
       },
+      async storeCrmContacts(input) {
+        // 5.A.1: prospects aprovados → crm_contact, o MESMO shape de escrita
+        // do webhook SmartLead (upsert por e-mail, nota anexada) com uma
+        // diferença deliberada: NUNCA toca o stage de linha existente — um
+        // contato que o founder já moveu (contacted/qualified/customer) não
+        // pode voltar a 'new' por um lote novo; só a nota registra o lote.
+        // Sem RLS aqui por desenho (crm_contact é tabela ops cross-tenant,
+        // como lead_capture) — o client privilegiado do worker escreve direto.
+        let inserted = 0;
+        try {
+          for (const c of input.contacts) {
+            const note = `[prospect-batch] ${input.campaign} — ${c.finding || "sem achado registrado"} — ${c.website}`;
+            const rows = await sql<{ inserted: boolean }[]>`
+              /* prospect:crm-store */
+              INSERT INTO crm_contact (email, stage, note, updated_at)
+              VALUES (${c.email}, 'new', ${note}, NOW())
+              ON CONFLICT (email) DO UPDATE SET
+                note = LEFT(COALESCE(crm_contact.note || E'\n', '') || ${note}, 4000),
+                updated_at = NOW()
+              RETURNING (xmax = 0) AS inserted`;
+            if (rows[0]?.inserted) inserted += 1;
+          }
+          return { ok: true, inserted };
+        } catch (err) {
+          const code = (err as { code?: string }).code ?? "";
+          const reason =
+            code === "42P01"
+              ? `tabela crm_contact ausente — ${CRM_CONTACT_MISSING_ACTION}`
+              : `${code || "erro"}: ${(err as Error).message?.slice(0, 120)}`;
+          logger.error("prospect_crm_store_failed", { code, inserted, message: (err as Error).message?.slice(0, 160) });
+          return { ok: false, inserted, reason };
+        }
+      },
       async readHarvest(metric, sinceIso) {
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
         // harvest config names the exact metric or a TRUE prefix of it
@@ -1519,53 +1613,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
       },
     },
     hermes: {
-      async task(prompt) {
-        const res = await callWithFallback(HERMES_ENGINES, async (engine) => {
-          const { status, body } = await httpJson(
-            `${HERMES_URL}/task`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${HERMES_TOKEN}` },
-              body: JSON.stringify({ engine, timeoutMs: HERMES_TIMEOUT_MS - 20_000, prompt }),
-            },
-            HERMES_TIMEOUT_MS
-          );
-          const b = body as { ok?: boolean; output?: string; engine_used?: string; ms?: number; error?: string };
-          const ok = status === 200 && b?.ok === true;
-          return {
-            ok,
-            output: ok ? String(b?.output ?? "") : String(b?.error ?? b?.output ?? `http_${status}`),
-            engineUsed: b?.engine_used ?? engine,
-            ms: typeof b?.ms === "number" ? b.ms : null,
-          };
-        });
-        // Primary engine down (but a fallback saved the step): shout ONCE per
-        // window with the fix, not once per step. Never silent, never spam.
-        if (res.failures.length > 0) {
-          const primary = res.failures[0]!;
-          const key = res.ok ? HERMES_PRIMARY_DOWN_KEY : HERMES_ALL_DOWN_KEY;
-          let first = true;
-          try {
-            first = (await redis.set(key, "1", "EX", HERMES_ALARM_WINDOW_S, "NX")) === "OK";
-          } catch {
-            first = true; // no Redis → prefer a duplicate alarm over silence
-          }
-          logger.warn("hermes_engine_fallback", {
-            ok: res.ok,
-            fallbacks: res.fallbacks,
-            engineUsed: res.engineUsed,
-            failures: res.failures,
-          });
-          if (first) {
-            await sendTelegram(
-              res.ok
-                ? `🟡 HERMES: engine "${primary.engine}" falhou (${primary.error}). Os grafos estão rodando em fallback "${res.engineUsed}". Para voltar ao primário: re-autentique na VPS (ex.: claude login). Este aviso repete a cada 6h enquanto durar.`
-                : `🔴 HERMES: TODOS os engines falharam (${res.failures.map((f) => f.engine).join(", ")}). Último erro: ${errorHead(primary.error, 80)}. Nenhum passo de LLM avança até um engine voltar.`
-            );
-          }
-        }
-        return { ok: res.ok, output: res.output, engineUsed: res.engineUsed, ms: res.ms };
-      },
+      task: hermesTaskCall,
       async publish(payload) {
         const { status, body } = await httpJson(
           `${HERMES_URL}/postiz-schedule`,
@@ -1927,6 +1975,28 @@ export async function runPromptTunerWeekly(
  */
 export async function runAbExperimentWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
   return startBrainRuns(sql, ["ab-experiment"], 24 * 6, "cron:ab-experiment");
+}
+
+/**
+ * 5.A.1: a ação nominal que destrava a perna CRM do prospect-batch caso a
+ * tabela não exista no banco ("mergeado não é produção" — o run em si segue,
+ * a perna do CRM se declara OFF em voz alta com este texto).
+ */
+export const CRM_CONTACT_MISSING_ACTION =
+  "founder aplica a migracao 20260713000002_crm_contact (ja aplicada em producao desde 13/07 — se este aviso aparecer, o worker esta apontando para o banco errado)";
+
+/**
+ * prospect-batch (5.A.1 + 2.10): o lote semanal de prospecção — quarta 07:30
+ * UTC (quarta só tem o sphere-reddit às 08:00; 07:30 estava livre — segunda é
+ * do weekly-report, e o incident-postmortem diário roda às 07:00). Vendas,
+ * não marketing: nunca conta na válvula SPHERE_MAX_DAILY_APPROVALS. O cron só
+ * cria o run; o tick de 10 min executa (prospects→draft→critic→finalize→
+ * aprovação→store crm/report). Sem gate de migração: crm_contact já existe em
+ * produção e a perna do CRM é fail-soft (o lote aprovado sai no report mesmo
+ * com CRM indisponível). 6-day look-back = uma vez por semana, restart-safe.
+ */
+export async function runProspectBatchWeekly(sql: postgres.Sql): Promise<{ started: string[]; skipped: string[]; capped: string[] }> {
+  return startBrainRuns(sql, ["prospect-batch"], 24 * 6, "cron:prospect-batch");
 }
 
 /** Specialist cells (#156): daily content runs. 20h look-back. */
