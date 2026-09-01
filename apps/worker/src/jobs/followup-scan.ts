@@ -133,12 +133,13 @@ function defaultHermes(token: string): FollowupPorts["hermes"] {
           body: JSON.stringify({ engine, timeoutMs: HERMES_TIMEOUT_MS - 20_000, prompt }),
           signal: ctl.signal,
         });
-        const b = (await r.json().catch(() => ({}))) as {
-          ok?: boolean;
-          output?: string;
-          engine_used?: string;
-          error?: string;
-        };
+        const raw = await r.text().catch(() => "");
+        let b: { ok?: boolean; output?: string; engine_used?: string; error?: string } = {};
+        try {
+          b = JSON.parse(raw) as typeof b;
+        } catch {
+          b = { error: `non_json_body http_${r.status}` }; // surfaces via callWithFallback's failure log
+        }
         const ok = r.status === 200 && b?.ok === true;
         return {
           ok,
