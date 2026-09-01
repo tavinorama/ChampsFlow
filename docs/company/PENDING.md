@@ -22,7 +22,9 @@
 | # | O que | Dono | Esf. | Estado |
 |---|---|---|---|---|
 | 0.6 | **Dois ICPs separados-e-conectados** (GEO tool + AI Stack $49): `prospect-batch` alimenta as DUAS trilhas; cada lote separa por produto | ⚙️ | S–M | 🟡 EM CONSTRUÇÃO 01/09 |
-| 0.7 | **Campanha SmartLead do AI Stack**: kit pronto (`docs/departments/sales/aistack-campaign-kit.md` — ICP-2 + 3 e-mails EN nos padrões + passos de carga); founder cria a campanha no SmartLead com o 1º lote | 👤 (kit ⚙️ ✅) | S | 🟡 kit entregue; carga é sua |
+| 0.7 | ~~Campanha AI Stack~~ 🟢 **CRIADA via API 01/09** (`campaign_id 3888686`, DRAFTED/pausada, 3 e-mails, 1º sem link validado por assert; jobs determinísticos no Actions com secret `SMARTLEAD_API_KEY`) — ativar + importar leads = founder | 👤 | S | ✅ |
+| 0.9 | **ANÁLISE SMARTLEAD (01/09, via API)**: 4 campanhas, TODAS DRAFTED, zero enviados — **7.881 leads já na conta**: Ozvor 1 = 5.454 (mista, classificar) · OZ-B Local services = 1.866 (ICP GEO) · OZ-A Agencies = 489 · OZ-C SaaS/ecom = 72. Lead-finder (2k créditos/mês) = só via UI. **Mês 1 dos 30k e-mails ~coberto sem Apify** | ⚙️ ✅ | — | 🟢 gravado |
+| 0.10 | Classificar as 5.454 leads de "Ozvor 1" entre as trilhas GEO/AISTACK (via API, agregados por nicho) + popular a trilha AISTACK com os 2k créditos do mês (UI, receita de filtros pronta) | ⚙️+👤 | S–M | 🔴 próximo passo de vendas |
 | 0.8 | **Anti-genérico permanente**: críticos recebem as últimas N publicações do canal e vetam repetição de ângulo/gancho/estrutura; genericidade = veto; ciclo verificar→criar→aplicar→auditar em TODA publicação, TODA plataforma (alcance, views, integrações, participação) | ⚙️ | M | 🟡 EM CONSTRUÇÃO 01/09 (a metade "auditar→aprender" já existe: harvest/verdict/memória/tuner — as migrações #531/#537 ligam) |
 
 > **Checklist do dia do disparo (1ª campanha real):** 1º e-mail SEM nenhum link (regra 27/08; deliverability) · links `?from=` só do 2º e-mail em diante · webhook por campanha (se o global não cobrir) · correlação do 1º toque é por e-mail do lead.
