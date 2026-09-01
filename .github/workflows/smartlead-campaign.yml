@@ -1,9 +1,9 @@
 name: SmartLead campaign (one-shot, founder-triggered)
 
-# Cria a campanha AI Stack no SmartLead VIA VPS (a chave SMARTLEAD_API_KEY
-# vive em /root/hermes.env; o job roda LÁ e a chave nunca sai de lá nem é
-# impressa). A campanha nasce PAUSADA — ativar é clique do founder no app.
-# workflow_dispatch apenas: nunca roda sozinho.
+# Cria a campanha AI Stack no SmartLead — código DETERMINÍSTICO (python, sem
+# LLM). Idempotente: se a campanha já existir pelo nome, não duplica. A
+# campanha NUNCA é iniciada (nasce DRAFTED; se aparecer ativa, pausa).
+# Chave: secret SMARTLEAD_API_KEY (mascarado). workflow_dispatch apenas.
 
 on:
   workflow_dispatch:
@@ -20,31 +20,83 @@ jobs:
   create:
     runs-on: ubuntu-latest
     steps:
-      - name: Create paused campaign via Hermes /task
+      - name: Create paused campaign (deterministic, idempotent)
         env:
-          HERMES_TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
           CAMPAIGN: ${{ github.event.inputs.campaign_name }}
         run: |
           set -euo pipefail
-          read -r -d '' PROMPT <<'EOP' || true
-          Tarefa na VPS. O sandbox BLOQUEIA expansao de variavel no shell — use SOMENTE python3 -c com os.environ e urllib.request (nunca $VAR em comando bash, nunca curl com $). NUNCA imprima o valor de SMARTLEAD_API_KEY. Primeiro: python3 -c "import os;print('TEM_CHAVE' if os.environ.get('SMARTLEAD_API_KEY') else 'SEM_CHAVE')" — se SEM_CHAVE, responda RESULTADO_OZVOR{"ok":false,"motivo":"SEM_CHAVE"} e pare. Monte as URLs com a chave DENTRO do python.
-          1) (checagem da chave ja descrita acima, via python3/os.environ)
-          2) Crie a campanha (nasce DRAFTED/pausada; NAO inicie, NAO adicione leads):
-             python3 (urllib) POST https://server.smartlead.ai/api/v1/campaigns/create?api_key=<os.environ> body {"name":"__CAMPAIGN__"}
-             Guarde o id retornado.
-          3) Salve a sequencia (3 e-mails, delays 0/3/7 dias) via python3 (urllib) POST https://server.smartlead.ai/api/v1/campaigns/<id>/sequences?api_key=<os.environ> com body JSON {"sequences":[...]} usando EXATAMENTE estes e-mails (email 1 SEM nenhum link — e valide isso antes de enviar; se houver qualquer http ou dominio no email 1, aborte com ERRO_LINK_EMAIL1):
-             EMAIL 1 (delay 0) subject: "quick question about your tools" body: "Hi {{first_name}},<br><br>Most small businesses I talk to pay for 5+ tools. And still do the boring work by hand.<br><br>AI could take half of it. But nobody has time to test 100 apps.<br><br>If I could tell you the ONE tool that fits your exact bottleneck — would you want to know what it is?<br><br>Otavio"
-             EMAIL 2 (delay 3) subject: "the one tool for {{company_name}}" body: "Hi {{first_name}},<br><br>I built a 60-second audit for this. You answer 5 questions about your business. It tells you the right AI tool for your worst pain. The full result lands in your inbox.<br><br>It costs $49. Money back in 30 days if it tells you nothing new.<br><br>I want to see my stack -> https://ozvor.com/ai-audit?from=__CAMPAIGN__<br><br>Otavio"
-             EMAIL 3 (delay 7) subject: "closing the loop" body: "Hi {{first_name}},<br><br>Last note from me. Wrong tools cost small businesses hours every week. The audit finds the right one in 60 seconds.<br><br>If now is not the time, no worries. The door stays open.<br><br>https://ozvor.com/ai-audit?from=__CAMPAIGN__<br><br>Otavio"
-          4) Confirme com python3 (urllib) GET https://server.smartlead.ai/api/v1/campaigns/<id>?api_key=<os.environ> que o status NAO e ACTIVE/STARTED (se estiver, pause via POST .../status com {"status":"PAUSED"}).
-          5) Responda SO com: RESULTADO_OZVOR{"ok":true,"campaign_id":<id>,"status":"<status>","emails":3} ou RESULTADO_OZVOR{"ok":false,"motivo":"..."}. 6) IDEMPOTENCIA: antes de criar, liste as campanhas (GET /campaigns) — se ja existir uma com nome __CAMPAIGN__, NAO crie outra: verifique/complete a sequencia dela e responda com o id existente.
-          EOP
-          PROMPT="${PROMPT//__CAMPAIGN__/${CAMPAIGN}}"
-          BODY=$(python3 -c 'import json,os;print(json.dumps({"engine":"claude","timeoutMs":420000,"prompt":os.environ["PROMPT"]}))' PROMPT="$PROMPT" 2>/dev/null || PROMPT="$PROMPT" python3 -c 'import json,os;print(json.dumps({"engine":"claude","timeoutMs":420000,"prompt":os.environ["PROMPT"]}))')
-          RESP=$(curl -sS --max-time 480 -X POST "https://hermes.ozvor.com/task" -H "Authorization: Bearer ${HERMES_TASK_TOKEN}" -H 'Content-Type: application/json' -d "$BODY")
-          echo "## Resultado" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo "$RESP" | head -c 2000 >> "$GITHUB_STEP_SUMMARY"
-          echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$RESP" | grep -q 'RESULTADO_OZVOR{"ok":true' || { echo "Agente nao confirmou RESULTADO_OZVOR ok:true (envelope nao conta)"; exit 1; }
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente — adicionar em Settings > Secrets and variables > Actions"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, re, urllib.request, urllib.error
+
+          KEY = os.environ["SL_KEY"]
+          NAME = os.environ.get("CAMPAIGN") or "aistack-2026-09-08"
+          BASE = "https://server.smartlead.ai/api/v1"
+
+          def call(path, payload=None):
+              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      body = r.read().decode()
+                      return json.loads(body) if body.strip() else {}
+              except urllib.error.HTTPError as e:
+                  return {"_http_error": e.code, "_body": e.read().decode()[:300]}
+
+          E1_BODY = ("Hi {{first_name}},<br><br>Most small businesses I talk to pay for 5+ tools. "
+                     "And still do the boring work by hand.<br><br>AI could take half of it. "
+                     "But nobody has time to test 100 apps.<br><br>If I could tell you the ONE tool "
+                     "that fits your exact bottleneck - would you want to know what it is?<br><br>Otavio")
+          # Regra da casa imposta por código: e-mail 1 sem link/URL/domínio.
+          assert not re.search(r"https?://|www\.|\.com|\.ai\b", E1_BODY, re.I), "ERRO_LINK_EMAIL1"
+
+          SEQ = [
+              {"seq_number": 1, "seq_delay_details": {"delay_in_days": 0},
+               "subject": "quick question about your tools", "email_body": E1_BODY},
+              {"seq_number": 2, "seq_delay_details": {"delay_in_days": 3},
+               "subject": "the one tool for {{company_name}}",
+               "email_body": ("Hi {{first_name}},<br><br>I built a 60-second audit for this. "
+                              "You answer 5 questions about your business. It tells you the right AI tool "
+                              "for your worst pain. The full result lands in your inbox.<br><br>"
+                              "It costs $49. Money back in 30 days if it tells you nothing new.<br><br>"
+                              f"I want to see my stack -> https://ozvor.com/ai-audit?from={NAME}<br><br>Otavio")},
+              {"seq_number": 3, "seq_delay_details": {"delay_in_days": 4},
+               "subject": "closing the loop",
+               "email_body": ("Hi {{first_name}},<br><br>Last note from me. Wrong tools cost small businesses "
+                              "hours every week. The audit finds the right one in 60 seconds.<br><br>"
+                              "If now is not the time, no worries. The door stays open.<br><br>"
+                              f"https://ozvor.com/ai-audit?from={NAME}<br><br>Otavio")},
+          ]
+
+          camps = call("/campaigns")
+          if isinstance(camps, dict):
+              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
+              raise SystemExit(1)
+          existing = next((c for c in camps if c.get("name") == NAME), None)
+          if existing:
+              cid = existing["id"]
+              created = False
+          else:
+              res = call("/campaigns/create", {"name": NAME})
+              cid = res.get("id")
+              created = True
+              if not cid:
+                  print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"create falhou: {res}"}))
+                  raise SystemExit(1)
+
+          seq_res = call(f"/campaigns/{cid}/sequences", {"sequences": SEQ})
+          if isinstance(seq_res, dict) and "_http_error" in seq_res:
+              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"sequences falhou: {seq_res}", "campaign_id": cid}))
+              raise SystemExit(1)
+
+          detail = call(f"/campaigns/{cid}")
+          status = detail.get("status", "?") if isinstance(detail, dict) else "?"
+          if str(status).upper() in ("ACTIVE", "STARTED", "START"):
+              call(f"/campaigns/{cid}/status", {"status": "PAUSED"})
+              status = "PAUSED"
+
+          print("RESULTADO_OZVOR" + json.dumps({"ok": True, "campaign_id": cid, "criada_agora": created,
+                                                "status": status, "emails": 3}, ensure_ascii=False))
+          PYEOF
