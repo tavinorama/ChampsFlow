@@ -1085,6 +1085,59 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Formato de saida: a linha de abertura + 3 blocos [GOOGLE-SEARCH]/[META]/[LINKEDIN] com os campos finais + o bloco 'TESTE SUGERIDO' (3 linhas). Os rotulos em PT/EN como acima, o copy dos anuncios em ingles. Nada alem disso.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
+
+  // --- prospect-batch (5.A.1 + 2.10) — vendas, não marketing -----------------
+  // O bloco [prospects] abaixo é GERADO POR CÓDIGO (sites verificados por
+  // HTTP, achados do mini-GEO-probe, e-mails extraídos do próprio site).
+  // O modelo escreve prosa SOBRE esses fatos e nada além deles. As chaves
+  // NÃO entram em TUNABLE_PROMPT_KEYS (a allowlist do tuner é marketing).
+
+  "prospect-draft": (ctx) =>
+    [
+      "Voce e o founder da Ozvor (Otavio) escrevendo cold emails, um por um, como gente de verdade. O bloco [prospects] abaixo traz negocios US REAIS, verificados por codigo, cada um com ACHADOS tecnicos verificados no proprio site.",
+      "Para CADA prospect do bloco, escreva uma sequencia de 3 e-mails frios.",
+      "REGRA INEGOCIAVEL DO EMAIL 1 (validada por CODIGO — o step FALHA se violar): texto puro, ZERO links, ZERO URLs, ZERO dominios escritos (nem ozvor.com, nem o site deles). UMA unica pergunta, buscando RESPOSTA. Cite UM achado do bloco em palavras simples (ex.: 'your site tells ChatGPT's crawler to stay out'), sem jargao. 40-80 palavras. Assine 'Otavio'.",
+      "EMAILS 2 e 3: podem ter NO MAXIMO um link para ozvor.com, SEMPRE com ?from=<CAMPANHA> — use exatamente o valor da linha 'CAMPANHA:' do bloco [prospects] (ex.: https://ozvor.com/?from=cold-2026-09-02). Email 2 aprofunda o achado e mostra o caminho; email 3 e o ultimo toque, curto e educado, porta aberta.",
+      "Regras da casa: frases <=12 palavras, nivel 15-17 anos, CTA em 1a pessoa, sonho honesto (dor real, gente real), NUNCA inventar numero ou achado — so o que esta no bloco. Sem travessao.",
+      ENGLISH_FIRST,
+      "Formato de saida EXATO, para cada prospect do bloco, nada antes nem depois:",
+      "=== PROSPECT: <nome exatamente como no bloco [prospects]> ===",
+      "[EMAIL 1]",
+      "SUBJECT: <assunto curto, sem link>",
+      "<corpo>",
+      "[EMAIL 2]",
+      "SUBJECT: <assunto>",
+      "<corpo>",
+      "[EMAIL 3]",
+      "SUBJECT: <assunto>",
+      "<corpo>",
+      "Se o bloco [prospects] disser que ha 0 verificados, sua saida INTEIRA e a primeira linha dele (comecando com 'SEM PROSPECTS VERIFICADOS') e nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "prospect-critic": (ctx) =>
+    [
+      "Voce e o critico de outbound da Ozvor. Abaixo: o lote de sequencias frias em [draft] e o bloco verificado [prospects]. Analise interna em PT; o copy avaliado e em ingles.",
+      "LENTES COM VETO:",
+      "- LINK NO EMAIL 1: qualquer URL, dominio ou www no email 1 (assunto incluso) = 'VETO: link no email 1' (regra do founder 27/08 — 1o toque frio e texto puro).",
+      "- DADO INVENTADO: numero, achado ou promessa que NAO esta em [prospects] = 'VETO: dado inventado'. O achado citado tem que ser o do proprio prospect.",
+      "- ATRIBUICAO: link ozvor.com sem ?from=<campanha> nos emails 2-3 = 'VETO: sem from'.",
+      "- VOZ: soa mala direta / template de agencia em massa = 'VETO: parece spam'. Tem que ler como UMA pessoa que olhou O site deles.",
+      "- COPY DA CASA: frase >12 palavras, jargao, CTA fora da 1a pessoa — aponte a correcao concreta.",
+      "Para cada prospect: 1-2 linhas de parecer + os vetos, se houver. NAO reescreva os e-mails.",
+      "Termine com a linha: LOTE: <APTO|COM VETOS>.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  "prospect-finalize": (ctx) =>
+    [
+      "Voce e o editor final de outbound da Ozvor. Abaixo: o lote [draft], a critica [critic] e o bloco verificado [prospects].",
+      "Aplique TODOS os vetos e correcoes da critica e entregue o lote FINAL. Vetos sao lei: link no email 1 SAI, dado sem fonte SAI, link ozvor.com ganha ?from=<CAMPANHA do bloco [prospects]>, frase longa encurta, template vira conversa.",
+      "Mantenha a regra do email 1: texto puro, zero links/dominios, UMA pergunta, um achado real em palavras simples, assinado 'Otavio'. (Um validador de CODIGO reprova a saida se violar.)",
+      ENGLISH_FIRST,
+      "Formato de saida: EXATAMENTE o mesmo contrato do draft — blocos '=== PROSPECT: <nome> ===' com [EMAIL 1]/[EMAIL 2]/[EMAIL 3] (cada um com SUBJECT: e corpo) — para todos os prospects, nada antes nem depois. Lote vazio: repita a linha 'SEM PROSPECTS VERIFICADOS...' e nada mais.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
 };
 
 /**
