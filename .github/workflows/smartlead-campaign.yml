@@ -1,0 +1,50 @@
+name: SmartLead campaign (one-shot, founder-triggered)
+
+# Cria a campanha AI Stack no SmartLead VIA VPS (a chave SMARTLEAD_API_KEY
+# vive em /root/hermes.env; o job roda LÁ e a chave nunca sai de lá nem é
+# impressa). A campanha nasce PAUSADA — ativar é clique do founder no app.
+# workflow_dispatch apenas: nunca roda sozinho.
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_name:
+        description: "Nome da campanha"
+        required: false
+        default: "aistack-2026-09-08"
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create paused campaign via Hermes /task
+        env:
+          HERMES_TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+          CAMPAIGN: ${{ github.event.inputs.campaign_name }}
+        run: |
+          set -euo pipefail
+          read -r -d '' PROMPT <<'EOP' || true
+          Tarefa DevOps na VPS (voce tem shell). REGRAS DURAS: NUNCA imprima, ecoe ou logue o valor de SMARTLEAD_API_KEY nem de nenhuma env; use sempre "$SMARTLEAD_API_KEY" por expansao dentro do curl; se a env nao existir, responda exatamente SEM_CHAVE e pare.
+          1) test -n "$SMARTLEAD_API_KEY" || { echo SEM_CHAVE; exit 0; }
+          2) Crie a campanha (nasce DRAFTED/pausada; NAO inicie, NAO adicione leads):
+             curl -sS -X POST "https://server.smartlead.ai/api/v1/campaigns/create?api_key=$SMARTLEAD_API_KEY" -H 'Content-Type: application/json' -d '{"name":"__CAMPAIGN__"}'
+             Guarde o id retornado.
+          3) Salve a sequencia (3 e-mails, delays 0/3/7 dias) via POST "https://server.smartlead.ai/api/v1/campaigns/<id>/sequences?api_key=$SMARTLEAD_API_KEY" com body JSON {"sequences":[...]} usando EXATAMENTE estes e-mails (email 1 SEM nenhum link — e valide isso antes de enviar; se houver qualquer http ou dominio no email 1, aborte com ERRO_LINK_EMAIL1):
+             EMAIL 1 (delay 0) subject: "quick question about your tools" body: "Hi {{first_name}},<br><br>Most small businesses I talk to pay for 5+ tools. And still do the boring work by hand.<br><br>AI could take half of it. But nobody has time to test 100 apps.<br><br>If I could tell you the ONE tool that fits your exact bottleneck — would you want to know what it is?<br><br>Otavio"
+             EMAIL 2 (delay 3) subject: "the one tool for {{company_name}}" body: "Hi {{first_name}},<br><br>I built a 60-second audit for this. You answer 5 questions about your business. It tells you the right AI tool for your worst pain. The full result lands in your inbox.<br><br>It costs $49. Money back in 30 days if it tells you nothing new.<br><br>I want to see my stack -> https://ozvor.com/ai-audit?from=__CAMPAIGN__<br><br>Otavio"
+             EMAIL 3 (delay 7) subject: "closing the loop" body: "Hi {{first_name}},<br><br>Last note from me. Wrong tools cost small businesses hours every week. The audit finds the right one in 60 seconds.<br><br>If now is not the time, no worries. The door stays open.<br><br>https://ozvor.com/ai-audit?from=__CAMPAIGN__<br><br>Otavio"
+          4) Confirme com GET "https://server.smartlead.ai/api/v1/campaigns/<id>?api_key=$SMARTLEAD_API_KEY" que o status NAO e ACTIVE/STARTED (se estiver, pause via POST .../status com {"status":"PAUSED"}).
+          5) Responda SO com JSON: {"ok":true,"campaign_id":<id>,"status":"<status>","emails":3} ou {"ok":false,"motivo":"..."}.
+          EOP
+          PROMPT="${PROMPT//__CAMPAIGN__/${CAMPAIGN}}"
+          BODY=$(python3 -c 'import json,os;print(json.dumps({"engine":"claude","timeoutMs":420000,"prompt":os.environ["PROMPT"]}))' PROMPT="$PROMPT" 2>/dev/null || PROMPT="$PROMPT" python3 -c 'import json,os;print(json.dumps({"engine":"claude","timeoutMs":420000,"prompt":os.environ["PROMPT"]}))')
+          RESP=$(curl -sS --max-time 480 -X POST "https://hermes.ozvor.com/task" -H "Authorization: Bearer ${HERMES_TASK_TOKEN}" -H 'Content-Type: application/json' -d "$BODY")
+          echo "## Resultado" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo "$RESP" | head -c 2000 >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$RESP" | grep -q '"ok":true' || { echo "Job nao confirmou ok:true"; exit 1; }
