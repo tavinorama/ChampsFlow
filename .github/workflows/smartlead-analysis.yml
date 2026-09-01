@@ -1,0 +1,40 @@
+name: SmartLead lead analysis (one-shot, founder-triggered)
+
+# Análise das leads existentes no SmartLead VIA VPS (SMARTLEAD_API_KEY vive em
+# /root/hermes.env; nunca sai de lá). Devolve SÓ AGREGADOS (contagens, taxas)
+# — nenhum e-mail/nome de lead pode aparecer no log (PII fora do GitHub).
+# workflow_dispatch apenas.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Analyze via Hermes /task
+        env:
+          HERMES_TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+        run: |
+          set -euo pipefail
+          read -r -d '' PROMPT <<'EOP' || true
+          Tarefa DevOps na VPS (voce tem shell). REGRAS DURAS: NUNCA imprima o valor de SMARTLEAD_API_KEY (use "$SMARTLEAD_API_KEY" por expansao); NUNCA imprima e-mail, nome ou telefone de nenhum lead — a saida e SO AGREGADOS. Se a env nao existir: responda SEM_CHAVE e pare.
+          Usando a API do SmartLead (base https://server.smartlead.ai/api/v1, autentique com ?api_key=$SMARTLEAD_API_KEY):
+          1) GET /campaigns — liste todas. Para cada uma pegue: id, name, status, e as estatisticas/contagens de leads que a API der (tente GET /campaigns/<id>/analytics e/ou /campaigns/<id>/leads?limit=1 para ler o total; explore o que a API retorna).
+          2) Some: total de leads em campanhas; por campanha: enviados, abertos, respostas, bounces (o que a API expuser).
+          3) Procure leads/listas FORA de campanhas (tente GET /leads?limit=1 global, /lead-lists ou similar; se nao existir endpoint, diga "listas orfas: sem endpoint na API").
+          4) Verifique se existe endpoint de PROSPECCAO/lead-finder (creditos) na API publica; se nao, diga "lead-finder: so via UI".
+          5) Responda SO com um JSON agregado: {"ok":true,"campanhas":[{"nome":"...","status":"...","leads":N,"enviados":N,"respostas":N,"bounces":N}],"total_leads":N,"listas_orfas":"...","lead_finder_api":"sim|nao","observacoes":"..."} — SEM nenhum dado pessoal.
+          EOP
+          BODY=$(PROMPT="$PROMPT" python3 -c 'import json,os;print(json.dumps({"engine":"claude","timeoutMs":420000,"prompt":os.environ["PROMPT"]}))')
+          RESP=$(curl -sS --max-time 480 -X POST "https://hermes.ozvor.com/task" -H "Authorization: Bearer ${HERMES_TASK_TOKEN}" -H 'Content-Type: application/json' -d "$BODY")
+          echo "## Resultado" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo "$RESP" | head -c 6000 >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$RESP" | head -c 6000
+          echo "$RESP" | grep -q '"ok":true' || { echo "Job nao confirmou ok:true"; exit 1; }
