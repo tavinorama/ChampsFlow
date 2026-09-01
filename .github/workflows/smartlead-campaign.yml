@@ -37,7 +37,7 @@ jobs:
           def call(path, payload=None):
               url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
               data = json.dumps(payload).encode() if payload is not None else None
-              req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+              req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json"})
               try:
                   with urllib.request.urlopen(req, timeout=60) as r:
                       body = r.read().decode()
