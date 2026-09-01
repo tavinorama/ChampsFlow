@@ -21,6 +21,8 @@
  *   GET   /api/admin/system-health    — infra + env key presence + engine liveness
  *   GET   /api/admin/analytics        — funnel metrics, MRR, ARR, trends
  *   GET   /api/admin/opportunities    — upsell targets (kit buyers without sub, hot DFY leads)
+ *   GET   /api/admin/contacts/:email/dossier — per-client timeline (o ficheiro)
+ *   GET   /api/admin/recycle-batches  — 60-day recycling batches (from CRM markers)
  *
  * Hard rules:
  *   - Parameterized queries ONLY — no string interpolation in any SQL
@@ -48,6 +50,19 @@ import { refreshPlatformKeys } from "../lib/platform-keys";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { normalizeCrmPatch } from "../lib/crm-validation";
 import { upsertCrmContact } from "../lib/crm";
+import {
+  buildDossier,
+  crmNoteEntries,
+  leadCaptureEntries,
+  normalizeDossierEmail,
+  nurtureEntries,
+  orderEntries,
+  smartleadEntries,
+  type DossierEntry,
+  type NurtureSendRow,
+  type OrderRowForDossier,
+} from "../lib/dossier";
+import { groupRecycleBatches } from "../lib/recycle";
 import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
 import { fetchReceivedMrr } from "../lib/received-mrr";
@@ -571,6 +586,268 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     } catch (err) {
       logger.error("admin_crm_upsert_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/contacts/:email/dossier — o ficheiro do cliente.
+  //
+  // Founder directive (01/09): every client has their own file from the first
+  // email on. Pure READ aggregation over what is already recorded append-only:
+  // smartlead_event (raw provider events, reply content included when the
+  // stored payload carries it), crm_contact (stage + note-line history),
+  // lead_capture (tests + attribution), kit_order / ai_audit_order
+  // (purchases), nurture_enrollment / nurture_send_log. No new tables, no
+  // writes. Capped at DOSSIER_MAX_ENTRIES (200), newest first.
+  //
+  // GDPR/LGPD note: this view aggregates EXISTING personal data for a
+  // legitimate CRM purpose (Art. 6(1)(f) GDPR / Art. 7(IX) LGPD — same basis
+  // as the underlying tables); it creates and retains NO new personal data.
+  // Deletion/DSR requests are handled by deleting the underlying rows (the
+  // existing DSR machinery) — the dossier then simply has nothing to show.
+  //
+  // Each source is queried independently and fails soft INTO THE RESPONSE
+  // (sourcesUnavailable lists what could not be read) — degradation is
+  // visible, never silent, and one broken table never blanks the whole file.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/contacts/:email/dossier", requireAuth, requireSuperAdmin, async (c) => {
+    const email = normalizeDossierEmail(c.req.param("email") ?? "");
+    if (!email) {
+      return c.json({ error: "Bad Request", code: "INVALID_EMAIL" }, 400);
+    }
+
+    const sourcesUnavailable: string[] = [];
+    const groups: DossierEntry[][] = [];
+
+    // 1. Smartlead events (latest 200 — the per-source cap mirrors the total).
+    let smartleadOk = false;
+    try {
+      const r = await db.query<{
+        event_type: string;
+        campaign_id: number | null;
+        payload: unknown;
+        received_at: string;
+      }>(
+        `SELECT event_type, campaign_id, payload, received_at
+           FROM smartlead_event
+          WHERE lead_email = $1
+          ORDER BY received_at DESC
+          LIMIT 200`,
+        [email]
+      );
+      groups.push(smartleadEntries(r.rows));
+      smartleadOk = true;
+    } catch (err) {
+      sourcesUnavailable.push("smartlead");
+      logger.error("admin_dossier_source_failed", {
+        source: "smartlead",
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+
+    // 2. CRM annotation — current stage + the note-line history.
+    let crm: {
+      stage: string;
+      note: string | null;
+      next_follow_up: string | null;
+      owner: string | null;
+      updated_at: string;
+    } | null = null;
+    try {
+      const r = await db.query<{
+        stage: string;
+        note: string | null;
+        next_follow_up: string | null;
+        owner: string | null;
+        updated_at: string;
+      }>(
+        `SELECT stage, note, next_follow_up, owner, updated_at
+           FROM crm_contact
+          WHERE email = $1`,
+        [email]
+      );
+      crm = r.rows[0] ?? null;
+      if (crm) {
+        // "[smartlead] …" note lines are echoes of source 1 — skip them only
+        // when source 1 actually loaded (see crmNoteEntries).
+        groups.push(crmNoteEntries(crm, { skipSmartleadLines: smartleadOk }));
+      }
+    } catch (err) {
+      sourcesUnavailable.push("crm");
+      logger.error("admin_dossier_source_failed", {
+        source: "crm",
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+
+    // 3. Lead captures (tests + attribution) — same jsonb paths as /leads.
+    try {
+      const r = await db.query<{
+        brand: string;
+        source: string;
+        origin_from: string | null;
+        utm_campaign: string | null;
+        created_at: string;
+      }>(
+        `SELECT brand, source, created_at,
+                COALESCE(result->'attribution'->>'from', result->>'from') AS origin_from,
+                result->'attribution'->>'utm_campaign' AS utm_campaign
+           FROM lead_capture
+          WHERE email = $1
+          ORDER BY created_at DESC
+          LIMIT 50`,
+        [email]
+      );
+      groups.push(leadCaptureEntries(r.rows));
+    } catch (err) {
+      sourcesUnavailable.push("lead_capture");
+      logger.error("admin_dossier_source_failed", {
+        source: "lead_capture",
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+
+    // 4. Purchases — kit_order + ai_audit_order (both CITEXT email keys).
+    const orders: OrderRowForDossier[] = [];
+    try {
+      const r = await db.query<{
+        brand: string;
+        status: string;
+        created_at: string;
+        paid_at: string | null;
+        delivered_at: string | null;
+      }>(
+        `SELECT brand, status, created_at, paid_at, delivered_at
+           FROM kit_order
+          WHERE email = $1
+          ORDER BY created_at DESC
+          LIMIT 50`,
+        [email]
+      );
+      for (const row of r.rows) {
+        orders.push({ product: "kit", status: row.status, created_at: row.created_at, paid_at: row.paid_at, delivered_at: row.delivered_at, extra: row.brand });
+      }
+    } catch (err) {
+      sourcesUnavailable.push("kit_order");
+      logger.error("admin_dossier_source_failed", {
+        source: "kit_order",
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+    try {
+      const r = await db.query<{
+        status: string;
+        business_type: string | null;
+        primary_focus: string | null;
+        created_at: string;
+        paid_at: string | null;
+        delivered_at: string | null;
+      }>(
+        `SELECT status, business_type, primary_focus, created_at, paid_at, delivered_at
+           FROM ai_audit_order
+          WHERE email = $1
+          ORDER BY created_at DESC
+          LIMIT 50`,
+        [email]
+      );
+      for (const row of r.rows) {
+        orders.push({
+          product: "ai_audit",
+          status: row.status,
+          created_at: row.created_at,
+          paid_at: row.paid_at,
+          delivered_at: row.delivered_at,
+          extra: [row.business_type, row.primary_focus].filter(Boolean).join(" / ") || null,
+        });
+      }
+    } catch (err) {
+      sourcesUnavailable.push("ai_audit_order");
+      logger.error("admin_dossier_source_failed", {
+        source: "ai_audit_order",
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+    groups.push(orderEntries(orders));
+
+    // 5. Nurture — enrollments + append-only send log.
+    try {
+      const enrollments = await db.query<{
+        sequence: string;
+        current_step: number;
+        total_steps: number;
+        enrolled_at: string;
+        suppressed: boolean;
+        suppressed_reason: string | null;
+        completed_at: string | null;
+      }>(
+        `SELECT sequence, current_step, total_steps, enrolled_at,
+                suppressed, suppressed_reason, completed_at
+           FROM nurture_enrollment
+          WHERE email = $1
+          ORDER BY enrolled_at DESC
+          LIMIT 50`,
+        [email]
+      );
+      let sends: NurtureSendRow[] = [];
+      try {
+        const s = await db.query<{ sequence: string; step: number; sent_at: string }>(
+          `SELECT e.sequence, l.step, l.sent_at
+             FROM nurture_send_log l
+             JOIN nurture_enrollment e ON e.id = l.enrollment_id
+            WHERE e.email = $1
+            ORDER BY l.sent_at DESC
+            LIMIT 100`,
+          [email]
+        );
+        sends = s.rows;
+      } catch {
+        sourcesUnavailable.push("nurture_send_log");
+      }
+      groups.push(nurtureEntries(enrollments.rows, sends));
+    } catch (err) {
+      sourcesUnavailable.push("nurture");
+      logger.error("admin_dossier_source_failed", {
+        source: "nurture",
+        message: (err as Error).message?.slice(0, 160),
+      });
+    }
+
+    const { entries, truncated } = buildDossier(groups);
+    // No PII in logs — count only, never the email.
+    logger.info("admin_dossier_fetched", {
+      entries: entries.length,
+      sourcesUnavailable: sourcesUnavailable.join(",") || "none",
+    });
+    return c.json({ email, crm, entries, truncated, sourcesUnavailable });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/recycle-batches — the 60-day recycling batches.
+  //
+  // The batch artifact IS the append-only "[recycle] proposto <date> campanha
+  // <slug>" marker lines on crm_contact (written by the weekly worker job) —
+  // no new table. This endpoint rebuilds the batches from those markers so
+  // the founder can download a batch as CSV and load it into a NEW SmartLead
+  // campaign by hand. The machine never sends.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/recycle-batches", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const r = await db.query<{ email: string; note: string | null }>(
+        `SELECT email, note
+           FROM crm_contact
+          WHERE note LIKE '%[recycle] proposto%'
+          ORDER BY updated_at DESC
+          LIMIT 2000`
+      );
+      const batches = groupRecycleBatches(r.rows);
+      logger.info("admin_recycle_batches_fetched", {
+        batches: batches.length,
+        contacts: r.rows.length,
+      });
+      return c.json({ batches });
+    } catch (err) {
+      logger.error("admin_recycle_batches_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "RECYCLE_BATCHES_FAILED" }, 500);
     }
   });
 
