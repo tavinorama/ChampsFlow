@@ -1082,6 +1082,77 @@ export const INCIDENT_POSTMORTEM_GRAPH: GraphDefinition = {
 //    estatística inventada.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// prospect-batch (5.A.1 + 2.10): o grafo de prospecção — o primeiro grafo de
+// VENDAS (vpOwner 'sales'). Toda quarta 07:30 UTC ele produz um LOTE de
+// prospects US verificados + o mini-GEO-probe por prospect (2.10) + uma
+// sequência fria de 3 e-mails por prospect, e PARA no founder:
+//
+//  - A MÁQUINA NUNCA ENVIA NADA. Não há nó publish: quem envia é o SmartLead,
+//    depois que o founder carrega a campanha à mão. O trabalho do grafo
+//    termina em artefato aprovado + linhas no CRM.
+//  - LLM sugere, CÓDIGO decide. O nó 'prospects' é um snapshot roteado
+//    (source 'prospects', worker): os engines (callWithFallback — nunca
+//    engine pinado) LISTAM candidatos; o código VERIFICA cada site (HTTP 200,
+//    nome no HTML) e DESCARTA o que não prova existir — quantos caíram fica
+//    no artefato. O probe (robots.txt × GPTBot/ClaudeBot/PerplexityBot/
+//    Google-Extended, JSON-LD, title/meta, contagem SSR de palavras) é parse
+//    puro em prospecting.ts — o modelo só escreve prosa sobre esses fatos.
+//  - REGRA 27/08 EM CÓDIGO: draft e finalize carregam config.validate
+//    'cold-email-batch' — o runner REPROVA o step se o EMAIL 1 de qualquer
+//    prospect tiver link/URL/domínio (ou se faltar a pergunta), e exige
+//    ?from=<campanha> em todo link ozvor.com dos e-mails 2-3. Um lote que
+//    viola a regra nunca chega à caixa de aprovação.
+//  - CRM SÓ COM O SIM DO FOUNDER: o nó store (target 'crm-contacts') exige
+//    approval upstream (hard rule do validateGraph). Rejeição ou 96h de
+//    silêncio = run falha, ZERO linhas em crm_contact. No sim, o store parseia
+//    O BLOCO GERADO POR CÓDIGO (config.contactsNode: 'prospects') — nunca a
+//    saída do LLM — e insere stage 'new' + nota com lote e achado; e-mail do
+//    contato só se foi EXTRAÍDO DO SITE por código. O webhook do SmartLead
+//    (reply → 'contacted') já correlaciona o 1º toque pelo e-mail do lead.
+//  - O report entrega a sequência completa (pronta para colar no SmartLead)
+//    e o run fica em Redis como qualquer outro. Playbook da moção: docs/
+//    departments/sales/discovery-audit-playbook.md.
+// ---------------------------------------------------------------------------
+
+export const PROSPECT_BATCH_GRAPH: GraphDefinition = {
+  slug: "prospect-batch",
+  version: 2,
+  vpOwner: "sales",
+  description:
+    "Lote semanal de prospecção DUAL-ICP (5.A.1 + 2.10 + 0.6), quarta 07:30 UTC, DUAS trilhas com o cap dividido (default 5+5; env PROSPECT_BATCH_CAP_GEO/PROSPECT_BATCH_CAP_AISTACK): trilha GEO = ICP local-services (docs/departments/sales/icp.md; campanha cold-<data>; oferta = teste grátis) e trilha AISTACK = ICP-2 do kit (docs/departments/sales/aistack-campaign-kit.md; campanha aistack-<data>; oferta = AI Stack Audit $49 em /ai-audit). Engines listam candidatos POR trilha → CÓDIGO verifica cada site (200 + nome no HTML; não-verificado é descartado e contado; dedup entre trilhas) e roda o mini-GEO-probe → LLM escreve 3 e-mails frios por prospect em INGLÊS (email 1: zero links + uma pergunta, validado por CÓDIGO nas duas trilhas; emails 2-3: geo → ozvor.com/test (ou raiz) com ?from=cold-*, aistack → /ai-audit com ?from=aistack-*, validado por CÓDIGO) → crítico → finalize (re-validado) → aprovação do founder no Telegram (96h; silêncio = rejeição) → store em crm_contact (stage 'new', nota com trilha+campanha; parse do bloco de CÓDIGO, nunca do LLM) ‖ report com as sequências separadas por trilha, prontas para UMA campanha SmartLead por trilha. A MÁQUINA NUNCA ENVIA: quem dispara é o SmartLead, carregado pelo founder.",
+  nodes: [
+    // Sourcing + verificação + probe: TUDO código (worker, source 'prospects').
+    // O artefato deste nó é a única fonte de verdade de nomes/sites/e-mails/
+    // achados — o draft escreve SOBRE ele, o store parseia ELE.
+    { id: "prospects", kind: "snapshot", dependsOn: [], config: { source: "prospects", days: 7 } },
+    // 3 e-mails por prospect, inglês, regra 27/08 validada por CÓDIGO no step.
+    { id: "draft", kind: "task", dependsOn: ["prospects"], config: { prompt: "prospect-draft", validate: "cold-email-batch" } },
+    // Crítico interno (PT): veto em link no email 1, dado inventado, achado
+    // que não está no bloco verificado, frase >12 palavras, tom de mala direta.
+    { id: "critic", kind: "debate", dependsOn: ["draft", "prospects"], config: { prompt: "prospect-critic" } },
+    // Finalize aplica os vetos e sai no MESMO contrato — re-validado por código.
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft", "critic", "prospects"], config: { prompt: "prospect-finalize", validate: "cold-email-batch" } },
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["finalize"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = os prospects verificados (com e-mail extraído do site) entram no CRM como stage 'new' — a nota de cada um diz trilha=geo|aistack e a campanha — e as sequências ficam prontas para VOCÊ colar no SmartLead, UMA campanha por trilha (cold-<data> e aistack-<data>) — a máquina não envia nada. Rejeitar ou silêncio (96h) = lote descartado, zero linhas no CRM.",
+      },
+    },
+    // Só depois do sim: linhas em crm_contact, parseadas do bloco de CÓDIGO.
+    { id: "store-crm", kind: "store", dependsOn: ["approval"], config: { target: "crm-contacts", contactsNode: "prospects" } },
+    // O report entrega o lote aprovado inteiro (sequências prontas p/ colar);
+    // depende do approval (gate) + finalize (o artefato) — não do store, para
+    // um CRM indisponível nunca segurar a entrega das sequências.
+    { id: "report", kind: "report", dependsOn: ["approval", "finalize"], config: { title: "🎯 PROSPECÇÃO DA SEMANA — lote aprovado, sequências prontas para o SmartLead" } },
+  ],
+};
+
 export const AB_EXPERIMENT_GRAPH: GraphDefinition = {
   slug: "ab-experiment",
   version: 1,

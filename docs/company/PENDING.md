@@ -18,6 +18,13 @@
 | 0.4 | Webhook SmartLead | 👤 | S | 🟢 **registrado GLOBAL e provado fim-a-fim 27/08** (Test → `smartlead_event` → CRM `contacted` em 1s). Warm-up é por caixa, sem campanha — webhook por campanha entra no checklist do dia do disparo |
 | 0.5 | Dry-run: e-mail → clique → lead com origem no admin | 👤 | S | 🟡 teste de fogo provou clique→lead→compra; a ORIGEM falhou (era o bug do 0.3) — re-teste de 2 min após o deploy do #527: abrir `/ai-audit?from=x` numa aba anônima, navegar, voltar e conferir no admin |
 
+### NOVO 01/09 — diretivas do founder
+| # | O que | Dono | Esf. | Estado |
+|---|---|---|---|---|
+| 0.6 | **Dois ICPs separados-e-conectados** (GEO tool + AI Stack $49): `prospect-batch` alimenta as DUAS trilhas; cada lote separa por produto | ⚙️ | S–M | 🟡 EM CONSTRUÇÃO 01/09 |
+| 0.7 | **Campanha SmartLead do AI Stack**: kit pronto (`docs/departments/sales/aistack-campaign-kit.md` — ICP-2 + 3 e-mails EN nos padrões + passos de carga); founder cria a campanha no SmartLead com o 1º lote | 👤 (kit ⚙️ ✅) | S | 🟡 kit entregue; carga é sua |
+| 0.8 | **Anti-genérico permanente**: críticos recebem as últimas N publicações do canal e vetam repetição de ângulo/gancho/estrutura; genericidade = veto; ciclo verificar→criar→aplicar→auditar em TODA publicação, TODA plataforma (alcance, views, integrações, participação) | ⚙️ | M | 🟡 EM CONSTRUÇÃO 01/09 (a metade "auditar→aprender" já existe: harvest/verdict/memória/tuner — as migrações #531/#537 ligam) |
+
 > **Checklist do dia do disparo (1ª campanha real):** 1º e-mail SEM nenhum link (regra 27/08; deliverability) · links `?from=` só do 2º e-mail em diante · webhook por campanha (se o global não cobrir) · correlação do 1º toque é por e-mail do lead.
 
 ## BLOCO 1 — VÍDEO AUTOMÁTICO *(reescrito 24/08 após o raio-X da VPS)*
@@ -46,9 +53,9 @@
 | 2.5 | Canais de citação #118–#123 (GSC, Bing, GA4, Reddit, LinkedIn company, GBP) | 👤 | M | 🔴 |
 | 2.6 | Revisar calendário editorial com 1 semana de dados | ⚙️ | S | 🟡 |
 | 2.7 | **Skill claude-seo ADOTADA (27/08)** — instalada no Mac (runtime ok, Python 3.12 via `CLAUDE_SEO_PYTHON`), 1ª análise GEO de ozvor.com feita: **63/100** | ⚙️ | — | 🟢 |
-| 2.8 | GEO do nosso site (do 63→80+): headings-pergunta + blocos-resposta 134-167 palavras no prompt do blog-writer · BlogPosting+Person schema no template do blog · fontes inline no /research · `/llms.txt` | ⚙️ | S–M | 🔴 derivado da análise 2.7 |
-| 2.9 | `/seo drift baseline` mensal em ozvor.com (vigia de regressão SEO) + `/seo audit` completo 1×/mês | ⚙️ | S | 🔴 |
-| 2.10 | **Auditoria-de-discovery no playbook de vendas**: rodar `/seo audit`+`/seo geo` no site do prospect antes do e-mail 2 e citar 2-3 achados concretos (liga com 5.A.1) | ⚙️+👤 | S | 🔴 arma de venda |
+| 2.8 | GEO do nosso site | ⚙️ | S–M | 🟢 engenharia concluída (#534 regras+llms.txt · #545 BlogPosting; 'fontes no /research' era falso positivo — página já cita tudo). Resta SÓ a decisão da byline de Person (founder) |
+| 2.9 | /seo drift + audit mensais | ⚙️ | S | 🟡 baseline das 5 páginas-chave capturado 01/09; falta só a rotina mensal no calendário |
+| 2.10 | ~~Auditoria-de-discovery~~ 🟢 feito (#547): mini-probe automático por prospect no lote semanal + playbook `docs/departments/sales/discovery-audit-playbook.md` (escalação com /seo audit antes de call) | ⚙️+👤 | S | fechado |
 
 ## BLOCO 3 — PRODUTO
 
@@ -77,7 +84,7 @@
 ### 5.A Vendas — a maior lacuna para a grana
 | # | O que | Esf. |
 |---|---|---|
-| 5.A.1 | Grafo de prospecção: ICP → lista → enriquecimento → sequência → CRM | L |
+| 5.A.1 | ~~Grafo de prospecção~~ 🟢 código mergeado (#547, 32 testes): lote semanal qua 07h30 — engines sugerem, CÓDIGO verifica site+extrai e-mail, mini-GEO-probe real, 3 e-mails EN com **1º sem link imposto por código**, gate do founder, CRM stage new; máquina nunca envia. 1º lote: qua 02/09 | L |
 | 5.A.2 | Grafo de follow-up: resposta → intenção → rascunho → **portão** → envia | L |
 | 5.A.3 | Lead scoring alimentando a fila do /admin | M |
 | 5.A.4 | Pós-call: transcrição → resumo → proposta → follow-up | L |
