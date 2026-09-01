@@ -58,6 +58,40 @@ export const CONTENT_LESSONS = [
 ].join("\n");
 
 /**
+ * ANTI_GENERIC_RULE (0.8, founder 01/09: "as publicações têm sido muito
+ * genéricas e com um padrão repetido demais"): a régua anti-genérico, irmã
+ * estrutural de CONTENT_LESSONS. O runner a apenda ao artefato [__lessons__]
+ * dos críticos (debate) de marketing — mesma injeção, mesma garantia: um
+ * override do tuner nunca a desliga. A contraparte de CRIAÇÃO é o bloco
+ * [__recent__] (as últimas peças realmente publicadas, lidas do registro) +
+ * a linha ANTI_GENERIC_DRAFT_RULE nos drafts. Verificar → criar diferente →
+ * auditar: o loop é permanente.
+ */
+export const ANTI_GENERIC_RULE = [
+  "REGUA ANTI-GENERICO (0.8, founder 01/09 — regua de VETO, nao sugestao):",
+  "- Repetir angulo, gancho ou estrutura de QUALQUER peca do bloco [__recent__] = 'VETO: repete <qual peca — data/canal>'. Nomeie a culpada.",
+  "- Abertura ou claim que serviria para qualquer negocio ('in today's digital world', 'AI is changing everything', estatistica sem fonte nomeada, conselho sem exemplo concreto) = 'VETO: generico'.",
+  "- Toda peca NOMEIA algo concreto: um nicho real, um numero com fonte, um cenario especifico. Nada concreto = 'VETO: generico'.",
+  "- A peca tem que ser NATIVA da plataforma (thread de X nao e post de LinkedIn encurtado; Reel nao e slide falado) e otimizada para alcance, visualizacoes e PARTICIPACAO: onde a plataforma premia resposta, a peca faz uma pergunta real e convida replies.",
+  "- Draft que passa por finalize declara a linha interna 'ANGULO-NOVO:'; se ela falta ou nao se sustenta contra [__recent__], aponte a correcao.",
+].join("\n");
+
+/**
+ * A linha de CRIAÇÃO do loop anti-genérico (0.8): todo draft de marketing
+ * estuda [__recent__] e escolhe deliberadamente um caminho diferente,
+ * declarando-o numa linha interna que o crítico confere. Uma fonte.
+ */
+const ANTI_GENERIC_DRAFT_RULE =
+  "ANTI-GENERICO (0.8): se houver um bloco [__recent__] abaixo (as ultimas pecas REALMENTE publicadas), estude-o e escolha DELIBERADAMENTE um angulo, gancho e estrutura diferentes de todas elas. Abra a saida com a linha interna 'ANGULO-NOVO: <o angulo escolhido e por que difere do recente>' — o critico confere essa linha e o finalize NAO a inclui na versao final.";
+
+/**
+ * Variante para o ab-draft: o artefato dele publica DIRETO (contentNode do
+ * publish) — nenhuma linha interna pode existir no texto.
+ */
+const ANTI_GENERIC_AB_DRAFT_RULE =
+  "ANTI-GENERICO (0.8): se houver um bloco [__recent__] abaixo (as ultimas pecas realmente publicadas), escolha deliberadamente gancho e estrutura que NAO repetem nenhuma peca de la. Este texto publica direto: NAO inclua nenhuma linha interna ou rotulo.";
+
+/**
  * A linha que todo crítico de esfera carrega: cita [__lessons__] como régua de
  * veto. Uma fonte — se o contrato do bloco mudar, todos os críticos mudam.
  */
@@ -239,6 +273,7 @@ function shortVideoFamily(
         VIDEO_ALIVE_FORMAT,
         spec.grammar,
         "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre). Zero cara de anuncio, zero slide deck.",
+        ANTI_GENERIC_DRAFT_RULE,
         ENGLISH_FIRST,
         "Formato de saida: o roteiro puro, com [HOOK], [BEAT 1..n] (CAPTION:/SAY:), [PATTERN INTERRUPT], [CTA], [STYLE]. Nada alem disso.",
         upstreamBlock(ctx.upstream),
@@ -319,6 +354,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um roteirista de video curto que FALA como gente, nao como slide. Escreva UM roteiro no angulo "${String(ctx.config["angle"] ?? "story")}" a partir do briefing abaixo.`,
       VIDEO_ALIVE_FORMAT,
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada de promessa que o produto nao cumpre). Fala de verdade: contracoes, pausa, uma imperfeicao proposital. Nada de 'in today's fast-paced world'.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o roteiro puro, com [HOOK], [BEAT 1..n] (cada um com a linha 'CAPTION:' e a linha 'SAY:'), [PATTERN INTERRUPT], [CTA] e a linha [STYLE] no final. Nada alem disso.",
       upstreamBlock(ctx.upstream),
@@ -545,6 +581,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e roteirista da Ozvor. Do briefing abaixo, escreva UM post social curto (LinkedIn, 60-120 palavras) que testa a hipotese.",
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto. Uma unica ideia — e um teste, nao um manifesto.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -587,6 +624,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Siga o brief A LETRA: implemente exatamente o que a linha da SUA variante pede no eixo declarado, e mantenha as CONSTANTES identicas a outra variante.",
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre).",
+      ANTI_GENERIC_AB_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois (sem rotulo de variante, sem comentario).",
       upstreamBlock(ctx.upstream),
@@ -740,6 +778,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um escritor de X (Twitter). A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "punchy")}":`,
       "punchy = UM post unico, <=280 caracteres, primeira linha para o dedo, zero link. · mini-thread = 3 posts encadeados (1/3, 2/3, 3/3), cada um <=280 caracteres, o primeiro segura sozinho.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, honesto (nada que o produto nao cumpre).",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o(s) post(s), prontos para colar. Mini-thread separa os posts com uma linha '---'.",
       upstreamBlock(ctx.upstream),
@@ -802,6 +841,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um escritor de LinkedIn. A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "story")}":`,
       "story = post em 1a pessoa, 6-10 linhas curtas, uma cena real no comeco, a licao no fim, as 2 primeiras linhas seguram o 'ver mais'. · contrarian = post que abre com uma opiniao que contraria o senso comum, prova em 3 linhas, fecha com a consequencia pratica.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, no maximo 1 emoji, honesto (nada que o produto nao cumpre), zero link no corpo (link vai no comentario).",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o post, pronto para colar, uma linha em branco entre paragrafos.",
       upstreamBlock(ctx.upstream),
@@ -864,6 +904,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "how-to = H1 + intro de 3 linhas + 5-7 H2 em ordem de execucao, cada H2 com 2 bullets do que entra + um fecho com o proximo passo. · data-story = H1 + intro com o dado/fato que surpreende + 4-6 H2 que explicam causa, efeito, o que fazer + fecho.",
       "Cada H2 deve poder ser citado sozinho por uma IA (frase-resposta direta no primeiro bullet).",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem promessa que o produto nao cumpre, fontes marcadas como [fonte: ...] ou [a pesquisar].",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o outline em markdown (H1, H2, bullets), nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -931,6 +972,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Se o sub exige revelar afiliacao, a jogada JA inclui a linha de disclosure (ex: 'Full disclosure: I work on Ozvor').",
       "Reddit e alergico a marketing: escreva como gente que participa da comunidade, ajuda primeiro, vende quase nunca. Nada de astroturfing, nada de fingir ser usuario neutro.",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: um bloco rotulado [MOVE: <comment|post>] com as linhas SUBREDDIT / TARGET (URL da thread ou titulo do post) / DISCLOSURE (a linha, ou 'nao exigida') / KARMA-NOTE / VALUE / DRAFT (o texto do comentario ou do post, pronto para um humano colar). Nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -1029,6 +1071,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       spec,
       "REGRAS DE CLAIM (inegociaveis): so prometa o que o produto entrega hoje (auditoria em 5 motores de IA, 3 scores, plano GEO, AI Audit Stack $49, OrganicPosts DFY). Nenhum numero de resultado que nao esteja em [signal]. Nada de 'garantido', 'ranqueie #1', 'em 24h'. Sem comparacao nominal com concorrente. Sem dado sensivel de audiencia.",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, sonho honesto, CTA em 1a pessoa quando couber.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       `Formato de saida: um bloco rotulado [${network.toUpperCase()}] com os campos acima, um por linha, nada antes nem depois.`,
       upstreamBlock(ctx.upstream),

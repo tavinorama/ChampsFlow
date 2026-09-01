@@ -1598,6 +1598,41 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
              AND measured_at >= ${sinceIso}::timestamptz`;
         return { n: Number(rows[0]?.n ?? 0), total: Number(rows[0]?.total ?? 0) };
       },
+      async recentPublishes(input) {
+        // 0.8 anti-generic — the [__recent__] source. The publish record is
+        // durable (ops.agent_step summaries carry 'published via ... channel=');
+        // matching on the summary (not node='publish') also catches named
+        // publish nodes like the A/B's publish-a/publish-b. The piece's TEXT
+        // is recovered by the RUNNER from the Redis artifact (TTL 7d) — this
+        // port only reports the durable record. Must never throw (fail-open:
+        // an error means no [__recent__], cells run as before).
+        try {
+          const like = input.channel ? `%channel=${input.channel}%` : "%channel=%";
+          const rows = await sql<
+            { run_id: string; node: string; graph: string; summary: string; published_at: string }[]
+          >`
+            /* recent:publishes-read */
+            SELECT s.run_id, s.node, r.graph, s.summary, s.started_at::text AS published_at
+              FROM ops.agent_step s
+              JOIN ops.agent_run r ON r.id = s.run_id
+             WHERE s.status = 'succeeded'
+               AND s.summary LIKE 'published via%'
+               AND s.summary LIKE ${like}
+             ORDER BY s.started_at DESC
+             LIMIT ${Math.max(1, Math.min(input.limit, 20))}`;
+          return rows.map((r) => ({
+            runId: r.run_id,
+            node: r.node,
+            graph: r.graph,
+            channel: /channel=([a-z0-9_-]+)/i.exec(r.summary)?.[1]?.toLowerCase() ?? "?",
+            publishedAt: r.published_at,
+            summary: r.summary,
+          }));
+        } catch (err) {
+          logger.warn("recent_publishes_read_failed", { message: (err as Error).message?.slice(0, 160) });
+          return [];
+        }
+      },
       async publishedToday(channel) {
         // Counter of the cadence valve (24/08): succeeded publishes to this
         // channel since 00:00 UTC. The channel travels in the step summary

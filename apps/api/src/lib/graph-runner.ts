@@ -59,6 +59,7 @@ import { validateColdSequenceBatch, parseProspectsForCrm } from "./prospecting";
 import {
   buildPrompt,
   CONTENT_LESSONS,
+  ANTI_GENERIC_RULE,
   parsePromptProposal,
   isTunablePromptKey,
   TUNABLE_PROMPT_KEYS,
@@ -97,6 +98,26 @@ export const LESSONS_ARTIFACT = "__lessons__";
  * all — never a placeholder.
  */
 export const MEMORY_ARTIFACT = "__memory__";
+/**
+ * Upstream key carrying the LAST REAL PUBLISHES to the creation-and-critique
+ * nodes of marketing graphs (0.8, founder 01/09: "as publicações têm sido
+ * muito genéricas e com um padrão repetido demais"). The VERIFY half of the
+ * anti-generic loop, at CREATION time: the runner reads the newest succeeded
+ * publish steps from ops.agent_step (durable, Postgres) via the optional
+ * recentPublishes port and recovers each piece's TEXT from the content node's
+ * Redis artifact — honestly limited: artifacts expire after 7 days (TTL), and
+ * the durable step summary records only "published via <via> channel=<ch>",
+ * never the text. Inside the TTL the block quotes the real piece; past it,
+ * the entry says so and carries the record line (date/graph/channel) — even
+ * that beats drafting blind. No publishes at all → no artifact (never a
+ * placeholder). Injection surface = the tuner allowlist (drafts + critics),
+ * which is exactly the create/critique surface of marketing.
+ */
+export const RECENT_ARTIFACT = "__recent__";
+/** How many recent publishes the [__recent__] block carries. */
+export const RECENT_PUBLISHES_LIMIT = 5;
+/** Per-piece char cap inside [__recent__] — hooks/structure, not full reprint. */
+export const RECENT_PIECE_CHAR_CAP = 700;
 
 // ---------------------------------------------------------------------------
 // 5.F.7 — postmortem→código: the approved postmortem draft's "## Licoes
@@ -341,6 +362,18 @@ export interface SubstratePort {
     campaign: string;
     contacts: Array<{ email: string; name: string; website: string; finding: string }>;
   }): Promise<{ ok: boolean; inserted: number; reason?: string }>;
+  /**
+   * The newest SUCCEEDED publishes (0.8 anti-generic): rows read from
+   * ops.agent_step summaries ('published via ... channel=<ch>'), newest
+   * first. channel null = all channels (for marketing graphs that publish
+   * nothing directly — blog/reddit/ppc/IG/TikTok/YT reports — cross-channel
+   * context still beats none). Optional on purpose, must never throw; a
+   * runner wired without it injects no [__recent__] and the cells run
+   * exactly as before (fail-open).
+   */
+  recentPublishes?(input: { channel: string | null; limit: number }): Promise<
+    Array<{ runId: string; node: string; graph: string; channel: string; publishedAt: string; summary: string }>
+  >;
 }
 
 export interface HermesPort {
@@ -976,6 +1009,51 @@ export async function advanceRun(
     }
     return promptOverrides;
   };
+  // 0.8 anti-generic — the [__recent__] block, built LAZILY and at most once
+  // per advance. AGGREGATION IS CODE ("o vigia também mente"): which pieces
+  // are "recent" comes from the durable publish record (ops.agent_step), and
+  // the text recovery walks the SAME publish→content edge the publisher used
+  // (publishContentNodeId over GRAPH_REGISTRY). What is honestly recoverable:
+  //  - the publish STEP row (Postgres) → date, graph, channel — always;
+  //  - the piece's TEXT → only while the content node's Redis artifact lives
+  //    (TTL 7d). Past the TTL the entry says so instead of pretending.
+  // Fail-open by contract: no port / port error / zero rows → no artifact.
+  let recentBlock: string | null = null;
+  let recentBlockLoaded = false;
+  const loadRecentBlock = async (): Promise<string | null> => {
+    if (recentBlockLoaded) return recentBlock;
+    recentBlockLoaded = true;
+    if (!substrate.recentPublishes) return null;
+    try {
+      const firstPublish = def.nodes.find((n) => n.kind === "publish");
+      const channel = firstPublish ? String(firstPublish.config?.["channel"] ?? "linkedin") : null;
+      const rows = await substrate.recentPublishes({ channel, limit: RECENT_PUBLISHES_LIMIT });
+      if (!rows || rows.length === 0) return null;
+      const parts: string[] = [
+        channel
+          ? `ULTIMAS PUBLICACOES REAIS do canal ${channel} (mais novas primeiro). Regua anti-repeticao: NAO repita angulo, gancho nem estrutura de NENHUMA peca abaixo.`
+          : "ULTIMAS PUBLICACOES REAIS (todos os canais — este grafo nao publica direto; mais novas primeiro). Regua anti-repeticao: NAO repita angulo, gancho nem estrutura de NENHUMA peca abaixo.",
+      ];
+      for (const row of rows.slice(0, RECENT_PUBLISHES_LIMIT)) {
+        let text: string | null = null;
+        const rowDef = GRAPH_REGISTRY[row.graph];
+        const pubNode = rowDef?.nodes.find((n) => n.id === row.node && n.kind === "publish");
+        if (rowDef && pubNode) {
+          text = await artifacts.get(row.runId, publishContentNodeId(rowDef, pubNode));
+        }
+        parts.push(`--- ${row.publishedAt.slice(0, 10)} · ${row.graph} · canal ${row.channel} ---`);
+        parts.push(
+          text
+            ? text.slice(0, RECENT_PIECE_CHAR_CAP)
+            : `(texto nao recuperavel — o artefato Redis expirou apos 7d; registro duravel: ${row.summary.slice(0, 120)})`
+        );
+      }
+      recentBlock = parts.join("\n");
+    } catch {
+      recentBlock = null; // fail-open by contract; the port should not throw
+    }
+    return recentBlock;
+  };
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -997,8 +1075,26 @@ export async function advanceRun(
         // nodes) — the creators stay free to draft; the vetoers carry the
         // memory. Constant, no I/O — the exact [__day__] pattern. Brains
         // (CEO/engineering-owned) never receive it: they are not content.
+        // 0.8: the CREATE-and-CRITIQUE surface gets the last real publishes
+        // as [__recent__]. That surface already has a name in code: the
+        // tuner's allowlist (marketing drafts + critics) — reused so the two
+        // never drift. Resolved the same way buildPrompt resolves the slug.
+        const promptSlug =
+          typeof config["prompt"] === "string"
+            ? (config["prompt"] as string)
+            : node.kind === "debate"
+              ? "critique"
+              : node.kind === "synthesis"
+                ? "synthesize"
+                : null;
+        if (promptSlug && isTunablePromptKey(promptSlug)) {
+          const recent = await loadRecentBlock();
+          if (recent) upstream.unshift([RECENT_ARTIFACT, recent]);
+        }
         if (node.kind === "debate") {
-          upstream.unshift([LESSONS_ARTIFACT, CONTENT_LESSONS]);
+          // 0.8: the anti-generic ruler travels WITH the institutional
+          // lessons — same artifact, same override-proof guarantee.
+          upstream.unshift([LESSONS_ARTIFACT, `${CONTENT_LESSONS}\n${ANTI_GENERIC_RULE}`]);
           // 5.F.1: the CONSOLIDATED, founder-approved lessons — the durable
           // sibling of [__lessons__], read from ops.memory_lesson at tick
           // time. Fail-open by contract: empty store, missing migration or a
