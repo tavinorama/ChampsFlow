@@ -25,6 +25,19 @@
 export const DEFAULT_PROSPECT_BATCH_CAP = 10;
 
 /**
+ * 0.6 (founder 01/09) — the weekly batch runs TWO tracks, one per ICP:
+ *  - 'geo'     → the existing local-services ICP (visibility pain; offer =
+ *                free test, campaign slug cold-<date>);
+ *  - 'aistack' → ICP-2 from docs/departments/sales/aistack-campaign-kit.md
+ *                (tool/process pain; offer = AI Stack Audit $49 at
+ *                ozvor.com/ai-audit, campaign slug aistack-<date>).
+ * The CRM is one; the contact's note names the track + campaign so the
+ * founder loads each track into its own SmartLead campaign.
+ */
+export type ProspectTrack = "geo" | "aistack";
+export const PROSPECT_TRACKS: readonly ProspectTrack[] = ["geo", "aistack"];
+
+/**
  * v1 ICP, static and cited — NOT invented from thin air. Source:
  * docs/departments/sales/icp.md (canonical ICP card, launch 2026-07-13),
  * Segment B "organic-dependent SMBs", local-services flavor: US businesses
@@ -44,6 +57,25 @@ export const DEFAULT_PROSPECT_ICP = [
   "organic/local traffic they cannot afford to lose to AI answers that never",
   "mention them. (Fonte: docs/departments/sales/icp.md — segmento B",
   "organic-dependent SMBs + segmento A agencias; recorte local-services US.)",
+].join(" ");
+
+/**
+ * ICP-2 (AISTACK track), static and cited — NOT invented. Source:
+ * docs/departments/sales/aistack-campaign-kit.md (01/09, PR #549): US SMB of
+ * ANY niche drowning in the wrong tools, not (only) invisible in AI search.
+ * The $49 AI Stack Audit reads their pains and names the right AI tool —
+ * catalog-fit is the qualifier. Override: env PROSPECT_ICP_AISTACK.
+ */
+export const DEFAULT_PROSPECT_ICP_AISTACK = [
+  "US small businesses (1-50 people) of ANY niche with visible tool/process",
+  "pain: they pay for several SaaS tools yet still do repetitive work by hand",
+  "(admin, marketing, customer service, scheduling, quotes). Signals: lean",
+  "teams wearing many hats, service businesses with manual intake/booking,",
+  "small e-commerce or agencies drowning in busywork. They have a real",
+  "website and a real operation, and no time to test 100 AI apps — a $49",
+  "audit that names the ONE right AI tool for their worst bottleneck is an",
+  "easy yes. (Fonte: docs/departments/sales/aistack-campaign-kit.md — ICP-2",
+  "da trilha AI STACK, regra do founder 01/09.)",
 ].join(" ");
 
 export interface CandidateBusiness {
@@ -275,9 +307,14 @@ export function nameMatchesHtml(name: string, html: string): boolean {
   return matched >= Math.ceil(tokens.length / 2);
 }
 
-/** Campaign slug for the run — the ?from= value of emails 2+ (never email 1). */
-export function campaignSlug(d: Date): string {
-  return `cold-${d.toISOString().slice(0, 10)}`;
+/**
+ * Campaign slug for the run — the ?from= value of emails 2+ (never email 1).
+ * Per track (0.6): geo keeps the historic cold-<date>; aistack follows the
+ * kit's SmartLead naming, aistack-<date>.
+ */
+export function campaignSlug(d: Date, track: ProspectTrack = "geo"): string {
+  const day = d.toISOString().slice(0, 10);
+  return track === "aistack" ? `aistack-${day}` : `cold-${day}`;
 }
 
 export interface VerifiedProspect {
@@ -299,9 +336,12 @@ export interface DroppedCandidate {
 export const EMPTY_BATCH_SENTINEL = "SEM PROSPECTS VERIFICADOS NESTA RODADA";
 
 /**
- * Render the verified batch as the [prospects] artifact — the single source
- * of truth downstream: the draft prompt reads it, the approval box shows it,
- * and the CRM store PARSES THIS BLOCK (never the LLM output) for contacts.
+ * Render one verified batch (one track, or legacy single-track) as the
+ * [prospects] artifact — the single source of truth downstream: the draft
+ * prompt reads it, the approval box shows it, and the CRM store PARSES THIS
+ * BLOCK (never the LLM output) for contacts. When `track` is present (0.6),
+ * every prospect section carries its own TRILHA/CAMPANHA lines so the parse
+ * and the validator route per prospect.
  */
 export function renderProspectBlock(input: {
   campaign: string;
@@ -309,6 +349,7 @@ export function renderProspectBlock(input: {
   listed: number;
   verified: VerifiedProspect[];
   dropped: DroppedCandidate[];
+  track?: ProspectTrack;
 }): string {
   const lines: string[] = [];
   if (input.verified.length === 0) {
@@ -316,6 +357,7 @@ export function renderProspectBlock(input: {
   } else {
     lines.push("LOTE DE PROSPECCAO (verificado por CODIGO — site respondeu 200, nome confere no HTML; nada abaixo e palpite de LLM)");
   }
+  if (input.track) lines.push(`TRILHA: ${input.track}`);
   lines.push(`CAMPANHA: ${input.campaign}`);
   lines.push(`ICP: ${input.icpSource}`);
   lines.push(
@@ -324,6 +366,10 @@ export function renderProspectBlock(input: {
   for (const p of input.verified) {
     lines.push("");
     lines.push(`=== PROSPECT: ${p.name} ===`);
+    if (input.track) {
+      lines.push(`TRILHA: ${input.track}`);
+      lines.push(`CAMPANHA: ${input.campaign}`);
+    }
     lines.push(`SITE: ${p.website}`);
     lines.push(`EMAIL: ${p.email ?? "SEM EMAIL VERIFICADO"}`);
     lines.push("ACHADOS (verificados por codigo):");
@@ -337,21 +383,81 @@ export function renderProspectBlock(input: {
   return lines.join("\n");
 }
 
+/** One track's worth of dual-batch material (0.6). */
+export interface TrackBatch {
+  track: ProspectTrack;
+  campaign: string;
+  icpSource: string;
+  listed: number;
+  verified: VerifiedProspect[];
+  dropped: DroppedCandidate[];
+}
+
+/**
+ * Render the DUAL batch (0.6): one [prospects] artifact, two clearly-separated
+ * track sections, each prospect stamped with TRILHA + CAMPANHA. Both tracks
+ * empty → the honest overall sentinel FIRST LINE (the draft prompt's empty
+ * contract keys off it, unchanged).
+ */
+export function renderDualProspectBlock(tracks: TrackBatch[]): string {
+  const totalVerified = tracks.reduce((n, t) => n + t.verified.length, 0);
+  const totalListed = tracks.reduce((n, t) => n + t.listed, 0);
+  const lines: string[] = [];
+  if (totalVerified === 0) {
+    lines.push(
+      `${EMPTY_BATCH_SENTINEL} — engines listaram ${totalListed} candidato(s) nas ${tracks.length} trilhas, 0 passaram na verificacao de codigo.`
+    );
+  } else {
+    lines.push(
+      "LOTE DE PROSPECCAO DUAL (verificado por CODIGO — site respondeu 200, nome confere no HTML; nada abaixo e palpite de LLM)"
+    );
+  }
+  lines.push(`TRILHAS: ${tracks.map((t) => `${t.track} (campanha ${t.campaign})`).join(" + ")}`);
+  for (const t of tracks) {
+    lines.push("");
+    lines.push(`--- TRILHA ${t.track.toUpperCase()} — campanha ${t.campaign} ---`);
+    lines.push(
+      renderProspectBlock({
+        campaign: t.campaign,
+        icpSource: t.icpSource,
+        listed: t.listed,
+        verified: t.verified,
+        dropped: t.dropped,
+        track: t.track,
+      })
+    );
+  }
+  return lines.join("\n");
+}
+
 export interface CrmProspectContact {
   email: string;
   name: string;
   website: string;
   finding: string;
+  /** Which track sourced this contact (0.6) — 'geo' when the block predates tracks. */
+  track: ProspectTrack;
+  /** The track's campaign slug — the SmartLead campaign this contact belongs to. */
+  campaign: string;
+}
+
+/** The crm_contact note line for one approved prospect — one source (worker + tests). */
+export function crmNoteFor(c: CrmProspectContact): string {
+  return `[prospect-batch] trilha=${c.track} campanha=${c.campaign} — ${c.finding || "sem achado registrado"} — ${c.website}`;
 }
 
 /**
  * Parse the code-generated [prospects] block back into CRM rows — the store
  * step reads THIS (config.contactsNode), never the LLM's sequences, so a
  * model rewrite can never alter what lands in crm_contact. Only prospects
- * whose EMAIL line is a real address become contacts.
+ * whose EMAIL line is a real address become contacts. Track/campaign come
+ * from each prospect's OWN section lines (0.6); a legacy block without them
+ * degrades to geo + the block's global campaign.
  */
 export function parseProspectsForCrm(block: string): { campaign: string; contacts: CrmProspectContact[] } {
-  const campaign = /^CAMPANHA:\s*(\S+)/m.exec(block)?.[1] ?? "cold-unknown";
+  const campaigns = [...block.matchAll(/^CAMPANHA:\s*(\S+)/gm)].map((m) => m[1]!);
+  const campaign = [...new Set(campaigns)].join("+") || "cold-unknown";
+  const globalCampaign = campaigns[0] ?? "cold-unknown";
   const contacts: CrmProspectContact[] = [];
   const sections = block.split(/^=== PROSPECT:\s*/m).slice(1);
   for (const section of sections) {
@@ -359,10 +465,36 @@ export function parseProspectsForCrm(block: string): { campaign: string; contact
     const website = /^SITE:\s*(\S+)/m.exec(section)?.[1] ?? "";
     const emailRaw = /^EMAIL:\s*(.+)$/m.exec(section)?.[1]?.trim() ?? "";
     const finding = /^-\s*(.+)$/m.exec(section.split("ACHADOS")[1] ?? "")?.[1]?.trim() ?? "";
+    // FIRST match only: a section runs until the next '=== PROSPECT:' and can
+    // therefore contain the NEXT track's header lines — the prospect's own
+    // TRILHA/CAMPANHA lines always come first (right under its header).
+    const track: ProspectTrack = /^TRILHA:\s*(geo|aistack)\b/m.exec(section)?.[1] === "aistack" ? "aistack" : "geo";
+    const ownCampaign = /^CAMPANHA:\s*(\S+)/m.exec(section)?.[1] ?? globalCampaign;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailRaw)) continue;
-    contacts.push({ email: emailRaw.toLowerCase(), name, website, finding });
+    contacts.push({ email: emailRaw.toLowerCase(), name, website, finding, track, campaign: ownCampaign });
   }
   return { campaign, contacts };
+}
+
+/**
+ * Name → {track, campaign} map from the code-generated block — the validator
+ * routes each LLM sequence on it (0.6). Email is irrelevant here: a prospect
+ * without a verified email still gets a sequence (the founder can source the
+ * address by hand), and its links must still match its track.
+ */
+export function prospectTracksFromBlock(block: string): Map<string, { track: ProspectTrack; campaign: string }> {
+  const out = new Map<string, { track: ProspectTrack; campaign: string }>();
+  const globalCampaign = /^CAMPANHA:\s*(\S+)/m.exec(block)?.[1] ?? "cold-unknown";
+  for (const section of block.split(/^=== PROSPECT:\s*/m).slice(1)) {
+    const name = section.split("===")[0]?.trim() ?? "";
+    if (!name) continue;
+    // FIRST match only — see parseProspectsForCrm: the section may contain the
+    // next track's header lines after this prospect's own fields.
+    const track: ProspectTrack = /^TRILHA:\s*(geo|aistack)\b/m.exec(section)?.[1] === "aistack" ? "aistack" : "geo";
+    const campaign = /^CAMPANHA:\s*(\S+)/m.exec(section)?.[1] ?? globalCampaign;
+    out.set(name, { track, campaign });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -437,10 +569,21 @@ export interface SequenceValidation {
  *  - EMAILS 2-3: every ozvor.com mention must carry ?from= (campaign
  *    attribution — links without it are wasted correlation).
  *
+ * 0.6 — when the code-generated [prospects] block is handed in as context,
+ * the validator also routes PER TRACK (the track comes from the block, never
+ * from the LLM):
+ *  - aistack prospect: every ozvor link in emails 2-3 must target /ai-audit
+ *    with ?from=<the track's campaign> (aistack-*), and EMAIL 2 must carry
+ *    the offer link (the kit's mold);
+ *  - geo prospect: ozvor links must NOT target /ai-audit (the geo offer is
+ *    the free test — /test or the root) — track mixing is a code failure;
+ *  - a sequence for a name outside the verified block is refused (an
+ *    invented prospect must never reach the approval box).
+ *
  * The exact-sentinel empty batch ("SEM PROSPECTS VERIFICADOS...") is VALID:
  * an honest nothing beats an invented prospect.
  */
-export function validateColdSequenceBatch(text: string): SequenceValidation {
+export function validateColdSequenceBatch(text: string, prospectsBlock?: string | null): SequenceValidation {
   const errors: string[] = [];
   const trimmed = text.trim();
   if (trimmed.startsWith(EMPTY_BATCH_SENTINEL)) return { ok: true, errors };
@@ -448,8 +591,13 @@ export function validateColdSequenceBatch(text: string): SequenceValidation {
   if (sequences.length === 0) {
     return { ok: false, errors: ["nenhum bloco '=== PROSPECT: ... ===' encontrado no lote"] };
   }
+  const tracks = prospectsBlock ? prospectTracksFromBlock(prospectsBlock) : null;
   for (const seq of sequences) {
     const label = seq.prospect || "(sem nome)";
+    const info = tracks?.get(seq.prospect.trim());
+    if (tracks && tracks.size > 0 && !info) {
+      errors.push(`'${label}': prospect fora do bloco verificado — sequencia para nome nao verificado por codigo`);
+    }
     const byIndex = new Map(seq.emails.map((e) => [e.index, e]));
     for (const n of [1, 2, 3]) {
       if (!byIndex.get(n)?.body) errors.push(`'${label}': [EMAIL ${n}] ausente ou vazio`);
@@ -467,10 +615,25 @@ export function validateColdSequenceBatch(text: string): SequenceValidation {
     for (const n of [2, 3]) {
       const email = byIndex.get(n);
       if (!email) continue;
-      for (const url of ozvorUrlsIn(`${email.subject ?? ""}\n${email.body}`)) {
+      const urls = ozvorUrlsIn(`${email.subject ?? ""}\n${email.body}`);
+      for (const url of urls) {
         if (!/[?&]from=/.test(url)) {
           errors.push(`'${label}': EMAIL ${n} tem link ozvor.com sem ?from=<campanha> — atribuicao obrigatoria do 2o toque em diante`);
         }
+        if (info?.track === "aistack") {
+          if (!/ozvor\.com\/ai-audit\b/i.test(url)) {
+            errors.push(`'${label}': EMAIL ${n} (trilha aistack) linka fora de /ai-audit — a oferta da trilha e o AI Stack Audit`);
+          }
+          if (!new RegExp(`[?&]from=${info.campaign.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|[&\\s])`).test(url)) {
+            errors.push(`'${label}': EMAIL ${n} (trilha aistack) com ?from= fora da campanha ${info.campaign}`);
+          }
+        }
+        if (info?.track === "geo" && /ozvor\.com\/ai-audit\b/i.test(url)) {
+          errors.push(`'${label}': EMAIL ${n} (trilha geo) linka /ai-audit — trilha errada: a oferta geo e o teste gratis (/test ou raiz)`);
+        }
+      }
+      if (info?.track === "aistack" && n === 2 && !urls.some((u) => /ozvor\.com\/ai-audit\b/i.test(u))) {
+        errors.push(`'${label}': EMAIL 2 (trilha aistack) sem o link da oferta /ai-audit?from=${info.campaign}`);
       }
     }
   }

@@ -58,6 +58,40 @@ export const CONTENT_LESSONS = [
 ].join("\n");
 
 /**
+ * ANTI_GENERIC_RULE (0.8, founder 01/09: "as publicações têm sido muito
+ * genéricas e com um padrão repetido demais"): a régua anti-genérico, irmã
+ * estrutural de CONTENT_LESSONS. O runner a apenda ao artefato [__lessons__]
+ * dos críticos (debate) de marketing — mesma injeção, mesma garantia: um
+ * override do tuner nunca a desliga. A contraparte de CRIAÇÃO é o bloco
+ * [__recent__] (as últimas peças realmente publicadas, lidas do registro) +
+ * a linha ANTI_GENERIC_DRAFT_RULE nos drafts. Verificar → criar diferente →
+ * auditar: o loop é permanente.
+ */
+export const ANTI_GENERIC_RULE = [
+  "REGUA ANTI-GENERICO (0.8, founder 01/09 — regua de VETO, nao sugestao):",
+  "- Repetir angulo, gancho ou estrutura de QUALQUER peca do bloco [__recent__] = 'VETO: repete <qual peca — data/canal>'. Nomeie a culpada.",
+  "- Abertura ou claim que serviria para qualquer negocio ('in today's digital world', 'AI is changing everything', estatistica sem fonte nomeada, conselho sem exemplo concreto) = 'VETO: generico'.",
+  "- Toda peca NOMEIA algo concreto: um nicho real, um numero com fonte, um cenario especifico. Nada concreto = 'VETO: generico'.",
+  "- A peca tem que ser NATIVA da plataforma (thread de X nao e post de LinkedIn encurtado; Reel nao e slide falado) e otimizada para alcance, visualizacoes e PARTICIPACAO: onde a plataforma premia resposta, a peca faz uma pergunta real e convida replies.",
+  "- Draft que passa por finalize declara a linha interna 'ANGULO-NOVO:'; se ela falta ou nao se sustenta contra [__recent__], aponte a correcao.",
+].join("\n");
+
+/**
+ * A linha de CRIAÇÃO do loop anti-genérico (0.8): todo draft de marketing
+ * estuda [__recent__] e escolhe deliberadamente um caminho diferente,
+ * declarando-o numa linha interna que o crítico confere. Uma fonte.
+ */
+const ANTI_GENERIC_DRAFT_RULE =
+  "ANTI-GENERICO (0.8): se houver um bloco [__recent__] abaixo (as ultimas pecas REALMENTE publicadas), estude-o e escolha DELIBERADAMENTE um angulo, gancho e estrutura diferentes de todas elas. Abra a saida com a linha interna 'ANGULO-NOVO: <o angulo escolhido e por que difere do recente>' — o critico confere essa linha e o finalize NAO a inclui na versao final.";
+
+/**
+ * Variante para o ab-draft: o artefato dele publica DIRETO (contentNode do
+ * publish) — nenhuma linha interna pode existir no texto.
+ */
+const ANTI_GENERIC_AB_DRAFT_RULE =
+  "ANTI-GENERICO (0.8): se houver um bloco [__recent__] abaixo (as ultimas pecas realmente publicadas), escolha deliberadamente gancho e estrutura que NAO repetem nenhuma peca de la. Este texto publica direto: NAO inclua nenhuma linha interna ou rotulo.";
+
+/**
  * A linha que todo crítico de esfera carrega: cita [__lessons__] como régua de
  * veto. Uma fonte — se o contrato do bloco mudar, todos os críticos mudam.
  */
@@ -239,6 +273,7 @@ function shortVideoFamily(
         VIDEO_ALIVE_FORMAT,
         spec.grammar,
         "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre). Zero cara de anuncio, zero slide deck.",
+        ANTI_GENERIC_DRAFT_RULE,
         ENGLISH_FIRST,
         "Formato de saida: o roteiro puro, com [HOOK], [BEAT 1..n] (CAPTION:/SAY:), [PATTERN INTERRUPT], [CTA], [STYLE]. Nada alem disso.",
         upstreamBlock(ctx.upstream),
@@ -319,6 +354,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um roteirista de video curto que FALA como gente, nao como slide. Escreva UM roteiro no angulo "${String(ctx.config["angle"] ?? "story")}" a partir do briefing abaixo.`,
       VIDEO_ALIVE_FORMAT,
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada de promessa que o produto nao cumpre). Fala de verdade: contracoes, pausa, uma imperfeicao proposital. Nada de 'in today's fast-paced world'.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o roteiro puro, com [HOOK], [BEAT 1..n] (cada um com a linha 'CAPTION:' e a linha 'SAY:'), [PATTERN INTERRUPT], [CTA] e a linha [STYLE] no final. Nada alem disso.",
       upstreamBlock(ctx.upstream),
@@ -545,6 +581,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e roteirista da Ozvor. Do briefing abaixo, escreva UM post social curto (LinkedIn, 60-120 palavras) que testa a hipotese.",
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto. Uma unica ideia — e um teste, nao um manifesto.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -587,6 +624,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Siga o brief A LETRA: implemente exatamente o que a linha da SUA variante pede no eixo declarado, e mantenha as CONSTANTES identicas a outra variante.",
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre).",
+      ANTI_GENERIC_AB_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois (sem rotulo de variante, sem comentario).",
       upstreamBlock(ctx.upstream),
@@ -740,6 +778,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um escritor de X (Twitter). A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "punchy")}":`,
       "punchy = UM post unico, <=280 caracteres, primeira linha para o dedo, zero link. · mini-thread = 3 posts encadeados (1/3, 2/3, 3/3), cada um <=280 caracteres, o primeiro segura sozinho.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, honesto (nada que o produto nao cumpre).",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o(s) post(s), prontos para colar. Mini-thread separa os posts com uma linha '---'.",
       upstreamBlock(ctx.upstream),
@@ -802,6 +841,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       `Voce e um escritor de LinkedIn. A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "story")}":`,
       "story = post em 1a pessoa, 6-10 linhas curtas, uma cena real no comeco, a licao no fim, as 2 primeiras linhas seguram o 'ver mais'. · contrarian = post que abre com uma opiniao que contraria o senso comum, prova em 3 linhas, fecha com a consequencia pratica.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, no maximo 1 emoji, honesto (nada que o produto nao cumpre), zero link no corpo (link vai no comentario).",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o post, pronto para colar, uma linha em branco entre paragrafos.",
       upstreamBlock(ctx.upstream),
@@ -864,6 +904,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "how-to = H1 + intro de 3 linhas + 5-7 H2 em ordem de execucao, cada H2 com 2 bullets do que entra + um fecho com o proximo passo. · data-story = H1 + intro com o dado/fato que surpreende + 4-6 H2 que explicam causa, efeito, o que fazer + fecho.",
       "Cada H2 deve poder ser citado sozinho por uma IA (frase-resposta direta no primeiro bullet).",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem promessa que o produto nao cumpre, fontes marcadas como [fonte: ...] ou [a pesquisar].",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o outline em markdown (H1, H2, bullets), nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -931,6 +972,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Se o sub exige revelar afiliacao, a jogada JA inclui a linha de disclosure (ex: 'Full disclosure: I work on Ozvor').",
       "Reddit e alergico a marketing: escreva como gente que participa da comunidade, ajuda primeiro, vende quase nunca. Nada de astroturfing, nada de fingir ser usuario neutro.",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: um bloco rotulado [MOVE: <comment|post>] com as linhas SUBREDDIT / TARGET (URL da thread ou titulo do post) / DISCLOSURE (a linha, ou 'nao exigida') / KARMA-NOTE / VALUE / DRAFT (o texto do comentario ou do post, pronto para um humano colar). Nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -1029,6 +1071,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       spec,
       "REGRAS DE CLAIM (inegociaveis): so prometa o que o produto entrega hoje (auditoria em 5 motores de IA, 3 scores, plano GEO, AI Audit Stack $49, OrganicPosts DFY). Nenhum numero de resultado que nao esteja em [signal]. Nada de 'garantido', 'ranqueie #1', 'em 24h'. Sem comparacao nominal com concorrente. Sem dado sensivel de audiencia.",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, sonho honesto, CTA em 1a pessoa quando couber.",
+      ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       `Formato de saida: um bloco rotulado [${network.toUpperCase()}] com os campos acima, um por linha, nada antes nem depois.`,
       upstreamBlock(ctx.upstream),
@@ -1095,9 +1138,10 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "prospect-draft": (ctx) =>
     [
       "Voce e o founder da Ozvor (Otavio) escrevendo cold emails, um por um, como gente de verdade. O bloco [prospects] abaixo traz negocios US REAIS, verificados por codigo, cada um com ACHADOS tecnicos verificados no proprio site.",
+      "DUAS TRILHAS (0.6, founder 01/09): cada prospect traz as linhas 'TRILHA:' e 'CAMPANHA:' no proprio bloco — respeite-as. trilha geo = dor de visibilidade em IA; a oferta e o teste gratis. trilha aistack = dor de ferramenta/processo (paga tools demais, faz trabalho chato na mao); a oferta e o AI Stack Audit de $49: 5 perguntas, 60 segundos, indica a UNICA ferramenta de IA certa para o gargalo dele, devolucao em 30 dias. O kit docs/departments/sales/aistack-campaign-kit.md e o MOLDE da trilha aistack — mesma intencao, mas escreva FRESCO por prospect, nunca cole o molde.",
       "Para CADA prospect do bloco, escreva uma sequencia de 3 e-mails frios.",
-      "REGRA INEGOCIAVEL DO EMAIL 1 (validada por CODIGO — o step FALHA se violar): texto puro, ZERO links, ZERO URLs, ZERO dominios escritos (nem ozvor.com, nem o site deles). UMA unica pergunta, buscando RESPOSTA. Cite UM achado do bloco em palavras simples (ex.: 'your site tells ChatGPT's crawler to stay out'), sem jargao. 40-80 palavras. Assine 'Otavio'.",
-      "EMAILS 2 e 3: podem ter NO MAXIMO um link para ozvor.com, SEMPRE com ?from=<CAMPANHA> — use exatamente o valor da linha 'CAMPANHA:' do bloco [prospects] (ex.: https://ozvor.com/?from=cold-2026-09-02). Email 2 aprofunda o achado e mostra o caminho; email 3 e o ultimo toque, curto e educado, porta aberta.",
+      "REGRA INEGOCIAVEL DO EMAIL 1 (validada por CODIGO — o step FALHA se violar; vale para AS DUAS trilhas): texto puro, ZERO links, ZERO URLs, ZERO dominios escritos (nem ozvor.com, nem o site deles). UMA unica pergunta, buscando RESPOSTA. Cite UM achado do bloco em palavras simples (ex.: 'your site tells ChatGPT's crawler to stay out'), sem jargao. 40-80 palavras. Assine 'Otavio'.",
+      "EMAILS 2 e 3: no maximo um link, SEMPRE com ?from=<a CAMPANHA do proprio prospect>. TRILHA geo: o link e https://ozvor.com/test?from=<campanha> (ou a raiz ozvor.com) — o teste gratis. TRILHA aistack: o link e https://ozvor.com/ai-audit?from=<campanha> — e o EMAIL 2 TRAZ esse link da oferta (validado por codigo). Email 2 aprofunda o achado/dor e mostra o caminho; email 3 e o ultimo toque, curto e educado, porta aberta.",
       "Regras da casa: frases <=12 palavras, nivel 15-17 anos, CTA em 1a pessoa, sonho honesto (dor real, gente real), NUNCA inventar numero ou achado — so o que esta no bloco. Sem travessao.",
       ENGLISH_FIRST,
       "Formato de saida EXATO, para cada prospect do bloco, nada antes nem depois:",
@@ -1122,6 +1166,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "- LINK NO EMAIL 1: qualquer URL, dominio ou www no email 1 (assunto incluso) = 'VETO: link no email 1' (regra do founder 27/08 — 1o toque frio e texto puro).",
       "- DADO INVENTADO: numero, achado ou promessa que NAO esta em [prospects] = 'VETO: dado inventado'. O achado citado tem que ser o do proprio prospect.",
       "- ATRIBUICAO: link ozvor.com sem ?from=<campanha> nos emails 2-3 = 'VETO: sem from'.",
+      "- TRILHA ERRADA (0.6): prospect da trilha aistack com link fora de /ai-audit, ou ?from= fora da campanha aistack-* dele = 'VETO: trilha errada'. Prospect da trilha geo linkando /ai-audit = 'VETO: trilha errada'. A trilha de cada prospect esta na linha TRILHA: do bloco [prospects].",
       "- VOZ: soa mala direta / template de agencia em massa = 'VETO: parece spam'. Tem que ler como UMA pessoa que olhou O site deles.",
       "- COPY DA CASA: frase >12 palavras, jargao, CTA fora da 1a pessoa — aponte a correcao concreta.",
       "Para cada prospect: 1-2 linhas de parecer + os vetos, se houver. NAO reescreva os e-mails.",
@@ -1132,7 +1177,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "prospect-finalize": (ctx) =>
     [
       "Voce e o editor final de outbound da Ozvor. Abaixo: o lote [draft], a critica [critic] e o bloco verificado [prospects].",
-      "Aplique TODOS os vetos e correcoes da critica e entregue o lote FINAL. Vetos sao lei: link no email 1 SAI, dado sem fonte SAI, link ozvor.com ganha ?from=<CAMPANHA do bloco [prospects]>, frase longa encurta, template vira conversa.",
+      "Aplique TODOS os vetos e correcoes da critica e entregue o lote FINAL. Vetos sao lei: link no email 1 SAI, dado sem fonte SAI, link ozvor.com ganha ?from=<a CAMPANHA do proprio prospect no bloco [prospects]>, trilha errada corrige (geo -> /test ou raiz; aistack -> /ai-audit, com o link da oferta no email 2), frase longa encurta, template vira conversa.",
       "Mantenha a regra do email 1: texto puro, zero links/dominios, UMA pergunta, um achado real em palavras simples, assinado 'Otavio'. (Um validador de CODIGO reprova a saida se violar.)",
       ENGLISH_FIRST,
       "Formato de saida: EXATAMENTE o mesmo contrato do draft — blocos '=== PROSPECT: <nome> ===' com [EMAIL 1]/[EMAIL 2]/[EMAIL 3] (cada um com SUBJECT: e corpo) — para todos os prospects, nada antes nem depois. Lote vazio: repita a linha 'SEM PROSPECTS VERIFICADOS...' e nada mais.",
