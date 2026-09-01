@@ -1,9 +1,9 @@
 name: SmartLead lead analysis (one-shot, founder-triggered)
 
-# Análise das leads existentes no SmartLead VIA VPS (SMARTLEAD_API_KEY vive em
-# /root/hermes.env; nunca sai de lá). Devolve SÓ AGREGADOS (contagens, taxas)
-# — nenhum e-mail/nome de lead pode aparecer no log (PII fora do GitHub).
-# workflow_dispatch apenas.
+# Análise das leads existentes no SmartLead — código DETERMINÍSTICO (python,
+# sem LLM, sem VPS). A chave vem do secret SMARTLEAD_API_KEY (o GitHub Actions
+# mascara secrets em qualquer log). Saída = SÓ AGREGADOS: nenhum e-mail/nome
+# de lead é impresso. workflow_dispatch apenas.
 
 on:
   workflow_dispatch: {}
@@ -15,26 +15,47 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
-      - name: Analyze via Hermes /task
+      - name: Analyze (deterministic)
         env:
-          HERMES_TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
         run: |
           set -euo pipefail
-          read -r -d '' PROMPT <<'EOP' || true
-          Tarefa na VPS. O sandbox BLOQUEIA expansao de variavel no shell — entao use SOMENTE python3 -c com os.environ (nunca $VAR em comando bash). REGRAS DURAS: NUNCA imprima o valor de SMARTLEAD_API_KEY; NUNCA imprima e-mail/nome/telefone de lead — saida SO AGREGADOS. Primeiro: python3 -c "import os;print('TEM_CHAVE' if os.environ.get('SMARTLEAD_API_KEY') else 'SEM_CHAVE')" — se SEM_CHAVE, responda RESULTADO_OZVOR{"ok":false,"motivo":"SEM_CHAVE"} e pare. Todas as chamadas HTTP via python3 -c usando urllib.request e os.environ["SMARTLEAD_API_KEY"] montando a URL DENTRO do python.
-          Usando a API do SmartLead (base https://server.smartlead.ai/api/v1, autentique com ?api_key=<os.environ, montado DENTRO do python>):
-          1) GET /campaigns — liste todas. Para cada uma pegue: id, name, status, e as estatisticas/contagens de leads que a API der (tente GET /campaigns/<id>/analytics e/ou /campaigns/<id>/leads?limit=1 para ler o total; explore o que a API retorna).
-          2) Some: total de leads em campanhas; por campanha: enviados, abertos, respostas, bounces (o que a API expuser).
-          3) Procure leads/listas FORA de campanhas (tente GET /leads?limit=1 global, /lead-lists ou similar; se nao existir endpoint, diga "listas orfas: sem endpoint na API").
-          4) Verifique se existe endpoint de PROSPECCAO/lead-finder (creditos) na API publica; se nao, diga "lead-finder: so via UI".
-          5) Responda SO com uma linha comecando EXATAMENTE com RESULTADO_OZVOR seguido do JSON agregado: RESULTADO_OZVOR{"ok":true,"campanhas":[{"nome":"...","status":"...","leads":N,"enviados":N,"respostas":N,"bounces":N}],"total_leads":N,"listas_orfas":"...","lead_finder_api":"sim|nao","observacoes":"..."} — SEM nenhum dado pessoal.
-          EOP
-          BODY=$(PROMPT="$PROMPT" python3 -c 'import json,os;print(json.dumps({"engine":"claude","timeoutMs":420000,"prompt":os.environ["PROMPT"]}))')
-          RESP=$(curl -sS --max-time 480 -X POST "https://hermes.ozvor.com/task" -H "Authorization: Bearer ${HERMES_TASK_TOKEN}" -H 'Content-Type: application/json' -d "$BODY")
-          echo "## Resultado" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo "$RESP" | head -c 6000 >> "$GITHUB_STEP_SUMMARY"
-          echo '' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$RESP" | head -c 6000
-          echo "$RESP" | grep -q 'RESULTADO_OZVOR{"ok":true' || { echo "Agente nao confirmou RESULTADO_OZVOR ok:true (envelope nao conta)"; exit 1; }
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente — adicionar em Settings > Secrets and variables > Actions"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, urllib.request, urllib.error
+
+          KEY = os.environ["SL_KEY"]
+          BASE = "https://server.smartlead.ai/api/v1"
+
+          def get(path):
+              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              try:
+                  with urllib.request.urlopen(url, timeout=60) as r:
+                      return json.load(r)
+              except urllib.error.HTTPError as e:
+                  return {"_http_error": e.code}
+              except Exception as e:
+                  return {"_error": type(e).__name__}
+
+          camps = get("/campaigns")
+          out = {"ok": True, "campanhas": [], "total_leads": 0}
+          if isinstance(camps, dict):
+              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
+              raise SystemExit(1)
+          for c in camps:
+              cid = c.get("id")
+              row = {"id": cid, "nome": c.get("name"), "status": c.get("status")}
+              stats = get(f"/campaigns/{cid}/analytics")
+              if isinstance(stats, dict) and "_http_error" not in stats and "_error" not in stats:
+                  for k_src, k_dst in [("sent_count","enviados"),("open_count","abertos"),("reply_count","respostas"),("bounce_count","bounces"),("total_count","leads")]:
+                      if k_src in stats and stats[k_src] is not None:
+                          row[k_dst] = stats[k_src]
+              try:
+                  out["total_leads"] += int(row.get("leads") or 0)
+              except (TypeError, ValueError):
+                  pass
+              out["campanhas"].append(row)
+          out["listas_orfas"] = "API v1 nao expoe listas fora de campanha"
+          out["lead_finder_api"] = "nao (creditos de prospeccao = so via UI)"
+          print("RESULTADO_OZVOR" + json.dumps(out, ensure_ascii=False))
+          PYEOF
