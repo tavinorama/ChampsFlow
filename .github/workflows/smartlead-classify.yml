@@ -104,8 +104,10 @@ jobs:
                       geo += 1
                   else:
                       ambiguous += 1
-              offset += page
-              if offset > 12000:
+              # Paginacao honesta: avanca pelo que VEIO (a API pode paginar
+              # menor que o limit pedido); para so em pagina vazia.
+              offset += len(rows)
+              if offset > 20000:
                   break
 
           moved = add_fail = del_fail = 0
@@ -126,7 +128,7 @@ jobs:
                           moved += 1
 
           print("RESULTADO_OZVOR" + json.dumps({
-              "ok": True, "dry_run": DRY, "total_analisadas": total,
+              "ok": True, "dry_run": DRY, "total_analisadas": total, "paginas_percorridas_ate_offset": offset,
               "trilha_geo_fica": geo, "trilha_aistack_detectadas": aistack,
               "ambiguas_ficam": ambiguous, "sem_info_ficam": noinfo,
               "movidas_para_aistack": moved, "falhas_add": add_fail, "falhas_delete": del_fail,
