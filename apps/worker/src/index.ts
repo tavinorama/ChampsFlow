@@ -34,7 +34,7 @@ import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
-import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly } from "./jobs/graph-tick";
+import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly, runProspectBatchWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -428,6 +428,29 @@ async function registerAbExperimentSchedule(): Promise<void> {
   logger.info("ab_experiment_schedule_registered", { cron: AB_EXPERIMENT_CRON });
 }
 
+// prospect-batch (5.A.1 + 2.10): o lote semanal de prospecção — quarta 07:30
+// UTC (slot livre: quarta só tem sphere-reddit 08:00; o incident-postmortem
+// diário é 07:00 e o weekly-report é segunda 07:30). Vendas, não marketing —
+// fora da válvula de aprovações de conteúdo. O cron só cria o run; o tick de
+// 10 min o executa. A MÁQUINA NUNCA ENVIA E-MAIL: o grafo termina em artefato
+// aprovado + linhas no CRM; quem dispara é o SmartLead, carregado pelo founder.
+const prospectBatchWorker = new Worker(
+  "prospect-batch",
+  async () => runProspectBatchWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const prospectBatchQueue = new Queue("prospect-batch", { connection });
+const PROSPECT_BATCH_CRON = process.env["PROSPECT_BATCH_CRON"] ?? "30 7 * * 3";
+
+async function registerProspectBatchSchedule(): Promise<void> {
+  await prospectBatchQueue.add(
+    "prospect-batch",
+    {},
+    { jobId: "prospect-batch-repeat", repeat: { pattern: PROSPECT_BATCH_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("prospect_batch_schedule_registered", { cron: PROSPECT_BATCH_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -612,6 +635,7 @@ void platformKeysReady.finally(() => {
   void memoryConsolidationWorker.run();
   void promptTunerWorker.run();
   void abExperimentWorker.run();
+  void prospectBatchWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -644,6 +668,9 @@ void platformKeysReady.finally(() => {
   });
   void registerDiscoverySchedule().catch((err: Error) => {
     logger.error("discovery_weekly_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerProspectBatchSchedule().catch((err: Error) => {
+    logger.error("prospect_batch_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerIncidentPostmortemSchedule().catch((err: Error) => {
     logger.error("incident_postmortem_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -909,6 +936,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await memoryConsolidationQueue.close();
     await abExperimentWorker.close();
     await abExperimentQueue.close();
+    await prospectBatchWorker.close();
+    await prospectBatchQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
   } catch (err) {
