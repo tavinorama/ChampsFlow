@@ -36,6 +36,7 @@ import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
 import { processDriftControlJob } from "./jobs/drift-control";
 import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly, runProspectBatchWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
+import { runRecycleScanWeekly } from "./jobs/recycle-scan";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
 import {
@@ -451,6 +452,30 @@ async function registerProspectBatchSchedule(): Promise<void> {
   logger.info("prospect_batch_schedule_registered", { cron: PROSPECT_BATCH_CRON });
 }
 
+// recycle-scan (founder 01/09): the 2-month non-responder recycling loop —
+// Monday 08:00 UTC (free slot: Monday has brains 06:00/06:30 and the weekly
+// report 07:30). The job only MARKS candidates ("[recycle] proposto …" note
+// lines) and tells the founder on Telegram (masked samples only); the CSV
+// lives in /admin → Leads & CRM → Reciclagem. A MÁQUINA NUNCA ENVIA — the
+// founder loads the batch into a new SmartLead campaign by hand. 'lost'
+// (unsubscribed) is never recycled; neither is anyone who ever replied.
+const recycleScanWorker = new Worker(
+  "recycle-scan",
+  async () => runRecycleScanWeekly(getGraphSql()),
+  { connection, concurrency: 1, autorun: false }
+);
+const recycleScanQueue = new Queue("recycle-scan", { connection });
+const RECYCLE_SCAN_CRON = process.env["RECYCLE_SCAN_CRON"] ?? "0 8 * * 1";
+
+async function registerRecycleScanSchedule(): Promise<void> {
+  await recycleScanQueue.add(
+    "recycle-scan",
+    {},
+    { jobId: "recycle-scan-repeat", repeat: { pattern: RECYCLE_SCAN_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("recycle_scan_schedule_registered", { cron: RECYCLE_SCAN_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -636,6 +661,7 @@ void platformKeysReady.finally(() => {
   void promptTunerWorker.run();
   void abExperimentWorker.run();
   void prospectBatchWorker.run();
+  void recycleScanWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -671,6 +697,9 @@ void platformKeysReady.finally(() => {
   });
   void registerProspectBatchSchedule().catch((err: Error) => {
     logger.error("prospect_batch_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerRecycleScanSchedule().catch((err: Error) => {
+    logger.error("recycle_scan_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerIncidentPostmortemSchedule().catch((err: Error) => {
     logger.error("incident_postmortem_schedule_register_failed", { message: err.message?.slice(0, 200) });
@@ -938,6 +967,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await abExperimentQueue.close();
     await prospectBatchWorker.close();
     await prospectBatchQueue.close();
+    await recycleScanWorker.close();
+    await recycleScanQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
   } catch (err) {
