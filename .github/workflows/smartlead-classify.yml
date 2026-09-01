@@ -19,6 +19,10 @@ on:
         description: "true = só classifica e conta, não move nada"
         required: false
         default: "false"
+      mode:
+        description: "classify (padrão) | dedupe = remove do Ozvor 1 as leads que JÁ estão na aistack (diagnóstico do 1º erro)"
+        required: false
+        default: "classify"
 
 permissions:
   contents: read
@@ -32,6 +36,7 @@ jobs:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
           MAX_MOVES: ${{ github.event.inputs.max_moves }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
+          MODE: ${{ github.event.inputs.mode }}
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
@@ -77,6 +82,50 @@ jobs:
               r"dental|dentist|clinic|chiro|vet\b|salon|spa\b|barber|restaurant|"
               r"cafe|bakery|law\b|attorney|legal|realty|real\s?estate|insurance|"
               r"auto\b|repair|clean|pest|mov(er|ing)|stor(age|e front)", re.I)
+
+          MODE = (os.environ.get("MODE") or "classify").strip().lower()
+
+          def all_leads(cid):
+              out, off = [], 0
+              while True:
+                  res = call("GET", f"/campaigns/{cid}/leads?offset={off}&limit=100")
+                  rows = res.get("data") if isinstance(res, dict) else None
+                  if not rows: break
+                  for row in rows:
+                      lead = row.get("lead") or row
+                      out.append((lead.get("id"), (lead.get("email") or "").lower(), row.get("campaign_lead_map_id")))
+                  off += len(rows)
+                  if off > 20000: break
+              return out
+
+          if MODE == "dedupe":
+              dst_emails = {e for (_i, e, _m) in all_leads(DST) if e}
+              src = all_leads(SRC)
+              dups = [(lid, em, mid) for (lid, em, mid) in src if em and em in dst_emails]
+              removed = failed = 0; first_err = None; tried = 0
+              for (lid, em, mid) in dups[:MAX_MOVES]:
+                  if DRY: break
+                  tried += 1
+                  # Tentativa 1: DELETE /campaigns/{src}/leads/{lead_id}
+                  d = call("DELETE", f"/campaigns/{SRC}/leads/{lid}")
+                  ok = not (isinstance(d, dict) and ("_http_error" in d or "_error" in d))
+                  if not ok and mid:
+                      # Tentativa 2: pelo campaign_lead_map_id
+                      d2 = call("DELETE", f"/campaigns/{SRC}/leads/{mid}")
+                      ok = not (isinstance(d2, dict) and ("_http_error" in d2 or "_error" in d2))
+                      if not ok and first_err is None:
+                          first_err = {"t1": {k: v for k, v in d.items() if k in ("_http_error", "_error", "_body")},
+                                       "t2": {k: v for k, v in d2.items() if k in ("_http_error", "_error", "_body")}}
+                  elif not ok and first_err is None:
+                      first_err = {"t1": {k: v for k, v in d.items() if k in ("_http_error", "_error", "_body")}}
+                  if ok: removed += 1
+                  else: failed += 1
+                  if failed >= 3 and removed == 0:
+                      break  # nao insistir 400x no mesmo erro
+              print("RESULTADO_OZVOR" + json.dumps({"ok": True, "mode": "dedupe", "dry_run": DRY,
+                    "em_ambas": len(dups), "tentadas": tried, "removidas_do_ozvor1": removed,
+                    "falhas": failed, "primeiro_erro": first_err}, ensure_ascii=False))
+              raise SystemExit(0)
 
           offset, page = 0, 100
           total = geo = aistack = ambiguous = noinfo = 0
