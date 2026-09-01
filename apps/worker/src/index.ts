@@ -37,6 +37,7 @@ import { processDriftControlJob } from "./jobs/drift-control";
 import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly, runProspectBatchWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { runRecycleScanWeekly } from "./jobs/recycle-scan";
+import { runFollowupScan } from "./jobs/followup-scan";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
 import {
@@ -476,6 +477,33 @@ async function registerRecycleScanSchedule(): Promise<void> {
   logger.info("recycle_scan_schedule_registered", { cron: RECYCLE_SCAN_CRON });
 }
 
+// followup-scan (5.A.2, founder: "resposta → intenção → rascunho → portão →
+// envia"): every 30 minutes. A cold lead REPLIED (webhook already promoted to
+// 'contacted') — the job classifies the intent (callWithFallback, never
+// pinado), drafts a SHORT English answer grounded only in reply + trilha +
+// house facts, and parks it at the founder's Telegram gate (mesmos botões
+// ap:/rj: de todo graph; 96h de silêncio = rejeição). SÓ no sim a máquina
+// envia — via API de reply do SmartLead quando SMARTLEAD_API_KEY existir no
+// worker; sem a chave, o rascunho aprovado chega no Telegram para colar.
+// Unsubscribe é FINAL (sem rascunho); ruído de auto-reply é silencioso.
+// Estado é marcador append-only "[followup] …" no crm_contact (sem tabela).
+const followupScanWorker = new Worker(
+  "followup-scan",
+  async () => runFollowupScan(getGraphSql(), connection),
+  { connection, concurrency: 1, autorun: false }
+);
+const followupScanQueue = new Queue("followup-scan", { connection });
+const FOLLOWUP_SCAN_CRON = process.env["FOLLOWUP_SCAN_CRON"] ?? "*/30 * * * *";
+
+async function registerFollowupScanSchedule(): Promise<void> {
+  await followupScanQueue.add(
+    "followup-scan",
+    {},
+    { jobId: "followup-scan-repeat", repeat: { pattern: FOLLOWUP_SCAN_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("followup_scan_schedule_registered", { cron: FOLLOWUP_SCAN_CRON });
+}
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -662,6 +690,7 @@ void platformKeysReady.finally(() => {
   void abExperimentWorker.run();
   void prospectBatchWorker.run();
   void recycleScanWorker.run();
+  void followupScanWorker.run();
   void discoveryWorker.run();
   void sphereStartWorker.run();
   void videoWorker.run();
@@ -700,6 +729,9 @@ void platformKeysReady.finally(() => {
   });
   void registerRecycleScanSchedule().catch((err: Error) => {
     logger.error("recycle_scan_schedule_register_failed", { message: err.message?.slice(0, 200) });
+  });
+  void registerFollowupScanSchedule().catch((err: Error) => {
+    logger.error("followup_scan_schedule_register_failed", { message: err.message?.slice(0, 200) });
   });
   void registerIncidentPostmortemSchedule().catch((err: Error) => {
     logger.error("incident_postmortem_schedule_register_failed", { message: err.message?.slice(0, 200) });
