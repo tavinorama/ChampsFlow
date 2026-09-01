@@ -14,7 +14,8 @@
  *   1. System Health (loaded on auth, not lazy)
  *   2. Analytics     (lazy — on tab click)
  *   3. Clients       (lazy — on tab click, loaded initially)
- *   4. Leads & CRM   (lazy — on tab click; inline stage/note/follow-up per lead)
+ *   4. Leads & CRM   (lazy — on tab click; inline stage/note/follow-up per lead,
+ *                     Ficheiro timeline per contact, Reciclagem 60d CSV batches)
  *   5. Revenue       (lazy — on tab click, was "Kit Orders"; + subscriber resend)
  *   6. Pipeline      (lazy — on tab click)
  *   7. Opportunities (lazy — on tab click)
@@ -22,6 +23,14 @@
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { apiFetch, getSupabase, isSupabaseConfigured } from "../../lib/supabase-browser";
+import {
+  dossierSourceLabel,
+  dossierSourceTokens,
+  formatDossierWhen,
+  recycleBatchCsv,
+  type DossierResponse,
+  type RecycleBatchView,
+} from "../../lib/dossier-view";
 
 // ---------------------------------------------------------------------------
 // API response types
@@ -2177,10 +2186,12 @@ function LeadRow({
   lead,
   crm,
   onSave,
+  onOpenDossier,
 }: {
   lead: Lead;
   crm: CrmContact | undefined;
   onSave: (email: string, patch: CrmPatch) => Promise<boolean>;
+  onOpenDossier: (email: string) => void;
 }) {
   const email = (lead.email ?? "").trim();
   const stage: CrmStage = crm?.stage ?? "new";
@@ -2221,6 +2232,28 @@ function LeadRow({
         <div style={{ fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
           {[lead.region, lead.source].filter(Boolean).join(" · ") || "—"}
         </div>
+        {/* O ficheiro do cliente (founder 01/09): the full per-email timeline. */}
+        {!noEmail && (
+          <button
+            type="button"
+            onClick={() => onOpenDossier(email.toLowerCase())}
+            aria-label={`Open ficheiro for ${email}`}
+            style={{
+              marginTop: 2,
+              padding: "1px 8px",
+              borderRadius: "var(--radius-pill)",
+              border: "1px solid var(--color-border)",
+              backgroundColor: "var(--color-surface)",
+              color: "var(--color-accent-ink, var(--color-primary))",
+              fontFamily: "var(--font-family)",
+              fontSize: "var(--font-size-caption)",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Ficheiro
+          </button>
+        )}
         {/* Campaign origin badge (?from= / utm_campaign) — cold outreach must
             see which campaign each lead came from. */}
         {(lead.origin_from || lead.utm_campaign) && (
@@ -2407,6 +2440,269 @@ function FollowUpsDue({ contacts }: { contacts: CrmContact[] }) {
             </li>
           );
         })}
+      </ul>
+    </div>
+  );
+}
+
+// O Ficheiro (founder 01/09): the client's full timeline in one overlay —
+// every SmartLead event (reply content when the payload carries it), the CRM
+// note history, tests/leads, purchases and nurture activity, newest first,
+// with a badge per source. Read-only; fetched on open.
+function DossierPanel({ email, onClose }: { email: string; onClose: () => void }) {
+  const [data, setData] = useState<DossierResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    setError(null);
+    void (async () => {
+      try {
+        const res = await apiFetch(`/api/admin/contacts/${encodeURIComponent(email)}/dossier`);
+        if (!res.ok) {
+          if (!cancelled) setError(`Failed to load ficheiro (HTTP ${res.status}).`);
+          return;
+        }
+        const body = (await res.json()) as DossierResponse;
+        if (!cancelled) setData(body);
+      } catch {
+        if (!cancelled) setError("Failed to load ficheiro (network).");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [email]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Ficheiro — ${email}`}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
+        padding: "var(--space-8) var(--space-4)",
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        overflowY: "auto",
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 720,
+          backgroundColor: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          padding: "var(--space-5)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", marginBottom: "var(--space-3)" }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "var(--font-size-h3)", fontWeight: 700 }}>Ficheiro</h3>
+            <p style={{ margin: "2px 0 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>{email}</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            {data?.crm && <CrmStageBadge stage={data.crm.stage as CrmStage} />}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close ficheiro"
+              style={{
+                padding: "var(--space-1) var(--space-3)",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-surface)",
+                color: "var(--color-text)",
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-caption)",
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <p role="alert" style={{ color: "var(--color-error)", fontSize: "var(--font-size-body-sm)" }}>{error}</p>
+        )}
+        {!data && !error && (
+          <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>Loading…</p>
+        )}
+
+        {data && data.sourcesUnavailable.length > 0 && (
+          <p
+            role="status"
+            style={{
+              margin: "0 0 var(--space-3) 0",
+              padding: "var(--space-1) var(--space-2)",
+              borderRadius: "var(--radius-sm)",
+              backgroundColor: "var(--color-badge-status-warn-bg)",
+              color: "var(--color-badge-status-warn-text)",
+              fontSize: "var(--font-size-caption)",
+            }}
+          >
+            Sources unavailable: {data.sourcesUnavailable.join(", ")} — timeline is incomplete.
+          </p>
+        )}
+
+        {data && data.entries.length === 0 && (
+          <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>
+            No recorded activity for this contact yet.
+          </p>
+        )}
+
+        {data && data.entries.length > 0 && (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+            {data.entries.map((entry, i) => {
+              const tokens = dossierSourceTokens(entry.source);
+              return (
+                <li
+                  key={`${entry.at}-${entry.kind}-${i}`}
+                  style={{
+                    display: "flex",
+                    gap: "var(--space-3)",
+                    alignItems: "flex-start",
+                    padding: "var(--space-2)",
+                    borderBottom: "1px solid var(--color-border)",
+                    fontSize: "var(--font-size-body-sm)",
+                  }}
+                >
+                  <span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-caption)", minWidth: 118, whiteSpace: "nowrap" }}>
+                    {formatDossierWhen(entry.at)}
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "1px 8px",
+                      borderRadius: "var(--radius-pill)",
+                      fontSize: "var(--font-size-badge)",
+                      fontWeight: 600,
+                      backgroundColor: tokens.bg,
+                      color: tokens.color,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {dossierSourceLabel(entry.source)}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 600, overflowWrap: "anywhere" }}>{entry.title}</span>
+                    {entry.detail && (
+                      <span style={{ display: "block", marginTop: 2, color: "var(--color-muted)", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                        {entry.detail}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {data?.truncated && (
+          <p style={{ marginTop: "var(--space-2)", color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>
+            Showing the latest {data.entries.length} entries — older history exists in the underlying tables.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Reciclagem 60d (founder 01/09): the batches the weekly worker proposed, each
+// downloadable as CSV for the founder to load into a NEW SmartLead campaign.
+// The machine never sends — this panel is the founder's half of the loop.
+function RecycleBatchesPanel({ active }: { active: boolean }) {
+  const [batches, setBatches] = useState<RecycleBatchView[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!active || fetchedRef.current) return;
+    fetchedRef.current = true;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/admin/recycle-batches");
+        if (!res.ok) {
+          setFailed(true);
+          return;
+        }
+        const body = (await res.json()) as { batches: RecycleBatchView[] };
+        setBatches(body.batches ?? []);
+      } catch {
+        setFailed(true);
+      }
+    })();
+  }, [active]);
+
+  function download(batch: RecycleBatchView) {
+    const blob = new Blob([recycleBatchCsv(batch)], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${batch.slug}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (failed) {
+    return (
+      <p role="alert" style={{ margin: "0 0 var(--space-4) 0", color: "var(--color-error)", fontSize: "var(--font-size-caption)" }}>
+        Reciclagem: failed to load batches.
+      </p>
+    );
+  }
+  if (!batches || batches.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-3) var(--space-4)",
+        marginBottom: "var(--space-4)",
+        backgroundColor: "var(--color-surface)",
+      }}
+    >
+      <p style={{ margin: "0 0 var(--space-1) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+        Reciclagem 60d
+      </p>
+      <p style={{ margin: "0 0 var(--space-2) 0", color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>
+        Leads frios sem resposta há 60+ dias, propostos pelo worker semanal. Baixe o CSV e
+        carregue numa campanha NOVA no SmartLead — a máquina nunca envia.
+      </p>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+        {batches.map((b) => (
+          <li key={b.slug} style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", fontSize: "var(--font-size-caption)", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{b.slug}</span>
+            <span style={{ color: "var(--color-muted)" }}>{b.emails.length} contacts · {b.proposedOn}</span>
+            <button
+              type="button"
+              onClick={() => download(b)}
+              style={{
+                padding: "1px 8px",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-surface)",
+                color: "var(--color-accent-ink, var(--color-primary))",
+                fontFamily: "var(--font-family)",
+                fontSize: "var(--font-size-caption)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Baixar CSV
+            </button>
+          </li>
+        ))}
       </ul>
     </div>
   );
@@ -2856,6 +3152,8 @@ export default function AdminPage() {
   const [agentOps, setAgentOps] = useState<AgentOps | null>(null);
   const [crmMap, setCrmMap] = useState<Record<string, CrmContact>>({});
   const [crmMigrationPending, setCrmMigrationPending] = useState(false);
+  // Which contact's ficheiro (full timeline) is open, if any.
+  const [dossierEmail, setDossierEmail] = useState<string | null>(null);
   const [revenue, setRevenue] = useState<RevenueSummary | null>(null);
   const [cadence, setCadence] = useState<CadenceData | null>(null);
 
@@ -3598,6 +3896,13 @@ export default function AdminPage() {
           {/* Follow-ups due first — the reason the CRM exists. */}
           <FollowUpsDue contacts={Object.values(crmMap)} />
 
+          {/* Reciclagem 60d — batches proposed by the weekly worker (CSV). */}
+          <RecycleBatchesPanel active={activeTab === "leads"} />
+
+          {dossierEmail && (
+            <DossierPanel email={dossierEmail} onClose={() => setDossierEmail(null)} />
+          )}
+
           {crmMigrationPending && (
             <p
               role="status"
@@ -3648,6 +3953,7 @@ export default function AdminPage() {
                     lead={l}
                     crm={crmMap[(l.email ?? "").trim().toLowerCase()]}
                     onSave={patchCrm}
+                    onOpenDossier={setDossierEmail}
                   />
                 ))
               )}
