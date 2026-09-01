@@ -34,8 +34,38 @@ permissions:
   contents: read   # writes happen via the PAT, not GITHUB_TOKEN
 
 jobs:
+  # Idempotência do dia (31/08: o cron das 12:00 atrasou 6h21 no agendador do
+  # GitHub e disparou DEPOIS do re-dispatch manual — 2 posts na mesma segunda).
+  # Um SCHEDULE só publica se ainda não existe post do dia; workflow_dispatch
+  # (humano/vigia 5.D.6) passa direto — o vigia já tem o guard espelhado do
+  # lado dele, então as duas direções fecham sem dupla publicação.
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.decide.outputs.should_publish }}
+    steps:
+      - name: Decide (schedule pula se hoje já publicou)
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.HERMES_BLOG_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "should_publish=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          TODAY=$(date -u +%Y-%m-%d)
+          N=$(gh pr list --repo "${{ github.repository }}" --state merged --search "head:content/blog-${TODAY} merged:${TODAY}" --json number --jq 'length' 2>/dev/null || echo 0)
+          if [ "$N" = "0" ]; then
+            echo "should_publish=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "Ja existe post de hoje ($N PR) — cron atrasado sai quieto."
+            echo "should_publish=0" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
     runs-on: ubuntu-latest
+    needs: precheck
+    if: needs.precheck.outputs.should_publish == '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
