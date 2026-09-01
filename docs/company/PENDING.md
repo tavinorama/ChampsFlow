@@ -87,13 +87,13 @@
 | # | O que | Esf. |
 |---|---|---|
 | 5.A.1 | ~~Grafo de prospecção~~ 🟢 código mergeado (#547, 32 testes): lote semanal qua 07h30 — engines sugerem, CÓDIGO verifica site+extrai e-mail, mini-GEO-probe real, 3 e-mails EN com **1º sem link imposto por código**, gate do founder, CRM stage new; máquina nunca envia. 1º lote: qua 02/09 | L |
-| 5.A.2 | Grafo de follow-up: resposta → intenção → rascunho → **portão** → envia | L |
+| 5.A.2 | ~~Grafo de follow-up~~ 🟢 em produção (#561, 38 testes; scan */30 registrado no worker 18h34): reply → intenção → rascunho EN validado por código → SEU portão no Telegram → envio pela API do SmartLead (falha nunca re-tenta). **Envio automático OFF até `SMARTLEAD_API_KEY` no Railway worker** (até lá: rascunho aprovado chega para colar) | L |
 | 5.A.3 | Lead scoring alimentando a fila do /admin | M |
 | 5.A.4 | Pós-call: transcrição → resumo → proposta → follow-up | L |
 | 5.A.5 | Battle cards vivas (o agente existe, nunca virou rotina) | M |
 
 ### 5.B CX — hoje 100% founder
-| 5.B.1 | CX como grafo (inbox → triagem → rascunho SLA → portão → resposta) | L |
+| 5.B.1 | CX como grafo (inbox → triagem → rascunho SLA → portão → resposta) — o 5.A.2 já é o molde: mesmo padrão scan→intenção→rascunho→portão | L |
 | 5.B.2 | KB viva alimentada por tickets | M |
 | 5.B.3 | Alerta de churn/uso | M |
 | 5.B.4 | Onboarding guiado | M |
@@ -110,7 +110,7 @@
 | 5.D.3 | Anti-patterns alimentados por incidentes automaticamente (12 entradas manuais em #521) | S–M |
 | 5.D.5 | ~~Apertar limiar~~ 🟢 feito (#539): assinatura 4 `approved-content-lost`, n=1, com a regressão de sábado como teste | S |
 | 5.D.6 | ~~Resiliência a pulo de cron~~ 🟢 feito (#539): absence-watch re-dispara o autopublish, com trava anti-dupla-publicação | S |
-| 5.D.4 | Gate de deploy (E2E required + smoke pós-deploy) | M |
+| 5.D.4 | Gate de deploy: 🟢 smoke pós-deploy em produção (#562: 4 endpoints vitais 4 min após cada push na main, grita no Telegram) · 🔴 E2E required = 1 comando do founder (6.5) | M |
 
 ### 5.E Governança/Orquestração
 | 5.E.1 | Buzz/workspace dos agentes (desenhado, zero código; Telegram supre) | L |
