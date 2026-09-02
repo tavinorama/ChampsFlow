@@ -114,6 +114,25 @@ export class SharedRedis {
   }
 
   /**
+   * Non-blocking SCAN over `pattern` (10.B.15 — the liveness route counts
+   * open `circuit:*` breakers). Bounded by `limit` so a pathological keyspace
+   * can never turn the liveness probe into a full keyspace walk. Never KEYS.
+   */
+  async scanKeys(pattern: string, limit = 500): Promise<string[]> {
+    const found: string[] = [];
+    let cursor = "0";
+    do {
+      const [next, keys] = await this.client.scan(cursor, "MATCH", pattern, "COUNT", 100);
+      cursor = next;
+      for (const k of keys) {
+        found.push(k);
+        if (found.length >= limit) return found;
+      }
+    } while (cursor !== "0");
+    return found;
+  }
+
+  /**
    * Upstash-compatible set. Returns "OK" on success, or null when a NX/XX
    * condition is not met (used by the webhook idempotency check).
    */

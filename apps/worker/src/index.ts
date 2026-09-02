@@ -35,6 +35,7 @@ import { Queue, Worker } from "bullmq";
 import { getWorkerConfig } from "./config";
 const workerConfig = getWorkerConfig();
 import { startHealthServer } from "./health";
+import { wireQueuePulse, stampQueuePulse } from "./queue-pulse";
 import { logger } from "../../../packages/shared/src/logger";
 import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
@@ -828,15 +829,19 @@ function getNurtureSql(): import("postgres").Sql {
 const NURTURE_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 const nurtureInterval = setInterval(() => {
-  void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
-    logger.error("nurture_poll_error", { message: err.message });
-  });
+  void processNurtureJobs(getNurtureSql())
+    .then(() => stampQueuePulse(connection, "nurture"))
+    .catch((err: Error) => {
+      logger.error("nurture_poll_error", { message: err.message });
+    });
 }, NURTURE_POLL_INTERVAL_MS);
 
 // Run once immediately at boot (catches any due rows from before restart)
-void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
-  logger.error("nurture_poll_boot_error", { message: err.message });
-});
+void processNurtureJobs(getNurtureSql())
+  .then(() => stampQueuePulse(connection, "nurture"))
+  .catch((err: Error) => {
+    logger.error("nurture_poll_boot_error", { message: err.message });
+  });
 
 // ---------------------------------------------------------------------------
 // Daily brand monitor loop — enqueues scheduled-audit jobs for brands with
@@ -983,6 +988,56 @@ logger.info("worker_started", {
 const healthServer = startHealthServer(workerConfig.PORT, {
   redis: connection,
   getSql: getAuditSql,
+});
+
+// ---------------------------------------------------------------------------
+// Queue pulses (10.B.15): every BullMQ worker stamps queue:<name>:last_ok on
+// completion. The liveness route surfaces them; the CI vigia alarms when a
+// SCHEDULED queue's pulse goes stale beyond its cadence. Event-driven queues
+// are informational only (their silence is healthy by design — 24/08 lesson).
+// ---------------------------------------------------------------------------
+const PULSED_WORKERS: Array<[Worker, string]> = [
+  [worker, "publish"],
+  [auditWorker, "geo-audit"],
+  [driftWorker, "geo-drift"],
+  [graphWorker, "agent-graph"],
+  [brainDailyWorker, "brain-daily"],
+  [brainWeeklyWorker, "brain-weekly"],
+  [weeklyReportWorker, "weekly-report"],
+  [incidentPostmortemWorker, "incident-postmortem"],
+  [memoryConsolidationWorker, "memory-consolidation"],
+  [promptTunerWorker, "prompt-tuner"],
+  [abExperimentWorker, "ab-experiment"],
+  [prospectBatchWorker, "prospect-batch"],
+  [recycleScanWorker, "recycle-scan"],
+  [followupScanWorker, "followup-scan"],
+  [discoveryWorker, "discovery-weekly"],
+  [sphereStartWorker, "sphere-start"],
+  [videoWorker, "video-daily"],
+  [sphereMoreWorker, "sphere-more"],
+  [spherePlatformsWorker, "sphere-platforms"],
+  [landingWorker, "landing-generate"],
+  [monitorReconcileWorker, "monitor-reconcile"],
+];
+for (const [w, name] of PULSED_WORKERS) wireQueuePulse(w, connection, name);
+
+// "Vivo ≠ funcionando" (10.B.15): the tick stamps last_ok even when 100% of
+// its nodes fail. Record HOW MANY things failed in the last completed tick so
+// the liveness route can expose last_tick_failures and the vigia can alarm on
+// a "beating heart, failing body". Best-effort, same contract as the pulses.
+graphWorker.on("completed", (_job, result) => {
+  const r = result as
+    | { starvedFailed?: number; orphanFailed?: number; results?: Array<{ status: string }> }
+    | undefined;
+  const failures =
+    (r?.starvedFailed ?? 0) +
+    (r?.orphanFailed ?? 0) +
+    (r?.results?.filter((x) => x.status === "failed").length ?? 0);
+  void connection
+    .set("graphtick:last_failures", String(failures), "EX", 24 * 3600)
+    .catch(() => {
+      // Best-effort — a missing stamp reads as null upstream, never a crash.
+    });
 });
 
 // ---------------------------------------------------------------------------
