@@ -143,6 +143,30 @@ describe("effective tier — the 53,750/1,000 pill of 2026-08-27", () => {
   });
 });
 
+describe("monthly reset — plan credits do not roll over (founder bug 2026-09-01: 107.900)", () => {
+  it("expiringAmount: last month's remainder expires, purchased packs never do", async () => {
+    const { expiringAmount } = await import("../../apps/api/src/lib/credits");
+    expect(expiringAmount(52800, 0)).toBe(52800);      // the founder's August remainder
+    expect(expiringAmount(52800, 1000)).toBe(51800);   // a 1000-credit pack survives
+    expect(expiringAmount(500, 1000)).toBe(0);          // balance below purchases: nothing expires
+    expect(expiringAmount(0, 0)).toBe(0);
+    expect(expiringAmount(-50, 0)).toBe(0);             // never a positive adjustment
+  });
+  it("ensureMonthlyGrant expires BEFORE granting, only on the first call of the period, idempotently", () => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const src = readFileSync(join(__dirname, "../../apps/api/src/lib/credits.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export async function ensureMonthlyGrant"));
+    const grantCheck = fn.indexOf("reason = 'monthly_grant'\n      LIMIT 1");
+    const expiry = fn.indexOf("'period_expiry'");
+    const grant = fn.indexOf("'monthly_grant', $3::date");
+    expect(grantCheck).toBeGreaterThan(-1);
+    expect(expiry).toBeGreaterThan(grantCheck);
+    expect(grant).toBeGreaterThan(expiry);
+    expect(fn).toContain("ON CONFLICT (tenant_id, ref_type, ref_id) WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING");
+  });
+});
+
 describe("credits — derived from PLAN_LIMITS, never restated", () => {
   it("an audit costs depth × the unit price, on every tier", () => {
     for (const t of TIERS) {

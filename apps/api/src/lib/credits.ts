@@ -73,6 +73,18 @@ export interface CreditBalance {
  * no-op instead of a doubled month. Checking first and inserting after would
  * leave the window open; this closes it.
  */
+/**
+ * Plan credits do NOT roll over (founder rule, 2026-09-01: "os créditos do
+ * plano se reiniciam no primeiro dia do mês, não acrescem"). At the FIRST
+ * grant of a new period the unused remainder of the previous allowance
+ * expires. Purchased packs (reason 'purchase') never expire — they are
+ * treated as spent last, so the expiring amount is the balance minus the
+ * total ever purchased, floored at zero.
+ */
+export function expiringAmount(balanceBefore: number, purchasedTotal: number): number {
+  return Math.max(0, balanceBefore - Math.max(0, purchasedTotal));
+}
+
 export async function ensureMonthlyGrant(
   db: PostgresClient,
   tenantId: string,
@@ -81,6 +93,34 @@ export async function ensureMonthlyGrant(
 ): Promise<void> {
   const period = currentPeriod(now);
   const amount = monthlyCreditsFor(tier);
+  // Reset-not-accumulate: only when THIS period's grant does not exist yet
+  // (the first call of the month), expire what is left of last month's plan
+  // credits. Idempotent per period via uniq_credit_ref (period_expiry ref).
+  const granted = await db.query(
+    `SELECT 1 FROM credit_ledger
+      WHERE tenant_id = $1::uuid AND period = $2::date AND reason = 'monthly_grant'
+      LIMIT 1`,
+    [tenantId, period]
+  );
+  if (granted.rows.length === 0) {
+    const sums = await db.query<{ balance: string; purchased: string }>(
+      `SELECT COALESCE(SUM(delta), 0)::int AS balance,
+              COALESCE(SUM(CASE WHEN reason = 'purchase' AND delta > 0 THEN delta ELSE 0 END), 0)::int AS purchased
+         FROM credit_ledger WHERE tenant_id = $1::uuid`,
+      [tenantId]
+    );
+    const expire = expiringAmount(Number(sums.rows[0]?.balance ?? 0), Number(sums.rows[0]?.purchased ?? 0));
+    if (expire > 0) {
+      await db.query(
+        `INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
+         SELECT $1::uuid, $2::integer, 'adjustment', 'period_expiry',
+                md5('expiry:' || $3::text || ':' || $1::text)::uuid,
+                (COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1::uuid), 0) + $2::integer)::integer
+          ON CONFLICT (tenant_id, ref_type, ref_id) WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING`,
+        [tenantId, -expire, period]
+      );
+    }
+  }
   await db.query(
     `INSERT INTO credit_ledger (tenant_id, delta, reason, period, balance_after)
      SELECT $1::uuid, $2::integer, 'monthly_grant', $3::date,
