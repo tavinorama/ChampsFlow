@@ -53,9 +53,13 @@ this is the routing summary:
 | `needs-founder-approval` | CRITICAL | **Founder only** | live/production/destructive/paid/secret actions |
 | department labels (`marketing`, `blocked`, …) | routing | — | which VP owns / what's blocked |
 
-Reviewers cannot self-approve their own PRs (branch protection requires a
-non-author approving review) — that is why founder-authored PRs are approved by
-Hermes and vice-versa.
+Reviewers cannot self-approve their own PRs. **Branch protection as actually
+configured (corrected 2026-09-02, 10.B.16): the six required checks (Build ·
+Unit & Integration · Lint & Type Check · Security · Compliance · Smoke) with
+0 required approvals** — the founder gate lives on the risk LABEL
+(`founder-approved` for HIGH/CRITICAL), not on an approval count; auto-merge
+completes LOW/MEDIUM on green. See AGENTS.md §2–3. Migrations are always ≥HIGH
+and never auto-merge.
 
 ## Founder approval gates (always, regardless of who wrote the code)
 
