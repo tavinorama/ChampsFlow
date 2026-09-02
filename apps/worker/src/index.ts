@@ -29,6 +29,12 @@
 
 import Redis from "ioredis";
 import { Queue, Worker } from "bullmq";
+// Boot-time env validation (10.B.5/10.B.13) — MUST be the first app import:
+// missing DATABASE_URL/REDIS_URL (or, in production, HERMES_TASK_TOKEN /
+// TELEGRAM_*) logs the field names and exits 1 before anything connects.
+import { getWorkerConfig } from "./config";
+const workerConfig = getWorkerConfig();
+import { startHealthServer } from "./health";
 import { logger } from "../../../packages/shared/src/logger";
 import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
@@ -52,7 +58,10 @@ import { applyPlatformKeyOverrides } from "../../../packages/shared/src/platform
 // maxRetriesPerRequest: null is required for BullMQ blocking operations
 // ---------------------------------------------------------------------------
 
-const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+// No localhost fallback (10.B.5): a production worker silently pointed at a
+// non-existent local Redis processes nothing while looking alive. workerConfig
+// already refused to boot when REDIS_URL is missing.
+const REDIS_URL = workerConfig.REDIS_URL;
 
 const connection = new Redis(REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -966,6 +975,17 @@ logger.info("worker_started", {
 });
 
 // ---------------------------------------------------------------------------
+// HTTP health listener (10.B.5) — GET /healthz on PORT: 200 when Redis PING +
+// Postgres SELECT 1 both work, 503 otherwise. Wired as healthcheckPath in
+// apps/worker/railway.json so Railway restarts a worker that lost its stores
+// instead of leaving it "running" and dead.
+// ---------------------------------------------------------------------------
+const healthServer = startHealthServer(workerConfig.PORT, {
+  redis: connection,
+  getSql: getAuditSql,
+});
+
+// ---------------------------------------------------------------------------
 // Graceful shutdown
 // Stop accepting new jobs → wait for in-flight → close connections
 // ---------------------------------------------------------------------------
@@ -977,6 +997,12 @@ const shutdown = async (signal: string): Promise<void> => {
   clearInterval(nurtureInterval);
   // Stop the daily brand monitor loop
   clearInterval(dailyMonitorInterval);
+  // Stop answering health probes (best-effort — never blocks shutdown)
+  try {
+    healthServer.close();
+  } catch {
+    // Best-effort
+  }
 
   try {
     // Close workers — waits for in-flight jobs to complete

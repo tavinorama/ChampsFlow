@@ -89,6 +89,17 @@ const envSchema = z.object({
           "DPA_CURRENT_VERSION is required in production — the DPA acknowledgment gate must not fail open.",
       });
     }
+    // 10.B.13: without WEB_ORIGIN the CORS middleware fell back to
+    // http://localhost:3000 WITH credentials — in production that is a
+    // misconfigured cross-origin surface, not a dev convenience. Refuse to boot.
+    if (val.NODE_ENV === "production" && !val.WEB_ORIGIN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["WEB_ORIGIN"],
+        message:
+          "WEB_ORIGIN is required in production — CORS must never fall back to localhost with credentials.",
+      });
+    }
   });
 
 export type Config = z.infer<typeof envSchema>;

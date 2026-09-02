@@ -196,7 +196,9 @@ app.use(
   })
 );
 
-// CORS — restrict to configured web origin
+// CORS — restrict to configured web origin. In production WEB_ORIGIN is
+// REQUIRED (config superRefine, 10.B.13) so the localhost fallback below is
+// dev/test-only by construction — production can never boot into it.
 app.use(
   "*",
   cors({
