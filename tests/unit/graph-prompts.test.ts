@@ -165,7 +165,9 @@ describe("the read-only brains' prompts resolve and stay honest", () => {
   });
 
   it("every short-video sphere family carries the alive format, the virality veto and the render brief", () => {
-    for (const fam of ["instagram", "tiktok", "youtube"]) {
+    // 1.6: instagram is a CARD family now (image + caption, no video script)
+    // — pinned separately in tests/unit/ig-image-sphere.test.ts.
+    for (const fam of ["tiktok", "youtube"]) {
       const draft = buildPrompt("task", { prompt: `${fam}-draft`, style: "talking-head" }, []) ?? "";
       expect(draft, `${fam}-draft`).toContain("[STYLE] phone-shot");
       expect(draft).toContain("caption-story");
