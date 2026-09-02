@@ -14,12 +14,24 @@
 
 export const LIST_PRICE_USD = {
   kit: 29,
+  aiAudit: 49, // AI Audit Stack — one-time (Stripe price STRIPE_PRICE_ID_AI_AUDIT)
   pages: 99, // Ozvor Pages — one-time landing-site pack
   growth: 99,
   agency: 549,
   geoSprint: 1500,
   managedGeo: 1900,
 } as const;
+
+/**
+ * Founder discount, percent off the 12x monthly list price — applied ONLY on
+ * annual checkouts (apps/api/src/integrations/stripe.ts re-exports this and
+ * applies the matching Stripe coupon). Every "30% off" on the site and in the
+ * chatbot derives from here.
+ */
+export const FOUNDER_DISCOUNT_PERCENT = 30 as const;
+
+/** Paid subscription tiers that have an annual price. */
+export type AnnualTier = "growth" | "agency";
 
 /**
  * Annual (yearly) list prices (USD) — one charge per year. These already bake in
@@ -32,6 +44,46 @@ export const LIST_PRICE_ANNUAL_USD: Record<string, number> = {
   growth: 831,
   agency: 4611,
 };
+
+/** 12x the monthly list price — the annual figure BEFORE the founder discount. */
+export function listAnnualUsd(tier: AnnualTier): number {
+  return LIST_PRICE_USD[tier] * 12;
+}
+
+/**
+ * Founder annual price (USD/yr) — LIST_PRICE_ANNUAL_USD, which tests pin to
+ * floor(12 x monthly x (1 - FOUNDER_DISCOUNT_PERCENT/100)). The Stripe yearly
+ * price objects were created from the same arithmetic.
+ */
+export function founderAnnualUsd(tier: AnnualTier): number {
+  return LIST_PRICE_ANNUAL_USD[tier];
+}
+
+/**
+ * The per-month figure the pricing page shows next to the founder annual
+ * total ("≈ $69/mo"). Whole dollars, rounded DOWN so the page never advertises
+ * a cent the customer does not save.
+ */
+export function founderAnnualPerMonthUsd(tier: AnnualTier): number {
+  return Math.floor(founderAnnualUsd(tier) / 12);
+}
+
+/**
+ * Per-brand monthly cost on a multi-brand tier, at a given monthly price
+ * (list monthly, or the founder per-month figure). Formatted with two decimals
+ * ("54.90") because it is only ever shown as copy. Derived from PLAN_LIMITS
+ * max_brands so a plan change can never leave a stale "$36.60 per brand" on
+ * the site again (2026-09-02 sweep, PENDING 10.A.1/2).
+ */
+export function perBrandUsd(monthlyUsd: number, maxBrands: number): string {
+  if (!Number.isFinite(monthlyUsd) || !Number.isFinite(maxBrands) || maxBrands <= 0) return "0.00";
+  return (monthlyUsd / maxBrands).toFixed(2);
+}
+
+/** "1,188" — en-US thousands formatting for dollar copy. */
+export function fmtUsd(n: number): string {
+  return n.toLocaleString("en-US");
+}
 
 /** Months per Stripe billing interval — used to amortize a charge to monthly. */
 function monthsPerInterval(interval: "month" | "year"): number {
@@ -71,10 +123,12 @@ export function receivedMonthlyUsd(
   return netInvoiceCents / 100 / monthsPerInterval(interval);
 }
 
-/** Monthly recurring price by subscription plan_tier (USD). free/starter = $0. */
+/** Monthly recurring price by subscription plan_tier (USD). free = $0. The
+ * phantom `starter` tier was removed 2026-09-02 (PENDING 10.A.7) — it never
+ * existed in PLAN_LIMITS; the DB CHECK still tolerates the string until the
+ * founder runs the migration that drops it. */
 export const PLAN_MRR_USD: Record<string, number> = {
   free: 0,
-  starter: 0,
   growth: LIST_PRICE_USD.growth,
   agency: LIST_PRICE_USD.agency,
   pro: LIST_PRICE_USD.growth, // legacy alias — priced at the growth tier
