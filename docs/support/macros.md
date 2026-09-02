@@ -74,13 +74,20 @@ and link the customer.
 > - **Get-Cited Kit ($29):** if your 3 drafts aren't ready to publish in ~10
 >   minutes, we refund the $29 — we guarantee the deliverable, never AI behavior.
 > - **Growth / Agency plans:** covered by our 30-day money-back guarantee.
+> - **AI Audit Stack ($49):** 30-day money-back — if the result told you nothing
+>   new, we refund the $49.
+> - **Ozvor Pages ($99):** if your 5-page site isn't live and ready to publish,
+>   we refund the $99.
 >
 > If that fits your situation, reply "yes, refund" and confirm the email used at
 > purchase — I'll get it processed. You keep anything already downloaded.
+> (Full policy: ozvor.com/refund. Refund requests always come to support@ozvor.com.)
 
 *Internal:* **do not process the refund yourself** — confirm eligibility against
-the guarantee wording (keep it identical to `/kit`, `/pricing`, Terms — #162),
-then route to the founder to execute in Stripe. Log outcome.
+the guarantee wording (keep it identical to `/kit`, `/pricing`, `/refund`, Terms §4 — #162;
+$49 30-day money-back added 2026-09-02), then route to the founder to execute in
+Stripe. Log outcome. Receipts for one-time products = Stripe receipt e-mail
+(re-send from the Stripe dashboard if the buyer lost it).
 
 ---
 
