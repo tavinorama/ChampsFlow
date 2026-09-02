@@ -1,0 +1,106 @@
+name: SmartLead launch controls (one-shot, founder-triggered)
+
+# Controles do dia do disparo, determinísticos (python, secret SMARTLEAD_API_KEY,
+# UA de navegador). Ações: schedule | settings | sequences | start | pause.
+# START só executa com confirm=GO (o founder decide; a máquina nunca inicia
+# sozinha). Saída = só agregados; nenhuma lead/caixa impressa.
+
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_id:
+        description: "ID da campanha (ex.: 3888686 aistack · 3783525 OZ-B · 3783524 OZ-A · 3783526 OZ-C)"
+        required: true
+      action:
+        description: "schedule | settings | sequences | start | pause"
+        required: true
+        default: "settings"
+      confirm:
+        description: "Para action=start, escreva GO"
+        required: false
+        default: ""
+      sequences_json:
+        description: "Para action=sequences: JSON [{seq_number,delay_in_days,subject,email_body}] (email 1 sem link — validado)"
+        required: false
+        default: ""
+      footer:
+        description: "Rodapé anexado a TODO e-mail (opt-out + endereço). Ex.: 'Reply STOP and I will not write again.<br>Ozvor · <endereço>'"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Control (deterministic)
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          CID: ${{ github.event.inputs.campaign_id }}
+          ACTION: ${{ github.event.inputs.action }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          SEQ_JSON: ${{ github.event.inputs.sequences_json }}
+          FOOTER: ${{ github.event.inputs.footer }}
+        run: |
+          set -euo pipefail
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, re, urllib.request, urllib.error
+          KEY=os.environ["SL_KEY"]; CID=os.environ["CID"].strip(); ACTION=os.environ["ACTION"].strip().lower()
+          CONFIRM=os.environ.get("CONFIRM","").strip(); SEQ_JSON=os.environ.get("SEQ_JSON","").strip(); FOOTER=os.environ.get("FOOTER","").strip()
+          BASE="https://server.smartlead.ai/api/v1"
+          UA={"User-Agent":"Mozilla/5.0 (Macintosh) OzvorOps/1.0","Accept":"application/json","Content-Type":"application/json"}
+          def call(method,path,payload=None):
+              url=f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              data=json.dumps(payload).encode() if payload is not None else None
+              req=urllib.request.Request(url,data=data,headers=UA,method=method)
+              try:
+                  with urllib.request.urlopen(req,timeout=60) as r:
+                      b=r.read().decode(); return json.loads(b) if b.strip() else {}
+              except urllib.error.HTTPError as e:
+                  return {"_http_error":e.code,"_body":e.read().decode(errors="replace")[:300]}
+          def out(d): print("RESULTADO_OZVOR"+json.dumps(d,ensure_ascii=False))
+          def bad(r): return isinstance(r,dict) and ("_http_error" in r or "_error" in r)
+
+          if ACTION=="schedule":
+              # Dias úteis, 08h-17h no fuso central US, 1.000 leads novas/dia no total (200 caixas × 5)
+              r=call("POST",f"/campaigns/{CID}/schedule",{"timezone":"America/Chicago","days_of_the_week":[1,2,3,4,5],
+                     "start_hour":"08:00","end_hour":"17:00","min_time_btw_emails":8,"max_new_leads_per_day":1000,"schedule_start_time":None})
+              out({"ok":not bad(r),"action":"schedule","resp":str(r)[:200]}); raise SystemExit(1 if bad(r) else 0)
+
+          if ACTION=="settings":
+              # Sem pixel de abertura, sem tracking de link (1º e-mail limpo), para no reply, texto puro
+              r=call("POST",f"/campaigns/{CID}/settings",{"track_settings":["DONT_TRACK_EMAIL_OPEN","DONT_TRACK_LINK_CLICK"],
+                     "stop_lead_settings":"REPLY_TO_AN_EMAIL","send_as_plain_text":True,"follow_up_percentage":100,
+                     "enable_ai_esp_matching":True})
+              out({"ok":not bad(r),"action":"settings","resp":str(r)[:200]}); raise SystemExit(1 if bad(r) else 0)
+
+          if ACTION=="sequences":
+              if not SEQ_JSON: out({"ok":False,"motivo":"sequences_json vazio"}); raise SystemExit(1)
+              seqs=json.loads(SEQ_JSON)
+              body=[]
+              for s in seqs:
+                  eb=s["email_body"]+(("<br><br>"+FOOTER) if FOOTER else "")
+                  if int(s["seq_number"])==1:
+                      chk=re.sub(r"<br\s*/?>"," ",eb)
+                      if re.search(r"https?://|www\.",chk,re.I): out({"ok":False,"motivo":"ERRO_LINK_EMAIL1 (regra 27/08)"}); raise SystemExit(1)
+                  body.append({"seq_number":int(s["seq_number"]),"seq_delay_details":{"delay_in_days":int(s["delay_in_days"])},
+                               "subject":s["subject"],"email_body":eb})
+              r=call("POST",f"/campaigns/{CID}/sequences",{"sequences":body})
+              out({"ok":not bad(r),"action":"sequences","emails":len(body),"footer":bool(FOOTER),"resp":str(r)[:200]}); raise SystemExit(1 if bad(r) else 0)
+
+          if ACTION=="pause":
+              r=call("POST",f"/campaigns/{CID}/status",{"status":"PAUSED"})
+              out({"ok":not bad(r),"action":"pause","resp":str(r)[:200]}); raise SystemExit(1 if bad(r) else 0)
+
+          if ACTION=="start":
+              if CONFIRM!="GO": out({"ok":False,"motivo":"start exige confirm=GO (decisao do founder)"}); raise SystemExit(1)
+              d=call("GET",f"/campaigns/{CID}"); n=(d.get("name") if isinstance(d,dict) else "?")
+              r=call("POST",f"/campaigns/{CID}/status",{"status":"START"})
+              d2=call("GET",f"/campaigns/{CID}")
+              out({"ok":not bad(r),"action":"start","campanha":n,"status_depois":(d2.get("status") if isinstance(d2,dict) else "?"),"resp":str(r)[:200]}); raise SystemExit(1 if bad(r) else 0)
+
+          out({"ok":False,"motivo":f"acao desconhecida: {ACTION}"}); raise SystemExit(1)
+          PYEOF
