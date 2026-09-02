@@ -98,6 +98,34 @@ const ANTI_GENERIC_AB_DRAFT_RULE =
 const LESSONS_VETO_RULE =
   "LICOES INSTITUCIONAIS (com VETO): o bloco [__lessons__] abaixo e a memoria de conteudo da casa. Jogada que viola uma licao de la e VETADA, nao anotada — escreva 'VETO: licao da casa — <qual>'.";
 
+/**
+ * 10.C.9 — a régua de copy que TODO finalize/synthesize (o último nó antes da
+ * aprovação e do publish) carrega. O publish recusa travessão por CÓDIGO
+ * (graph-runner, hasDash); esta linha faz o modelo não chegar lá. Uma fonte.
+ */
+export const FINALIZE_COPY_RULE =
+  "REGRA FINAL DE COPY (validada por CODIGO no publish): sem travessao (nem — nem –; use virgula, ponto ou dois-pontos), frases <=12 palavras, nivel 15-17 anos, sonho honesto (gente real, numero so com fonte). Texto com travessao NAO publica.";
+
+/**
+ * 10.C.6 — a régua anti-genérico das sequências FRIAS (prospect-batch e
+ * follow-up). Irmã da ANTI_GENERIC_DRAFT_RULE, sem a linha interna
+ * 'ANGULO-NOVO:' (o contrato de saída do lote é estrito e validado por código;
+ * uma linha extra o quebraria). O bloco [__recent__] aqui são as ÚLTIMAS
+ * sequências/respostas realmente produzidas, lidas do registro por código.
+ */
+export const ANTI_GENERIC_SALES_RULE =
+  "ANTI-GENERICO (0.8, vendas): se houver um bloco [__recent__] abaixo (as ultimas sequencias frias / respostas REALMENTE produzidas), estude-o e escolha DELIBERADAMENTE outra abertura, outra pergunta e outro achado em destaque. Nada de abertura que serviria para qualquer negocio. NAO inclua nenhuma linha interna ou rotulo: o contrato de saida e estrito.";
+
+/**
+ * 10.C.6 — os slugs de VENDAS que recebem as injeções [__lessons__] /
+ * [__recent__] (o runner roteia por esta lista; não é a allowlist do tuner —
+ * prompts de vendas seguem NÃO-tunáveis).
+ */
+export const SALES_INJECTION_PROMPT_KEYS: readonly string[] = ["prospect-draft", "prospect-critic", "prospect-finalize"];
+export function isSalesInjectionKey(key: string): boolean {
+  return SALES_INJECTION_PROMPT_KEYS.includes(key);
+}
+
 /** The virality lens, shared by every short-video critic (IG/TikTok/YT). */
 const VIRALITY_LENS =
   "LENTE VIRALIDADE (com VETO): (a) forca do gancho: eu pararia de rolar no primeiro segundo? (b) watch-time: o BEAT 2 segura quem ficou pelo gancho? (c) gatilho de share/comentario: alguem marca um amigo ou discorda? (d) parece video de celular de gente real ou parece ANUNCIO / slide deck? Se parece anuncio ou slide deck: 'VETO: parece anuncio' / 'VETO: parece slide deck'.";
@@ -221,6 +249,19 @@ export function parsePromptProposal(text: string): PromptProposal {
   return { kind: "proposal", promptKey: keyMatches[0]![1]!, body: bodyMatch[1]!.trim() };
 }
 
+/** 10.C.12 — rótulo humano do canal declarado no config (default LinkedIn). */
+const CHANNEL_LABELS: Record<string, string> = {
+  linkedin: "LinkedIn",
+  x: "X (Twitter)",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+};
+function channelLabel(config: Record<string, unknown>): string {
+  const ch = String(config["channel"] ?? "linkedin").toLowerCase();
+  return CHANNEL_LABELS[ch] ?? ch;
+}
+
 function upstreamBlock(upstream: Array<[string, string]>): string {
   if (upstream.length === 0) return "";
   return (
@@ -296,6 +337,7 @@ function shortVideoFamily(
         `Voce e o editor-chefe da esfera ${spec.name}. Abaixo: os 2 roteiros e a critica.`,
         "Pegue o VENCEDOR e reescreva UMA vez aplicando as correcoes. Vetos sao lei: risco sai, padrao repetido muda, 'parece anuncio/slide deck' vira conversa de celular.",
         VIDEO_ALIVE_FORMAT,
+        FINALIZE_COPY_RULE,
         ENGLISH_FIRST,
         "Formato de saida, nesta ordem e nada mais:",
         "1) o roteiro final com [HOOK]/[BEAT 1..n]/[PATTERN INTERRUPT]/[CTA]/[STYLE];",
@@ -377,6 +419,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Escolha o roteiro vencedor no agregado e reescreva-o UMA vez incorporando as melhores sugestoes das 5 lentes.",
       "Tres lentes tem poder de VETO, nao so de nota: se compliance apontou risco, o risco SAI do texto; se freshness disse que repete tema/gancho/b-roll do que ja publicamos, o angulo MUDA — publicar requentado nao e opcao; se virality disse 'parece anuncio' ou 'parece slide deck', o roteiro vira conversa de celular (gancho mais cru, beats mais rapidos, caption maior) — as correcoes de virality sao aplicadas, nao debatidas.",
       VIDEO_ALIVE_FORMAT,
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida, em 3 blocos e nada mais:",
       "1) o roteiro final, com [HOOK]/[BEAT 1..n]/[PATTERN INTERRUPT]/[CTA]/[STYLE];",
@@ -397,6 +440,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "PROIBIDO no resultado: marcacoes [HOOK]/[BEAT]/[CTA], rotulos de secao, indicacoes de cena ou qualquer vestigio de formato de roteiro.",
       "Estrutura do post: 1a linha que para o scroll (sem clickbait vazio) · 3-6 linhas curtas com a historia/dado · 1 CTA em 1a pessoa no final. 80-150 palavras. Zero hashtag ou no maximo 2 relevantes.",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, sonho honesto, nada que o produto nao cumpre.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: apenas o texto final do post, pronto para colar no LinkedIn, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -506,7 +550,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
 
   "memory-consolidation-compose": (ctx) =>
     [
-      "Voce e o consolidador de memoria da Ozvor (5.F.1). O bloco [history] abaixo traz os FATOS agregados dos ultimos 30 dias: publicacoes concluidas por canal, metricas colhidas, rejeicoes do founder (com o motivo literal), aprovacoes expiradas por silencio e vereditos fechados.",
+      "Voce e o consolidador de memoria da Ozvor (5.F.1). O bloco [history] abaixo traz os FATOS agregados dos ultimos 30 dias: publicacoes concluidas por canal, metricas colhidas, rejeicoes do founder (com o motivo literal) e vereditos fechados. (Aprovacoes expiradas por silencio NAO estao no bloco de proposito — 10.C.13: ausencia do founder nao e licao de conteudo.)",
       "Sua tarefa: destilar LICOES DURAVEIS por canal — o que o registro mostra que funciona, o que falha e o que o founder rejeita — no formato de regua de veto que os criticos ja usam ([__lessons__]).",
       "REGRA INEGOCIAVEL (vigia tambem mente): use SOMENTE os fatos do bloco [history]. NUNCA invente numero, canal ou motivo; licao sem evidencia listada la nao entra.",
       "Cada licao: 1 linha, comecando com o canal, com a evidencia entre parenteses. Ex: '- linkedin: evitar tom vendedor no gancho (3 rejeicoes por tom vendedor em ago).'",
@@ -578,7 +622,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
 
   "experiment-draft": (ctx) =>
     [
-      "Voce e roteirista da Ozvor. Do briefing abaixo, escreva UM post social curto (LinkedIn, 60-120 palavras) que testa a hipotese.",
+      `Voce e roteirista da Ozvor. Do briefing abaixo, escreva UM post social curto (${channelLabel(ctx.config)}, 60-120 palavras) que testa a hipotese.`,
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto. Uma unica ideia — e um teste, nao um manifesto.",
       ANTI_GENERIC_DRAFT_RULE,
@@ -586,6 +630,28 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Formato de saida: o texto do post puro, pronto para publicar, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
+
+  // --- blog-announce (10.C.7): o announce do artigo de segunda, gated -------
+  // O bloco [__seed__] traz a URL REAL do artigo (lida do sitemap por código
+  // pelo worker) — o modelo nunca inventa slug. Um prompt, dois canais.
+  "blog-announce-draft": (ctx) => {
+    const ch = String(ctx.config["channel"] ?? "linkedin").toLowerCase();
+    const grammar =
+      ch === "x"
+        ? "Gramatica do X: UM post unico, <=280 caracteres CONTANDO a URL, primeira linha para o dedo, zero hashtag generica."
+        : "Gramatica do LinkedIn: 1a linha que para o scroll, 3-5 linhas curtas com o insight central do artigo, o link em linha propria, CTA em 1a pessoa. 60-120 palavras.";
+    return [
+      `Voce e o social editor da Ozvor. O bloco [__seed__] abaixo traz a URL do artigo NOVO do blog (publicado hoje). Escreva UM post de ${channelLabel(ctx.config)} que APRESENTA esse artigo.`,
+      "O post carrega a URL do [__seed__] VERBATIM (e nenhuma outra) — o leitor tem que conseguir abrir o artigo.",
+      "Traga o insight central em 1-2 linhas (so o que o titulo/URL sustentam — nada inventado sobre o conteudo) e convide a ler a peca inteira.",
+      grammar,
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao (guard de codigo recusa), sonho honesto.",
+      FINALIZE_COPY_RULE,
+      ENGLISH_FIRST,
+      "Formato de saida: so o texto final do post, pronto para publicar, nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n");
+  },
 
   "experiment-critic": (ctx) =>
     [
@@ -602,9 +668,11 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // regex; os drafts variam SO nesse eixo; o critico veta experimento sujo
   // (mais de um eixo mudando = resultado ilegivel).
 
+  // 10.C.12: canal e metrica vem do config do nó (o grafo os declara UMA vez —
+  // buildAbExperimentGraph), nunca de texto fixo aqui.
   "ab-brief": (ctx) =>
     [
-      "Voce e o desenhista de experimentos A/B da Ozvor. O bloco [memory] abaixo e o alcance REAL do canal (LinkedIn) nos ultimos 30 dias — leia primeiro.",
+      `Voce e o desenhista de experimentos A/B da Ozvor. O bloco [memory] abaixo e o alcance REAL do canal (${channelLabel(ctx.config)}) nos ultimos 30 dias — leia primeiro.`,
       "Sua tarefa: desenhar UM experimento A/B honesto para HOJE — UMA ideia de conteudo, DUAS variantes que diferem em EXATAMENTE UM eixo.",
       "Escolha o eixo pelo que [memory] sugere que mais importa testar agora: angle (a tese/abordagem), hook (a 1a linha) ou format (a estrutura do post).",
       "REGRA DO EXPERIMENTO LIMPO: tudo que NAO e o eixo fica IGUAL nas duas variantes — mesma ideia, mesmo CTA, mesmo tamanho aproximado, mesmo canal. Duas coisas mudando = resultado ilegivel.",
@@ -614,13 +682,13 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "VARIANTE A: <o que a variante A faz no eixo escolhido, 1-2 frases>",
       "VARIANTE B: <o que a variante B faz no eixo escolhido, 1-2 frases>",
       "CONSTANTES: <o que fica igual nas duas, 1 linha>",
-      "METRICA: linkedinpage_impressions (janela de 48h por variante)",
+      `METRICA: ${String(ctx.config["metric"] ?? "linkedinpage_impressions")} (janela de 48h por variante)`,
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
   "ab-draft": (ctx) =>
     [
-      `Voce e roteirista da Ozvor. Do desenho de experimento abaixo, escreva a VARIANTE ${String(ctx.config["variant"] ?? "A")} como um post curto de LinkedIn (40-90 palavras).`,
+      `Voce e roteirista da Ozvor. Do desenho de experimento abaixo, escreva a VARIANTE ${String(ctx.config["variant"] ?? "A")} como um post curto de ${channelLabel(ctx.config)} (40-90 palavras).`,
       "Siga o brief A LETRA: implemente exatamente o que a linha da SUA variante pede no eixo declarado, e mantenha as CONSTANTES identicas a outra variante.",
       "Estrutura: gancho na 1a linha (para o dedo) -> 2-3 frases de desenvolvimento -> CTA em 1a pessoa.",
       "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre).",
@@ -800,6 +868,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o editor-chefe da esfera X. Abaixo: as 2 versoes e a critica.",
       "Pegue o VENCEDOR da critica e reescreva UMA vez incorporando as correcoes. Vetos da critica sao lei: risco sai, padrao repetido muda.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o texto final pronto para publicar (mini-thread separa com '---'), nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -864,6 +933,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o editor-chefe da esfera LinkedIn. Abaixo: as 2 versoes e a critica.",
       "Pegue o VENCEDOR da critica e reescreva UMA vez incorporando as correcoes. Vetos da critica sao lei: risco sai, padrao repetido muda.",
       "Confirme: post nativo do LinkedIn (nao e roteiro, nao tem marcadores [HOOK]/[BEAT]), sem travessao, sem link no corpo.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o texto final pronto para publicar, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -927,6 +997,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o editor-chefe do blog da Ozvor. Abaixo: os 2 outlines e a critica.",
       "Pegue o VENCEDOR e entregue o pacote FINAL para o redator: o briefing resumido (titulo, pergunta, publico, tese) + o outline corrigido conforme a critica. Vetos sao lei.",
       "Este pacote vai para o founder e para o pipeline de publicacao do blog; ele NAO publica nada sozinho.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: markdown com 2 secoes: '## Brief' e '## Outline', nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -997,6 +1068,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Escolha as MELHORES 2-3 jogadas da semana (pode ser o vencedor + 1-2 movimentos secundarios de comunidades diferentes) e justifique cada uma em 1 linha (por que ali, por que agora, que valor real entrega). Vetos sao lei: astroturfing/spam/sem-disclosure sai, claim sem base sai, tema repetido muda.",
       "Se NAO ha sinal externo concreto esta semana, diga isso com todas as letras: 'Sem sinal externo do Signal Engine esta semana — nenhuma thread concreta para agir. Comunidades a monitorar: ...' e NAO fabrique jogadas.",
       "Este brief e do FOUNDER e nao publica nada: um humano posta no Reddit (nao ha adaptador de publish). Mantenha SKIMMABLE.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: markdown com '## Onde aparecer no Reddit esta semana' e, para cada jogada, um item com SUBREDDIT · MOVE (comment|post) · TARGET (URL ou titulo) · WHY · o DRAFT pronto para colar. Nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -1007,6 +1079,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o editor-chefe da Ozvor. Abaixo estao o rascunho do post e a critica de compliance.",
       "Compliance tem VETO: se apontou risco, o risco SAI do texto — reescreva a linha, nao publique o risco.",
       "Entregue a versao FINAL do post, incorporando a correcao, pronta para publicar. Mesmo tom, mesmo tamanho.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: o texto final do post puro, nada antes nem depois.",
       upstreamBlock(ctx.upstream),
@@ -1100,12 +1173,12 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
 
   "prompt-tuner-compose": (ctx) =>
     [
-      "Voce e o afinador de prompts da Ozvor (5.F.2). O bloco [evidence] abaixo traz os FATOS agregados dos ultimos 21 dias: vereditos fechados por graph, rejeicoes do founder (com o motivo literal), aprovacoes expiradas por silencio e os overrides de prompt ja ativos.",
+      "Voce e o afinador de prompts da Ozvor (5.F.2). O bloco [evidence] abaixo traz os FATOS agregados dos ultimos 21 dias: vereditos fechados por graph, rejeicoes do founder (com o motivo literal) e os overrides de prompt ja ativos. (Aprovacoes expiradas por silencio ficam FORA de proposito — 10.C.13: a ausencia do founder nao e evidencia sobre o prompt.)",
       "Sua tarefa: propor NO MAXIMO UMA mudanca de prompt — a de MAIOR evidencia — para melhorar o conteudo que os grafos de marketing produzem. Uma mudanca por semana, cirurgica; menos e melhor.",
       "REGRA INEGOCIAVEL (vigia tambem mente): use SOMENTE os fatos do bloco [evidence]. NUNCA invente numero, rejeicao ou padrao; mudanca sem evidencia listada la nao e proposta.",
       `CHAVES PERMITIDAS (allowlist — qualquer outra e RECUSADA no store): ${TUNABLE_PROMPT_KEYS.join(", ")}.`,
       "PROIBIDO (trilho de seguranca): propor mudanca em prompts de aprovacao/publicacao/store, em qualquer chave fora da allowlist, ou em qualquer prompt do proprio prompt-tuner — o afinador NUNCA se auto-modifica.",
-      "O body proposto e o PROMPT NOVO COMPLETO (nao um diff): escreva-o inteiro, preservando o contrato de saida do prompt original e as regras da casa (nivel 15-17 anos, sonho honesto, English-first no que e publicado). As licoes institucionais ([__lessons__]/regua de veto e a memoria [__memory__]) sao reinjetadas pelo runner por fora do prompt e NAO podem ser desligadas pela sua proposta.",
+      "O body proposto e o PROMPT NOVO COMPLETO (nao um diff): escreva-o inteiro, preservando o contrato de saida do prompt original e as regras da casa (nivel 15-17 anos, sonho honesto, English-first no que e publicado). As GUARDAS ESTRUTURAIS do prompt original (English-first, anti-generico, regras de copy, contrato de saida, regua de veto) sao REAPENDADAS POR CODIGO depois de qualquer override (10.C.5) e NAO podem ser desligadas pela sua proposta — nao as repita, nao as contradiga.",
       "Se a evidencia nao sustentar mudanca nenhuma, sua saida INTEIRA e: 'SEM MUDANCA ESTA SEMANA — <motivo em 1 frase>.' e nada mais.",
       "Formato de saida (exato, nesta ordem, nada antes nem depois):",
       "PROMPT_KEY: <uma unica chave da allowlist>",
@@ -1124,6 +1197,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Vetos sao lei: aplique cada correcao da critica e entregue os 3 anuncios FINAIS, prontos para o founder colar nas plataformas.",
       "Este pacote NAO ativa nada: nenhum centavo e gasto por este graph — ativar campanha e decisao do founder, fora daqui. Abra com a linha exata: 'PRONTOS PARA COLAR — 0 gasto. Ativar e decisao do founder.'",
       "Sugira ao final, em 1 linha por rede, um orcamento de TESTE conservador (ordem de grandeza diaria) e a metrica de sucesso em 7 dias — como sugestao, nunca como acao.",
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: a linha de abertura + 3 blocos [GOOGLE-SEARCH]/[META]/[LINKEDIN] com os campos finais + o bloco 'TESTE SUGERIDO' (3 linhas). Os rotulos em PT/EN como acima, o copy dos anuncios em ingles. Nada alem disso.",
       upstreamBlock(ctx.upstream),
@@ -1143,6 +1217,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "REGRA INEGOCIAVEL DO EMAIL 1 (validada por CODIGO — o step FALHA se violar; vale para AS DUAS trilhas): texto puro, ZERO links, ZERO URLs, ZERO dominios escritos (nem ozvor.com, nem o site deles). UMA unica pergunta, buscando RESPOSTA. Cite UM achado do bloco em palavras simples (ex.: 'your site tells ChatGPT's crawler to stay out'), sem jargao. 40-80 palavras. Assine 'Otavio'.",
       "EMAILS 2 e 3: no maximo um link, SEMPRE com ?from=<a CAMPANHA do proprio prospect>. TRILHA geo: o link e https://ozvor.com/test?from=<campanha> (ou a raiz ozvor.com) — o teste gratis. TRILHA aistack: o link e https://ozvor.com/ai-audit?from=<campanha> — e o EMAIL 2 TRAZ esse link da oferta (validado por codigo). Email 2 aprofunda o achado/dor e mostra o caminho; email 3 e o ultimo toque, curto e educado, porta aberta.",
       "Regras da casa: frases <=12 palavras, nivel 15-17 anos, CTA em 1a pessoa, sonho honesto (dor real, gente real), NUNCA inventar numero ou achado — so o que esta no bloco. Sem travessao.",
+      ANTI_GENERIC_SALES_RULE,
+      "LICOES DA CASA: se houver um bloco [__lessons__] abaixo, ele e regua — copy que viola uma licao de la volta na critica.",
       ENGLISH_FIRST,
       "Formato de saida EXATO, para cada prospect do bloco, nada antes nem depois:",
       "=== PROSPECT: <nome exatamente como no bloco [prospects]> ===",
@@ -1169,6 +1245,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "- TRILHA ERRADA (0.6): prospect da trilha aistack com link fora de /ai-audit, ou ?from= fora da campanha aistack-* dele = 'VETO: trilha errada'. Prospect da trilha geo linkando /ai-audit = 'VETO: trilha errada'. A trilha de cada prospect esta na linha TRILHA: do bloco [prospects].",
       "- VOZ: soa mala direta / template de agencia em massa = 'VETO: parece spam'. Tem que ler como UMA pessoa que olhou O site deles.",
       "- COPY DA CASA: frase >12 palavras, jargao, CTA fora da 1a pessoa — aponte a correcao concreta.",
+      "- REPETICAO (0.8): abertura, pergunta ou achado em destaque que repete uma sequencia do bloco [__recent__] (as ultimas sequencias frias REALMENTE produzidas) = 'VETO: repete <qual — data>'. Nomeie a culpada.",
+      LESSONS_VETO_RULE,
       "Para cada prospect: 1-2 linhas de parecer + os vetos, se houver. NAO reescreva os e-mails.",
       "Termine com a linha: LOTE: <APTO|COM VETOS>.",
       upstreamBlock(ctx.upstream),
@@ -1179,6 +1257,8 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o editor final de outbound da Ozvor. Abaixo: o lote [draft], a critica [critic] e o bloco verificado [prospects].",
       "Aplique TODOS os vetos e correcoes da critica e entregue o lote FINAL. Vetos sao lei: link no email 1 SAI, dado sem fonte SAI, link ozvor.com ganha ?from=<a CAMPANHA do proprio prospect no bloco [prospects]>, trilha errada corrige (geo -> /test ou raiz; aistack -> /ai-audit, com o link da oferta no email 2), frase longa encurta, template vira conversa.",
       "Mantenha a regra do email 1: texto puro, zero links/dominios, UMA pergunta, um achado real em palavras simples, assinado 'Otavio'. (Um validador de CODIGO reprova a saida se violar.)",
+      ANTI_GENERIC_SALES_RULE,
+      FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: EXATAMENTE o mesmo contrato do draft — blocos '=== PROSPECT: <nome> ===' com [EMAIL 1]/[EMAIL 2]/[EMAIL 3] (cada um com SUBJECT: e corpo) — para todos os prospects, nada antes nem depois. Lote vazio: repita a linha 'SEM PROSPECTS VERIFICADOS...' e nada mais.",
       upstreamBlock(ctx.upstream),
@@ -1206,6 +1286,51 @@ function criticSlugsWithLessons(): Set<string> {
     );
   }
   return criticSlugsWithLessonsCache;
+}
+
+/**
+ * 10.C.5 — STRUCTURAL_GUARDS(slug): TODAS as guardas estruturais que o prompt
+ * ESTÁTICO de um slug carrega, reapendadas POR CÓDIGO depois de qualquer
+ * override do tuner. Antes, só a LESSONS_VETO_RULE voltava — um override
+ * apagava ENGLISH_FIRST, ANTI_GENERIC_DRAFT_RULE, as regras de copy e o
+ * contrato de saída (a Sweep de 02/09 provou). A detecção é pelo TEXTO real
+ * do prompt estático (não por convenção de nome), então uma guarda nova entra
+ * na lista abaixo e todos os overrides a herdam. O contrato de saída é
+ * extraído do próprio prompt estático (da linha 'Formato de saida' em diante)
+ * e reafirmado verbatim. Memoizado por slug.
+ */
+const GUARD_CONSTANTS: readonly string[] = [
+  ENGLISH_FIRST,
+  ANTI_GENERIC_DRAFT_RULE,
+  ANTI_GENERIC_AB_DRAFT_RULE,
+  ANTI_GENERIC_SALES_RULE,
+  FINALIZE_COPY_RULE,
+  LESSONS_VETO_RULE,
+];
+const structuralGuardsCache = new Map<string, string[]>();
+export function structuralGuards(slug: string): string[] {
+  const cached = structuralGuardsCache.get(slug);
+  if (cached) return cached;
+  let staticText = "";
+  try {
+    staticText = PROMPTS[slug]?.({ config: {}, upstream: [] }) ?? "";
+  } catch {
+    staticText = "";
+  }
+  const guards: string[] = [];
+  for (const g of GUARD_CONSTANTS) {
+    if (staticText.includes(g)) guards.push(g);
+  }
+  // O contrato de saída do prompt estático, verbatim, da linha 'Formato de
+  // saida' até o fim do corpo estático (upstream não entra: ctx vazio = "").
+  const contract = /^Formato de saida[\s\S]*$/m.exec(staticText);
+  if (contract) {
+    guards.push(
+      `CONTRATO DE SAIDA (reafirmado por codigo — um override nunca o remove):\n${contract[0].trim()}`
+    );
+  }
+  structuralGuardsCache.set(slug, guards);
+  return guards;
 }
 
 /**
@@ -1243,9 +1368,17 @@ export function buildPrompt(
   if (!fn) return null;
   const override = overrides?.[slug];
   if (typeof override === "string" && override.trim() !== "" && isTunablePromptKey(slug)) {
-    const parts = [override.trim()];
-    // A régua de veto institucional nunca sai com o override — reapendada.
-    if (criticSlugsWithLessons().has(slug)) parts.push(LESSONS_VETO_RULE);
+    // 10.C.5: TODAS as guardas estruturais do prompt estático voltam por
+    // código depois do body do override (antes só a LESSONS_VETO_RULE
+    // voltava — English-first, anti-generico, copy e contrato de saida
+    // sumiam). criticSlugsWithLessons segue como cinto extra: se por algum
+    // motivo structuralGuards não trouxe a régua de veto de um crítico que a
+    // carrega, ela entra mesmo assim.
+    const guards = structuralGuards(slug);
+    const parts = [override.trim(), ...guards];
+    if (criticSlugsWithLessons().has(slug) && !guards.includes(LESSONS_VETO_RULE)) {
+      parts.push(LESSONS_VETO_RULE);
+    }
     parts.push(upstreamBlock(upstream));
     return parts.join("\n");
   }

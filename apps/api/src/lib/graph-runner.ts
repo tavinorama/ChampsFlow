@@ -54,12 +54,15 @@ import {
   PROMPT_TUNER_GRAPH,
   AB_EXPERIMENT_GRAPH,
   PROSPECT_BATCH_GRAPH,
+  BLOG_ANNOUNCE_GRAPH,
 } from "./agent-graphs";
 import { validateColdSequenceBatch, parseProspectsForCrm } from "./prospecting";
 import {
   buildPrompt,
   CONTENT_LESSONS,
   ANTI_GENERIC_RULE,
+  ANTI_GENERIC_SALES_RULE,
+  isSalesInjectionKey,
   parsePromptProposal,
   isTunablePromptKey,
   TUNABLE_PROMPT_KEYS,
@@ -230,6 +233,10 @@ export const GRAPH_REGISTRY: Record<string, GraphDefinition> = {
   // máquina nunca envia: o grafo termina em artefato aprovado + CRM; quem
   // dispara e-mail é o SmartLead, carregado pelo founder.
   [PROSPECT_BATCH_GRAPH.slug]: PROSPECT_BATCH_GRAPH,
+  // 10.C.7: o announce do blog de segunda, agora GATED e pelo runner padrão —
+  // o worker inicia (runBlogAnnounceCheck lê o sitemap por código); o
+  // /publish-async sem portão do workflow foi aposentado.
+  [BLOG_ANNOUNCE_GRAPH.slug]: BLOG_ANNOUNCE_GRAPH,
 };
 
 // ---------------------------------------------------------------------------
@@ -373,6 +380,17 @@ export interface SubstratePort {
    */
   recentPublishes?(input: { channel: string | null; limit: number }): Promise<
     Array<{ runId: string; node: string; graph: string; channel: string; publishedAt: string; summary: string }>
+  >;
+  /**
+   * 10.C.6 — the SALES sibling of recentPublishes: the newest succeeded
+   * OUTBOUND artifacts (prospect-batch finalize batches + followup-reply
+   * drafts), read from ops.agent_step/agent_run. Sales graphs publish nothing,
+   * so the publish-based [__recent__] never reaches them — this port closes
+   * that. Text recovery stays with the runner (Redis artifacts, TTL 7d).
+   * Optional and fail-open: absent port = sales cells run exactly as before.
+   */
+  recentSalesOutputs?(input: { limit: number }): Promise<
+    Array<{ runId: string; node: string; graph: string; finishedAt: string; summary: string }>
   >;
 }
 
@@ -576,6 +594,87 @@ export function channelDailyCap(channel: string): number | null {
   return channel.toLowerCase() === "linkedin" ? 2 : null;
 }
 
+/**
+ * 10.C.9 — em-dash guard, BY CODE, on the publish path. The copy rule "sem
+ * travessão" lived only in prompts; a draft that slipped through published
+ * anyway. Now ANY text carrying — (em) or – (en) is REFUSED at publish time:
+ * the step fails loudly, nothing is sent. Hyphens (-) stay legal.
+ */
+export const FORBIDDEN_DASH_RE = /[—–]/;
+export function hasForbiddenDash(text: string): boolean {
+  return FORBIDDEN_DASH_RE.test(text);
+}
+export const DASH_REFUSAL_SUMMARY = "travessao no texto (regra da casa, guard de codigo) — nada publicado";
+
+/**
+ * 10.C.2 — o veredito A/B HONESTO, como função PURA (exportada para teste).
+ * O coletor só escreve AGREGADOS DO CANAL (linkedinpage_* soma a página
+ * inteira, nunca um post): um "vencedor por variante" tirado desses totais
+ * seria estatística inventada. O que dá para computar por código, honesto:
+ *  - janelas IDÊNTICAS (mesmo publish timestamp) → totais iguais por
+ *    construção: empate técnico, sem vencedor;
+ *  - janelas DIFERENTES mas sobrepostas (o caso real: a válvula adiou a B) →
+ *    o delta A−B é a "diferenca de janela (agregado do canal)": mede a janela
+ *    exclusiva, NÃO a variante → confidence=low, dito na linha ab-winner;
+ *  - janelas DISJUNTAS (futuro: coletor por post) → confidence=high.
+ * A linha ab-winner mantém o contrato machine-findable e GANHA o campo
+ * confidence=<low|high> + o rótulo da limitação.
+ */
+export interface AbHarvest {
+  metric: string;
+  total: number;
+  n: number;
+  noData: boolean;
+}
+export function computeAbVerdict(input: {
+  a: AbHarvest;
+  b: AbHarvest;
+  axis: string;
+  /** [inícioIso, fimIso] da janela de cada harvest (publish → leitura). */
+  windowA?: [string, string] | null;
+  windowB?: [string, string] | null;
+  shiftNote?: string;
+}): { kind: "no-data" | "tie" | "winner"; summary: string; winner?: "A" | "B"; loserTotal?: number; winnerTotal?: number; liftPct?: number; confidence?: "low" | "high" } {
+  const { a, b, axis } = input;
+  const shiftNote = input.shiftNote ?? "";
+  if (a.noData || b.noData || a.n === 0 || b.n === 0) {
+    return {
+      kind: "no-data",
+      summary: `verdict A/B ${a.metric}: SEM DADO em pelo menos uma variante (A n=${a.n}, B n=${b.n}) — sem vencedor, nada gravado em ops.agent_outcome${shiftNote}`,
+    };
+  }
+  if (a.total === b.total) {
+    return {
+      kind: "tie",
+      summary: `verdict A/B ${a.metric}: empate (A=${a.total} B=${b.total}) — janelas de canal indistinguiveis, sem vencedor gravado${shiftNote}`,
+    };
+  }
+  // Confiança: só janelas DISJUNTAS permitiriam atribuir o delta a uma
+  // variante; janelas sobrepostas (o normal com agregado de canal) = low.
+  let confidence: "low" | "high" = "low";
+  const wa = input.windowA;
+  const wb = input.windowB;
+  if (wa && wb) {
+    const disjoint = wa[1] <= wb[0] || wb[1] <= wa[0];
+    confidence = disjoint ? "high" : "low";
+  }
+  const winner = a.total > b.total ? "A" : "B";
+  const w = Math.max(a.total, b.total);
+  const l = Math.min(a.total, b.total);
+  const liftPct = Math.round(((w - l) / Math.max(l, 1)) * 100);
+  return {
+    kind: "winner",
+    winner,
+    winnerTotal: w,
+    loserTotal: l,
+    liftPct,
+    confidence,
+    summary:
+      `ab-winner: axis=${axis} variant=${winner} lift=+${liftPct}% confidence=${confidence} ` +
+      `(metric=${a.metric} A=${a.total} B=${b.total} — diferenca de janela (agregado do canal), nunca leitura por post)${shiftNote}`,
+  };
+}
+
 /** Is this publish node targeting X? (channel string is case-insensitive.) */
 function isXPublish(node: GraphNode): boolean {
   return node.kind === "publish" && String(node.config?.["channel"] ?? "").toLowerCase() === "x";
@@ -761,6 +860,15 @@ export async function advanceRun(
             await substrate.finishStep(step.id, { status: "failed", summary: `x post over ${X_POST_LIMIT} chars, not sent — nothing published` });
             step.status = "failed";
             step.summary = `x post over ${X_POST_LIMIT} chars, not sent — nothing published`;
+          } else if (hasForbiddenDash(toSend)) {
+            // 10.C.9 — the same code guard as the fresh path: a deferred
+            // publish carrying an em/en dash is refused, out loud.
+            await substrate.finishStep(step.id, { status: "failed", summary: DASH_REFUSAL_SUMMARY });
+            step.status = "failed";
+            step.summary = DASH_REFUSAL_SUMMARY;
+            await telegram(
+              `🔴 PUBLISH RECUSADO (travessão) — graph ${def.slug} (run ${runId.slice(0, 8)}), canal ${channel}: o texto adiado carrega — ou –, proibidos pela regra da casa. NADA foi enviado; corrigir o finalize.`
+            );
           } else {
             const res = await hermes.publish({ channel, post: toSend });
             await recordCircuit(channel, res.ok);
@@ -1054,6 +1162,37 @@ export async function advanceRun(
     }
     return recentBlock;
   };
+  // 10.C.6 — the [__recent__] of SALES: last real cold sequences / follow-up
+  // replies, read from the durable record (recentSalesOutputs) with text
+  // recovered from Redis artifacts while the TTL lives. Lazy, once per
+  // advance, fail-open (no port / error / zero rows → no artifact).
+  let recentSalesBlock: string | null = null;
+  let recentSalesLoaded = false;
+  const loadRecentSalesBlock = async (): Promise<string | null> => {
+    if (recentSalesLoaded) return recentSalesBlock;
+    recentSalesLoaded = true;
+    if (!substrate.recentSalesOutputs) return null;
+    try {
+      const rows = await substrate.recentSalesOutputs({ limit: RECENT_PUBLISHES_LIMIT });
+      if (!rows || rows.length === 0) return null;
+      const parts: string[] = [
+        "ULTIMAS SEQUENCIAS/RESPOSTAS FRIAS REAIS (mais novas primeiro). Regua anti-repeticao: NAO repita abertura, pergunta nem achado em destaque de NENHUMA peca abaixo.",
+      ];
+      for (const row of rows.slice(0, RECENT_PUBLISHES_LIMIT)) {
+        const text = await artifacts.get(row.runId, row.node);
+        parts.push(`--- ${row.finishedAt.slice(0, 10)} · ${row.graph} ---`);
+        parts.push(
+          text
+            ? text.slice(0, RECENT_PIECE_CHAR_CAP)
+            : `(texto nao recuperavel — artefato Redis expirou apos 7d; registro duravel: ${row.summary.slice(0, 120)})`
+        );
+      }
+      recentSalesBlock = parts.join("\n");
+    } catch {
+      recentSalesBlock = null; // fail-open by contract; the port should not throw
+    }
+    return recentSalesBlock;
+  };
   for (const node of readyNodes(def, states)) {
     started.push(node.id);
     const parentStepId = node.dependsOn.length > 0 ? (byNode.get(node.dependsOn[0]!)?.id ?? null) : null;
@@ -1120,6 +1259,22 @@ export async function advanceRun(
             if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
           } catch {
             /* fail-open by contract; the port should not throw */
+          }
+        }
+      } else if (def.vpOwner === "sales") {
+        // 10.C.6 — o dono sales entrava no loop SEM as injeções anti-genérico:
+        // prospect-batch (e o follow-up, no seu próprio job) desenhavam cegos.
+        // Agora os slugs de vendas recebem [__lessons__] (crítico) e
+        // [__recent__] (as últimas sequências reais) — a allowlist é
+        // SALES_INJECTION_PROMPT_KEYS, nunca a do tuner (vendas segue
+        // não-tunável). Sem [__day__]/[__signals__]: cold email não é
+        // calendário editorial.
+        const promptSlug = typeof config["prompt"] === "string" ? (config["prompt"] as string) : null;
+        if (promptSlug && isSalesInjectionKey(promptSlug)) {
+          const recent = await loadRecentSalesBlock();
+          if (recent) upstream.unshift([RECENT_ARTIFACT, recent]);
+          if (node.kind === "debate") {
+            upstream.unshift([LESSONS_ARTIFACT, `${CONTENT_LESSONS}\n${ANTI_GENERIC_SALES_RULE}`]);
           }
         }
       }
@@ -1324,6 +1479,17 @@ export async function advanceRun(
         );
         continue;
       }
+      // 10.C.9 — em-dash guard BY CODE: "sem travessão" was only a prompt line
+      // and drafts slipped through. A text carrying — or – never reaches
+      // Postiz; the step fails loudly and the retry budget gives the finalize
+      // fresh shots upstream on the next run.
+      if (hasForbiddenDash(toSend)) {
+        await substrate.finishStep(stepId, { status: "failed", summary: DASH_REFUSAL_SUMMARY });
+        await telegram(
+          `🔴 PUBLISH RECUSADO (travessão) — graph ${def.slug} (run ${runId.slice(0, 8)}), canal ${channel}: o texto aprovado carrega — ou –, proibidos pela regra da casa (copy sem travessão). NADA foi enviado ao Postiz; corrigir o finalize.`
+        );
+        continue;
+      }
       const res = await hermes.publish({ channel, post: toSend });
       await recordCircuit(channel, res.ok);
       if (res.ok) {
@@ -1389,38 +1555,40 @@ export async function advanceRun(
         })
         .map((n) => n.id);
       const shiftNote = shifted.length > 0 ? ` — janela de comparacao deslocada pela valvula (${shifted.join(", ")})` : "";
-      if (a.noData || b.noData || a.n === 0 || b.n === 0) {
+      // 10.C.2 — janelas por variante para o cálculo de confiança: início =
+      // publish da variante (sinceNode do harvest), fim = leitura do harvest.
+      const windowOf = (harvestNodeId: string): [string, string] | null => {
+        const hNode = def.nodes.find((n) => n.id === harvestNodeId);
+        const sinceId = typeof hNode?.config?.["sinceNode"] === "string" ? (hNode.config["sinceNode"] as string) : "";
+        const start = sinceId ? byNode.get(sinceId)?.started_at : run.started_at;
+        const end = byNode.get(harvestNodeId)?.started_at;
+        return start && end ? [start, end] : null;
+      };
+      const verdict = computeAbVerdict({
+        a,
+        b,
+        axis,
+        windowA: windowOf(node.dependsOn[0] ?? ""),
+        windowB: windowOf(node.dependsOn[1] ?? ""),
+        shiftNote,
+      });
+      if (verdict.kind === "no-data") {
         // A mute source on EITHER side breaks the comparison — no winner, no
         // outcome row, said out loud (the 13/08 false-zero rule, doubled).
-        await substrate.finishStep(stepId, {
-          status: "succeeded",
-          summary: `verdict A/B ${a.metric}: SEM DADO em pelo menos uma variante (A n=${a.n}, B n=${b.n}) — sem vencedor, nada gravado em ops.agent_outcome${shiftNote}`,
-        });
+        await substrate.finishStep(stepId, { status: "succeeded", summary: verdict.summary });
         await telegram(
           `🟠 A/B SEM VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): '${a.metric}' sem dado em pelo menos uma variante (A n=${a.n}, B n=${b.n}). NADA gravado — sem zero falso, sem vencedor inventado.`
         );
-      } else if (a.total === b.total) {
-        // Equal totals = the channel-window measurement could not distinguish
-        // the variants. An invented winner would be fake statistics.
-        await substrate.finishStep(stepId, {
-          status: "succeeded",
-          summary: `verdict A/B ${a.metric}: empate (A=${a.total} B=${b.total}) — indistinguivel, sem vencedor gravado${shiftNote}`,
-        });
+      } else if (verdict.kind === "tie") {
+        await substrate.finishStep(stepId, { status: "succeeded", summary: verdict.summary });
         await telegram(
           `🟡 A/B EMPATE — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, '${a.metric}' identico nas duas janelas (A=${a.total}, B=${b.total}). Sem vencedor gravado — empate nao vira estatistica.`
         );
       } else {
-        const winner = a.total > b.total ? "A" : "B";
-        const w = Math.max(a.total, b.total);
-        const l = Math.min(a.total, b.total);
-        const liftPct = Math.round(((w - l) / Math.max(l, 1)) * 100);
-        await substrate.recordOutcome({ stepId, metric: `ab_${axis}`, valueBefore: l, valueAfter: w });
-        await substrate.finishStep(stepId, {
-          status: "succeeded",
-          summary: `ab-winner: axis=${axis} variant=${winner} lift=+${liftPct}% (metric=${a.metric} A=${a.total} B=${b.total})${shiftNote}`,
-        });
+        await substrate.recordOutcome({ stepId, metric: `ab_${axis}`, valueBefore: verdict.loserTotal!, valueAfter: verdict.winnerTotal! });
+        await substrate.finishStep(stepId, { status: "succeeded", summary: verdict.summary });
         await telegram(
-          `🧪 VEREDITO A/B — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, vencedora a variante ${winner} (+${liftPct}% em ${a.metric}: A=${a.total}, B=${b.total})${shiftNote}. Registrado em ops.agent_outcome (ab_${axis}).`
+          `🧪 VEREDITO A/B — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, variante ${verdict.winner} na frente (+${verdict.liftPct}% em ${a.metric}: A=${a.total}, B=${b.total}; confidence=${verdict.confidence} — o coletor agrega o CANAL, nao o post: isto e diferenca de janela, nao leitura por variante)${shiftNote}. Registrado em ops.agent_outcome (ab_${axis}).`
         );
       }
     } else if (node.kind === "verdict") {
