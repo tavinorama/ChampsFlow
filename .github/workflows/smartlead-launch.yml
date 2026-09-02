@@ -9,10 +9,10 @@ on:
   workflow_dispatch:
     inputs:
       campaign_id:
-        description: "ID da campanha (ex.: 3888686 aistack · 3783525 OZ-B · 3783524 OZ-A · 3783526 OZ-C)"
+        description: "ID da campanha, ou all (ex.: 3888686 aistack · 3783525 OZ-B · 3783524 OZ-A · 3783526 OZ-C)"
         required: true
       action:
-        description: "schedule | settings | sequences | start | pause"
+        description: "schedule | settings | sequences | start | pause | signatures | audit"
         required: true
         default: "settings"
       confirm:
@@ -65,10 +65,62 @@ jobs:
           def bad(r): return isinstance(r,dict) and ("_http_error" in r or "_error" in r)
 
           if ACTION=="schedule":
-              # Dias úteis, 08h-17h no fuso central US, 1.000 leads novas/dia no total (200 caixas × 5)
-              r=call("POST",f"/campaigns/{CID}/schedule",{"timezone":"America/Chicago","days_of_the_week":[1,2,3,4,5],
-                     "start_hour":"08:00","end_hour":"17:00","min_time_btw_emails":8,"max_new_leads_per_day":1000,"schedule_start_time":None})
+              # Founder 02/09: TODOS os dias, 09h-18h, fuso Nova Iorque; 1.000 leads novas/dia (200 caixas x 5)
+              r=call("POST",f"/campaigns/{CID}/schedule",{"timezone":"America/New_York","days_of_the_week":[0,1,2,3,4,5,6],
+                     "start_hour":"09:00","end_hour":"18:00","min_time_btw_emails":8,"max_new_leads_per_day":1000,"schedule_start_time":None})
               out({"ok":not bad(r),"action":"schedule","resp":str(r)[:200]}); raise SystemExit(1 if bad(r) else 0)
+
+          if ACTION=="signatures":
+              # Assinatura padrao em TODAS as caixas: "<Nome do dono>\nOzvor" (founder 02/09).
+              # Idempotente: so atualiza quando diferente. Nenhum endereco de caixa e impresso.
+              accounts, off = [], 0
+              while True:
+                  res=call("GET",f"/email-accounts?offset={off}&limit=100")
+                  rows=res if isinstance(res,list) else (res.get("data") if isinstance(res,dict) else None)
+                  if not rows: break
+                  accounts.extend(rows); off+=len(rows)
+                  if off>5000: break
+              if not accounts: out({"ok":False,"motivo":f"email-accounts falhou: {str(res)[:160]}"}); raise SystemExit(1)
+              updated=skipped=failed=0; first_err=None
+              for a in accounts:
+                  name=(a.get("from_name") or "").strip() or "Ozvor"
+                  sig=f"<p>{name}<br>Ozvor</p>"
+                  if (a.get("signature") or "").strip()==sig: skipped+=1; continue
+                  r=call("POST",f"/email-accounts/{a['id']}",{"signature":sig})
+                  if bad(r):
+                      failed+=1
+                      if first_err is None: first_err=str(r)[:200]
+                      if failed>=5 and updated==0: break
+                  else: updated+=1
+              out({"ok":failed==0,"action":"signatures","caixas":len(accounts),"atualizadas":updated,
+                   "ja_ok":skipped,"falhas":failed,"primeiro_erro":first_err}); raise SystemExit(0 if failed==0 else 1)
+
+          if ACTION=="audit":
+              # Auditoria de entregabilidade das sequencias (copy nossa, sem PII):
+              # links, palavras-gatilho de spam, imagens/pixels, tamanho, %signature%.
+              SPAM=re.compile(r"money back|guarantee|free\b|buy now|% off|discount|act now|limited time|no obligation|winner|congratulations|\$\d",re.I)
+              ids=[]
+              if CID.lower()=="all":
+                  cs=call("GET","/campaigns")
+                  ids=[(c["id"],c.get("name")) for c in cs] if isinstance(cs,list) else []
+              else: ids=[(CID,None)]
+              report=[]
+              for cid,cname in ids:
+                  sq=call("GET",f"/campaigns/{cid}/sequences")
+                  rows=sq if isinstance(sq,list) else (sq.get("data") if isinstance(sq,dict) else [])
+                  if not isinstance(rows,list): report.append({"campanha":cname or cid,"erro":str(sq)[:160]}); continue
+                  emails=[]
+                  for e in rows:
+                      body=e.get("email_body") or ""; subj=e.get("subject") or ""
+                      plain=re.sub(r"<[^>]+>"," ",body)
+                      links=re.findall(r"https?://[^\s\"<]+",body)
+                      emails.append({"seq":e.get("seq_number"),"delay":(e.get("seq_delay_details") or {}).get("delay_in_days"),
+                          "assunto":subj,"palavras":len(plain.split()),"links":links,
+                          "spam_gatilhos":sorted(set(m.group(0).lower() for m in SPAM.finditer(subj+" "+plain))),
+                          "tem_imagem":"<img" in body.lower(),"tem_signature_tag":"%signature%" in body,
+                          "corpo":plain[:500]})
+                  report.append({"campanha":cname or cid,"id":cid,"emails":emails})
+              out({"ok":True,"action":"audit","campanhas":report}); raise SystemExit(0)
 
           if ACTION=="settings":
               # Sem pixel de abertura, sem tracking de link (1º e-mail limpo), para no reply, texto puro
