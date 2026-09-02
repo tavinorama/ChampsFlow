@@ -1458,3 +1458,69 @@ No Critical findings. No secret literals in source code or bundles. No PII in lo
 **Next action**: B10 (AI Visibility Engine evidence-store slice) may proceed to implementation, but the code may NOT ship to production until EV-1, EV-2, EV-4, EV-5, and EV-6 (all HIGH) are closed by backend-coder/devops-engineer; EV-3 and EV-7 (MEDIUM) should close at the same Gate 5→6-equivalent checkpoint for this slice. EV-8 (third-party DSR procedure) does not block engineering start but MUST close before the evidence store is exposed to EU/BR users or before any third-party deletion request is received — founder should engage external counsel per EV-8. EV-9 is a founder action item (confirm Supabase Storage DPA coverage) with no fixed deadline but should close before Gate 7. No other Gate 7 hard stop (EU Art. 27 representative, LGPD Encarregado, GEO-D1/D2/D3) is affected by this decision.
 
 **Signed**: legal-privacy-officer — 2026-07-28
+
+---
+
+## Retroactive council verdicts — PRs #526, #547, #561, #565 — 2026-09-02 — Compliance & Ethics Council (legal-privacy-officer + ai-ethics-reviewer + security-compliance-officer)
+
+> The 02/09 sweep (PENDING 10.D.13) found three merged compliance-relevant PRs with no council verdict on this log, plus one gated feature merged the same day. The verdicts below are issued retroactively and honestly dated 2026-09-02 (the review date, not the merge dates). Conditions reference the sweep findings with path:line evidence in `docs/company/PENDING.md` Bloco 10.D.
+
+### PR #526 — DPIA/ROPA incremental update (G21–G26, SP-15–SP-18) — merged 2026-08-27
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+The 2026-08-24 DPIA Section 13-GEO + ROPA G21–G26/SP-15–SP-18 additions are methodologically sound (incremental, dated, jurisdiction-complete BR+EU+US) and are ratified. Conditions carried:
+1. [MEDIUM] GEO-D6 — retention policy for `ai_audit_order`/`lead_capture` (+`api_spend` window) still undefined in code. Owner: founder + backend-coder.
+2. [LOW] GEO-D7 — Telegram terms review; no-customer-PII constraint stands (see #561 condition 2 below for the violation found and fixed).
+3. [MEDIUM] GEO-D8 — Signal Engine provisioning gate unchanged.
+4. [LOW] GEO-D9 — Pexels/Notion/Postiz second-wave DPA review.
+
+### PR #547 — prospect-batch graph (5.A.1) + discovery-audit playbook — merged 2026-09-01
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+The prospecting graph is privacy-sound in design (only the prospect's own public site is read; only a business e-mail is extracted; founder gate before CRM write; machine never sends). Registered 2026-09-02 as ROPA G27/G30 with LIA. Conditions:
+1. [HIGH] **CAN-SPAM lines** — every outreach e-mail must carry the literal opt-out line ("Reply STOP…") enforced by the code validator; the physical-postal-address requirement (§5(a)(5)) is a founder-ACCEPTED risk (2026-09-02, recorded in `docs/departments/sales/sop-dia-do-disparo.md` §7) with a named closing action and a ~5k e-mails/month re-review trigger. Owner: backend-coder (validator) + founder (address).
+2. [MEDIUM] GEO-D10 — US-only geofence must move from prompt to CODE before Apify (SP-20) activation. Owner: backend-coder.
+3. [MEDIUM] **Retention job** — the G29 rule (no reply after 3 cycles or 12 months → erase `crm_contact`) has no code; manual purge by the founder until it ships. Owner: backend-coder.
+
+### PR #561 — follow-up graph (5.A.2, reply → intent → draft → founder gate → send) — merged 2026-09-01
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+The human-gated reply flow honors the house rule "the machine never sends without the founder". Registered 2026-09-02 as ROPA G28. Conditions:
+1. [HIGH] **Engine chain** — reply text may transit claude/codex ONLY; the kimi/Moonshot leg had no DPA/transfer basis and its removal (code-agent PR, same sweep) is a merge-blocking condition on any future engine-chain change touching prospect data.
+2. [HIGH] **PII masking on Telegram** — the founder gate must receive a masked summary only (no raw reply text, no prospect e-mail), per GEO-D7; the pre-fix behavior violated GEO-D7 (10.D.4) and the masking fix (code-agent PR, same sweep) is required for continued approval.
+3. [MEDIUM] `smartlead_event` retention rule (target 12 months) + inclusion in DSR cascade. Owner: backend-coder.
+4. [LOW] Reply SLA — the 96h gate timeout is a safety net, not an SLA; a short-timeout + escalation path is owed (10.D.8). Owner: engineering.
+
+### PR #565 — sphere-instagram image cards (feat, merged 2026-09-02, OFF until VPS patch + `IG_IMAGE_PUBLISH=1`)
+
+**Verdict**: APPROVED_WITH_CONDITIONS
+
+Own-marketing content through the standard gated pipeline (approval shows hook+caption; valve/circuit/retry respected); no personal data beyond ROPA G17/G24 scope. Conditions:
+1. [LOW] The feature is correctly reported OFF until the founder applies `docs/specs/ig-image-fase1.md` on the VPS and sets the env — R0 rule holds; do not report as live before then.
+2. [LOW] Published cards are AI-generated content — Art. 50 label posture per the 2026-09-02 ai-risk-assessment addendum (AIA-1 applies to video; image cards carry the AI-generated caption disclosure per existing G8/Art. 50 practice).
+
+**Signed**: Compliance & Ethics Council — 2026-09-02
+
+---
+
+## Gate 7 (go-live) — honest status entry — 2026-09-02 — Compliance & Ethics Council
+
+**Verdict**: NOT ISSUED — production predates the gate. This entry exists so the log stops being silent about it (Hard rule 3 has been violated since July; recording the violation honestly is the first step of the cure).
+
+**Facts**: the product has been LIVE in production on ozvor.com since 2026-07 (self-serve Stripe checkout, real audits, paid products $29/$49/$99, Growth/Agency plans) without a Gate 7 joint sign-off ever being logged. The go-live happened operationally (founder-led launch mode, AGENTS.md), outside the phase-gate sequence.
+
+**Open Gate 7 conditions (the honest list, as of 2026-09-02)**:
+1. [HARD STOP — outstanding] Encarregado LGPD Art. 41 — decided (the founder, 2026-07-31); instrument delivered 2026-08-07; **signature pending**.
+2. [HARD STOP — outstanding] GDPR Art. 27 EU representative — decided (the founder, EU-resident Lisbon, 2026-08-07); instrument delivered; **signature pending**; external-counsel confirmation of the controller-as-own-representative structure owed.
+3. [HIGH] Sub-processor DPAs: SP-1–SP-10 + SP-14 accepted (founder assertion 2026-08-10); **SP-11–SP-13, SP-15–SP-21 NOT ASSESSED** — SmartLead (SP-19) is the most urgent (holds prospect reply text in production).
+4. [HIGH] CAN-SPAM postal address — founder-accepted risk (see #547 conditions above); re-review at ~5k e-mails/month.
+5. [MEDIUM] GEO-D1 (EU inference-path confirmations), GEO-D3 (LGPD BR→US transfer basis), GEO-D6 (order/lead retention), GEO-D8 (Signal Engine provisioning), GEO-D10 (geofence in code), G29 retention job, `smartlead_event` retention, AIA-1 (Art. 50(4) video marking).
+6. [MEDIUM] External counsel review of ToS/Privacy before paid EU/BR expansion (US-first posture holds meanwhile).
+7. [HIGH — found by sweep B, recorded for completeness] Backup/restore does not exist (10.B.1) while DPIA R5 claimed "S3 every 6h" — DPIA correction + backup decision owed (owner: founder + devops; tracked in PENDING, outside this council's power to close).
+
+**Posture**: the council does not retroactively bless the launch. The product operates under a founder-accepted risk posture; a real Gate 7 verdict can be issued once conditions 1–3 close. Until then, every new compliance-relevant capability gets its own council entry (as done above), and this entry is the standing record that Gate 7 remains OPEN.
+
+**Signed**: Compliance & Ethics Council — 2026-09-02
