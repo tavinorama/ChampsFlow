@@ -1,6 +1,6 @@
-# Ozvor ICP — Canonical Card (v1, launch 2026-07-13)
+# Ozvor ICP — Canonical Card (v2 — Segment C added 2026-09-02)
 
-> Owner: VP Sales (operated by Hermes) · Created: 2026-07-13
+> Owner: VP Sales (operated by Hermes) · Created: 2026-07-13 · Updated: 2026-09-02 (ICP-2 / AI Stack merged as Segment C, per founder rule 01/09)
 > **This is the canonical address for "who do we sell to".** Full evidence,
 > firmographics detail, qualification scorecard, lead sources, sequences and
 > battle cards live in [first-week-playbook.md](first-week-playbook.md) §1–§6 —
@@ -17,9 +17,19 @@ nothing; they buy **Agency $549/mo** (multi-brand + white-label) and resell GEO.
 local services with 40%+ organic traffic): their organic is declining and their
 brand is absent when they ask AI "best [category] tool?"; they enter through the
 **free test → Kit $29 → Growth $99/mo** ladder, and local-service B buyers can
-also take **Ozvor Pages $99** (5-page site). **OrganicPosts by Ozvor** (DFY
-Sprint) is the escalation for either segment when they say "do it for me". A
-lead outside both segments is a polite no — see disqualifiers below.
+also take **Ozvor Pages $99** (5-page site). **Segment C — SMBs drowning in the wrong
+tools** (US, any niche, process/tool pain): they pay for 5+ tools and still do
+the boring work by hand; they enter through the **AI Audit Stack $49** (one-time,
+e-mail-mandatory) and escalate to **OrganicPosts $1.5k**. **OrganicPosts by
+Ozvor** (DFY Sprint) is the escalation for any segment when they say "do it for
+me". A lead outside these segments is a polite no — see disqualifiers below.
+
+**Separate-and-connected rule (founder, 2026-09-01)**: GEO (A/B) and AI Stack
+(C) are TWO ICPs with their own campaigns, own copy angles, and own entry
+offers — never mixed in one e-mail. But the CRM is ONE: the contact note records
+the origin track, and a lead can cross tracks (stack pain and visibility pain
+almost always co-occur). `prospect-batch` feeds BOTH tracks; each approved batch
+labels which campaign each prospect belongs to.
 
 ## Segment → product map (the ladder)
 
@@ -28,6 +38,7 @@ lead outside both segments is a polite no — see disqualifiers below.
 | A — Agencies | Free test on a client brand | **Agency $549/mo** (multi-brand, white-label, pitch mode) | OrganicPosts Sprint (DFY for their client) |
 | B — SMB SaaS / e-com | Free test → **Kit $29** | **Growth $99/mo** (includes Ozvor Pages builder) | OrganicPosts Sprint / Managed GEO |
 | B — Local services | Free test → **Ozvor Pages $99** (one-time site) | Growth $99/mo | OrganicPosts Sprint |
+| C — Wrong-tools SMBs (AI Stack) | Cold e-mail → **AI Audit Stack $49** (one-time) | Growth $99/mo (cross-track) | **OrganicPosts $1.5k** (the audit is the entry door) |
 
 Founder offer: **FOUNDER30** — 30% off, annual-only, first-100 with live
 verified count (no fake scarcity; the band hides the number when unverified).
@@ -70,6 +81,11 @@ AI answers · 5+ active client brands.
 **Segment B hot:** organic ≥40% of traffic and declining · active blog/LinkedIn
 · listed on G2/Capterra/Yelp · founder personally checked ChatGPT and isn't
 there · lost a named deal to an AI-visible competitor.
+
+**Segment C hot:** owner-operated US SMB (1–20 people) · pays for 5+ SaaS tools
+· visible manual/admin bottleneck (scheduling, quotes, follow-up, content) ·
+has tried a generic AI tool and dropped it · complains about tool cost or
+tool sprawl in public (reviews, Reddit, LinkedIn).
 
 ## Disqualifiers (do NOT pursue)
 
