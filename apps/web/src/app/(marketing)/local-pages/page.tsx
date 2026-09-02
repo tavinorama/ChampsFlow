@@ -25,6 +25,34 @@ import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNo
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 import { PagesFilmHero } from "./PagesFilmHero";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
+// Plan-derived figures — the same PLAN_LIMITS production enforces, so this
+// page can never again advertise a site count the product does not enforce
+// (2026-09-02 sweep, PENDING 10.A.2).
+import { PLAN_LIMITS, LIST_PRICE_USD } from "@organic-posts/shared";
+
+const AGENCY_SITES = PLAN_LIMITS.agency.max_landing_sites;
+const REGENS = PLAN_LIMITS.growth.pages_regens_per_site_month;
+
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:3001";
+
+/**
+ * Whether the $99 checkout is actually live (Stripe price env set on the API).
+ * Fail HONEST: any failure to verify → not available → the page advertises
+ * PreOrder instead of an InStock claim with a dead buy button (PENDING 10.A.5).
+ */
+async function fetchPagesAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${INTERNAL_API_URL}/api/pages/status`, {
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { available?: boolean };
+    return data.available === true;
+  } catch {
+    return false;
+  }
+}
 
 export const metadata: Metadata = {
   title: "Ozvor Pages — AI-search-ready 5-page websites | Ozvor",
@@ -42,21 +70,27 @@ export const metadata: Metadata = {
   },
 };
 
-const pagesJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "Product",
-  name: "Ozvor Pages",
-  description:
-    "A 5-page website generated from a business's real facts, reviews, and site content — interlinked, schema-rich, hosted on ozvor.com with a lead-capture form.",
-  brand: { "@type": "Brand", name: "Ozvor" },
-  offers: {
-    "@type": "Offer",
-    price: "99",
-    priceCurrency: "USD",
-    availability: "https://schema.org/InStock",
-    url: "https://ozvor.com/local-pages",
-  },
-};
+// availability is computed at render time from the live checkout status —
+// "InStock" only when the Stripe price env actually exists (PENDING 10.A.5).
+function pagesJsonLd(available: boolean) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: "Ozvor Pages",
+    description:
+      "A 5-page website generated from a business's real facts, reviews, and site content — interlinked, schema-rich, hosted on ozvor.com with a lead-capture form.",
+    brand: { "@type": "Brand", name: "Ozvor" },
+    offers: {
+      "@type": "Offer",
+      price: String(LIST_PRICE_USD.pages),
+      priceCurrency: "USD",
+      availability: available
+        ? "https://schema.org/InStock"
+        : "https://schema.org/PreOrder",
+      url: "https://ozvor.com/local-pages",
+    },
+  };
+}
 
 const STEPS: { num: string; title: string; body: string }[] = [
   {
@@ -97,7 +131,7 @@ const FAQS: { q: string; a: string }[] = [
   },
   {
     q: "What happens on the Free plan?",
-    a: "The Free plan doesn't include the site builder. Buying the $99 one-time unlocks the builder for 1 site. This works regardless of your plan tier. Growth includes 1 site as part of the subscription. Agency includes up to 15.",
+    a: `The Free plan doesn't include the site builder. Buying the $99 one-time unlocks the builder for 1 site. This works regardless of your plan tier. Growth includes 1 site as part of the subscription. Agency includes up to ${AGENCY_SITES}.`,
   },
   {
     q: "How do regenerations work?",
@@ -126,7 +160,8 @@ const PAGE_CSS = `
   .lp-cta-row { display: flex; gap: var(--space-3); justify-content: center; flex-wrap: wrap; }
 `;
 
-export default function LocalPagesSalesPage() {
+export default async function LocalPagesSalesPage() {
+  const available = await fetchPagesAvailable();
   return (
     <>
       {/* One scene: the answer the page makes possible, before the price */}
@@ -137,7 +172,7 @@ export default function LocalPagesSalesPage() {
           navigation for screen readers. */}
       <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))", fontFamily: "var(--font-family)", color: "var(--color-text)" }}>
       <style>{PAGE_CSS}</style>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(pagesJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(pagesJsonLd(available)) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} />
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}
@@ -161,7 +196,7 @@ export default function LocalPagesSalesPage() {
               boxShadow: "0 10px 32px rgba(39,201,138,0.28)",
             }}
           >
-            Get your site &mdash; $99 one-time
+            {available ? <>Get your site &mdash; $99 one-time</> : <>Coming soon &mdash; $99 one-time</>}
           </Link>
           <Link
             href="/pricing"
@@ -230,7 +265,7 @@ export default function LocalPagesSalesPage() {
           <div style={{ padding: "var(--space-6)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)", background: "var(--color-surface)", boxShadow: "var(--shadow-card)" }}>
             <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--color-gold-ink)" }}>Agency</div>
             <div style={{ marginTop: "var(--space-2)", fontSize: "2rem", fontWeight: 800, letterSpacing: "-0.02em" }}>$549<span style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-muted)" }}>/mo</span></div>
-            <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>Up to 15 sites &mdash; 1 per client brand. Same 5 regenerations/site/month.</p>
+            <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>Up to {AGENCY_SITES} sites &mdash; 1 per client brand. Same {REGENS} regenerations/site/month.</p>
           </div>
         </div>
         <div style={{ marginTop: "var(--space-5)", padding: "var(--space-4)", backgroundColor: "var(--color-surface-muted)", borderRadius: "var(--radius-md)", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6, textAlign: "center" }}>

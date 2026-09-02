@@ -162,7 +162,7 @@ export default function KitPage() {
           },
           {
             title: "Agency Plan",
-            why: "Monitor up to 10 brands, white-label reports, and a client approval workflow.",
+            why: "Monitor up to 10 brands, with white-label reports and shareable client report links.", // PENDING 10.A.4: approval workflow not built — say share links until it exists
             price: "$549/mo",
             plan: "agency", interval: "year",
             accent: "ghost",

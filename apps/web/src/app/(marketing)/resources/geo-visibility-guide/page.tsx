@@ -12,6 +12,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
+// Plan figures derived from packages/shared — the typed prompt depth had
+// drifted from what production enforces (2026-09-02 sweep, PENDING 10.A.1).
+import { PLAN_LIMITS, LIST_PRICE_USD, fmtUsd, founderAnnualUsd } from "@organic-posts/shared";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
@@ -661,10 +664,10 @@ export default function GeoVisibilityGuidePage() {
               margin: "0 0 var(--space-4) 0",
             }}
           >
-            Growth ($99/mo, or $831/yr with founder pricing) includes weekly
+            Growth (${LIST_PRICE_USD.growth}/mo, or ${fmtUsd(founderAnnualUsd("growth"))}/yr with founder pricing) includes weekly
             automated monitoring across ChatGPT, Claude, Perplexity, Gemini,
-            and Google AI Overview: 1 brand, 10 competitors, 250 prompts per
-            week, plus citation tracking and GEO content drafts. The guide is
+            and Google AI Overview: {PLAN_LIMITS.growth.max_brands} brand, {PLAN_LIMITS.growth.max_competitors} competitors, {PLAN_LIMITS.growth.prompts_per_audit}-prompt deep
+            audits, plus citation tracking and GEO content drafts. The guide is
             yours to keep either way.
           </p>
           <div

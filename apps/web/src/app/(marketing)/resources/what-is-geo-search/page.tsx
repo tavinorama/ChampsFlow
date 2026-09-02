@@ -19,6 +19,9 @@ import { Logo } from "../../../../components/brand/Logo";
 import { ResourceMarkdown } from "../../../../components/ResourceMarkdown";
 import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
+// Plan figures derived from packages/shared — the typed prompt depth had
+// drifted, and "client workflow" does not exist (PENDING 10.A.1/4).
+import { PLAN_LIMITS, LIST_PRICE_USD, fmtUsd, founderAnnualUsd, FOUNDER_DISCOUNT_PERCENT } from "@organic-posts/shared";
 
 export const metadata: Metadata = {
   title:
@@ -306,9 +309,9 @@ Here is the path, and it starts free.
 
 **Step 3: Ongoing monitoring (Growth & Agency).** Because where AI looks changes constantly, a one-time snapshot goes stale. The subscription plans re-run your probes every week, track your Ozvor AI Visibility Score over time, and surface any competitor gains or engine drops on your dashboard, plus keep feeding you the next content drafts to publish:
 
-- **Growth: $99/mo** (or **$831/yr** with founder pricing): 1 brand, 10 competitors, 250 prompts, weekly monitoring, citation tracking, and GEO content.
-- **Agency: $549/mo** (or **$4,611/yr** with founder pricing): up to 10 brands, white-label reports, and client workflow, built for agencies and multi-location operators.
-- **Founder pricing** is 30% off, annual only, for the first 100 customers.
+- **Growth: $${LIST_PRICE_USD.growth}/mo** (or **$${fmtUsd(founderAnnualUsd("growth"))}/yr** with founder pricing): ${PLAN_LIMITS.growth.max_brands} brand, ${PLAN_LIMITS.growth.max_competitors} competitors, ${PLAN_LIMITS.growth.prompts_per_audit}-prompt deep audits, weekly monitoring, citation tracking, and GEO content.
+- **Agency: $${LIST_PRICE_USD.agency}/mo** (or **$${fmtUsd(founderAnnualUsd("agency"))}/yr** with founder pricing): up to ${PLAN_LIMITS.agency.max_brands} brands, white-label reports, and shareable client report links, built for agencies and multi-location operators.
+- **Founder pricing** is ${FOUNDER_DISCOUNT_PERCENT}% off, annual only, for the first 100 customers.
 
 For done-for-you execution, where our team publishes and keeps improving it for you, there is **[OrganicPosts by Ozvor](https://ozvor.com/organicposts)**, our consultancy arm.
 
