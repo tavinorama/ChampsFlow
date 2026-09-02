@@ -1,6 +1,6 @@
 # OZvor — TUDO que falta (lista mestra v3)
 
-**Refeita:** 2026-08-24 · **atualizada 2026-08-27, 13h (Lisboa)** — Bloco 0 fechado com compra real · verificada por SQL de produção, HTTP público, `origin/main`, Railway, GitHub Actions **e o raio-X da VPS** (hermes-task-server.mjs 293 linhas + ozvor-video-job.mjs + crontab).
+**Refeita:** 2026-08-24 · **v4 em 2026-09-02** — 4 auditorias paralelas (produto/código · ops/segurança · agent-org/conteúdo · negócio/legal/docs) somadas à lista; Bloco 10 e CORREÇÕES no fim · verificada por SQL de produção, HTTP público, `origin/main`, Railway, GitHub Actions **e o raio-X da VPS** (hermes-task-server.mjs 293 linhas + ozvor-video-job.mjs + crontab).
 **Escopo:** absolutamente tudo — da primeira venda à **autonomia 100% com memória e auto-melhoria**.
 
 > **Como ler.** Dono: 👤 founder · ⚙️ engenharia · ⚖️ decisão. Esforço: S ≤2h · M ≤2 dias · L >2 dias. Estado = *funcionando em produção*, nunca "mergeado".
@@ -24,7 +24,7 @@
 | 0.6 | **Dois ICPs separados-e-conectados** (GEO tool + AI Stack $49): `prospect-batch` alimenta as DUAS trilhas; cada lote separa por produto | ⚙️ | S–M | 🟡 EM CONSTRUÇÃO 01/09 |
 | 0.7 | ~~Campanha AI Stack~~ 🟢 **CRIADA via API 01/09** (`campaign_id 3888686`, DRAFTED/pausada, 3 e-mails, 1º sem link validado por assert; jobs determinísticos no Actions com secret `SMARTLEAD_API_KEY`) — ativar + importar leads = founder | 👤 | S | ✅ |
 | 0.9 | **ANÁLISE SMARTLEAD (01/09, via API)**: 4 campanhas, TODAS DRAFTED, zero enviados — **7.881 leads já na conta**: Ozvor 1 = 5.454 (mista, classificar) · OZ-B Local services = 1.866 (ICP GEO) · OZ-A Agencies = 489 · OZ-C SaaS/ecom = 72. Lead-finder (2k créditos/mês) = só via UI. **Mês 1 dos 30k e-mails ~coberto sem Apify** | ⚙️ ✅ | — | 🟢 gravado |
-| 0.10 | Classificar as 5.454 leads de "Ozvor 1" entre as trilhas GEO/AISTACK (via API, agregados por nicho) + popular a trilha AISTACK com os 2k créditos do mês (UI, receita de filtros pronta) | ⚙️+👤 | S–M | 🔴 próximo passo de vendas |
+| 0.10 | ~~Classificar Ozvor 1~~ 🟢 feito 01/09 via API (keywords, ambíguo fica): **1.254 leads AISTACK-claras movidas para a campanha 3888686** (Ozvor 1: 5.454→4.200; total 7.881 constante = zero duplicata, confirmado por dedupe) · 🔴 resta gastar os **2k créditos** do lead-finder (UI) na trilha AISTACK | ⚙️✅+👤 | S | 🟡 metade |
 | 0.8 | **Anti-genérico permanente**: críticos recebem as últimas N publicações do canal e vetam repetição de ângulo/gancho/estrutura; genericidade = veto; ciclo verificar→criar→aplicar→auditar em TODA publicação, TODA plataforma (alcance, views, integrações, participação) | ⚙️ | M | 🟡 EM CONSTRUÇÃO 01/09 (a metade "auditar→aprender" já existe: harvest/verdict/memória/tuner — as migrações #531/#537 ligam) |
 
 > **Checklist do dia do disparo (1ª campanha real):** 1º e-mail SEM nenhum link (regra 27/08; deliverability) · links `?from=` só do 2º e-mail em diante · webhook por campanha (se o global não cobrir) · correlação do 1º toque é por e-mail do lead.
@@ -182,3 +182,112 @@
 **Antes:** #500 fome do tick · #502 E2E honesto · #486/#488 nurture 9 seqs · #489 custo/tenant · #490 dashboard · #491 CTA site-wide · #463/#478 tabelas $49 · #496/#497 Signal Engine consumidor · #451 MCP · 38 e-mails renderizados · specs (#498).
 
 *Fontes: varreduras 22–24/08 + raio-X da VPS 24/08. Painel vivo: artifact Operating Overview.*
+
+
+---
+
+## BLOCO 10 — VARREDURA 01-02/09 (4 auditorias paralelas, só evidência com path:line)
+
+> Itens NOVOS (não estavam na lista). Fontes: Sweep A produto/código · B ops/segurança · C agent-org/conteúdo · D negócio/legal/docs. Estado inicial 🔴 salvo indicação.
+
+### 10.A — Produto & honestidade (promessa × entrega)
+| # | O que | Dono | Esf. |
+|---|---|---|---|
+| 10.A.1 | **Chatbot vende plano que não existe**: Growth "250-prompt audits" (real 33), Agency "15 marcas, $36.60/marca" (real 10) — prompt fixo em `routes/chat.ts:80-81,133`; derivar de PLAN_LIMITS | ⚙️ | S |
+| 10.A.2 | **"15 marcas" vivo no site**: `agencies/page.tsx:94`, `local-pages/page.tsx:100,233` (real: 10) — não é só PRODUCTS.md (corrige 8.6) | ⚙️ | S |
+| 10.A.3 | "Priority support · 4h SLA" (pricing/agencies/faq/chat) × `/support` "1 business day"; PrimeTab "Chat with SLA" borrado — decidir UMA promessa e alinhar | ⚖️+⚙️ | S |
+| 10.A.4 | "Client approval workflow" vendido (pricing, agencies, kit, chat) sem código (0 ocorrências) — construir ou retirar | ⚖️+⚙️ | M |
+| 10.A.5 | Pages $99 anunciado "InStock" (JSON-LD + hero) com checkout OFF por env `STRIPE_PRICE_ID_PAGES` — setar env ou marcar indisponível | 👤 | S |
+| 10.A.6 | Metadata do /pricing e preços anuais/founder hardcoded (`pricing/page.tsx:33,37`, `PricingPlans.tsx:122-138`) — derivar de `pricing.ts` | ⚙️ | S |
+| 10.A.7 | Tier fantasma `starter` em mais lugares que 3.1 lista: `pricing.ts:77`, admin tile `:3626`, CHECK da migração 20260613 aceita 'starter' e 'pro' | ⚙️ | S |
+| 10.A.8 | Deletes otimistas engolindo erro no dashboard-v3 (API key "revogada" pode seguir viva; `page.tsx:1618,1834,1994,2093`) | ⚙️ | S |
+| 10.A.9 | Tabelas escritas e nunca lidas: `ccpa_requests` (**pedido CCPA cai no vazio**), `landing_events`, `waitlist`; mortas: `source_registry`, `workspaces` | ⚙️ | S |
+| 10.A.10 | Índices: `ops.agent_step (status, started_at)` e `(node, status, started_at)`; `crm_contact (updated_at)` | ⚙️ | S |
+| 10.A.11 | **Sitemap omite 9 rotas** vivas; **robots deixa indexáveis** `/admin`, `/dashboard-v3`, `/ai-audit/<token>`, `/r/<token>`; páginas de token sem `noindex` | ⚙️ | S |
+| 10.A.12 | Env duplicado/sem fallback: `FRONTEND_URL` (social-accounts) vs `WEB_ORIGIN` (26 pontos); `HERMES_TASK_URL` 3×; `EMAIL_FROM` vs `RESEND_FROM_ADDRESS`; confirmar caixas `dpo@`/`privacy@`/`noreply@` | ⚙️+👤 | S |
+| 10.A.13 | Dívida de testes honesta: 58 pulados sem DB (não 42) + 12 E2E `fixme` + 24 arquivos que testam texto-fonte; headers "TODO stub" stale nos providers LLM; `rls-client.ts` do worker com 10× `any`; analytics nunca ligado em `cookieConsent.ts` (raiz do 3.4) | ⚙️ | M |
+| 10.A.14 | Promessas de roadmap públicas (custom domain, code export em /local-pages) sem item; posts de vídeo com `youtubeId PLACEHOLDER` | ⚖️ | S |
+
+### 10.B — Ops, infra, segurança
+| # | O que | Dono | Esf. |
+|---|---|---|---|
+| 10.B.1 | **Backup NÃO EXISTE** (0 jobs) e o DPIA R5 afirma "S3 a cada 6h" — decidir Supabase PITR vs pg_dump e corrigir o DPIA (corrige 6.8) | ⚖️👤+⚙️ | M |
+| 10.B.2 | `deploy.yml` morto (environments/serviços inexistentes) = único rollback automatizado não roda — apagar ou reescrever | ⚙️ | S |
+| 10.B.3 | **Smoke pós-deploy não detecta deploy falhado com imagem velha servindo** (sem check de versão/SHA), não cobre worker, `/healthz`, hostname público — corrige 5.D.4 (🟡, não 🟢) | ⚙️ | S |
+| 10.B.4 | Vigia sem vigia: `agent-org-liveness` (*/30), `link-crawl` (sem Telegram), E2E noturno — sem absence-watch; padrão do blog só para o blog | ⚙️ | S |
+| 10.B.5 | **Worker sem health check, `restartPolicyMaxRetries: 5` → fica morto**; sem validação de env no boot; `REDIS_URL` default localhost; API `maxRetries: 3` idem | ⚙️ | S |
+| 10.B.6 | **VPS = executor único** (claude→codex→kimi no mesmo host); sem probe de reachability; silêncio do harvest não detectado; scripts/crontab da VPS não versionados no repo; sem runbook de restart | ⚙️+👤 | M |
+| 10.B.7 | **Conteúdo pendente de aprovação vive só no Redis** (TTL 7d, persistência desconhecida) — perda = `approved-content-lost` em massa; persistir artefato no Postgres na fronteira store/approval | ⚙️ | M |
+| 10.B.8 | **Telegram = canal único** de toda aprovação E todo alarme; sem fallback (Resend existe); token lido no boot; compare não constant-time em `telegram.ts:100` | ⚙️ | M |
+| 10.B.9 | Rotas públicas sem rate limit: `POST /api/kit/checkout`, `/api/pages/checkout`, `…/deliver` (custo LLM); limiters `.catch(()=>true)` fail-open sem log em landing-public/agency | ⚙️ | S |
+| 10.B.10 | `smartlead_event`: **PII sem RLS, sem grants, sem retenção, fora do `check-rls.sql`**; check-rls não cobre 11 tabelas — derivar lista de `pg_tables` | ⚙️ | S |
+| 10.B.11 | Retenção inexistente: `smartlead_event` (~0.5M linhas/ano a 30k e-mails/mês), `ops.agent_step`, `api_spend`, `landing_events`, `lead_capture` — job mensal + ROPA | ⚙️+⚖️ | S |
+| 10.B.12 | Rotação: runbook cobre 6 de ~17 segredos; **tabela de rotação vazia (nunca rotacionou nada)**; runbooks citam `docs/07-deploy.md` inexistente — 6.1/6.2 são L, não S | 👤+⚙️ | L |
+| 10.B.13 | `WEB_ORIGIN` opcional → CORS com credentials cai em localhost em produção; `ccpa.ts` engole falta de RESEND | ⚙️ | S |
+| 10.B.14 | Sem request/correlation id; tenant/user id crus no log HTTP | ⚙️ | S |
+| 10.B.15 | Filas do worker sem alarme (audits, nurture, publish, landing, drift); Stripe/SmartLead/Resend falhas só em log; liveness "vivo ≠ funcionando" (tick carimba mesmo com 100% de nós falhando) — expor `last_tick_failures`/`circuit_open` | ⚙️ | M |
+| 10.B.16 | `operating-system.md` descreve proteção de branch que não é a real; lista de required checks não está em lugar nenhum; **6.5 como está quebraria PRs** (E2E tem `paths:` filter) | ⚙️ | S |
+| 10.B.17 | Migrações aplicam no boot de api+worker (`migrate.js`): o portão real é o merge — docs/PENDING que dizem "founder aplica" estão errados (5.F.1/5.F.2/5.F.7 corrigidos: aplicadas 01/09) | ⚙️ docs | S |
+
+### 10.C — Agent org & conteúdo (loop de autonomia)
+| # | O que | Dono | Esf. |
+|---|---|---|---|
+| 10.C.1 | **`publishedToday` ignora `publish-a/publish-b`** → o par A/B fura o cap de 2/dia do LinkedIn (`graph-tick.ts:1648`) | ⚙️ | S |
+| 10.C.2 | **Veredito A/B compara janelas agregadas do canal, não variantes** (`readHarvest` LIKE-sum) — vencedor = efeito do dia da semana; corrige 5.F.4 | ⚙️ | M |
+| 10.C.3 | **Memória do sphere-linkedin cega a rejeições** (prefixo `linkedin_` vs métrica `linkedinpage_`; só sphere-x funciona); `blog_`/`reddit_` sem escritor | ⚙️ | S |
+| 10.C.4 | `daily-video` colhe `youtube_views` do vídeo LEGADO como resultado do post de LinkedIn — aprendizado contaminado | ⚙️ | S |
+| 10.C.5 | **Override do tuner apaga guardas**: só `LESSONS_VETO_RULE` é reanexada; ENGLISH_FIRST, ANTI_GENERIC_DRAFT_RULE, copy rules e contrato de saída somem (`graph-prompts.ts:1244-1251`) — corrige 5.F.2 | ⚙️ | S |
+| 10.C.6 | **prospect-batch e follow-up fora do anti-genérico/[__recent__]/[__lessons__]** (owner sales não recebe injeção); `blog-generate.py` = 2ª implementação (drift; "British English"; sem regra 15-17/≤12 palavras) | ⚙️ | S |
+| 10.C.7 | **Blog announce no LinkedIn+X via `/publish-async` SEM portão, sem crítico, sem válvula, fora de `ops.agent_step`** (`blog-autopublish.yml:148-158`) — corrige 1.1 ("única exceção" é falso) | ⚙️ | S |
+| 10.C.8 | Brief de 5ª do sphere-blog não alimenta o autopublish de 2ª (THEME só manual) | ⚙️ | M |
+| 10.C.9 | Sem guard de em-dash por código no publish dos grafos; finalize/synthesize sem "≤12 palavras"; "sonho honesto" e "fonte inline" ausentes dos drafts (tabela por prompt na Sweep C) | ⚙️ | S |
+| 10.C.10 | Memória newest-wins sem acumulação (mês N+1 apaga N); lições de incidente não chegam à consolidação/tuner; tuner sem medição de efeito nem auto-rollback | ⚙️ | M |
+| 10.C.11 | Watchdog/CPO/discovery propõem no vazio (sem ledger de propostas, dedupe, "agiu?") | ⚙️ | M |
+| 10.C.12 | LinkedIn cap-2 com atraso permanente de 1 dia quando há extras; `content-experiment` e `ab-brief` hardcoded no LinkedIn | ⚙️ | S |
+| 10.C.13 | Timeout de aprovação em massa (3 esferas/dia) vira postmortem + treina tuner/memória com a ausência do founder; `FOLLOWUP_BATCH_CAP` é por scan (5/30min = 240/dia) | ⚙️ | S |
+| 10.C.14 | **Ruído no Telegram ~150-200 msgs/semana** (só ~15% aprovações); sem modo digest; após Fase 2 do vídeo a válvula 6 estoura (decisão "6 vs 7" está no STATE, não no Bloco 8) | ⚙️+⚖️ | M |
+| 10.C.15 | Loop de vendas sem veredito: taxa de resposta nunca vira `agent_outcome`; `metricLike` com `_` sem escape (wildcard SQL) | ⚙️ | S |
+| 10.C.16 | Fase 2 do vídeo exige payload de publish com mídia (`hermes.publish` só {channel, post}) — 1.4 subestima; vigias de vídeo não veem IG/TikTok/YT após Fase 2 (1.8); STATE R7: legado também posta thread no X sem portão (verificar `grep twitter /root/ozvor-video-job.mjs`) | ⚙️+👤 | M |
+| 10.C.17 | **prospect-batch v1: 1º lote (02/09, aprovado 08h10) rendeu 0 e-mails extraídos de site** → o motor "engine sugere + raspa site" não escala; migrar a fonte para SmartLead lead-finder/Apify (5.A.6) | ⚙️ | M |
+
+### 10.D — Negócio, legal, docs
+| # | O que | Dono | Esf. |
+|---|---|---|---|
+| 10.D.1 | **CAN-SPAM: cold emails sem endereço físico nem opt-out** (kit, campanha 3888686, validador, follow-up) — decidir opt-out textual ("reply STOP") + linha de endereço em TODOS; adicionar ao validador de código ANTES do GO | ⚖️+⚙️ | S 🔴 |
+| 10.D.2 | **SmartLead não é sub-processador registrado** (ROPA, `/legal/sub-processors`, privacy); guarda texto de replies desde 10/08 | ⚖️ | S |
+| 10.D.3 | prospect-batch = nova atividade ROPA (raspa sites, grava e-mails) + LIA + **geofence US em código** (hoje só no prompt) | ⚖️+⚙️ | M |
+| 10.D.4 | Follow-up manda resposta do prospect para claude→codex→**kimi/Moonshot** (sem DPA/transferência) e para o Telegram — **viola GEO-D7** ("zero PII de cliente no Telegram") | ⚖️+⚙️ | S |
+| 10.D.5 | Reciclagem infinita sem regra de retenção de `crm_contact` (N ciclos ou 12 meses → apagar) + ROPA; dossiê no ROPA; DSR export/erasure cobrindo `crm_contact`/`smartlead_event` | ⚖️+⚙️ | M |
+| 10.D.6 | **Kit da trilha GEO não existe** (só aistack); `first-week-playbook §4` anterior às regras; ICP-2 fora do `icp.md` canônico; battle cards paradas em 02/07 e sem AI Stack; objeções só GEO | ⚙️ | M |
+| 10.D.7 | **Reembolso do $49 prometido no e-mail 2 sem lastro** em `/refund`/ToS §4; `hello@` vs `support@` para refund; recibos/faturas dos one-time (Stripe receipts ou `invoice_creation`) | ⚖️+⚙️ | S |
+| 10.D.8 | SLA de reply inexistente: portão do follow-up com 96h = reply quente pode morrer calado — timeout curto + escalação | ⚙️ | S |
+| 10.D.9 | SOPs faltando como docs: checklist do dia do disparo, carga SmartLead trilha GEO, "2k créditos antes de Apify", reciclagem (quem baixa o CSV), uso do dossiê | ⚙️ | S |
+| 10.D.10 | **STATE files todos desatualizados** (company diz "$49 dá 503", produto congelado em 06/11, sales/CX/finance/legal/marketing/engineering em launch-week ou Q2 "Organic Posts"); CLAUDE.md meta stale | ⚙️ | M |
+| 10.D.11 | PRODUCTS.md/COST-MODEL.md: faltam Pages $99, pack de créditos, AIAUDIT15, cupom de retenção, custos medidos por `api_spend`; **5.C.4 usa premissa impossível (25 marcas; limite é 10)**; vendor/cost tracker vazio | ⚙️+⚖️ | S |
+| 10.D.12 | KB de suporte sem $49/Pages/créditos/chat; ferramenta de suporte "TBD" desde 08/07; link-crawl nunca rodado sobre os 38 e-mails de nurture | ⚙️ | S |
+| 10.D.13 | Conselho de compliance: **#526, #547, #561 sem veredito no gate-log**; Gate 7 nunca emitido (regra 3 violada desde julho) | ⚖️ | S |
+| 10.D.14 | Cookie Policy não cobre o sessionStorage de atribuição (#527); privacy "90 dias" × ROPA G16 "12 meses"; representante Art.27 "not designated" na privacy vs decisão "eu mesmo" | ⚖️ | S |
+| 10.D.15 | AI risk assessment sem a exceção do vídeo (1.1) nem marcação Art. 50(4) dos vídeos | ⚖️ | S |
+| 10.D.16 | AGENTS.md: migrações classificadas MEDIUM/auto-merge (regra da casa = nunca); "Hermes approval" vs auto-merge; convenção clone-em-/tmp não documentada; WORKFLOW 18 vs 40 agentes; 12 docs "TrustIndex"; Approval Queue "not planned" vs 5.E.2 | ⚙️ | S |
+| 10.D.17 | Órfãos do legal STATE: trademark Ozvor BR/EU/US, DPA contra-assinado, counsel externo pré-venda EU/BR, `dpo@` routing, GEO-D1..D5, EV-1..9; 7.3 mal especificado (11 DPAs já aceitos; faltam 7 NOT ASSESSED + SmartLead/Kimi/Apify/GitHub) | ⚖️👤 | M |
+
+### CORREÇÕES à lista (o que estava ERRADO)
+- **1.1** "única exceção viva" → falso: o blog announce (LinkedIn+X) publica sem portão (10.C.7); legado pode postar thread no X (10.C.16).
+- **5.F.1/5.F.2/5.F.7** "DESLIGADA até founder aplicar migração" → migrações aplicadas 01/09 (boot aplica; portão real = merge). Estado: ON, primeiras execuções tuner 08/09 e memória 01/10.
+- **5.F.4** "válvula respeitada / vencedor por código" → cap não conta o par (10.C.1) e o veredito é agregado (10.C.2).
+- **5.F.2** "allowlist dura" → override apaga guardas (10.C.5).
+- **5.D.4** smoke 🟢 → 🟡 (10.B.3).
+- **6.8** "nunca exercitado" → backup NÃO EXISTE (10.B.1).
+- **6.1/6.2** S/M → L (10.B.12).
+- **6.5** "1 comando" → precisa mudar o workflow antes (10.B.16).
+- **7.5** "feito" → defasado por #547/#561/reciclagem/dossiê/SmartLead (10.D.2-5).
+- **7.3** → 11 DPAs já aceitos; escopo real em 10.D.17.
+- **8.6** → número errado está em produção e no chatbot, não só no PRODUCTS.md (10.A.1/2).
+- **2.8** "engenharia concluída" → sitemap/robots/noindex pendentes (10.A.11).
+- **0.7** campanha "criada e validada" → copy não cumpre CAN-SPAM (10.D.1) — **corrigir antes de ativar**.
+- **Bloco 0 "fechado"** → 0.5 segue 🟡 e 10.D.1 bloqueia o disparo.
+- **5.C.4** premissa de 25 marcas inválida (10.D.11).
+- **5.E.2** contradiz STATE ("not planned") — decidir.
+- **Contagem "42 testes pulados"** → 58 + 12 fixme + 2 (10.A.13).
+
+**Apêndice 02/09:** classificação Ozvor 1 concluída (1.254 → aistack, zero duplicata) · 1º lote prospect-batch rodou e foi aprovado (0 e-mails úteis → 10.C.17) · postmortem-scan 2º dia quieto · sphere-reddit 1º brief (SEM DADO, envs 4.1) · bug de créditos (107.900) corrigido no banco + fix #566 · migrações #531/#537 aplicadas (memória+tuner ON).
