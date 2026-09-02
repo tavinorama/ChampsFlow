@@ -24,7 +24,8 @@ import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
-import { buildProspectBatchBlock } from "../lib/prospect-probe";
+import { buildProspectBatchBlock, crmDedupSets } from "../lib/prospect-probe";
+import { redisSpecMailbox, apiSpendLedger } from "../lib/apify-source";
 import { renderCardPng } from "../lib/card-render";
 import { crmNoteFor } from "../../../api/src/lib/prospecting";
 import { PLAN_PRICE_USD } from "../../../../packages/shared/src/plan-limits";
@@ -1420,7 +1421,27 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // dos ports de I/O do tick: a MESMA cadeia hermes (callWithFallback,
         // alarmes NX) e HTTP de verificação. Todo número do bloco é código.
         if (input.source === "prospects") {
-          return buildProspectBatchBlock({ task: hermesTaskCall });
+          // Fonte (10.C.17/5.A.6): mailbox Redis para um spec Apify
+          // confirmado pelo founder (consumido no read; sem spec = fonte
+          // engine, comportamento historico) + ledger api_spend (orcamento
+          // mensal) + dedup contra crm_contact (e-mail e dominio).
+          let existingCrm: { emails: Set<string>; domains: Set<string> } | undefined;
+          try {
+            const rows = await sql<{ email: string }[]>`
+              /* prospect:crm-dedup */
+              SELECT email FROM crm_contact LIMIT 20000`;
+            existingCrm = crmDedupSets(rows.map((r) => r.email));
+          } catch {
+            existingCrm = undefined; // tabela ausente → sem dedup, honesto
+          }
+          return buildProspectBatchBlock({
+            task: hermesTaskCall,
+            apify: {
+              mailbox: redisSpecMailbox(redis),
+              ledger: apiSpendLedger(async (q, params) => (await sql.unsafe(q, params as never[])) as unknown as Array<Record<string, unknown>>),
+            },
+            ...(existingCrm ? { existingCrm } : {}),
+          });
         }
         return buildSnapshot(sql, input.source, input.days, input.metricPrefix);
       },
