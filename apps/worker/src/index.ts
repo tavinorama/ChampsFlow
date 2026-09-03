@@ -44,6 +44,7 @@ import { processDriftControlJob } from "./jobs/drift-control";
 import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly, runProspectBatchWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { runRecycleScanWeekly } from "./jobs/recycle-scan";
+import { runRetentionMonthly } from "./jobs/retention";
 import { runFollowupScan } from "./jobs/followup-scan";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -513,6 +514,38 @@ async function registerFollowupScanSchedule(): Promise<void> {
   );
   logger.info("followup_scan_schedule_registered", { cron: FOLLOWUP_SCAN_CRON });
 }
+
+// retention (10.B.11): monthly purge — 1st of the month, 04:00 UTC (off-peak,
+// before the 05:00 monitor-reconcile and the 06:30 monthly consolidation).
+// GATED OFF by default: without RETENTION_ENABLED=1 every run is a dry-run
+// that logs candidate counts + Telegram summary and deletes NOTHING. Windows
+// (mirrored in docs/compliance/ropa.md): smartlead_event 12m, ops.agent_step
+// 6m (runs stay), landing_events 13m, api_spend 24m.
+const retentionWorker = new Worker(
+  "retention",
+  async () => runRetentionMonthly(getGraphSql()),
+  { connection, concurrency: 1, autorun: true }
+);
+const retentionQueue = new Queue("retention", { connection });
+const RETENTION_CRON = process.env["RETENTION_CRON"] ?? "0 4 1 * *";
+
+async function registerRetentionSchedule(): Promise<void> {
+  await retentionQueue.add(
+    "retention-monthly",
+    {},
+    { jobId: "retention-monthly-repeat", repeat: { pattern: RETENTION_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("retention_schedule_registered", {
+    cron: RETENTION_CRON,
+    enabled: process.env["RETENTION_ENABLED"] === "1",
+  });
+}
+void registerRetentionSchedule().catch((err: Error) => {
+  logger.error("retention_schedule_register_failed", { message: err.message?.slice(0, 200) });
+});
+retentionWorker.on("failed", (job, err) => {
+  logger.error("retention_job_failed", { job_id: job?.id, message: err?.message?.slice(0, 200) });
+});
 
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
@@ -1018,6 +1051,7 @@ const PULSED_WORKERS: Array<[Worker, string]> = [
   [spherePlatformsWorker, "sphere-platforms"],
   [landingWorker, "landing-generate"],
   [monitorReconcileWorker, "monitor-reconcile"],
+  [retentionWorker, "retention"],
 ];
 for (const [w, name] of PULSED_WORKERS) wireQueuePulse(w, connection, name);
 
@@ -1084,6 +1118,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await recycleScanQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
+    await retentionWorker.close();
+    await retentionQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,
