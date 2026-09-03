@@ -477,3 +477,67 @@ export function reconcileLoopTasks(
   stats.inserted = allRows.length;
   return { rows: allRows, stats };
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — the dogfood loop.
+//
+// Our own brand's open Do Next cards are the best possible content brief: they
+// name the exact buyer questions AI answers without us, and the sources it
+// leans on instead. Feeding them to the content machine closes our own loop —
+// and a product whose own maker uses it daily is the proof that it works.
+//
+// Rendered as a [__gaps__] block for the sphere briefings, deliberately
+// pattern-copying signalsBlock()/[__signals__]: same "SEM DADO is a valid
+// answer, never invent" contract, same shape, so the prompts treat both the
+// same way.
+// ---------------------------------------------------------------------------
+
+/** One open card of our own brand, as the content cells need to see it. */
+export interface OwnGap {
+  vector: string;
+  gap: string;
+  action: string;
+  priority: number;
+  evidence?: string | null;
+  metric?: string | null;
+}
+
+/**
+ * Render our own open visibility gaps as the [__gaps__] prompt block.
+ *
+ * Honesty contract (identical to signalsBlock): an empty list produces an
+ * explicit SEM DADO line, never an empty block that a model would fill with
+ * invention. Facts come from plan_task rows written by the audit loop.
+ */
+export function ownGapsBlock(
+  gaps: OwnGap[],
+  opts?: { max?: number; brand?: string; source?: string }
+): string {
+  const max = opts?.max ?? 6;
+  const brand = opts?.brand ?? "Ozvor";
+  const src = opts?.source ?? `Do Next da propria marca (${brand}), gerado pelo audit`;
+  if (gaps.length === 0) {
+    return (
+      `NOSSOS GAPS DE VISIBILIDADE: SEM DADO (${src}). ` +
+      `Nao invente queries nem fontes; siga com o resto do briefing.`
+    );
+  }
+  const sorted = [...gaps].sort((a, b) => b.priority - a.priority || a.gap.localeCompare(b.gap));
+  const lines = [
+    `NOSSOS GAPS DE VISIBILIDADE REAIS (${src}). ` +
+      `Sao as perguntas de comprador que a IA responde HOJE sem nos citar — ` +
+      `escrever sobre elas e o trabalho que move o nosso proprio score:`,
+  ];
+  for (const g of sorted.slice(0, max)) {
+    const bits = [
+      `prioridade=${g.priority}`,
+      `vetor=${g.vector}`,
+      `gap: ${g.gap}`,
+      `acao: ${String(g.action).slice(0, 220)}`,
+      g.metric ? `metrica: ${String(g.metric).slice(0, 120)}` : null,
+    ].filter(Boolean);
+    lines.push(`- ${bits.join(" · ")}`);
+  }
+  if (sorted.length > max) lines.push(`(+${sorted.length - max} outros gaps abertos)`);
+  return lines.join("\n");
+}
