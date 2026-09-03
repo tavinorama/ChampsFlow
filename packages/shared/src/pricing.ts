@@ -40,7 +40,7 @@ export type AnnualTier = "growth" | "agency";
  * subscriber — which is LOWER than the monthly sticker price. Source of truth for
  * received-value MRR (see receivedMonthlyUsd + apps/api/src/lib/received-mrr.ts).
  */
-export const LIST_PRICE_ANNUAL_USD: Record<string, number> = {
+export const LIST_PRICE_ANNUAL_USD: Record<AnnualTier, number> = {
   growth: 831,
   agency: 4611,
 };
