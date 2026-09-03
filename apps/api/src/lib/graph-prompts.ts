@@ -290,6 +290,7 @@ function shortVideoFamily(
         "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
         "Para cada um: 1 linha do angulo + 1 linha do GANCHO de 1 segundo que ele rende (a frase exata).",
         "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
         "Sem inventar dado: numero so com certeza.",
         "Formato de saida: lista numerada 1-4, nada antes nem depois.",
         upstreamBlock(ctx.upstream),
@@ -374,6 +375,7 @@ function instagramCardFamily(): Record<string, (ctx: PromptContext) => string> {
         "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
         "Para cada um: 1 linha do angulo + 1 linha do HOOK de card que ele rende (a frase exata, <=9 palavras).",
         "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
         "Sem inventar dado: numero so com certeza.",
         "Formato de saida: lista numerada 1-4, nada antes nem depois.",
         upstreamBlock(ctx.upstream),
@@ -454,6 +456,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Sem inventar dado: se nao tiver certeza de um numero, nao use numero.",
       "Formato de saida: lista numerada 1-5, nada antes nem depois.",
       "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -909,6 +912,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
       "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -973,6 +977,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
       "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 
@@ -1037,6 +1042,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
       "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 

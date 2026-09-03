@@ -1,0 +1,61 @@
+name: E2E Tests (twin)
+
+# 10.B.16 / 6.5 — the twin that makes "Playwright E2E" REQUIRABLE.
+#
+# Problem: e2e.yml only auto-runs on PRs touching high-risk paths (its
+# `paths:` filter). If the founder flipped "Playwright E2E" to a required
+# branch-protection check TODAY, every PR that does NOT touch those paths
+# would hang forever on "Expected — waiting for status" and never merge.
+#
+# This is GitHub's documented pattern for "required check with a paths
+# filter": a twin workflow with the INVERSE filter (`paths-ignore` with the
+# exact same list) whose job has the IDENTICAL name and simply reports
+# success. Every PR therefore produces a "Playwright E2E" check run:
+#   - touches a high-risk path → e2e.yml runs the real browser suite;
+#   - touches nothing high-risk → this twin reports an instant pass.
+# A PR touching BOTH kinds of files triggers both; the real suite's result is
+# the one that matters and the twin's instant pass cannot mask it arriving —
+# GitHub waits for every run of a required context that is in progress.
+#
+# KEEP THE TWO LISTS IN SYNC: this paths-ignore list must be byte-identical
+# to e2e.yml's `paths:` list. Drift here silently un-gates PRs.
+#
+# Activation is a founder action (branch protection): add "Playwright E2E" to
+# the required checks ONLY after a stable nightly green streak — see
+# docs/runbooks/branch-protection.md.
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "apps/web/src/middleware.ts"
+      - "apps/web/src/app/**/login/**"
+      - "apps/web/src/app/**/account/**"
+      - "apps/web/src/app/**/admin/**"
+      - "apps/web/src/app/**/kit/**"
+      - "apps/web/src/app/api/**"
+      - "apps/api/src/routes/billing.ts"
+      - "apps/api/src/routes/checkout.ts"
+      - "apps/api/src/auth/**"
+      - "tests/e2e/**"
+      - "playwright.config.ts"
+      - ".github/workflows/e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    # MUST match e2e.yml's job name exactly — branch protection matches on the
+    # check-run name, and this is what lets the same required context be
+    # satisfied by either workflow.
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: No high-risk paths touched — E2E not applicable, reporting pass
+        run: |
+          echo "This PR touches none of the high-risk paths that trigger the real"
+          echo "browser suite (see e2e.yml). The fast Smoke job in ci.yml remains"
+          echo "the per-PR boot/route gate. Reporting success so a future required"
+          echo "'Playwright E2E' check never wedges low-risk PRs."

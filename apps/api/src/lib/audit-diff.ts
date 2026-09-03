@@ -34,6 +34,13 @@ export interface AuditSnapshot {
   /** trait → 0..1, from provider_breakdown.content.traits */
   contentTraits: Record<string, number>;
   providersUsed: string[];
+  /**
+   * Distinct source domains the engines cited in this audit (from
+   * citation_check.sources). Optional so every existing caller/test keeps
+   * working; when absent the sources diff is simply empty rather than
+   * claiming everything was lost.
+   */
+  sourceDomains?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +87,13 @@ export interface AuditDiff {
     changed: Array<{ trait: string; from: number | null; to: number | null; delta: number | null }>;
   };
   providers: { added: string[]; removed: string[] };
+  /**
+   * Which sources the AI started/stopped leaning on between the two runs.
+   * "AI stopped citing g2.com and started citing reddit.com" is the sentence
+   * a customer can actually act on. Empty when either snapshot has no source
+   * data — never inferred.
+   */
+  sources: { gained: string[]; lost: string[] };
 }
 
 const probeKey = (p: AuditProbe): string =>
@@ -179,6 +193,22 @@ export function compareAudits(from: AuditSnapshot, to: AuditSnapshot): AuditDiff
   const provFrom = new Set(from.providersUsed);
   const provTo = new Set(to.providersUsed);
 
+  // --- Sources the engines leaned on ---
+  // Only meaningful when BOTH runs carry source data: with one side missing,
+  // every domain would look "gained" or "lost" when nothing actually moved.
+  const srcFrom = from.sourceDomains;
+  const srcTo = to.sourceDomains;
+  const srcGained: string[] = [];
+  const srcLost: string[] = [];
+  if (srcFrom && srcTo) {
+    const a = new Set(srcFrom.map((d) => d.toLowerCase()));
+    const b = new Set(srcTo.map((d) => d.toLowerCase()));
+    for (const d of b) if (!a.has(d)) srcGained.push(d);
+    for (const d of a) if (!b.has(d)) srcLost.push(d);
+    srcGained.sort();
+    srcLost.sort();
+  }
+
   return {
     from: { auditId: from.auditId, createdAt: from.createdAt },
     to: { auditId: to.auditId, createdAt: to.createdAt },
@@ -196,5 +226,6 @@ export function compareAudits(from: AuditSnapshot, to: AuditSnapshot): AuditDiff
       added: [...provTo].filter((p) => !provFrom.has(p)),
       removed: [...provFrom].filter((p) => !provTo.has(p)),
     },
+    sources: { gained: srcGained, lost: srcLost },
   };
 }

@@ -82,6 +82,18 @@ export const DAY_ARTIFACT = "__day__";
 /** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
 export const SIGNALS_ARTIFACT = "__signals__";
 /**
+ * Upstream key carrying OUR OWN brand's open visibility gaps (Visibility Loop
+ * v2, Phase 4) to content cells. The audit writes Do Next cards for ozvor.com
+ * like it does for any customer; those cards name the exact buyer questions AI
+ * answers without citing us. Feeding them to the briefings points the daily
+ * content at our own uncited queries — we close our own loop with the product
+ * we sell, which is the only proof of it that cannot be faked.
+ *
+ * Optional and fail-open, exactly like [__signals__]: no brand configured, no
+ * cards, or a read error all mean the artifact is simply absent.
+ */
+export const GAPS_ARTIFACT = "__gaps__";
+/**
  * Upstream key carrying the house CONTENT LESSONS (5.F.3) to the CRITICS.
  * Same pattern as [__day__] — a constant, no I/O — but narrower: only the
  * debate nodes of marketing graphs receive it. The critics already see
@@ -322,6 +334,13 @@ export interface SubstratePort {
    * runs exactly as before. Must never throw; "SEM DADO" is a valid answer.
    */
   externalSignals?(): Promise<string | null>;
+  /**
+   * OUR OWN brand's open Do Next cards rendered as the [__gaps__] block
+   * (Visibility Loop v2, Phase 4). Optional on purpose — a worker without
+   * OZVOR_OWN_BRAND_ID returns null and the cell runs exactly as before.
+   * Must never throw; "SEM DADO" is a valid answer.
+   */
+  ownVisibilityGaps?(): Promise<string | null>;
   /**
    * The ACTIVE approved memory lessons (5.F.1) — the newest row the founder
    * approved in ops.memory_lesson, or null when the store is empty OR the
@@ -1437,6 +1456,17 @@ export async function advanceRun(
           try {
             const sig = await substrate.externalSignals();
             if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
+          } catch {
+            /* fail-open by contract; the port should not throw */
+          }
+        }
+        // Phase 4 (dogfood): our own uncited buyer questions, straight from
+        // the audit loop's Do Next cards. Same fail-open contract as the
+        // signals block — absent artifact, never a placeholder.
+        if (substrate.ownVisibilityGaps) {
+          try {
+            const gaps = await substrate.ownVisibilityGaps();
+            if (gaps) upstream.unshift([GAPS_ARTIFACT, gaps]);
           } catch {
             /* fail-open by contract; the port should not throw */
           }

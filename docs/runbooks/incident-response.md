@@ -91,3 +91,36 @@ Sintoma: nenhuma publicação/relatório há horas, ou o vigia externo (workflow
 4. **Botão do Telegram mudo:** abrir `/api/telegram/status/<TELEGRAM_WEBHOOK_SECRET>` — `configured`, `url_secret_matches` e `last_error_message` respondem em 10 segundos.
 5. **Hermes:** `curl -s https://hermes.ozvor.com/health` · engines: última linha por engine em `engine_drift_check`.
 6. Registrar o postmortem em `docs/learning/postmortems/` e o padrão novo em `docs/learning/anti-patterns.md` (três exemplos desta semana já estão lá).
+
+## Telegram = canal único de alarme e aprovação (10.B.8 — registrado 2026-09-02)
+
+**Risco conhecido:** TODO alarme (vigias de CI, worker, blog) e TODA aprovação
+(botões ap:/rj:) passam pelo MESMO canal — um bot do Telegram + um chat id. Se
+o Telegram cair, o token for revogado, ou o chat for perdido, a empresa fica
+simultaneamente **surda (sem alarmes) e paralisada (aprovações param até o
+timeout de 96h = rejeição)** — e nada grita sobre isso, porque quem gritaria é
+o próprio canal caído.
+
+**Mitigações já em vigor:**
+- Compare do secret do webhook em tempo constante (`secretsMatch`, telegram.ts).
+- Todo workflow que alarma FALHA vermelho no preflight se os secrets TELEGRAM_*
+  sumirem (padrão blog-autopublish, aplicado à frota em 2026-09-02).
+- Aprovação com timeout de 96h = rejeição (nunca aprovação silenciosa).
+
+**Fallback manual quando o Telegram estiver fora (fazer HOJE, à mão):**
+1. Confirmar o problema: `curl -s https://api.telegram.org/bot<TOKEN>/getMe`
+   (founder roda com o token dele; 401/timeout = canal fora).
+2. Enquanto durar: acompanhar a aba Actions do GitHub (os vigias continuam
+   ficando VERMELHOS lá — o canal caiu, o olho não) e o
+   `/api/v1/agent-org/liveness`.
+3. Alarme substituto por e-mail: o Resend já é sub-processador ativo (G12).
+   Envio manual de um alerta:
+   `curl -X POST https://api.resend.com/emails -H "Authorization: Bearer $RESEND_API_KEY" -H "Content-Type: application/json" -d '{"from":"alerts@ozvor.com","to":["<founder>"],"subject":"ALARME (fallback)","text":"..."}'`
+4. Aprovações urgentes: decidir direto no banco é vedado; usar o endpoint de
+   status `/api/telegram/status/<secret>` para diagnosticar, e esperar o canal
+   voltar — ou o timeout de 96h rejeitar com segurança.
+
+**Fora do escopo desta atualização (tamanho M, PR próprio):** um canal de
+fallback AUTOMÁTICO (Resend) para alarmes e aprovações — decidido em 02/09 que
+fica para um PR dedicado; este runbook cobre o intervalo com o procedimento
+manual acima.
