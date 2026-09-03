@@ -35,7 +35,11 @@ describe("P0-03 — Opportunity Radar is off until it has a cleared source", () 
     // in Railway would silently re-open a commercially blocked feature. The
     // gate must be legal, not operational.
     const src = read("apps/api/src/routes/signals.ts");
-    const gateAt = src.indexOf("if (!OPPORTUNITY_RADAR_ENABLED)");
+    // The check reads a local resolved from the constant (`radarEnabled`),
+    // which exists only so the wire-contract tests can force the connected
+    // path. Its DEFAULT is the constant, and the constant is false.
+    expect(src).toContain("opts.radarEnabled ?? OPPORTUNITY_RADAR_ENABLED");
+    const gateAt = src.indexOf("if (!radarEnabled)");
     const envAt = src.indexOf('process.env["SIGNAL_ENGINE_URL"]');
     expect(gateAt).toBeGreaterThan(-1);
     expect(envAt).toBeGreaterThan(-1);

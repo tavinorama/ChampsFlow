@@ -65,9 +65,14 @@ export const OPPORTUNITY_RADAR_ENABLED = false;
 export function registerSignalsRoutes(
   app: Hono,
   _db: PostgresClient,
-  opts: { limiter?: IpRateLimiter } = {}
+  // `radarEnabled` is injectable ONLY so the wire-contract tests can still
+  // exercise the connected path (normalization, bounding, bearer non-leak)
+  // while the feature is commercially blocked. Production never passes it: the
+  // default is the constant, and the constant is false.
+  opts: { limiter?: IpRateLimiter; radarEnabled?: boolean } = {}
 ): void {
   const limiter = opts.limiter ?? sharedIpRateLimiter;
+  const radarEnabled = opts.radarEnabled ?? OPPORTUNITY_RADAR_ENABLED;
 
   // GET /api/signals/where-to-show-up — the brand's live opportunity radar.
   app.get("/api/signals/where-to-show-up", requireAuth, async (c) => {
@@ -94,7 +99,7 @@ export function registerSignalsRoutes(
     // env is a deployment detail, the block is a legal one. Lifting it is a
     // reviewed decision that has to happen here, in the diff, alongside the
     // entitlement check this route still does not have.
-    if (!OPPORTUNITY_RADAR_ENABLED) {
+    if (!radarEnabled) {
       const body: WhereResponse = {
         connected: false,
         opportunities: [],

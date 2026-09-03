@@ -197,3 +197,11 @@ export * from "./editorial-leak";
 // Staleness is COMPUTED, so a claim expires on its own.
 // ---------------------------------------------------------------------------
 export * from "./competitive-claims";
+
+// ---------------------------------------------------------------------------
+// geo-audit retry policy (17/08 retry storm) — ONE policy for a queue that had
+// two producers with different settings and a 30s backoff far too short for the
+// provider outages it was retrying.
+// ---------------------------------------------------------------------------
+export * from "./audit-queue";
+
