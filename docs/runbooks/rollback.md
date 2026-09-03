@@ -1,16 +1,16 @@
 # Rollback Runbook
 
-> Owner: devops-engineer · Created: 2026-05-11
+> Owner: devops-engineer · Created: 2026-05-11 · **Atualizado 2026-09-02 (10.B.2)**
 
 ## TL;DR
 
-Railway service rollback restores to the previous deploy hash. Target time: under 5 minutes for a service rollback. Database migration rollback via `down.sql` adds up to 15 minutes. Total maximum: 20 minutes.
+**Não existe rollback automatizado.** O `deploy.yml` que prometia `railway rollback` automático foi APAGADO em 2026-09-02 (10.B.2): referenciava environments (`staging`, `production-eu`, `production-us`) e um serviço `migrations` que nunca existiram — nunca rodou com sucesso e vendia uma proteção falsa. O caminho de rollback honesto é: **(1) Railway dashboard → serviço afetado → Deployments → "Redeploy" no último deploy bom; (2) se a mesma janela aplicou migração incompatível, rodar o `down.sql` manualmente via psql.** Deploys de produção acontecem pela integração GitHub→Railway no merge para `main` (projeto único `trustindex-ai`, serviços `api`, `worker`, `web`). Target: <5 min para redeploy de serviço; +15 min com migração; máximo 20 min.
 
 ## Trigger Criteria
 
 Roll back when any of the following occur after a deploy:
 
-- Health check fails within 60 seconds (automated rollback in deploy pipeline)
+- `post-deploy-smoke` workflow red (SHA mismatch, worker sem pulso, ou endpoint vital fora)
 - Error rate exceeds 20% on any service within 5 minutes of deploy
 - Auth failures spike (users can't log in)
 - Critical security regression detected (data leak, auth bypass)
@@ -22,29 +22,30 @@ Roll back when any of the following occur after a deploy:
 
 ## Step 2 — Service Rollback (Railway)
 
-### Via deploy pipeline (automated)
+> **Não há caminho automatizado.** O antigo `deploy.yml` (que dizia rodar
+> `railway rollback` sozinho) foi apagado em 2026-09-02 — era morto: os
+> environments/serviços que ele citava nunca existiram. Rollback é manual.
 
-The `deploy.yml` workflow runs `railway rollback` if the post-deploy health check fails. No manual action required.
+### Via Railway dashboard (caminho primário)
 
-### Via Railway dashboard (manual)
+1. Log in to Railway dashboard — projeto `trustindex-ai`.
+2. Open the affected service (`api`, `worker`, or `web`).
+3. Under "Deployments", find the last known-good deployment (o SHA aparece no
+   deployment; confirme contra o `sha` que `GET /healthz` reporta).
+4. Click "Redeploy" on that deployment.
+5. Repeat for each affected service.
 
-1. Log in to Railway dashboard.
-2. Navigate to the affected project (EU prod, US prod, or staging).
-3. Open the affected service (api, worker, or web).
-4. Under "Deployments", find the last known-good deploy hash.
-5. Click "Redeploy" on that hash.
-6. Repeat for each affected service.
-
-### Via Railway CLI (manual)
+### Via Railway CLI (alternativa)
 
 ```bash
-railway rollback --service api --environment production-eu
-railway rollback --service worker --environment production-eu
-railway rollback --service web --environment production-eu
-# Repeat for US if needed:
-railway rollback --service api --environment production-us
-railway rollback --service worker --environment production-us
-railway rollback --service web --environment production-us
+# Lista deployments e redeploya um deployment anterior específico:
+railway status
+railway redeploy --service api
+railway redeploy --service worker
+railway redeploy --service web
+# Nota: `railway redeploy` redeploya o deployment ATUAL; para voltar a um
+# deployment anterior use o dashboard (Redeploy no deployment antigo) — o
+# CLI não expõe rollback por hash de forma estável.
 ```
 
 ## Step 3 — Database Migration Rollback (if needed)

@@ -79,6 +79,11 @@ interface TrendPoint {
   score_ai?: number | null;
   score_performance?: number | null;
   score_brand?: number | null;
+  /** Phase 2 comparability: false = measured differently (partial panel /
+   *  different engine set / check band) — must NOT be drawn on the trend. */
+  in_trend?: boolean;
+  /** Why the run is excluded, when it is. */
+  trend_note?: string | null;
 }
 
 interface ScorePayload {
@@ -91,6 +96,8 @@ interface ScorePayload {
   trend: TrendPoint[];
   threeScores: ThreeScores | null;
   executionProgress: number | null;
+  /** Phase 2: checks/citations of the latest run + stability note when small. */
+  confidence?: { checks: number | null; citations: number | null; stabilityNote: string | null } | null;
 }
 
 interface BreakdownCompetitor {
@@ -886,6 +893,7 @@ export default function DashboardV3() {
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
             coverage={score?.latest?.coverage ?? null}
+            confidence={score?.confidence ?? null}
             hallucination={(breakdown as { hallucination?: HallucinationInfo | null } | null)?.hallucination ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
           />
@@ -950,7 +958,7 @@ export default function DashboardV3() {
 
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditBlocked, onTopUp, auditMsg,
-  auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination,
+  auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination, confidence,
 }: {
   brandName?: string;
   overall: number | null;
@@ -973,6 +981,7 @@ function OverviewTab({
   methodologyVersion?: string | null;
   /** Wilson 95% interval on the citation rate, from the same breakdown. */
   citationCI?: { rate: number; low: number; high: number; n: number } | null;
+  confidence?: { checks: number | null; citations: number | null; stabilityNote: string | null } | null;
   /** B1 per-intent rates, share of voice and rivals. Empty on pre-B1 audits. */
   intents?: IntentRow[] | null;
   /** Which engines this run actually reached. Null on audits that predate it. */
@@ -987,14 +996,19 @@ function OverviewTab({
   // composite trend. It draws Visibility now, and falls back to the composite
   // only for audits old enough to have no score_ai, where a flat gap would
   // read as a collapse.
-  const visibilityPts = trend
+  // Phase 2: the trend line only connects runs measured the SAME way (same
+  // engine panel + check band). A partial run drawn on the line reads as
+  // "you lost ground" when the truth is "the ruler changed".
+  const comparableTrend = trend.filter((t) => t.in_trend !== false);
+  const excludedRuns = trend.length - comparableTrend.length;
+  const visibilityPts = comparableTrend
     .map((t) => t.score_ai ?? null)
     .filter((n): n is number => n != null)
     .reverse();
   const overallPts =
     visibilityPts.length >= 2
       ? visibilityPts
-      : trend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
+      : comparableTrend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
   return (
     <>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-3)", flexWrap: "wrap" }}>
@@ -1035,6 +1049,11 @@ function OverviewTab({
         <div style={S.heroRight}>
           <h2 style={S.heroH2}>How often AI names you</h2>
           {overallPts.length >= 2 ? <Sparkline points={overallPts} /> : <div style={S.muted}>Run a couple of audits to see your trend.</div>}
+          {excludedRuns > 0 && (
+            <p style={{ margin: "var(--space-1) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
+              {excludedRuns} partial {excludedRuns === 1 ? "audit" : "audits"} (different engine panel) left off this line — a smaller panel is a different measurement, not a lower score.
+            </p>
+          )}
           <p style={S.heroCap}>
             This is the measurement, and nothing else: how often the AI engines
             named you when asked your customers&rsquo; questions. Your own work
@@ -1045,6 +1064,13 @@ function OverviewTab({
             number could honestly sit in. When it changes, look for the reason
             underneath before reading it as your doing.
           </p>
+          {confidence && (confidence.checks != null || confidence.stabilityNote) && (
+            <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
+              {confidence.checks != null ? `Measured over ${confidence.checks} checks` : ""}
+              {confidence.checks != null && confidence.citations != null ? ` — cited in ${confidence.citations}.` : "."}
+              {confidence.stabilityNote ? ` ${confidence.stabilityNote}` : ""}
+            </p>
+          )}
           <CoverageNote coverage={coverage} />
           <HallucinationFlag info={hallucination} />
         </div>
@@ -1084,6 +1110,11 @@ function OverviewTab({
       <div style={{ marginTop: "var(--space-6)" }}>
         <IntentBreakdown intents={intents} />
       </div>
+
+      {/* Phase 3 — the movement narrative: what flipped, who arrived, which
+          sources the AI started/stopped using. This is the section that makes
+          a monthly subscription feel like maintenance instead of a number. */}
+      {brandId && <SinceLastAudit brandId={brandId} />}
 
       {/* D1 — what the audit refused to count. */}
       <div style={{ marginTop: "var(--space-6)" }}>
@@ -1159,7 +1190,11 @@ function AnalyticsChart({ trend, brandId }: { trend: TrendPoint[]; brandId: stri
   }, [mode, comp, brandId]);
 
   // trend arrives newest-first; work oldest→newest and filter by period.
-  const asc = useMemo(() => [...trend].reverse(), [trend]);
+  // Phase 2: runs measured with a different engine panel (in_trend === false)
+  // are excluded from the lines — the count below says so instead of the chart
+  // silently pretending a drop.
+  const excludedFromChart = useMemo(() => trend.filter((t) => t.in_trend === false).length, [trend]);
+  const asc = useMemo(() => [...trend].filter((t) => t.in_trend !== false).reverse(), [trend]);
   const days = CHART_PERIODS.find((p) => p.key === period)?.days ?? null;
   const points = useMemo(() => {
     if (days == null) return asc;
@@ -1270,6 +1305,11 @@ function AnalyticsChart({ trend, brandId }: { trend: TrendPoint[]; brandId: stri
         <span>{firstDate ? new Date(firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
         <span>{lastDate ? new Date(lastDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
       </div>
+      {excludedFromChart > 0 && (
+        <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.72rem", color: "var(--color-muted)" }}>
+          {excludedFromChart} partial {excludedFromChart === 1 ? "audit is" : "audits are"} not on these lines: {excludedFromChart === 1 ? "it" : "they"} ran with a different engine panel, which is a different measurement — not a lower score.
+        </p>
+      )}
     </div>
   );
 }
@@ -1364,6 +1404,83 @@ function impactStyle(impact: string): React.CSSProperties {
   return { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }; // medium/default
 }
 
+
+// ---------------------------------------------------------------------------
+// SinceLastAudit — Visibility Loop v2, Phase 3.
+// "What changed, and why", every run. Reads GET /api/brands/:id/since-last-audit,
+// which compares the newest audit against the most recent COMPARABLE one (same
+// engine panel), so the movement shown is movement, not a change of ruler.
+// Silent-but-honest: when there is no comparable pair the API says so and this
+// renders that sentence rather than an empty box.
+// ---------------------------------------------------------------------------
+interface NarrativeLine { tone: "gain" | "loss" | "neutral"; text: string; detail?: string }
+interface SinceLastPayload {
+  available: boolean;
+  reason?: string;
+  from?: { audit_id: string; created_at: string };
+  to?: { audit_id: string; created_at: string };
+  narrative?: { lines: NarrativeLine[]; nothingChanged: boolean; headline: string };
+}
+
+const TONE_COLOR: Record<NarrativeLine["tone"], string> = {
+  gain: "var(--color-success)",
+  loss: "var(--color-badge-status-error-text)",
+  neutral: "var(--color-muted)",
+};
+
+function SinceLastAudit({ brandId }: { brandId: string }) {
+  const [data, setData] = useState<SinceLastPayload | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void apiFetch(`/api/brands/${brandId}/since-last-audit`)
+      .then(async (r) => {
+        if (!r.ok || !alive) return;
+        setData((await r.json()) as SinceLastPayload);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [brandId]);
+
+  if (!data) return null;
+  const fmt = (iso?: string) =>
+    iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+
+  return (
+    <div style={{ marginTop: "var(--space-6)" }}>
+      <div style={S.secH}>
+        Since last audit{" "}
+        <span style={S.secN}>
+          {data.available && data.from && data.to
+            ? `— ${fmt(data.from.created_at)} → ${fmt(data.to.created_at)}, same engine panel`
+            : "— what moved, and why"}
+        </span>
+      </div>
+      <div style={{ ...S.card, padding: "var(--space-4)" }}>
+        {!data.available ? (
+          <div style={S.muted}>{data.reason ?? "No comparable previous audit yet."}</div>
+        ) : (
+          <>
+            <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: "var(--space-3)" }}>
+              {data.narrative?.headline}
+            </div>
+            {(data.narrative?.lines ?? []).map((l, i) => (
+              <div key={i} style={{ display: "flex", gap: "var(--space-2)", alignItems: "baseline", padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <span aria-hidden style={{ color: TONE_COLOR[l.tone], fontWeight: 700 }}>
+                  {l.tone === "gain" ? "▲" : l.tone === "loss" ? "▼" : "•"}
+                </span>
+                <span style={{ fontSize: "0.86rem" }}>
+                  {l.text}
+                  {l.detail ? <span style={{ color: "var(--color-muted)" }}> — {l.detail}</span> : null}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DoNextTab({
   tasks, loading, onToggle, brandId, onAddTask,
 }: {
@@ -1419,8 +1536,21 @@ function DoNextTab({
             {done.map((t, i) => (
               <div key={t.id} style={{ ...S.actRow, opacity: 0.7, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
                 <button aria-label={`Reopen "${t.action}"`} onClick={() => onToggle(t.id, false)} style={{ ...S.chk, ...S.chkDone }}>✓</button>
-                <div><div style={{ ...S.actTitle, textDecoration: "line-through", color: "var(--color-muted)" }}>{t.action}</div></div>
-                <span style={{ ...S.imp, background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }}>Done</span>
+                <div>
+                  <div style={{ ...S.actTitle, textDecoration: "line-through", color: "var(--color-muted)" }}>{t.action}</div>
+                  {/* Phase 3: when the loop verified the fix in a later audit,
+                      the evidence carries "Worked — verified in the audit of
+                      <date>". Showing it is the whole point: the client sees
+                      that doing X moved the number, in their own data. */}
+                  {t.evidence?.startsWith("Worked — verified") && (
+                    <div style={{ ...S.actWhy, color: "var(--color-success)" }}>{t.evidence.split(".")[0]}.</div>
+                  )}
+                </div>
+                <span style={{ ...S.imp, ...(t.evidence?.startsWith("Worked — verified")
+                  ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }
+                  : { background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }) }}>
+                  {t.evidence?.startsWith("Worked — verified") ? "Verified" : "Done"}
+                </span>
               </div>
             ))}
           </div>

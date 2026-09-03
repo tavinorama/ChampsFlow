@@ -35,6 +35,7 @@ import {
   verifyKitCheckoutSession,
 } from "../integrations/stripe";
 import { truncateIp } from "./dpa";
+import { publicRateLimit } from "../lib/public-rate-limit";
 import { requireAuth } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
@@ -595,6 +596,14 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/kit/checkout — create order + checkout (or dev unlock)
   // -------------------------------------------------------------------------
   app.post("/api/kit/checkout", async (c) => {
+    // 10.B.9 — public order-creation endpoint: each call INSERTs a row and can
+    // open a Stripe session. Redis-down degrades to the bounded memory limiter.
+    const limited = await publicRateLimit(c, {
+      bucket: "kit_checkout",
+      limit: 10,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limited) return limited;
     let body: { brand?: string; domain?: string; category?: string; region?: string; email?: string; testId?: string };
     try {
       body = await c.req.json();
@@ -682,6 +691,13 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   });
 
   app.post("/api/pages/checkout", async (c) => {
+    // 10.B.9 — same posture as /api/kit/checkout (row INSERT + Stripe session).
+    const limited = await publicRateLimit(c, {
+      bucket: "pages_checkout",
+      limit: 10,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limited) return limited;
     let body: { email?: string };
     try {
       body = await c.req.json();
@@ -744,6 +760,15 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // POST /api/kit/:token/deliver — verify payment, build + return deliverable
   // -------------------------------------------------------------------------
   app.post("/api/kit/:token/deliver", async (c) => {
+    // 10.B.9 — cost-bearing (builds the LLM deliverable on first unlock) and a
+    // brute-force surface for order tokens. Per-IP cap; delivered orders are
+    // idempotent reads but stay inside the same generous cap.
+    const limited = await publicRateLimit(c, {
+      bucket: "kit_deliver",
+      limit: 12,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limited) return limited;
     const token = c.req.param("token");
     const sessionId = c.req.query("session_id") ?? null;
     const devUnlock = c.req.query("dev_unlock") === "1";

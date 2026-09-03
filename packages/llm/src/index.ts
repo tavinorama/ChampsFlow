@@ -296,6 +296,31 @@ export { measureOffsiteSignal, OFFSITE_SOURCES } from "./offsite-signal";
 export type { ContentGeoResult } from "./content-geo";
 export { analyzeContentGeo } from "./content-geo";
 
+// Visibility Loop v2 — deterministic "Do Next" refresh from audit evidence.
+export type {
+  LoopProbe,
+  LoopCandidate,
+  LoopBuildResult,
+  LoopTaskRow,
+  PrevTask,
+  ReconcileStats,
+} from "./visibility-loop";
+export type { OwnGap } from "./visibility-loop";
+export {
+  ownGapsBlock,
+  isActionableSource,
+  NON_ACTIONABLE_SOURCE_HOSTS,
+  buildLoopCandidates,
+  reconcileLoopTasks,
+  sourceDomain,
+  gapForUncited,
+  gapForLowRank,
+  gapForSource,
+  LOOP_OPEN_CAP,
+  LOOP_DONE_CARRY_CAP,
+  VERIFIED_PREFIX,
+} from "./visibility-loop";
+
 // Strategy Generator — GEO Content Plan (C3).
 export type { StrategyInputs, StrategyPlan, Recommendation, CalendarItem } from "./strategy-generator";
 export { generateStrategy, toCalendarTopic } from "./strategy-generator";
