@@ -321,6 +321,32 @@ export {
   VERIFIED_PREFIX,
 } from "./visibility-loop";
 
+// Plan task lifecycle — Verified Execution state machine (audit P0-02).
+export type {
+  PlanTaskState,
+  PlanTaskActor,
+  TransitionRule,
+  TransitionRequest,
+  TransitionRejection,
+  TransitionResult,
+  ExecutionBreakdown,
+} from "./plan-task-state";
+export {
+  PLAN_TASK_STATES,
+  LEGACY_PLAN_TASK_STATES,
+  DONE_COMPAT_STATE,
+  VERIFIED_STATES,
+  IN_FLIGHT_STATES,
+  SELF_REPORTED_STATES,
+  NOT_OWED_STATES,
+  OPEN_STATES,
+  CLIENT_REACHABLE_STATES,
+  TRANSITIONS,
+  isPlanTaskState,
+  validateTransition,
+  computeExecution,
+} from "./plan-task-state";
+
 // Strategy Generator — GEO Content Plan (C3).
 export type { StrategyInputs, StrategyPlan, Recommendation, CalendarItem } from "./strategy-generator";
 export { generateStrategy, toCalendarTopic } from "./strategy-generator";
