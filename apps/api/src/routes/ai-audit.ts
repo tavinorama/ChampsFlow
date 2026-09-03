@@ -38,6 +38,7 @@ import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { getSharedRedis } from "../shared-redis";
+import { publicRateLimit } from "../lib/public-rate-limit";
 import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 import { clientIp } from "../lib/client-ip";
 import { asStr } from "../lib/coerce";
@@ -472,6 +473,14 @@ export function registerAiAuditRoutes(
   // POST /api/ai-audit/order/:token/deliver — Kit trust rule.
   // -------------------------------------------------------------------------
   app.post("/api/ai-audit/order/:token/deliver", async (c) => {
+    // 10.B.9 — cost-bearing (LLM deliverable on first unlock) + token
+    // brute-force surface. Per-IP cap, memory fallback when Redis blips.
+    const limited = await publicRateLimit(c, {
+      bucket: "ai_audit_deliver",
+      limit: 12,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (limited) return limited;
     const token = c.req.param("token");
     const sessionId = c.req.query("session_id") ?? null;
     const devUnlock = c.req.query("dev_unlock") === "1";

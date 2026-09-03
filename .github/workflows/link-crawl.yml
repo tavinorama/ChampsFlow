@@ -30,6 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # 10.B.4 — um crawler que só tinge a aba Actions é um vigia mudo.
+      # Mesmo contrato do blog-autopublish: secrets ausentes = vermelho já aqui.
+      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+        run: |
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -41,3 +48,28 @@ jobs:
         env:
           BASE_URL: ${{ github.event.inputs.base_url || 'https://ozvor.com' }}
         run: node scripts/crawl-links.mjs "$BASE_URL"
+
+      # 10.B.4 — link quebrado em produção agora grita no Telegram (antes: só
+      # o run vermelho, que ninguém olha). O job já está vermelho aqui; este
+      # passo só reporta — nunca resgata o run.
+      - name: Alarm on broken links (Telegram + job summary)
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "## 🔴 LINK QUEBRADO EM PRODUÇÃO"
+            echo ""
+            echo "O crawl diário achou link/sitemap com resposta != 200. Ver o log do passo 'Crawl links'."
+            echo ""
+            echo "$RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="LINK QUEBRADO EM PRODUCAO: o crawl diario (link-crawl) achou URL com resposta != 200. Log: ${RUN_URL}"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "TELEGRAM secrets not set — alarm only in the job summary."
+          fi

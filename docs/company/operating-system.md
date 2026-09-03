@@ -53,9 +53,16 @@ this is the routing summary:
 | `needs-founder-approval` | CRITICAL | **Founder only** | live/production/destructive/paid/secret actions |
 | department labels (`marketing`, `blocked`, …) | routing | — | which VP owns / what's blocked |
 
-Reviewers cannot self-approve their own PRs (branch protection requires a
-non-author approving review) — that is why founder-authored PRs are approved by
-Hermes and vice-versa.
+A proteção da `main` exige os **6 required checks e 0 aprovações** (decisão do
+founder, 2026-07-29 — uma required-approval deadlockava HIGH por construção,
+#400). O portão humano vive nos LABELS via auto-merge nativo (automerge.yml):
+HIGH/CRITICAL ficam segurados até o founder aplicar `founder-approved`.
+Reviewers seguem sem poder liberar o próprio PR de risco: quem destrava
+HIGH/CRITICAL é sempre o founder, por label — nunca por contagem de reviews.
+Configuração real + comando de restauração:
+[runbooks/branch-protection.md](../runbooks/branch-protection.md).
+*(Corrigido 2026-09-02 — 10.B.16: este parágrafo afirmava uma required review
+que não existe na proteção real.)*
 
 ## Founder approval gates (always, regardless of who wrote the code)
 

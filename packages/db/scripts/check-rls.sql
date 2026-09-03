@@ -1,80 +1,48 @@
 -- =============================================================================
 -- CI Assertion: check-rls.sql
--- Purpose: Verify that every tenant-scoped table has Row Level Security enabled.
---          This query MUST return 0 rows. Any row returned = CI FAIL.
--- Reference: docs/03-architecture.md §4.1 (Security Block 2 resolution)
--- Run: psql $DATABASE_URL -f scripts/check-rls.sql --tuples-only
+-- Purpose: every table in the public schema must have Row Level Security
+--          enabled. This query MUST return 0 rows. Any row = CI FAIL.
+--
+-- 10.B.10 (2026-09-02): the list is now DERIVED from pg_tables instead of a
+-- hand-maintained IN (...) — the old list silently missed 11 tables (including
+-- smartlead_event, which holds lead PII). A new table now fails this check by
+-- DEFAULT; the author either adds RLS in the same migration or consciously
+-- adds the table to the allowlist below with a written reason.
+--
+-- Allowlist (deliberate, reviewed exceptions ONLY):
+--   ai_tool          — platform-global AI-tool catalog, PII-free, read-only
+--                      reference data (AI Audit Stack); no tenant dimension.
+--   source_registry  — platform-global grounding-source registry, PII-free
+--                      reference data; no tenant dimension.
+--   smartlead_event  — TEMPORARY GAP (holds lead PII!): RLS lands in
+--                      migration 20260902000001_smartlead_event_rls via PR
+--                      `feat/smartlead-event-rls-migration` (founder merges
+--                      migrations). TODO: remove this entry the moment that
+--                      migration is merged — this line is the ONLY thing
+--                      keeping CI green over the gap.
+--
+-- Note: the ops.* schema is intentionally out of scope here — it is
+-- GRANT-gated company-operations data with no PostgREST exposure and no
+-- tenant rows (see 20260806000002_ops_agent_substrate).
+--
+-- Run: psql $DATABASE_URL -t -A -f packages/db/scripts/check-rls.sql
 -- =============================================================================
 
-SELECT relname AS table_missing_rls
-FROM pg_class
-JOIN pg_namespace ON pg_class.relnamespace = pg_namespace.oid
-WHERE nspname = 'public'
-  AND relkind = 'r'
-  AND relname IN (
-    -- Core (initial_schema)
-    'tenants',
-    'users',
-    'social_accounts',
-    'drafts',
-    'generation_log',
-    'audit_log',
-    'dsr_requests',
-    'publish_jobs',
-    'workspaces',
-    'dpa_acknowledgments',
-    'ccpa_requests',
-    'billing_subscriptions',
-    -- GEO Audit Engine (20260530000001_geo_audit_engine)
-    'brands',
-    'geo_audit',
-    'geo_score',
-    'citation_check',
-    'ai_generation_log',
-    -- GEO follow-ups (strategy_plan / competitors / content_piece / provider_keys)
-    'strategy_plan',
-    'plan_task',
-    'competitor',
-    'competitor_citation',
-    'content_piece',
-    'provider_keys',
-    -- Attribution v1 (20260627000006_google_attribution)
-    'google_connection',
-    'google_metric_cache',
-    -- Checkout-first onboarding (20260627000007_pending_subscription)
-    -- NOTE: this table has no tenant_id; RLS is enabled with a permissive
-    -- "service_all" policy (intentional — pre-tenant by design).
-    'pending_subscription',
-    -- Ozvor Pages (20260710000001_ozvor_pages_schema)
-    'landing_sites',
-    'landing_pages',
-    'landing_page_versions',
-    'landing_testimonials',
-    'landing_leads',
-    'landing_events',
-    -- Cost-control quotas (20260710000004_usage_counters, issue #217)
-    'usage_counters',
-    -- Operator (non-tenant) tables (20260728000001_operator_tables_rls).
-    -- No tenant_id by design; RLS closes the Supabase PostgREST surface
-    -- (service_only policy TO postgres; lead_capture/kit_order additionally
-    -- allow app_user SELECT on rows claimed to the current tenant).
-    'waitlist',
-    'lead_capture',
-    'kit_order',
-    -- AI Audit Stack $49 orders (20260815000002_ai_audit_order) — kit_order posture.
-    'ai_audit_order',
-    'nurture_enrollment',
-    'nurture_send_log',
-    'pages_order',
-    'crm_contact',
-    'schema_migrations',
-    -- B4 anti-drift control battery (20260729000001_engine_drift_check).
-    -- Platform-global, PII-free; RLS on with a permissive policy (api_spend
-    -- pattern) so both the unscoped worker and app_user can use it.
-    'engine_drift_check'
-  )
-  AND NOT relrowsecurity;
+SELECT c.relname AS table_missing_rls
+FROM pg_class c
+JOIN pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = 'public'
+  AND c.relkind = 'r'
+  AND NOT c.relrowsecurity
+  AND c.relname NOT IN (
+    'ai_tool',
+    'source_registry',
+    -- TODO(feat/smartlead-event-rls-migration): remove once
+    -- 20260902000001_smartlead_event_rls is merged and applied.
+    'smartlead_event'
+  );
 
 -- Expected result: 0 rows.
--- If any rows are returned, one or more tables is missing RLS.
--- CI pipeline must fail if row count > 0.
+-- If any rows are returned, a table is missing RLS: enable it (plus FORCE and
+-- an explicit policy — see 20260728000001_operator_tables_rls for the
+-- service_only pattern) or add a justified allowlist entry above.

@@ -22,7 +22,7 @@ Ozvor has a single on-call rotation (founder). Alerts route to the founder ops m
 
 1. Open Grafana dashboard and identify the alert source.
 2. Check Railway service logs for the affected service (API, worker, web).
-3. Determine severity using the matrix in `docs/07-deploy.md` Section 7.
+3. Determine severity using the matrix in `docs/runbooks/incident-response.md` (Severity Matrix). *(Ref corrigida 2026-09-02 — `docs/07-deploy.md` não existe.)*
 4. For SEV-1 or SEV-2: immediately open an incident channel (Slack DM or email thread with a timestamp).
 5. If the issue is not resolved within 15 minutes: escalate to the technical advisor.
 
