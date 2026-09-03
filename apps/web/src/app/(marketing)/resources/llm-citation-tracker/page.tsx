@@ -13,6 +13,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
+// Plan figures derived from packages/shared — this page overstated prompt depth
+// and brand count vs what production enforces (PENDING 10.A.1/2).
+import { PLAN_LIMITS, LIST_PRICE_USD, fmtUsd, founderAnnualUsd } from "@organic-posts/shared";
 import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
@@ -285,7 +288,7 @@ export default function LlmCitationTrackerPage() {
             }}
           >
             The spreadsheet and methodology are included with every Growth
-            ($99/mo) and Agency ($549/mo) plan.
+            (${LIST_PRICE_USD.growth}/mo) and Agency (${LIST_PRICE_USD.agency}/mo) plan.
           </p>
         </header>
 
@@ -872,10 +875,10 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Growth: $99/mo</strong> (or $831/yr with founder pricing):
-              1 brand, 10 competitors, 250 prompts, weekly automated monitoring,
+              <strong>Growth: ${LIST_PRICE_USD.growth}/mo</strong> (or ${fmtUsd(founderAnnualUsd("growth"))}/yr with founder pricing):
+              {" "}{PLAN_LIMITS.growth.max_brands} brand, {PLAN_LIMITS.growth.max_competitors} competitors, {PLAN_LIMITS.growth.prompts_per_audit}-prompt deep audits, weekly automated monitoring,
               citation tracking, and GEO content. This is the automated version of
-              this spreadsheet at 25× the coverage.
+              this spreadsheet.
             </li>
             <li
               style={{
@@ -883,8 +886,8 @@ export default function LlmCitationTrackerPage() {
                 lineHeight: 1.65,
               }}
             >
-              <strong>Agency: $549/mo</strong> (or $4,611/yr founder): up to 15
-              brands, white-label reports, client workflow.
+              <strong>Agency: ${LIST_PRICE_USD.agency}/mo</strong> (or ${fmtUsd(founderAnnualUsd("agency"))}/yr founder): up to {PLAN_LIMITS.agency.max_brands}
+              {" "}brands, white-label reports, shareable client report links.
             </li>
           </ul>
 

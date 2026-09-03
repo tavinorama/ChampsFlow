@@ -97,6 +97,53 @@ describe("the pages advertise derived numbers, never literals", () => {
       }
     }
   });
+
+  it("no brand count, per-brand price, annual price or SLA claim is hardcoded (10.A.2/3/6)", () => {
+    // 2026-09-02 sweep: "up to 15 client brands / $36.60 per brand / 4h SLA"
+    // lived on /agencies, /local-pages and the chatbot while production
+    // enforced 10 brands and /support promised 1 business day. These surfaces
+    // must derive every plan figure from @organic-posts/shared, and the
+    // dead literals must never reappear.
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    for (const rel of [
+      "../../apps/web/src/app/(marketing)/agencies/page.tsx",
+      "../../apps/web/src/app/(marketing)/local-pages/page.tsx",
+      "../../apps/web/src/app/(marketing)/pricing/PricingPlans.tsx",
+      "../../apps/web/src/app/(marketing)/pricing/page.tsx",
+      "../../apps/web/src/app/(marketing)/pricing/FounderBand.tsx",
+      "../../apps/web/src/app/(marketing)/faq/page.tsx",
+      "../../apps/web/src/app/(marketing)/resources/llm-citation-tracker/page.tsx",
+      "../../apps/web/src/app/(marketing)/resources/geo-visibility-guide/page.tsx",
+      "../../apps/web/src/app/(marketing)/resources/what-is-geo-search/page.tsx",
+    ]) {
+      const src = readFileSync(join(__dirname, rel), "utf8");
+      expect(src, rel).toMatch(/@organic-posts\/shared/);
+      for (const literal of [
+        "up to 15",
+        "Up to 15",
+        "15 brands",
+        "$36.60",
+        "$25.62",
+        "$54.90",
+        "$38.40",
+        "250 prompt",
+        "250-prompt",
+        "4h SLA",
+        "4-hour response",
+        "$831",
+        "$1,188",
+        "$4,611",
+        "$6,588",
+        "$69/mo",
+        "$384/mo",
+        "client approval workflow",
+        "Client approval workflow",
+      ]) {
+        expect(src, `${rel} hardcodes "${literal}"`).not.toContain(literal);
+      }
+    }
+  });
 });
 
 describe("grants are PLATFORM writes — the proof of 2026-08-11", () => {
