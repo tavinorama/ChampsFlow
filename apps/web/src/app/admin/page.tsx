@@ -40,7 +40,6 @@ interface OverviewData {
   tenants: {
     total: number;
     byTier: {
-      starter: number;
       growth: number;
       agency: number;
     };
@@ -76,7 +75,7 @@ interface RevenueSummary {
   mrr_usd: number;
   arr_usd: number;
   subscriptions: {
-    active: { growth: number; agency: number; starter: number; total: number };
+    active: { growth: number; agency: number; total: number };
     trialing: number;
     pastDue: number;
     canceled: number;
@@ -204,7 +203,7 @@ interface SystemHealth {
 interface AnalyticsFunnel {
   totalLeads: number;
   kitOrders: { count: number; revenueUsd: number };
-  activeSubscriptions: { growth: number; agency: number; starter: number; total: number };
+  activeSubscriptions: { growth: number; agency: number; total: number };
   mrr: number;
   arr: number;
   engagements: { requested: number; contacted: number; won: number; lost: number; pipelineValueUsd: number };
@@ -352,7 +351,6 @@ function Tile({
 function PlanBadge({ tier }: { tier: string }) {
   const tokenMap: Record<string, { bg: string; color: string }> = {
     free:    { bg: "var(--color-badge-plan-free-bg)",    color: "var(--color-badge-plan-free-text)" },
-    starter: { bg: "var(--color-badge-plan-starter-bg)", color: "var(--color-badge-plan-starter-text)" },
     growth:  { bg: "var(--color-badge-plan-growth-bg)",  color: "var(--color-badge-plan-growth-text)" },
     agency:  { bg: "var(--color-badge-plan-agency-bg)",  color: "var(--color-badge-plan-agency-text)" },
   };
@@ -3702,7 +3700,6 @@ export default function AdminPage() {
               }}
             >
               <Tile label="Total clients"       value={overview.tenants.total} />
-              <Tile label="Paid (Starter)"      value={overview.tenants.byTier.starter} />
               <Tile label="Paid (Growth)"       value={overview.tenants.byTier.growth} />
               <Tile label="Paid (Agency)"       value={overview.tenants.byTier.agency} />
               <Tile label="Total leads"         value={overview.leads.total} />

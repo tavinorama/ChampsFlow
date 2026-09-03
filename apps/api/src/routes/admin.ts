@@ -225,7 +225,6 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         tenants: {
           total: parseInt(tenantsTotal.rows[0]?.count ?? "0", 10),
           byTier: {
-            starter: byTier["starter"] ?? 0,
             growth: byTier["growth"] ?? 0,
             agency: byTier["agency"] ?? 0,
           },
@@ -1023,10 +1022,10 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       for (const row of subRes.rows) {
         subMap[row.plan_tier] = parseInt(row.count, 10);
       }
+      // Phantom `starter` tier removed (PENDING 10.A.7).
       const growthSubs      = subMap["growth"]  ?? 0;
       const agencySubs      = subMap["agency"]  ?? 0;
-      const starterSubs     = subMap["starter"] ?? 0;
-      const totalActiveSubs = growthSubs + agencySubs + starterSubs;
+      const totalActiveSubs = growthSubs + agencySubs;
       // RECEIVED-value MRR: what Stripe actually bills active subs (annual
       // amortized + founder/coupon discounts), same source as the revenue
       // surface so the founder never sees two different MRR numbers. Degrades to
@@ -1122,7 +1121,6 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
           activeSubscriptions: {
             growth:  growthSubs,
             agency:  agencySubs,
-            starter: starterSubs,
             total:   totalActiveSubs,
           },
           mrr,
