@@ -1,0 +1,65 @@
+name: SmartLead accounts inventory (one-shot, founder-triggered)
+
+# Inventário das caixas de e-mail no SmartLead para o dia do disparo:
+# quantas, warm-up ligado?, limite diário por caixa, quantas ligadas a cada
+# campanha. Determinístico (python), secret SMARTLEAD_API_KEY, UA de navegador
+# (WAF). Saída = SÓ AGREGADOS (nenhum endereço de caixa é impresso).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inventory (deterministic)
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, urllib.request, urllib.error
+          from collections import Counter
+          KEY = os.environ["SL_KEY"]; BASE = "https://server.smartlead.ai/api/v1"
+          UA = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json"}
+          def get(path):
+              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+                      return json.load(r)
+              except urllib.error.HTTPError as e:
+                  return {"_http_error": e.code, "_body_head": e.read().decode(errors="replace")[:160]}
+              except Exception as e:
+                  return {"_error": type(e).__name__}
+          accounts, off = [], 0
+          while True:
+              res = get(f"/email-accounts?offset={off}&limit=100")
+              rows = res if isinstance(res, list) else (res.get("data") if isinstance(res, dict) else None)
+              if not rows: break
+              accounts.extend(rows); off += len(rows)
+              if off > 5000: break
+          if not accounts and isinstance(res, dict) and ("_http_error" in res or "_error" in res):
+              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"email-accounts falhou: {res}"})); raise SystemExit(1)
+          warm = Counter(); limits = Counter(); providers = Counter(); smtp_ok = Counter(); campaigns_per_acc = Counter()
+          for a in accounts:
+              w = a.get("warmup_details") or {}
+              warm[str(w.get("status") or a.get("warmup_status") or "?")] += 1
+              limits[str(a.get("message_per_day") or a.get("daily_sending_limit") or "?")] += 1
+              providers[str(a.get("type") or a.get("provider") or "?")] += 1
+              smtp_ok[str(a.get("is_smtp_success", a.get("smtp_success", "?")))] += 1
+          camps = get("/campaigns"); per_campaign = {}
+          if isinstance(camps, list):
+              for c in camps:
+                  ea = get(f"/campaigns/{c['id']}/email-accounts")
+                  per_campaign[c.get("name")] = len(ea) if isinstance(ea, list) else (len(ea.get("data", [])) if isinstance(ea, dict) and "data" in ea else f"erro:{str(ea)[:60]}")
+          print("RESULTADO_OZVOR" + json.dumps({
+              "ok": True, "caixas_total": len(accounts), "warmup_status": dict(warm),
+              "limite_diario_por_caixa": dict(limits), "provedores": dict(providers),
+              "smtp_ok": dict(smtp_ok), "caixas_por_campanha": per_campaign,
+              "campos_vistos": sorted({k for a in accounts[:3] for k in a.keys()})[:40],
+          }, ensure_ascii=False))
+          PYEOF

@@ -66,6 +66,7 @@ import { registerDownloadRoutes } from "./routes/downloads";
 import { registerOperatorBusinessRoutes } from "./routes/operator";
 import { registerOperatorAgentRoutes } from "./routes/operator-agents";
 import { registerOperatorGraphRoutes } from "./routes/operator-graphs";
+import { registerOperatorProspectRoutes } from "./routes/operator-prospect";
 import { registerAiAuditRoutes } from "./routes/ai-audit";
 import { registerBookRoutes } from "./routes/book";
 import { registerPrimeRoutes } from "./routes/prime";
@@ -304,6 +305,7 @@ registerOperatorBusinessRoutes(app, db);
 // operator-key auth; hashes never text; outcomes append-only).
 registerOperatorAgentRoutes(app, db);
 registerOperatorGraphRoutes(app, db);
+registerOperatorProspectRoutes(app, db);
 registerAiAuditRoutes(app, db);
 // D3 (2026-08-17): /book intake — lead + claim + book_to_dfy nurture (public, rate-limited).
 registerBookRoutes(app, db);

@@ -279,9 +279,11 @@ describe("the first graph is the company's own loop", () => {
 });
 
 describe("content alive on every platform (17/08) — the new cells", () => {
-  it("IG / TikTok / YouTube spheres validate, are marketing-owned e são REPORT-ONLY (B5, 22/08)", () => {
+  it("TikTok / YouTube spheres validate, are marketing-owned e são REPORT-ONLY (B5, 22/08) — untouched by 1.6", () => {
+    // 1.6 (01/09): Instagram left this factory for the CARD cell (image +
+    // caption) — pinned in tests/unit/ig-image-sphere.test.ts. TikTok and
+    // YouTube are video-only channels: their shape stays EXACTLY as B5 left it.
     const expected: Array<[GraphDefinition, string, string]> = [
-      [SPHERE_INSTAGRAM_GRAPH, "instagram", "instagram_"],
       [SPHERE_TIKTOK_GRAPH, "tiktok", "tiktok_"],
       [SPHERE_YOUTUBE_GRAPH, "youtube", "youtube_"],
     ];
