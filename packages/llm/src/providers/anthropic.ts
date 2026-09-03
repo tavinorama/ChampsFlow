@@ -10,9 +10,12 @@
  *  - docs/03-architecture.md §8 EU: Bedrock eu-central-1 / US: direct Anthropic API
  *  - docs/03-architecture.md §11 — Anthropic DPA: CONFIRMED (carry-over)
  *
- * Mock mode (CRITICAL): if ANTHROPIC_API_KEY is absent, returns a deterministic
- * mock response seeded by a hash of the query text. Stable across runs.
- * Live HTTP path is a clearly-marked TODO stub that throws "live mode not yet wired".
+ * Mock mode: if ANTHROPIC_API_KEY is absent, returns a deterministic mock
+ * response seeded by a hash of the query text. Stable across runs.
+ * Live path: when ANTHROPIC_API_KEY is set, calls the real Messages API
+ * (fetch to api.anthropic.com/v1/messages, web-search tool per the matrix
+ * below) — fully wired and the production path. Mock is dev/test only and
+ * blocked in production by assertLiveOrThrow (integrity guard).
  *
  * Key env vars:
  *  - ANTHROPIC_API_KEY — direct Anthropic API key (US path / absent = mock)
