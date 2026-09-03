@@ -277,27 +277,30 @@ describe("check-rls.sql completeness (Gate 5→6 fix)", () => {
     expect(existsSync(CHECK_RLS_PATH)).toBe(true);
   });
 
-  it("billing_subscriptions is in check-rls.sql monitored list (Gate 5→6 fix)", () => {
+  // 10.B.10 (2026-09-02): the check is now DERIVED from pg_tables — every
+  // public-schema table without RLS fails by default, so tables are monitored
+  // by NOT appearing in the allowlist. These tests pin the derivation and pin
+  // that the compliance-critical tables were not quietly allowlisted.
+  it("derives the list from pg_class/pg_namespace (no hand-maintained IN list of monitored tables)", () => {
     if (!existsSync(CHECK_RLS_PATH)) return;
     const content = readFileSync(CHECK_RLS_PATH, "utf-8");
-    expect(content).toContain("billing_subscriptions");
+    expect(content).toContain("NOT c.relrowsecurity");
+    expect(content).toMatch(/nspname\s*=\s*'public'/);
+    expect(content).toContain("NOT IN");
   });
 
-  it("dpa_acknowledgments is in check-rls.sql monitored list", () => {
+  it("compliance-critical tables are NOT allowlisted (so they stay monitored)", () => {
     if (!existsSync(CHECK_RLS_PATH)) return;
     const content = readFileSync(CHECK_RLS_PATH, "utf-8");
-    expect(content).toContain("dpa_acknowledgments");
+    for (const table of ["billing_subscriptions", "dpa_acknowledgments", "ccpa_requests", "audit_log"]) {
+      expect(content, `${table} must never be allowlisted out of the RLS gate`).not.toContain(`'${table}'`);
+    }
   });
 
-  it("ccpa_requests is in check-rls.sql monitored list", () => {
+  it("the allowlist is exactly the reviewed exceptions (ai_tool, source_registry, temporary smartlead_event)", () => {
     if (!existsSync(CHECK_RLS_PATH)) return;
     const content = readFileSync(CHECK_RLS_PATH, "utf-8");
-    expect(content).toContain("ccpa_requests");
-  });
-
-  it("audit_log is in check-rls.sql monitored list", () => {
-    if (!existsSync(CHECK_RLS_PATH)) return;
-    const content = readFileSync(CHECK_RLS_PATH, "utf-8");
-    expect(content).toContain("audit_log");
+    const quoted = [...content.matchAll(/'([a-z_]{2,})'/g)].map((m) => m[1]);
+    expect(quoted.sort()).toEqual(["ai_tool", "public", "smartlead_event", "source_registry"]);
   });
 });

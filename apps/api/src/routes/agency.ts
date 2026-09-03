@@ -38,6 +38,7 @@ import { tryGetSharedRedis, type SharedRedis } from "../shared-redis";
 import { requireAuth, requireRole } from "../auth/middleware";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 import { clientIpOrUnknown } from "../lib/client-ip";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 
@@ -77,19 +78,31 @@ const SHARE_RATE_LIMIT = 60;
 const SHARE_RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 const SHARE_RATE_WINDOW_S = 600;
 
+// 10.B.9: no longer fail-open — Redis unset/erroring falls back to the
+// bounded in-process limiter (memory-rate-limit.ts, #261 pattern) with a
+// warn log, instead of the old `.catch(() => true)` uncapping the surface.
 async function checkShareRateLimit(ip: string): Promise<boolean> {
-  const redis = getAgencyRedis();
-  if (!redis) return true; // unconfigured — allow in dev
   const key = `share_rl:${ip}`;
-  const now = Date.now();
-  const pipeline = redis.pipeline();
-  pipeline.zremrangebyscore(key, 0, now - SHARE_RATE_WINDOW_MS);
-  pipeline.zadd(key, { score: now, member: String(now) });
-  pipeline.zcard(key);
-  pipeline.expire(key, SHARE_RATE_WINDOW_S);
-  const results = await pipeline.exec();
-  const count = results[2] as number;
-  return count <= SHARE_RATE_LIMIT;
+  const redis = getAgencyRedis();
+  if (redis) {
+    try {
+      const now = Date.now();
+      const pipeline = redis.pipeline();
+      pipeline.zremrangebyscore(key, 0, now - SHARE_RATE_WINDOW_MS);
+      pipeline.zadd(key, { score: now, member: String(now) });
+      pipeline.zcard(key);
+      pipeline.expire(key, SHARE_RATE_WINDOW_S);
+      const results = await pipeline.exec();
+      const count = Number(results[2]);
+      if (Number.isFinite(count)) return count <= SHARE_RATE_LIMIT;
+    } catch (err) {
+      logger.warn("agency_share_rate_limit_redis_unavailable_fallback", {
+        message: (err as Error).message?.slice(0, 120) ?? "",
+        fallback: "memory",
+      });
+    }
+  }
+  return memoryRateLimitAllow(key, SHARE_RATE_LIMIT, SHARE_RATE_WINDOW_MS);
 }
 
 // clientIpOrUnknown imported from ../lib/client-ip (cf-connecting-ip → LAST XFF
@@ -520,7 +533,7 @@ export function registerAgencyRoutes(app: Hono, db: PostgresClient): void {
     // unauthenticated path. Gracefully no-ops when Upstash is not configured.
     // -----------------------------------------------------------------------
     const ip = clientIpOrUnknown(c);
-    const allowed = await checkShareRateLimit(ip).catch(() => true);
+    const allowed = await checkShareRateLimit(ip); // never throws (10.B.9)
     if (!allowed) {
       c.header("Retry-After", "600");
       return c.json({ message: "Too many requests. Please try again later." }, 429);
