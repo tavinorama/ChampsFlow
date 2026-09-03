@@ -287,7 +287,9 @@ if (!url || !apiKey) { ... reason: "not_configured" ... }   // HTTP 200
 
 **Defeito.** A aba aparece a **todos** os utilizadores, incluindo Free, e devolve sempre o estado vazio. O relatório diz "feature vazia não pode permanecer na navegação de um plano Agency" (`RELATORIO:138`) — o código mostra que está pior: está na navegação de *todos* os planos, e não existe mecanismo para a esconder por plano. Nota adicional: `signals.ts:64` aceita `brandId` mas ele é **puramente cosmético** — não há mapeamento por marca.
 
-**Migração necessária.** Nenhuma de schema. Duas decisões de produto (lista final): esconder até haver fonte, ou manter como teaser com gate. Se com gate, é preciso **criar** a verificação de tier na rota e na renderização — ela não existe hoje.
+**Restrição legal vinda da Parte III do relatório — muda a decisão.** A fonte pretendida é o Signal Engine, e o relatório conclui (`RELATORIO:1379`) que o módulo Reddit fica em `compliance_state=blocked` para uso comercial até haver contrato direto com o Reddit ou fornecedor licenciado revisto por counsel. Ou seja: **"ligar o radar" não é uma decisão de engenharia**, é uma decisão contratual anterior. O relatório é explícito (`RELATORIO:1386`) — não vender "monitorização Reddit" como cobertura ativa até lá. **NÃO VERIFIQUEI** nada do repositório do Signal Engine; aceito o veredito do relatório como input, não como facto confirmado por mim.
+
+**Migração necessária.** Nenhuma de schema. Duas decisões de produto (lista final): esconder até haver fonte, ou manter como teaser com gate. Se com gate, é preciso **criar** a verificação de tier na rota e na renderização — ela não existe hoje. Enquanto o estado de compliance não for verde, a opção honesta é esconder.
 
 **Teste existente / faltante.** Existente: `tests/unit/llm/reddit-signal.test.ts` (6), `tests/unit/llm/offsite-signal.test.ts` (3) — cobrem normalização. **Faltante:** teste de que a aba não aparece sem entitlement (não pode existir hoje).
 

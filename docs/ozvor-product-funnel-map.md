@@ -263,7 +263,7 @@ Nenhuma linha de código deve mudar antes destas respostas.
 **Closed loop:**
 5. **A Execution % passa a mostrar o número verificado?** Ele vai partir perto de 0 contra os 100 de hoje. Comunicamos a mudança aos clientes existentes, ou mostramos os dois números lado a lado durante um período de transição?
 6. **Conteúdo hospedado: quem é o guardião do custo** — contagem de audits (o teto atual) ou saldo de créditos? O código proíbe deliberadamente ter os dois (`credits.ts:167`).
-7. **Opportunity Radar: esconder ou gated?** Se gated, o mecanismo tem de ser construído — não existe.
+7. **Opportunity Radar: esconder ou gated?** Se gated, o mecanismo tem de ser construído — não existe. **Nota:** a Parte III do relatório (`RELATORIO:1379`) põe o módulo Reddit em `compliance_state=blocked` para uso comercial até haver contrato. Enquanto isso não mudar, a decisão de engenharia está subordinada à contratual, e a única opção honesta é esconder.
 8. **Mudar os prompts por defeito muda todos os scores.** Aceita-se o bump de metodologia e a quebra da linha de tendência de todos os clientes? Quando?
 9. **O caminho de enchimento genérico (`strategy-generator.ts:236`) morre ou fica?** Se fica, tem de deixar de contar para a Execution %.
 
