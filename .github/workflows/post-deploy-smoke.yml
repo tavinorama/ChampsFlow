@@ -1,15 +1,23 @@
 name: Post-deploy smoke (main)
 
-# 5.D.4 (metade smoke): todo merge na main dispara deploy automático no
-# Railway — e até hoje ninguém conferia se o deploy ACORDOU. Este workflow
-# espera o deploy assentar e bate nos endpoints públicos vitais; qualquer
-# resposta errada grita no Telegram (padrão blog-absence-watch: summary
-# sempre; Telegram quando os secrets existem). Vigia fora do vigiado:
-# só GETs públicos, zero mutação, zero secrets de app.
+# 10.B.3 — o smoke antigo não detectava o pior caso: deploy FALHOU e a imagem
+# VELHA continua servindo com /healthz verde. Agora o smoke verifica a VERSÃO:
+#   1. api  GET /healthz        → sha == github.sha (Railway injeta
+#      RAILWAY_GIT_COMMIT_SHA no container) + checks postgres/redis "ok"
+#   2. web  GET /api/version    → sha == github.sha
+#   3. web→api pelo hostname público que o usuário usa (ozvor.com/healthz)
+#   4. worker (sem hostname público): GET /api/v1/agent-org/liveness →
+#      last_tick_at fresco (< 20 min) E o mapa `queues` presente — o pulso que
+#      o worker novo carimba (10.B.15)
+# com retries por até ~8 min (o deploy do Railway leva minutos para assentar).
+# Vigia fora do vigiado: só GETs públicos, zero mutação, zero secrets de app.
+# Padrão blog-autopublish: TELEGRAM_* obrigatórios (vigia mudo = vermelho já
+# no preflight); falha grita no Telegram + summary e o run fica vermelho.
 
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -18,51 +26,101 @@ concurrency:
   group: post-deploy-smoke
   cancel-in-progress: true   # só interessa o smoke do ÚLTIMO deploy
 
+env:
+  API_URL: "https://api-production-2052.up.railway.app"
+  WEB_URL: "https://ozvor.com"
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Wait for Railway deploy to settle
-        run: sleep 240
+      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+        run: |
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
 
-      - name: Probe vital endpoints
+      - name: Verify deployed version + vitals (retries ~8 min)
         id: probe
+        env:
+          WANT_SHA: ${{ github.sha }}
         run: |
           set -uo pipefail
-          FAILS=""
-          check () { # nome url [substring-esperada]
-            local name="$1" url="$2" want="${3:-}"
-            local body code
-            body=$(curl -sS --max-time 30 -w "\n%{http_code}" "$url" 2>/dev/null) || { FAILS="$FAILS $name(curl)"; return; }
-            code=$(echo "$body" | tail -1)
-            [ "$code" = "200" ] || { FAILS="$FAILS $name($code)"; return; }
-            if [ -n "$want" ] && ! echo "$body" | grep -q "$want"; then FAILS="$FAILS $name(conteudo)"; fi
+          # Uma passada de verificação. Ecoa as falhas restantes; vazio = tudo ok.
+          attempt () {
+            local fails=""
+
+            # 1) API: sha + postgres/redis
+            local api; api=$(curl -sS --max-time 20 "$API_URL/healthz" 2>/dev/null || echo "")
+            local api_sha; api_sha=$(echo "$api" | python3 -c 'import sys,json;print((json.load(sys.stdin).get("sha") or ""))' 2>/dev/null || echo "")
+            local api_ok; api_ok=$(echo "$api" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("1" if d.get("checks",{}).get("postgres")=="ok" and d.get("checks",{}).get("redis")=="ok" else "0")' 2>/dev/null || echo "0")
+            [ "$api_sha" = "$WANT_SHA" ] || fails="$fails api-sha(${api_sha:-vazio})"
+            [ "$api_ok" = "1" ] || fails="$fails api-healthz(postgres/redis)"
+
+            # 2) WEB: sha da versão servida
+            local web_sha; web_sha=$(curl -sS --max-time 20 "$WEB_URL/api/version" 2>/dev/null | python3 -c 'import sys,json;print((json.load(sys.stdin).get("sha") or ""))' 2>/dev/null || echo "")
+            [ "$web_sha" = "$WANT_SHA" ] || fails="$fails web-sha(${web_sha:-vazio})"
+
+            # 3) hostname público que o usuário usa: web → api de ponta a ponta
+            local pub_code; pub_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$WEB_URL/healthz" || echo "000")
+            [ "$pub_code" = "200" ] || fails="$fails web-healthz($pub_code)"
+            local home_code; home_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$WEB_URL" || echo "000")
+            [ "$home_code" = "200" ] || fails="$fails web-home($home_code)"
+
+            # 4) worker via liveness: tick fresco < 20 min + mapa queues presente
+            local live; live=$(curl -sS --max-time 20 "$API_URL/api/v1/agent-org/liveness" 2>/dev/null || echo "")
+            local worker_ok; worker_ok=$(echo "$live" | python3 -c '
+          import sys, json
+          from datetime import datetime, timezone
+          try:
+              d = json.load(sys.stdin)
+              t = str(d.get("last_tick_at") or "").replace(" ", "T").replace("Z", "+00:00")
+              dt = datetime.fromisoformat(t)
+              if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+              age = (datetime.now(timezone.utc) - dt).total_seconds() / 60
+              print("1" if age < 20 and isinstance(d.get("queues"), dict) else "0")
+          except Exception:
+              print("0")' 2>/dev/null || echo "0")
+            [ "$worker_ok" = "1" ] || fails="$fails worker-liveness(tick>20min-ou-sem-queues)"
+
+            echo "$fails"
           }
-          check web https://ozvor.com "Ozvor"
-          check blog https://ozvor.com/blog "Blog"
-          check api-liveness https://api-production-2052.up.railway.app/api/v1/agent-org/liveness "last_tick_at"
-          check ai-audit-meta https://api-production-2052.up.railway.app/api/ai-audit/meta ""
+
+          # Até ~8 min: 16 tentativas x 30 s.
+          FAILS=""
+          for i in $(seq 1 16); do
+            FAILS=$(attempt)
+            if [ -z "$FAILS" ]; then
+              echo "Tentativa $i: deploy verificado — SHA ${WANT_SHA:0:8} servindo em api+web, worker com pulso."
+              break
+            fi
+            echo "Tentativa $i/16: pendente:${FAILS} — aguardando 30s..."
+            [ "$i" -lt 16 ] && sleep 30
+          done
           echo "fails=${FAILS}" >> "$GITHUB_OUTPUT"
-          echo "Falhas:${FAILS:-nenhuma}"
 
       - name: Quiet when healthy
         if: steps.probe.outputs.fails == ''
-        run: echo "Deploy saudável — 4/4 endpoints ok."
+        run: echo "Deploy saudável — versão ${GITHUB_SHA:0:8} confirmada em api + web; worker com pulso."
 
       - name: SCREAM on failure
         if: steps.probe.outputs.fails != ''
         env:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           {
             echo "## 🔴 SMOKE PÓS-DEPLOY FALHOU"
             echo ""
-            echo "Endpoints com problema:${{ steps.probe.outputs.fails }}"
-            echo "Commit: ${{ github.sha }}"
+            echo "Após ~8 min de retries:${{ steps.probe.outputs.fails }}"
+            echo "Commit esperado: ${{ github.sha }}"
+            echo ""
+            echo "api-sha/web-sha = a imagem VELHA ainda está servindo (deploy falhou no Railway)."
+            echo "Rollback: docs/runbooks/rollback.md"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
-            export MSG="SMOKE POS-DEPLOY FALHOU:${{ steps.probe.outputs.fails }} — commit ${GITHUB_SHA:0:8}. Ver Actions."
+            export MSG="SMOKE POS-DEPLOY FALHOU:${{ steps.probe.outputs.fails }} — commit ${GITHUB_SHA:0:8} nao confirmado apos 8 min. Se api-sha/web-sha: imagem velha servindo. Log: ${RUN_URL}"
             PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
             curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
           fi
