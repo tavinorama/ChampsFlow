@@ -82,7 +82,7 @@ If the key is suspected compromised:
 
 ## Related Secrets Rotation
 
-For other secrets with 12-month rotation cadence (see `docs/07-deploy.md` Section 5), the procedure is:
+For other secrets with 12-month rotation cadence (inventário completo na seção "Inventário completo de segredos" abaixo — a antiga referência a `docs/07-deploy.md` apontava para um arquivo que não existe; corrigida 2026-09-02), the procedure is:
 
 1. Generate or rotate the secret in the respective service console (Anthropic, Supabase, Stripe, LinkedIn, Meta, Resend, Axiom).
 2. Update the Railway environment variable.
@@ -128,3 +128,48 @@ Notes:
 | Date | Key rotated | Triggered by | Completed | Verified by |
 |---|---|---|---|---|
 | — | — | — | — | — |
+
+## Inventário completo de segredos (10.B.12 — adicionado 2026-09-02)
+
+> NOMES apenas — valores nunca aparecem em runbook nenhum. Owner de TODA
+> rotação: **founder** (regra: agentes nunca tocam segredo/.env). "Onde vive":
+> Railway = variáveis dos serviços `api`/`worker`/`web` no projeto
+> `trustindex-ai`; GH = GitHub Actions secrets do repo. Depois de qualquer
+> rotação: atualizar a variável, redeploy dos serviços afetados, smoke
+> (`/healthz` + um fluxo real), registrar na tabela de rotação deste runbook.
+
+| # | Segredo (nome) | Vive em | Console onde rotaciona | Serviços afetados | Cadência |
+|---|---|---|---|---|---|
+| 1 | `DATABASE_URL` | Railway (api, worker) | Supabase → Database → reset password | api, worker | na suspeita |
+| 2 | `REDIS_URL` | Railway (referência `${{Redis.REDIS_URL}}`) | Railway → Redis service | api, worker | na suspeita |
+| 3 | `SUPABASE_SERVICE_ROLE_KEY` | Railway (api, worker) | Supabase → API keys | api, worker | 12 meses |
+| 4 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Railway (web) | Supabase → API keys (par com o service_role) | web | junto com o #3 |
+| 5 | `OAUTH_TOKEN_KEY` | Railway (api, worker) | gerado local (`openssl rand -hex 32`) — procedimento versionado no topo deste runbook | api, worker | 12 meses |
+| 6 | `ANTHROPIC_API_KEY` | Railway (api, worker) | console.anthropic.com | api, worker | 6 meses (GEO-SEC-5) |
+| 7 | `OPENAI_API_KEY` | Railway (api, worker) | platform.openai.com | api, worker | 6 meses |
+| 8 | `GEMINI_API_KEY` | Railway (api, worker) | aistudio.google.com | api, worker | 6 meses |
+| 9 | `PERPLEXITY_API_KEY` | Railway (api, worker) | perplexity.ai | api, worker | 6 meses |
+| 10 | `SERP_API_KEY` (DataForSEO) | Railway (api, worker) | app.dataforseo.com | api, worker | 6 meses |
+| 11 | `GOOGLE_OAUTH_CLIENT_SECRET` | Railway (api) | console.cloud.google.com → Credentials | api | 12 meses |
+| 12 | `GOOGLE_PLACES_API_KEY` | Railway (api) | console.cloud.google.com → APIs | api | 12 meses |
+| 13 | `STRIPE_SECRET_KEY` | Railway (api, worker) | dashboard.stripe.com → API keys (roll) | api, worker | 12 meses / na suspeita |
+| 14 | `STRIPE_WEBHOOK_SECRET` | Railway (api) | dashboard.stripe.com → Webhooks (roll signing secret) | api | junto com o endpoint |
+| 15 | `RESEND_API_KEY` | Railway (api, worker) | resend.com → API keys | api, worker | 12 meses |
+| 16 | `TELEGRAM_BOT_TOKEN` | Railway (api, worker) + GH Actions | @BotFather (`/revoke`) | api, worker + TODOS os workflows-vigia | na suspeita |
+| 17 | `TELEGRAM_CHAT_ID` | Railway (api, worker) + GH Actions | não é segredo forte (id do chat), mas par operacional do #16 | idem | com o #16 |
+| 18 | `TELEGRAM_WEBHOOK_SECRET` | Railway (api) | gerado local; re-registra via boot (`ensureTelegramWebhook`) | api | 12 meses |
+| 19 | `HERMES_TASK_TOKEN` | Railway (worker) + GH Actions + VPS | gerado local; atualizar VPS (`hermes.service`) + GH + Railway juntos | worker, workflows, VPS | 12 meses |
+| 20 | `HERMES_BLOG_TOKEN` | GH Actions | idem #19 (escopo blog) | blog-autopublish | 12 meses |
+| 21 | `SMARTLEAD_API_KEY` | Railway (worker) | app.smartlead.ai → Settings | worker | 12 meses |
+| 22 | `SMARTLEAD_WEBHOOK_SECRET` | Railway (api) | gerado local; atualizar a URL registrada no SmartLead | api | 12 meses |
+| 23 | `SIGNAL_ENGINE_API_KEY` | Railway (api) | repo signal-engine (founder) — token do serviço FastAPI | api | 12 meses |
+| 24 | `REVALIDATE_SECRET` | Railway (api, web) | gerado local (`openssl rand -hex 32`) | api, web | 12 meses |
+| 25 | `ADMIN_INTERNAL_KEY` | Railway (api) | gerado local | api | 12 meses |
+| 26 | Operator API keys (tabela `api_key`, hash) | Postgres (hash apenas) | rotação via endpoint próprio (`/api/account/api-keys` / operator key rotation) | api | na suspeita |
+| 27 | Chaves BYOK de clientes | Postgres (AES-256-GCM sob `OAUTH_TOKEN_KEY`) | o CLIENTE rotaciona; nós nunca | — | — |
+
+**Tabela de rotação (append-only — registrar TODA rotação aqui):** usar a
+tabela "Date / Key rotated / Triggered by / Completed / Verified by" já
+existente acima. Ela está vazia porque nenhum segredo foi rotacionado desde o
+go-live — isso é um fato registrado, não um esquecimento; a primeira rotação
+completa (itens 3–15) está devida no ciclo de 6/12 meses contado do go-live.

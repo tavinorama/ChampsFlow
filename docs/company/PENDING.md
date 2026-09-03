@@ -40,7 +40,7 @@
 | 1.3 | **Fase 1 — gate por injeção de roteiro** (🟡 spec PRONTA e mergeada: `docs/specs/video-gate-fase1.md`, #523; falta founder aplicar o patch na VPS + responder o grep dos PROMPTS): `/video-job` repassa body→env (`VIDEOJOB_SCRIPT/FORMAT/CHANNELS`) e o job usa o roteiro recebido em vez do `claudeJSON` (~15 linhas na VPS) → grafo produz → founder aprova → worker chama com o roteiro aprovado | ⚙️+👤(aplicar na VPS) | S–M | 🔴 |
 | 1.4 | Fase 2 — porta `hermes.render()` no worker + reverter o report-only (#516) nas 3 esferas | ⚙️ | M | depois de 1.3 |
 | 1.5 | ⚖️ 1 vídeo/dia para os 3 canais (como o legado) ou 1 por canal (3 renders)? E qual grafo alimenta o roteiro | ⚖️ | 5 min | 🔴 |
-| 1.6 | **IG com IMAGEM já** (independente de vídeo): `/postiz-schedule` aceita `image[]`; card brandado via `renderCardPng` existe — religar sphere-instagram com card + legenda | ⚙️(+patch VPS mínimo) | S–M | 🔴 ganho rápido |
+| 1.6 | **IG com IMAGEM já** (independente de vídeo) — 🟡 engenharia PRONTA (PR feat/ig-image): sphere-instagram virou célula de CARD (PNG brandado renderizado por código do `[CARD HOOK]` aprovado + legenda), pipeline padrão (aprovação mostra hook+legenda → publish com `image[]` → válvula/circuit/retry). **DESLIGADO até:** (1) founder aplicar `docs/specs/ig-image-fase1.md` na VPS (`/postiz-schedule` aceita `image[]` inline base64 → upload ao Postiz), (2) env `IG_IMAGE_PUBLISH=1` no worker E no api. Sem isso: report-only com o card+legenda prontos. Caminho de mídia: sem endpoint de upload no Hermes, URL pública não verificável → inline (opção c). | 👤(aplicar patch VPS + env) | 15 min | 🟡 |
 | 1.7 | HeyGen → Remotion (apresentador digital) | 👤+⚙️ | L | 🔴 |
 | 1.8 | Alinhar o vigia `check-video-posted.sh` (15:20) ao desenho final | ⚙️ | S | 🔴 |
 

@@ -66,6 +66,7 @@ import { registerDownloadRoutes } from "./routes/downloads";
 import { registerOperatorBusinessRoutes } from "./routes/operator";
 import { registerOperatorAgentRoutes } from "./routes/operator-agents";
 import { registerOperatorGraphRoutes } from "./routes/operator-graphs";
+import { registerOperatorProspectRoutes } from "./routes/operator-prospect";
 import { registerAiAuditRoutes } from "./routes/ai-audit";
 import { registerBookRoutes } from "./routes/book";
 import { registerPrimeRoutes } from "./routes/prime";
@@ -74,6 +75,7 @@ import { ensureTelegramWebhook } from "./lib/telegram-webhook-setup";
 import { registerSignalsRoutes } from "./routes/signals";
 import { registerLivenessRoutes } from "./routes/liveness";
 import { refreshPlatformKeys } from "./lib/platform-keys";
+import { requestIdFrom, hashId } from "./lib/request-context";
 
 // ---------------------------------------------------------------------------
 // Postgres client (postgres-js)
@@ -196,7 +198,9 @@ app.use(
   })
 );
 
-// CORS — restrict to configured web origin
+// CORS — restrict to configured web origin. In production WEB_ORIGIN is
+// REQUIRED (config superRefine, 10.B.13) so the localhost fallback below is
+// dev/test-only by construction — production can never boot into it.
 app.use(
   "*",
   cors({
@@ -210,23 +214,28 @@ app.use(
 // Structured request logger — wraps hono/logger to emit to shared structured logger.
 // Hono's built-in logger calls console.log; we shadow it with a custom printf
 // that routes through the shared logger (token-scrubbing, JSON lines, no PII).
+// 10.B.14: every request carries a correlation id (inbound x-request-id/cf-ray
+// honoured, UUID otherwise), echoed back in the response header and threaded
+// into the http log line; tenant/user ids are HASHED in the log (arch §10 —
+// the raw-id deferral is closed).
 app.use("*", async (c, next) => {
   const start = Date.now();
+  const requestId = requestIdFrom((n) => c.req.header(n));
+  c.set("requestId" as never, requestId as never);
+  c.header("x-request-id", requestId);
   await next();
   const latency = Date.now() - start;
-  // Architecture §10: log hashed tenant/user IDs, method, path, status, latency.
   // We log path only (no query string — may contain tokens in OAuth callbacks).
   const auth = c.get("auth");
   logger.info("http_request", {
+    request_id: requestId,
     method: c.req.method,
     path: c.req.path,
     status: c.res.status,
     latency_ms: latency,
-    // tenant_id and user_id are logged as-is here; in production these should
-    // be hashed before logging (architecture §10). Hashing deferred to observability
-    // pipeline (Axiom field transform) — keeping raw IDs avoids double-hashing bugs.
-    tenant_id: auth?.tenantId ?? null,
-    user_id: auth?.userId ?? null,
+    // sha256/12 — correlatable inside logs, not reversible to the UUID.
+    tenant_hash: hashId(auth?.tenantId),
+    user_hash: hashId(auth?.userId),
   });
 });
 
@@ -258,7 +267,18 @@ app.get("/healthz", async (c) => {
   }
 
   const allOk = Object.values(checks).every((v) => v === "ok");
-  return c.json({ status: allOk ? "ok" : "degraded", checks }, allOk ? 200 : 503);
+  return c.json(
+    {
+      status: allOk ? "ok" : "degraded",
+      checks,
+      // 10.B.3 — deployed version: Railway injects RAILWAY_GIT_COMMIT_SHA at
+      // deploy time. The post-deploy smoke asserts this equals the pushed SHA,
+      // which is the only way to catch "deploy failed, old image still
+      // serving" (a green /healthz on stale code was the whole blind spot).
+      sha: process.env["RAILWAY_GIT_COMMIT_SHA"] ?? null,
+    },
+    allOk ? 200 : 503
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -285,6 +305,7 @@ registerOperatorBusinessRoutes(app, db);
 // operator-key auth; hashes never text; outcomes append-only).
 registerOperatorAgentRoutes(app, db);
 registerOperatorGraphRoutes(app, db);
+registerOperatorProspectRoutes(app, db);
 registerAiAuditRoutes(app, db);
 // D3 (2026-08-17): /book intake — lead + claim + book_to_dfy nurture (public, rate-limited).
 registerBookRoutes(app, db);

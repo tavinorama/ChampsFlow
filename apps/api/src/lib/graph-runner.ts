@@ -79,6 +79,18 @@ export const DAY_ARTIFACT = "__day__";
 /** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
 export const SIGNALS_ARTIFACT = "__signals__";
 /**
+ * Upstream key carrying OUR OWN brand's open visibility gaps (Visibility Loop
+ * v2, Phase 4) to content cells. The audit writes Do Next cards for ozvor.com
+ * like it does for any customer; those cards name the exact buyer questions AI
+ * answers without citing us. Feeding them to the briefings points the daily
+ * content at our own uncited queries — we close our own loop with the product
+ * we sell, which is the only proof of it that cannot be faked.
+ *
+ * Optional and fail-open, exactly like [__signals__]: no brand configured, no
+ * cards, or a read error all mean the artifact is simply absent.
+ */
+export const GAPS_ARTIFACT = "__gaps__";
+/**
  * Upstream key carrying the house CONTENT LESSONS (5.F.3) to the CRITICS.
  * Same pattern as [__day__] — a constant, no I/O — but narrower: only the
  * debate nodes of marketing graphs receive it. The critics already see
@@ -316,6 +328,13 @@ export interface SubstratePort {
    */
   externalSignals?(): Promise<string | null>;
   /**
+   * OUR OWN brand's open Do Next cards rendered as the [__gaps__] block
+   * (Visibility Loop v2, Phase 4). Optional on purpose — a worker without
+   * OZVOR_OWN_BRAND_ID returns null and the cell runs exactly as before.
+   * Must never throw; "SEM DADO" is a valid answer.
+   */
+  ownVisibilityGaps?(): Promise<string | null>;
+  /**
    * The ACTIVE approved memory lessons (5.F.1) — the newest row the founder
    * approved in ops.memory_lesson, or null when the store is empty OR the
    * migration has not been applied yet (feature OFF, fail-open: the cells run
@@ -376,9 +395,40 @@ export interface SubstratePort {
   >;
 }
 
+/**
+ * One inline image in a publish payload (1.6). Travels base64 inside the
+ * /postiz-schedule body; the VPS uploads it to Postiz and swaps it for the
+ * media object (docs/specs/ig-image-fase1.md). Only publish nodes that
+ * declare `media` carry it — X/LinkedIn payloads are unchanged.
+ */
+export interface PublishImage {
+  base64: string;
+  mime: "image/png";
+  filename: string;
+}
+
+export interface PublishPayload {
+  channel: string;
+  post: string;
+  image?: PublishImage[];
+}
+
 export interface HermesPort {
   task(prompt: string): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null }>;
-  publish(payload: { channel: string; post: string }): Promise<{ ok: boolean; detail: string }>;
+  publish(payload: PublishPayload): Promise<{ ok: boolean; detail: string }>;
+}
+
+/**
+ * 1.6 — the media port: renders the branded card for a publish node with
+ * `media: "card"`. Lives in the worker (sharp). MUST NOT throw: a render
+ * failure comes back as { ok:false, reason } and the runner fails the publish
+ * step honestly — nothing is sent. Optional on purpose: a runner wired
+ * without it fails media publishes with the nominal action (never text-only).
+ */
+export interface MediaPort {
+  cardPng(input: { hook: string; runId: string; node: string }): Promise<
+    { ok: true; base64: string; bytes: number } | { ok: false; reason: string }
+  >;
 }
 
 export interface ArtifactsPort {
@@ -426,6 +476,8 @@ export interface GraphRunnerPorts {
   now(): Date;
   /** 5.F.6 circuit breaker per Postiz channel — optional, fail-open when absent. */
   circuit?: CircuitPort;
+  /** 1.6 card renderer for media publishes — optional; absent = media publish fails honestly. */
+  media?: MediaPort;
 }
 
 export interface AdvanceResult {
@@ -516,8 +568,139 @@ function publishKnownNotSent(summary: string): boolean {
     summary.startsWith("publish failed:") ||
     summary.startsWith("publish had no content artifact") ||
     summary.startsWith("x post over") ||
-    summary.startsWith("deferred publish lost its content artifact")
+    summary.startsWith("deferred publish lost its content artifact") ||
+    // 1.6: a media publish refused BEFORE the Postiz call (card contract
+    // broken, no media port, render failed) — proven not sent, safe to retry.
+    summary.startsWith(PUBLISH_NOT_SENT_PREFIX)
   );
+}
+
+// ---------------------------------------------------------------------------
+// 1.6 — "IG com IMAGEM já": media publishes. A publish node with
+// config.media === "card" sends caption + a branded card PNG rendered by CODE
+// from the approved [CARD HOOK]. Everything below is the contract the founder
+// approves and the guard that keeps a media channel from ever receiving text
+// alone (the original 22/08 bug, #516).
+// ---------------------------------------------------------------------------
+
+/** Summary prefix of a media publish refused before anything was sent. */
+export const PUBLISH_NOT_SENT_PREFIX = "publish not sent:";
+/** Longest [CARD HOOK] the card carries legibly — enforced at finalize AND at publish. */
+export const CARD_HOOK_MAX_CHARS = 90;
+/** Largest card PNG the payload carries (the VPS spec caps at 2 MB; we stay far under). */
+export const CARD_PNG_MAX_BYTES = 1_500_000;
+
+export type CardPost = { ok: true; hook: string; caption: string } | { ok: false; reason: string };
+
+/**
+ * Parse the finalize artifact of a card cell: `[CARD HOOK] <line>`,
+ * `[CAPTION]` block, `[HASHTAGS] <line>`. Pure and strict. The caption the
+ * publish sends = caption block + hashtags line (what the founder saw). A
+ * missing/empty/over-long hook or an empty caption is a contract violation —
+ * refused, never patched: the hook goes on the image verbatim.
+ */
+export function parseCardPost(text: string): CardPost {
+  const t = (text ?? "").replace(/\r\n/g, "\n").trim();
+  const hookMatch = /^\[CARD HOOK\][ \t]*(.*)$/im.exec(t);
+  if (!hookMatch) return { ok: false, reason: "sem linha [CARD HOOK]" };
+  const hook = hookMatch[1]!.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, "").trim();
+  if (!hook) return { ok: false, reason: "[CARD HOOK] vazio" };
+  if (hook.length > CARD_HOOK_MAX_CHARS) {
+    return { ok: false, reason: `[CARD HOOK] com ${hook.length} caracteres (maximo ${CARD_HOOK_MAX_CHARS})` };
+  }
+  if (/[#\n]/.test(hook) || /https?:\/\//i.test(hook)) {
+    return { ok: false, reason: "[CARD HOOK] com hashtag, link ou quebra de linha" };
+  }
+  const capMatch = /^\[CAPTION\][ \t]*\n?([\s\S]*?)(?=^\[HASHTAGS\]|^\[CARD HOOK\]|(?![\s\S]))/im.exec(t);
+  const captionBody = (capMatch?.[1] ?? "").trim();
+  if (!captionBody) return { ok: false, reason: "sem bloco [CAPTION] (ou vazio)" };
+  const tagsMatch = /^\[HASHTAGS\][ \t]*(.*)$/im.exec(t);
+  const tags = (tagsMatch?.[1] ?? "").trim();
+  const caption = tags ? `${captionBody}\n\n${tags}` : captionBody;
+  return { ok: true, hook, caption };
+}
+
+/** Is this publish node a card (media) publish? */
+function isCardPublish(node: GraphNode): boolean {
+  return node.kind === "publish" && node.config?.["media"] === "card";
+}
+
+/**
+ * Content nodes whose artifact reaches a CARD publish — their output is
+ * contract-checked at finalize time (mirrors xAdaptNodeIds) so a malformed
+ * finalize fails the STEP (retry budget) and never reaches the approval box.
+ */
+function cardContentNodeIds(def: GraphDefinition): Set<string> {
+  const ids = new Set<string>();
+  for (const pub of def.nodes) {
+    if (!isCardPublish(pub)) continue;
+    const contentId = publishContentNodeId(def, pub);
+    if (contentId) ids.add(contentId);
+  }
+  return ids;
+}
+
+/**
+ * Build the payload a publish node sends. Text channels: {channel, post}
+ * untouched. Card publishes: parse the approved artifact (hook + caption),
+ * render the card through the media port, attach it. Any failure returns a
+ * refusal whose summary starts with PUBLISH_NOT_SENT_PREFIX — proven not
+ * sent — and a Telegram line naming the nominal action. NEVER degrades to
+ * text-only: that is the bug this whole path exists to end.
+ */
+async function buildPublishPayload(input: {
+  node: GraphNode;
+  channel: string;
+  post: string;
+  runId: string;
+  media: MediaPort | undefined;
+}): Promise<{ ok: true; payload: PublishPayload } | { ok: false; summary: string; alarm: string }> {
+  const { node, channel, post, runId } = input;
+  if (!isCardPublish(node)) return { ok: true, payload: { channel, post } };
+  const parsed = parseCardPost(post);
+  const head = `🔴 ${channel.toUpperCase()} NÃO PUBLICADO (run ${runId.slice(0, 8)})`;
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      summary: `${PUBLISH_NOT_SENT_PREFIX} contrato do card violado (${parsed.reason}) — nada enviado`,
+      alarm: `${head}: o conteúdo aprovado não tem o contrato do card (${parsed.reason}). NADA foi enviado ao Postiz — canal de mídia nunca recebe texto puro.`,
+    };
+  }
+  if (!input.media) {
+    return {
+      ok: false,
+      summary: `${PUBLISH_NOT_SENT_PREFIX} worker sem porta de mídia (render do card) — nada enviado`,
+      alarm: `${head}: este worker não tem a porta de mídia (render do card). NADA foi enviado. Ação: deploy do worker com apps/worker/src/lib/card-render.ts (dependência sharp) — ver docs/specs/ig-image-fase1.md.`,
+    };
+  }
+  let rendered: Awaited<ReturnType<MediaPort["cardPng"]>>;
+  try {
+    rendered = await input.media.cardPng({ hook: parsed.hook, runId, node: node.id });
+  } catch (err) {
+    rendered = { ok: false, reason: (err as Error)?.message?.slice(0, 160) || "erro desconhecido" };
+  }
+  if (!rendered.ok) {
+    return {
+      ok: false,
+      summary: `${PUBLISH_NOT_SENT_PREFIX} render do card falhou (${rendered.reason.slice(0, 120)}) — nada enviado`,
+      alarm: `${head}: o render do card falhou (${rendered.reason.slice(0, 160)}). NADA foi enviado ao Postiz — nunca texto puro em canal de mídia. O retry automático tenta de novo; se persistir, conferir o sharp no worker.`,
+    };
+  }
+  if (rendered.bytes > CARD_PNG_MAX_BYTES || !rendered.base64) {
+    return {
+      ok: false,
+      summary: `${PUBLISH_NOT_SENT_PREFIX} card com ${rendered.bytes} bytes (maximo ${CARD_PNG_MAX_BYTES}) — nada enviado`,
+      alarm: `${head}: o card renderizado tem ${rendered.bytes} bytes (máximo ${CARD_PNG_MAX_BYTES}). NADA foi enviado.`,
+    };
+  }
+  return {
+    ok: true,
+    payload: {
+      channel,
+      post: parsed.caption,
+      image: [{ base64: rendered.base64, mime: "image/png", filename: `ozvor-card-${runId.slice(0, 8)}.png` }],
+    },
+  };
 }
 
 /** The founder (or 96h of silence) already said NO to retrying this — honor it. */
@@ -762,7 +945,17 @@ export async function advanceRun(
             step.status = "failed";
             step.summary = `x post over ${X_POST_LIMIT} chars, not sent — nothing published`;
           } else {
-            const res = await hermes.publish({ channel, post: toSend });
+            // 1.6: a released CARD publish renders its card NOW (same path as
+            // the fresh publish) — a deferred media post never ships text-only.
+            const built = await buildPublishPayload({ node, channel, post: toSend, runId, media: ports.media });
+            if (!built.ok) {
+              await substrate.finishStep(step.id, { status: "failed", summary: built.summary });
+              step.status = "failed";
+              step.summary = built.summary;
+              await telegram(built.alarm);
+              continue;
+            }
+            const res = await hermes.publish(built.payload);
             await recordCircuit(channel, res.ok);
             if (res.ok) {
               // Honest release note: a circuit park releases because the
@@ -991,6 +1184,8 @@ export async function advanceRun(
   // Content nodes whose artifact reaches an X publish — pre-trimmed to X's limit
   // at finalize time so approval == what publishes.
   const xAdaptNodes = xAdaptNodeIds(def);
+  // 1.6: content nodes feeding a CARD publish — contract-checked on output.
+  const cardContentNodes = cardContentNodeIds(def);
   // 5.F.2: founder-approved prompt overrides, loaded LAZILY and at most once
   // per advance (the port itself caches per tick) — never per node. Fail-open
   // by contract: port absent, store empty or read error → static prompts.
@@ -1122,6 +1317,17 @@ export async function advanceRun(
             /* fail-open by contract; the port should not throw */
           }
         }
+        // Phase 4 (dogfood): our own uncited buyer questions, straight from
+        // the audit loop's Do Next cards. Same fail-open contract as the
+        // signals block — absent artifact, never a placeholder.
+        if (substrate.ownVisibilityGaps) {
+          try {
+            const gaps = await substrate.ownVisibilityGaps();
+            if (gaps) upstream.unshift([GAPS_ARTIFACT, gaps]);
+          } catch {
+            /* fail-open by contract; the port should not throw */
+          }
+        }
       }
       const prompt = buildPrompt(node.kind, config, upstream, await loadPromptOverrides());
       if (!prompt) {
@@ -1150,6 +1356,22 @@ export async function advanceRun(
           await substrate.finishStep(stepId, {
             status: "failed",
             summary: `validador cold-email reprovou: ${v.errors.slice(0, 2).join(" · ").slice(0, 400)}`,
+            ms: res.ms,
+            engine: res.engineUsed,
+          });
+          continue; // retry pass (2c) re-attempts; exhausted budget fails the run
+        }
+      }
+      // 1.6: the finalize of a CARD cell must honor the [CARD HOOK]/[CAPTION]
+      // contract — checked by CODE here, so a malformed finalize fails the
+      // STEP (retry budget gives the model fresh shots) and never reaches the
+      // approval box, let alone the publish. Same spirit as the X pre-trim.
+      if (res.ok && res.output && cardContentNodes.has(node.id)) {
+        const parsed = parseCardPost(res.output);
+        if (!parsed.ok) {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `finalize sem contrato do card (${parsed.reason}) — nao vai a aprovacao`,
             ms: res.ms,
             engine: res.engineUsed,
           });
@@ -1204,7 +1426,9 @@ export async function advanceRun(
       );
       const destinations = downstream.map((n) =>
         n.kind === "publish"
-          ? `publicar como POST em ${String(n.config?.["channel"] ?? "linkedin")} (via ${String(n.config?.["via"] ?? "postiz")})`
+          ? isCardPublish(n)
+            ? `publicar como POST COM IMAGEM em ${String(n.config?.["channel"] ?? "instagram")} (via ${String(n.config?.["via"] ?? "postiz")}) — card brandado impresso por código com o [CARD HOOK] abaixo + a legenda [CAPTION]/[HASHTAGS]`
+            : `publicar como POST em ${String(n.config?.["channel"] ?? "linkedin")} (via ${String(n.config?.["via"] ?? "postiz")})`
           : n.kind === "store"
             ? String(n.config?.["target"] ?? "") === "prompt-override"
               ? `ativar como OVERRIDE de prompt (ops.prompt_override) — os grafos passam a montar esse prompt com o texto aprovado no próximo tick`
@@ -1216,6 +1440,15 @@ export async function advanceRun(
             : `lançar experimento(s): ${(Array.isArray(n.config?.["spawns"]) ? (n.config["spawns"] as unknown[]) : []).map(String).join(", ")}`
       );
       const question = typeof node.config?.["question"] === "string" ? (node.config["question"] as string) : null;
+      // 1.6: a card publish downstream → the hook that will be PRINTED on the
+      // image gets its own line, so the founder approves the card's text
+      // explicitly even if the artifact preview below is clipped.
+      const cardHookLine = downstream.some(isCardPublish)
+        ? (() => {
+            const parsed = parseCardPost(context);
+            return parsed.ok ? `🖼 Card (hook impresso na imagem): «${parsed.hook}»` : `🖼 Card: contrato [CARD HOOK]/[CAPTION] NÃO encontrado (${parsed.reason}) — o publish vai recusar`;
+          })()
+        : null;
       await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
       // Founder 17/08: approval as a BOX with two buttons (like n8n), not a
       // route to curl. The buttons carry the step id; the api's telegram
@@ -1227,6 +1460,7 @@ export async function advanceRun(
           `🟡 APROVAÇÃO NECESSÁRIA — graph ${def.slug} (run ${runId.slice(0, 8)})`,
           destinations.length > 0 ? `Aprovar vai: ${destinations.join(" · ")}` : `Aprovar destrava o resto do graph (sem publicação direta neste passo).`,
           ...(question ? [question] : []),
+          ...(cardHookLine ? [cardHookLine] : []),
           `Conteúdo proposto:`,
           // A combined box needs room for both variants — still far under
           // Telegram's 4096 total cap with the header lines above.
@@ -1324,14 +1558,25 @@ export async function advanceRun(
         );
         continue;
       }
-      const res = await hermes.publish({ channel, post: toSend });
+      // 1.6: card publishes render the branded card HERE, after the founder's
+      // yes, from the approved [CARD HOOK] — deterministic, no LLM in between.
+      // Any failure refuses the send (proven not sent → retry budget applies);
+      // a media channel never receives text alone.
+      const built = await buildPublishPayload({ node, channel, post: toSend, runId, media: ports.media });
+      if (!built.ok) {
+        await substrate.finishStep(stepId, { status: "failed", summary: built.summary });
+        await telegram(built.alarm);
+        continue;
+      }
+      const res = await hermes.publish(built.payload);
       await recordCircuit(channel, res.ok);
       if (res.ok) {
         await artifacts.set(runId, node.id, res.detail);
+        const mediaNote = built.payload.image ? ` media=card(${built.payload.image.length})` : "";
         await substrate.finishStep(stepId, {
           status: "succeeded",
           outputHash: sha(res.detail),
-          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}${threadNote}`,
+          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}${mediaNote}${threadNote}`,
         });
       } else {
         await substrate.finishStep(stepId, { status: "failed", summary: `publish failed: ${res.detail.slice(0, 120)}` });

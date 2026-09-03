@@ -23,8 +23,11 @@ import type postgres from "postgres";
 import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
+import { ownGapsBlock, type OwnGap } from "../../../../packages/llm/src/visibility-loop";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
-import { buildProspectBatchBlock } from "../lib/prospect-probe";
+import { buildProspectBatchBlock, crmDedupSets } from "../lib/prospect-probe";
+import { redisSpecMailbox, apiSpendLedger } from "../lib/apify-source";
+import { renderCardPng } from "../lib/card-render";
 import { crmNoteFor } from "../../../api/src/lib/prospecting";
 import { PLAN_PRICE_USD } from "../../../../packages/shared/src/plan-limits";
 import { createHash } from "node:crypto";
@@ -52,6 +55,12 @@ const SE_URL = process.env["SIGNAL_ENGINE_URL"] ?? "";
 const SE_KEY = process.env["SIGNAL_ENGINE_API_KEY"] ?? "";
 const SE_COUNTRY = process.env["SIGNAL_ENGINE_COUNTRY"] ?? "";
 const SE_CACHE_SECONDS = 6 * 3600;
+// Visibility Loop v2, Phase 4 (dogfood): our own brand's id in this very
+// product. Unset → the [__gaps__] artifact is simply absent and the content
+// cells run exactly as before. Cached 1h: audits are daily at most.
+const OWN_BRAND_ID = process.env["OZVOR_OWN_BRAND_ID"] ?? "";
+const OWN_BRAND_NAME = process.env["OZVOR_OWN_BRAND_NAME"] ?? "Ozvor";
+const OWN_GAPS_CACHE_SECONDS = 3600;
 const HERMES_TIMEOUT_MS = 240_000;
 // Engine chain for Hermes /task (21–22/08 incident: pinned "claude" + one call
 // = 26h of total failure when the Claude OAuth session on the VPS expired,
@@ -1419,7 +1428,27 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // dos ports de I/O do tick: a MESMA cadeia hermes (callWithFallback,
         // alarmes NX) e HTTP de verificação. Todo número do bloco é código.
         if (input.source === "prospects") {
-          return buildProspectBatchBlock({ task: hermesTaskCall });
+          // Fonte (10.C.17/5.A.6): mailbox Redis para um spec Apify
+          // confirmado pelo founder (consumido no read; sem spec = fonte
+          // engine, comportamento historico) + ledger api_spend (orcamento
+          // mensal) + dedup contra crm_contact (e-mail e dominio).
+          let existingCrm: { emails: Set<string>; domains: Set<string> } | undefined;
+          try {
+            const rows = await sql<{ email: string }[]>`
+              /* prospect:crm-dedup */
+              SELECT email FROM crm_contact LIMIT 20000`;
+            existingCrm = crmDedupSets(rows.map((r) => r.email));
+          } catch {
+            existingCrm = undefined; // tabela ausente → sem dedup, honesto
+          }
+          return buildProspectBatchBlock({
+            task: hermesTaskCall,
+            apify: {
+              mailbox: redisSpecMailbox(redis),
+              ledger: apiSpendLedger(async (q, params) => (await sql.unsafe(q, params as never[])) as unknown as Array<Record<string, unknown>>),
+            },
+            ...(existingCrm ? { existingCrm } : {}),
+          });
         }
         return buildSnapshot(sql, input.source, input.days, input.metricPrefix);
       },
@@ -1450,6 +1479,54 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         const block = signalsBlock(opps, { fetchedAt: r.fetchedAt });
         try {
           await redis.set(cacheKey, block, "EX", SE_CACHE_SECONDS);
+        } catch {
+          /* fine */
+        }
+        return block;
+      },
+      async ownVisibilityGaps() {
+        // Phase 4: the same Do Next cards a customer sees, for OUR brand, fed
+        // to the content machine so the daily posts target our own uncited
+        // buyer questions. Reads the NEWEST plan (the audit loop writes one
+        // per run) and takes only OPEN cards.
+        //
+        // Fail-open by contract, three ways: not configured (no brand id),
+        // pre-migration/table blip (any SQL error), or no open cards. The
+        // first two return null (artifact absent); the last returns the
+        // explicit SEM DADO block, because "we have no gaps right now" is a
+        // real answer the briefing should see rather than guess at.
+        if (!OWN_BRAND_ID) return null;
+        const cacheKey = `loop:own-gaps:${OWN_BRAND_ID}`;
+        try {
+          const cached = await redis.get(cacheKey);
+          if (cached) return cached;
+        } catch {
+          /* cache miss on redis error is fine */
+        }
+        let rows: OwnGap[] = [];
+        try {
+          rows = await sql<OwnGap[]>`
+            SELECT t.vector, t.gap, t.action, t.priority, t.evidence, t.metric
+              FROM plan_task t
+              JOIN strategy_plan p ON p.id = t.plan_id
+             WHERE p.brand_id = ${OWN_BRAND_ID}::uuid
+               AND p.id = (
+                 SELECT id FROM strategy_plan
+                  WHERE brand_id = ${OWN_BRAND_ID}::uuid
+                  ORDER BY created_at DESC LIMIT 1
+               )
+               AND t.status IN ('proposed', 'accepted')
+             ORDER BY t.priority DESC
+             LIMIT 12`;
+        } catch (err) {
+          logger.warn("own_visibility_gaps_read_failed", {
+            message: (err as Error).message?.slice(0, 160),
+          });
+          return null;
+        }
+        const block = ownGapsBlock(rows, { brand: OWN_BRAND_NAME });
+        try {
+          await redis.set(cacheKey, block, "EX", OWN_GAPS_CACHE_SECONDS);
         } catch {
           /* fine */
         }
@@ -1654,14 +1731,22 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
     hermes: {
       task: hermesTaskCall,
       async publish(payload) {
+        // 1.6: `image` travels ONLY when the runner attached a card (media
+        // publish). Text channels keep sending exactly {channel, post} — the
+        // VPS handler's normalizeImages() (docs/specs/ig-image-fase1.md)
+        // leaves a body without `image` untouched.
         const { status, body } = await httpJson(
           `${HERMES_URL}/postiz-schedule`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${HERMES_TOKEN}` },
-            body: JSON.stringify({ channel: payload.channel, post: payload.post }),
+            body: JSON.stringify(
+              payload.image && payload.image.length > 0
+                ? { channel: payload.channel, post: payload.post, image: payload.image }
+                : { channel: payload.channel, post: payload.post }
+            ),
           },
-          60_000
+          90_000
         );
         const b = body as { ok?: boolean; postiz?: unknown };
         return {
@@ -1680,6 +1765,23 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
     },
     telegram: sendTelegram,
     now: () => new Date(),
+    // 1.6 — the media port: the branded Instagram card, rendered by CODE from
+    // the approved [CARD HOOK] (apps/worker/src/lib/card-render.ts, sharp).
+    // Never throws: a failure returns {ok:false, reason} and the runner fails
+    // the publish step honestly — a media channel never gets text alone.
+    media: {
+      async cardPng(input) {
+        try {
+          const png = await renderCardPng(input.hook);
+          logger.info("card_rendered", { runId: input.runId, node: input.node, bytes: png.length });
+          return { ok: true, base64: png.toString("base64"), bytes: png.length };
+        } catch (err) {
+          const message = (err as Error)?.message?.slice(0, 200) ?? "erro desconhecido";
+          logger.error("card_render_failed", { runId: input.runId, node: input.node, message });
+          return { ok: false, reason: message };
+        }
+      },
+    },
     // 5.F.6 — the circuit breaker's Redis half. Every method fails OPEN (a
     // Redis blip must never stop a publish or kill a run); the runner treats
     // a throwing/absent circuit as "closed" by contract.
