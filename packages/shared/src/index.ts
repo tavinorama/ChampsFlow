@@ -181,3 +181,12 @@ export * from "./prime-nudges";
 // (prod failure 17/08: over-limit post rejected by Postiz, whole run wasted)
 // ---------------------------------------------------------------------------
 export * from "./x-post-limit";
+
+// ---------------------------------------------------------------------------
+// Editorial leak guard (P0-04) — blocks internal drafting scaffolding (claim
+// basis, owner:, TODO, PR #, "link no 1o comentario") from reaching a public
+// feed. Shared so the API approval path and the worker publish path run the
+// identical check; a UI-only validator is one a scheduled job walks past.
+// ---------------------------------------------------------------------------
+export * from "./editorial-leak";
+
