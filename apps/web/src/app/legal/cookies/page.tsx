@@ -68,7 +68,7 @@ export default function CookiePolicyPage() {
   return (
     <LegalPage
       title="Cookie Policy"
-      updated="24 June 2026"
+      updated="2 September 2026"
       intro="This Cookie Policy explains what cookies and similar technologies Ozvor places on your device, why we use them, and how you can control them. It should be read alongside our Privacy Policy. Ozvor is operated by Ozvor (a company being incorporated in Brazil). Home jurisdiction: Brazil (LGPD); we also comply with the GDPR / ePrivacy Directive (EU/EEA) and CCPA/CPRA (California, US)."
     >
       <LegalSection n="1" title="What are cookies?">
@@ -77,7 +77,9 @@ export default function CookiePolicyPage() {
           website. They allow the site to recognise your device across page
           loads and sessions. We also use <strong>localStorage</strong> (a
           browser storage mechanism) for lightweight UI preferences such as
-          your colour-scheme choice. Neither mechanism identifies you to third
+          your colour-scheme choice, and <strong>sessionStorage</strong> (a
+          storage mechanism that lives only as long as the browser tab) for
+          campaign attribution. None of these mechanisms identify you to third
           parties; they are scoped to our domain only.
         </p>
       </LegalSection>
@@ -142,6 +144,25 @@ export default function CookiePolicyPage() {
                 </td>
                 <td style={cell}>First-party (ozvor.com)</td>
                 <td style={cell}>Persistent until you clear browser storage or change preference</td>
+              </tr>
+              <tr>
+                <td style={cell}>
+                  <code>sessionStorage: ozvor_attribution</code>
+                </td>
+                <td style={cell}>
+                  Campaign attribution (first-touch). If you arrive from one of
+                  our own campaign links (e.g. <code>?from=</code> or{" "}
+                  <code>utm_*</code> parameters), the campaign label is kept so
+                  we know which campaign brought you if you later run a test or
+                  buy. Stores only the campaign identifiers we chose — no
+                  click IDs, no device fingerprint, no cross-site identifiers.
+                  Not a cookie; never read by third parties.
+                </td>
+                <td style={cell}>First-party (ozvor.com)</td>
+                <td style={cell}>
+                  Tab session only — deleted automatically when you close the
+                  browser tab
+                </td>
               </tr>
             </tbody>
           </table>
