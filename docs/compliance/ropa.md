@@ -195,6 +195,23 @@
 
 ---
 
+## Retention Enforcement — Monthly Purge Job (NEW 2026-09-02, 10.B.11)
+
+> Append-only addition. The windows below are ENFORCED in code by the worker's
+> monthly retention job (`apps/worker/src/jobs/retention.ts`, 1st of the month
+> 04:00 UTC). The job is **gated OFF by default** (`RETENTION_ENABLED=1`
+> required in the worker env): until the founder flips it, every run is a
+> dry-run that logs candidate counts and reports on Telegram, deleting nothing.
+> This section only ADDS enforcement windows for ops/telemetry tables — it does
+> not alter any G-activity's declared retention above.
+
+| Table | Data | Window | Basis / note |
+|---|---|---|---|
+| `smartlead_event` | Raw outbound webhook events (lead_email + payload — lead PII) | **12 months** from `received_at` | Evidence window for CRM-stage disputes; aligns with the 12-month evidence-store precedent (G16) |
+| `ops.agent_step` | Agent-org step rows (internal ops; founder decision text per G25) | **6 months** from `started_at` | Operational debugging window; `ops.agent_run` rows are KEPT (auditable spine, no PII beyond G25 scope) |
+| `landing_events` | page_view/cta beacons (truncated IP only) | **13 months** from `created_at` | Analytics-cycle window (13 months = year + comparison month) |
+| `api_spend` | Cost ledger (no PII; pseudonymous tenant UUID per G26) | **24 months** from `created_at` | Cost-analysis window inside the 3-year financial-records horizon (G26); founder may widen before enabling |
+
 ## Data Subject Rights — Operational Handling
 
 - **Intake portal**: `/legal/dsr-request` (public, no login required). Legacy `/privacy/dsr` permanently redirects here (next.config.js).
@@ -281,6 +298,7 @@
 - Reviewed by (human): _____ (required before EU/BR launch)
 - Update log: 2026-08-24 — added "Processing Activities — Growth Products, Attribution & Ops Telemetry" section (G21–G26: AI Audit Stack $49 order/delivery/lead capture with explicit marketing opt-in and `ON DELETE SET NULL` erasure decoupling; campaign attribution labels — six sanitized keys, 100-char truncation, jsonb-only, never logged; Signal Engine consumption — public-source signals with per-source `legal_basis`, NO tenant data outbound today, provisioning registered as planned processing; legacy video/social pipeline own-channel aggregate metrics; Telegram approvals bot — founder decision text in `ops.agent_step.summary`, internal-ops; per-tenant API cost ledger `api_spend.tenant_id` — no PII, no FK by design so erasure neither cascades nor blocks); Activity G21 detail subsection added; Sub-Processor Register extended SP-15–SP-18 (Telegram, Signal Engine, Pexels, Notion — all NOT ASSESSED, with active constraints); G17 cross-reference note appended. New open conditions GEO-D6 (ai_audit_order/lead_capture retention undefined in code), GEO-D7 (Telegram terms review + no-customer-PII constraint), GEO-D8 (Signal Engine provisioning gate), GEO-D9 (Pexels/Notion second-wave DPA review). Corresponding DPIA update: `docs/compliance/dpia.md` Section 13-GEO. No existing G1–G20 activity or Archived-section content modified. No gate-log verdict exists yet for this update.
 - Update log: 2026-07-28 — new processing activity G16 added (Evidence Store — raw engine responses, 12-month retention) under founder-approved Product Decision 4-A; "Activity G16 — Evidence Store: Third-Party DSR Handling" subsection added; Data Subject Rights — Operational Handling section cross-referenced. Corresponding DPIA update in `docs/compliance/dpia.md` Section 11-GEO (new risk GEO-R13, conditions EV-1 through EV-9). Gate verdict in `docs/compliance/gate-log.md` 2026-07-28 entry. Does not alter the 90-day `citation_check` retention (unchanged, separate data category) or any other existing G1–G15 activity.
+- Update log: 2026-09-02 — added "Retention Enforcement — Monthly Purge Job" section (10.B.11): four enforced windows (smartlead_event 12m, ops.agent_step 6m com runs preservados, landing_events 13m, api_spend 24m), executadas pelo job mensal do worker, GATED por RETENTION_ENABLED (desligado por padrão até decisão do founder). Nenhuma atividade G existente alterada.
 - Update log: 2026-08-10 — Sub-Processor Register: SP-1 through SP-10 and SP-14 marked ACCEPTED per the founder's explicit confirmation of 2026-08-10 ("todos aceites em 10/08/2026, inclusive DataForSEO"); evidence lives in the founder's provider account records, per register step 3. Open remainders preserved: SP-4 EU-infra confirmation, SP-6/SP-7 EU-path routing (GEO-D1), SP-8 GEO-A3 EU-exclusion gate (until SCC scope verified), SP-9 own production account (founder deferral), SP-11–SP-13 not assessed (second wave). Appointment Records: B1/B2 resolved 2026-08-07 (EU representative = the founder, EU-resident in Lisbon; Portugal as Member State; Art. 3(1) establishment nuance recorded, undecided); both instruments (Art. 41 + Art. 27) delivered 2026-08-07, signatures pending. No processing activity modified. No gate-log verdict exists for this update.
 - Update log: 2026-07-24 (merged via PR #404) — added Appointment Records templates (LGPD Art. 41 Encarregado + GDPR Art. 27 EU representative — both still unappointed as of this update; the founder-decision list and the finding that the live Privacy Policy overstates appointment status are recorded in the Appointment Records subsection of this document, NOT in `gate-log.md`, which has no entry for this update); added Processing Activities G17–G20 (internal operations/marketing: Postiz, HeyGen, n8n cloud, Google Workspace; drafted 2026-07-24 as G16–G19 and renumbered at merge because G16 was assigned to the Evidence Store on 2026-07-28); added the Sub-Processor Register (master DPA checklist, SP-1–SP-14). New conditions: GEO-D4 (n8n workflow data inventory before any customer-derived data is routed through it) and GEO-D5 (HeyGen — informational only, no action required). No existing G1–G16 activity or Archived-section content modified.
 - Update log: 2026-07-10 — brand-name fix in live activity G7 ("TrustIndex Score" → "Ozvor AI Visibility Score"; founder rebrand rule 2026-06-27) as part of the issue #213 stale-docs sweep. No processing-activity change.

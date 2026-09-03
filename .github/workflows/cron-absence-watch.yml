@@ -1,0 +1,118 @@
+name: Cron absence watch (Monday 09:00 UTC)
+
+# 10.B.4 — o vigia do vigia. Um cron do GitHub pode simplesmente NÃO rodar
+# (31/08: o scheduler pulou o autopublish das 12:00 em silêncio) — e um vigia
+# que nunca roda nunca fica vermelho. Este workflow pergunta à API do GitHub,
+# uma vez por semana, se cada vigia agendado teve run dentro da sua janela:
+#
+#   agent-org-liveness  (*/30 min)  → run nas últimas 2 h
+#   link-crawl          (07:00 diário) → run nas últimas 26 h
+#   e2e                 (06:00 noturno) → run agendado nas últimas 26 h
+#   post-deploy-smoke   (push na main) → run desde o último push na main
+#                        (sem push na janela = ausência não é falha)
+#
+# Ausência = grita (Telegram + summary + run vermelho). O padrão do blog
+# (blog-absence-watch) agora vale para toda a frota. O vigia-de-vigia é
+# vigiado pelo humano: ele roda 1x/semana e aparece vermelho na aba Actions —
+# a recursão para aqui, de propósito.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # Mondays 09:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+        run: |
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
+
+      - name: Check each watcher ran inside its window
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # last_run_epoch <workflow-file> [event]
+          # Epoch (s) do run mais recente (opcionalmente filtrado por evento);
+          # 0 quando não há nenhum. Agregação é jq — o modelo só redige
+          # (lição 30/07: "vigia também mente").
+          last_run_epoch () {
+            local wf="$1" event="${2:-}"
+            local url="repos/${REPO}/actions/workflows/${wf}/runs?per_page=5"
+            [ -n "$event" ] && url="${url}&event=${event}"
+            gh api "$url" --jq '[.workflow_runs[].created_at] | max // empty' 2>/dev/null \
+              | { read -r ts || true; [ -n "${ts:-}" ] && date -d "$ts" +%s || echo 0; }
+          }
+
+          NOW=$(date +%s)
+          PROBLEMS=""
+
+          add_problem () { PROBLEMS="${PROBLEMS}${PROBLEMS:+ | }$1"; }
+
+          # agent-org-liveness: */30 min → janela 2 h
+          TS=$(last_run_epoch "agent-org-liveness.yml" "schedule")
+          if [ "$TS" -eq 0 ] || [ $((NOW - TS)) -gt 7200 ]; then
+            add_problem "agent-org-liveness sem run agendado nas ultimas 2h"
+          fi
+
+          # link-crawl: diário 07:00 → janela 26 h
+          TS=$(last_run_epoch "link-crawl.yml" "schedule")
+          if [ "$TS" -eq 0 ] || [ $((NOW - TS)) -gt 93600 ]; then
+            add_problem "link-crawl sem run agendado nas ultimas 26h"
+          fi
+
+          # e2e noturno: diário 06:00 → janela 26 h
+          TS=$(last_run_epoch "e2e.yml" "schedule")
+          if [ "$TS" -eq 0 ] || [ $((NOW - TS)) -gt 93600 ]; then
+            add_problem "e2e noturno sem run agendado nas ultimas 26h"
+          fi
+
+          # post-deploy-smoke: dispara por push na main. Ausência só é falha
+          # quando HOUVE push na main sem smoke correspondente depois dele.
+          LAST_PUSH=$(gh api "repos/${REPO}/commits/main" --jq '.commit.committer.date' 2>/dev/null \
+            | { read -r ts || true; [ -n "${ts:-}" ] && date -d "$ts" +%s || echo 0; })
+          TS=$(last_run_epoch "post-deploy-smoke.yml")
+          if [ "$LAST_PUSH" -gt 0 ] && [ "$TS" -lt "$LAST_PUSH" ]; then
+            add_problem "post-deploy-smoke nao rodou apos o ultimo push na main"
+          fi
+
+          echo "problems=${PROBLEMS}" >> "$GITHUB_OUTPUT"
+          echo "Problemas: ${PROBLEMS:-nenhum}"
+
+      - name: Quiet when every watcher has a pulse
+        if: steps.check.outputs.problems == ''
+        run: echo "OK — todos os vigias rodaram dentro das janelas."
+
+      - name: SCREAM when a watcher went absent
+        if: steps.check.outputs.problems != ''
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROBLEMS: ${{ steps.check.outputs.problems }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "## 🔴 VIGIA AUSENTE"
+            echo ""
+            echo "$PROBLEMS"
+            echo ""
+            echo "Um cron que não roda nunca fica vermelho — por isso este check existe."
+            echo "$RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="VIGIA AUSENTE: ${PROBLEMS}. Cron do GitHub pode ter sido desabilitado/pulado. Log: ${RUN_URL}"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          fi
+          exit 1

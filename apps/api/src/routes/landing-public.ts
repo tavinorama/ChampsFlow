@@ -45,6 +45,7 @@ import { requireAuth, requireSuperAdmin } from "../auth/middleware";
 import { truncateIp } from "./dpa";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { memoryRateLimitAllow } from "../lib/memory-rate-limit";
 import { clientIp } from "../lib/client-ip";
 import { sendLandingLeadNotificationEmail } from "../../../../packages/shared/src/emails/landing-lead-notification";
 import {
@@ -104,9 +105,11 @@ function ipTruncOrUnknown(c: { req: { header: (n: string) => string | undefined 
 
 // ---------------------------------------------------------------------------
 // Sliding-window rate limiter (ZSET pipeline) — same shape as products.ts'
-// checkTestRateLimit / agency.ts' checkShareRateLimit. Fails OPEN (allows)
-// when Redis is unconfigured or errors, consistent with every other public
-// route in this codebase.
+// checkTestRateLimit. 10.B.9: no longer fail-open — when Redis is unset or
+// errors, the request is capped by the bounded in-process limiter
+// (memory-rate-limit.ts, the /test pattern from #261) with a warn log. The
+// old `.catch(() => true)` at every call site meant a Redis outage turned a
+// capped public surface into an uncapped one, silently.
 // ---------------------------------------------------------------------------
 
 function getPublicLandingRedis(): SharedRedis | null {
@@ -120,16 +123,26 @@ async function checkSlidingWindowRateLimit(
   windowSeconds: number
 ): Promise<boolean> {
   const redis = getPublicLandingRedis();
-  if (!redis) return true; // unconfigured — allow (dev)
-  const now = Date.now();
-  const pipeline = redis.pipeline();
-  pipeline.zremrangebyscore(key, 0, now - windowMs);
-  pipeline.zadd(key, { score: now, member: String(now) });
-  pipeline.zcard(key);
-  pipeline.expire(key, windowSeconds);
-  const results = await pipeline.exec();
-  const count = results[2] as number;
-  return count <= limit;
+  if (redis) {
+    try {
+      const now = Date.now();
+      const pipeline = redis.pipeline();
+      pipeline.zremrangebyscore(key, 0, now - windowMs);
+      pipeline.zadd(key, { score: now, member: String(now) });
+      pipeline.zcard(key);
+      pipeline.expire(key, windowSeconds);
+      const results = await pipeline.exec();
+      const count = Number(results[2]);
+      if (Number.isFinite(count)) return count <= limit;
+    } catch (err) {
+      logger.warn("landing_public_rate_limit_redis_unavailable_fallback", {
+        key_prefix: key.split(":")[0] ?? "",
+        message: (err as Error).message?.slice(0, 120) ?? "",
+        fallback: "memory",
+      });
+    }
+  }
+  return memoryRateLimitAllow(key, limit, windowMs);
 }
 
 const READ_RATE_LIMIT = 120;
@@ -359,7 +372,7 @@ export function registerLandingPublicRoutes(app: Hono, db: PostgresClient): void
       PHOTO_RATE_LIMIT,
       PHOTO_RATE_WINDOW_MS,
       PHOTO_RATE_WINDOW_S
-    ).catch(() => true);
+    );
     if (!allowed) {
       c.header("Retry-After", "60");
       return c.json({ message: "Too many requests. Please try again later." }, 429);
@@ -389,7 +402,7 @@ export function registerLandingPublicRoutes(app: Hono, db: PostgresClient): void
       READ_RATE_LIMIT,
       READ_RATE_WINDOW_MS,
       READ_RATE_WINDOW_S
-    ).catch(() => true);
+    );
     if (!allowed) {
       c.header("Retry-After", "600");
       return c.json({ message: "Too many requests. Please try again later." }, 429);
@@ -430,7 +443,7 @@ export function registerLandingPublicRoutes(app: Hono, db: PostgresClient): void
       READ_RATE_LIMIT,
       READ_RATE_WINDOW_MS,
       READ_RATE_WINDOW_S
-    ).catch(() => true);
+    );
     if (!allowed) {
       c.header("Retry-After", "600");
       return c.json({ message: "Too many requests. Please try again later." }, 429);
