@@ -79,6 +79,32 @@ export function sourceDomain(src: string): string {
   }
 }
 
+/**
+ * Hosts that are never an actionable "get present here" target.
+ *
+ * Found in the founder's own 02/09 run: every Gemini source arrives as a
+ * `vertexaisearch.cloud.google.com/grounding-api-redirect/...` link and the
+ * SERP engine returns `google.com/search` — telling a customer to "get present
+ * on vertexaisearch.cloud.google.com" is noise that would have shipped
+ * straight into their card list. Search engines, redirectors and caches are
+ * plumbing, not publications.
+ */
+export const NON_ACTIONABLE_SOURCE_HOSTS: readonly string[] = [
+  "vertexaisearch.cloud.google.com",
+  "googleusercontent.com",
+  "webcache.googleusercontent.com",
+  "google.com",
+  "bing.com",
+  "duckduckgo.com",
+  "search.yahoo.com",
+];
+
+/** True when a domain is plumbing (search/redirect/cache), not a publication. */
+export function isActionableSource(domain: string): boolean {
+  if (!domain) return false;
+  return !NON_ACTIONABLE_SOURCE_HOSTS.some((h) => domain === h || domain.endsWith(`.${h}`));
+}
+
 /** Deterministic gap texts — these ARE the cross-audit match keys. */
 export const gapForUncited = (q: string): string => `Not cited for "${q}"`;
 export const gapForLowRank = (q: string): string => `Cited low for "${q}"`;
@@ -122,7 +148,7 @@ function aggregateByQuery(probes: LoopProbe[]): Map<string, QueryAgg> {
       agg.competitorsWhereAbsent.push(...p.competitors);
       for (const s of p.sources) {
         const d = sourceDomain(s);
-        if (d) agg.absentSourceDomains.push(d);
+        if (isActionableSource(d)) agg.absentSourceDomains.push(d);
       }
     }
     agg.competitors.push(...p.competitors);
@@ -232,7 +258,7 @@ export function buildLoopCandidates(
   for (const p of probes) {
     for (const s of p.sources) {
       const d = sourceDomain(s);
-      if (d) seenAnywhere.add(d);
+      if (isActionableSource(d)) seenAnywhere.add(d);
     }
   }
   for (const d of seenAnywhere) {
@@ -450,4 +476,68 @@ export function reconcileLoopTasks(
   const allRows = [...rows, ...boundedDone];
   stats.inserted = allRows.length;
   return { rows: allRows, stats };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — the dogfood loop.
+//
+// Our own brand's open Do Next cards are the best possible content brief: they
+// name the exact buyer questions AI answers without us, and the sources it
+// leans on instead. Feeding them to the content machine closes our own loop —
+// and a product whose own maker uses it daily is the proof that it works.
+//
+// Rendered as a [__gaps__] block for the sphere briefings, deliberately
+// pattern-copying signalsBlock()/[__signals__]: same "SEM DADO is a valid
+// answer, never invent" contract, same shape, so the prompts treat both the
+// same way.
+// ---------------------------------------------------------------------------
+
+/** One open card of our own brand, as the content cells need to see it. */
+export interface OwnGap {
+  vector: string;
+  gap: string;
+  action: string;
+  priority: number;
+  evidence?: string | null;
+  metric?: string | null;
+}
+
+/**
+ * Render our own open visibility gaps as the [__gaps__] prompt block.
+ *
+ * Honesty contract (identical to signalsBlock): an empty list produces an
+ * explicit SEM DADO line, never an empty block that a model would fill with
+ * invention. Facts come from plan_task rows written by the audit loop.
+ */
+export function ownGapsBlock(
+  gaps: OwnGap[],
+  opts?: { max?: number; brand?: string; source?: string }
+): string {
+  const max = opts?.max ?? 6;
+  const brand = opts?.brand ?? "Ozvor";
+  const src = opts?.source ?? `Do Next da propria marca (${brand}), gerado pelo audit`;
+  if (gaps.length === 0) {
+    return (
+      `NOSSOS GAPS DE VISIBILIDADE: SEM DADO (${src}). ` +
+      `Nao invente queries nem fontes; siga com o resto do briefing.`
+    );
+  }
+  const sorted = [...gaps].sort((a, b) => b.priority - a.priority || a.gap.localeCompare(b.gap));
+  const lines = [
+    `NOSSOS GAPS DE VISIBILIDADE REAIS (${src}). ` +
+      `Sao as perguntas de comprador que a IA responde HOJE sem nos citar — ` +
+      `escrever sobre elas e o trabalho que move o nosso proprio score:`,
+  ];
+  for (const g of sorted.slice(0, max)) {
+    const bits = [
+      `prioridade=${g.priority}`,
+      `vetor=${g.vector}`,
+      `gap: ${g.gap}`,
+      `acao: ${String(g.action).slice(0, 220)}`,
+      g.metric ? `metrica: ${String(g.metric).slice(0, 120)}` : null,
+    ].filter(Boolean);
+    lines.push(`- ${bits.join(" · ")}`);
+  }
+  if (sorted.length > max) lines.push(`(+${sorted.length - max} outros gaps abertos)`);
+  return lines.join("\n");
 }

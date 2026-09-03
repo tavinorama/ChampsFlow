@@ -155,3 +155,29 @@ describe("compareAudits — competitors, offsite, traits, providers", () => {
     expect(d.providers.removed).toEqual(["google"]);
   });
 });
+
+describe("compareAudits — source domains (Visibility Loop v2, Phase 3)", () => {
+  it("reports domains gained and lost between two runs", () => {
+    const d = compareAudits(
+      snap({ sourceDomains: ["g2.com", "capterra.com"] }),
+      snap({ auditId: "a2", sourceDomains: ["g2.com", "reddit.com"] })
+    );
+    expect(d.sources.gained).toEqual(["reddit.com"]);
+    expect(d.sources.lost).toEqual(["capterra.com"]);
+  });
+
+  it("stays empty when either side has no source data — never claims a loss it cannot know", () => {
+    const d = compareAudits(snap({}), snap({ auditId: "a2", sourceDomains: ["g2.com"] }));
+    expect(d.sources.gained).toEqual([]);
+    expect(d.sources.lost).toEqual([]);
+  });
+
+  it("is case-insensitive and stable in order", () => {
+    const d = compareAudits(
+      snap({ sourceDomains: ["G2.com"] }),
+      snap({ auditId: "a2", sourceDomains: ["g2.com", "Zapier.com", "aaa.com"] })
+    );
+    expect(d.sources.lost).toEqual([]);
+    expect(d.sources.gained).toEqual(["aaa.com", "zapier.com"]);
+  });
+});
