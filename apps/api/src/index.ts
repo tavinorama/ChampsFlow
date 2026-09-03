@@ -260,7 +260,18 @@ app.get("/healthz", async (c) => {
   }
 
   const allOk = Object.values(checks).every((v) => v === "ok");
-  return c.json({ status: allOk ? "ok" : "degraded", checks }, allOk ? 200 : 503);
+  return c.json(
+    {
+      status: allOk ? "ok" : "degraded",
+      checks,
+      // 10.B.3 — deployed version: Railway injects RAILWAY_GIT_COMMIT_SHA at
+      // deploy time. The post-deploy smoke asserts this equals the pushed SHA,
+      // which is the only way to catch "deploy failed, old image still
+      // serving" (a green /healthz on stale code was the whole blind spot).
+      sha: process.env["RAILWAY_GIT_COMMIT_SHA"] ?? null,
+    },
+    allOk ? 200 : 503
+  );
 });
 
 // ---------------------------------------------------------------------------
