@@ -24,7 +24,7 @@ import { safeJsonLd } from "../../../components/landing-public/json-ld";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
-  title: "FAQ — Answers about Ozvor, pricing, and the AI Visibility Score | Ozvor",
+  title: "FAQ — Answers about Ozvor, pricing, and the AI Visibility Score",
   description:
     "Answers about the Ozvor AI Visibility Score, how the audit works, the free test, the $29 Kit, Growth, Agency, Ozvor Pages, OrganicPosts, SEO vs GEO, and data privacy.",
   alternates: { canonical: "https://ozvor.com/faq" },

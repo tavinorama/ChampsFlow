@@ -148,6 +148,15 @@ const CLIENT_STYLES = `
     border-collapse: collapse;
     font-size: var(--font-size-body-sm);
   }
+  /* P0-10: contain the table's data-dependent min-content width here instead of
+     letting it widen the document. max-width:100% + min-width:0 stop the wrapper
+     itself from being stretched by the table when it sits in a flex/grid parent. */
+  .ti-test-engine-table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+    min-width: 0;
+    -webkit-overflow-scrolling: touch;
+  }
   .ti-test-engine-cards {
     display: none;
     flex-direction: column;
@@ -486,7 +495,16 @@ function EngineBreakdown({
 }) {
   return (
     <div>
-      {/* Desktop table */}
+      {/* Desktop table.
+          P0-10: this is the only table on the four audited pages that had no
+          horizontal-scroll wrapper (pricing, /vs/[competitor] and /legal/cookies
+          all have one). Its five columns include competitor domains — user data
+          with no upper bound — and `.ti-test-engine-table` is auto-layout, so
+          its min-content floor is data-dependent and can exceed the viewport
+          from 641px up (below 640px the card layout replaces it). The wrapper
+          keeps any overflow inside its own scroll container instead of widening
+          the document. Visual design is unchanged: the wrapper adds no box. */}
+      <div className="ti-test-engine-table-scroll">
       <table
         className="ti-test-engine-table"
         aria-label="How each AI engine answered"
@@ -573,6 +591,7 @@ function EngineBreakdown({
           ))}
         </tbody>
       </table>
+      </div>
 
       {/* Mobile stacked cards */}
       <div className="ti-test-engine-cards" aria-label="How each AI engine answered">

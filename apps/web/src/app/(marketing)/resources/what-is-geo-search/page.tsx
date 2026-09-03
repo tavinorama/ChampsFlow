@@ -22,13 +22,17 @@ import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
-    "Understanding GEO Search — How AI Engines Decide Which Businesses to Name | Ozvor",
+    "Understanding GEO Search — How AI Engines Decide Which Businesses to Name",
   description:
     "The complete Ozvor whitepaper on Generative Engine Optimization (GEO): what it is, why it matters for small businesses, the Princeton research that proved it, and a concrete starter checklist. Free to read and download.",
   alternates: {
     canonical: "https://ozvor.com/resources/what-is-geo-search",
   },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title:
       "Understanding GEO Search — How AI Engines Decide Which Businesses to Name | Ozvor",
     description:

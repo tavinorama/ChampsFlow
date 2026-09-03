@@ -249,7 +249,15 @@ export default function LoginPage() {
       backgroundColor: "var(--color-surface-muted)",
     }}>
       <div style={{
-        width: "100%", maxWidth: "400px", backgroundColor: "var(--color-surface)",
+        // P0-10, measured 03/09/2026: this card is content-box, so its
+        // width:100% resolved against the padded parent and then GREW by its own
+        // 2 × var(--space-8) padding — a 320px viewport produced a 338px card and
+        // a 329px document. boxSizing:border-box makes the padding eat inward
+        // instead of outward; identical rendering at every width where the card
+        // is already capped by maxWidth:400px. Same fix the email input on this
+        // page already uses (see the `boxSizing: "border-box"` below).
+        width: "100%", maxWidth: "400px", boxSizing: "border-box",
+        backgroundColor: "var(--color-surface)",
         border: "1px solid var(--color-border)", borderRadius: "var(--radius-xl)",
         padding: "var(--space-8)", boxShadow: "var(--shadow-card)",
       }}>
@@ -298,8 +306,8 @@ export default function LoginPage() {
           }}>
             <p style={{ margin: "0 0 var(--space-4) 0" }}>
               Live email sign-in needs a Supabase project (set
-              <code style={{ margin: "0 4px" }}>NEXT_PUBLIC_SUPABASE_URL</code> +
-              <code style={{ marginLeft: 4 }}>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>).
+              <code style={{ margin: "0 4px", overflowWrap: "anywhere" }}>NEXT_PUBLIC_SUPABASE_URL</code> +
+              <code style={{ marginLeft: 4, overflowWrap: "anywhere" }}>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>).
               For now, explore the full product in demo mode:
             </p>
             <a href="/dashboard" style={{

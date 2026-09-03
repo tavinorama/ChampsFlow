@@ -7,10 +7,14 @@
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Terms of Service | Ozvor",
+  title: "Terms of Service",
   description: "The terms governing your use of Ozvor and OrganicPosts.",
   alternates: { canonical: "https://ozvor.com/terms-of-service" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Terms of Service | Ozvor",
     description: "The terms governing your use of Ozvor and OrganicPosts.",
     url: "https://ozvor.com/terms-of-service",

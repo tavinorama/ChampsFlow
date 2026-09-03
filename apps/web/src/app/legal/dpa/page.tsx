@@ -9,7 +9,7 @@
 import { LegalPage, LegalSection } from "../../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Data Processing Agreement | Ozvor",
+  title: "Data Processing Agreement",
   description: "The DPA governing Ozvor's processing of personal data on behalf of business customers (GDPR Art. 28, LGPD).",
   alternates: { canonical: "https://ozvor.com/legal/dpa" },
 };

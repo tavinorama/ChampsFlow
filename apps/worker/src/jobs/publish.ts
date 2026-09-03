@@ -46,6 +46,7 @@ import {
   type SocialAccountForPublish,
   type DraftForPublish,
 } from "../../../../packages/shared/src/index";
+import { checkEditorialLeaks, describeEditorialLeaks } from "../../../../packages/shared/src/editorial-leak";
 import { logger } from "../../../../packages/shared/src/logger";
 
 // ---------------------------------------------------------------------------
@@ -398,6 +399,33 @@ export async function processPublishJob(
           hashtags: draftRow.hashtags,
           ai_generated: draftRow.ai_generated,
         };
+
+        // -------------------------------------------------------------------------
+        // Step 5b: P0-04 — editorial leak guard, the last door.
+        //
+        // The API blocks this at approval time, but approval is not the only way
+        // a row reaches this worker: a draft can be written or edited by another
+        // path, and a job already queued survives a later edit. This check runs
+        // against the exact text the adapter is about to send. It is a PERMANENT
+        // failure, never a retry — retrying leaked text just leaks it later.
+        // -------------------------------------------------------------------------
+        const outboundText = [draft.body, ...(draft.hashtags ?? [])].join("\n");
+        const leaks = checkEditorialLeaks(outboundText);
+        if (!leaks.ok) {
+          logger.error("publish_blocked_editorial_leak", {
+            publish_job_id,
+            draft_id: draft.id,
+            platform: socialAccount.platform,
+            // ids + short excerpts only, never the body.
+            markers: describeEditorialLeaks(leaks).slice(0, 400),
+          });
+          throw new PublishError(
+            false, // not retryable — a human has to edit the draft
+            "content_rejected",
+            socialAccount.platform,
+            "Draft contains internal drafting notes and was not published."
+          );
+        }
 
         // -------------------------------------------------------------------------
         // Step 6: Dispatch publish to platform adapter

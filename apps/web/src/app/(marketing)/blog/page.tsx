@@ -36,6 +36,10 @@ export const metadata: Metadata = {
     canonical: "https://ozvor.com/blog",
   },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Blog — Ozvor",
     description:
       "Articles about AI search visibility and GEO, and how to get your brand cited by ChatGPT, Claude, Perplexity and Gemini.",
