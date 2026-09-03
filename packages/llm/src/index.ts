@@ -244,6 +244,8 @@ export {
   mentionsBrand,
   normaliseTokens,
   jaccard,
+  containment,
+  promptSimilarity,
 } from "./prompt-quality-gate";
 
 // B1 — sequential sampling protocol (lean base + escalate-on-ambiguity)

@@ -63,10 +63,10 @@ export interface QualityGateConfig {
   /** Minimum relevanceScore to enter the universe. */
   relevanceFloor: number;
   /**
-   * Jaccard similarity over normalised token sets above which two prompts are
-   * treated as the same question. 0.8 catches "best X for small businesses" vs
-   * "best X for SMBs on a budget" once the SMB alias is folded, while leaving
-   * genuinely different questions apart.
+   * promptSimilarity() above which two prompts are treated as the same
+   * question. 0.8 catches "best X for small businesses" vs "best X for SMBs on
+   * a budget" (similarity 1.00 once the SMB alias is folded) while leaving the
+   * closest genuinely-different pair in the Ozvor universe at 0.33.
    */
   duplicateThreshold: number;
   /** Warn when a prompt expires within this many days. */
@@ -215,6 +215,40 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
   for (const t of a) if (b.has(t)) inter += 1;
   const union = a.size + b.size - inter;
   return union === 0 ? 0 : inter / union;
+}
+
+/**
+ * Containment: how much of the SMALLER question is inside the larger one.
+ *
+ * Jaccard alone misses the duplicate pair that actually shipped in v1:
+ *
+ *   "What is the best CRM for small businesses?" -> {best, crm, smallbusiness}
+ *   "Best CRM for SMBs on a budget"             -> {best, crm, smallbusiness, budget}
+ *
+ * Jaccard 0.75 — under any threshold loose enough to be useful, one extra
+ * qualifier hides a question that is the other one with a price filter bolted
+ * on. Containment is 1.0: the second question fully contains the first. That
+ * is the shape of a near-duplicate, and it is the shape Jaccard punishes.
+ */
+export function containment(a: Set<string>, b: Set<string>): number {
+  const min = Math.min(a.size, b.size);
+  // Below 3 meaningful tokens, containment says nothing: two short prompts
+  // sharing "best crm" are not the same question.
+  if (min < 3) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  return inter / min;
+}
+
+/**
+ * Similarity used by the dedupe check: the stronger of the two signals.
+ *
+ * On the real corpus the margin is wide — the v1 duplicate pair scores 1.00
+ * while the most similar genuinely-distinct pair in the Ozvor universe scores
+ * 0.33 — so the 0.8 threshold is not sitting on a knife edge.
+ */
+export function promptSimilarity(a: Set<string>, b: Set<string>): number {
+  return Math.max(jaccard(a, b), containment(a, b));
 }
 
 // ---------------------------------------------------------------------------
@@ -397,8 +431,11 @@ export function runQualityGate(
     if (verdict.accepted) {
       const tokens = normaliseTokens(p.text);
       for (const kept of keptTokens) {
-        const sim = jaccard(tokens, kept.tokens);
-        if (sim >= 1) {
+        const sim = promptSimilarity(tokens, kept.tokens);
+        // "Identical" means the same token set. Containment can reach 1.0 for
+        // a question that merely CONTAINS another ("… on a budget"), and
+        // calling that identical would misdescribe it in the UI.
+        if (jaccard(tokens, kept.tokens) >= 1) {
           verdict.violations.push({
             code: "duplicate_prompt",
             severity: "error",
