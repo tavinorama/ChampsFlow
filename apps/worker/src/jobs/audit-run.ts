@@ -310,6 +310,79 @@ function dbProvider(p: string): string {
   return p;
 }
 
+// ---------------------------------------------------------------------------
+// plan_task lifecycle — schema capability probe (audit P0-02)
+// ---------------------------------------------------------------------------
+
+/**
+ * Memoized per process. The schema does not change under a running worker, and
+ * this sits in the hot path of every audit.
+ * `undefined` = not yet asked.
+ */
+let planTaskLifecycleCache: boolean | undefined;
+
+/** Test seam. */
+export function resetPlanTaskLifecycleCache(): void {
+  planTaskLifecycleCache = undefined;
+}
+
+/**
+ * Has migration 20260903000001_plan_task_lifecycle been applied?
+ *
+ * Asked instead of assumed, because the migration ships in its own PR that the
+ * founder merges by hand. On any error the answer is `false` — the safe side:
+ * we write the vocabulary that certainly exists rather than gambling an INSERT
+ * that a fail-soft catch would swallow.
+ */
+export async function planTaskLifecycleReady(
+  sql: postgres.Sql
+): Promise<boolean> {
+  if (planTaskLifecycleCache !== undefined) return planTaskLifecycleCache;
+  try {
+    const rows = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'plan_task' AND column_name = 'verified_at'
+      ) AS ok
+    `;
+    planTaskLifecycleCache = rows[0]?.ok === true;
+  } catch (err) {
+    logger.warn("plan_task_lifecycle_probe_failed", {
+      message: (err as Error).message?.slice(0, 160),
+    });
+    planTaskLifecycleCache = false;
+  }
+  return planTaskLifecycleCache;
+}
+
+/**
+ * Downgrade a lifecycle state to the pre-migration vocabulary
+ * (proposed|accepted|rejected|done).
+ *
+ * `verified` becomes `done` only here, and only because the column physically
+ * cannot hold anything else yet. The read side does NOT read that back as
+ * proof: normalizePlanTaskState coerces 'done' to `legacy_self_reported`, and
+ * Verified Execution reports `null` (not 0) while the migration is pending. So
+ * the downgrade loses the number, never fakes it.
+ */
+export function legacyStatus(s: string): string {
+  switch (s) {
+    case "verified":
+      return "done";
+    case "rejected":
+      return "rejected";
+    case "expired":
+      return "rejected";
+    case "proposed":
+      return "proposed";
+    default:
+      // drafting / review / published / indexed / cited / regressed /
+      // blocked / client_acknowledged / manual_done_pending_verification /
+      // legacy_self_reported — all still open work.
+      return "accepted";
+  }
+}
+
 /**
  * Process one audit job. `sql` is a postgres-js client created by the worker.
  */
@@ -1412,14 +1485,21 @@ export async function processAuditJob(
           VALUES (${tenant_id}, ${brand_id}, ${audit_id}, 'loop', NOW())
           RETURNING id
         `;
+        // The loop now writes lifecycle states (verified / regressed /
+        // legacy_self_reported). Until migration 20260903000001 widens the
+        // CHECK, those values would abort every INSERT and — because this whole
+        // block is fail-soft — silently kill Do Next. So ask the schema what it
+        // can take, once, and downgrade rather than break.
+        const lifecycleOk = await planTaskLifecycleReady(sql);
         for (const t of loopRows) {
+          const status = lifecycleOk ? t.status : legacyStatus(t.status);
           await sql`
             INSERT INTO plan_task
               (tenant_id, plan_id, vector, gap, action, effort, impact, priority,
                status, evidence, metric, owner, created_at)
             VALUES
               (${tenant_id}, ${loopPlan.id}, ${t.vector}, ${t.gap}, ${t.action},
-               ${t.effort}, ${t.impact}, ${t.priority}, ${t.status},
+               ${t.effort}, ${t.impact}, ${t.priority}, ${status},
                ${t.evidence}, ${t.metric}, ${t.owner}, NOW())
           `;
         }
@@ -1427,8 +1507,17 @@ export async function processAuditJob(
           audit_id,
           brand_id,
           plan_id: loopPlan.id,
+          lifecycle_states: lifecycleOk,
           ...stats,
         });
+        if (!lifecycleOk) {
+          logger.warn("visibility_loop_states_downgraded", {
+            audit_id,
+            brand_id,
+            effect:
+              "verified/regressed written as the legacy vocabulary; Verified Execution stays unmeasured until 20260903000001_plan_task_lifecycle is applied",
+          });
+        }
       }
     } catch (err) {
       logger.error("visibility_loop_failed", {

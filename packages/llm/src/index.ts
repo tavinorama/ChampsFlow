@@ -319,6 +319,7 @@ export {
   LOOP_OPEN_CAP,
   LOOP_DONE_CARRY_CAP,
   VERIFIED_PREFIX,
+  REGRESSED_PREFIX,
 } from "./visibility-loop";
 
 // Plan task lifecycle — Verified Execution state machine (audit P0-02).
