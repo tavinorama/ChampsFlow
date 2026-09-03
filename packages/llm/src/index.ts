@@ -305,7 +305,11 @@ export type {
   PrevTask,
   ReconcileStats,
 } from "./visibility-loop";
+export type { OwnGap } from "./visibility-loop";
 export {
+  ownGapsBlock,
+  isActionableSource,
+  NON_ACTIONABLE_SOURCE_HOSTS,
   buildLoopCandidates,
   reconcileLoopTasks,
   sourceDomain,
