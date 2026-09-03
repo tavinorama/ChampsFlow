@@ -534,6 +534,10 @@ function publishKnownNotSent(summary: string): boolean {
     summary.startsWith("publish failed:") ||
     summary.startsWith("publish had no content artifact") ||
     summary.startsWith("x post over") ||
+    // 10.C.9: a recusa por travessão acontece ANTES do envio — retry cego é
+    // seguro (e determinístico: o mesmo texto falha de novo até esgotar o
+    // budget; nunca vira gate ambíguo no founder).
+    summary.startsWith("travessao no texto") ||
     summary.startsWith("deferred publish lost its content artifact")
   );
 }
