@@ -79,6 +79,32 @@ export function sourceDomain(src: string): string {
   }
 }
 
+/**
+ * Hosts that are never an actionable "get present here" target.
+ *
+ * Found in the founder's own 02/09 run: every Gemini source arrives as a
+ * `vertexaisearch.cloud.google.com/grounding-api-redirect/...` link and the
+ * SERP engine returns `google.com/search` — telling a customer to "get present
+ * on vertexaisearch.cloud.google.com" is noise that would have shipped
+ * straight into their card list. Search engines, redirectors and caches are
+ * plumbing, not publications.
+ */
+export const NON_ACTIONABLE_SOURCE_HOSTS: readonly string[] = [
+  "vertexaisearch.cloud.google.com",
+  "googleusercontent.com",
+  "webcache.googleusercontent.com",
+  "google.com",
+  "bing.com",
+  "duckduckgo.com",
+  "search.yahoo.com",
+];
+
+/** True when a domain is plumbing (search/redirect/cache), not a publication. */
+export function isActionableSource(domain: string): boolean {
+  if (!domain) return false;
+  return !NON_ACTIONABLE_SOURCE_HOSTS.some((h) => domain === h || domain.endsWith(`.${h}`));
+}
+
 /** Deterministic gap texts — these ARE the cross-audit match keys. */
 export const gapForUncited = (q: string): string => `Not cited for "${q}"`;
 export const gapForLowRank = (q: string): string => `Cited low for "${q}"`;
@@ -122,7 +148,7 @@ function aggregateByQuery(probes: LoopProbe[]): Map<string, QueryAgg> {
       agg.competitorsWhereAbsent.push(...p.competitors);
       for (const s of p.sources) {
         const d = sourceDomain(s);
-        if (d) agg.absentSourceDomains.push(d);
+        if (isActionableSource(d)) agg.absentSourceDomains.push(d);
       }
     }
     agg.competitors.push(...p.competitors);
@@ -232,7 +258,7 @@ export function buildLoopCandidates(
   for (const p of probes) {
     for (const s of p.sources) {
       const d = sourceDomain(s);
-      if (d) seenAnywhere.add(d);
+      if (isActionableSource(d)) seenAnywhere.add(d);
     }
   }
   for (const d of seenAnywhere) {

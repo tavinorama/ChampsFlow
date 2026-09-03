@@ -16,6 +16,7 @@ import {
   gapForLowRank,
   gapForSource,
   sourceDomain,
+  isActionableSource,
   LOOP_OPEN_CAP,
   VERIFIED_PREFIX,
   type LoopProbe,
@@ -118,6 +119,34 @@ describe("buildLoopCandidates — cited but low", () => {
     expect(candidates.filter((c) => c.gap.includes("best crm"))).toHaveLength(0);
     expect(resolved.get(gapForUncited("best crm for smbs"))).toContain("now cited on");
     expect(resolved.has(gapForLowRank("best crm for smbs"))).toBe(true);
+  });
+});
+
+describe("isActionableSource — search plumbing is never a card", () => {
+  it("rejects the redirect/search hosts that real Gemini + SERP runs return", () => {
+    // Straight from the founder's 02/09 run (audit 28efdf4e): EVERY Gemini
+    // source is a vertexaisearch redirect and the SERP engine returns
+    // google.com/search. Without this guard the top "get present on" card the
+    // customer sees is "get present on vertexaisearch.cloud.google.com".
+    expect(isActionableSource("vertexaisearch.cloud.google.com")).toBe(false);
+    expect(isActionableSource("google.com")).toBe(false);
+    expect(isActionableSource("storage.googleusercontent.com")).toBe(false);
+    expect(isActionableSource("bing.com")).toBe(false);
+    expect(isActionableSource("")).toBe(false);
+  });
+  it("keeps real publications actionable", () => {
+    expect(isActionableSource("g2.com")).toBe(true);
+    expect(isActionableSource("reddit.com")).toBe(true);
+    expect(isActionableSource("blog.google.dev")).toBe(true);
+  });
+  it("never emits a card for a redirect host, even when it is the only source", () => {
+    const { candidates } = buildLoopCandidates([
+      probe({ provider: "google", cited: false, sources: ["https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ"] }),
+      probe({ provider: "dataforseo", cited: false, sources: ["https://www.google.com/search", "https://www.reddit.com/r/saas"] }),
+    ]);
+    expect(candidates.some((c) => c.gap.includes("vertexaisearch"))).toBe(false);
+    expect(candidates.some((c) => c.gap === gapForSource("google.com"))).toBe(false);
+    expect(candidates.some((c) => c.gap === gapForSource("reddit.com"))).toBe(true);
   });
 });
 
