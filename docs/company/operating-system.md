@@ -53,13 +53,16 @@ this is the routing summary:
 | `needs-founder-approval` | CRITICAL | **Founder only** | live/production/destructive/paid/secret actions |
 | department labels (`marketing`, `blocked`, …) | routing | — | which VP owns / what's blocked |
 
-Reviewers cannot self-approve their own PRs. **Branch protection as actually
-configured (corrected 2026-09-02, 10.B.16): the six required checks (Build ·
-Unit & Integration · Lint & Type Check · Security · Compliance · Smoke) with
-0 required approvals** — the founder gate lives on the risk LABEL
-(`founder-approved` for HIGH/CRITICAL), not on an approval count; auto-merge
-completes LOW/MEDIUM on green. See AGENTS.md §2–3. Migrations are always ≥HIGH
-and never auto-merge.
+A proteção da `main` exige os **6 required checks e 0 aprovações** (decisão do
+founder, 2026-07-29 — uma required-approval deadlockava HIGH por construção,
+#400). O portão humano vive nos LABELS via auto-merge nativo (automerge.yml):
+HIGH/CRITICAL ficam segurados até o founder aplicar `founder-approved`.
+Reviewers seguem sem poder liberar o próprio PR de risco: quem destrava
+HIGH/CRITICAL é sempre o founder, por label — nunca por contagem de reviews.
+Configuração real + comando de restauração:
+[runbooks/branch-protection.md](../runbooks/branch-protection.md).
+*(Corrigido 2026-09-02 — 10.B.16: este parágrafo afirmava uma required review
+que não existe na proteção real.)*
 
 ## Founder approval gates (always, regardless of who wrote the code)
 

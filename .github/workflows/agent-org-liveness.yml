@@ -33,6 +33,13 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
+      # 10.B.4 — mesmo contrato do blog-autopublish: um vigia sem canal de
+      # alarme é um vigia mudo. Secrets ausentes = run VERMELHO já aqui.
+      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+        run: |
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
+
       - name: Probe the liveness route
         id: probe
         env:
@@ -98,7 +105,42 @@ jobs:
           if not isinstance(advanceable, (int, float)):
               advanceable = running
 
+          # 10.B.15 — queue pulses: the worker stamps queue:<name>:last_ok on
+          # every completed job; the route surfaces the map. Only SCHEDULED
+          # queues have a cadence worth alarming on (24/08 lesson: event-driven
+          # silence is healthy). null counts as stale — nunca um verde
+          # mentiroso — so the first day after this ships may alarm until each
+          # scheduled queue completes once. Limits are ~2x the cadence.
+          QUEUE_LIMITS_MIN = {
+              "nurture": 30,          # 5-min poll loop
+              "followup-scan": 120,   # */30 min
+              "brain-daily": 1620,    # daily 06:30 UTC (27h)
+              "sphere-start": 1620,   # daily 09:00 UTC
+              "video-daily": 1620,    # daily 13:00 UTC (+19:00 absence check)
+          }
+
           problems = []
+          queues = data.get("queues") or {}
+          if isinstance(queues, dict):
+              stale_q = []
+              for qname, limit in QUEUE_LIMITS_MIN.items():
+                  qage = age_min(queues.get(qname))
+                  if qage is None:
+                      stale_q.append(f"{qname} (sem pulso)")
+                  elif qage > limit:
+                      stale_q.append(f"{qname} ({qage:.0f} min, limite {limit})")
+              if stale_q:
+                  problems.append("filas do worker sem pulso dentro da cadencia: " + ", ".join(stale_q))
+
+          circuit_open = data.get("circuit_open")
+          if isinstance(circuit_open, (int, float)) and circuit_open > 0:
+              chans = data.get("circuit_open_channels") or []
+              problems.append(f"{int(circuit_open)} circuit breaker(s) de publicacao ABERTO(s): {', '.join(map(str, chans))}")
+
+          tick_failures = data.get("last_tick_failures")
+          if isinstance(tick_failures, (int, float)) and tick_failures >= 3:
+              problems.append(f"ultimo tick completou com {int(tick_failures)} falha(s) — vivo mas falhando (10.B.15)")
+
           if tick_age is None:
               problems.append("last_tick_at ausente/ilegivel (rota fora do ar, Redis caido, ou o worker nunca completou um tick)")
           elif tick_age > 30:

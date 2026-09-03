@@ -26,6 +26,7 @@
  */
 
 import { Hono } from "hono";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { logger } from "../../../../packages/shared/src/logger";
 import { finishStep } from "../lib/agent-substrate";
@@ -38,6 +39,17 @@ const env = () => ({
   secret: (process.env["TELEGRAM_WEBHOOK_SECRET"] ?? "").trim(),
 });
 const tail = (s: string): string => (s.length <= 4 ? "****" : `…${s.slice(-4)}`);
+
+/**
+ * Constant-time secret comparison (10.B.8). SHA-256 both sides so the buffers
+ * are always the same length (timingSafeEqual throws on length mismatch, which
+ * would itself be a length oracle). Exported for the unit test.
+ */
+export function secretsMatch(given: string, expected: string): boolean {
+  const a = createHash("sha256").update(given).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
 const PENDING_TTL_S = 24 * 3600;
 
 interface TgUpdate {
@@ -97,7 +109,11 @@ export function registerTelegramRoutes(app: Hono, db: PostgresClient): void {
       logger.warn("telegram_webhook_request_but_not_configured", { has_secret: Boolean(TG_SECRET), has_chat: Boolean(TG_CHAT) });
       return c.notFound();
     }
-    if (c.req.param("secret") !== TG_SECRET) {
+    // 10.B.8 — constant-time compare: `!==` short-circuits on the first
+    // differing byte, leaking secret prefix length via timing. Hash both
+    // sides first so timingSafeEqual gets equal-length buffers and the
+    // comparison cost is independent of where they differ.
+    if (!secretsMatch(c.req.param("secret") ?? "", TG_SECRET)) {
       logger.warn("telegram_webhook_secret_mismatch", { got_tail: tail(c.req.param("secret")) });
       return c.notFound();
     }

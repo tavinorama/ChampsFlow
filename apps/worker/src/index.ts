@@ -29,6 +29,13 @@
 
 import Redis from "ioredis";
 import { Queue, Worker } from "bullmq";
+// Boot-time env validation (10.B.5/10.B.13) — MUST be the first app import:
+// missing DATABASE_URL/REDIS_URL (or, in production, HERMES_TASK_TOKEN /
+// TELEGRAM_*) logs the field names and exits 1 before anything connects.
+import { getWorkerConfig } from "./config";
+const workerConfig = getWorkerConfig();
+import { startHealthServer } from "./health";
+import { wireQueuePulse, stampQueuePulse } from "./queue-pulse";
 import { logger } from "../../../packages/shared/src/logger";
 import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
@@ -37,6 +44,7 @@ import { processDriftControlJob } from "./jobs/drift-control";
 import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly, runProspectBatchWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { runRecycleScanWeekly } from "./jobs/recycle-scan";
+import { runRetentionMonthly } from "./jobs/retention";
 import { runFollowupScan } from "./jobs/followup-scan";
 import { processNurtureJobs } from "./jobs/nurture-send";
 import { reconcileWeeklyMonitoring } from "./jobs/monitor-reconcile";
@@ -52,7 +60,10 @@ import { applyPlatformKeyOverrides } from "../../../packages/shared/src/platform
 // maxRetriesPerRequest: null is required for BullMQ blocking operations
 // ---------------------------------------------------------------------------
 
-const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
+// No localhost fallback (10.B.5): a production worker silently pointed at a
+// non-existent local Redis processes nothing while looking alive. workerConfig
+// already refused to boot when REDIS_URL is missing.
+const REDIS_URL = workerConfig.REDIS_URL;
 
 const connection = new Redis(REDIS_URL, {
   maxRetriesPerRequest: null,
@@ -504,6 +515,38 @@ async function registerFollowupScanSchedule(): Promise<void> {
   logger.info("followup_scan_schedule_registered", { cron: FOLLOWUP_SCAN_CRON });
 }
 
+// retention (10.B.11): monthly purge — 1st of the month, 04:00 UTC (off-peak,
+// before the 05:00 monitor-reconcile and the 06:30 monthly consolidation).
+// GATED OFF by default: without RETENTION_ENABLED=1 every run is a dry-run
+// that logs candidate counts + Telegram summary and deletes NOTHING. Windows
+// (mirrored in docs/compliance/ropa.md): smartlead_event 12m, ops.agent_step
+// 6m (runs stay), landing_events 13m, api_spend 24m.
+const retentionWorker = new Worker(
+  "retention",
+  async () => runRetentionMonthly(getGraphSql()),
+  { connection, concurrency: 1, autorun: true }
+);
+const retentionQueue = new Queue("retention", { connection });
+const RETENTION_CRON = process.env["RETENTION_CRON"] ?? "0 4 1 * *";
+
+async function registerRetentionSchedule(): Promise<void> {
+  await retentionQueue.add(
+    "retention-monthly",
+    {},
+    { jobId: "retention-monthly-repeat", repeat: { pattern: RETENTION_CRON }, removeOnComplete: 20, removeOnFail: 20 }
+  );
+  logger.info("retention_schedule_registered", {
+    cron: RETENTION_CRON,
+    enabled: process.env["RETENTION_ENABLED"] === "1",
+  });
+}
+void registerRetentionSchedule().catch((err: Error) => {
+  logger.error("retention_schedule_register_failed", { message: err.message?.slice(0, 200) });
+});
+retentionWorker.on("failed", (job, err) => {
+  logger.error("retention_job_failed", { job_id: job?.id, message: err?.message?.slice(0, 200) });
+});
+
 // CDO+CPO discovery (founder rule 13/08): Thursday 06:30 UTC — ideas matured
 // to MVP-ready before the founder sees them; offset from the Monday pair.
 const discoveryWorker = new Worker(
@@ -819,15 +862,19 @@ function getNurtureSql(): import("postgres").Sql {
 const NURTURE_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 const nurtureInterval = setInterval(() => {
-  void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
-    logger.error("nurture_poll_error", { message: err.message });
-  });
+  void processNurtureJobs(getNurtureSql())
+    .then(() => stampQueuePulse(connection, "nurture"))
+    .catch((err: Error) => {
+      logger.error("nurture_poll_error", { message: err.message });
+    });
 }, NURTURE_POLL_INTERVAL_MS);
 
 // Run once immediately at boot (catches any due rows from before restart)
-void processNurtureJobs(getNurtureSql()).catch((err: Error) => {
-  logger.error("nurture_poll_boot_error", { message: err.message });
-});
+void processNurtureJobs(getNurtureSql())
+  .then(() => stampQueuePulse(connection, "nurture"))
+  .catch((err: Error) => {
+    logger.error("nurture_poll_boot_error", { message: err.message });
+  });
 
 // ---------------------------------------------------------------------------
 // Daily brand monitor loop — enqueues scheduled-audit jobs for brands with
@@ -966,6 +1013,68 @@ logger.info("worker_started", {
 });
 
 // ---------------------------------------------------------------------------
+// HTTP health listener (10.B.5) — GET /healthz on PORT: 200 when Redis PING +
+// Postgres SELECT 1 both work, 503 otherwise. Wired as healthcheckPath in
+// apps/worker/railway.json so Railway restarts a worker that lost its stores
+// instead of leaving it "running" and dead.
+// ---------------------------------------------------------------------------
+const healthServer = startHealthServer(workerConfig.PORT, {
+  redis: connection,
+  getSql: getAuditSql,
+});
+
+// ---------------------------------------------------------------------------
+// Queue pulses (10.B.15): every BullMQ worker stamps queue:<name>:last_ok on
+// completion. The liveness route surfaces them; the CI vigia alarms when a
+// SCHEDULED queue's pulse goes stale beyond its cadence. Event-driven queues
+// are informational only (their silence is healthy by design — 24/08 lesson).
+// ---------------------------------------------------------------------------
+const PULSED_WORKERS: Array<[Worker, string]> = [
+  [worker, "publish"],
+  [auditWorker, "geo-audit"],
+  [driftWorker, "geo-drift"],
+  [graphWorker, "agent-graph"],
+  [brainDailyWorker, "brain-daily"],
+  [brainWeeklyWorker, "brain-weekly"],
+  [weeklyReportWorker, "weekly-report"],
+  [incidentPostmortemWorker, "incident-postmortem"],
+  [memoryConsolidationWorker, "memory-consolidation"],
+  [promptTunerWorker, "prompt-tuner"],
+  [abExperimentWorker, "ab-experiment"],
+  [prospectBatchWorker, "prospect-batch"],
+  [recycleScanWorker, "recycle-scan"],
+  [followupScanWorker, "followup-scan"],
+  [discoveryWorker, "discovery-weekly"],
+  [sphereStartWorker, "sphere-start"],
+  [videoWorker, "video-daily"],
+  [sphereMoreWorker, "sphere-more"],
+  [spherePlatformsWorker, "sphere-platforms"],
+  [landingWorker, "landing-generate"],
+  [monitorReconcileWorker, "monitor-reconcile"],
+  [retentionWorker, "retention"],
+];
+for (const [w, name] of PULSED_WORKERS) wireQueuePulse(w, connection, name);
+
+// "Vivo ≠ funcionando" (10.B.15): the tick stamps last_ok even when 100% of
+// its nodes fail. Record HOW MANY things failed in the last completed tick so
+// the liveness route can expose last_tick_failures and the vigia can alarm on
+// a "beating heart, failing body". Best-effort, same contract as the pulses.
+graphWorker.on("completed", (_job, result) => {
+  const r = result as
+    | { starvedFailed?: number; orphanFailed?: number; results?: Array<{ status: string }> }
+    | undefined;
+  const failures =
+    (r?.starvedFailed ?? 0) +
+    (r?.orphanFailed ?? 0) +
+    (r?.results?.filter((x) => x.status === "failed").length ?? 0);
+  void connection
+    .set("graphtick:last_failures", String(failures), "EX", 24 * 3600)
+    .catch(() => {
+      // Best-effort — a missing stamp reads as null upstream, never a crash.
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Graceful shutdown
 // Stop accepting new jobs → wait for in-flight → close connections
 // ---------------------------------------------------------------------------
@@ -977,6 +1086,12 @@ const shutdown = async (signal: string): Promise<void> => {
   clearInterval(nurtureInterval);
   // Stop the daily brand monitor loop
   clearInterval(dailyMonitorInterval);
+  // Stop answering health probes (best-effort — never blocks shutdown)
+  try {
+    healthServer.close();
+  } catch {
+    // Best-effort
+  }
 
   try {
     // Close workers — waits for in-flight jobs to complete
@@ -1003,6 +1118,8 @@ const shutdown = async (signal: string): Promise<void> => {
     await recycleScanQueue.close();
     await spherePlatformsWorker.close();
     await spherePlatformsQueue.close();
+    await retentionWorker.close();
+    await retentionQueue.close();
   } catch (err) {
     logger.error("worker_shutdown_error", {
       message: (err as Error).message,

@@ -239,6 +239,17 @@ Likelihood and severity rated: L = Low, M = Medium, H = High. Score = L×S (HH=9
 
 **Overall residual risk: LOW** after full mitigation stack applied and open conditions (CC-1, CC-2, CC-3) closed by Gate 4→5/Phase 5.
 
+> **Correção R5 — 2026-09-02 (append-only, 10.B.1):** a mitigação descrita em
+> R5 ("Logical backups to S3 every 6 hours (different region); 4-hour
+> restoration target") **NÃO existe e nunca existiu** — não há job de backup no
+> repositório nem bucket S3 configurado (varredura 02/09). O estado real: a
+> única proteção é o backup/PITR de plano da Supabase, cuja existência e
+> retenção o founder ainda precisa VERIFICAR no dashboard (passos em
+> `docs/runbooks/backup-restore.md`). Enquanto não verificado, a likelihood de
+> R5 permanece M e o residual "Medium (4) — accepted" continua de pé, mas
+> apoiado apenas na Supabase, não em backups próprios. A linha original da
+> tabela acima fica intacta por convenção append-only; esta nota prevalece.
+
 ---
 
 ## 8. AI-Specific Risks
