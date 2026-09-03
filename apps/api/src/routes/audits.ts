@@ -35,6 +35,133 @@ import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/
 import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
 import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
 import { markComparableTrend, runConfidence } from "../lib/trend-comparability";
+import { buildAuditNarrative } from "../lib/audit-narrative";
+import { sourceDomain, isActionableSource } from "../../../../packages/llm/src/visibility-loop";
+
+/**
+ * Load one audit as a diff-ready snapshot. Extracted from the audit-compare
+ * handler so the "Since last audit" narrative (Visibility Loop v2, Phase 3)
+ * reads exactly the same rows through exactly the same shape — two screens
+ * telling different stories about one audit is the bug this avoids.
+ *
+ * Tenant scoping is the caller's (db.setTenantId + RLS); brandId is also in
+ * the predicate so one brand can never read another's audit by id.
+ */
+async function loadAuditSnapshot(
+  db: PostgresClient,
+  brandId: string,
+  auditId: string
+): Promise<AuditSnapshot | null> {
+    const head = await db.query<{
+      created_at: string;
+      score_ai: number;
+      score_performance: number;
+      score_brand: number;
+      provider_breakdown: unknown;
+    }>(
+      `SELECT a.created_at, s.score_ai, s.score_performance, s.score_brand, s.provider_breakdown
+         FROM geo_audit a
+         JOIN geo_score s ON s.audit_id = a.id
+        WHERE a.id = $1 AND a.brand_id = $2 AND a.status = 'complete'`,
+      [auditId, brandId]
+    );
+    const h = head.rows[0];
+    if (!h) return null;
+
+    const bd = ((): Record<string, unknown> => {
+      const v = h.provider_breakdown;
+      if (typeof v !== "string") return (v ?? {}) as Record<string, unknown>;
+      // Guard: a malformed/legacy DB row must not 500 the whole audit fetch.
+      try {
+        return JSON.parse(v) as Record<string, unknown>;
+      } catch {
+        return {};
+      }
+    })();
+
+    const probes = await db.query<{
+      provider: string;
+      query_text: string | null;
+      cited: boolean;
+      citation_rank: number | null;
+      mention_rate: string | null;
+      sources: unknown;
+    }>(
+      `SELECT provider, query_text, cited, citation_rank, mention_rate, sources
+         FROM citation_check WHERE audit_id = $1`,
+      [auditId]
+    );
+
+    const comps = await db.query<{
+      competitor_name: string;
+      mention_count: number;
+      displacement_count: number;
+    }>(
+      `SELECT competitor_name, mention_count, displacement_count
+         FROM competitor_citation WHERE audit_id = $1`,
+      [auditId]
+    );
+
+    type OffsiteSrc = { label?: string; present?: boolean };
+    const offsiteSources = (((bd.offsite as { sources?: OffsiteSrc[] } | undefined)?.sources) ?? [])
+      .filter((s): s is { label: string; present: boolean } =>
+        typeof s.label === "string" && typeof s.present === "boolean");
+
+    return {
+      auditId,
+      createdAt: h.created_at,
+      scores: {
+        ai: h.score_ai,
+        performance: h.score_performance,
+        brand: h.score_brand,
+        overall: bd.overall != null ? Number(bd.overall) : null,
+      },
+      probes: probes.rows
+        .filter((p) => p.query_text != null)
+        .map((p) => ({
+          provider: p.provider,
+          queryText: p.query_text as string,
+          cited: p.cited,
+          rank: p.citation_rank,
+          mentionRate: p.mention_rate != null ? Number(p.mention_rate) : null,
+        })),
+      competitors: comps.rows.map((r) => ({
+        name: r.competitor_name,
+        mentions: r.mention_count,
+        displacement: r.displacement_count,
+      })),
+      offsiteSources,
+      contentTraits: ((bd.content as { traits?: Record<string, number> } | undefined)?.traits) ?? {},
+      providersUsed: Array.isArray(bd.providers) ? (bd.providers as string[]) : [],
+      // Phase 3: which publications the engines leaned on. Search/redirect
+      // plumbing is filtered with the SAME rule the Do Next cards use, so the
+      // two surfaces can never disagree about what counts as a source.
+      sourceDomains: Array.from(
+        new Set(
+          probes.rows.flatMap((pr) => {
+            const raw = pr.sources;
+            const list: unknown[] = Array.isArray(raw)
+              ? raw
+              : typeof raw === "string"
+                ? ((): unknown[] => {
+                    try {
+                      const parsed = JSON.parse(raw) as unknown;
+                      return Array.isArray(parsed) ? parsed : [];
+                    } catch {
+                      return [];
+                    }
+                  })()
+                : [];
+            return list
+              .filter((u): u is string => typeof u === "string")
+              .map((u) => sourceDomain(u))
+              .filter((d) => isActionableSource(d));
+          })
+        )
+      ).sort(),
+    };
+  }
+
 import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
@@ -2450,89 +2577,7 @@ export function registerAuditRoutes(
       return c.json({ message: "'from' and 'to' must be different audits." }, 400);
     }
 
-    const loadSnapshot = async (auditId: string): Promise<AuditSnapshot | null> => {
-      const head = await db.query<{
-        created_at: string;
-        score_ai: number;
-        score_performance: number;
-        score_brand: number;
-        provider_breakdown: unknown;
-      }>(
-        `SELECT a.created_at, s.score_ai, s.score_performance, s.score_brand, s.provider_breakdown
-           FROM geo_audit a
-           JOIN geo_score s ON s.audit_id = a.id
-          WHERE a.id = $1 AND a.brand_id = $2 AND a.status = 'complete'`,
-        [auditId, brandId]
-      );
-      const h = head.rows[0];
-      if (!h) return null;
-
-      const bd = ((): Record<string, unknown> => {
-        const v = h.provider_breakdown;
-        if (typeof v !== "string") return (v ?? {}) as Record<string, unknown>;
-        // Guard: a malformed/legacy DB row must not 500 the whole audit fetch.
-        try {
-          return JSON.parse(v) as Record<string, unknown>;
-        } catch {
-          return {};
-        }
-      })();
-
-      const probes = await db.query<{
-        provider: string;
-        query_text: string | null;
-        cited: boolean;
-        citation_rank: number | null;
-        mention_rate: string | null;
-      }>(
-        `SELECT provider, query_text, cited, citation_rank, mention_rate
-           FROM citation_check WHERE audit_id = $1`,
-        [auditId]
-      );
-
-      const comps = await db.query<{
-        competitor_name: string;
-        mention_count: number;
-        displacement_count: number;
-      }>(
-        `SELECT competitor_name, mention_count, displacement_count
-           FROM competitor_citation WHERE audit_id = $1`,
-        [auditId]
-      );
-
-      type OffsiteSrc = { label?: string; present?: boolean };
-      const offsiteSources = (((bd.offsite as { sources?: OffsiteSrc[] } | undefined)?.sources) ?? [])
-        .filter((s): s is { label: string; present: boolean } =>
-          typeof s.label === "string" && typeof s.present === "boolean");
-
-      return {
-        auditId,
-        createdAt: h.created_at,
-        scores: {
-          ai: h.score_ai,
-          performance: h.score_performance,
-          brand: h.score_brand,
-          overall: bd.overall != null ? Number(bd.overall) : null,
-        },
-        probes: probes.rows
-          .filter((p) => p.query_text != null)
-          .map((p) => ({
-            provider: p.provider,
-            queryText: p.query_text as string,
-            cited: p.cited,
-            rank: p.citation_rank,
-            mentionRate: p.mention_rate != null ? Number(p.mention_rate) : null,
-          })),
-        competitors: comps.rows.map((r) => ({
-          name: r.competitor_name,
-          mentions: r.mention_count,
-          displacement: r.displacement_count,
-        })),
-        offsiteSources,
-        contentTraits: ((bd.content as { traits?: Record<string, number> } | undefined)?.traits) ?? {},
-        providersUsed: Array.isArray(bd.providers) ? (bd.providers as string[]) : [],
-      };
-    };
+    const loadSnapshot = (auditId: string) => loadAuditSnapshot(db, brandId ?? "", auditId);
 
     const [fromSnap, toSnap] = await Promise.all([loadSnapshot(fromId), loadSnapshot(toId)]);
     if (!fromSnap || !toSnap) {
@@ -2545,6 +2590,83 @@ export function registerAuditRoutes(
         : [toSnap, fromSnap];
 
     return c.json(compareAudits(older, newer));
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/brands/:id/since-last-audit — Visibility Loop v2, Phase 3.
+  //
+  // "What changed, and why" for the newest audit, against the most recent
+  // COMPARABLE previous run (same pinned engine panel + check band — Phase 2).
+  // Comparing against a partial run would manufacture swings the customer did
+  // not cause, which is exactly the confusion this whole loop exists to end.
+  //
+  // Returns { from, to, diff, narrative } — or { available: false, reason }
+  // when there is no comparable pair yet. Never invents a comparison.
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id/since-last-audit", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id") ?? "";
+
+    const runs = await db.query<{
+      id: string;
+      created_at: string;
+      providers_used: unknown;
+      checks: number | null;
+      comparable: boolean | null;
+    }>(
+      `SELECT a.id, a.created_at, a.providers_used,
+              (s.provider_breakdown->>'probesTotal')::int AS checks,
+              (s.provider_breakdown->'coverage'->>'comparable')::boolean AS comparable
+         FROM geo_audit a
+         JOIN geo_score s ON s.audit_id = a.id
+        WHERE a.brand_id = $1 AND a.status = 'complete'
+        ORDER BY a.created_at DESC
+        LIMIT 30`,
+      [brandId]
+    );
+    if (runs.rows.length < 2) {
+      return c.json({ available: false, reason: "Run a second audit to see what changed." });
+    }
+
+    const marks = markComparableTrend(
+      runs.rows.map((r) => ({
+        auditId: r.id,
+        recordedAt: r.created_at,
+        providers: Array.isArray(r.providers_used)
+          ? (r.providers_used as unknown[]).filter((x): x is string => typeof x === "string")
+          : null,
+        checks: r.checks,
+        comparableFlag: r.comparable,
+      }))
+    );
+    const inTrend = runs.rows.filter((_, ix) => marks.marks[ix]?.inTrend);
+    const newest = inTrend[0];
+    const previous = inTrend[1];
+    if (!newest || !previous) {
+      return c.json({
+        available: false,
+        reason:
+          "The latest runs were measured with different engine panels, so there is no honest comparison yet.",
+      });
+    }
+
+    const [prevSnap, newSnap] = await Promise.all([
+      loadAuditSnapshot(db, brandId, previous.id),
+      loadAuditSnapshot(db, brandId, newest.id),
+    ]);
+    if (!prevSnap || !newSnap) {
+      return c.json({ available: false, reason: "Audit data is incomplete for one of the runs." });
+    }
+
+    const diff = compareAudits(prevSnap, newSnap);
+    return c.json({
+      available: true,
+      from: { audit_id: previous.id, created_at: previous.created_at },
+      to: { audit_id: newest.id, created_at: newest.created_at },
+      narrative: buildAuditNarrative(diff),
+      diff,
+    });
   });
 
   // -------------------------------------------------------------------------

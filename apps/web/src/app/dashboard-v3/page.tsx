@@ -1111,6 +1111,11 @@ function OverviewTab({
         <IntentBreakdown intents={intents} />
       </div>
 
+      {/* Phase 3 — the movement narrative: what flipped, who arrived, which
+          sources the AI started/stopped using. This is the section that makes
+          a monthly subscription feel like maintenance instead of a number. */}
+      {brandId && <SinceLastAudit brandId={brandId} />}
+
       {/* D1 — what the audit refused to count. */}
       <div style={{ marginTop: "var(--space-6)" }}>
         <VerifiedCitations extraction={extraction} />
@@ -1399,6 +1404,83 @@ function impactStyle(impact: string): React.CSSProperties {
   return { background: "var(--color-badge-status-warn-bg)", color: "var(--color-badge-status-warn-text)" }; // medium/default
 }
 
+
+// ---------------------------------------------------------------------------
+// SinceLastAudit — Visibility Loop v2, Phase 3.
+// "What changed, and why", every run. Reads GET /api/brands/:id/since-last-audit,
+// which compares the newest audit against the most recent COMPARABLE one (same
+// engine panel), so the movement shown is movement, not a change of ruler.
+// Silent-but-honest: when there is no comparable pair the API says so and this
+// renders that sentence rather than an empty box.
+// ---------------------------------------------------------------------------
+interface NarrativeLine { tone: "gain" | "loss" | "neutral"; text: string; detail?: string }
+interface SinceLastPayload {
+  available: boolean;
+  reason?: string;
+  from?: { audit_id: string; created_at: string };
+  to?: { audit_id: string; created_at: string };
+  narrative?: { lines: NarrativeLine[]; nothingChanged: boolean; headline: string };
+}
+
+const TONE_COLOR: Record<NarrativeLine["tone"], string> = {
+  gain: "var(--color-success)",
+  loss: "var(--color-badge-status-error-text)",
+  neutral: "var(--color-muted)",
+};
+
+function SinceLastAudit({ brandId }: { brandId: string }) {
+  const [data, setData] = useState<SinceLastPayload | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void apiFetch(`/api/brands/${brandId}/since-last-audit`)
+      .then(async (r) => {
+        if (!r.ok || !alive) return;
+        setData((await r.json()) as SinceLastPayload);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [brandId]);
+
+  if (!data) return null;
+  const fmt = (iso?: string) =>
+    iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+
+  return (
+    <div style={{ marginTop: "var(--space-6)" }}>
+      <div style={S.secH}>
+        Since last audit{" "}
+        <span style={S.secN}>
+          {data.available && data.from && data.to
+            ? `— ${fmt(data.from.created_at)} → ${fmt(data.to.created_at)}, same engine panel`
+            : "— what moved, and why"}
+        </span>
+      </div>
+      <div style={{ ...S.card, padding: "var(--space-4)" }}>
+        {!data.available ? (
+          <div style={S.muted}>{data.reason ?? "No comparable previous audit yet."}</div>
+        ) : (
+          <>
+            <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: "var(--space-3)" }}>
+              {data.narrative?.headline}
+            </div>
+            {(data.narrative?.lines ?? []).map((l, i) => (
+              <div key={i} style={{ display: "flex", gap: "var(--space-2)", alignItems: "baseline", padding: "6px 0", borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
+                <span aria-hidden style={{ color: TONE_COLOR[l.tone], fontWeight: 700 }}>
+                  {l.tone === "gain" ? "▲" : l.tone === "loss" ? "▼" : "•"}
+                </span>
+                <span style={{ fontSize: "0.86rem" }}>
+                  {l.text}
+                  {l.detail ? <span style={{ color: "var(--color-muted)" }}> — {l.detail}</span> : null}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DoNextTab({
   tasks, loading, onToggle, brandId, onAddTask,
 }: {
@@ -1454,8 +1536,21 @@ function DoNextTab({
             {done.map((t, i) => (
               <div key={t.id} style={{ ...S.actRow, opacity: 0.7, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
                 <button aria-label={`Reopen "${t.action}"`} onClick={() => onToggle(t.id, false)} style={{ ...S.chk, ...S.chkDone }}>✓</button>
-                <div><div style={{ ...S.actTitle, textDecoration: "line-through", color: "var(--color-muted)" }}>{t.action}</div></div>
-                <span style={{ ...S.imp, background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }}>Done</span>
+                <div>
+                  <div style={{ ...S.actTitle, textDecoration: "line-through", color: "var(--color-muted)" }}>{t.action}</div>
+                  {/* Phase 3: when the loop verified the fix in a later audit,
+                      the evidence carries "Worked — verified in the audit of
+                      <date>". Showing it is the whole point: the client sees
+                      that doing X moved the number, in their own data. */}
+                  {t.evidence?.startsWith("Worked — verified") && (
+                    <div style={{ ...S.actWhy, color: "var(--color-success)" }}>{t.evidence.split(".")[0]}.</div>
+                  )}
+                </div>
+                <span style={{ ...S.imp, ...(t.evidence?.startsWith("Worked — verified")
+                  ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }
+                  : { background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }) }}>
+                  {t.evidence?.startsWith("Worked — verified") ? "Verified" : "Done"}
+                </span>
               </div>
             ))}
           </div>
