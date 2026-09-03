@@ -833,6 +833,27 @@ The third-party DSR-against-AI-evidence scenario (a non-customer natural person 
 
 ---
 
+## 14-GEO. Cold Outreach & Prospecting Addendum — 2026-09-02
+
+> Added by `legal-privacy-officer` (02/09 sweep; ROPA G27–G30, SP-19–SP-21). The sales motion shipped in PRs #547 (prospect-batch) and #561 (follow-up) processes prospect personal data outside the customer-facing product for the first time. Risks and mitigations below; the LIA for the legitimate-interests basis is recorded in ROPA G27.
+
+### 14.1 New risks
+
+| # | Risk | Likelihood | Impact | Mitigation | Residual |
+|---|---|---|---|---|---|
+| GEO-R16 | **Cold e-mail without CAN-SPAM postal address** — outreach footers carry the opt-out line but no physical postal address (§5(a)(5)) | Medium (enforcement against low-volume senders is rare but real) | Medium (FTC penalties are per-e-mail in theory) | Opt-out line mandatory + honored immediately; low initial volume; **founder-accepted risk recorded 2026-09-02** in `docs/departments/sales/sop-dia-do-disparo.md` §7 with a named closing action (founder supplies address → replace `{{POSTAL_ADDRESS}}` everywhere) and a re-review trigger (~5k e-mails/month) | MEDIUM — accepted, time-boxed |
+| GEO-R17 | **Reply text is free text** — a prospect's reply can contain anything (health details, personal grievances); it is stored in SmartLead (SP-19) and `smartlead_event`, and processed by LLM engines | Medium | Medium | Engine chain restricted to claude/codex (registered processors; kimi leg removed — no DPA existed); Telegram gate receives a **masked summary only** (no raw reply text/e-mail — closes the 10.D.4 GEO-D7 violation); retention rule owed on `smartlead_event` (10.B.11, target 12 months) | LOW-MEDIUM |
+| GEO-R18 | **Scope creep beyond US** — the US-only geofence lives in the graph prompt, not code; an EU/BR natural person cold-e-mailed without consent would breach ePrivacy/GDPR/LGPD marketing rules | Low today (engine-suggested lists are US-seeded; volumes small) | High if it happens (consent-based regimes) | Condition GEO-D10: code-level geofence gating CRM writes before Apify (SP-20) activation; LIA re-run required before any deliberate EU/BR expansion | LOW (with GEO-D10 closed) |
+| GEO-R19 | **Indefinite recycling = indefinite retention** | Medium | Medium | G29 hard rule (3 cycles or 12 months → erase; STOP suppressed forever); purge job pending in code — manual purge by the founder with each recycling CSV until it ships | LOW-MEDIUM (until the job ships) |
+
+### 14.2 DSR posture
+
+`crm_contact` and `smartlead_event` enter the DSR export/erasure scope (keyed by e-mail). An erasure request from a prospect = same-day suppression + row erasure; the dossier note dies with the contact row. Cascade code extension owed (backend-coder).
+
+**Effect on the overall DPIA**: none of 14.1 re-triggers the Art. 35(1) high-risk threshold (no large-scale monitoring; B2B contact data at small volume). Overall residual risk remains **LOW to MEDIUM**, conditional on GEO-D10, the G29 purge job, and the SP-19/SP-20 terms reviews.
+
+---
+
 ## Approval (GEO Platform)
 
 - DPIA/RIPD author: legal-privacy-officer agent
@@ -841,6 +862,7 @@ The third-party DSR-against-AI-evidence scenario (a non-customer natural person 
 - Jurisdictions covered: Brazil (LGPD RIPD), EU (GDPR Art. 35), US (CCPA/CPRA, FTC §5 — informing risk assessment)
 - Reviewed by (human): _____ (required before EU/BR launch)
 - Next mandatory review trigger: new LLM provider activation, new geographic market, >50% change in data volume/categories, or annual cycle (2027-06)
+- **Update log**: 2026-09-02 — new Section 14-GEO added (Cold Outreach & Prospecting: prospect-batch #547, follow-up #561, recycling, dossier). New risks GEO-R16–GEO-R19 (CAN-SPAM postal-address accepted risk; free-text replies; US-geofence-in-prompt-only; recycling retention). Companion ROPA section (G27–G30, SP-19–SP-21) added same day; gate-log council entries for #547/#561 appended same day. Overall residual risk unchanged (LOW to MEDIUM).
 - **Update log**: 2026-08-24 — new Section 13-GEO added (Growth Products, Attribution & Ops Telemetry: AI Audit Stack $49, campaign attribution, Signal Engine consumption, legacy video/social pipeline, Telegram approvals bot, per-tenant API cost ledger). Incremental updates: Processing Purposes 17–20, Data Subjects (buyers/leads), Personal Data Categories table (+4 rows), Recipients table (+2 rows: Telegram, Signal Engine), Retention Periods table (+4 rows) — all Section 1-GEO; GDPR Art. 6 and LGPD Art. 7 lawful-basis tables and CCPA paragraph — Section 2-GEO; Risk Assessment — Section 6-GEO, new rows GEO-R14/GEO-R15 + addendum. TL;DR addendum appended. Four new conditions (GEO-D6 through GEO-D9), recorded in `ropa.md` alongside new activities G21–G26 and sub-processor rows SP-15–SP-18. Overall residual risk unchanged (LOW to MEDIUM). No gate-log verdict exists yet for this update.
 - **Update log**: 2026-07-28 — new Section 11-GEO added (Evidence Store — raw engine responses, 12-month retention, Product Decision 4-A, founder-approved); Retention Periods table (Section 1-GEO), Personal Data Categories table (Section 1-GEO), Sub-Processors table (Section 1-GEO), Processing Purposes list (Section 1-GEO), Lawful Basis tables (Section 2-GEO), Data Minimization Assessment (Section 2-GEO), DSR design (Section 3-GEO), Art. 44-46 assessment (Section 4-GEO), Security Measures (Section 5-GEO), Risk Assessment table (Section 6-GEO, new row GEO-R13), and Art. 14 assessment (Section 8-GEO) all updated with cross-references. TL;DR addendum appended. Nine new conditions issued (EV-1 through EV-9); EV-8 flagged for external counsel review as a novel question. This does NOT alter the existing 90-day citation_check purge (GEO-A2/GEO-D2), which is unchanged. Gate verdict: see gate-log.md 2026-07-28 entry.
 - **Update log**: 2026-07-24 (merged via PR #404) — added Section 12-GEO (sub-processor register cross-reference and non-product processing: Postiz, HeyGen, n8n cloud, Google Workspace; drafted 2026-07-24 as Section 11-GEO and renumbered 12-GEO at merge because 11-GEO was assigned to the Evidence Store on 2026-07-28); TL;DR addendum appended. No change to the residual risk finding in Section 9-GEO. **No Gate 7 verdict has been logged for this update** — `docs/compliance/gate-log.md` has no 2026-07-24 entry. The two still-open Gate 7 hard stops (EU Art. 27 representative, LGPD Encarregado) and the finding that the live Privacy Policy overstates their appointment status are recorded in `docs/compliance/ropa.md` under "Appointment Records". A Gate 7 review of these additions, and the resulting gate-log entry, are still owed.
