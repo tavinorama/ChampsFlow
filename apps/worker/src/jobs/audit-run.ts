@@ -61,6 +61,10 @@ import {
   mergeProbeUsage,
   recordSpend,
   execForPostgresJs,
+  buildLoopCandidates,
+  reconcileLoopTasks,
+  type LoopProbe,
+  type PrevTask,
   providerSurface,
   permittedProviders,
   probeCacheEnabled,
@@ -1354,6 +1358,86 @@ export async function processAuditJob(
          SET methodology_version = ${GEO_METHODOLOGY_VERSION}
        WHERE id = ${audit_id}
     `;
+
+    // -----------------------------------------------------------------------
+    // Visibility Loop v2 (Phase 1): every COMPLETED audit refreshes the
+    // client's "Do Next" cards, deterministically from the probe evidence that
+    // was just measured — no LLM, no button. Root cause this fixes: plan_task
+    // generation only ever ran from a manual button on the legacy brand page
+    // (POST /api/audits/:id/plan); dashboard-v3 and the cron audits never
+    // called it, so "Do Next" went dead after 2026-07-09.
+    //
+    // A FRESH strategy_plan row is written per audit (generated_by='loop') and
+    // state is carried forward by stable gap key: re-runs refresh cards
+    // instead of duplicating them; done stays done; a query that flipped to
+    // cited flips its card to "Worked — verified in the audit of <date>".
+    //
+    // FAIL-SOFT: the audit is already complete and paid for — a loop error is
+    // logged loudly and never fails the job.
+    try {
+      const loopProbes: LoopProbe[] = responses
+        .filter((r) => typeof r.queryText === "string" && r.queryText.trim().length > 0)
+        .map((r) => ({
+          provider: dbProvider(r.provider),
+          queryText: (r.queryText as string).trim(),
+          cited: r.mentioned,
+          rank: r.position ?? null,
+          sources: sanitizeSources(r.sources),
+          competitors:
+            competitorNames.length > 0 ? detectCompetitors(r.rawText ?? "", competitorNames) : [],
+        }));
+      if (loopProbes.length > 0) {
+        const build = buildLoopCandidates(loopProbes, { brandDomain: brand.domain ?? null });
+        const prevPlanRows = await sql<{ id: string }[]>`
+          SELECT id FROM strategy_plan
+           WHERE brand_id = ${brand_id}
+           ORDER BY created_at DESC LIMIT 1
+        `;
+        let prevTasks: PrevTask[] = [];
+        if (prevPlanRows[0]) {
+          prevTasks = await sql<PrevTask[]>`
+            SELECT vector, gap, action, effort, impact, priority, status, evidence, metric, owner
+              FROM plan_task
+             WHERE plan_id = ${prevPlanRows[0].id}
+             ORDER BY priority DESC, created_at ASC
+          `;
+        }
+        const { rows: loopRows, stats } = reconcileLoopTasks(
+          prevTasks,
+          build,
+          new Date().toISOString().slice(0, 10)
+        );
+        const [loopPlan] = await sql<{ id: string }[]>`
+          INSERT INTO strategy_plan (tenant_id, brand_id, audit_id, generated_by, created_at)
+          VALUES (${tenant_id}, ${brand_id}, ${audit_id}, 'loop', NOW())
+          RETURNING id
+        `;
+        for (const t of loopRows) {
+          await sql`
+            INSERT INTO plan_task
+              (tenant_id, plan_id, vector, gap, action, effort, impact, priority,
+               status, evidence, metric, owner, created_at)
+            VALUES
+              (${tenant_id}, ${loopPlan.id}, ${t.vector}, ${t.gap}, ${t.action},
+               ${t.effort}, ${t.impact}, ${t.priority}, ${t.status},
+               ${t.evidence}, ${t.metric}, ${t.owner}, NOW())
+          `;
+        }
+        logger.info("visibility_loop_refreshed", {
+          audit_id,
+          brand_id,
+          plan_id: loopPlan.id,
+          ...stats,
+        });
+      }
+    } catch (err) {
+      logger.error("visibility_loop_failed", {
+        audit_id,
+        brand_id,
+        message: (err as Error).message?.slice(0, 200),
+        effect: "audit delivered but Do Next cards NOT refreshed this run",
+      });
+    }
 
     // Record estimated audit spend in the monthly budget ledger (visibility only
     // — audits are NOT hard-capped, so paying customers are never cut off).
