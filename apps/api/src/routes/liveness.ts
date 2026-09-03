@@ -28,6 +28,7 @@ import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { logger } from "../../../../packages/shared/src/logger";
 import { tryGetSharedRedis } from "../shared-redis";
 import { CIRCUIT_BREAKER_THRESHOLD } from "../lib/graph-runner";
+import { publicRateLimit } from "../lib/public-rate-limit";
 
 /** Same key the worker stamps at the end of every completed graph tick. */
 export const GRAPHTICK_LAST_OK_KEY = "graphtick:last_ok";
@@ -67,6 +68,15 @@ const ALL_LIVENESS_QUEUES: readonly string[] = [
 export function registerLivenessRoutes(app: Hono, db: PostgresClient): void {
   // GET /api/v1/agent-org/liveness — PUBLIC, read-only, fail-open.
   app.get("/api/v1/agent-org/liveness", async (c) => {
+    // 10.B.9 — light cap: the route does a Redis SCAN + a DB aggregate per
+    // hit. The CI vigia calls it twice an hour; 120/10min per IP is invisible
+    // to legitimate use and stops a curl loop from farming DB work.
+    const limited = await publicRateLimit(c, {
+      bucket: "liveness",
+      limit: 120,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (limited) return limited;
     let lastTickAt: string | null = null;
     let lastTickFailures: number | null = null;
     const queues: Record<string, string | null> = {};
