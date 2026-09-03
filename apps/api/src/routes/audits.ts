@@ -31,6 +31,7 @@ import { requireNotRestricted } from "./billing";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
+import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
 import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
@@ -438,14 +439,14 @@ function getAuditQueue(): Queue {
   _ioRedis.on("error", (err: Error) => {
     logger.error("audit_queue_redis_connection_error", { message: err.message });
   });
-  _auditQueue = new Queue("geo-audit", {
+  _auditQueue = new Queue(AUDIT_QUEUE_NAME, {
     connection: _ioRedis,
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: { type: "exponential", delay: 30_000 },
-      removeOnComplete: { count: 1000 },
-      removeOnFail: { count: 5000 },
-    },
+    // 17/08 retry storm: this used to declare its own attempts:3 / 30s backoff
+    // while the daily-monitor producer in the worker declared nothing at all.
+    // One queue, two policies, and a backoff that put all three attempts inside
+    // three minutes — which is exactly the shape of the 06:00 / 06:01 / 06:02
+    // failures. The policy now lives in one place for every producer.
+    defaultJobOptions: AUDIT_JOB_OPTIONS,
   });
   return _auditQueue;
 }
@@ -1462,9 +1463,15 @@ export function registerAuditRoutes(
       providers_used: unknown;
       report_token: string;
       created_at: string;
+      // The worker has always written a specific reason here ("Only 2 of 5 AI
+      // engines answered…"), and it was never returned — so the UI could only
+      // say "The audit failed. Please run it again.", which sends the customer
+      // to re-run a job that will fail the same way and costs us the money
+      // again. Returned now so the reason reaches the person affected.
+      error_message: string | null;
     }>(
       `SELECT id, brand_id, status, score_brand, score_performance, score_ai,
-              providers_used, report_token, created_at
+              providers_used, report_token, created_at, error_message
          FROM geo_audit WHERE id = $1`,
       [auditId]
     );

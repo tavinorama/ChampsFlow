@@ -49,9 +49,26 @@ import type { SeOpportunity } from "../../packages/llm/src/signal-engine";
 const noopDb = { async query() { return { rows: [] }; } } as unknown as PostgresClient;
 const allow = async () => true;
 
-function appNow(): Hono {
+/**
+ * The app as PRODUCTION registers it — no radarEnabled override, so the P0-03
+ * commercial block applies. This is what a real request meets today.
+ */
+function appAsShipped(): Hono {
   const app = new Hono();
   registerSignalsRoutes(app, noopDb, { limiter: allow });
+  return app;
+}
+
+/**
+ * The app with the radar forced on. The wire contract below (normalization,
+ * the ≤25 bound, reason pass-through, and above all the bearer never leaking)
+ * is still worth pinning while the feature is blocked — when the block lifts,
+ * these are the guarantees it has to come back with. The override exists only
+ * for that; production never passes it.
+ */
+function appNow(): Hono {
+  const app = new Hono();
+  registerSignalsRoutes(app, noopDb, { limiter: allow, radarEnabled: true });
   return app;
 }
 
@@ -68,7 +85,30 @@ beforeEach(() => {
 // Route contract
 // ---------------------------------------------------------------------------
 
-describe("GET /api/signals/where-to-show-up", () => {
+describe("GET /api/signals/where-to-show-up — as shipped (P0-03 block on)", () => {
+  it("refuses even when SIGNAL_ENGINE_* is fully configured", async () => {
+    // The gate is COMMERCIAL, not operational: the intended source (Reddit) is
+    // compliance_state=blocked for commercial use until there is a contract.
+    // Setting the envs in an environment must therefore not be enough to serve
+    // the queue — otherwise a Railway variable silently re-opens a blocked
+    // feature. Still 200: this is "we do not offer this", not an error.
+    process.env["SIGNAL_ENGINE_URL"] = "https://engine.example.com";
+    process.env["SIGNAL_ENGINE_API_KEY"] = BEARER;
+    h.opportunities.mockResolvedValue({ ok: true, data: { items: [{ keyword: "k", action: "comment_on_ranking_thread" }] }, fetchedAt: "2026-08-18T12:00:00Z" });
+
+    const res = await appAsShipped().request("/api/signals/where-to-show-up?brandId=b1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { connected: boolean; opportunities: unknown[]; reason: string };
+    expect(body.connected).toBe(false);
+    expect(body.opportunities).toEqual([]);
+    expect(body.reason).toBe("unavailable");
+    // And the engine is never called — no request, no spend, no data received
+    // from a source we are not cleared to use commercially.
+    expect(h.opportunities).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/signals/where-to-show-up — wire contract (radar forced on)", () => {
   it("not configured → connected:false, empty, reason not_configured, 200 (never an error)", async () => {
     const res = await appNow().request("/api/signals/where-to-show-up?brandId=b1");
     expect(res.status).toBe(200);

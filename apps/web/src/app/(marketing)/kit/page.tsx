@@ -18,7 +18,7 @@ import { safeJsonLd } from "../../../lib/safe-json-ld";
 import { KitFilmHero } from "./KitFilmHero";
 
 export const metadata: Metadata = {
-  title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29) | Ozvor",
+  title: "The Get-Cited Kit — Full AI Visibility Audit + 3 Ready Drafts ($29)",
   description:
     "One-time $29. Know exactly why you're invisible in AI search — get your full Ozvor AI Visibility Score, your top 3 fixes, and 3 ready-to-publish content drafts. No subscription required.",
   alternates: { canonical: "https://ozvor.com/kit" },

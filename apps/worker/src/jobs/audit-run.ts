@@ -82,6 +82,7 @@ import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe
 import { creditsForAudit } from "../../../api/src/lib/credits";
 import { overagePackUsd } from "../../../../packages/shared/src/credits";
 import { sendCreditsOutEmail } from "../../../../packages/shared/src/emails/credits-out";
+import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
 
 /**
  * D1: one "You are out of credits" email per tenant per month, sent when a
@@ -1828,7 +1829,14 @@ function getDailyAuditQueue(): Queue {
   redis.on("error", (err: Error) => {
     logger.error("daily_monitor_redis_error", { message: err.message });
   });
-  _dailyAuditQueue = new Queue("geo-audit", { connection: redis });
+  // 17/08 retry storm: this producer used to be constructed with no
+  // defaultJobOptions, so the DAILY SCHEDULED audit — the one a customer never
+  // watches fail — ran on BullMQ's defaults (attempts:1, no backoff) while the
+  // manual audit from the API retried three times. Same queue, two policies.
+  _dailyAuditQueue = new Queue(AUDIT_QUEUE_NAME, {
+    connection: redis,
+    defaultJobOptions: AUDIT_JOB_OPTIONS,
+  });
   return _dailyAuditQueue;
 }
 

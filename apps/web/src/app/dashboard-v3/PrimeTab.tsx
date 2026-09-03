@@ -3,8 +3,8 @@
 /**
  * PrimeTab — the "OrganicPosts" tab in dashboard-v3 (D3, 2026-08-17).
  *
- * What Prime includes, an unlock/progress panel built from REAL tenant data
- * (GET /api/prime/status), blurred locked previews of what opens with the
+ * What OrganicPosts includes, an unlock/progress panel built from REAL tenant
+ * data (GET /api/prime/status), blurred locked previews of what opens with the
  * engagement, and one primary CTA: "Book my call" → /book prefilled with the
  * signed-in email + brand. Nudges (≤1 per session, dismissible, stored
  * client-side + audit_log) are decided by the shared pure rule
@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 import { pickNudge, type Nudge, type NudgeKind } from "@organic-posts/shared";
 import { apiFetch } from "../../lib/supabase-browser";
 import { V3 } from "./v3-styles";
+import { actionCardsRow } from "./prime-progress";
 
 interface PrimeStatus {
   organicPosts: { status: "none" | "requested" | "contacted" | "won" | "lost"; sku: string | null; since: string | null };
@@ -25,6 +26,7 @@ interface PrimeStatus {
   firstAuditDone: boolean;
   competitorsAdded: number;
   actionCardsDone: number;
+  actionCardsTotal: number | null;
   visibility: number | null;
   weeklyChange: number | null;
   credits: { balance: number; granted: number } | null;
@@ -134,7 +136,7 @@ export function PrimeTab({ brandId, brandName, email, onGoTab }: {
 
   return (
     <>
-      <div style={{ ...V3.card, padding: "var(--space-6)", display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: "var(--space-6)", alignItems: "center" }} data-testid={`prime-hero-${status?.organicPosts.status ?? "loading"}`}>
+      <div style={{ ...V3.card, padding: "var(--space-6)", display: "grid", gridTemplateColumns: "minmax(0, 1.3fr) minmax(0, 1fr)", gap: "var(--space-6)", alignItems: "center" }} data-testid={`prime-hero-${status?.organicPosts.status ?? "loading"}`}>
         <div>
           <span style={{ ...V3.pill, background: "var(--color-badge-ai-bg, var(--color-surface-muted))", color: "var(--color-accent-ink, var(--color-primary))" }}>OrganicPosts by Ozvor</span>
           <h2 style={{ margin: "10px 0 6px", fontSize: "1.4rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
@@ -158,7 +160,7 @@ export function PrimeTab({ brandId, brandName, email, onGoTab }: {
         <ProgressPanel status={status} loading={loading} onGoTab={onGoTab} />
       </div>
 
-      <div style={V3.secH}>What Prime includes</div>
+      <div style={V3.secH}>What OrganicPosts includes</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "var(--space-3)" }}>
         {INCLUDES.map((i) => (
           <div key={i.title} style={{ ...V3.card, padding: "var(--space-4)" }}>
@@ -196,7 +198,11 @@ function ProgressPanel({ status, loading, onGoTab }: { status: PrimeStatus | nul
   const rows: Array<{ label: string; done: boolean; detail: string; go?: () => void }> = [
     { label: "First audit", done: status.firstAuditDone, detail: status.firstAuditDone ? (status.visibility != null ? `Visibility ${Math.round(status.visibility)} of 100` : "done") : "not yet", go: () => onGoTab("overview") },
     { label: "Competitors added", done: status.competitorsAdded > 0, detail: status.competitorsAdded > 0 ? `${status.competitorsAdded} tracked` : "none yet", go: () => onGoTab("competitors") },
-    { label: "3 action cards done", done: status.actionCardsDone >= 3, detail: `${Math.min(status.actionCardsDone, 3)} of 3`, go: () => onGoTab("donext") },
+    // P0-03/R12: the denominator is the plan's own task count, served by
+    // /api/prime/status from the same query the Do Next tab uses. It used to be
+    // hard-coded to 3 here while Do Next listed 5, so one workspace read
+    // "3 of 3" (complete) on this screen and "3 of 5" on the other.
+    { ...actionCardsRow(status), go: () => onGoTab("donext") },
   ];
   const doneCount = rows.filter((r) => r.done).length;
   return (

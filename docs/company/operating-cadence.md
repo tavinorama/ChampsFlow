@@ -58,7 +58,7 @@ Codified guardrails (from design §2/§3.1 and AGENTS.md §1): a recommendation 
 2. **Operator API** — the decision itself: `POST /api/v1/operator/agent-steps/:id/finish` with `succeeded` (approve) or `failed` (reject); Hermes relays the Telegram reply into it. Runs are inspectable via `GET /api/v1/operator/graph-runs/:id`.
 3. **Weekly report** — the Monday CDO+CPO briefs and the Thursday discovery brief (graphs, delivered on Telegram).
 
-> The **web Approval Queue** and **daily digest email** described in the design doc were **never built** and are not planned for now — Telegram carries the load at ≤30 min/day. If a web queue is ever built, it must wrap the same operator route, never a second decision path.
+> The **web Approval Queue** and **daily digest email** described in the design doc were **never built**. Status (settled 2026-09-02, closes the 5.E.2 contradiction): **reconsidered — currently not planned** (Telegram carries the load at ≤30 min/day and suffices). PENDING 5.E.2 stays as a parked idea, not a commitment. If a web queue is ever built, it must wrap the same operator route, never a second decision path.
 
 Target load: **≤30 min/day**. Escalations that must always reach the founder directly: any dept BLOCKED, any HIGH/CRITICAL PR, and any live/production/destructive/paid action.
 

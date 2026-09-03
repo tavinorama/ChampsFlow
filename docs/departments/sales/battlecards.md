@@ -1,7 +1,7 @@
 # Ozvor — Competitor Battle Cards
 
-> Owner: sales-researcher · Last updated: 2026-07-02
-> Scope: Peec AI, Profound, Otterly.AI, AthenaHQ, Semrush AI Toolkit / Ahrefs Brand Radar
+> Owner: sales-researcher · Last updated: 2026-09-02 (AI Stack card + $49 objections added; Agency corrected to 10 brands — the "15 brands / $37 per brand" figures below were wrong)
+> Scope: Peec AI, Profound, Otterly.AI, AthenaHQ, Semrush AI Toolkit / Ahrefs Brand Radar · §6 AI Audit Stack ($49)
 > All pricing/feature claims below are sourced inline. Where a primary pricing page did not render a dollar figure, secondary sources (review aggregators, G2) are cited and flagged as such — not fabricated.
 
 ## TL;DR
@@ -42,7 +42,7 @@ All five competitors are monitoring-first tools: they measure AI-search visibili
 
 **Weaknesses/gaps vs Ozvor**: Recurring G2 complaint is a steep learning curve and "confusing" dashboard without dedicated onboarding, which is Enterprise-only. [G2](https://www.g2.com/products/profound/reviews) Starter tier is functionally a teaser (1 engine, 50 prompts) — real usage requires $399/mo minimum. No content generation beyond "Agent credits" (scope/output not independently verified — treat as unverified). No SMB-priced path; no white-label agency tier at Ozvor's price point; no DFY arm.
 
-**How we win**: Profound's own reviewers say the useful tier starts at $399/mo and still requires someone dedicated to running the dashboard. Ozvor's $99/mo Growth tier ships an audit, a plan, and content drafts together — no $399/mo floor, no dedicated ops hire needed to interpret it. For agencies, our $549/mo Agency tier (15 brands, white-label, about $37 per brand) is priced for a multi-client retainer business, not a single enterprise brand.
+**How we win**: Profound's own reviewers say the useful tier starts at $399/mo and still requires someone dedicated to running the dashboard. Ozvor's $99/mo Growth tier ships an audit, a plan, and content drafts together — no $399/mo floor, no dedicated ops hire needed to interpret it. For agencies, our $549/mo Agency tier (10 brands, white-label, about $55 per brand) is priced for a multi-client retainer business, not a single enterprise brand.
 
 **When we lose**: A Fortune 1000 or venture-backed company that needs SOC2, SSO, 10-engine coverage, and has budget for a $399-2,000+/mo tool with a dedicated marketing ops person to run it should choose Profound — that's a genuinely different buyer than ours.
 
@@ -119,7 +119,7 @@ All five competitors are monitoring-first tools: they measure AI-search visibili
 | **Evidence transparency** | Public methodology page; audits fail honestly, never fabricate | Claims real-session queries (unverified detail) | Not publicly detailed | Not publicly detailed | Not publicly detailed | Not publicly detailed | Independent test alleges major undercount (unverified, see §5) |
 | **Action plan** | Yes — evidence-backed, per-vector recommendations | No | Limited ("Opportunities" panel, scope unverified) | No | Yes — content optimization agent | No | No |
 | **Content generation** | Yes — BYOK drafts (client controls model/cost) | No | Unverified ("Agent credits", scope unclear) | No | Unverified cost model | No | No |
-| **White-label** | Yes — Agency tier, $549/mo, 15 brands | Not found on public pages | Not found on public pages | Not found on public pages | Not found on public pages | No | No |
+| **White-label** | Yes — Agency tier, $549/mo, 10 brands | Not found on public pages | Not found on public pages | Not found on public pages | Not found on public pages | No | No |
 | **Done-for-you arm** | Yes — OrganicPosts Sprint from $1,500 | No | No | No | No | No | No |
 
 ## Universal Positioning — 5 Bullets
@@ -129,3 +129,31 @@ All five competitors are monitoring-first tools: they measure AI-search visibili
 - **We are priced for the buyer this whole category ignores.** Every competitor's "real" tier — Profound's $399/mo Growth, AthenaHQ's $295/mo Starter, Ahrefs' ~$828/mo full-coverage stack — prices out solo founders and small agencies. Our $0 → $29 → $99 → $549 ladder does not.
 - **BYOK content generation is unique among the five.** No competitor reviewed publicly discloses a client-controlled model/cost mechanism for content generation; most don't generate content at all.
 - **We are not claiming to out-monitor the specialists.** Peec (5.0 G2, 9 reviews) and Profound (4.6 G2, 845 reviews) have real monitoring depth and enterprise trust signals we do not yet have — our pitch is completeness and accessibility, not raw engine-count superiority.
+
+---
+
+## 6. AI Audit Stack ($49) — the second product's card (NEW 2026-09-02)
+
+**What it is**: a $49 one-time audit for SMBs drowning in the wrong tools (ICP Segment C, [icp.md](icp.md)). Buyer answers 5 questions about their business; the engine matches their worst bottleneck against a curated niche-tool matrix (5 engines × industry) and returns ONE recommendation + why + the honest teaser of the full report. The full 9-section report is the OrganicPosts $1.5k deliverable — the $49 is the entry door. 30-day money-back guarantee ("if it tells you nothing new").
+
+**Who it competes with**: not the GEO monitoring tools above — it competes with (a) ChatGPT itself, (b) free "best AI tools" listicles, (c) $0 tool directories (There's An AI For That, Futurepedia), and (d) doing nothing.
+
+**How we win**: the listicles and directories rank by affiliate commission and popularity, not by the buyer's actual bottleneck. ChatGPT answers generically and differently every time. We ask 5 questions first, match against a curated matrix, commit to ONE answer in writing, and back it with money-back. The deliverable arrives by e-mail — no account, no subscription, no upsell wall before the answer.
+
+**When we lose**: a technical buyer who enjoys evaluating tools themselves, or a business whose bottleneck is people/process (not tooling) — the audit will honestly say so, which is fine: honesty is the brand.
+
+### Objection battle card — the $49
+
+**"ChatGPT tells me this for free."**
+> It does — a different answer every time you ask, with no idea what your real bottleneck is. Ours starts from 5 questions about YOUR business, matches against a curated niche matrix, and commits to one answer in writing. If ChatGPT already told you the same thing, that's exactly what the 30-day money-back is for: it told you nothing new, you get the $49 back. You risk nothing.
+
+**"Why would I pay for a recommendation?"**
+> You're not paying for a name — you're paying to NOT spend 10 hours testing 100 apps, and to not buy the wrong $50/mo tool for a year ($600). The $49 buys a committed, accountable answer: one tool, why it fits your exact pain, and what it replaces. Wrong answer = money back. A free listicle owes you nothing.
+
+**"How do I know you're not just pushing affiliate tools?"**
+> The matrix is curated by fit, and the recommendation states WHY in terms of your answers, not commissions. And the guarantee cuts against padding: if the pick is generic, you refund. (House rule: never fabricate; if no tool genuinely fits, the audit says so.)
+
+**"Is this the same as your GEO product?"**
+> No — separate doors, same house. This one fixes the tools you USE; the GEO product fixes how AI talks ABOUT you. Most owners with one pain have the other too — which is why the audit buyer's natural next step is the OrganicPosts engagement or the free visibility test.
+
+**Landmine question**: "What did the last 'best AI tools' list you read actually change in your business?"

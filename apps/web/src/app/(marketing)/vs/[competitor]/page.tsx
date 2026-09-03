@@ -19,6 +19,8 @@ import { notFound } from "next/navigation";
 import { AiAuditCta } from "../../../../components/marketing/AiAuditCta";
 import { DirectCheckoutButton } from "../../../../components/marketing/DirectCheckoutButton";
 import { COMPETITOR_SLUGS, getCompetitor } from "../_data";
+import { COMPETITIVE_CLAIMS } from "../_claims";
+import { isComparisonFrozen, describeClaimStatus } from "@organic-posts/shared";
 
 export function generateStaticParams() {
   return COMPETITOR_SLUGS.map((competitor) => ({ competitor }));
@@ -33,12 +35,17 @@ interface Params {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { competitor } = await params;
   const c = getCompetitor(competitor);
-  if (!c) return { title: "Comparison not found | Ozvor" };
+  if (!c) return { title: "Comparison not found" };
   const title = `Ozvor vs ${c.name} — honest comparison (${new Date().getFullYear()})`;
   const description = `${c.thesis} See the full feature-by-feature comparison, where ${c.name} wins, and how to get your own AI-visibility number in 60 seconds.`;
+  // P0-05: a frozen comparison must not be indexed. The page stays reachable so
+  // inbound links do not 404, but Google should not be carrying claims we
+  // cannot currently stand behind.
+  const frozen = isComparisonFrozen(COMPETITIVE_CLAIMS, c.slug);
   return {
     title,
     description,
+    ...(frozen ? { robots: { index: false, follow: true } } : {}),
     alternates: { canonical: `https://ozvor.com/vs/${c.slug}` },
     openGraph: {
       title,
@@ -66,10 +73,102 @@ const CSS = `
   .cmp-win { color: var(--color-accent-ink); font-weight: 700; }
 `;
 
+/**
+ * What a reader sees while a comparison is frozen. It says plainly that the
+ * numbers are being re-checked rather than pretending the page never existed,
+ * and it still offers the one thing that is entirely our own measurement — the
+ * free test. Claim details are NOT rendered: the point is that we are not
+ * asserting them right now.
+ */
+function FrozenComparison({ name, slug }: { name: string; slug: string }) {
+  return (
+    <main
+      style={{
+        maxWidth: "680px",
+        margin: "0 auto",
+        padding:
+          "var(--space-16) var(--space-4) calc(var(--bottom-nav-height) + var(--space-16))",
+        fontFamily: "var(--font-family)",
+        color: "var(--color-text)",
+      }}
+    >
+      <Link
+        href="/vs"
+        style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", textDecoration: "none" }}
+      >
+        &larr; All comparisons
+      </Link>
+
+      <h1
+        style={{
+          fontSize: "clamp(1.75rem, 5vw, 2.5rem)",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+          lineHeight: 1.15,
+          margin: "var(--space-4) 0 var(--space-4)",
+        }}
+      >
+        Ozvor vs {name} &mdash; being re-checked
+      </h1>
+
+      <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7 }}>
+        We have taken this comparison down while we re-verify every claim on it
+        against {name}&rsquo;s own published pricing and documentation. The
+        figures we had were not dated or sourced well enough for us to keep
+        showing them, and competitor pricing moves.
+      </p>
+      <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7 }}>
+        We hold ourselves to the measurement standard we sell, and that has to
+        include what we say about other people&rsquo;s products. It will be back
+        with a source and a date on every line.
+      </p>
+
+      <p style={{ fontSize: "var(--font-size-body)", lineHeight: 1.7, marginTop: "var(--space-6)" }}>
+        In the meantime, the number we can stand behind is your own:{" "}
+        <Link href="/test" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
+          run the free AI-visibility test
+        </Link>
+        {" "}&mdash; that one is measured, not compared.
+      </p>
+
+      {/* For a human reading the source or a build log: exactly what is blocking
+          this page. Never rendered to the reader. */}
+      {process.env.NODE_ENV !== "production" && (
+        <pre style={{ display: "none" }} data-frozen-slug={slug}>
+          {COMPETITIVE_CLAIMS.filter((cl) => cl.competitor === slug)
+            .map((cl) => `${cl.id}: ${describeClaimStatus(cl)}`)
+            .join("\n")}
+        </pre>
+      )}
+    </main>
+  );
+}
+
 export default async function CompetitorPage({ params }: Params) {
   const { competitor } = await params;
   const c = getCompetitor(competitor);
   if (!c) notFound();
+
+  // -------------------------------------------------------------------------
+  // P0-05 — comparison freeze.
+  //
+  // Every claim we make about a competitor now carries source, check date,
+  // owner, review date and confidence (see ../_claims.ts). A competitor with
+  // ANY claim that is not currently verifiable has their comparison withheld —
+  // not trimmed. Dropping the unverified rows and keeping the rest would still
+  // present the reader with something they take as a complete comparison, and a
+  // comparison missing the rows where we lose is precisely the dishonesty the
+  // registry exists to prevent.
+  //
+  // The page stays at its URL (inbound links keep working) and is noindexed
+  // while frozen. It un-freezes on its own the moment the claims in _claims.ts
+  // carry a real source and an unexpired review date — nobody has to remember
+  // to flip a switch here.
+  // -------------------------------------------------------------------------
+  const frozen = isComparisonFrozen(COMPETITIVE_CLAIMS, c.slug);
+  if (frozen) {
+    return <FrozenComparison name={c.name} slug={c.slug} />;
+  }
 
   return (
     <main

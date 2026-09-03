@@ -31,10 +31,16 @@ Every PR and issue must declare exactly one risk level. When in doubt, pick the 
 
 | Level | Label | Covers | Gate to merge |
 |---|---|---|---|
-| **LOW** | `claude-ready` | Docs, UI copy, simple pages, tests, blog content | Green CI → merge directly (no review required) |
-| **MEDIUM** | `hermes-review` | package/config changes, DB migrations, infra-as-code, integrations in test mode, non-trivial refactors | Green CI + **Hermes approval** |
-| **HIGH** | `hermes-review` + `security-sensitive` | Auth, RLS, billing code, email sending, domain/DNS, deployment configuration | Green CI + Hermes review read and answered + **the founder merges (or explicitly authorizes the merge)** |
-| **CRITICAL** | `needs-founder-approval` | Production data, live Stripe, live DNS, paid APIs, destructive commands, production migrations, secrets | **Founder explicitly approves in the PR**, always — no exceptions, no delegation |
+| **LOW** | `claude-ready` | Docs, UI copy, simple pages, tests, blog content | Green CI → auto-merge (no review required) |
+| **MEDIUM** | `hermes-review` | package/config changes, infra-as-code, integrations in test mode, non-trivial refactors | Green CI → **auto-merge** (Hermes review is advisory, never a merge gate — the earlier "Hermes approval" wording contradicted the auto-merge design and is corrected 2026-09-02) |
+| **HIGH** | `hermes-review` + `security-sensitive` | Auth, RLS, billing code, email sending, domain/DNS, deployment configuration, **DB migrations (house rule 14/08: a migration is NEVER auto-merged — moved up from MEDIUM 2026-09-02)** | Green CI + Hermes review read and answered + **the founder merges (or explicitly authorizes the merge)** |
+| **CRITICAL** | `needs-founder-approval` | Production data, live Stripe, live DNS, paid APIs, destructive commands, **production migrations touching existing data (ALTER/UPDATE/CHECK on live tables)**, secrets | **Founder explicitly approves in the PR**, always — no exceptions, no delegation |
+
+> **Migrations rule (clarified 2026-09-02, closes 10.D.16)**: any PR containing a
+> file under `packages/db/migrations/` is at least **HIGH** — never LOW/MEDIUM,
+> never auto-merged. Note the boot applies merged migrations automatically
+> (`migrate.js` runs on api+worker boot — verified 10.B.17), so **the merge IS
+> the production apply**; that is exactly why the gate lives on the merge.
 
 Notes that keep the system honest:
 
@@ -62,6 +68,15 @@ Founder intent (Telegram/chat)
 
 - One capability per branch/PR. Append-only logs stay append-only.
 - Reviews happen **in the PR** (comments + approval), so the decision history is permanent.
+- **Agent /tmp-clone convention (documented 2026-09-02)**: every builder agent
+  works in a FRESH clone under `/tmp` (e.g. `git clone --depth 60 <repo>
+  /tmp/<task> && git checkout -B <branch> origin/main`), never in the founder's
+  working tree or another agent's worktree; it re-merges `origin/main` before
+  opening the PR, commits/pushes early and incrementally, and each agent owns a
+  declared file scope (paths outside the scope belong to other agents and are
+  noted in the PR body instead of edited). Rationale: memory rule 14/08
+  (builder agent = isolated worktree) + squash-merge dirtiness (always branch
+  from `origin/main`).
 - Live/production/destructive/paid actions documented inside any PR still require their own founder approval when executed — merging a doc or code that *prepares* an action is not approval to *run* it.
 
 ### CI checks & E2E policy (issue #143)
@@ -100,7 +115,7 @@ Merging must **never** require relaxing branch protection, dismissing a review, 
 - `main` stays permanently protected: the six required checks, **0 required approvals**. Do **not** set required approvals back to 1 — at 0, a non-blocking Hermes review can't deadlock the merge, which is the whole point. The founder gate lives on the **label**, not on the approval count.
 - Label → behaviour:
   - `claude-ready` (LOW) → auto-merges on green.
-  - `hermes-review` (MEDIUM) → auto-merges on green.
+  - `hermes-review` (MEDIUM) → auto-merges on green (no approval step — see §2).
   - `hermes-review` + `security-sensitive` (HIGH) → **held** until the founder adds `founder-approved`.
   - `needs-founder-approval` (CRITICAL) → **held** until the founder adds `founder-approved`.
   - `founder-approved` overrides any hold. `hold` / `no-autodeploy` / `do-not-merge` always block.

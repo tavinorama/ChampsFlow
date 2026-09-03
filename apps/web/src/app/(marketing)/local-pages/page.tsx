@@ -27,7 +27,7 @@ import { PagesFilmHero } from "./PagesFilmHero";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
-  title: "Ozvor Pages — AI-search-ready 5-page websites | Ozvor",
+  title: "Ozvor Pages — AI-search-ready 5-page websites",
   description:
     "A 5-page website built from your real business data — interlinked, schema-rich, live on ozvor.com with lead capture. $99 one-time, or included free with the Growth plan.",
   alternates: { canonical: "https://ozvor.com/local-pages" },

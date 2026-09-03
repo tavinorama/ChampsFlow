@@ -2,7 +2,7 @@
 
 End-to-end agentic pipeline from idea to production. Code is **Phase 5** of 7 — never the first step.
 
-## Cast (18 agents)
+## Cast (40 agents — count corrected 2026-09-02; the "18" below was the original product-pipeline core, the full roster in `.claude/agents/` adds the executive layer, Phase-5 specialists, business specialists, and the compliance council listed in CLAUDE.md)
 
 ### Orchestrator
 - **`product-manager`** — coordinates everything. Reads only TL;DRs. Dispatches one agent per turn.
@@ -57,7 +57,7 @@ End-to-end agentic pipeline from idea to production. Code is **Phase 5** of 7 �
 ## Files at a glance
 
 ```
-.claude/agents/             # 18 agent definitions
+.claude/agents/             # 40 agent definitions
 CLAUDE.md                   # persistent context — workflow rules + project meta
 docs/
   WORKFLOW.md               # this file
