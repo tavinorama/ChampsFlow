@@ -15,7 +15,7 @@ import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
-    "5 High-Citation LinkedIn Post Templates — Backed by Princeton GEO Research | Ozvor",
+    "5 High-Citation LinkedIn Post Templates — Backed by Princeton GEO Research",
   description:
     "Fill-in-the-blank LinkedIn post templates derived from the peer-reviewed Princeton GEO study (KDD 2024). Each maps to a proven citation tactic: +41% quotations, +33% statistics, +28% cited sources. Included with every Ozvor Growth and Agency plan.",
   alternates: {
@@ -23,6 +23,10 @@ export const metadata: Metadata = {
       "https://ozvor.com/resources/5-high-citation-post-templates",
   },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title:
       "5 High-Citation Post Templates (Princeton GEO Research) | Ozvor",
     description:

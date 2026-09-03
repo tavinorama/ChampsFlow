@@ -13,11 +13,15 @@ import type { Metadata } from "next";
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata: Metadata = {
-  title: "Refund Policy | Ozvor",
+  title: "Refund Policy",
   description:
     "Ozvor's refund policy in plain English: 30-day money-back on subscriptions and on the AI Audit Stack, deliverable guarantees on the Get-Cited Kit and Ozvor Pages, and how to ask.",
   alternates: { canonical: "https://ozvor.com/refund" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images ships no social card at all. Verified in the rendered
+      // document before the fix: zero og:image tags served on this route.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Refund Policy | Ozvor",
     description: "30-day money-back on plans and the $49 AI Audit Stack, deliverable guarantees on one-time products, no lock-in.",
     url: "https://ozvor.com/refund",

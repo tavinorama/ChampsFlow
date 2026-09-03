@@ -35,7 +35,7 @@ interface Params {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { competitor } = await params;
   const c = getCompetitor(competitor);
-  if (!c) return { title: "Comparison not found | Ozvor" };
+  if (!c) return { title: "Comparison not found" };
   const title = `Ozvor vs ${c.name} — honest comparison (${new Date().getFullYear()})`;
   const description = `${c.thesis} See the full feature-by-feature comparison, where ${c.name} wins, and how to get your own AI-visibility number in 60 seconds.`;
   // P0-05: a frozen comparison must not be indexed. The page stays reachable so

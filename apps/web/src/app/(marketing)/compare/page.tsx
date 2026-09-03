@@ -19,7 +19,7 @@ import { COMPETITIVE_CLAIMS } from "../vs/_claims";
 import { isComparisonFrozen } from "@organic-posts/shared";
 
 export const metadata: Metadata = {
-  title: "Compare Ozvor to other AI-visibility tools | Ozvor",
+  title: "Compare Ozvor to other AI-visibility tools",
   description:
     "How Ozvor compares to Profound, Peec AI, Otterly, AthenaHQ, Semrush AI Toolkit, and Ahrefs Brand Radar — in plain English, with links to the full comparison.",
   alternates: { canonical: "https://ozvor.com/compare" },

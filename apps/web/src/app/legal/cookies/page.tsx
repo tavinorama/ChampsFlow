@@ -17,11 +17,15 @@
 import { LegalPage, LegalSection } from "../../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Cookie Policy | Ozvor",
+  title: "Cookie Policy",
   description:
     "How Ozvor uses cookies and local storage, what each is for, how long they last, and how you can control them.",
   alternates: { canonical: "https://ozvor.com/legal/cookies" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images ships no social card at all. Verified in the rendered
+      // document before the fix: zero og:image tags served on this route.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Cookie Policy | Ozvor",
     description:
       "How Ozvor uses cookies and local storage, what each is for, how long they last, and how you can control them.",
