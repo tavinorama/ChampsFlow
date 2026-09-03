@@ -182,3 +182,27 @@ export * from "./prime-nudges";
 // (prod failure 17/08: over-limit post rejected by Postiz, whole run wasted)
 // ---------------------------------------------------------------------------
 export * from "./x-post-limit";
+
+// ---------------------------------------------------------------------------
+// Editorial leak guard (P0-04) — blocks internal drafting scaffolding (claim
+// basis, owner:, TODO, PR #, "link no 1o comentario") from reaching a public
+// feed. Shared so the API approval path and the worker publish path run the
+// identical check; a UI-only validator is one a scheduled job walks past.
+// ---------------------------------------------------------------------------
+export * from "./editorial-leak";
+
+
+// ---------------------------------------------------------------------------
+// Competitive claim trust registry (P0-05) — source, check date, owner, review
+// date and confidence for everything we say in public about a competitor.
+// Staleness is COMPUTED, so a claim expires on its own.
+// ---------------------------------------------------------------------------
+export * from "./competitive-claims";
+
+// ---------------------------------------------------------------------------
+// geo-audit retry policy (17/08 retry storm) — ONE policy for a queue that had
+// two producers with different settings and a 30s backoff far too short for the
+// provider outages it was retrying.
+// ---------------------------------------------------------------------------
+export * from "./audit-queue";
+

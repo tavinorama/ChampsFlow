@@ -31,9 +31,11 @@ import {
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 export const metadata: Metadata = {
-  title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
-  // Every plan dollar below is derived from packages/shared/src/pricing.ts —
-  // the metadata cannot drift from what checkout charges (PENDING 10.A.6).
+  // Título SEM o sufixo "| Ozvor": a main centralizou o sufixo no template de
+  // metadata (era a causa dos 38 títulos "| Ozvor | Ozvor"). A descrição fica a
+  // deste PR, derivada de packages/shared/src/pricing.ts, para o metadata nunca
+  // divergir do que o checkout cobra (PENDING 10.A.6).
+  title: "Plans — Replace a $30k/yr specialist for under $100/mo",
   description: `Start free, climb when you're ready. Free AI test, $${LIST_PRICE_USD.kit} Get-Cited Kit, $${LIST_PRICE_USD.aiAudit} AI Audit Stack, Growth $${LIST_PRICE_USD.growth}/mo, Agency $${LIST_PRICE_USD.agency}/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: ${FOUNDER_DISCOUNT_PERCENT}% off annual + a free 5-page website.`,
   alternates: { canonical: "https://ozvor.com/pricing" },
   openGraph: {

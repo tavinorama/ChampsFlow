@@ -12,7 +12,7 @@ import Link from "next/link";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
-  title: "Free GEO Resources — Guides, Templates & Trackers | Ozvor",
+  title: "Free GEO Resources — Guides, Templates & Trackers",
   description:
     "Ozvor's free GEO library: the Understanding GEO Search whitepaper, the GEO Visibility Guide, 5 high-citation post templates, and the LLM Citation Tracker.",
   alternates: { canonical: "https://ozvor.com/resources" },

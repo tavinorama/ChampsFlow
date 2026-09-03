@@ -20,13 +20,17 @@ import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
-    "LLM Citation Tracker — Monitor When ChatGPT, Claude & Perplexity Name Your Business | Ozvor",
+    "LLM Citation Tracker — Monitor When ChatGPT, Claude & Perplexity Name Your Business",
   description:
     "A spreadsheet template and methodology for tracking when AI answer engines cite your business. 10 minutes a week, no tools required. The .xlsx template and 7-page methodology are included with every Ozvor Growth and Agency plan.",
   alternates: {
     canonical: "https://ozvor.com/resources/llm-citation-tracker",
   },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title:
       "LLM Citation Tracker — the spreadsheet to monitor your AI search visibility | Ozvor",
     description:

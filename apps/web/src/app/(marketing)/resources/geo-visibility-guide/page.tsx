@@ -19,13 +19,17 @@ import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
-    "The GEO Visibility Guide — How Small Businesses Get Cited by ChatGPT in 2026 | Ozvor",
+    "The GEO Visibility Guide — How Small Businesses Get Cited by ChatGPT in 2026",
   description:
     "A 30-page guide on Generative Engine Optimization for small businesses: how AI engines decide who to cite, the 5 traits of citation-worthy content, a 4-week posting calendar, local & industry playbooks, and a 90-day GEO roadmap. Included with every Ozvor Growth and Agency plan.",
   alternates: {
     canonical: "https://ozvor.com/resources/geo-visibility-guide",
   },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title:
       "The GEO Visibility Guide — 30 pages on getting cited by ChatGPT, Claude & Perplexity | Ozvor",
     description:

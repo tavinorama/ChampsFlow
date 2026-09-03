@@ -16,11 +16,15 @@
 import { LegalPage, LegalSection } from "../../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Sub-Processors | Ozvor",
+  title: "Sub-Processors",
   description:
     "Current list of sub-processors that may process personal data on behalf of Ozvor customers, including transfer mechanisms and data categories.",
   alternates: { canonical: "https://ozvor.com/legal/sub-processors" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images ships no social card at all. Verified in the rendered
+      // document before the fix: zero og:image tags served on this route.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Sub-Processors | Ozvor",
     description:
       "Current list of sub-processors that may process personal data on behalf of Ozvor customers, including transfer mechanisms and data categories.",

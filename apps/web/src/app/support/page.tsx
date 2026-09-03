@@ -13,11 +13,15 @@ import type { Metadata } from "next";
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata: Metadata = {
-  title: "Support | Ozvor",
+  title: "Support",
   description:
     "How to reach Ozvor: help with your account, audits, billing, refunds and privacy requests — with our response-time targets.",
   alternates: { canonical: "https://ozvor.com/support" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images ships no social card at all. Verified in the rendered
+      // document before the fix: zero og:image tags served on this route.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Support | Ozvor",
     description: "Reach a human at Ozvor. Account, billing, refunds and privacy help.",
     url: "https://ozvor.com/support",

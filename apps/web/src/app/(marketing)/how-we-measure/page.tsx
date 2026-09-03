@@ -26,7 +26,9 @@ import { THREE_SCORE_COLORS } from "../../../components/OzvorScorecard";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "How We Measure the Ozvor AI Visibility Score | Ozvor",
+  // P1-04: in the sitemap, previously with no canonical.
+  alternates: { canonical: "https://ozvor.com/how-we-measure" },
+  title: "How We Measure the Ozvor AI Visibility Score",
   description:
     "The exact methodology behind the Ozvor AI Visibility Score: three distinct sub-scores (Visibility, Citation Readiness, Execution), five AI engines, and an honest account of what's measured.",
 };

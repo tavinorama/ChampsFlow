@@ -51,12 +51,28 @@ interface WhereResponse {
   brandId: string | null;
 }
 
+/**
+ * P0-03 — the Opportunity Radar is OFF.
+ *
+ * Not an env flag: the block is commercial, not operational. The web app holds
+ * the mirror of this constant in apps/web/src/lib/feature-flags.ts, with the
+ * full reasoning. Both must be flipped together, and only once the source is
+ * cleared for commercial use AND this route has a real entitlement check (it
+ * has none today — requireAuth + a rate limit is the whole gate).
+ */
+export const OPPORTUNITY_RADAR_ENABLED = false;
+
 export function registerSignalsRoutes(
   app: Hono,
   _db: PostgresClient,
-  opts: { limiter?: IpRateLimiter } = {}
+  // `radarEnabled` is injectable ONLY so the wire-contract tests can still
+  // exercise the connected path (normalization, bounding, bearer non-leak)
+  // while the feature is commercially blocked. Production never passes it: the
+  // default is the constant, and the constant is false.
+  opts: { limiter?: IpRateLimiter; radarEnabled?: boolean } = {}
 ): void {
   const limiter = opts.limiter ?? sharedIpRateLimiter;
+  const radarEnabled = opts.radarEnabled ?? OPPORTUNITY_RADAR_ENABLED;
 
   // GET /api/signals/where-to-show-up — the brand's live opportunity radar.
   app.get("/api/signals/where-to-show-up", requireAuth, async (c) => {
@@ -73,6 +89,26 @@ export function registerSignalsRoutes(
         { message: "Too many requests. Try again in a moment.", code: "RATE_LIMITED" },
         429
       );
+    }
+
+    // P0-03 — commercial block, checked BEFORE the env. The intended source is
+    // the Signal Engine's Reddit module, which the 03/09/2026 audit puts at
+    // compliance_state=blocked for commercial use until there is a direct Reddit
+    // contract or a licensed vendor reviewed by counsel. Setting SIGNAL_ENGINE_*
+    // in an environment must therefore NOT be enough to serve this queue: the
+    // env is a deployment detail, the block is a legal one. Lifting it is a
+    // reviewed decision that has to happen here, in the diff, alongside the
+    // entitlement check this route still does not have.
+    if (!radarEnabled) {
+      const body: WhereResponse = {
+        connected: false,
+        opportunities: [],
+        reason: "unavailable",
+        fetchedAt: null,
+        source: null,
+        brandId,
+      };
+      return c.json(body);
     }
 
     const url = process.env["SIGNAL_ENGINE_URL"]?.trim() ?? "";

@@ -9,6 +9,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { COMPETITORS, OZVOR_ONELINE } from "./_data";
+import { COMPETITIVE_CLAIMS } from "./_claims";
+import { isComparisonFrozen } from "@organic-posts/shared";
 
 export const metadata: Metadata = {
   title: "Ozvor vs the AI-visibility tools — an honest comparison",
@@ -96,7 +98,11 @@ export default function VsIndexPage() {
               {c.category}
             </p>
             <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-              {c.thesis}
+              {/* P0-05: same freeze as the detail page — an unverified claim must
+                  not survive as a teaser on the index. */}
+              {isComparisonFrozen(COMPETITIVE_CLAIMS, c.slug)
+                ? "Being re-checked against their published pricing."
+                : c.thesis}
             </p>
             <span
               aria-hidden="true"

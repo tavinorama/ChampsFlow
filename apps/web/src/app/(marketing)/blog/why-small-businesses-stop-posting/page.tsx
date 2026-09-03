@@ -33,7 +33,7 @@ import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
-    "Why Small Businesses Stop Posting on Social Media | Ozvor",
+    "Why Small Businesses Stop Posting on Social Media",
   description:
     "Most small businesses don't have a social media consistency problem. They have a starting problem. Here's why typical fixes fail — and what actually works.",
   alternates: {
