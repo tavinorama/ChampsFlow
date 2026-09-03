@@ -52,6 +52,16 @@ describe("P0-10 — mobile overflow guards", () => {
     expect(src).toMatch(card);
   });
 
+  it("the site-wide SoftCTA action row can actually wrap", () => {
+    // MEASURED on /compare at 320/375/390px: flexWrap never fired because
+    // flexShrink:0 with no upper bound let the row take its 400px max-content
+    // width, giving the document a 441px scrollWidth on a 375px screen.
+    // SoftCTA is used across the marketing site, so this one row was a
+    // site-wide overflow source.
+    const src = read("apps/web/src/components/marketing/SoftCTA.tsx");
+    expect(src).toMatch(/flexShrink: 0,\s*maxWidth: "100%",\s*minWidth: 0,/);
+  });
+
   it("dashboard-v3 grid tracks carry an explicit zero minimum", () => {
     // A bare `1fr`/`auto` grid track keeps an automatic min-content minimum, so
     // one wide child (a long brand name, a competitor domain) pushes the whole

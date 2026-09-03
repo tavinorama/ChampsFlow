@@ -390,7 +390,7 @@ const MARKETING_STYLES = `
   /* P0-10 (measured 03/09/2026): at a 768px viewport the six centre links were
      still rendered (they only hid at ≤700px) while the logo block and the whole
      right-hand cluster are flexShrink:0 — the navbar's min-content width came
-     out at 970px, so `/`, `/pricing` and `/test` all produced a 970px document
+     out at 970px, so the home, pricing and test pages all produced a 970px document
      on a 768px screen. Measured with Playwright before/after; see
      tests/e2e/mobile-overflow.spec.ts. Hiding the secondary links from 900px
      down is the smallest change that removes the rigid content, and it does not

@@ -15,6 +15,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { COMPETITORS } from "../vs/_data";
+import { COMPETITIVE_CLAIMS } from "../vs/_claims";
+import { isComparisonFrozen } from "@organic-posts/shared";
 
 export const metadata: Metadata = {
   title: "Compare Ozvor to other AI-visibility tools | Ozvor",
@@ -132,7 +134,13 @@ export default function ComparePage() {
               {c.category}
             </p>
             <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)", lineHeight: 1.6 }}>
-              {SIMPLE_TAKE[c.slug] ?? c.thesis}
+              {/* P0-05: the thesis line carries competitor pricing and capability
+                  claims. While that competitor's claims are unverified the tile
+                  must not restate them — the freeze has to reach the hub, not
+                  just the detail page. */}
+              {isComparisonFrozen(COMPETITIVE_CLAIMS, c.slug)
+                ? "Being re-checked against their published pricing."
+                : SIMPLE_TAKE[c.slug] ?? c.thesis}
             </p>
             <span
               aria-hidden="true"

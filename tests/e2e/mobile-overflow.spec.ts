@@ -16,7 +16,12 @@
  *   /pricing @768  scrollWidth=970  client=768
  *   /test    @768  scrollWidth=970  client=768
  *   /login   @320  scrollWidth=329  client=320   (content-box card, w=338)
- * AFTER: all 6 widths × 4 routes report scrollWidth === clientWidth.
+ *   /compare @320  scrollWidth=441  client=320   (SoftCTA actions row, w=400)
+ *   /compare @375  scrollWidth=441  client=375
+ *   /compare @390  scrollWidth=441  client=390
+ * AFTER: all 6 widths × every route below report scrollWidth === clientWidth,
+ * and so do /resources, /research, /kit, /local-pages, /support and /vs, which
+ * were swept once by hand rather than added to CI.
  *
  * NOT COVERED HERE, and deliberately so: the authenticated dashboard. GET
  * /dashboard-v3 answers 307 to the login page when signed out, so the logged-in
@@ -33,7 +38,18 @@ const WIDTHS = [320, 375, 390, 768, 1024, 1440] as const;
 
 // Public routes only — these are the flows the report names (home, pricing,
 // /test) plus /login, which the measurement caught overflowing at 320px.
-const ROUTES = ["/", "/pricing", "/test", "/login"] as const;
+const ROUTES = [
+  "/",
+  "/pricing",
+  "/test",
+  "/login",
+  // Added after the SoftCTA fix below: /compare was measured overflowing at
+  // 320/375/390px by the same class of defect, and SoftCTA is site-wide.
+  "/compare",
+  "/how-it-works",
+  "/faq",
+  "/ai-audit",
+] as const;
 
 test.describe("P0-10 — no horizontal document overflow", () => {
   // Scroll-driven film scenes keep animating; reduced motion settles the layout

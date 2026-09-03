@@ -190,3 +190,10 @@ export * from "./x-post-limit";
 // ---------------------------------------------------------------------------
 export * from "./editorial-leak";
 
+
+// ---------------------------------------------------------------------------
+// Competitive claim trust registry (P0-05) — source, check date, owner, review
+// date and confidence for everything we say in public about a competitor.
+// Staleness is COMPUTED, so a claim expires on its own.
+// ---------------------------------------------------------------------------
+export * from "./competitive-claims";
