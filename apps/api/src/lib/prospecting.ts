@@ -84,6 +84,205 @@ export interface CandidateBusiness {
   website: string;
 }
 
+// ---------------------------------------------------------------------------
+// Source abstraction (10.C.17 / 5.A.6, founder decision 2 de 02/09).
+//
+// The batch pipeline (verify site → mini-GEO-probe → sequences → founder
+// approval → CRM) is IDENTICAL for every source; only candidate ACQUISITION
+// changes:
+//  - 'engine': the historic v1 — hermes engines SUGGEST candidates (LLM);
+//  - 'apify' : a REAL data source (Google-Maps-scraper-class actor) that
+//    costs money per run and therefore NEVER runs on its own — no cron, no
+//    default; it runs only from an explicit founder-confirmed dispatch
+//    (workflow_dispatch confirm=yes, or the operator endpoint with
+//    confirm:true) with the estimated cost shown FIRST.
+// ---------------------------------------------------------------------------
+
+export type ProspectSource = "engine" | "apify";
+
+/** A candidate from a real data source — engine candidates carry name+site only. */
+export interface ApifyCandidate extends CandidateBusiness {
+  phone: string | null;
+  category: string | null;
+  /** Google rating (e.g. 4.6) — "fechabilidade" proxy (regra custo/receita do founder). */
+  rating: number | null;
+  /** Review count — the other fechabilidade proxy. */
+  reviewsCount: number | null;
+  /** Email as provided by the actor (scraped data, kept as FALLBACK only —
+   * the code-extracted email from the prospect's own site still wins). */
+  email: string | null;
+}
+
+/**
+ * Apify actor id FORMAT validation only — we never assume a given actor
+ * exists (that is the run's problem, reported honestly). Accepted:
+ * "owner/actor-name" (store slug) or a bare platform id (17 alnum chars).
+ */
+export function isValidApifyActorId(id: string): boolean {
+  if (/^[a-zA-Z0-9][a-zA-Z0-9_.-]*\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(id)) return true;
+  return /^[a-zA-Z0-9]{17}$/.test(id);
+}
+
+/** Hard per-run cap on places — one dispatch must never be an open faucet. */
+export const APIFY_MAX_PLACES_PER_RUN = 500;
+
+export interface ApifyRunSpec {
+  track: ProspectTrack;
+  /** Search strings the actor understands, e.g. "roofing contractor Fort Worth TX". */
+  queries: string[];
+  /** Max places PER QUERY (the actor's maxCrawledPlacesPerSearch). */
+  maxPlaces: number;
+  /** Actor to run; when absent the worker uses env APIFY_MAPS_ACTOR. */
+  actorId?: string;
+  /** Extra actor input merged over the generated one (advanced, optional). */
+  input?: Record<string, unknown>;
+}
+
+/**
+ * Parse + validate the JSON run spec (from the workflow/operator request —
+ * actor id and input come from the REQUEST, never hardcoded).
+ */
+export function parseApifyRunSpec(raw: unknown): { ok: boolean; spec?: ApifyRunSpec; errors: string[] } {
+  const errors: string[] = [];
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const track = o["track"];
+  if (track !== "geo" && track !== "aistack") errors.push("track deve ser 'geo' ou 'aistack'");
+  const rawQueries = Array.isArray(o["queries"]) ? o["queries"] : [];
+  const queries = rawQueries
+    .filter((q): q is string => typeof q === "string")
+    .map((q) => q.trim())
+    .filter((q) => q.length >= 3 && q.length <= 200)
+    .slice(0, 10);
+  if (queries.length === 0) errors.push("queries: pelo menos 1 termo de busca (3-200 chars; max 10)");
+  const maxPlacesRaw = Number(o["maxPlaces"] ?? o["max_places"]);
+  const maxPlaces = Number.isFinite(maxPlacesRaw) ? Math.floor(maxPlacesRaw) : NaN;
+  if (!Number.isFinite(maxPlaces) || maxPlaces < 1) errors.push("maxPlaces deve ser um inteiro >= 1");
+  const totalPlaces = (Number.isFinite(maxPlaces) ? maxPlaces : 0) * queries.length;
+  if (totalPlaces > APIFY_MAX_PLACES_PER_RUN) {
+    errors.push(`queries × maxPlaces = ${totalPlaces} excede o teto de ${APIFY_MAX_PLACES_PER_RUN} places por dispatch`);
+  }
+  const actorId = typeof o["actorId"] === "string" ? o["actorId"].trim() : typeof o["actor_id"] === "string" ? (o["actor_id"] as string).trim() : "";
+  if (actorId && !isValidApifyActorId(actorId)) errors.push(`actorId '${actorId}' invalido (formato owner/nome ou id de 17 chars)`);
+  const input = o["input"] != null && typeof o["input"] === "object" && !Array.isArray(o["input"]) ? (o["input"] as Record<string, unknown>) : undefined;
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    errors,
+    spec: {
+      track: track as ProspectTrack,
+      queries,
+      maxPlaces,
+      ...(actorId ? { actorId } : {}),
+      ...(input ? { input } : {}),
+    },
+  };
+}
+
+/** Places in a spec's worst case — what the cost estimate is computed on. */
+export function apifySpecPlaces(spec: Pick<ApifyRunSpec, "queries" | "maxPlaces">): number {
+  return spec.queries.length * spec.maxPlaces;
+}
+
+/** env APIFY_PRICE_PER_1K_USD (default 5): USD per 1000 scraped places. */
+export function apifyPricePer1kUsd(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env["APIFY_PRICE_PER_1K_USD"]);
+  return Number.isFinite(n) && n > 0 ? n : 5;
+}
+
+/** env APIFY_MONTHLY_BUDGET_USD (default 100): monthly Apify spend ceiling. */
+export function apifyMonthlyBudgetUsd(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env["APIFY_MONTHLY_BUDGET_USD"]);
+  return Number.isFinite(n) && n > 0 ? n : 100;
+}
+
+/** Estimated cost in USD for `places` places at `pricePer1kUsd` per 1000. */
+export function estimateApifyCostUsd(places: number, pricePer1kUsd: number): number {
+  if (!Number.isFinite(places) || places <= 0) return 0;
+  if (!Number.isFinite(pricePer1kUsd) || pricePer1kUsd <= 0) return 0;
+  return Math.round((places / 1000) * pricePer1kUsd * 100) / 100;
+}
+
+export interface ApifyRunDecision {
+  allowed: boolean;
+  reason: string;
+}
+
+/**
+ * The single confirm+budget gate — the operator endpoint and the worker both
+ * apply THIS decision (never a re-implementation). "Pergunte sempre antes de
+ * rodar": no confirmation, no call; estimate over what remains of the monthly
+ * budget, no call.
+ */
+export function decideApifyRun(input: {
+  confirmed: boolean;
+  estimateUsd: number;
+  monthSpentUsd: number;
+  budgetUsd: number;
+}): ApifyRunDecision {
+  if (!input.confirmed) {
+    return {
+      allowed: false,
+      reason: `sem confirmacao explicita (confirm=yes) — estimativa $${input.estimateUsd.toFixed(2)}; NADA foi chamado`,
+    };
+  }
+  const after = input.monthSpentUsd + input.estimateUsd;
+  if (after > input.budgetUsd) {
+    return {
+      allowed: false,
+      reason: `orcamento mensal Apify estouraria: gasto $${input.monthSpentUsd.toFixed(2)} + estimativa $${input.estimateUsd.toFixed(2)} > teto $${input.budgetUsd.toFixed(2)} (APIFY_MONTHLY_BUDGET_USD)`,
+    };
+  }
+  return { allowed: true, reason: `confirmado; estimativa $${input.estimateUsd.toFixed(2)} cabe no orcamento (gasto do mes $${input.monthSpentUsd.toFixed(2)} / teto $${input.budgetUsd.toFixed(2)})` };
+}
+
+/**
+ * Map raw Apify dataset items (Google-Maps-scraper-class shape: title,
+ * website, phone, categoryName, totalScore, reviewsCount, emails[]) into
+ * candidates. Deterministic parse — items without a plausible public website
+ * are dropped here (same bar as parseCandidateList); dedup by hostname.
+ */
+export function parseApifyItems(items: unknown[], cap = 60): ApifyCandidate[] {
+  const out: ApifyCandidate[] = [];
+  const seenHosts = new Set<string>();
+  for (const raw of items) {
+    if (out.length >= cap) break;
+    if (raw == null || typeof raw !== "object") continue;
+    const o = raw as Record<string, unknown>;
+    const name = String(o["title"] ?? o["name"] ?? "").trim();
+    if (!name || name.length > 120) continue;
+    let site = String(o["website"] ?? o["url"] ?? "").trim();
+    if (!site) continue;
+    if (!/^https?:\/\//i.test(site)) site = `https://${site}`;
+    let url: URL;
+    try {
+      url = new URL(site);
+    } catch {
+      continue;
+    }
+    const host = url.hostname.toLowerCase();
+    if (!host.includes(".") || host === "localhost") continue;
+    if (/(^|\.)google\.[a-z.]+$|(^|\.)facebook\.com$|(^|\.)instagram\.com$/i.test(host)) continue; // maps profile, not a site
+    if (seenHosts.has(host)) continue;
+    seenHosts.add(host);
+    const ratingRaw = Number(o["totalScore"] ?? o["rating"]);
+    const reviewsRaw = Number(o["reviewsCount"] ?? o["reviews_count"]);
+    const emailsRaw = Array.isArray(o["emails"]) ? o["emails"] : o["email"] != null ? [o["email"]] : [];
+    const email = emailsRaw
+      .map((e) => String(e ?? "").trim().toLowerCase())
+      .find((e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && !EMAIL_JUNK.test(e));
+    out.push({
+      name,
+      website: `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`,
+      phone: typeof o["phone"] === "string" && o["phone"].trim() ? o["phone"].trim().slice(0, 30) : null,
+      category: typeof o["categoryName"] === "string" && o["categoryName"].trim() ? o["categoryName"].trim().slice(0, 60) : null,
+      rating: Number.isFinite(ratingRaw) && ratingRaw > 0 ? ratingRaw : null,
+      reviewsCount: Number.isFinite(reviewsRaw) && reviewsRaw >= 0 ? Math.floor(reviewsRaw) : null,
+      email: email ?? null,
+    });
+  }
+  return out;
+}
+
 /**
  * Parse the engine's candidate list — one `Name | website` per line, numbered
  * or not. Anything that does not parse as a plausible public website is
@@ -324,6 +523,13 @@ export interface VerifiedProspect {
   email: string | null;
   /** 1-3 code-verified findings — the discovery-audit ammunition. */
   findings: string[];
+  /** Which source produced the candidate (default 'engine' when absent). */
+  source?: ProspectSource;
+  /** Fechabilidade proxies (Apify source) — kept in the artifact + CRM note. */
+  phone?: string | null;
+  rating?: number | null;
+  reviewsCount?: number | null;
+  category?: string | null;
 }
 
 export interface DroppedCandidate {
@@ -372,6 +578,12 @@ export function renderProspectBlock(input: {
     }
     lines.push(`SITE: ${p.website}`);
     lines.push(`EMAIL: ${p.email ?? "SEM EMAIL VERIFICADO"}`);
+    if (p.source === "apify") lines.push("FONTE: apify");
+    if (p.phone) lines.push(`FONE: ${p.phone}`);
+    if (p.rating != null || p.reviewsCount != null) {
+      lines.push(`RATING: ${p.rating != null ? p.rating : "?"} (${p.reviewsCount != null ? p.reviewsCount : "?"} reviews)`);
+    }
+    if (p.category) lines.push(`CATEGORIA: ${p.category}`);
     lines.push("ACHADOS (verificados por codigo):");
     for (const f of p.findings) lines.push(`- ${f}`);
   }
@@ -439,11 +651,20 @@ export interface CrmProspectContact {
   track: ProspectTrack;
   /** The track's campaign slug — the SmartLead campaign this contact belongs to. */
   campaign: string;
+  /** Fechabilidade proxies (Apify source) — travel from the block into the note. */
+  phone?: string | null;
+  rating?: number | null;
+  reviewsCount?: number | null;
 }
 
 /** The crm_contact note line for one approved prospect — one source (worker + tests). */
 export function crmNoteFor(c: CrmProspectContact): string {
-  return `[prospect-batch] trilha=${c.track} campanha=${c.campaign} — ${c.finding || "sem achado registrado"} — ${c.website}`;
+  const proxies: string[] = [];
+  if (c.phone) proxies.push(`fone=${c.phone}`);
+  if (c.rating != null) proxies.push(`rating=${c.rating}`);
+  if (c.reviewsCount != null) proxies.push(`reviews=${c.reviewsCount}`);
+  const proxyPart = proxies.length > 0 ? ` ${proxies.join(" ")}` : "";
+  return `[prospect-batch] trilha=${c.track} campanha=${c.campaign}${proxyPart} — ${c.finding || "sem achado registrado"} — ${c.website}`;
 }
 
 /**
@@ -471,7 +692,22 @@ export function parseProspectsForCrm(block: string): { campaign: string; contact
     const track: ProspectTrack = /^TRILHA:\s*(geo|aistack)\b/m.exec(section)?.[1] === "aistack" ? "aistack" : "geo";
     const ownCampaign = /^CAMPANHA:\s*(\S+)/m.exec(section)?.[1] ?? globalCampaign;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailRaw)) continue;
-    contacts.push({ email: emailRaw.toLowerCase(), name, website, finding, track, campaign: ownCampaign });
+    // Fechabilidade proxies (Apify source) — parsed back from the CODE block.
+    const phone = /^FONE:\s*(.+)$/m.exec(section)?.[1]?.trim() ?? null;
+    const ratingM = /^RATING:\s*([\d.]+|\?)\s*\((\d+|\?)\s*reviews\)/m.exec(section);
+    const rating = ratingM && ratingM[1] !== "?" ? Number(ratingM[1]) : null;
+    const reviewsCount = ratingM && ratingM[2] !== "?" ? Number(ratingM[2]) : null;
+    contacts.push({
+      email: emailRaw.toLowerCase(),
+      name,
+      website,
+      finding,
+      track,
+      campaign: ownCampaign,
+      ...(phone ? { phone } : {}),
+      ...(rating != null ? { rating } : {}),
+      ...(reviewsCount != null ? { reviewsCount } : {}),
+    });
   }
   return { campaign, contacts };
 }
