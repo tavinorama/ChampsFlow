@@ -11,10 +11,10 @@ This file is loaded into context for every Claude Code session in this project. 
 ## Project meta
 > Filled by `product-manager` (product mode) or `ceo-agent` (company mode) on init. Update only when the project itself changes.
 
-- **Name**: OZvor (parent company) — products: **OZvor Search** (GEO / AI Search visibility platform) and **OZvor Social** (social/content execution); **OrganicPosts by Ozvor** (consultancy/DFY sub-brand)
+- **Name**: Ozvor (parent company) — products: **Ozvor Search** (GEO / AI Search visibility platform: free test, **Get-Cited Kit $29**, Growth $99/mo, Agency $549/mo), **AI Audit Stack $49** (one-time tool-fit audit), **Ozvor Pages $99** (one-time 5-page AI-citable site; checkout gated on env), credit packs (~$13/1,000, derived), and **OrganicPosts by Ozvor** (consultancy/DFY sub-brand, ~$1.5k entry). *(2026-09-02: "Ozvor Social" removed — it was never a shipped product; the social/content execution lives inside the marketing agent-org, not the catalog.)*
 - **One-line description**: AI Search visibility platform for SMBs and agencies — audits how a brand appears across AI search (ChatGPT, Claude, Perplexity, Gemini, Google AI Overview), benchmarks competitors, computes the Ozvor AI Visibility Score (3 scores: Visibility / Citation Readiness / Execution), and builds a GEO content plan; OrganicPosts is the consultancy/execution arm. Never-ending subscription flywheel.
 - **Sector**: general SaaS
-- **Home jurisdiction**: Brazil — LGPD applies (entity registered, CNPJ on file with founder; razão social + registered address still pending for legal pages/ROPA)
+- **Home jurisdiction**: Brazil — LGPD applies. Entity CONFIRMED 2026-07-08: **Ozvor**, trade name of a Brazilian **MEI**, CNPJ **67.609.444/0001-08**, registered office Rua José Borges Abrantes nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brasil; regulator ANPD (razão social = holder's civil name, intentionally not reproduced in docs — see ropa.md)
 - **Customer jurisdictions**: EU (GDPR) + US (CCPA/CPRA, FTC). All compliance artifacts must address Brazil (LGPD) + EU + US.
 - **Domains**: **ozvor.com (primary)** · legacy domains 301-redirect to ozvor.com (verified live 2026-07-06: trustindexai.com + www, organicposts.ai + www → 301 https://ozvor.com; organicposts.com does not resolve and was never in use)
 - **Repository**: https://github.com/tavinorama/ChampsFlow

@@ -80,3 +80,42 @@ routing gate (EU drops Perplexity).
 - Audit breadth/repeat: `apps/worker/src/jobs/audit-run.ts` (`REQUESTED_PROVIDERS`, `GEO_PROBE_REPEAT`).
 - Model per provider: each adapter reads `*_MODEL` env (e.g. `ANTHROPIC_MODEL`) — set these to the cheap tiers to cut cost.
 - BYOK boundary: `content-studio.ts` (`generateContent` `keyUsed`) + `resolveProviderKey` in `routes/system.ts`.
+
+---
+
+## 5. Measured costs (api_spend, production — added 2026-09-02, 10.D.11)
+
+The estimates above are superseded for decision-making by REAL per-op figures
+from the `api_spend` ledger (per-tenant metering live since #489/#524):
+
+| Op | Measured cost |
+|---|---|
+| Full audit (paid plans / Kit) | **≈ $0.80** |
+| Free Invisibility Test | **≈ $0.03** |
+| Ozvor Pages generation | **≈ $0.15** |
+
+Content-org LLM work (blog, spheres, prospect drafts) runs on the flat-fee VPS
+engines (claude Max / codex) — no per-call API cost.
+
+### Margin at plan caps (recomputed with the REAL 10-brand Agency limit)
+
+The earlier "Agency negative at 25 brands" (and the 5.C.4 premise of 25) used an
+impossible premise — `PLAN_LIMITS` caps Agency at **10 brands** and
+**58 audits/month total** (scheduled + manual), Growth at **6 audits/month**.
+
+| Plan | Price | Max audits/mo (cap) | API cost at cap | Gross margin on API cost |
+|---|---|---|---|---|
+| Growth $99 | $99 | 6 × $0.80 | ≈ $4.80 | ≈ 95% |
+| Agency $549 | $549 | 58 × $0.80 | ≈ $46.40 | ≈ 92% |
+
+- **Agency is NOT negative at its real limits.** The negative reading existed
+  only under the impossible 25-brand premise; the monthly_audits_total ceiling
+  (#217) pins ≥80% margin by construction (tests/unit/cost-control.test.ts).
+- Fixed infra (Railway + Supabase + VPS flat) is shared overhead, not per-plan —
+  the earlier "Growth ~75% margin" figure included an allocated infra share;
+  both views are true, per-plan API margin is what the ceiling controls.
+- Levers unchanged: repeat audits 3×→2× cuts audit cost ~33%; free test stays
+  the bounded 3¢ wedge.
+- Credit-pack price (~$13/1,000) is DERIVED from these figures in code
+  (`overagePackUsd()`: max of the 80% margin floor and 1.3× the best plan
+  rate) — it moves automatically if measured costs move.

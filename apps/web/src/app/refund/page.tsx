@@ -15,11 +15,11 @@ import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 export const metadata: Metadata = {
   title: "Refund Policy | Ozvor",
   description:
-    "Ozvor's refund policy in plain English: 30-day money-back on subscriptions, deliverable guarantees on the Get-Cited Kit and Ozvor Pages, and how to ask.",
+    "Ozvor's refund policy in plain English: 30-day money-back on subscriptions and on the AI Audit Stack, deliverable guarantees on the Get-Cited Kit and Ozvor Pages, and how to ask.",
   alternates: { canonical: "https://ozvor.com/refund" },
   openGraph: {
     title: "Refund Policy | Ozvor",
-    description: "30-day money-back on plans, deliverable guarantees on one-time products, no lock-in.",
+    description: "30-day money-back on plans and the $49 AI Audit Stack, deliverable guarantees on one-time products, no lock-in.",
     url: "https://ozvor.com/refund",
     siteName: "Ozvor",
     type: "website",
@@ -31,7 +31,7 @@ export default function RefundPolicyPage() {
   return (
     <LegalPage
       title="Refund Policy"
-      updated="14 July 2026"
+      updated="2 September 2026"
       intro={
         "We want you to feel safe trying Ozvor. This page explains, in plain English, when you can get your money back and how to ask. It restates the refund terms in our Terms of Service — it does not change them. If anything conflicts, the Terms of Service govern."
       }
@@ -66,7 +66,20 @@ export default function RefundPolicyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection n="4" title="What is not refundable">
+      <LegalSection n="4" title="The $49 AI Audit Stack — 30-day money-back">
+        <p>
+          The AI Audit Stack is a one-time $49 purchase. It comes with a 30-day money-back guarantee: if the result
+          tells you nothing new, email us within 30 days of your payment and we will refund the $49 on request. No
+          hoops, no reason required.
+        </p>
+        <p>
+          The guarantee covers the deliverable — the tool recommendation and report teaser you receive by email and on
+          your result page — not any business outcome from using the recommended tool. As with every Ozvor product, we
+          never promise a specific AI-search, traffic, or revenue result.
+        </p>
+      </LegalSection>
+
+      <LegalSection n="5" title="What is not refundable">
         <ul style={{ margin: 0, paddingLeft: "1.25rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
           <li>The free AI Visibility Test — it is free, so there is nothing to refund.</li>
           <li>Renewals of a subscription past the first 30 days (cancel before the renewal date instead).</li>
@@ -78,18 +91,21 @@ export default function RefundPolicyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection n="5" title="How to ask for a refund">
+      <LegalSection n="6" title="How to ask for a refund">
         <p>
           Email{" "}
           <a href="mailto:support@ozvor.com" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
             support@ozvor.com
           </a>{" "}
-          from the address on your account. Tell us what you bought and that you would like a refund — you do not need to
-          give a reason. We aim to reply within 1 business day.
+          from the address you used at checkout (for one-time products) or on your account (for plans). This is the one
+          address for every refund request. Tell us what you bought and that you would like a refund — you do not need
+          to give a reason. We aim to reply within 1 business day.
         </p>
         <p>
           Approved refunds go back to your original payment method via our payment processor (Stripe). Depending on your
-          bank, it can take a few business days to appear. Questions? See our{" "}
+          bank, it can take a few business days to appear. Your receipt for any one-time purchase (Kit, AI Audit Stack,
+          Pages) is the Stripe receipt e-mail sent to your checkout address; if you did not get one, ask us and we will
+          re-send it. Questions? See our{" "}
           <a href="/support" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
             Support
           </a>{" "}
