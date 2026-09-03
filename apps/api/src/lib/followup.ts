@@ -27,12 +27,24 @@
  */
 
 import { parseSmartleadPayload } from "./dossier";
+import { CONTENT_LESSONS, ANTI_GENERIC_SALES_RULE } from "./graph-prompts";
 
 export const FOLLOWUP_GRAPH = "followup-reply";
 /** Approval timeout — silence is rejection, never approval (18-20/08 lesson). */
 export const FOLLOWUP_APPROVAL_TIMEOUT_HOURS = 96;
-/** New proposals per scan — approvals must trickle, never flood the founder. */
-export const FOLLOWUP_BATCH_CAP = 5;
+/**
+ * 10.C.13 — new proposals PER DAY (UTC), not per scan. The old cap was 5 per
+ * 30-min scan = 240/day on paper; the flood control was an illusion. The scan
+ * counts today's followup-reply runs and proposes at most the remainder.
+ * Env FOLLOWUP_BATCH_CAP overrides; the number is a DAILY budget.
+ */
+export const FOLLOWUP_DAILY_CAP_DEFAULT = 20;
+export function followupDailyCap(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env["FOLLOWUP_BATCH_CAP"];
+  if (raw === undefined || raw.trim() === "") return FOLLOWUP_DAILY_CAP_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : FOLLOWUP_DAILY_CAP_DEFAULT;
+}
 /** Only replies this recent are scanned — bounds retries AND LLM spend. */
 export const FOLLOWUP_LOOKBACK_DAYS = 14;
 
@@ -250,6 +262,8 @@ export function buildDraftPrompt(input: {
   replyText: string;
   intent: FollowupIntent;
   trilha: "geo" | "aistack" | null;
+  /** 10.C.6 — as últimas respostas REALMENTE enviadas/propostas (lidas do registro por código). */
+  recent?: string | null;
 }): string {
   const links = allowedFollowupLinks(input.trilha);
   return [
@@ -269,6 +283,13 @@ export function buildDraftPrompt(input: {
     "",
     "FACTS (the only facts you may use):",
     ...HOUSE_FACTS.map((f) => `- ${f}`),
+    "",
+    // 10.C.6 — as réguas da casa chegam ao follow-up como chegam aos grafos:
+    // [__lessons__] (constante em código) + anti-genérico de vendas + o bloco
+    // [__recent__] quando o chamador o leu do registro.
+    `[__lessons__]\n${CONTENT_LESSONS}`,
+    ANTI_GENERIC_SALES_RULE,
+    ...(input.recent && input.recent.trim() ? ["", `[__recent__]\n${input.recent.trim().slice(0, 2000)}`] : []),
     "",
     "Their reply:",
     "---",
@@ -302,6 +323,10 @@ export function validateFollowupDraft(
   if (text.length > DRAFT_MAX_CHARS) errors.push(`rascunho > ${DRAFT_MAX_CHARS} chars`);
   if (text.includes("{{") || text.includes("}}")) errors.push("residuo de template {{...}}");
 
+  // 10.C.9 — a regra "sem travessão" também é código aqui: o que se valida é
+  // exatamente o que se envia.
+  if (/[—–]/.test(text)) errors.push("travessao no texto (regra da casa)");
+
   const urls = text.match(URL_RE) ?? [];
   if (urls.length > 1) errors.push(`mais de um link (${urls.length})`);
   const allowed = new Set(allowedFollowupLinks(trilha));
@@ -326,6 +351,29 @@ export function validateFollowupDraft(
     }
   }
   return { ok: errors.length === 0, errors };
+}
+
+// ---------------------------------------------------------------------------
+// GEO-D7 (decisão do founder, 02/09): ZERO PII de prospect no Telegram. O
+// portão de follow-up mandava o texto INTEGRAL da resposta do lead para o
+// chat — e-mails, telefones, o que fosse. Agora o Telegram recebe um RESUMO
+// MASCARADO (intent + primeiros 80 chars com e-mails/telefones redigidos);
+// o texto completo fica só no dossiê (crm/smartlead_event, dentro do banco).
+// ---------------------------------------------------------------------------
+
+export const REPLY_PREVIEW_MAX_CHARS = 80;
+const EMAIL_IN_TEXT_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+/** Sequências telefônicas: 7+ dígitos com separadores comuns. */
+const PHONE_IN_TEXT_RE = /\+?\d[\d\s().\/-]{5,}\d/g;
+
+/**
+ * O resumo que PODE ir ao Telegram: uma linha, e-mails → [email] e telefones
+ * → [tel], cortada em REPLY_PREVIEW_MAX_CHARS. Nunca o texto integral.
+ */
+export function maskedReplyPreview(replyText: string): string {
+  const oneLine = (replyText || "").replace(/\s+/g, " ").trim();
+  const masked = oneLine.replace(EMAIL_IN_TEXT_RE, "[email]").replace(PHONE_IN_TEXT_RE, "[tel]");
+  return masked.length > REPLY_PREVIEW_MAX_CHARS ? `${masked.slice(0, REPLY_PREVIEW_MAX_CHARS)}…` : masked;
 }
 
 /** The SmartLead API sends HTML; the founder approved plain text. Minimal, lossless. */

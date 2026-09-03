@@ -38,7 +38,6 @@ import { logger } from "../../../../packages/shared/src/logger";
 import {
   DRAFT_MAX_CHARS,
   FOLLOWUP_APPROVAL_TIMEOUT_HOURS,
-  FOLLOWUP_BATCH_CAP,
   FOLLOWUP_GRAPH,
   FOLLOWUP_LOOKBACK_DAYS,
   buildDraftPrompt,
@@ -46,10 +45,12 @@ import {
   draftToHtml,
   extractReplyRouting,
   extractTrilha,
+  followupDailyCap,
   followupMarkerLine,
   hasFollowupMarker,
   hasOpenFollowupProposal,
   looksLikeAutoReplyNoise,
+  maskedReplyPreview,
   parseIntent,
   validateFollowupDraft,
   type FollowupIntent,
@@ -57,7 +58,19 @@ import {
 import { extractReplyText } from "../../../api/src/lib/dossier";
 import { maskEmail } from "../../../api/src/lib/recycle";
 import { nextStageFor, type Stage } from "../../../api/src/lib/smartlead-stage";
-import { callWithFallback, errorHead, parseEngineChain } from "../lib/hermes-fallback";
+import { callWithFallback, errorHead } from "../lib/hermes-fallback";
+
+/**
+ * GEO-D7 / 10.D.4 (decisão do founder, 02/09): o follow-up processa o texto de
+ * RESPOSTA DO PROSPECT — PII de terceiro. A cadeia de engines deste job é
+ * claude→codex, FIXA em código e SEM kimi: não há DPA com a Moonshot para
+ * dados pessoais de terceiros, então nenhum byte de reply pode passar por lá.
+ * A env HERMES_ENGINES (que inclui kimi para os grafos de conteúdo) NÃO se
+ * aplica aqui de propósito — este é o único job cuja cadeia é menor por lei,
+ * não por resiliência. Ambos caídos = o scan reporta engines-down e a cadência
+ * de 30 min re-tenta; nunca degradamos privacidade para ganhar uptime.
+ */
+export const FOLLOWUP_ENGINE_CHAIN: readonly string[] = ["claude", "codex"];
 
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
 const HERMES_TIMEOUT_MS = 240_000;
@@ -121,9 +134,9 @@ function defaultTelegram(): FollowupPorts["telegram"] {
 }
 
 function defaultHermes(token: string): FollowupPorts["hermes"] {
-  const engines = parseEngineChain(process.env["HERMES_ENGINES"]);
+  // GEO-D7: cadeia FIXA claude→codex — ver FOLLOWUP_ENGINE_CHAIN acima.
   return async (prompt) => {
-    const res = await callWithFallback(engines, async (engine) => {
+    const res = await callWithFallback([...FOLLOWUP_ENGINE_CHAIN], async (engine) => {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), HERMES_TIMEOUT_MS);
       try {
@@ -520,13 +533,52 @@ async function proposeNewFollowups(
     return;
   }
 
-  let budget = FOLLOWUP_BATCH_CAP;
+  // 10.C.13 — o cap é POR DIA (UTC), não por scan: o orçamento de hoje é o
+  // cap diário menos o que os scans anteriores já propuseram hoje.
+  const cap = followupDailyCap();
+  const today = (await sql`
+    /* fu:today-count */
+    SELECT COUNT(*)::text AS n
+      FROM ops.agent_run
+     WHERE graph = ${FOLLOWUP_GRAPH}
+       AND started_at >= date_trunc('day', NOW() AT TIME ZONE 'utc')
+  `) as unknown as Array<{ n: string }>;
+  const proposedToday = Number(today[0]?.n ?? 0);
+  let budget = Math.max(0, cap - proposedToday);
+  if (budget === 0 && candidates.length > 0) {
+    logger.warn("followup_daily_cap_reached", { cap, proposedToday, waiting: candidates.length });
+  }
+
+  // 10.C.6 — [__recent__] das últimas respostas propostas/enviadas, lido do
+  // registro por código (runs recentes → artefato Redis do draft).
+  let recentBlock: string | null = null;
+  try {
+    const recentRuns = (await sql`
+      /* fu:recent-drafts */
+      SELECT id, started_at::text AS started_at
+        FROM ops.agent_run
+       WHERE graph = ${FOLLOWUP_GRAPH}
+       ORDER BY started_at DESC
+       LIMIT 5
+    `) as unknown as Array<{ id: string; started_at: string }>;
+    const pieces: string[] = [];
+    for (const r of recentRuns) {
+      const text = await ports.artifacts.get(`graphrun:${r.id}:draft`);
+      if (text) pieces.push(`--- ${r.started_at.slice(0, 10)} ---\n${text.slice(0, 400)}`);
+    }
+    if (pieces.length > 0) {
+      recentBlock = ["ULTIMAS RESPOSTAS DE FOLLOW-UP REAIS (nao repita abertura nem estrutura):", ...pieces].join("\n");
+    }
+  } catch (err) {
+    logger.warn("followup_recent_read_failed", { message: (err as Error).message?.slice(0, 160) });
+  }
+
   for (const row of candidates) {
     if (budget <= 0) {
       result.skipped += 1;
       continue;
     }
-    const handled = await handleReply(sql, ports, row, result);
+    const handled = await handleReply(sql, ports, row, result, recentBlock);
     if (handled === "proposed") budget -= 1;
     if (handled === "engines-down") {
       // All engines failed: stop the whole phase (the alarm already fired
@@ -541,7 +593,8 @@ async function handleReply(
   sql: postgres.Sql,
   ports: FollowupPorts,
   row: ReplyRow,
-  result: FollowupScanResult
+  result: FollowupScanResult,
+  recentBlock: string | null = null
 ): Promise<"proposed" | "discarded" | "unsubscribed" | "engines-down"> {
   const now = ports.now();
   const replyText = extractReplyText(row.payload);
@@ -591,8 +644,8 @@ async function handleReply(
   for (let attempt = 0; attempt < 2 && !validation.ok; attempt += 1) {
     const prompt =
       attempt === 0
-        ? buildDraftPrompt({ replyText, intent, trilha })
-        : `${buildDraftPrompt({ replyText, intent, trilha })}\n\nYour previous draft broke these rules — fix ALL of them:\n${validation.errors.map((e) => `- ${e}`).join("\n")}\nPrevious draft:\n${draft}`;
+        ? buildDraftPrompt({ replyText, intent, trilha, recent: recentBlock })
+        : `${buildDraftPrompt({ replyText, intent, trilha, recent: recentBlock })}\n\nYour previous draft broke these rules — fix ALL of them:\n${validation.errors.map((e) => `- ${e}`).join("\n")}\nPrevious draft:\n${draft}`;
     const res = await ports.hermes(prompt);
     if (!res.ok) {
       logger.error("followup_draft_engines_down", { eventId: row.id, error: errorHead(res.output, 160) });
@@ -610,12 +663,13 @@ async function handleReply(
       followupMarkerLine("descartado", row.id, now, "motivo=rascunho-invalido"),
       null
     );
+    // GEO-D7: NUNCA o texto integral do lead no Telegram — resumo mascarado.
     await ports.telegram(
       [
         `🟠 FOLLOW-UP SEM RASCUNHO VÁLIDO (${masked}, intent=${intent})`,
         `O validador de código reprovou 2 tentativas (${validation.errors.slice(0, 3).join("; ")}).`,
-        `Responda à mão no SmartLead. O lead escreveu:`,
-        `"${replyText.slice(0, 400)}"`,
+        `Responda à mão no SmartLead (o texto completo está lá, no thread do lead).`,
+        `Resumo mascarado: "${maskedReplyPreview(replyText)}"`,
       ].join("\n")
     );
     result.discarded += 1;
@@ -650,11 +704,14 @@ async function handleReply(
   await ports.artifacts.set(`graphrun:${runId}:meta`, JSON.stringify(meta));
   await writeMarker(sql, row.lead_email, followupMarkerLine("proposto", row.id, now, `intent=${intent}`), null);
 
+  // GEO-D7 (02/09): o portão NÃO carrega o texto da resposta do prospect —
+  // só o resumo mascarado (intent + 80 chars, e-mails/telefones redigidos).
+  // O texto completo vive no dossiê (smartlead_event/crm), dentro do banco.
   await ports.telegram(
     [
       `🟡 APROVAÇÃO NECESSÁRIA — follow-up de resposta (${masked}, trilha=${trilha ?? "?"}, intent=${intent})`,
-      `O lead respondeu ao cold e-mail:`,
-      `"${replyText.slice(0, 400)}"`,
+      `Resumo mascarado da resposta (texto completo só no SmartLead/dossiê):`,
+      `"${maskedReplyPreview(replyText)}"`,
       ``,
       `Resposta proposta (aprovar = ENVIAR exatamente este texto no thread via SmartLead):`,
       `---`,
@@ -670,5 +727,36 @@ async function handleReply(
   );
   logger.info("followup_proposed", { eventId: row.id, runId, intent, trilha });
   result.proposed += 1;
+
+  // 10.C.15 — o loop de vendas ganha VEREDITO: a taxa de resposta da campanha
+  // vira uma linha em ops.agent_outcome (lida pelo CDO/consolidação/tuner via
+  // os snapshots de outcomes). Agregação 100% SQL sobre smartlead_event; no
+  // máximo 1 linha por campanha por dia (NX). Sem EMAIL_SENT registrado =
+  // sem taxa inventada: grava a CONTAGEM de replies, dita como contagem.
+  if (meta.campaignId !== null) {
+    try {
+      const day = now.toISOString().slice(0, 10);
+      if (await ports.onceKey(`fu:outcome:${meta.campaignId}:${day}`)) {
+        const counts = (await sql`
+          /* fu:outcome-counts */
+          SELECT COUNT(*) FILTER (WHERE event_type = 'EMAIL_REPLY')::text AS replies,
+                 COUNT(*) FILTER (WHERE event_type = 'EMAIL_SENT')::text AS sent
+            FROM smartlead_event
+           WHERE campaign_id = ${meta.campaignId}
+        `) as unknown as Array<{ replies: string; sent: string }>;
+        const replies = Number(counts[0]?.replies ?? 0);
+        const sent = Number(counts[0]?.sent ?? 0);
+        const metric = sent > 0 ? `sales_reply_rate_c${meta.campaignId}` : `sales_replies_c${meta.campaignId}`;
+        const value = sent > 0 ? Math.round((replies / sent) * 10_000) / 100 : replies;
+        await sql`
+          /* fu:outcome-write */
+          INSERT INTO ops.agent_outcome (step_id, metric, value_before, value_after)
+          VALUES (${stepId}::uuid, ${metric}, ${null}, ${value})`;
+        logger.info("followup_outcome_recorded", { campaignId: meta.campaignId, metric, value, replies, sent });
+      }
+    } catch (err) {
+      logger.warn("followup_outcome_failed", { message: (err as Error).message?.slice(0, 160) });
+    }
+  }
   return "proposed";
 }
