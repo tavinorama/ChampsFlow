@@ -342,7 +342,9 @@ export {
   OPEN_STATES,
   CLIENT_REACHABLE_STATES,
   TRANSITIONS,
+  CLIENT_TODO_VECTOR,
   isPlanTaskState,
+  normalizePlanTaskState,
   validateTransition,
   computeExecution,
 } from "./plan-task-state";

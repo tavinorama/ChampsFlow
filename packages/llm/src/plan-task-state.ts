@@ -308,6 +308,35 @@ export function isPlanTaskState(value: unknown): value is PlanTaskState {
   return typeof value === "string" && (PLAN_TASK_STATES as readonly string[]).includes(value);
 }
 
+/**
+ * normalizePlanTaskState — read-side coercion for rows written before this
+ * change, or by a stale API pod mid-deploy.
+ *
+ *   'done'    → 'legacy_self_reported'   (a claim, never proof)
+ *   unknown   → 'proposed'                (open work; never silently verified)
+ *
+ * Deliberately asymmetric: anything we cannot identify falls to the OPEN side,
+ * never to the verified side. Unreadable data must cost us a number, not the
+ * client's trust.
+ */
+export function normalizePlanTaskState(value: unknown): PlanTaskState {
+  if (isPlanTaskState(value)) return value;
+  if (value === "done") return "legacy_self_reported";
+  return "proposed";
+}
+
+/**
+ * The vector a client-authored to-do is filed under.
+ *
+ * Bug fixed in passing (discovery §1 D1.3): `POST /api/brands/:id/tasks`
+ * inserted `vector = 'custom'`, which violates `plan_task_vector_check`
+ * (brand|performance|ai) — so "Add your own to-do" failed 100% of the time.
+ * Fixed in CODE rather than by widening the CHECK, so the button works before
+ * any migration lands, and because 'custom' carries no vector meaning.
+ * 'brand' is the honest bucket: work the client owns on their own presence.
+ */
+export const CLIENT_TODO_VECTOR = "brand";
+
 const nonEmpty = (v: string | null | undefined): boolean =>
   typeof v === "string" && v.trim().length > 0;
 
