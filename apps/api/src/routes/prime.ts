@@ -110,9 +110,18 @@ export function registerPrimeRoutes(app: Hono, db: PostgresClient): void {
       }
       try {
         const { rows } = await db.query<{ n: string }>(
+          // Onboarding nudge counter — "have you closed anything out yet?".
+          // Deliberately counts CLAIMED completion as well as verified: this is
+          // about whether the client has engaged with the list, not a product
+          // metric. The metric that requires proof is Verified Execution
+          // (apps/api/src/lib/plan-task-lifecycle.ts). 'done' stays in the list
+          // for rows written before the lifecycle migration.
           `SELECT COUNT(*)::text AS n FROM plan_task t
              JOIN strategy_plan p ON p.id = t.plan_id
-            WHERE p.brand_id = $1 AND t.status = 'done'`,
+            WHERE p.brand_id = $1
+              AND t.status IN ('done', 'legacy_self_reported',
+                               'manual_done_pending_verification',
+                               'published', 'indexed', 'cited', 'verified')`,
           [out.brandId]
         );
         out.actionCardsDone = Number(rows[0]?.n ?? 0);

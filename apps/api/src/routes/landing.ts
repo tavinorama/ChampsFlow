@@ -473,7 +473,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
               (SELECT COUNT(*) FROM landing_pages p WHERE p.site_id = s.id) AS page_count,
               (SELECT COUNT(*) FROM plan_task pt
                  JOIN strategy_plan sp ON sp.id = pt.plan_id
-                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted')) AS open_fixes
+                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted', 'drafting', 'review', 'blocked', 'regressed', 'client_acknowledged', 'manual_done_pending_verification', 'legacy_self_reported')) AS open_fixes
          FROM landing_sites s
         WHERE s.tenant_id = $1
         ORDER BY s.created_at DESC`,
@@ -711,7 +711,7 @@ export function registerLandingRoutes(app: Hono, db: PostgresClient): void {
               s.created_at, s.updated_at,
               (SELECT COUNT(*) FROM plan_task pt
                  JOIN strategy_plan sp ON sp.id = pt.plan_id
-                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted')) AS open_fixes
+                WHERE sp.brand_id = s.brand_id AND pt.status IN ('proposed', 'accepted', 'drafting', 'review', 'blocked', 'regressed', 'client_acknowledged', 'manual_done_pending_verification', 'legacy_self_reported')) AS open_fixes
          FROM landing_sites s WHERE s.id = $1 AND s.tenant_id = $2`,
       [siteId, auth.tenantId]
     );

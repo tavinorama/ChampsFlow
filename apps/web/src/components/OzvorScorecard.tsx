@@ -232,8 +232,11 @@ const THREE_SCORE_META: Array<{
   },
   {
     key: "executionProgress",
-    label: "Execution",
-    description: "% of recommended actions completed",
+    // P0-02: renamed on purpose. It used to count ticked checkboxes and
+    // routinely read 100 while the audit was failing. It now counts only
+    // fixes a later audit has actually confirmed.
+    label: "Verified Execution",
+    description: "Fixes we re-checked and found working in AI answers",
     color: THREE_SCORE_COLORS.executionProgress,
   },
 ];
@@ -288,7 +291,8 @@ function ThreeScoreRow({
       </div>
 
       {isNotStarted ? (
-        /* Execution not started — honest "no cards yet" state, no fabricated bar */
+        /* Not measured — no bar, because a 0%-wide bar reads as a score of 0
+           and "we haven't measured this" is not the same as "you scored 0". */
         <p
           style={{
             margin: 0,
@@ -298,7 +302,7 @@ function ThreeScoreRow({
             lineHeight: 1.5,
           }}
         >
-          Create your action plan to track progress
+          Nothing to check yet — this fills in after your next audit
         </p>
       ) : (
         <div
