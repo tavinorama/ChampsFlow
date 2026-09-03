@@ -295,7 +295,7 @@ export function isRunComplete(def: GraphDefinition, states: NodeStates): boolean
 
 export const DAILY_VIDEO_GRAPH: GraphDefinition = {
   slug: "daily-video",
-  version: 4,
+  version: 5,
   vpOwner: "marketing",
   description:
     "Daily social video with MEMORY: recall what was already published (themes, hooks, b-roll) → signal → briefing that must not repeat → 3 angles (vertical 9:16, 25-40s, phone-shot feel, hook ≤1s, captions per beat) → 5 critics (hook/brand/compliance/freshness/VIRALITY — the last vetoes anything that reads like an ad or a slide deck) → synthesis (script + [RENDER BRIEF] + [CHANNEL VARIANTS]) → ADAPT to a native LinkedIn post (English) → human approval → publish → wait 72h → harvest reach → verdict.",
@@ -334,10 +334,16 @@ export const DAILY_VIDEO_GRAPH: GraphDefinition = {
     { id: "founder-approval", kind: "approval", dependsOn: ["linkedin-post"], config: { channel: "telegram" } },
     { id: "publish", kind: "publish", dependsOn: ["founder-approval"], config: { channel: "linkedin", via: "postiz" } },
     { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
-    // v3: the metric prefix must match what the #162 harvest actually writes
-    // (youtube_views_7d) — 'yt_views' matched NOTHING and Saturday's verdict
-    // would have been a false zero with 478 real views on the books.
-    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "youtube_views" } },
+    // v5 (10.C.4, sweep 02/09): this graph PUBLISHES A LINKEDIN POST (node
+    // above), but harvested youtube_views — the LEGACY VPS video's metric —
+    // as if it were the post's result: contaminated learning (a verdict about
+    // a LinkedIn post scored by YouTube views of another artifact). The
+    // harvest now reads what this graph actually publishes: the LinkedIn page
+    // collector ('linkedinpage_*_7d'). The legacy video metric is NOT lost —
+    // youtube_views keeps being written by the VPS collector and is read by
+    // the sphere-youtube memory (metricPrefix 'youtube_') and the CDO's full
+    // outcomes view; it just no longer masquerades as this post's outcome.
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-72h"], config: { metric: "linkedinpage_impressions" } },
     // The verdict writes agent_outcome + the sphere's lesson, re-weighting
     // the next run's signal — the loop's closing edge.
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
@@ -550,12 +556,16 @@ export const SPHERE_X_GRAPH: GraphDefinition = {
  */
 export const SPHERE_LINKEDIN_GRAPH: GraphDefinition = {
   slug: "sphere-linkedin",
-  version: 1,
+  // v2 (10.C.3, sweep 02/09): the memory read 'linkedin_' but the collector
+  // writes 'linkedinpage_*' — the JS startsWith path (rejections) matched
+  // NOTHING, so this sphere never saw the founder's nos. The memory prefix is
+  // now derived from the harvest metric's own family.
+  version: 2,
   vpOwner: "marketing",
   description:
-    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedin* outcomes) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedinpage_impressions → verdict.",
+    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedinpage_* outcomes — the collector's real family) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedinpage_impressions → verdict.",
   nodes: [
-    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedin_" } },
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedinpage_" } },
     { id: "signal", kind: "task", dependsOn: [], config: { prompt: "linkedin-signal" } },
     { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "linkedin-briefing" } },
     { id: "draft-story", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "story" } },
@@ -634,26 +644,37 @@ export const SPHERE_REDDIT_GRAPH: GraphDefinition = {
   ],
 };
 
+/**
+ * 10.C.12 — the experiment channel is declared ONCE, here, and flows into the
+ * graphs' node configs AND the prompts (ab-brief/ab-draft/experiment-draft
+ * read config.channel/config.metric via channelLabel). Before, "LinkedIn" was
+ * hardcoded in prompt prose — moving the experiments to another channel meant
+ * hunting strings. Now it is one edit.
+ */
+export const EXPERIMENT_CHANNEL = "linkedin";
+export const EXPERIMENT_METRIC = "linkedinpage_impressions";
+export const EXPERIMENT_METRIC_PREFIX = "linkedinpage_";
+
 export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
   slug: "content-experiment",
-  version: 1,
+  version: 2,
   vpOwner: "marketing",
   description:
-    "Seeded content experiment: take an approved growth hypothesis (seed) → brief → draft a single test post → compliance critic → finalize → human approval → publish → wait 48h → harvest reach → verdict. The CDO's dream, turned into one real, measured shot.",
+    "Seeded content experiment: take an approved growth hypothesis (seed) → brief → draft a single test post → compliance critic → finalize → human approval → publish → wait 48h → harvest reach → verdict. The CDO's dream, turned into one real, measured shot. v2 (10.C.12): channel/metric come from EXPERIMENT_CHANNEL/EXPERIMENT_METRIC, never hardcoded prose.",
   nodes: [
     // Root reads the seeded hypothesis (__seed__) the spawning run wrote.
     { id: "brief", kind: "task", dependsOn: [], config: { prompt: "experiment-brief" } },
-    { id: "draft", kind: "task", dependsOn: ["brief"], config: { prompt: "experiment-draft" } },
+    { id: "draft", kind: "task", dependsOn: ["brief"], config: { prompt: "experiment-draft", channel: EXPERIMENT_CHANNEL } },
     { id: "critic", kind: "debate", dependsOn: ["draft"], config: { prompt: "experiment-critic", lens: "compliance" } },
     { id: "finalize", kind: "synthesis", dependsOn: ["draft", "critic"], config: { prompt: "experiment-finalize" } },
     { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
-    { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
+    { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: EXPERIMENT_CHANNEL, via: "postiz" } },
     { id: "wait-48h", kind: "wait", dependsOn: ["publish"], config: { hours: 48 } },
     // 22/08 sweep: NO collector writes 'experiment_reach_48h' — the old name
     // matched nothing and every experiment verdict was blind. The experiment
-    // publishes to LinkedIn (node above), so it reads the same collector rows
-    // as the LinkedIn sphere: the VPS writes 'linkedinpage_*_7d'.
-    { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: "linkedinpage_impressions" } },
+    // publishes to EXPERIMENT_CHANNEL (node above), so it reads the same
+    // collector rows as that channel's sphere ('linkedinpage_*_7d' today).
+    { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: EXPERIMENT_METRIC } },
     { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
   ],
 };
@@ -758,7 +779,10 @@ export const IG_IMAGE_UNLOCK_ACTION =
 
 export function buildSphereInstagramGraph(imagePublish: boolean): GraphDefinition {
   const head: GraphNode[] = [
-    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "instagram_" } },
+    // 10.C.3 (sweep 02/09): o prefixo de memória segue a FAMÍLIA da métrica
+    // colhida — o coletor escreve 'instagramstandalone_*' (nome do canal no
+    // Postiz); lendo 'instagram_' esta esfera nunca via as próprias rejeições.
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "instagramstandalone_" } },
     { id: "signal", kind: "task", dependsOn: [], config: { prompt: "instagram-signal" } },
     { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "instagram-briefing" } },
     // Two card styles: a one-line truth (the hook IS the post) vs a mini
@@ -1227,12 +1251,14 @@ export const AB_EXPERIMENT_GRAPH: GraphDefinition = {
     "A/B semanal (5.F.4): memória do canal → brief que declara UM eixo (angle|hook|format) e as duas variantes → draft A ‖ draft B (mesma ideia, só o eixo muda) → critic (um eixo só, compliance, freshness) → UMA aprovação combinada (o founder vê eixo + as duas variantes; rejeitar = cancela o experimento inteiro — nunca publica variante solitária) → publish A + publish B no MESMO canal (LinkedIn; a válvula de cadência pode adiar a 2ª para o dia seguinte — janela deslocada é registrada, o cap nunca é furado) → wait 48h por variante → harvest da MESMA métrica por janela de variante → veredito A/B por CÓDIGO: vencedor + lift em ops.agent_outcome e a linha `ab-winner: axis=... variant=... lift=...` no summary (contrato lido pela consolidação 5.F.1 e pelo tuner 5.F.2).",
   nodes: [
     // Perception before creation — o registro real do canal do experimento.
-    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedinpage_" } },
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: EXPERIMENT_METRIC_PREFIX } },
     // O brief declara o EIXO (linha 'EIXO: <angle|hook|format>') e as duas
     // variantes — o veredito extrai o eixo daqui por regex (código, não LLM).
-    { id: "brief", kind: "task", dependsOn: ["memory"], config: { prompt: "ab-brief" } },
-    { id: "draft-a", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "A" } },
-    { id: "draft-b", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "B" } },
+    // 10.C.12: canal/métrica entram pelo CONFIG (o prompt lê channelLabel),
+    // nunca por prosa fixa.
+    { id: "brief", kind: "task", dependsOn: ["memory"], config: { prompt: "ab-brief", channel: EXPERIMENT_CHANNEL, metric: EXPERIMENT_METRIC } },
+    { id: "draft-a", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "A", channel: EXPERIMENT_CHANNEL } },
+    { id: "draft-b", kind: "task", dependsOn: ["brief"], config: { prompt: "ab-draft", variant: "B", channel: EXPERIMENT_CHANNEL } },
     // O crítico valida o DESENHO do experimento: um eixo só, mesmo canal,
     // compliance — com veto.
     { id: "critic", kind: "debate", dependsOn: ["brief", "draft-a", "draft-b", "memory"], config: { prompt: "ab-critic" } },
@@ -1256,16 +1282,67 @@ export const AB_EXPERIMENT_GRAPH: GraphDefinition = {
     },
     // Duas publicações, MESMO canal. contentNode aponta o draft exato que o
     // founder viu — a aprovação combinada gate as duas de uma vez.
-    { id: "publish-a", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-a" } },
-    { id: "publish-b", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-b" } },
+    { id: "publish-a", kind: "publish", dependsOn: ["approval"], config: { channel: EXPERIMENT_CHANNEL, via: "postiz", contentNode: "draft-a" } },
+    { id: "publish-b", kind: "publish", dependsOn: ["approval"], config: { channel: EXPERIMENT_CHANNEL, via: "postiz", contentNode: "draft-b" } },
     { id: "wait-a", kind: "wait", dependsOn: ["publish-a"], config: { hours: 48 } },
     { id: "wait-b", kind: "wait", dependsOn: ["publish-b"], config: { hours: 48 } },
     // A MESMA métrica para as duas variantes; a janela de cada harvest começa
     // no PUBLISH da própria variante (sinceNode) — se a válvula adiou a B, a
     // janela dela desloca junto e o veredito diz isso.
-    { id: "harvest-a", kind: "harvest", dependsOn: ["wait-a"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-a" } },
-    { id: "harvest-b", kind: "harvest", dependsOn: ["wait-b"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-b" } },
+    { id: "harvest-a", kind: "harvest", dependsOn: ["wait-a"], config: { metric: EXPERIMENT_METRIC, sinceNode: "publish-a" } },
+    { id: "harvest-b", kind: "harvest", dependsOn: ["wait-b"], config: { metric: EXPERIMENT_METRIC, sinceNode: "publish-b" } },
     // Veredito A/B — matemática em código, o contrato ab-winner no summary.
     { id: "verdict", kind: "verdict", dependsOn: ["harvest-a", "harvest-b"], config: { compare: "ab", axisFrom: "brief" } },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// blog-announce (10.C.7, sweep 02/09): o announce do blog de segunda
+// (LinkedIn + X) era a ÚNICA publicação da empresa SEM portão — o workflow
+// blog-autopublish chamava /publish-async direto na VPS: sem aprovação, sem
+// crítico, sem válvula de cadência, sem circuit breaker, fora de
+// ops.agent_step ("única exceção viva" do item 1.1 era falso). Este grafo
+// fecha o buraco pelo caminho PADRÃO:
+//  - o RELÓGIO vive no worker (runBlogAnnounceCheck, graph-tick): segunda à
+//    tarde ele lê o sitemap PÚBLICO por código, acha o post do dia e inicia
+//    UM run seedado com a URL real ([__seed__]) — o workflow não publica mais
+//    nada (o passo announce virou um echo);
+//  - draft-linkedin ‖ draft-x escrevem os dois posts a partir da URL do seed
+//    (o slug/URL vem de CÓDIGO, nunca da memória do modelo);
+//  - UMA aprovação combinada mostra os DOIS textos ao founder;
+//  - publish-linkedin + publish-x saem pelo runner padrão: válvula de
+//    cadência, circuito, guard de travessão, limite do X, [__recent__],
+//    registro em ops.agent_step — tudo que o /publish-async pulava;
+//  - wait 48h → harvest por canal → veredito. Todo publish aprende.
+// ---------------------------------------------------------------------------
+
+export const BLOG_ANNOUNCE_GRAPH: GraphDefinition = {
+  slug: "blog-announce",
+  version: 1,
+  vpOwner: "marketing",
+  description:
+    "Announce do artigo semanal do blog (10.C.7): o worker detecta por código o post novo no sitemap público e seeda a URL → draft LinkedIn ‖ draft X (apresentam o artigo, URL verbatim) → UMA aprovação combinada do founder → publish nos dois canais pelo runner padrão (válvula, circuito, guard de travessão, limite do X, registro em ops.agent_step) → wait 48h → harvest por canal → veredito. Substitui o /publish-async sem portão do blog-autopublish.yml.",
+  nodes: [
+    { id: "draft-linkedin", kind: "task", dependsOn: [], config: { prompt: "blog-announce-draft", channel: "linkedin" } },
+    { id: "draft-x", kind: "task", dependsOn: [], config: { prompt: "blog-announce-draft", channel: "x" } },
+    {
+      id: "approval",
+      kind: "approval",
+      dependsOn: ["draft-linkedin", "draft-x"],
+      config: {
+        channel: "telegram",
+        timeoutHours: 96,
+        question:
+          "Aprovar = publicar os DOIS announces acima (LinkedIn e X) com o link do artigo, pelo runner padrão (válvula de cadência e circuito valem). Rejeitar ou silêncio (96h) = nada é anunciado — o artigo continua no ar, só sem announce.",
+      },
+    },
+    { id: "publish-linkedin", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz", contentNode: "draft-linkedin" } },
+    { id: "publish-x", kind: "publish", dependsOn: ["approval"], config: { channel: "x", via: "postiz", contentNode: "draft-x" } },
+    { id: "wait-li", kind: "wait", dependsOn: ["publish-linkedin"], config: { hours: 48 } },
+    { id: "wait-x", kind: "wait", dependsOn: ["publish-x"], config: { hours: 48 } },
+    { id: "harvest-li", kind: "harvest", dependsOn: ["wait-li"], config: { metric: "linkedinpage_impressions", sinceNode: "publish-linkedin" } },
+    { id: "harvest-x", kind: "harvest", dependsOn: ["wait-x"], config: { metric: "x_impressions", sinceNode: "publish-x" } },
+    { id: "verdict-li", kind: "verdict", dependsOn: ["harvest-li"] },
+    { id: "verdict-x", kind: "verdict", dependsOn: ["harvest-x"] },
   ],
 };
