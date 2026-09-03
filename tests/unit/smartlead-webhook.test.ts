@@ -86,6 +86,16 @@ describe("the handler's shape", () => {
   });
 });
 
+describe("bug 03/09 — o lead de um REPLY vem em sl_lead_email", () => {
+  it("prefere sl_lead_email e NUNCA cai em to_email num EMAIL_REPLY (to_email é a NOSSA caixa)", () => {
+    // Pinado no fonte (o harness deste arquivo é source-text): a ordem de
+    // preferência e o guard do reply têm que existir literalmente.
+    expect(route).toContain('payload["sl_lead_email"]');
+    expect(route.indexOf('payload["sl_lead_email"]')).toBeLessThan(route.indexOf('payload["lead_email"]'));
+    expect(route).toContain('eventType === "EMAIL_REPLY" ? null : payload["to_email"]');
+  });
+});
+
 describe("the migration", () => {
   it("is append-only evidence: no UPDATE path, indexed by lead and by time", () => {
     expect(migration).toContain("CREATE TABLE IF NOT EXISTS smartlead_event");

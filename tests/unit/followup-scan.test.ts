@@ -50,6 +50,8 @@ interface ReplyInit {
   payload: unknown;
   stage?: string | null;
   note?: string | null;
+  /** Bug 03/09: o VALOR gravado na coluna lead_email (pode ser null ou a nossa caixa). Default: email. */
+  leadEmailColumn?: string | null;
 }
 
 function makeWorld(init: { replies?: ReplyInit[] }) {
@@ -59,7 +61,7 @@ function makeWorld(init: { replies?: ReplyInit[] }) {
   }
   const replies = (init.replies ?? []).map((r) => ({
     id: r.id,
-    lead_email: r.email,
+    lead_email: r.leadEmailColumn === undefined ? r.email : r.leadEmailColumn,
     campaign_id: r.campaignId === undefined ? 3888686 : r.campaignId,
     payload: r.payload,
     received_at: NOW.toISOString(),
@@ -85,8 +87,8 @@ function makeWorld(init: { replies?: ReplyInit[] }) {
     if (text.includes("fu:replies")) {
       return replies.map((r) => ({
         ...r,
-        stage: contacts.get(r.lead_email)?.stage ?? null,
-        note: contacts.get(r.lead_email)?.note ?? null,
+        stage: (r.lead_email && contacts.get(r.lead_email)?.stage) || null,
+        note: (r.lead_email && contacts.get(r.lead_email)?.note) || null,
       }));
     }
     if (text.includes("fu:mark")) {
@@ -121,6 +123,24 @@ function makeWorld(init: { replies?: ReplyInit[] }) {
       const stepId = `step-${seq}`;
       parked.push({ run_id: runId, step_id: stepId, status: "waiting", started_at: NOW.toISOString() });
       return [{ id: stepId }];
+    }
+    if (text.includes("fu:contact-read")) {
+      const email = values[0] as string;
+      const c = contacts.get(email);
+      return c ? [{ stage: c.stage, note: c.note }] : [];
+    }
+    if (text.includes("fu:today-count")) {
+      // 10.C.13: cap por dia — o fake conta as runs propostas nesta execução.
+      return [{ n: String(seq) }];
+    }
+    if (text.includes("fu:recent-drafts")) {
+      return []; // sem histórico no mundo fake — o [__recent__] fica ausente
+    }
+    if (text.includes("fu:outcome-counts")) {
+      return [{ replies: "1", sent: "0" }];
+    }
+    if (text.includes("fu:outcome-write")) {
+      return [];
     }
     throw new Error(`fake sql: unrouted query: ${text.slice(0, 120)}`);
   }) as unknown as postgres.Sql;
@@ -195,6 +215,8 @@ describe("reply → intent → draft → PORTÃO", () => {
       { text: "❌ Rejeitar", data: "rj:step-1" },
     ]);
     // The founder sees the lead's reply AND the exact draft.
+    // GEO-D7: só o RESUMO MASCARADO viaja — o começo da resposta aparece, nunca o texto integral cru.
+    expect(box!.text).toContain("Resumo mascarado");
     expect(box!.text).toContain("How much does it cost?");
     expect(box!.text).toContain(GOOD_DRAFT);
     // Never the raw address — masked only.
@@ -436,5 +458,173 @@ describe("fail-soft OFF — loud, with the nominal unlocking action", () => {
 describe("the run rides the real graph substrate", () => {
   it("uses the followup-reply graph slug (outside GRAPH_REGISTRY, tick-invisible)", async () => {
     expect(FOLLOWUP_GRAPH).toBe("followup-reply");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUG DE PRODUÇÃO 03/09 — 700 enviados, 8 respostas reais, proposed=0 e TODOS
+// os baldes em zero. Causa: o payload REAL de EMAIL_REPLY traz o lead em
+// `sl_lead_email` (não existe `lead_email`; `to_email` é a NOSSA caixa), e o
+// scan/webhook liam a coluna errada; as linhas atravessavam os filtros em
+// silêncio. Fixture copiada da forma de produção (chaves verificadas por SQL).
+// ---------------------------------------------------------------------------
+
+/** A forma REAL do payload de EMAIL_REPLY em produção (03/09), duplo-encodada. */
+function productionReplyPayload(text: string): string {
+  return JSON.stringify({
+    event_type: "EMAIL_REPLY",
+    event_id: "evt-prod-1",
+    campaign_id: 3888686,
+    stats_id: "stats-prod-1",
+    sequence_number: 1,
+    sl_email_lead_map_id: 987654,
+    sl_lead_email: "owner@rooferco.com",
+    to_email: "otavio@ozvor.com", // a NOSSA caixa remetente — nunca o lead
+    reply_body: `<div>${text}</div>`,
+    preview_text: text.slice(0, 40),
+  });
+}
+
+describe("bug 03/09 — payload real de produção (sl_lead_email + reply_body)", () => {
+  it("resolve o lead por sl_lead_email (coluna NULA), extrai o texto de reply_body e propõe o rascunho gated", async () => {
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "owner@rooferco.com",
+          leadEmailColumn: null, // o webhook antigo não gravou nada
+          payload: productionReplyPayload("Sounds interesting. How does the audit work?"),
+        },
+      ],
+    });
+    const f = makePorts({ intent: "question" });
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.scanned).toBe(1);
+    expect(r.proposed).toBe(1);
+    expect(r.unparseable).toBe(0);
+    // O marcador caiu no contato CERTO (o lead), nunca na nossa caixa.
+    expect(world.contacts.get("owner@rooferco.com")!.note).toContain("[followup] proposto");
+    expect(world.contacts.has("otavio@ozvor.com")).toBe(false);
+    const box = f.telegrams.find((t) => t.buttons && t.buttons.length === 2);
+    expect(box).toBeTruthy();
+  });
+
+  it("coluna gravada com a NOSSA caixa (to_email): o payload vence e o lead certo é proposto", async () => {
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "owner@rooferco.com",
+          leadEmailColumn: "otavio@ozvor.com", // o bug do webhook antigo
+          payload: productionReplyPayload("How much is it?"),
+        },
+      ],
+    });
+    const f = makePorts({ intent: "question" });
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.proposed).toBe(1);
+    expect(world.contacts.get("owner@rooferco.com")!.note).toContain("[followup] proposto");
+  });
+
+  it("INVARIANTE: todo item scanned cai em exatamente um balde; linha sem lead vira unparseable e grita 1×/dia", async () => {
+    const onceKeys: string[] = [];
+    const world = makeWorld({
+      replies: [
+        { id: EVENT_A, email: "owner@rooferco.com", leadEmailColumn: null, payload: productionReplyPayload("Tell me more") },
+        // Linha podre: sem lead em lugar nenhum — tem que CONTAR e gritar.
+        { id: "22222222-3333-4444-5555-666666666666", email: "x@y.com", leadEmailColumn: null, payload: JSON.stringify({ event_type: "EMAIL_REPLY", reply_body: "hi" }) },
+      ],
+    });
+    const f = makePorts({
+      intent: "interested",
+      onceKey: async (k: string) => {
+        onceKeys.push(k);
+        return true;
+      },
+    });
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.scanned).toBe(2);
+    expect(r.unparseable).toBe(1);
+    expect(r.proposed + r.discarded + r.unsubscribed + r.skipped + r.unparseable).toBe(r.scanned);
+    expect(f.telegrams.some((t) => t.text.includes("IRRESOLVÍVEL"))).toBe(true);
+    expect(onceKeys.some((k) => k.startsWith("followup:unparseable:"))).toBe(true);
+  });
+
+  it("já-tratado e duplicata CONTAM como skipped — nunca fall-through mudo (a invariante fecha)", async () => {
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "a@b.com",
+          note: `[followup] proposto ${EVENT_A} 2026-08-30\n[followup] enviado ${EVENT_A} 2026-08-30`,
+          payload: doubleEncodedPayload("thanks"),
+        },
+        { id: "33333333-4444-5555-6666-777777777777", email: "a@b.com", payload: doubleEncodedPayload("also me") },
+      ],
+    });
+    const f = makePorts({ intent: "question" });
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.scanned).toBe(2);
+    expect(r.proposed + r.discarded + r.unsubscribed + r.skipped + r.unparseable).toBe(r.scanned);
+  });
+});
+
+describe("adendo 03/09 — as respostas reais eram OOO ou STOP", () => {
+  it("out-of-office (produção): balde discarded, marcador handled, ZERO LLM, zero Telegram", async () => {
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "owner@rooferco.com",
+          leadEmailColumn: null,
+          payload: productionReplyPayload("Out of office until Monday. For urgent matters call our line."),
+        },
+      ],
+    });
+    const f = makePorts();
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.discarded).toBe(1);
+    expect(f.counts().intentCalls).toBe(0);
+    expect(f.counts().draftCalls).toBe(0);
+    expect(f.telegrams).toHaveLength(0);
+    expect(world.contacts.get("owner@rooferco.com")!.note).toContain("motivo=noise");
+  });
+
+  it("'STOP' textual (produção): código decide SEM LLM, contacted REBAIXA para lost, marcador grava", async () => {
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "owner@rooferco.com",
+          leadEmailColumn: null,
+          stage: "contacted", // o webhook promoveu errado no reply
+          payload: productionReplyPayload("STOP"),
+        },
+      ],
+    });
+    const f = makePorts();
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.unsubscribed).toBe(1);
+    expect(f.counts().intentCalls).toBe(0); // zero LLM: o pedido de saída é código
+    const c = world.contacts.get("owner@rooferco.com")!;
+    expect(c.stage).toBe("lost");
+    expect(c.note).toContain("motivo=unsubscribe-textual");
+  });
+
+  it("lead lost nunca é proposto de novo pelo follow-up (re-scan após o STOP)", async () => {
+    const world = makeWorld({
+      replies: [
+        { id: EVENT_A, email: "owner@rooferco.com", stage: "contacted", payload: productionReplyPayload("STOP") },
+        { id: "44444444-5555-6666-7777-888888888888", email: "owner@rooferco.com", payload: productionReplyPayload("actually tell me more") },
+      ],
+    });
+    const f = makePorts({ intent: "interested" });
+    await runFollowupScan(world.sql, null, f.ports);
+    // Segundo scan: a 2ª resposta do MESMO lead (agora lost) nunca vira proposta.
+    const f2 = makePorts({ intent: "interested" });
+    const r2 = await runFollowupScan(world.sql, null, f2.ports);
+    expect(r2.proposed).toBe(0);
+    expect(f2.telegrams.filter((t) => t.buttons?.length === 2)).toHaveLength(0);
+    expect(world.contacts.get("owner@rooferco.com")!.stage).toBe("lost");
   });
 });

@@ -240,7 +240,9 @@ describe("1.6 — the switch: OFF by default, ON only by IG_IMAGE_PUBLISH=1", ()
   it("ON: the real pipeline — finalize → approval → publish(media card) → wait 48h → harvest → verdict, validated", () => {
     expect(validateGraph(IG_ON).errors).toEqual([]);
     const byId = new Map(IG_ON.nodes.map((n) => [n.id, n]));
-    expect(byId.get("memory")!.config?.["metricPrefix"]).toBe("instagram_");
+    // 10.C.3 (sweep 02/09): o prefixo segue a FAMÍLIA da métrica colhida —
+    // o coletor escreve instagramstandalone_*, então instagram_ era cego.
+    expect(byId.get("memory")!.config?.["metricPrefix"]).toBe("instagramstandalone_");
     expect(byId.get("draft-one-liner")!.config?.["prompt"]).toBe("instagram-draft");
     expect(byId.get("draft-story")!.config?.["prompt"]).toBe("instagram-draft");
     expect(byId.get("critic")!.dependsOn).toContain("memory");

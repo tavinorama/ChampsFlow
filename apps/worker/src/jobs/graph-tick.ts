@@ -187,6 +187,98 @@ async function sendTelegram(text: string, buttons?: TelegramButton[]): Promise<v
   }
 }
 
+// ---------------------------------------------------------------------------
+// 10.C.14 — modo digest do Telegram. ~150-200 msgs/semana e só ~15% eram
+// aprovações: os avisos INFORMATIVOS ("GRAPH COMPLETO", "Cérebros iniciados")
+// afogavam o que pede decisão. Roteamento por CÓDIGO:
+//  - mensagens com BOTÕES (aprovação) e todo alarme/report passam na hora;
+//  - as duas classes informativas são SUPRIMIDAS uma a uma e viram UM digest
+//    diário (07:15 UTC), computado por SQL sobre ops.agent_run — o buffer é o
+//    próprio registro, nunca uma fila que pode se perder;
+//  - env TELEGRAM_VERBOSE=1 volta ao modo antigo (tudo imediato, sem digest).
+// ---------------------------------------------------------------------------
+
+export function telegramVerbose(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env["TELEGRAM_VERBOSE"] === "1";
+}
+
+/** Classe informativa digerível, ou null = mensagem passa imediata. */
+export function telegramInfoClass(text: string): "graph-completo" | "brains-started" | null {
+  if (text.startsWith("✅ GRAPH ")) return "graph-completo";
+  if (text.startsWith("🧠 Cérebros iniciados")) return "brains-started";
+  return null;
+}
+
+/**
+ * O telegram ROTEADO que o tick e os ports usam: botões e alarmes imediatos;
+ * info digerível é engolida (log) e aparece no digest das 07:15.
+ */
+export async function routedTelegram(text: string, buttons?: TelegramButton[]): Promise<void> {
+  if ((!buttons || buttons.length === 0) && telegramInfoClass(text) !== null && !telegramVerbose()) {
+    logger.info("telegram_info_digested", { preview: text.slice(0, 120) });
+    return;
+  }
+  await sendTelegram(text, buttons);
+}
+
+/** Janela do digest: a partir das 07:15 UTC, uma vez por dia (NX no Redis). */
+export const TELEGRAM_DIGEST_AFTER_UTC_MINUTES = 7 * 60 + 15;
+
+/**
+ * O digest diário (10.C.14): UMA mensagem com o que os avisos informativos
+ * diriam um a um — graphs completados e cérebros/células iniciados nas
+ * últimas 24h, agregados por SQL sobre ops.agent_run. Chamado por todo tick;
+ * só age depois das 07:15 UTC e no máximo 1x/dia (NX). Em TELEGRAM_VERBOSE=1
+ * não roda (as mensagens individuais já saíram).
+ */
+export async function sendDailyTelegramDigest(
+  sql: postgres.Sql,
+  redis: Redis,
+  opts: { now?: () => Date; telegram?: (text: string) => Promise<void>; env?: NodeJS.ProcessEnv } = {}
+): Promise<{ sent: boolean; reason: string }> {
+  if (telegramVerbose(opts.env)) return { sent: false, reason: "verbose" };
+  const now = opts.now?.() ?? new Date();
+  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  if (minutes < TELEGRAM_DIGEST_AFTER_UTC_MINUTES) return { sent: false, reason: "antes-das-0715" };
+  const day = now.toISOString().slice(0, 10);
+  try {
+    const first = await redis.set(`tg:digest:sent:${day}`, "1", "EX", 24 * 3600, "NX");
+    if (first !== "OK") return { sent: false, reason: "ja-enviado-hoje" };
+  } catch {
+    return { sent: false, reason: "redis-indisponivel" }; // sem NX, melhor pular que duplicar diariamente
+  }
+  const completed = await sql<{ graph: string; n: string }[]>`
+    /* digest:completed */
+    SELECT graph, COUNT(*)::text AS n
+      FROM ops.agent_run
+     WHERE status = 'succeeded'
+       AND ended_at >= NOW() - make_interval(hours => ${24})
+     GROUP BY graph
+     ORDER BY graph`;
+  const started = await sql<{ graph: string; n: string }[]>`
+    /* digest:started */
+    SELECT graph, COUNT(*)::text AS n
+      FROM ops.agent_run
+     WHERE started_at >= NOW() - make_interval(hours => ${24})
+       AND trigger LIKE 'cron:%'
+     GROUP BY graph
+     ORDER BY graph`;
+  if (completed.length === 0 && started.length === 0) {
+    return { sent: false, reason: "sem-atividade" };
+  }
+  const fmt = (rows: Array<{ graph: string; n: string }>) => rows.map((r) => `${r.graph}×${r.n}`).join(", ");
+  const telegram = opts.telegram ?? sendTelegram;
+  await telegram(
+    [
+      `🗞️ DIGEST DIÁRIO DA ORG (últimas 24h — agregado por SQL):`,
+      completed.length > 0 ? `✅ Graphs completos: ${fmt(completed)}` : `✅ Graphs completos: nenhum`,
+      started.length > 0 ? `🧠 Runs iniciados por cron: ${fmt(started)}` : `🧠 Runs iniciados por cron: nenhum`,
+      `Aprovações, alarmes e reports continuam chegando na hora. (TELEGRAM_VERBOSE=1 volta ao modo verboso.)`,
+    ].join("\n")
+  );
+  return { sent: true, reason: "ok" };
+}
+
 /**
  * "CUSTO POR TENANT" block of the ops snapshot (master list 5.C.2).
  * api_spend.tenant_id records since 22/08 and NOTHING read it — the margin
@@ -473,6 +565,16 @@ async function incidentLessonsSection(sql: postgres.Sql): Promise<string[]> {
  * honest "SEM DADOS" marker so the lenses never invent a number.
  * Exported for tests (the fake sql routes on the queries' own markers).
  */
+/**
+ * 10.C.15 — escape SQL LIKE wildcards in a literal prefix. Every harvested
+ * metric carries `_` (linkedinpage_impressions): unescaped, each `_` matched
+ * ANY character, so 'x_' also matched 'xyimpressions' — and the sphere
+ * memories only worked by accident. Backslash is Postgres's default ESCAPE.
+ */
+export function escapeLike(literal: string): string {
+  return literal.replace(/([\\%_])/g, "\\$1");
+}
+
 export async function buildSnapshot(
   sql: postgres.Sql,
   source: string,
@@ -482,7 +584,8 @@ export async function buildSnapshot(
   const d = Math.min(90, Math.max(1, Math.round(days) || 14));
   // Sphere memory (#156): narrow an outcomes snapshot to one channel's own
   // record. No prefix → '%' matches every metric (the CDO's full view).
-  const metricLike = (metricPrefix ?? "").replace(/%/g, "") + "%";
+  // 10.C.15: `_` escaped — a literal prefix must match literally.
+  const metricLike = escapeLike((metricPrefix ?? "").replace(/%/g, "")) + "%";
 
   if (source === "ops") {
     const perGraph = await sql<
@@ -573,9 +676,20 @@ export async function buildSnapshot(
     // ("rejected: <why>"); here the sphere reads its OWN recent rejections —
     // graphs whose harvest metric shares this prefix — so the next briefing
     // knows what the human said no to, and why.
-    const sphereGraphs = metricPrefix
+    // 10.C.3: a esfera é dona do prefixo por DOIS caminhos — o metric da sua
+    // colheita OU o metricPrefix do seu próprio nó de memória (as células
+    // report-only, IG/TikTok/YT/blog/reddit, não têm harvest e ficavam cegas
+    // às próprias rejeições).
+    const prefix = (metricPrefix ?? "").replace(/%/g, "");
+    const sphereGraphs = prefix
       ? Object.values(GRAPH_REGISTRY)
-          .filter((g) => g.nodes.some((n) => n.kind === "harvest" && String(n.config?.["metric"] ?? "").startsWith(metricPrefix.replace(/%/g, ""))))
+          .filter((g) =>
+            g.nodes.some(
+              (n) =>
+                (n.kind === "harvest" && String(n.config?.["metric"] ?? "").startsWith(prefix)) ||
+                (n.kind === "snapshot" && String(n.config?.["metricPrefix"] ?? "") === prefix)
+            )
+          )
           .map((g) => g.slug)
       : [];
     const rejections =
@@ -592,9 +706,25 @@ export async function buildSnapshot(
              LIMIT 8`
         : [];
 
-    if (outcomes.length === 0 && rejections.length === 0) return "";
+    // 10.C.3: uma esfera SEM COLETOR (nenhum grafo colhe este prefixo — as
+    // células report-only) não pode ficar em "SEM DADOS para sempre" mudo: o
+    // snapshot DIZ que o canal não tem colheita, e entrega as rejeições que
+    // houver — a única memória honesta que o canal tem hoje.
+    const hasHarvestWriter = prefix
+      ? Object.values(GRAPH_REGISTRY).some((g) =>
+          g.nodes.some((n) => n.kind === "harvest" && String(n.config?.["metric"] ?? "").startsWith(prefix))
+        )
+      : true;
+    if (outcomes.length === 0 && rejections.length === 0 && (!prefix || hasHarvestWriter)) return "";
     const scope = metricPrefix ? ` · esfera ${metricPrefix}*` : "";
     const lines: string[] = [`RESULTADOS REAIS (ops.agent_outcome, ${d}d${scope}):`, ``];
+    if (prefix && outcomes.length === 0) {
+      lines.push(
+        hasHarvestWriter
+          ? `- sem linhas de '${prefix}*' na janela (o coletor existe mas nao escreveu — verificar a fonte, nao inventar zero).`
+          : `- CANAL SEM COLHEITA: nenhum grafo colhe metrica '${prefix}*' (celula report-only) — nao ha numero de alcance para este canal; a memoria honesta sao as rejeicoes do founder abaixo e o bloco [__recent__].`
+      );
+    }
     for (const o of outcomes) {
       const lift = o.lift != null ? `lift ${o.lift}` : "sem baseline";
       const val = o.value_after != null ? o.value_after : "?";
@@ -654,17 +784,11 @@ export async function buildSnapshot(
        ORDER BY s.started_at DESC
        LIMIT 30`;
 
-    // Approvals that timed out (timeout = rejection-by-silence): a channel the
-    // founder keeps NOT deciding on is itself a lesson.
-    const timeouts = await sql<{ graph: string; n: string }[]>`
-      /* snap:memory-timeouts */
-      SELECT r.graph, COUNT(*)::text AS n
-        FROM ops.agent_step s
-        JOIN ops.agent_run r ON r.id = s.run_id
-       WHERE s.summary LIKE 'approval timed out%'
-         AND s.started_at >= NOW() - make_interval(days => ${d})
-       GROUP BY r.graph
-       ORDER BY COUNT(*) DESC`;
+    // 10.C.13: approval TIMEOUTS deliberately do NOT feed this snapshot — a
+    // founder who did not answer (3 spheres/day piling up) says nothing about
+    // the CONTENT, and feeding his absence to the consolidation was training
+    // the critics on noise. Timeouts stay visible where they belong: the ops
+    // snapshot / incident scan (approval-timeout-mass).
 
     // Closed verdicts — the durable trace of every harvest→verdict loop
     // ("verdict <metric>: total=X n=Y" / "SEM DADO").
@@ -679,13 +803,7 @@ export async function buildSnapshot(
        ORDER BY s.started_at DESC
        LIMIT 40`;
 
-    if (
-      pubs.length === 0 &&
-      metrics.length === 0 &&
-      rejections.length === 0 &&
-      timeouts.length === 0 &&
-      verdicts.length === 0
-    ) {
+    if (pubs.length === 0 && metrics.length === 0 && rejections.length === 0 && verdicts.length === 0) {
       return ""; // honest empty — the runner turns this into SEM DADOS
     }
 
@@ -728,10 +846,6 @@ export async function buildSnapshot(
       for (const rj of rejections) {
         lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
       }
-    }
-    if (timeouts.length > 0) {
-      lines.push(``, `APROVACOES EXPIRADAS POR SILENCIO (timeout = rejeicao):`);
-      for (const t of timeouts) lines.push(`- ${t.graph}: ${t.n} aprovacao(oes) expiraram sem decisao`);
     }
     if (verdicts.length > 0) {
       lines.push(``, `VEREDITOS FECHADOS (o loop leu o proprio resultado):`);
@@ -840,16 +954,10 @@ export async function buildSnapshot(
        GROUP BY r.graph
        ORDER BY COUNT(*) DESC`;
 
-    // Timeouts de aprovação por graph (timeout = rejeição por silêncio).
-    const timeouts = await sql<{ graph: string; n: string }[]>`
-      /* snap:tuning-timeouts */
-      SELECT r.graph, COUNT(*)::text AS n
-        FROM ops.agent_step s
-        JOIN ops.agent_run r ON r.id = s.run_id
-       WHERE s.summary LIKE 'approval timed out%'
-         AND s.started_at >= NOW() - make_interval(days => ${d})
-       GROUP BY r.graph
-       ORDER BY COUNT(*) DESC`;
+    // 10.C.13: timeouts de aprovação NÃO entram na evidência do tuner — a
+    // ausência do founder (3 esferas/dia empilhando) não diz nada sobre o
+    // prompt; alimentá-la aqui treinava o afinador em ruído. Timeouts seguem
+    // no scan de incidentes (approval-timeout-mass), onde são um fato de OPS.
 
     // Overrides já ativos — para o tuner saber o estado atual e nunca propor
     // no escuro. Fail-soft: tabela ausente = linha honesta, nunca um throw
@@ -873,7 +981,7 @@ export async function buildSnapshot(
       }
     }
 
-    if (verdicts.length === 0 && rejections.length === 0 && timeouts.length === 0 && overrides.length === 0) {
+    if (verdicts.length === 0 && rejections.length === 0 && overrides.length === 0) {
       return ""; // honest empty — the runner turns this into SEM DADOS
     }
 
@@ -893,10 +1001,6 @@ export async function buildSnapshot(
       for (const rj of rejections) {
         lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
       }
-    }
-    if (timeouts.length > 0) {
-      lines.push(``, `APROVACOES EXPIRADAS POR SILENCIO POR GRAPH (timeout = rejeicao):`);
-      for (const t of timeouts) lines.push(`- ${t.graph}: ${t.n} aprovacao(oes) expiraram sem decisao`);
     }
     if (overrides.length > 0) {
       lines.push(``, `OVERRIDES DE PROMPT JA ATIVOS (ops.prompt_override — linha mais nova por chave):`);
@@ -1672,10 +1776,11 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // harvest config names the exact metric or a TRUE prefix of it
         // ('youtube_views'). Beware: an abbreviation ('yt_views') matches
         // NOTHING — that was the daily-video v2 false-zero bug (13/08).
+        // 10.C.15: `_` escapado — prefixo literal casa literalmente.
         const rows = await sql<{ n: string; total: string | null }[]>`
           SELECT COUNT(*)::text AS n, COALESCE(SUM(value_after), 0)::text AS total
             FROM ops.agent_outcome
-           WHERE metric LIKE ${metric.replace(/%/g, "") + "%"}
+           WHERE metric LIKE ${escapeLike(metric.replace(/%/g, "")) + "%"}
              AND measured_at >= ${sinceIso}::timestamptz`;
         return { n: Number(rows[0]?.n ?? 0), total: Number(rows[0]?.total ?? 0) };
       },
@@ -1719,13 +1824,52 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // channel since 00:00 UTC. The channel travels in the step summary
         // ("published via postiz channel=<ch>..."), so LIKE on the marker is
         // the join — channels are single tokens, no prefix collisions.
+        // 10.C.1 (sweep 02/09): NAMED publish nodes count too — the A/B pair
+        // publishes via 'publish-a'/'publish-b' and 'node = publish' alone let
+        // the pair slip PAST the LinkedIn 2/day cap. Any node named
+        // 'publish' or 'publish-<sufixo>' is a publish for the valve.
         const rows = await sql<{ n: string }[]>`
+          /* valve:published-today */
           SELECT COUNT(*)::text AS n
             FROM ops.agent_step
-           WHERE node = 'publish' AND status = 'succeeded'
+           WHERE (node = 'publish' OR node LIKE 'publish-%')
+             AND status = 'succeeded'
              AND summary LIKE ${"%channel=" + channel + "%"}
              AND started_at >= date_trunc('day', now() AT TIME ZONE 'utc')`;
         return Number(rows[0]?.n ?? 0);
+      },
+      async recentSalesOutputs(input) {
+        // 10.C.6 — o [__recent__] das VENDAS: últimos artefatos de outbound
+        // realmente produzidos (finalize aprovável do prospect-batch + drafts
+        // do followup-reply). Registro durável em ops.*; o texto o runner
+        // recupera do Redis (TTL 7d). Fail-open: erro = sem bloco.
+        try {
+          const rows = await sql<
+            { run_id: string; node: string; graph: string; finished_at: string; summary: string }[]
+          >`
+            /* recent:sales-read */
+            SELECT s.run_id, s.node, r.graph, s.started_at::text AS finished_at,
+                   COALESCE(s.summary, '') AS summary
+              FROM ops.agent_step s
+              JOIN ops.agent_run r ON r.id = s.run_id
+             WHERE ((r.graph = 'prospect-batch' AND s.node = 'finalize')
+                 OR (r.graph = 'followup-reply' AND s.node = 'approval'))
+               AND s.status = 'succeeded'
+             ORDER BY s.started_at DESC
+             LIMIT ${Math.max(1, Math.min(input.limit, 20))}`;
+          return rows.map((r) => ({
+            runId: r.run_id,
+            // followup-reply guarda o texto em graphrun:<run>:draft (não no
+            // node do step) — traduzimos o node para a chave certa do Redis.
+            node: r.graph === "followup-reply" ? "draft" : r.node,
+            graph: r.graph,
+            finishedAt: r.finished_at,
+            summary: r.summary,
+          }));
+        } catch (err) {
+          logger.warn("recent_sales_read_failed", { message: (err as Error).message?.slice(0, 160) });
+          return [];
+        }
       },
     },
     hermes: {
@@ -1763,7 +1907,9 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         await redis.set(`graphrun:${runId}:${node}`, text, "EX", ARTIFACT_TTL_SECONDS);
       },
     },
-    telegram: sendTelegram,
+    // 10.C.14: o runner fala pelo telegram ROTEADO — "✅ GRAPH COMPLETO" vira
+    // digest; aprovações (com botões), alarmes e reports seguem imediatos.
+    telegram: routedTelegram,
     now: () => new Date(),
     // 1.6 — the media port: the branded Instagram card, rendered by CODE from
     // the approved [CARD HOOK] (apps/worker/src/lib/card-render.ts, sharp).
@@ -1969,7 +2115,8 @@ export async function startBrainRuns(
     if (isGatedMarketingGraph(graph)) gatedToday += 1;
   }
   if (started.length > 0) {
-    await sendTelegram(`🧠 Cérebros iniciados (${trigger}): ${started.join(", ")}. Relatórios chegam quando os graphs concluírem.`);
+    // 10.C.14: informativo → roteado (digest, salvo TELEGRAM_VERBOSE=1).
+    await routedTelegram(`🧠 Cérebros iniciados (${trigger}): ${started.join(", ")}. Relatórios chegam quando os graphs concluírem.`);
   }
   if (capped.length > 0) {
     // One note per call, never silent: the founder must know a cell did not
@@ -2230,6 +2377,114 @@ export async function runVideoAbsenceCheck(
       `Ver ops.agent_run WHERE graph='daily-video' e o alerta de aprovação no Telegram.`
   );
   return { published, runsStarted, alarmed: true };
+}
+
+// ---------------------------------------------------------------------------
+// 10.C.7 — o relógio do blog-announce. O announce de LinkedIn+X do artigo de
+// segunda saía do workflow via /publish-async SEM portão. Agora: o worker
+// detecta o artigo novo POR CÓDIGO (sitemap público, lastmod de hoje), inicia
+// UM run do grafo 'blog-announce' seedado com a URL real, e o runner padrão
+// faz o resto (drafts → aprovação combinada → publish com válvula/circuito/
+// guard de travessão → harvest → veredito). O workflow não publica mais nada.
+// ---------------------------------------------------------------------------
+
+export const BLOG_ANNOUNCE_SLUG = "blog-announce";
+const SITEMAP_URL = process.env["BLOG_SITEMAP_URL"] ?? "https://ozvor.com/sitemap.xml";
+/** Segunda a partir das 13:00 UTC (o autopublish roda 12:00 + merge/deploy). */
+const BLOG_ANNOUNCE_DAY_UTC = 1;
+const BLOG_ANNOUNCE_AFTER_UTC_HOUR = 13;
+
+/**
+ * Parse PURO do sitemap: a URL do post de blog (não /blog/watch/) cujo
+ * <lastmod> é HOJE (UTC). Null quando não há post novo. Exportado para teste.
+ */
+export function newestBlogPostFromSitemap(xml: string, todayIso: string): string | null {
+  for (const m of xml.matchAll(/<url>([\s\S]*?)<\/url>/g)) {
+    const block = m[1]!;
+    const loc = /<loc>\s*([^<\s]+)\s*<\/loc>/.exec(block)?.[1] ?? "";
+    if (!/\/blog\/[a-z0-9][a-z0-9-]+\/?$/.test(loc) || loc.includes("/blog/watch/")) continue;
+    const lastmod = /<lastmod>\s*([^<\s]+)\s*<\/lastmod>/.exec(block)?.[1] ?? "";
+    if (lastmod.slice(0, 10) === todayIso) return loc.replace(/\/$/, "");
+  }
+  return null;
+}
+
+/**
+ * Chamado por todo tick. Fora da janela (segunda >=13:00 UTC) sai barato; na
+ * janela, sonda o sitemap no máximo 1x/hora (NX) e, achando o post do dia sem
+ * run recente do grafo, inicia o run e seeda a URL ([__seed__] no Redis).
+ */
+export async function runBlogAnnounceCheck(
+  sql: postgres.Sql,
+  redis: Redis,
+  opts: {
+    now?: () => Date;
+    hermesToken?: string;
+    fetchSitemap?: () => Promise<string | null>;
+  } = {}
+): Promise<{ started: string | null; reason: string }> {
+  const now = opts.now?.() ?? new Date();
+  if (now.getUTCDay() !== BLOG_ANNOUNCE_DAY_UTC || now.getUTCHours() < BLOG_ANNOUNCE_AFTER_UTC_HOUR) {
+    return { started: null, reason: "fora-da-janela" };
+  }
+  const token = opts.hermesToken ?? HERMES_TOKEN;
+  if (!token) return { started: null, reason: "sem-executor" };
+  // No máximo uma sonda por hora — o sitemap é público mas o tick é de 10min.
+  const hourKey = `blog-announce:probe:${now.toISOString().slice(0, 13)}`;
+  try {
+    if ((await redis.set(hourKey, "1", "EX", 3600, "NX")) !== "OK") {
+      return { started: null, reason: "ja-sondado-nesta-hora" };
+    }
+  } catch {
+    /* sem Redis: sonda mesmo assim (uma leitura de sitemap é barata) */
+  }
+  const recent = await sql<{ id: string }[]>`
+    /* announce:recent */
+    SELECT id FROM ops.agent_run
+     WHERE graph = ${BLOG_ANNOUNCE_SLUG}
+       AND started_at >= NOW() - make_interval(hours => ${24 * 6})
+     LIMIT 1`;
+  if (recent.length > 0) return { started: null, reason: "run-recente" };
+  const fetchSitemap =
+    opts.fetchSitemap ??
+    (async (): Promise<string | null> => {
+      // Texto integral (o sitemap é XML — httpJson truncaria em 300 chars).
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 20_000);
+      try {
+        const res = await fetch(SITEMAP_URL, { signal: ctl.signal });
+        return res.status === 200 ? await res.text() : null;
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(t);
+      }
+    });
+  const xml = await fetchSitemap();
+  if (!xml) {
+    logger.warn("blog_announce_sitemap_unreachable", { url: SITEMAP_URL });
+    return { started: null, reason: "sitemap-indisponivel" };
+  }
+  const postUrl = newestBlogPostFromSitemap(xml, now.toISOString().slice(0, 10));
+  if (!postUrl) return { started: null, reason: "sem-post-de-hoje" };
+  const rows = await sql<{ id: string }[]>`
+    /* announce:start */
+    INSERT INTO ops.agent_run (graph, trigger, vp_owner)
+    VALUES (${BLOG_ANNOUNCE_SLUG}, 'cron:blog-announce', ${GRAPH_REGISTRY[BLOG_ANNOUNCE_SLUG]?.vpOwner ?? "marketing"})
+    RETURNING id`;
+  const runId = rows[0]!.id;
+  try {
+    await redis.set(
+      `graphrun:${runId}:__seed__`,
+      `URL DO ARTIGO NOVO DO BLOG (lida do sitemap por codigo — use VERBATIM): ${postUrl}`,
+      "EX",
+      ARTIFACT_TTL_SECONDS
+    );
+  } catch (err) {
+    logger.error("blog_announce_seed_failed", { runId, message: (err as Error).message?.slice(0, 160) });
+  }
+  logger.info("blog_announce_started", { runId, postUrl });
+  return { started: `${BLOG_ANNOUNCE_SLUG}:${runId.slice(0, 8)}`, reason: "ok" };
 }
 
 export interface GraphTickResult {
@@ -2497,6 +2752,20 @@ export async function runGraphTick(
     }
   } catch (err) {
     logger.warn("graph_tick_renotify_failed", { message: (err as Error).message?.slice(0, 160) });
+  }
+
+  // 10.C.7 — o relógio do blog-announce (segunda >=13:00 UTC, sonda 1x/h).
+  try {
+    await runBlogAnnounceCheck(sql, redis, { hermesToken: opts.hermesToken });
+  } catch (err) {
+    logger.warn("blog_announce_check_failed", { message: (err as Error).message?.slice(0, 160) });
+  }
+
+  // 10.C.14 — o digest diário das 07:15 (uma mensagem, agregada por SQL).
+  try {
+    await sendDailyTelegramDigest(sql, redis, { telegram: opts.telegram ? async (t) => opts.telegram!(t) : undefined });
+  } catch (err) {
+    logger.warn("telegram_digest_failed", { message: (err as Error).message?.slice(0, 160) });
   }
 
   // Liveness heartbeat for the EXTERNAL vigia (R9/C10 — the 18-20/08 lesson:
