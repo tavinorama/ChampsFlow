@@ -117,17 +117,21 @@ export function registerPrimeRoutes(app: Hono, db: PostgresClient): void {
         logger.warn("prime_status_competitors_failed", { tenant_id: auth.tenantId, message: (err as Error).message?.slice(0, 120) });
       }
       try {
-        // P0-03/R12 — one denominator, not two. This used to count every
-        // 'done' task across EVERY plan the brand had ever had, while the Do
-        // Next tab and deriveExecutionProgress (apps/api/src/routes/audits.ts)
-        // both scope to the LATEST plan and exclude rejected tasks. Two
-        // counters over the same reality produced "3 of 3" here and "3 of 5"
-        // there. Scope and filter now match deriveExecutionProgress exactly,
-        // and the total travels with the count so the UI never invents one.
+        // P0-03/R12 + P0-02 — um só denominador, e "concluído" inclui os estados
+        // do ciclo de vida. A main já corrigira o escopo (plano MAIS RECENTE,
+        // excluindo rejected) para casar com deriveExecutionProgress; este PR
+        // acrescenta os estados novos ao numerador. Contagem DECLARADA de
+        // propósito: aqui a pergunta é "o cliente mexeu na lista?", não "há
+        // prova?" — a métrica que exige prova é a Verified Execution
+        // (apps/api/src/lib/plan-task-lifecycle.ts). 'done' fica para as linhas
+        // escritas antes da migração do ciclo de vida.
         const { rows } = await db.query<{ total: string; done: string }>(
           `SELECT
              COUNT(*) FILTER (WHERE t.status != 'rejected') AS total,
-             COUNT(*) FILTER (WHERE t.status =  'done')     AS done
+             COUNT(*) FILTER (WHERE t.status IN ('done', 'legacy_self_reported',
+                                                 'manual_done_pending_verification',
+                                                 'published', 'indexed', 'cited',
+                                                 'verified'))                AS done
            FROM plan_task t
            WHERE t.plan_id = (
              SELECT id FROM strategy_plan

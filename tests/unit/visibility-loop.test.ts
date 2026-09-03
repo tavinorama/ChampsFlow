@@ -19,6 +19,7 @@ import {
   isActionableSource,
   LOOP_OPEN_CAP,
   VERIFIED_PREFIX,
+  REGRESSED_PREFIX,
   type LoopProbe,
   type PrevTask,
 } from "../../packages/llm/src/visibility-loop";
@@ -183,13 +184,29 @@ describe("buildLoopCandidates — source presence", () => {
 describe("reconcileLoopTasks — the loop contract", () => {
   const dateISO = "2026-09-03";
 
-  it("flips an open card to done with 'Worked — verified' attribution when the query flipped to cited", () => {
+  it("flips an open card to VERIFIED with 'Worked — verified' attribution when the query flipped to cited", () => {
+    // P0-02: `verified` (not `done`) — and this is the only code path in the
+    // product that can produce it. It is earned by the citation, not claimed.
     const build = buildLoopCandidates([probe({ cited: true, rank: 1 })]);
     const { rows, stats } = reconcileLoopTasks([prevTask({ status: "accepted" })], build, dateISO);
     const flipped = rows.find((r) => r.gap === gapForUncited("best crm for smbs"));
-    expect(flipped?.status).toBe("done");
+    expect(flipped?.status).toBe("verified");
     expect(flipped?.evidence).toContain(`${VERIFIED_PREFIX}${dateISO}`);
     expect(flipped?.evidence).toContain("now cited on openai");
+    expect(stats.verified).toBe(1);
+  });
+
+  it("a self-reported card is verified once — and only once — the audit finds the citation", () => {
+    // The legacy 'done' rows (checkbox era) are claims. They stay eligible:
+    // when the evidence finally arrives, the claim is upgraded to proof.
+    const build = buildLoopCandidates([probe({ cited: true, rank: 1 })]);
+    const { rows, stats } = reconcileLoopTasks(
+      [prevTask({ status: "done", evidence: "I ticked the box" })],
+      build,
+      dateISO
+    );
+    const card = rows.find((r) => r.gap === gapForUncited("best crm for smbs"));
+    expect(card?.status).toBe("verified");
     expect(stats.verified).toBe(1);
   });
 
@@ -211,7 +228,12 @@ describe("reconcileLoopTasks — the loop contract", () => {
     expect(second.rows).toEqual(first.rows);
   });
 
-  it("done stays done and rejected stays rejected (never re-proposed)", () => {
+  it("a self-reported 'done' card that is still a gap goes BACK on the open list", () => {
+    // Changed by P0-02, deliberately. The old contract was "done stays done",
+    // which is how a brand with a failing audit showed Execution 100. A
+    // checkbox tick is a claim; when the audit still sees the gap, the claim
+    // does not survive it. Rejected still stays rejected — that one was the
+    // client's decision, not a claim about the world.
     const build = buildLoopCandidates([probe({ cited: false })]);
     const { rows } = reconcileLoopTasks(
       [
@@ -221,10 +243,45 @@ describe("reconcileLoopTasks — the loop contract", () => {
       build,
       dateISO
     );
-    expect(rows.find((r) => r.gap === gapForUncited("best crm for smbs"))?.status).toBe("done");
+    const card = rows.find((r) => r.gap === gapForUncited("best crm for smbs"));
+    expect(card?.status).toBe("legacy_self_reported");
+    expect(card?.status).not.toBe("verified"); // a claim never becomes proof by ageing
     expect(rows.find((r) => r.gap === gapForSource("g2.com"))?.status).toBe("rejected");
     // and no second open copy of either gap appears
     expect(rows.filter((r) => r.gap === gapForUncited("best crm for smbs"))).toHaveLength(1);
+  });
+
+  it("REGRESSION re-opens a verified card when the gap comes back", () => {
+    // Audit §17: "Regression reabre ação". The row is re-opened as `regressed`
+    // with the reason attached — the previous verification is quoted, not erased.
+    const build = buildLoopCandidates([probe({ cited: false })]);
+    const { rows, stats } = reconcileLoopTasks(
+      [
+        prevTask({
+          status: "verified",
+          evidence: `${VERIFIED_PREFIX}2026-08-01: now cited on openai.`,
+        }),
+      ],
+      build,
+      dateISO
+    );
+    const card = rows.find((r) => r.gap === gapForUncited("best crm for smbs"));
+    expect(card?.status).toBe("regressed");
+    expect(card?.evidence).toContain(REGRESSED_PREFIX);
+    expect(card?.evidence).toContain("2026-08-01"); // history quoted, not lost
+    expect(stats.regressed).toBe(1);
+    expect(stats.verified).toBe(0);
+  });
+
+  it("a verified card the audit does NOT contradict stays verified", () => {
+    const build = buildLoopCandidates([probe({ gap: undefined, cited: true, rank: 1 })]);
+    const { rows, stats } = reconcileLoopTasks(
+      [prevTask({ gap: gapForSource("g2.com"), status: "verified", vector: "brand" })],
+      build,
+      dateISO
+    );
+    expect(rows.find((r) => r.gap === gapForSource("g2.com"))?.status).toBe("verified");
+    expect(stats.regressed).toBe(0);
   });
 
   it("carries open custom/stale cards unchanged — never silently dropped", () => {

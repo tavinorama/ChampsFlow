@@ -20,7 +20,16 @@
  *
  * Pure module: no I/O, no SQL, no LLM. The worker (audit-run.ts) does the
  * reading/writing around it; tests exercise these functions directly.
+ *
+ * P0-02 note: this module is the ONLY writer of the `verified` state. A card
+ * becomes verified because a later audit found the citation — never because a
+ * person, or the client, said it was done. See plan-task-state.ts.
  */
+import {
+  normalizePlanTaskState,
+  OPEN_STATES,
+  type PlanTaskState,
+} from "./plan-task-state";
 
 /** One probe's evidence, already normalized to DB provider names. */
 export interface LoopProbe {
@@ -314,7 +323,12 @@ export interface LoopTaskRow {
   effort: LoopLevel;
   impact: LoopLevel;
   priority: number;
-  status: "proposed" | "accepted" | "rejected" | "done";
+  /**
+   * A lifecycle state (packages/llm/src/plan-task-state.ts). The loop is the
+   * ONLY writer of `verified`: it earns that state by finding the citation in
+   * a later audit. Nothing a client clicks can produce it (audit P0-02).
+   */
+  status: PlanTaskState;
   evidence: string | null;
   metric: string | null;
   owner: "you" | "organicposts" | "platform";
@@ -324,8 +338,9 @@ export interface ReconcileStats {
   inserted: number;
   refreshed: number; // candidates that had a predecessor and stayed open
   created: number; // brand-new candidates
-  verified: number; // open cards flipped to done by this audit's evidence
-  carried: number; // previous tasks kept as-is (custom/stale/done)
+  verified: number; // open cards proven by this audit's citation evidence
+  regressed: number; // verified cards whose gap came back — re-opened
+  carried: number; // previous tasks kept as-is (custom/stale/verified)
   droppedByCap: number;
 }
 
@@ -335,10 +350,18 @@ const asLevel = (v: string): LoopLevel =>
   v === "low" || v === "medium" || v === "high" ? v : "medium";
 const asOwner = (v: string | null): "you" | "organicposts" | "platform" =>
   v === "organicposts" || v === "platform" ? v : "you";
-const asStatus = (v: string): "proposed" | "accepted" | "rejected" | "done" =>
-  v === "accepted" || v === "rejected" || v === "done" ? v : "proposed";
+/**
+ * Legacy rows say 'done'; that is a client claim, not proof, so it normalizes
+ * to `legacy_self_reported` and stays eligible to be genuinely verified later.
+ */
+const asStatus = (v: string): PlanTaskState => normalizePlanTaskState(v);
+
+/** Still needs someone to act — and still eligible for a verification flip. */
+const isOpenState = (s: PlanTaskState): boolean => OPEN_STATES.includes(s);
 
 export const VERIFIED_PREFIX = "Worked — verified in the audit of ";
+/** Prefix on a card that was verified and then lost the ground it won. */
+export const REGRESSED_PREFIX = "Slipped back — was working, then stopped, as of ";
 
 /**
  * Merge the previous plan's tasks with this audit's candidates.
@@ -370,6 +393,7 @@ export function reconcileLoopTasks(
     refreshed: 0,
     created: 0,
     verified: 0,
+    regressed: 0,
     carried: 0,
     droppedByCap: 0,
   };
@@ -400,14 +424,17 @@ export function reconcileLoopTasks(
     if (usedGaps.has(t.gap)) continue; // defensive: legacy duplicate rows collapse
     usedGaps.add(t.gap);
     const status = asStatus(t.status);
-    const open = status === "proposed" || status === "accepted";
+    const open = isOpenState(status);
     const note = build.resolved.get(t.gap);
 
     if (open && note) {
+      // THE ONLY WRITER OF `verified`. The card is not verified because anyone
+      // said so — it is verified because this audit found the citation. The
+      // evidence string is kept with the row so the claim can be checked.
       const verification = `${VERIFIED_PREFIX}${auditDate}: ${note}.`;
       doneRows.push(
         carryRow(t, {
-          status: "done",
+          status: "verified",
           evidence: t.evidence ? `${verification} ${t.evidence}` : verification,
         })
       );
@@ -437,7 +464,35 @@ export function reconcileLoopTasks(
       openCount += 1;
       continue;
     }
-    if (status === "done") {
+    // REGRESSION (audit §17 "Regression reabre ação"). This card was verified
+    // by an earlier audit, and this audit surfaced the same gap again — the win
+    // did not hold. It re-opens as `regressed` with the reason attached, and
+    // stops counting toward Verified Execution. The history of how it got
+    // verified is preserved in plan_task_transition; nothing is deleted.
+    if (status === "verified" && candidate) {
+      const previously = t.evidence?.startsWith(VERIFIED_PREFIX)
+        ? t.evidence.split(".")[0]
+        : "verified in an earlier audit";
+      rows.push(
+        carryRow(t, {
+          status: "regressed",
+          action: candidate.action,
+          evidence: `${REGRESSED_PREFIX}${auditDate}: the gap is back (${previously}). ${candidate.evidence}`,
+          metric: candidate.metric,
+          priority: candidate.priority,
+          impact: candidate.impact,
+          effort: candidate.effort,
+          vector: candidate.vector,
+        })
+      );
+      stats.regressed += 1;
+      openCount += 1;
+      continue;
+    }
+
+    // Already verified by an earlier audit, and this audit did not contradict
+    // it: carried into the done column, still verified.
+    if (status === "verified") {
       doneRows.push(carryRow(t));
       stats.carried += 1;
       continue;
