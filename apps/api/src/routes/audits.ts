@@ -34,6 +34,7 @@ import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
 import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
+import { markComparableTrend, runConfidence } from "../lib/trend-comparability";
 import { assertPublicUrl } from "../../../../packages/llm/src/ssrf-guard";
 import { PLAN_LIMITS, type PlanTier } from "../integrations/stripe";
 import { resolveProviderKey } from "./system";
@@ -2271,6 +2272,9 @@ export function registerAuditRoutes(
         missing?: string[];
         comparable?: boolean;
       } | null;
+      providers_used: unknown;
+      checks: number | null;
+      citations: number | null;
     }>(
       // geo_score has no score_overall column — derive it from provider_breakdown.
       //
@@ -2280,14 +2284,47 @@ export function registerAuditRoutes(
       // to a column is schema churn with no reader benefit.
       // Null for audits that predate it; the UI stays silent in that case
       // rather than claiming a coverage it does not know.
-      `SELECT recorded_at, audit_id, score_brand, score_performance, score_ai,
-              (provider_breakdown->>'overall')::int AS score_overall,
-              provider_breakdown->'coverage' AS coverage
-         FROM geo_score
-        WHERE brand_id = $1
-        ORDER BY recorded_at DESC
+      // providers_used/checks/citations feed the comparability marking below
+      // (Phase 2, Visibility Loop v2): runs measured with a different engine
+      // panel or check-count band must not sit on the same trend line.
+      `SELECT s.recorded_at, s.audit_id, s.score_brand, s.score_performance, s.score_ai,
+              (s.provider_breakdown->>'overall')::int AS score_overall,
+              s.provider_breakdown->'coverage' AS coverage,
+              a.providers_used,
+              (s.provider_breakdown->>'probesTotal')::int AS checks,
+              (s.provider_breakdown->>'probesCited')::int AS citations
+         FROM geo_score s
+         LEFT JOIN geo_audit a ON a.id = s.audit_id
+        WHERE s.brand_id = $1
+        ORDER BY s.recorded_at DESC
         LIMIT 90`,
       [brandId]
+    );
+
+    // Phase 2 — mark each run in/out of the comparable trend, with a reason.
+    const asProviders = (v: unknown): string[] | null => {
+      if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
+      if (typeof v === "string") {
+        try {
+          const parsed = JSON.parse(v) as unknown;
+          return Array.isArray(parsed)
+            ? parsed.filter((x): x is string => typeof x === "string")
+            : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+    const comparability = markComparableTrend(
+      trend.rows.map((r) => ({
+        auditId: r.audit_id,
+        recordedAt: r.recorded_at,
+        providers: asProviders(r.providers_used),
+        checks: r.checks,
+        comparableFlag:
+          r.coverage && typeof r.coverage.comparable === "boolean" ? r.coverage.comparable : null,
+      }))
     );
 
     // Execution Progress — live from plan_task (not stored in snapshot).
@@ -2311,7 +2348,28 @@ export function registerAuditRoutes(
       threeScores = { visibility, citationReadiness, executionProgress };
     }
 
-    return c.json({ brand_id: brandId, latest, trend: trend.rows, threeScores, executionProgress });
+    // Attach the mark to each trend row (same order — marks are 1:1 with rows)
+    // and a confidence descriptor for the latest run.
+    const trendRows = trend.rows.map((r, ix) => ({
+      ...r,
+      in_trend: comparability.marks[ix]?.inTrend ?? true,
+      trend_note: comparability.marks[ix]?.reason ?? null,
+    }));
+    const confidence = latest ? runConfidence(latest.checks, latest.citations) : null;
+
+    return c.json({
+      brand_id: brandId,
+      latest: latest ? trendRows[0] : null,
+      trend: trendRows,
+      threeScores,
+      executionProgress,
+      confidence,
+      trendComparability: {
+        pinnedPanel: comparability.pinnedPanel,
+        bandCenter: comparability.bandCenter,
+        excluded: comparability.excluded,
+      },
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -2332,10 +2390,16 @@ export function registerAuditRoutes(
       score_performance: number | null;
       score_brand: number | null;
       score_overall: number | null;
+      providers_used: unknown;
+      checks: number | null;
+      comparable: boolean | null;
     }>(
       `SELECT a.id, a.created_at, a.triggered_by,
               s.score_ai, s.score_performance, s.score_brand,
-              (s.provider_breakdown->>'overall')::int AS score_overall
+              (s.provider_breakdown->>'overall')::int AS score_overall,
+              a.providers_used,
+              (s.provider_breakdown->>'probesTotal')::int AS checks,
+              (s.provider_breakdown->'coverage'->>'comparable')::boolean AS comparable
          FROM geo_audit a
          JOIN geo_score s ON s.audit_id = a.id
         WHERE a.brand_id = $1 AND a.status = 'complete'
@@ -2343,7 +2407,26 @@ export function registerAuditRoutes(
         LIMIT 120`,
       [brandId]
     );
-    return c.json({ brand_id: brandId, audits: res.rows });
+    // Phase 2 (Visibility Loop v2): mark which audits belong on the same trend
+    // line — same pinned engine panel + check-count band — so the history list
+    // and compare picker can label partial runs instead of implying a drop.
+    const provsOf = (v: unknown): string[] | null =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null;
+    const marks = markComparableTrend(
+      res.rows.map((r) => ({
+        auditId: r.id,
+        recordedAt: r.created_at,
+        providers: provsOf(r.providers_used),
+        checks: r.checks,
+        comparableFlag: r.comparable,
+      }))
+    );
+    const audits = res.rows.map((r, ix) => ({
+      ...r,
+      in_trend: marks.marks[ix]?.inTrend ?? true,
+      trend_note: marks.marks[ix]?.reason ?? null,
+    }));
+    return c.json({ brand_id: brandId, audits });
   });
 
   // -------------------------------------------------------------------------

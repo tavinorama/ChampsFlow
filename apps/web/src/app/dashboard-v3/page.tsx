@@ -79,6 +79,11 @@ interface TrendPoint {
   score_ai?: number | null;
   score_performance?: number | null;
   score_brand?: number | null;
+  /** Phase 2 comparability: false = measured differently (partial panel /
+   *  different engine set / check band) — must NOT be drawn on the trend. */
+  in_trend?: boolean;
+  /** Why the run is excluded, when it is. */
+  trend_note?: string | null;
 }
 
 interface ScorePayload {
@@ -91,6 +96,8 @@ interface ScorePayload {
   trend: TrendPoint[];
   threeScores: ThreeScores | null;
   executionProgress: number | null;
+  /** Phase 2: checks/citations of the latest run + stability note when small. */
+  confidence?: { checks: number | null; citations: number | null; stabilityNote: string | null } | null;
 }
 
 interface BreakdownCompetitor {
@@ -886,6 +893,7 @@ export default function DashboardV3() {
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
             coverage={score?.latest?.coverage ?? null}
+            confidence={score?.confidence ?? null}
             hallucination={(breakdown as { hallucination?: HallucinationInfo | null } | null)?.hallucination ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
           />
@@ -950,7 +958,7 @@ export default function DashboardV3() {
 
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditBlocked, onTopUp, auditMsg,
-  auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination,
+  auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination, confidence,
 }: {
   brandName?: string;
   overall: number | null;
@@ -973,6 +981,7 @@ function OverviewTab({
   methodologyVersion?: string | null;
   /** Wilson 95% interval on the citation rate, from the same breakdown. */
   citationCI?: { rate: number; low: number; high: number; n: number } | null;
+  confidence?: { checks: number | null; citations: number | null; stabilityNote: string | null } | null;
   /** B1 per-intent rates, share of voice and rivals. Empty on pre-B1 audits. */
   intents?: IntentRow[] | null;
   /** Which engines this run actually reached. Null on audits that predate it. */
@@ -987,14 +996,19 @@ function OverviewTab({
   // composite trend. It draws Visibility now, and falls back to the composite
   // only for audits old enough to have no score_ai, where a flat gap would
   // read as a collapse.
-  const visibilityPts = trend
+  // Phase 2: the trend line only connects runs measured the SAME way (same
+  // engine panel + check band). A partial run drawn on the line reads as
+  // "you lost ground" when the truth is "the ruler changed".
+  const comparableTrend = trend.filter((t) => t.in_trend !== false);
+  const excludedRuns = trend.length - comparableTrend.length;
+  const visibilityPts = comparableTrend
     .map((t) => t.score_ai ?? null)
     .filter((n): n is number => n != null)
     .reverse();
   const overallPts =
     visibilityPts.length >= 2
       ? visibilityPts
-      : trend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
+      : comparableTrend.map((t) => t.score_overall).filter((n): n is number => n != null).reverse();
   return (
     <>
       <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "var(--space-3)", marginBottom: "var(--space-3)", flexWrap: "wrap" }}>
@@ -1035,6 +1049,11 @@ function OverviewTab({
         <div style={S.heroRight}>
           <h2 style={S.heroH2}>How often AI names you</h2>
           {overallPts.length >= 2 ? <Sparkline points={overallPts} /> : <div style={S.muted}>Run a couple of audits to see your trend.</div>}
+          {excludedRuns > 0 && (
+            <p style={{ margin: "var(--space-1) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
+              {excludedRuns} partial {excludedRuns === 1 ? "audit" : "audits"} (different engine panel) left off this line — a smaller panel is a different measurement, not a lower score.
+            </p>
+          )}
           <p style={S.heroCap}>
             This is the measurement, and nothing else: how often the AI engines
             named you when asked your customers&rsquo; questions. Your own work
@@ -1045,6 +1064,13 @@ function OverviewTab({
             number could honestly sit in. When it changes, look for the reason
             underneath before reading it as your doing.
           </p>
+          {confidence && (confidence.checks != null || confidence.stabilityNote) && (
+            <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
+              {confidence.checks != null ? `Measured over ${confidence.checks} checks` : ""}
+              {confidence.checks != null && confidence.citations != null ? ` — cited in ${confidence.citations}.` : "."}
+              {confidence.stabilityNote ? ` ${confidence.stabilityNote}` : ""}
+            </p>
+          )}
           <CoverageNote coverage={coverage} />
           <HallucinationFlag info={hallucination} />
         </div>
@@ -1159,7 +1185,11 @@ function AnalyticsChart({ trend, brandId }: { trend: TrendPoint[]; brandId: stri
   }, [mode, comp, brandId]);
 
   // trend arrives newest-first; work oldest→newest and filter by period.
-  const asc = useMemo(() => [...trend].reverse(), [trend]);
+  // Phase 2: runs measured with a different engine panel (in_trend === false)
+  // are excluded from the lines — the count below says so instead of the chart
+  // silently pretending a drop.
+  const excludedFromChart = useMemo(() => trend.filter((t) => t.in_trend === false).length, [trend]);
+  const asc = useMemo(() => [...trend].filter((t) => t.in_trend !== false).reverse(), [trend]);
   const days = CHART_PERIODS.find((p) => p.key === period)?.days ?? null;
   const points = useMemo(() => {
     if (days == null) return asc;
@@ -1270,6 +1300,11 @@ function AnalyticsChart({ trend, brandId }: { trend: TrendPoint[]; brandId: stri
         <span>{firstDate ? new Date(firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
         <span>{lastDate ? new Date(lastDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}</span>
       </div>
+      {excludedFromChart > 0 && (
+        <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.72rem", color: "var(--color-muted)" }}>
+          {excludedFromChart} partial {excludedFromChart === 1 ? "audit is" : "audits are"} not on these lines: {excludedFromChart === 1 ? "it" : "they"} ran with a different engine panel, which is a different measurement — not a lower score.
+        </p>
+      )}
     </div>
   );
 }
