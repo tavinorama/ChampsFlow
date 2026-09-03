@@ -247,9 +247,9 @@ describe("daily-video, the full life", () => {
     expect(world.stepByNode("verdict")?.status).toBe("succeeded");
     // The closing edge: the verdict WROTE an outcome with the harvested total.
     expect(world.outcomes).toHaveLength(1);
-    // v3: must be a TRUE prefix of what the #162 harvest writes
-    // (youtube_views_7d) — the old 'yt_views_72h' matched nothing.
-    expect(world.outcomes[0]!.metric).toBe("youtube_views");
+    // v5 (10.C.4): the harvest reads what this graph PUBLISHES (LinkedIn),
+    // never the legacy VPS video metric (youtube_views) — contaminated learning.
+    expect(world.outcomes[0]!.metric).toBe("linkedinpage_impressions");
     expect(world.outcomes[0]!.valueAfter).toBe(250);
     expect(world.run.status).toBe("succeeded");
     expect(world.telegrams.some((t) => t.includes("VEREDITO"))).toBe(true);
@@ -580,10 +580,10 @@ describe("the X sphere refuses to ship an over-limit post (prod failure 17/08)",
 });
 
 describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measured", () => {
-  it("memory reads ONLY linkedin_ metrics, both drafts + critic run, parks at the human gate", async () => {
+  it("memory reads ONLY linkedinpage_ metrics (the collector's real family — 10.C.3), both drafts + critic run, parks at the human gate", async () => {
     const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
     await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
-    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "linkedin_" }]);
+    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "linkedinpage_" }]);
     expect(world.stepByNode("draft-story")?.status).toBe("succeeded");
     expect(world.stepByNode("draft-contrarian")?.status).toBe("succeeded");
     expect(world.stepByNode("critic")?.status).toBe("succeeded");
@@ -628,7 +628,7 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
 
 describe("content alive on every platform (17/08) — IG / TikTok / YouTube spheres", () => {
   const cells: Array<[GraphDefinition, string, string, string, number]> = [
-    [SPHERE_INSTAGRAM_GRAPH, "instagram_", "instagram", "instagramstandalone_reach", 1200],
+    [SPHERE_INSTAGRAM_GRAPH, "instagramstandalone_", "instagram", "instagramstandalone_reach", 1200],
     [SPHERE_TIKTOK_GRAPH, "tiktok_", "tiktok", "tiktok_views", 5400],
     [SPHERE_YOUTUBE_GRAPH, "youtube_", "youtube", "youtube_views", 830],
   ];

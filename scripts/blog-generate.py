@@ -111,12 +111,36 @@ def anti_generic_block() -> str:
         "chosen angle and why it differs from the recent list).\n"
     )
 
+# ---------------------------------------------------------------------------
+# 10.C.6 — ESPELHO de CONTENT_LESSONS (apps/api/src/lib/graph-prompts.ts).
+# O blog-generate era a 2ª implementação das regras da casa e derivava
+# ("British English", sem regra 15-17/≤12 palavras). Python não importa TS,
+# então as lições são DUPLICADAS aqui linha a linha — e o teste
+# tests/unit/blog-generate-lessons-sync.test.ts QUEBRA se os dois arquivos
+# divergirem. Para mudar uma lição: editar graph-prompts.ts primeiro, copiar
+# aqui depois.
+# ---------------------------------------------------------------------------
+CONTENT_LESSONS = "\n".join([
+    "LICOES DA CASA (memoria institucional de conteudo — regua de VETO, nao sugestao):",
+    "- Nunca repetir tema, gancho ou b-roll recente: se [memory] ja mostra, muda ou veta.",
+    "- X: cada tweet tem <=280 caracteres e o pipe publica UM post por vez — thread vira tweet unico; o tweet 1 tem que se sustentar sozinho.",
+    "- Canal que exige midia (Instagram/TikTok/YouTube) NAO recebe texto puro: roteiro vai como report ao founder, nunca como publish.",
+    "- LinkedIn: no maximo 2 posts/dia (valvula de cadencia) — excedente ADIA para o dia seguinte, nao empilha no feed.",
+    "- Copy nivel 15-17 anos: frases <=12 palavras, CTA em 1a pessoa, sem travessao.",
+    "- Sonho honesto: historia, personagem, gente real — e NUNCA inventar dado; numero so com fonte.",
+    "- Conteudo publico e English-first, sem excecao (relatorio interno ao founder segue em PT).",
+])
+
 BASE_PROMPT = (
     "You are the staff writer for Ozvor, a GEO / AI-search visibility platform for small businesses. "
     "Write ONE complete, publishable blog article about generative-engine optimization (how ChatGPT, "
     "Perplexity, Gemini and Google AI Overviews decide which businesses to name), grounded in something "
     "real and recent. Center it on a concrete small-business owner and a specific, true development. "
-    "Human, warm, specific. British-neutral English.\n"
+    "Human, warm, specific. US English (the house rule is English-first, US spelling).\n"
+    "HOUSE COPY RULES (hard): write for a 15-17 year old reading level; keep sentences at 12 words or "
+    "fewer wherever prose allows; honest dream: a real story, a real person, a real pain — and NEVER a "
+    "number without a named source.\n"
+    + CONTENT_LESSONS + "\n"
     "HARD RULES: never use an em-dash or en-dash anywhere; every statistic must cite a named, dated, "
     "public source with a real URL; no fabricated numbers; end with one soft CTA to ozvor.com.\n"
     "GEO RULES (we are a GEO company; our own posts must be citable by AI engines): phrase at least "

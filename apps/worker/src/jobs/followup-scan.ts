@@ -45,11 +45,13 @@ import {
   draftToHtml,
   extractReplyRouting,
   extractTrilha,
+  extractReplyLeadEmail,
   followupDailyCap,
   followupMarkerLine,
   hasFollowupMarker,
   hasOpenFollowupProposal,
   looksLikeAutoReplyNoise,
+  looksLikeTextualUnsubscribe,
   maskedReplyPreview,
   parseIntent,
   validateFollowupDraft,
@@ -233,7 +235,9 @@ interface ParkedRow {
 
 interface ReplyRow {
   id: string;
-  lead_email: string;
+  /** Coluna gravada pelo webhook — pode estar NULA ou ERRADA (bug 03/09:
+   *  payload real usa sl_lead_email; to_email num reply é a NOSSA caixa). */
+  lead_email: string | null;
   campaign_id: number | string | null;
   payload: unknown;
   received_at: string;
@@ -262,6 +266,13 @@ export interface FollowupScanResult {
   discarded: number;
   unsubscribed: number;
   skipped: number;
+  /**
+   * BUG 03/09 — o balde que NÃO PODE existir em silêncio: linhas de reply que
+   * não resolvem lead nem por coluna nem por payload (ou que caíram por erro).
+   * INVARIANTE (testada): scanned === proposed + discarded + unsubscribed +
+   * skipped + unparseable. unparseable>0 grita no Telegram 1×/dia.
+   */
+  unparseable: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +344,7 @@ export async function runFollowupScan(
     discarded: 0,
     unsubscribed: 0,
     skipped: 0,
+    unparseable: 0,
   };
 
   await resolveParkedGates(sql, ports, result);
@@ -492,6 +504,11 @@ async function proposeNewFollowups(
   ports: FollowupPorts,
   result: FollowupScanResult
 ): Promise<void> {
+  // BUG 03/09: a coluna lead_email pode estar NULA (payload real não traz
+  // `lead_email`) ou ERRADA (to_email = a nossa caixa). A query NÃO filtra
+  // mais por lead_email — o lead verdadeiro é resolvido POR LINHA a partir do
+  // payload (sl_lead_email primeiro), e linha irresolvível vira `unparseable`,
+  // nunca um fall-through mudo.
   const rows = (await sql`
     /* fu:replies */
     SELECT e.id, e.lead_email, e.campaign_id, e.payload, e.received_at::text AS received_at,
@@ -499,7 +516,6 @@ async function proposeNewFollowups(
       FROM smartlead_event e
       LEFT JOIN crm_contact c ON c.email = e.lead_email
      WHERE e.event_type = 'EMAIL_REPLY'
-       AND e.lead_email IS NOT NULL
        AND e.received_at > NOW() - make_interval(days => ${FOLLOWUP_LOOKBACK_DAYS})
      ORDER BY e.received_at ASC
      LIMIT 60
@@ -507,16 +523,59 @@ async function proposeNewFollowups(
   result.scanned = rows.length;
 
   const seenEmails = new Set<string>();
-  const candidates: ReplyRow[] = [];
+  const candidates: Array<ReplyRow & { lead_email: string }> = [];
   for (const r of rows) {
-    if (hasFollowupMarker(r.note, r.id)) continue; // idempotency: already handled
-    if (seenEmails.has(r.lead_email)) continue; // one in flight per contact
-    if (hasOpenFollowupProposal(r.note)) {
+    // Resolve o lead VERDADEIRO: payload (sl_lead_email → lead_email → email)
+    // vence a coluna; a coluna é o fallback para eventos antigos.
+    const resolved = extractReplyLeadEmail(r.payload) ?? r.lead_email;
+    if (!resolved) {
+      result.unparseable += 1;
+      logger.error("followup_reply_unparseable", { eventId: r.id, reason: "sem lead_email na coluna nem no payload" });
+      continue;
+    }
+    let stage = r.stage;
+    let note = r.note;
+    if (resolved !== r.lead_email) {
+      // A coluna apontava outra caixa (ou nada): o note/stage do JOIN são do
+      // contato errado — re-ler o contato CERTO antes de decidir.
+      try {
+        const c = (await sql`
+          /* fu:contact-read */
+          SELECT stage, note FROM crm_contact WHERE email = ${resolved}
+        `) as unknown as Array<{ stage: string | null; note: string | null }>;
+        stage = c[0]?.stage ?? null;
+        note = c[0]?.note ?? null;
+      } catch (err) {
+        result.unparseable += 1;
+        logger.error("followup_contact_read_failed", { eventId: r.id, message: (err as Error).message?.slice(0, 160) });
+        continue;
+      }
+    }
+    const row = { ...r, lead_email: resolved, stage, note };
+    // INVARIANTE: cada linha filtrada CONTA (antes, marker/dup saíam mudos).
+    if (hasFollowupMarker(row.note, row.id)) {
+      result.skipped += 1; // idempotency: already handled
+      continue;
+    }
+    if (seenEmails.has(row.lead_email)) {
+      result.skipped += 1; // one in flight per contact
+      continue;
+    }
+    if (hasOpenFollowupProposal(row.note)) {
       result.skipped += 1;
       continue;
     }
-    seenEmails.add(r.lead_email);
-    candidates.push(r);
+    seenEmails.add(row.lead_email);
+    candidates.push(row);
+  }
+  // unparseable>0 NUNCA fica só no log — 1 grito/dia no Telegram.
+  if (result.unparseable > 0) {
+    const day = ports.now().toISOString().slice(0, 10);
+    if (await ports.onceKey(`followup:unparseable:${day}`)) {
+      await ports.telegram(
+        `🔴 FOLLOW-UP: ${result.unparseable} resposta(s) de lead IRRESOLVÍVEL(EIS) no scan (sem e-mail na coluna nem no payload). Nada degrada calado: ver smartlead_event e o log followup_reply_unparseable.`
+      );
+    }
   }
   if (candidates.length === 0) return;
 
@@ -573,26 +632,44 @@ async function proposeNewFollowups(
     logger.warn("followup_recent_read_failed", { message: (err as Error).message?.slice(0, 160) });
   }
 
-  for (const row of candidates) {
+  for (let i = 0; i < candidates.length; i += 1) {
+    const row = candidates[i]!;
     if (budget <= 0) {
       result.skipped += 1;
       continue;
     }
-    const handled = await handleReply(sql, ports, row, result, recentBlock);
+    let handled: "proposed" | "discarded" | "unsubscribed" | "engines-down";
+    try {
+      handled = await handleReply(sql, ports, row, result, recentBlock);
+    } catch (err) {
+      // INVARIANTE: erro por linha vira unparseable + log, nunca fall-through.
+      result.unparseable += 1;
+      logger.error("followup_reply_error", { eventId: row.id, message: (err as Error).message?.slice(0, 200) });
+      continue;
+    }
     if (handled === "proposed") budget -= 1;
     if (handled === "engines-down") {
       // All engines failed: stop the whole phase (the alarm already fired
-      // via logs); the 30-min cadence retries naturally.
-      result.skipped += 1;
+      // via logs); the 30-min cadence retries naturally. Esta linha E as
+      // restantes contam como skipped — a invariante fecha.
+      result.skipped += candidates.length - i;
       break;
     }
+  }
+
+  // INVARIANTE (bug 03/09: 9 scanned, todos os baldes em zero, silêncio):
+  // todo item scanned cai em EXATAMENTE um contador. Diferença = erro alto.
+  const bucketed = result.proposed + result.discarded + result.unsubscribed + result.skipped + result.unparseable;
+  if (bucketed !== result.scanned) {
+    logger.error("followup_scan_invariant_broken", { scanned: result.scanned, bucketed });
+    result.unparseable += Math.max(0, result.scanned - bucketed);
   }
 }
 
 async function handleReply(
   sql: postgres.Sql,
   ports: FollowupPorts,
-  row: ReplyRow,
+  row: ReplyRow & { lead_email: string },
   result: FollowupScanResult,
   recentBlock: string | null = null
 ): Promise<"proposed" | "discarded" | "unsubscribed" | "engines-down"> {
@@ -612,6 +689,23 @@ async function handleReply(
   // A 'lost' contact said no already — a human no is final, whatever they sent.
   if (stage === "lost") return discard("lead-lost");
   if (!replyText) return discard("sem-texto");
+  // Adendo 03/09 — "STOP"/unsubscribe TEXTUAL decide por CÓDIGO, antes do
+  // ruído e de QUALQUER LLM: o pedido de saída do lead é soberano e não
+  // precisa de modelo para ser entendido. Rebaixa contacted→lost (estágio de
+  // máquina — o webhook promoveu errado no reply) e marca handled: o lead
+  // nunca mais é proposto pelo follow-up nem reciclado como 'lost'.
+  if (looksLikeTextualUnsubscribe(replyText)) {
+    const nextStage = nextStageFor(stage, "LEAD_UNSUBSCRIBED");
+    await writeMarker(
+      sql,
+      row.lead_email,
+      followupMarkerLine("descartado", row.id, now, "motivo=unsubscribe-textual"),
+      nextStage
+    );
+    logger.info("followup_unsubscribe_textual", { eventId: row.id, stageWritten: nextStage });
+    result.unsubscribed += 1;
+    return "unsubscribed";
+  }
   if (looksLikeAutoReplyNoise(replyText)) return discard("noise");
 
   // Intent — the model classifies, code decides.

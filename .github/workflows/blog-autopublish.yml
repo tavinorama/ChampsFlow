@@ -5,10 +5,12 @@ name: Blog auto-publish (Monday)
 #   1. ask the VPS (flat-fee Claude) to WRITE a complete article as strict JSON
 #   2. blog-ingest.mjs validates it hard and injects it into the site
 #   3. open a PR (with a PAT so CI + automerge fire) → auto-merge → deploy
-#   4. poll the live URL; ONLY once it is actually 200 do we announce it on
-#      LinkedIn + X, with the real link. If it never goes live, we do NOT
-#      announce (no post pointing at a 404) and the job fails loudly — the
-#      15:40 Telegram watcher also reports "SEM REGISTRO blog" on Mondays.
+#   4. poll the live URL until it is actually 200. The LinkedIn+X announce is
+#      NOT sent from here anymore (10.C.7): it runs as the gated
+#      'blog-announce' graph (worker detects the new post in the public
+#      sitemap, founder approves on Telegram, publish goes through the
+#      standard runner). If the URL never goes live the job fails loudly —
+#      the 15:40 Telegram watcher also reports "SEM REGISTRO blog" on Mondays.
 #
 # Secrets required (repo → Settings → Secrets and variables → Actions):
 #   HERMES_BLOG_TOKEN  fine-grained PAT (Contents + Pull requests: RW) — opens
@@ -126,11 +128,18 @@ jobs:
             --label claude-ready
           echo "url=https://ozvor.com/blog/${SLUG}" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for the article to go live, then announce
+      # 10.C.7 (sweep 02/09): este passo PUBLICAVA LinkedIn+X via /publish-async
+      # SEM portão, sem crítico, sem válvula e fora de ops.agent_step — a única
+      # publicação sem gate da empresa. O announce agora é um GRAFO
+      # ('blog-announce', apps/api/src/lib/agent-graphs.ts): o worker detecta o
+      # artigo novo no sitemap público (runBlogAnnounceCheck, segunda >=13:00
+      # UTC), o founder aprova os DOIS textos no Telegram, e o publish sai pelo
+      # runner padrão (válvula de cadência, circuito, guard de travessão,
+      # limite do X, registro em ops.agent_step). Este passo só confirma que o
+      # artigo foi ao ar — ele NÃO publica mais nada.
+      - name: Wait for the article to go live (announce is gated via the blog-announce graph)
         env:
-          TASK_TOKEN: ${{ secrets.HERMES_TASK_TOKEN }}
           URL: ${{ steps.pr.outputs.url }}
-          SLUG: ${{ steps.ingest.outputs.slug }}
         run: |
           set -euo pipefail
           echo "Polling ${URL} for up to 20 min (auto-merge + deploy)..."
@@ -141,22 +150,12 @@ jobs:
             sleep 30
           done
           if [ "$LIVE" != "1" ]; then
-            echo "Article never returned 200. NOT announcing (no post to a 404). The 15:40 watcher will flag SEM REGISTRO blog."
+            echo "Article never returned 200. The 15:40 watcher will flag SEM REGISTRO blog."
             exit 1
           fi
-          TOKEN=$(printf '%s' "$TASK_TOKEN" | sed -E 's/^[[:space:]]*[Bb]earer[[:space:]]+//; s/^[[:space:]]+//; s/[[:space:]]+$//')
-          announce () {
-            local CH="$1"
-            local THEME="Ozvor just published a new blog article. Read it here: ${URL} . Write a short post for ${CH} that PRESENTS this article to the audience and INCLUDES the link ${URL} verbatim so readers can open it. Carry the article's core insight in one or two lines, then invite the reader to read the full piece at the link. Never use an em-dash."
-            local BODY
-            BODY=$(CH="$CH" T="$THEME" python3 -c 'import json,os;print(json.dumps({"channel":os.environ["CH"],"theme":os.environ["T"]}))')
-            curl -sS --max-time 30 -X POST https://hermes.ozvor.com/publish-async \
-              -H "Content-Type: application/json" -H "Authorization: Bearer ${TOKEN}" -d "$BODY"
-            echo ""
-          }
-          announce linkedin
-          announce x
-          echo "Announce dispatched for linkedin + x with the live URL."
+          echo "Artigo no ar. Announce delegado ao grafo blog-announce (gated):"
+          echo "o worker detecta o post novo no sitemap ainda hoje, o founder aprova no Telegram,"
+          echo "e LinkedIn+X saem pelo runner padrão. Nada é publicado por este workflow."
 
       # NADA DEGRADA CALADO: the blog failed silently on 04/08 (x4), 10/08 and
       # 17/08. Any failed step now writes a loud job summary and, when the

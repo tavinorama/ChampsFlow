@@ -169,6 +169,31 @@ export function looksLikeAutoReplyNoise(replyText: string): boolean {
   );
 }
 
+/**
+ * Adendo 03/09 (founder olhou as 8-9 respostas reais: todas OOO ou "STOP"):
+ * pedido de saída TEXTUAL é decidido por CÓDIGO, ANTES de qualquer LLM —
+ * gratuito, determinístico, e o pedido do lead é soberano. Cobre o "reply
+ * STOP" do CAN-SPAM (10.D.1) e as formas comuns de opt-out. O caminho de
+ * unsubscribe rebaixa contacted→lost via nextStageFor (contacted é estágio de
+ * MÁQUINA — o webhook promoveu errado; qualified/customer humanos seguem
+ * intocáveis por aquela regra).
+ */
+export function looksLikeTextualUnsubscribe(replyText: string): boolean {
+  const t = (replyText || "").trim();
+  const s = t.toLowerCase();
+  return (
+    /^stop\b/i.test(t) ||
+    /^unsubscribe\b/.test(s) ||
+    /\bstop (emailing|contacting|messaging|sending)\b/.test(s) ||
+    /\bunsubscribe\b/.test(s) ||
+    /\bremove me\b/.test(s) ||
+    /\btake me off\b/.test(s) ||
+    /\bdo not (email|contact) me\b/.test(s) ||
+    /\bdon'?t (email|contact) me\b/.test(s) ||
+    /\bopt me out\b/.test(s)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Payload extraction (beyond what dossier.ts already gives us).
 // ---------------------------------------------------------------------------
@@ -202,6 +227,24 @@ export function extractReplyRouting(payload: unknown): {
   }
   if (!messageId) messageId = pick(p, ["message_id", "reply_message_id"]);
   return { statsId, messageId };
+}
+
+/**
+ * BUG DE PRODUÇÃO 03/09 (700 enviados, 8 respostas reais, proposed=0): no
+ * payload REAL de EMAIL_REPLY o e-mail do lead vem em `sl_lead_email` — a
+ * chave `lead_email` NÃO existe, e `to_email` numa RESPOSTA é a NOSSA caixa
+ * remetente (o webhook gravava a caixa errada na coluna). Este extractor lê o
+ * lead VERDADEIRO do payload, na ordem sl_lead_email → lead_email → email;
+ * to_email fica de fora de propósito num reply. Null quando nada resolve —
+ * o chamador conta como `unparseable`, nunca engole.
+ */
+export function extractReplyLeadEmail(payload: unknown): string | null {
+  const p = parseSmartleadPayload(payload);
+  for (const key of ["sl_lead_email", "lead_email", "email"]) {
+    const v = p[key];
+    if (typeof v === "string" && v.includes("@")) return v.trim().toLowerCase();
+  }
+  return null;
 }
 
 /**
