@@ -59,8 +59,16 @@ export function registerSmartleadWebhookRoutes(app: Hono, db: PostgresClient): v
     const eventType = String(payload["event_type"] ?? payload["eventType"] ?? "UNKNOWN");
     const campaignRaw = payload["campaign_id"] ?? payload["campaignId"];
     const campaignId = Number.isFinite(Number(campaignRaw)) ? Number(campaignRaw) : null;
+    // BUG 03/09: o payload real de EMAIL_REPLY traz o lead em `sl_lead_email`
+    // (a chave `lead_email` não existe), e `to_email` numa RESPOSTA é a NOSSA
+    // caixa remetente — cair nela promovia a caixa errada no CRM. Preferência:
+    // sl_lead_email → lead_email → to_email (NUNCA num reply) → email.
     const emailRaw =
-      payload["lead_email"] ?? payload["to_email"] ?? payload["email"] ?? null;
+      payload["sl_lead_email"] ??
+      payload["lead_email"] ??
+      (eventType === "EMAIL_REPLY" ? null : payload["to_email"]) ??
+      payload["email"] ??
+      null;
     const leadEmail =
       typeof emailRaw === "string" && emailRaw.includes("@")
         ? emailRaw.trim().toLowerCase()

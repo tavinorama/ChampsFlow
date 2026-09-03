@@ -1840,8 +1840,18 @@ function TrackedCompetitors({ brandId }: { brandId: string }) {
     }
   }
   async function remove(id: string) {
-    setList((prev) => (prev ?? []).filter((c) => c.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Remove from the UI only AFTER the server confirms — an optimistic delete
+    // that swallows the error leaves the row "deleted" on screen but alive in
+    // the DB (2026-09-02 sweep, PENDING 10.A.8).
+    const prev = list;
+    setList((p) => (p ?? []).filter((c) => c.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setList(prev);
+      setErr("Couldn't remove that competitor. Try again.");
+    }
   }
 
   return (
@@ -2056,8 +2066,17 @@ function ManagePrompts({ brandId }: { brandId: string }) {
     finally { setBusy(false); }
   }
   async function remove(id: string) {
-    setCustom((prev) => prev.filter((p) => p.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): on failure the prompt comes back
+    // and the existing inline error shows — never a silent fake delete.
+    const prev = custom;
+    setCustom((p) => p.filter((x) => x.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setCustom(prev);
+      setErr("Couldn't remove that prompt. Try again.");
+    }
   }
 
   const total = (defaults?.length ?? 0) + custom.length;
@@ -2188,6 +2207,7 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
   const [connected, setConnected] = useState<string[] | null>(null);
   const [apiKeys, setApiKeys] = useState<OzvorApiKey[] | null>(null);
   const [minted, setMinted] = useState<string | null>(null); // plaintext shown once
+  const [keyErr, setKeyErr] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -2216,8 +2236,18 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
     } catch { /* ignore */ } finally { setBusy(false); }
   }
   async function revokeKey(id: string) {
-    setApiKeys((prev) => (prev ?? []).filter((k) => k.id !== id));
-    try { await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): a swallowed error here showed a
+    // key as "revoked" while it kept working — a security lie, not just UI.
+    const prev = apiKeys;
+    setApiKeys((p) => (p ?? []).filter((k) => k.id !== id));
+    try {
+      const r = await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setKeyErr(null);
+    } catch {
+      setApiKeys(prev);
+      setKeyErr("Couldn't revoke that key — it is still ACTIVE. Try again.");
+    }
   }
 
   return (
@@ -2256,6 +2286,7 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
           <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name (e.g. CI, my-script)" style={{ ...S.input, flex: 1, minWidth: 180 }} />
           <button onClick={() => void generateKey()} disabled={busy} style={{ ...S.btnPri, opacity: busy ? 0.6 : 1 }}>{busy ? "Generating…" : "Generate API key"}</button>
         </div>
+        {keyErr && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "var(--space-2)" }}>{keyErr}</div>}
         {apiKeys && apiKeys.filter((k) => !k.revoked_at).length > 0 && (
           <div style={{ marginTop: "var(--space-3)" }}>
             {apiKeys.filter((k) => !k.revoked_at).map((k) => (
@@ -2285,6 +2316,7 @@ const GOOGLE_KINDS: Array<{ kind: "gsc" | "ga4"; key: string; name: string; note
 function GoogleConnect({ brandId }: { brandId: string }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [conns, setConns] = useState<GoogleConn[] | null>(null);
+  const [connErr, setConnErr] = useState<string | null>(null);
   const [busyKind, setBusyKind] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -2315,8 +2347,18 @@ function GoogleConnect({ brandId }: { brandId: string }) {
     setBusyKind(null); // only reached if we didn't redirect
   }
   async function disconnect(id: string) {
-    setConns((prev) => (prev ?? []).filter((x) => x.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): only drop the row after a 2xx; on
+    // failure restore it and say so instead of pretending it disconnected.
+    const prev = conns;
+    setConns((p) => (p ?? []).filter((x) => x.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setConnErr(null);
+    } catch {
+      setConns(prev);
+      setConnErr("Couldn't disconnect. It is still connected — try again.");
+    }
     void reload();
   }
 
@@ -2344,6 +2386,9 @@ function GoogleConnect({ brandId }: { brandId: string }) {
           </div>
         );
       })}
+      {connErr && (
+        <div style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: "var(--space-2) var(--space-2) 0" }}>{connErr}</div>
+      )}
       {configured === false && (
         <p style={{ ...S.note, margin: "var(--space-3) var(--space-2) 0" }}>Google connections aren’t configured on this environment yet.</p>
       )}

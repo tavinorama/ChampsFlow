@@ -38,6 +38,10 @@ export const ROUTE_LAST_MODIFIED: Record<string, string> = {
   "/how-we-measure": "2026-06-27",
   "/faq": "2026-06-27",
   "/local-pages": "2026-07-10",
+  // Rotas que o #572 acrescentou ao sitemap; datas = último commit real que
+  // tocou cada página (git log), não a data do merge.
+  "/agencies": "2026-09-02",
+  "/learn": "2026-08-22",
   "/support": "2026-06-27",
   "/blog": "2026-08-17",
   "/privacy-policy": "2026-06-13",

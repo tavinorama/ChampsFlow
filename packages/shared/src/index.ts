@@ -173,6 +173,7 @@ export interface RateLimitHeaders {
 // (credits-on-pages, 2026-08-10)
 // ---------------------------------------------------------------------------
 export * from "./plan-limits";
+export * from "./pricing";
 export * from "./credits";
 export * from "./prime-nudges";
 

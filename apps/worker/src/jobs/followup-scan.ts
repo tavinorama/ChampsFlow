@@ -38,7 +38,6 @@ import { logger } from "../../../../packages/shared/src/logger";
 import {
   DRAFT_MAX_CHARS,
   FOLLOWUP_APPROVAL_TIMEOUT_HOURS,
-  FOLLOWUP_BATCH_CAP,
   FOLLOWUP_GRAPH,
   FOLLOWUP_LOOKBACK_DAYS,
   buildDraftPrompt,
@@ -46,10 +45,14 @@ import {
   draftToHtml,
   extractReplyRouting,
   extractTrilha,
+  extractReplyLeadEmail,
+  followupDailyCap,
   followupMarkerLine,
   hasFollowupMarker,
   hasOpenFollowupProposal,
   looksLikeAutoReplyNoise,
+  looksLikeTextualUnsubscribe,
+  maskedReplyPreview,
   parseIntent,
   validateFollowupDraft,
   type FollowupIntent,
@@ -57,7 +60,19 @@ import {
 import { extractReplyText } from "../../../api/src/lib/dossier";
 import { maskEmail } from "../../../api/src/lib/recycle";
 import { nextStageFor, type Stage } from "../../../api/src/lib/smartlead-stage";
-import { callWithFallback, errorHead, parseEngineChain } from "../lib/hermes-fallback";
+import { callWithFallback, errorHead } from "../lib/hermes-fallback";
+
+/**
+ * GEO-D7 / 10.D.4 (decisão do founder, 02/09): o follow-up processa o texto de
+ * RESPOSTA DO PROSPECT — PII de terceiro. A cadeia de engines deste job é
+ * claude→codex, FIXA em código e SEM kimi: não há DPA com a Moonshot para
+ * dados pessoais de terceiros, então nenhum byte de reply pode passar por lá.
+ * A env HERMES_ENGINES (que inclui kimi para os grafos de conteúdo) NÃO se
+ * aplica aqui de propósito — este é o único job cuja cadeia é menor por lei,
+ * não por resiliência. Ambos caídos = o scan reporta engines-down e a cadência
+ * de 30 min re-tenta; nunca degradamos privacidade para ganhar uptime.
+ */
+export const FOLLOWUP_ENGINE_CHAIN: readonly string[] = ["claude", "codex"];
 
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
 const HERMES_TIMEOUT_MS = 240_000;
@@ -121,9 +136,9 @@ function defaultTelegram(): FollowupPorts["telegram"] {
 }
 
 function defaultHermes(token: string): FollowupPorts["hermes"] {
-  const engines = parseEngineChain(process.env["HERMES_ENGINES"]);
+  // GEO-D7: cadeia FIXA claude→codex — ver FOLLOWUP_ENGINE_CHAIN acima.
   return async (prompt) => {
-    const res = await callWithFallback(engines, async (engine) => {
+    const res = await callWithFallback([...FOLLOWUP_ENGINE_CHAIN], async (engine) => {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), HERMES_TIMEOUT_MS);
       try {
@@ -220,7 +235,9 @@ interface ParkedRow {
 
 interface ReplyRow {
   id: string;
-  lead_email: string;
+  /** Coluna gravada pelo webhook — pode estar NULA ou ERRADA (bug 03/09:
+   *  payload real usa sl_lead_email; to_email num reply é a NOSSA caixa). */
+  lead_email: string | null;
   campaign_id: number | string | null;
   payload: unknown;
   received_at: string;
@@ -249,6 +266,13 @@ export interface FollowupScanResult {
   discarded: number;
   unsubscribed: number;
   skipped: number;
+  /**
+   * BUG 03/09 — o balde que NÃO PODE existir em silêncio: linhas de reply que
+   * não resolvem lead nem por coluna nem por payload (ou que caíram por erro).
+   * INVARIANTE (testada): scanned === proposed + discarded + unsubscribed +
+   * skipped + unparseable. unparseable>0 grita no Telegram 1×/dia.
+   */
+  unparseable: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +344,7 @@ export async function runFollowupScan(
     discarded: 0,
     unsubscribed: 0,
     skipped: 0,
+    unparseable: 0,
   };
 
   await resolveParkedGates(sql, ports, result);
@@ -479,6 +504,11 @@ async function proposeNewFollowups(
   ports: FollowupPorts,
   result: FollowupScanResult
 ): Promise<void> {
+  // BUG 03/09: a coluna lead_email pode estar NULA (payload real não traz
+  // `lead_email`) ou ERRADA (to_email = a nossa caixa). A query NÃO filtra
+  // mais por lead_email — o lead verdadeiro é resolvido POR LINHA a partir do
+  // payload (sl_lead_email primeiro), e linha irresolvível vira `unparseable`,
+  // nunca um fall-through mudo.
   const rows = (await sql`
     /* fu:replies */
     SELECT e.id, e.lead_email, e.campaign_id, e.payload, e.received_at::text AS received_at,
@@ -486,7 +516,6 @@ async function proposeNewFollowups(
       FROM smartlead_event e
       LEFT JOIN crm_contact c ON c.email = e.lead_email
      WHERE e.event_type = 'EMAIL_REPLY'
-       AND e.lead_email IS NOT NULL
        AND e.received_at > NOW() - make_interval(days => ${FOLLOWUP_LOOKBACK_DAYS})
      ORDER BY e.received_at ASC
      LIMIT 60
@@ -494,16 +523,59 @@ async function proposeNewFollowups(
   result.scanned = rows.length;
 
   const seenEmails = new Set<string>();
-  const candidates: ReplyRow[] = [];
+  const candidates: Array<ReplyRow & { lead_email: string }> = [];
   for (const r of rows) {
-    if (hasFollowupMarker(r.note, r.id)) continue; // idempotency: already handled
-    if (seenEmails.has(r.lead_email)) continue; // one in flight per contact
-    if (hasOpenFollowupProposal(r.note)) {
+    // Resolve o lead VERDADEIRO: payload (sl_lead_email → lead_email → email)
+    // vence a coluna; a coluna é o fallback para eventos antigos.
+    const resolved = extractReplyLeadEmail(r.payload) ?? r.lead_email;
+    if (!resolved) {
+      result.unparseable += 1;
+      logger.error("followup_reply_unparseable", { eventId: r.id, reason: "sem lead_email na coluna nem no payload" });
+      continue;
+    }
+    let stage = r.stage;
+    let note = r.note;
+    if (resolved !== r.lead_email) {
+      // A coluna apontava outra caixa (ou nada): o note/stage do JOIN são do
+      // contato errado — re-ler o contato CERTO antes de decidir.
+      try {
+        const c = (await sql`
+          /* fu:contact-read */
+          SELECT stage, note FROM crm_contact WHERE email = ${resolved}
+        `) as unknown as Array<{ stage: string | null; note: string | null }>;
+        stage = c[0]?.stage ?? null;
+        note = c[0]?.note ?? null;
+      } catch (err) {
+        result.unparseable += 1;
+        logger.error("followup_contact_read_failed", { eventId: r.id, message: (err as Error).message?.slice(0, 160) });
+        continue;
+      }
+    }
+    const row = { ...r, lead_email: resolved, stage, note };
+    // INVARIANTE: cada linha filtrada CONTA (antes, marker/dup saíam mudos).
+    if (hasFollowupMarker(row.note, row.id)) {
+      result.skipped += 1; // idempotency: already handled
+      continue;
+    }
+    if (seenEmails.has(row.lead_email)) {
+      result.skipped += 1; // one in flight per contact
+      continue;
+    }
+    if (hasOpenFollowupProposal(row.note)) {
       result.skipped += 1;
       continue;
     }
-    seenEmails.add(r.lead_email);
-    candidates.push(r);
+    seenEmails.add(row.lead_email);
+    candidates.push(row);
+  }
+  // unparseable>0 NUNCA fica só no log — 1 grito/dia no Telegram.
+  if (result.unparseable > 0) {
+    const day = ports.now().toISOString().slice(0, 10);
+    if (await ports.onceKey(`followup:unparseable:${day}`)) {
+      await ports.telegram(
+        `🔴 FOLLOW-UP: ${result.unparseable} resposta(s) de lead IRRESOLVÍVEL(EIS) no scan (sem e-mail na coluna nem no payload). Nada degrada calado: ver smartlead_event e o log followup_reply_unparseable.`
+      );
+    }
   }
   if (candidates.length === 0) return;
 
@@ -520,28 +592,86 @@ async function proposeNewFollowups(
     return;
   }
 
-  let budget = FOLLOWUP_BATCH_CAP;
-  for (const row of candidates) {
+  // 10.C.13 — o cap é POR DIA (UTC), não por scan: o orçamento de hoje é o
+  // cap diário menos o que os scans anteriores já propuseram hoje.
+  const cap = followupDailyCap();
+  const today = (await sql`
+    /* fu:today-count */
+    SELECT COUNT(*)::text AS n
+      FROM ops.agent_run
+     WHERE graph = ${FOLLOWUP_GRAPH}
+       AND started_at >= date_trunc('day', NOW() AT TIME ZONE 'utc')
+  `) as unknown as Array<{ n: string }>;
+  const proposedToday = Number(today[0]?.n ?? 0);
+  let budget = Math.max(0, cap - proposedToday);
+  if (budget === 0 && candidates.length > 0) {
+    logger.warn("followup_daily_cap_reached", { cap, proposedToday, waiting: candidates.length });
+  }
+
+  // 10.C.6 — [__recent__] das últimas respostas propostas/enviadas, lido do
+  // registro por código (runs recentes → artefato Redis do draft).
+  let recentBlock: string | null = null;
+  try {
+    const recentRuns = (await sql`
+      /* fu:recent-drafts */
+      SELECT id, started_at::text AS started_at
+        FROM ops.agent_run
+       WHERE graph = ${FOLLOWUP_GRAPH}
+       ORDER BY started_at DESC
+       LIMIT 5
+    `) as unknown as Array<{ id: string; started_at: string }>;
+    const pieces: string[] = [];
+    for (const r of recentRuns) {
+      const text = await ports.artifacts.get(`graphrun:${r.id}:draft`);
+      if (text) pieces.push(`--- ${r.started_at.slice(0, 10)} ---\n${text.slice(0, 400)}`);
+    }
+    if (pieces.length > 0) {
+      recentBlock = ["ULTIMAS RESPOSTAS DE FOLLOW-UP REAIS (nao repita abertura nem estrutura):", ...pieces].join("\n");
+    }
+  } catch (err) {
+    logger.warn("followup_recent_read_failed", { message: (err as Error).message?.slice(0, 160) });
+  }
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const row = candidates[i]!;
     if (budget <= 0) {
       result.skipped += 1;
       continue;
     }
-    const handled = await handleReply(sql, ports, row, result);
+    let handled: "proposed" | "discarded" | "unsubscribed" | "engines-down";
+    try {
+      handled = await handleReply(sql, ports, row, result, recentBlock);
+    } catch (err) {
+      // INVARIANTE: erro por linha vira unparseable + log, nunca fall-through.
+      result.unparseable += 1;
+      logger.error("followup_reply_error", { eventId: row.id, message: (err as Error).message?.slice(0, 200) });
+      continue;
+    }
     if (handled === "proposed") budget -= 1;
     if (handled === "engines-down") {
       // All engines failed: stop the whole phase (the alarm already fired
-      // via logs); the 30-min cadence retries naturally.
-      result.skipped += 1;
+      // via logs); the 30-min cadence retries naturally. Esta linha E as
+      // restantes contam como skipped — a invariante fecha.
+      result.skipped += candidates.length - i;
       break;
     }
+  }
+
+  // INVARIANTE (bug 03/09: 9 scanned, todos os baldes em zero, silêncio):
+  // todo item scanned cai em EXATAMENTE um contador. Diferença = erro alto.
+  const bucketed = result.proposed + result.discarded + result.unsubscribed + result.skipped + result.unparseable;
+  if (bucketed !== result.scanned) {
+    logger.error("followup_scan_invariant_broken", { scanned: result.scanned, bucketed });
+    result.unparseable += Math.max(0, result.scanned - bucketed);
   }
 }
 
 async function handleReply(
   sql: postgres.Sql,
   ports: FollowupPorts,
-  row: ReplyRow,
-  result: FollowupScanResult
+  row: ReplyRow & { lead_email: string },
+  result: FollowupScanResult,
+  recentBlock: string | null = null
 ): Promise<"proposed" | "discarded" | "unsubscribed" | "engines-down"> {
   const now = ports.now();
   const replyText = extractReplyText(row.payload);
@@ -559,6 +689,23 @@ async function handleReply(
   // A 'lost' contact said no already — a human no is final, whatever they sent.
   if (stage === "lost") return discard("lead-lost");
   if (!replyText) return discard("sem-texto");
+  // Adendo 03/09 — "STOP"/unsubscribe TEXTUAL decide por CÓDIGO, antes do
+  // ruído e de QUALQUER LLM: o pedido de saída do lead é soberano e não
+  // precisa de modelo para ser entendido. Rebaixa contacted→lost (estágio de
+  // máquina — o webhook promoveu errado no reply) e marca handled: o lead
+  // nunca mais é proposto pelo follow-up nem reciclado como 'lost'.
+  if (looksLikeTextualUnsubscribe(replyText)) {
+    const nextStage = nextStageFor(stage, "LEAD_UNSUBSCRIBED");
+    await writeMarker(
+      sql,
+      row.lead_email,
+      followupMarkerLine("descartado", row.id, now, "motivo=unsubscribe-textual"),
+      nextStage
+    );
+    logger.info("followup_unsubscribe_textual", { eventId: row.id, stageWritten: nextStage });
+    result.unsubscribed += 1;
+    return "unsubscribed";
+  }
   if (looksLikeAutoReplyNoise(replyText)) return discard("noise");
 
   // Intent — the model classifies, code decides.
@@ -591,8 +738,8 @@ async function handleReply(
   for (let attempt = 0; attempt < 2 && !validation.ok; attempt += 1) {
     const prompt =
       attempt === 0
-        ? buildDraftPrompt({ replyText, intent, trilha })
-        : `${buildDraftPrompt({ replyText, intent, trilha })}\n\nYour previous draft broke these rules — fix ALL of them:\n${validation.errors.map((e) => `- ${e}`).join("\n")}\nPrevious draft:\n${draft}`;
+        ? buildDraftPrompt({ replyText, intent, trilha, recent: recentBlock })
+        : `${buildDraftPrompt({ replyText, intent, trilha, recent: recentBlock })}\n\nYour previous draft broke these rules — fix ALL of them:\n${validation.errors.map((e) => `- ${e}`).join("\n")}\nPrevious draft:\n${draft}`;
     const res = await ports.hermes(prompt);
     if (!res.ok) {
       logger.error("followup_draft_engines_down", { eventId: row.id, error: errorHead(res.output, 160) });
@@ -610,12 +757,13 @@ async function handleReply(
       followupMarkerLine("descartado", row.id, now, "motivo=rascunho-invalido"),
       null
     );
+    // GEO-D7: NUNCA o texto integral do lead no Telegram — resumo mascarado.
     await ports.telegram(
       [
         `🟠 FOLLOW-UP SEM RASCUNHO VÁLIDO (${masked}, intent=${intent})`,
         `O validador de código reprovou 2 tentativas (${validation.errors.slice(0, 3).join("; ")}).`,
-        `Responda à mão no SmartLead. O lead escreveu:`,
-        `"${replyText.slice(0, 400)}"`,
+        `Responda à mão no SmartLead (o texto completo está lá, no thread do lead).`,
+        `Resumo mascarado: "${maskedReplyPreview(replyText)}"`,
       ].join("\n")
     );
     result.discarded += 1;
@@ -650,11 +798,14 @@ async function handleReply(
   await ports.artifacts.set(`graphrun:${runId}:meta`, JSON.stringify(meta));
   await writeMarker(sql, row.lead_email, followupMarkerLine("proposto", row.id, now, `intent=${intent}`), null);
 
+  // GEO-D7 (02/09): o portão NÃO carrega o texto da resposta do prospect —
+  // só o resumo mascarado (intent + 80 chars, e-mails/telefones redigidos).
+  // O texto completo vive no dossiê (smartlead_event/crm), dentro do banco.
   await ports.telegram(
     [
       `🟡 APROVAÇÃO NECESSÁRIA — follow-up de resposta (${masked}, trilha=${trilha ?? "?"}, intent=${intent})`,
-      `O lead respondeu ao cold e-mail:`,
-      `"${replyText.slice(0, 400)}"`,
+      `Resumo mascarado da resposta (texto completo só no SmartLead/dossiê):`,
+      `"${maskedReplyPreview(replyText)}"`,
       ``,
       `Resposta proposta (aprovar = ENVIAR exatamente este texto no thread via SmartLead):`,
       `---`,
@@ -670,5 +821,36 @@ async function handleReply(
   );
   logger.info("followup_proposed", { eventId: row.id, runId, intent, trilha });
   result.proposed += 1;
+
+  // 10.C.15 — o loop de vendas ganha VEREDITO: a taxa de resposta da campanha
+  // vira uma linha em ops.agent_outcome (lida pelo CDO/consolidação/tuner via
+  // os snapshots de outcomes). Agregação 100% SQL sobre smartlead_event; no
+  // máximo 1 linha por campanha por dia (NX). Sem EMAIL_SENT registrado =
+  // sem taxa inventada: grava a CONTAGEM de replies, dita como contagem.
+  if (meta.campaignId !== null) {
+    try {
+      const day = now.toISOString().slice(0, 10);
+      if (await ports.onceKey(`fu:outcome:${meta.campaignId}:${day}`)) {
+        const counts = (await sql`
+          /* fu:outcome-counts */
+          SELECT COUNT(*) FILTER (WHERE event_type = 'EMAIL_REPLY')::text AS replies,
+                 COUNT(*) FILTER (WHERE event_type = 'EMAIL_SENT')::text AS sent
+            FROM smartlead_event
+           WHERE campaign_id = ${meta.campaignId}
+        `) as unknown as Array<{ replies: string; sent: string }>;
+        const replies = Number(counts[0]?.replies ?? 0);
+        const sent = Number(counts[0]?.sent ?? 0);
+        const metric = sent > 0 ? `sales_reply_rate_c${meta.campaignId}` : `sales_replies_c${meta.campaignId}`;
+        const value = sent > 0 ? Math.round((replies / sent) * 10_000) / 100 : replies;
+        await sql`
+          /* fu:outcome-write */
+          INSERT INTO ops.agent_outcome (step_id, metric, value_before, value_after)
+          VALUES (${stepId}::uuid, ${metric}, ${null}, ${value})`;
+        logger.info("followup_outcome_recorded", { campaignId: meta.campaignId, metric, value, replies, sent });
+      }
+    } catch (err) {
+      logger.warn("followup_outcome_failed", { message: (err as Error).message?.slice(0, 160) });
+    }
+  }
   return "proposed";
 }

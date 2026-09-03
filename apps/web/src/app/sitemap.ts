@@ -56,12 +56,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const routes: Array<[string, MetadataRoute.Sitemap[number]["changeFrequency"], number]> = [
     ["/", "weekly", 1.0],
     ["/how-it-works", "monthly", 0.9],
+    ["/how-we-measure", "monthly", 0.8],
     ["/pricing", "monthly", 0.95],
     ["/test", "weekly", 0.9],
     ["/kit", "monthly", 0.8],
     ["/ai-audit", "monthly", 0.8],
     ["/organicposts", "monthly", 0.8],
+    ["/agencies", "monthly", 0.8],
+    ["/local-pages", "monthly", 0.8],
+    ["/learn", "monthly", 0.6],
     ["/results", "monthly", 0.4],
+
+    // Support / policy pages outside (marketing) that are public and linked
+    // from the footer — omitted until the 2026-09-02 sweep (PENDING 10.A.11).
+    ["/support", "monthly", 0.4],
+    ["/refund", "yearly", 0.4],
 
     // GEO Search Runner — interactive game + lead magnet (top-of-funnel hook)
     ["/play", "monthly", 0.6],
@@ -102,8 +111,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/terms-of-service", "yearly", 0.3],
     ["/legal/dpa", "yearly", 0.3],
     ["/legal/california-privacy", "yearly", 0.3],
-    ["/legal/do-not-sell", "yearly", 0.3],
-    ["/legal/dsr-request", "yearly", 0.3],
+    // /legal/do-not-sell and /legal/dsr-request are noindex (privacy request
+    // forms — PENDING 10.A.11) and therefore intentionally NOT in the sitemap.
+    ["/legal/cookies", "yearly", 0.3],
+    ["/legal/sub-processors", "yearly", 0.3],
   ];
 
   // P1-04: lastModified is the date the CONTENT last changed, not the moment

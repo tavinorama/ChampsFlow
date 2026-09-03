@@ -18,7 +18,10 @@
  *
  * Mock mode (CRITICAL): if PERPLEXITY_API_KEY is absent, returns a deterministic
  * mock response seeded by a hash of the query text.
- * Live HTTP path: clearly-marked TODO stub that throws "live mode not yet wired".
+ * Live path: when PERPLEXITY_API_KEY is set, calls the real
+ * api.perplexity.ai/chat/completions — fully wired and the production path.
+ * Mock is dev/test only and blocked in production by assertLiveOrThrow
+ * (integrity guard).
  *
  * Key env vars:
  *  - PERPLEXITY_API_KEY — Perplexity API key (absent = mock)

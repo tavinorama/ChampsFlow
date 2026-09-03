@@ -225,7 +225,6 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         tenants: {
           total: parseInt(tenantsTotal.rows[0]?.count ?? "0", 10),
           byTier: {
-            starter: byTier["starter"] ?? 0,
             growth: byTier["growth"] ?? 0,
             agency: byTier["agency"] ?? 0,
           },
@@ -830,6 +829,38 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
   // the founder can download a batch as CSV and load it into a NEW SmartLead
   // campaign by hand. The machine never sends.
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // GET /api/admin/ccpa-requests — CCPA/CPRA privacy requests, newest first.
+  //
+  // ccpa_requests was WRITE-ONLY: submissions landed (routes/ccpa.ts) and no
+  // surface ever read them — a CCPA request fell into the void (2026-09-02
+  // sweep, PENDING 10.A.9). Same cross-tenant super-admin read pattern as the
+  // other admin lists; unauthenticated rows (tenant_id NULL) are exactly the
+  // ones only this surface can see.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/ccpa-requests", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const r = await db.query<{
+        id: string;
+        requester_email: string;
+        requester_name: string | null;
+        request_type: string;
+        status: string;
+        created_at: string;
+      }>(
+        `SELECT id, requester_email, requester_name, request_type, status, created_at
+           FROM ccpa_requests
+          ORDER BY created_at DESC
+          LIMIT 200`
+      );
+      logger.info("admin_ccpa_requests_fetched", { count: r.rows.length });
+      return c.json({ requests: r.rows });
+    } catch (err) {
+      logger.error("admin_ccpa_requests_error", { message: (err as Error).message });
+      return c.json({ error: "internal_error", code: "CCPA_REQUESTS_FAILED" }, 500);
+    }
+  });
+
   app.get("/api/admin/recycle-batches", requireAuth, requireSuperAdmin, async (c) => {
     try {
       const r = await db.query<{ email: string; note: string | null }>(
@@ -991,10 +1022,10 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       for (const row of subRes.rows) {
         subMap[row.plan_tier] = parseInt(row.count, 10);
       }
+      // Phantom `starter` tier removed (PENDING 10.A.7).
       const growthSubs      = subMap["growth"]  ?? 0;
       const agencySubs      = subMap["agency"]  ?? 0;
-      const starterSubs     = subMap["starter"] ?? 0;
-      const totalActiveSubs = growthSubs + agencySubs + starterSubs;
+      const totalActiveSubs = growthSubs + agencySubs;
       // RECEIVED-value MRR: what Stripe actually bills active subs (annual
       // amortized + founder/coupon discounts), same source as the revenue
       // surface so the founder never sees two different MRR numbers. Degrades to
@@ -1090,7 +1121,6 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
           activeSubscriptions: {
             growth:  growthSubs,
             agency:  agencySubs,
-            starter: starterSubs,
             total:   totalActiveSubs,
           },
           mrr,
