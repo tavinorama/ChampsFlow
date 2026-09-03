@@ -79,6 +79,15 @@ export type PromptOwnerType = (typeof OWNER_TYPES)[number];
  */
 export const PROMPT_UNIVERSE_VERSION = "2.0";
 
+/**
+ * The pre-v2 default portfolio (prompt-portfolio.ts) is not "no universe" — it
+ * is a KNOWN set of ten questions. Labelling it 1.0 keeps brands that never
+ * migrated comparable with themselves, while the move to 2.0 registers
+ * honestly as "Prompt set changed". Calling it null instead would make every
+ * legacy brand permanently "unknown" and drown the real signal.
+ */
+export const LEGACY_PROMPT_SET_VERSION = "1.0";
+
 // ---------------------------------------------------------------------------
 // PromptDefinition
 // ---------------------------------------------------------------------------

@@ -202,6 +202,7 @@ export type {
 } from "./prompt-universe";
 export {
   PROMPT_UNIVERSE_VERSION,
+  LEGACY_PROMPT_SET_VERSION,
   PROMPT_COHORTS,
   PROMPT_INTENTS,
   FUNNEL_STAGES,
