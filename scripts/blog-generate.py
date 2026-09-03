@@ -124,7 +124,7 @@ CONTENT_LESSONS = "\n".join([
     "LICOES DA CASA (memoria institucional de conteudo — regua de VETO, nao sugestao):",
     "- Nunca repetir tema, gancho ou b-roll recente: se [memory] ja mostra, muda ou veta.",
     "- X: cada tweet tem <=280 caracteres e o pipe publica UM post por vez — thread vira tweet unico; o tweet 1 tem que se sustentar sozinho.",
-    "- Canal que exige midia (Instagram/TikTok/YouTube) NAO recebe texto puro: roteiro vai como report ao founder, nunca como publish.",
+    "- Canal que exige midia NAO recebe texto puro: TikTok/YouTube (so video) vao como report ao founder; Instagram publica card brandado + legenda — o publish leva a imagem por construcao (1.6), e se o card nao renderiza, nada sai.",
     "- LinkedIn: no maximo 2 posts/dia (valvula de cadencia) — excedente ADIA para o dia seguinte, nao empilha no feed.",
     "- Copy nivel 15-17 anos: frases <=12 palavras, CTA em 1a pessoa, sem travessao.",
     "- Sonho honesto: historia, personagem, gente real — e NUNCA inventar dado; numero so com fonte.",

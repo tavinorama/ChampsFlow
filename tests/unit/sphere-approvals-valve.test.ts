@@ -62,8 +62,9 @@ describe("what the valve counts", () => {
     for (const slug of ["sphere-blog", "sphere-ppc", "daily-watchdog", "daily-dream", "weekly-product", "weekly-discovery", "ghost"]) {
       expect(isGatedMarketingGraph(slug), slug).toBe(false);
     }
-    // As três células de vídeo curto NÃO têm portão desde o B5 — o teto de 6
-    // deixou de ser apertado (4 gated hoje: x, linkedin, video, experiment).
+    // TikTok/YouTube NÃO têm portão desde o B5. 1.6: sphere-instagram só ganha
+    // portão (e passa a contar na válvula) com IG_IMAGE_PUBLISH=1 — sem a env
+    // (este processo de teste) continua report-only e fora da válvula.
     for (const slug of ["sphere-instagram", "sphere-tiktok", "sphere-youtube"]) {
       expect(gatedMarketingSlugs(), slug).not.toContain(slug);
     }

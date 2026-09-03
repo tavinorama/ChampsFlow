@@ -50,7 +50,7 @@ export const CONTENT_LESSONS = [
   "LICOES DA CASA (memoria institucional de conteudo — regua de VETO, nao sugestao):",
   "- Nunca repetir tema, gancho ou b-roll recente: se [memory] ja mostra, muda ou veta.",
   "- X: cada tweet tem <=280 caracteres e o pipe publica UM post por vez — thread vira tweet unico; o tweet 1 tem que se sustentar sozinho.",
-  "- Canal que exige midia (Instagram/TikTok/YouTube) NAO recebe texto puro: roteiro vai como report ao founder, nunca como publish.",
+  "- Canal que exige midia NAO recebe texto puro: TikTok/YouTube (so video) vao como report ao founder; Instagram publica card brandado + legenda — o publish leva a imagem por construcao (1.6), e se o card nao renderiza, nada sai.",
   "- LinkedIn: no maximo 2 posts/dia (valvula de cadencia) — excedente ADIA para o dia seguinte, nao empilha no feed.",
   "- Copy nivel 15-17 anos: frases <=12 palavras, CTA em 1a pessoa, sem travessao.",
   "- Sonho honesto: historia, personagem, gente real — e NUNCA inventar dado; numero so com fonte.",
@@ -343,6 +343,89 @@ function shortVideoFamily(
         "1) o roteiro final com [HOOK]/[BEAT 1..n]/[PATTERN INTERRUPT]/[CTA]/[STYLE];",
         `2) ${RENDER_BRIEF_FORMAT};`,
         `3) os blocos do canal: ${spec.finalizeExtras}.`,
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+  };
+}
+
+/**
+ * The Instagram CARD family (1.6, 01/09). The post is a branded card (PNG,
+ * rendered by code from the [CARD HOOK]) + a caption. The card's whole job
+ * is the hook: <=9 words, readable on a phone screen at a glance. The
+ * caption does the rest (scene, proof, first-person CTA, niche hashtags).
+ * Output contract of the finalize is CODE-CHECKED by the runner
+ * (parseCardPost): [CARD HOOK] / [CAPTION] / [HASHTAGS] — a malformed
+ * finalize never reaches the founder.
+ */
+const CARD_HOOK_RULE =
+  "[CARD HOOK] = a frase que vai IMPRESSA no card: no maximo 9 palavras (<=90 caracteres), sem hashtag, sem emoji, sem aspas, sem link, uma verdade que para o dedo. Legivel num celular de relance.";
+const CARD_CAPTION_RULE =
+  "Legenda: 1a linha forte (aparece antes do 'mais'), 3-6 linhas curtas (cena real, prova, o que fazer), CTA em 1a pessoa. Hashtags: 3-5 de NICHO (nada de #marketing #ai genericas), minusculas, no fim. Nada de link no texto (link na bio).";
+const CARD_OUTPUT_CONTRACT =
+  "Formato de saida, EXATAMENTE estas 3 secoes e nada mais:\n[CARD HOOK] <a frase do card, uma linha>\n[CAPTION]\n<a legenda, varias linhas>\n[HASHTAGS] <3-5 hashtags separadas por espaco>";
+
+function instagramCardFamily(): Record<string, (ctx: PromptContext) => string> {
+  return {
+    "instagram-signal": (ctx) =>
+      [
+        "Voce e o agente de sinais da esfera INSTAGRAM da Ozvor (visibilidade em IA / GEO).",
+        "Liste 4 angulos QUENTES para um post de IMAGEM (card com uma frase) hoje onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
+        "O feed premia frase salvavel e compartilhavel por DM: prefira angulos que cabem numa verdade de <=9 palavras.",
+        "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+        "Para cada um: 1 linha do angulo + 1 linha do HOOK de card que ele rende (a frase exata, <=9 palavras).",
+        "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
+        "Sem inventar dado: numero so com certeza.",
+        "Formato de saida: lista numerada 1-4, nada antes nem depois.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    "instagram-briefing": (ctx) =>
+      [
+        "Voce e o editor da esfera Instagram da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes neste canal — leia primeiro.",
+        "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
+        "REGRA: o briefing de hoje tem que ser MENSURAVELMENTE diferente do que ja publicamos em [memory] — outro gancho, outra tese ou outro formato. Repetir o que ja rodou nao e opcao.",
+        "Dos sinais em [signal], escolha O MELHOR angulo para UM post de card no Instagram hoje e produza: TESE (1 frase) · HOOK (a frase exata do card, <=9 palavras) · PUBLICO (quem para de rolar) · PROVA (fato/numero real ou cena real) · CTA (1a pessoa, natural) · DIFERENTE-DE (1 linha vs [memory]).",
+        "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
+        ENGLISH_FIRST,
+        "Formato de saida: 6 linhas rotuladas TESE/HOOK/PUBLICO/PROVA/CTA/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    "instagram-draft": (ctx) =>
+      [
+        `Voce e um redator de Instagram que fala como gente. A partir do briefing abaixo, escreva UM post de CARD no estilo "${String(ctx.config["style"] ?? "one-liner")}":`,
+        "one-liner = o hook E o post: uma verdade seca no card, legenda curta que amplia em 3 linhas + CTA. · story = o hook abre uma cena; a legenda conta a historia (1 personagem real, 1 virada, 1 licao) + CTA.",
+        CARD_HOOK_RULE,
+        CARD_CAPTION_RULE,
+        "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, honesto (nada que o produto nao cumpre). Zero cara de anuncio.",
+        ANTI_GENERIC_DRAFT_RULE,
+        ENGLISH_FIRST,
+        CARD_OUTPUT_CONTRACT,
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    "instagram-critic": (ctx) =>
+      [
+        "Voce e o critico da esfera Instagram da Ozvor. Abaixo: 2 posts de card (one-liner e story), o briefing e o historico real do canal em [memory].",
+        "LENTE CARD (com VETO): (a) o [CARD HOOK] para o dedo em 1 segundo? (b) cabe no card: <=9 palavras, sem hashtag/emoji/aspas/link — se passar disso, 'VETO: hook nao cabe no card'. (c) a 1a linha da legenda segura o 'mais'? (d) parece ANUNCIO ou frase motivacional generica de LinkedIn? Se sim: 'VETO: parece anuncio' / 'VETO: frase generica'.",
+        "LENTE COMPLIANCE (com VETO): promessa que nao cumprimos, claim sem base, dado inventado. LENTE FRESHNESS (com VETO): repete gancho/tema/formato de [memory]?",
+        LESSONS_VETO_RULE,
+        "Para cada post: nota 0-10 + 1 frase do maior problema + 1 correcao concreta + os vetos, se houver.",
+        "Termine com: VENCEDOR: <one-liner|story>.",
+        "Formato de saida: 2 blocos + a linha VENCEDOR.",
+        upstreamBlock(ctx.upstream),
+      ].join("\n"),
+
+    "instagram-finalize": (ctx) =>
+      [
+        "Voce e o editor-chefe da esfera Instagram. Abaixo: os 2 posts de card e a critica.",
+        "Pegue o VENCEDOR e reescreva UMA vez aplicando as correcoes. Vetos sao lei: risco sai, padrao repetido muda, hook que nao cabe encolhe, 'parece anuncio' vira conversa.",
+        "O que sai daqui vai DIRETO para a aprovacao do founder e, aprovado, vira o post: o [CARD HOOK] e impresso no card brandado por codigo (sem retoque), e [CAPTION] + [HASHTAGS] viram a legenda. Nao inclua a linha ANGULO-NOVO nem nenhum rotulo interno.",
+        CARD_HOOK_RULE,
+        CARD_CAPTION_RULE,
+        FINALIZE_COPY_RULE,
+        ENGLISH_FIRST,
+        CARD_OUTPUT_CONTRACT,
         upstreamBlock(ctx.upstream),
       ].join("\n"),
   };
@@ -1089,15 +1172,11 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   // Three families from one factory: same loop (signal → briefing → 2 drafts →
   // critic with virality → finalize with [RENDER BRIEF]), platform-native
   // grammar per channel. Every publishable step is English-first.
-  ...shortVideoFamily("instagram", {
-    name: "Instagram (Reels)",
-    signalHint:
-      "Reels premia relacao + estetica de celular: prefira angulos que rendam um rosto falando ou uma historia em legendas, salvaveis (a pessoa salva para ver depois) e compartilhaveis por DM.",
-    grammar:
-      "Gramatica do IG: o video e o post — a legenda complementa, nao repete. Legenda: 1a linha forte (aparece antes do 'mais'), 2-4 linhas curtas, CTA em 1a pessoa. Hashtags: 3-5 de NICHO (nada de #marketing #ai genericas), no fim da legenda. Nada de link no texto (link na bio).",
-    finalizeExtras:
-      "[CAPTION] a legenda pronta (1a linha forte + 2-4 linhas + CTA) · [HASHTAGS] 3-5 de nicho, minusculas",
-  }),
+  // 1.6 (01/09): Instagram is a CARD cell now — branded image with the hook
+  // + a caption — not a Reels script. Same keys as before (instagram-*) so the
+  // tuner allowlist and the [__recent__]/[__lessons__] injection (which key
+  // on these slugs) keep reaching it unchanged.
+  ...instagramCardFamily(),
   ...shortVideoFamily("tiktok", {
     name: "TikTok",
     signalHint:

@@ -1,0 +1,128 @@
+name: Prospect source Apify (founder-triggered, NEVER automatic)
+
+# Fonte Apify do prospect-batch (10.C.17/5.A.6, decisão 2 do founder 02/09).
+# REGRA DA CASA: toda rodada Apify custa dinheiro → NÃO EXISTE cron aqui e
+# nunca deve existir. Duas portas apenas: este workflow_dispatch e o endpoint
+# POST /api/v1/operator/prospect-apify (que este workflow chama).
+#
+# Fluxo: 1) SEMPRE imprime a estimativa de custo (places × preço/1k) e o
+# estado do orçamento mensal consultando o endpoint SEM confirm (nada roda);
+# 2) só quando o input confirm=yes E dry_run=false, chama de novo COM confirm
+# — o servidor re-aplica o portão de orçamento (409 = vermelho, nada roda).
+# O SmartLead lead-finder (2k créditos/mês) vem PRIMEIRO no mês; Apify cobre
+# só o delta (docs/departments/sales/sop-fonte-apify.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      trilha:
+        description: "Trilha do lote"
+        required: true
+        type: choice
+        options: [geo, aistack]
+        default: geo
+      queries:
+        description: "Buscas do actor, separadas por ; (ex.: roofing contractor Fort Worth TX; hvac company Plano TX)"
+        required: true
+      max_places:
+        description: "Places por busca (maxCrawledPlacesPerSearch)"
+        required: false
+        default: "50"
+      actor_id:
+        description: "Actor (opcional; default = env APIFY_MAPS_ACTOR do worker, ex.: compass/crawler-google-places)"
+        required: false
+        default: ""
+      dry_run:
+        description: "true = só estimativa, garantido sem gasto"
+        required: false
+        default: "true"
+      confirm:
+        description: "Digite yes para AUTORIZAR o gasto (qualquer outra coisa = só estimativa)"
+        required: false
+        default: "no"
+
+permissions:
+  contents: read
+
+jobs:
+  estimate-then-maybe-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Estimate cost (no spend) and, only with confirm=yes, dispatch
+        env:
+          OPERATOR_KEY: ${{ secrets.OZVOR_OPERATOR_KEY }}
+          API_URL: ${{ vars.OZVOR_API_URL || 'https://api-production-2052.up.railway.app' }}
+          TRILHA: ${{ github.event.inputs.trilha }}
+          QUERIES: ${{ github.event.inputs.queries }}
+          MAX_PLACES: ${{ github.event.inputs.max_places }}
+          ACTOR_ID: ${{ github.event.inputs.actor_id }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test -n "${OPERATOR_KEY:-}" || { echo "::error::secret OZVOR_OPERATOR_KEY ausente (chave ozk_ com escopos operator+business)"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, sys, urllib.request, urllib.error
+
+          api = os.environ["API_URL"].rstrip("/") + "/api/v1/operator/prospect-apify"
+          key = os.environ["OPERATOR_KEY"]
+          queries = [q.strip() for q in os.environ["QUERIES"].split(";") if q.strip()]
+          spec = {
+              "track": os.environ["TRILHA"],
+              "queries": queries,
+              "maxPlaces": int(os.environ.get("MAX_PLACES") or "50"),
+          }
+          actor = (os.environ.get("ACTOR_ID") or "").strip()
+          if actor:
+              spec["actorId"] = actor
+
+          def call(payload):
+              req = urllib.request.Request(
+                  api,
+                  data=json.dumps(payload).encode(),
+                  headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      return r.status, json.loads(r.read().decode() or "{}")
+              except urllib.error.HTTPError as e:
+                  try:
+                      return e.code, json.loads(e.read().decode() or "{}")
+                  except Exception:
+                      return e.code, {}
+
+          # 1) SEMPRE a estimativa primeiro — sem confirm o servidor não roda nada.
+          status, body = call(spec)
+          est = body.get("estimate", {})
+          print("## Fonte Apify — estimativa (nada foi gasto ainda)")
+          print("")
+          print(f"- Trilha: **{est.get('track', spec['track'])}**")
+          print(f"- Buscas ({len(queries)}): {', '.join(queries)}")
+          print(f"- Places (pior caso): **{est.get('places_worst_case', '?')}** × ${est.get('price_per_1k_usd', '?')}/1k")
+          print(f"- **Custo estimado: ${est.get('estimated_cost_usd', '?')}**")
+          print(f"- Gasto do mês: ${est.get('month_spent_usd', '?')} / teto ${est.get('monthly_budget_usd', '?')} (APIFY_MONTHLY_BUDGET_USD)")
+          print("")
+          if status != 200:
+              print(f"::error::estimativa falhou: HTTP {status} {json.dumps(body)[:300]}")
+              sys.exit(1)
+
+          confirm = (os.environ.get("CONFIRM") or "").strip().lower() == "yes"
+          dry = (os.environ.get("DRY_RUN") or "true").strip().lower() != "false"
+          if dry or not confirm:
+              motivo = "dry_run=true" if dry else "confirm != yes"
+              print(f"**NÃO RODOU** ({motivo}). Nenhuma chamada paga foi feita. Para rodar: dry_run=false + confirm=yes.")
+              sys.exit(0)
+
+          # 2) Confirmação explícita: o servidor re-checa o orçamento (409 = nada roda).
+          status, body = call({**spec, "confirm": True})
+          if status == 201 and body.get("ran"):
+              print(f"**AUTORIZADO E ENFILEIRADO** — run `{body.get('run_id')}`.")
+              print("")
+              print(body.get("message", ""))
+          elif status == 409:
+              print(f"::error::RECUSADO pelo servidor (orçamento/mailbox): {body.get('message', json.dumps(body)[:300])}")
+              sys.exit(1)
+          else:
+              print(f"::error::dispatch falhou: HTTP {status} {json.dumps(body)[:300]}")
+              sys.exit(1)
+          PYEOF

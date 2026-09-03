@@ -39,7 +39,10 @@ import {
   type TrackBatch,
   type VerifiedProspect,
   type DroppedCandidate,
+  type ApifyCandidate,
+  type ApifyRunSpec,
 } from "../../../api/src/lib/prospecting";
+import { runApifySource, type ApifySpecMailbox, type ApifyLedger, type ApifyFetchFn } from "./apify-source";
 
 export interface FetchTextResult {
   status: number;
@@ -132,6 +135,27 @@ export function prospectTrackCaps(env: NodeJS.ProcessEnv = process.env): Record<
   };
 }
 
+/**
+ * Build the CRM dedup sets from crm_contact e-mails (regra 5): a candidate
+ * matching by e-mail OR by the e-mail's domain is skipped and counted. Pure —
+ * the caller (graph-tick) supplies the rows.
+ */
+export function crmDedupSets(emails: Array<string | null | undefined>): { emails: Set<string>; domains: Set<string> } {
+  const emailSet = new Set<string>();
+  const domainSet = new Set<string>();
+  const FREEMAIL = /^(gmail|yahoo|hotmail|outlook|aol|icloud|proton|protonmail|live|msn|me|comcast|att|verizon)\./i;
+  for (const raw of emails) {
+    const email = (raw ?? "").trim().toLowerCase();
+    if (!email.includes("@")) continue;
+    emailSet.add(email);
+    const domain = email.split("@")[1]?.replace(/^www\./, "") ?? "";
+    // Freemail domains identify a PERSON, not a business site — never dedup
+    // every gmail.com prospect because one gmail contact exists.
+    if (domain && !FREEMAIL.test(domain)) domainSet.add(domain);
+  }
+  return { emails: emailSet, domains: domainSet };
+}
+
 /** The sourcing ask — candidates only; every claim is verified by code after. */
 export function candidateSourcingPrompt(icpText: string): string {
   return [
@@ -152,6 +176,20 @@ export interface ProspectProbeDeps {
   fetchText?: FetchTextFn;
   now?(): Date;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Source layer (10.C.17/5.A.6): when the mailbox holds a founder-confirmed
+   * Apify spec, THAT track's candidates come from the actor (paid, explicit)
+   * and the other track stays OFF for the run — a dispatched batch never
+   * silently adds an LLM batch on top. No mailbox/spec → engine source,
+   * exactly the historic behavior. All optional: existing callers unchanged.
+   */
+  apify?: { mailbox: ApifySpecMailbox; ledger: ApifyLedger; fetchJson?: ApifyFetchFn };
+  /**
+   * Dedup against the CRM/SmartLead base: candidates whose e-mail or site
+   * domain is already in crm_contact are dropped and COUNTED (never re-cold-
+   * emailed). Loaded by the caller (graph-tick) from crm_contact.
+   */
+  existingCrm?: { emails: Set<string>; domains: Set<string> };
 }
 
 /**
@@ -161,20 +199,25 @@ export interface ProspectProbeDeps {
  * `deadline` keeps the whole dual run inside one tick slot.
  */
 async function verifyCandidates(input: {
-  candidates: Array<{ name: string; website: string }>;
+  candidates: Array<{ name: string; website: string } & Partial<Pick<ApifyCandidate, "phone" | "category" | "rating" | "reviewsCount" | "email">>>;
   cap: number;
   fetchText: FetchTextFn;
   deadline: number;
   seenHosts: Set<string>;
+  source?: "engine" | "apify";
+  existingCrm?: { emails: Set<string>; domains: Set<string> };
+  /** Attempt ceiling — apify batches (paid data) get a higher one. */
+  maxAttempts?: number;
 }): Promise<{ verified: VerifiedProspect[]; dropped: DroppedCandidate[] }> {
-  const { candidates, cap, fetchText, deadline, seenHosts } = input;
+  const { candidates, cap, fetchText, deadline, seenHosts, source, existingCrm } = input;
+  const maxAttempts = input.maxAttempts ?? MAX_CANDIDATES_TO_VERIFY;
   const verified: VerifiedProspect[] = [];
   const dropped: DroppedCandidate[] = [];
   let attempted = 0;
 
   for (const candidate of candidates) {
     if (verified.length >= cap) break;
-    if (attempted >= MAX_CANDIDATES_TO_VERIFY) break;
+    if (attempted >= maxAttempts) break;
     if (Date.now() > deadline) {
       dropped.push({ name: candidate.name, website: candidate.website, reason: "tempo de verificacao esgotado (deadline do tick)" });
       continue;
@@ -187,6 +230,18 @@ async function verifyCandidates(input: {
     }
     if (seenHosts.has(host)) {
       dropped.push({ name: candidate.name, website: candidate.website, reason: "mesmo site ja verificado na outra trilha deste lote" });
+      continue;
+    }
+    // Dedup contra a base CRM/SmartLead (regra 5): quem ja esta em
+    // crm_contact (por e-mail ou dominio) e PULADO e contado — nunca
+    // recebe cold outbound de novo por um lote novo.
+    const bareDomain = host.replace(/^www\./, "");
+    if (existingCrm && (existingCrm.domains.has(bareDomain) || existingCrm.domains.has(host))) {
+      dropped.push({ name: candidate.name, website: candidate.website, reason: "ja esta no CRM (dominio) — dedup, pulado" });
+      continue;
+    }
+    if (existingCrm && candidate.email && existingCrm.emails.has(candidate.email.toLowerCase())) {
+      dropped.push({ name: candidate.name, website: candidate.website, reason: "ja esta no CRM (e-mail) — dedup, pulado" });
       continue;
     }
     attempted += 1;
@@ -225,13 +280,31 @@ async function verifyCandidates(input: {
       const contact = await fetchText(`${origin}/contact`);
       if (contact && contact.status === 200) emails = extractContactEmails(contact.text);
     }
+    // Fonte apify: o e-mail extraido do PROPRIO site continua ganhando; o
+    // e-mail que o actor trouxe entra como FALLBACK (dado raspado, nao
+    // palpite de LLM) — e passa pelo dedup de e-mail acima.
+    let email = emails[0] ?? null;
+    if (!email && source === "apify" && candidate.email) email = candidate.email.toLowerCase();
+    if (email && existingCrm?.emails.has(email)) {
+      dropped.push({ name: candidate.name, website: candidate.website, reason: "ja esta no CRM (e-mail extraido) — dedup, pulado" });
+      continue;
+    }
 
     seenHosts.add(host);
     verified.push({
       name: candidate.name,
       website: candidate.website,
-      email: emails[0] ?? null,
+      email,
       findings,
+      ...(source === "apify"
+        ? {
+            source: "apify" as const,
+            phone: candidate.phone ?? null,
+            rating: candidate.rating ?? null,
+            reviewsCount: candidate.reviewsCount ?? null,
+            category: candidate.category ?? null,
+          }
+        : {}),
     });
   }
   return { verified, dropped };
@@ -253,6 +326,68 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
   const deadline = Date.now() + VERIFY_DEADLINE_MS;
   const seenHosts = new Set<string>();
   const batches: TrackBatch[] = [];
+
+  // Source switch (10.C.17/5.A.6): a founder-confirmed Apify spec in the
+  // mailbox routes ITS track to the actor and turns the other track OFF for
+  // this run. The mailbox is consumed on read: one confirmed dispatch = at
+  // most one paid call, ever. No spec → engine source, historic behavior.
+  let apifySpec: ApifyRunSpec | null = null;
+  if (deps.apify) apifySpec = await deps.apify.mailbox.take();
+
+  if (apifySpec) {
+    const apify = deps.apify!;
+    for (const track of PROSPECT_TRACKS) {
+      const icp = prospectIcp(env, track);
+      const campaign = campaignSlug(now(), track);
+      if (track !== apifySpec.track) {
+        batches.push({
+          track,
+          campaign,
+          icpSource: icp.source,
+          listed: 0,
+          verified: [],
+          dropped: [{ name: "(trilha)", website: "-", reason: "lote com fonte apify dispachado para a outra trilha — esta trilha nao roda neste lote" }],
+        });
+        continue;
+      }
+      const run = await runApifySource(apifySpec, {
+        env,
+        ...(apify.fetchJson ? { fetchJson: apify.fetchJson } : {}),
+        ledger: apify.ledger,
+        ref: campaign,
+      });
+      if (!run.ok) {
+        batches.push({
+          track,
+          campaign,
+          icpSource: `fonte apify (spec confirmado pelo founder): ${apifySpec.queries.join("; ").slice(0, 160)}`,
+          listed: 0,
+          verified: [],
+          dropped: [{ name: "(fonte apify)", website: "-", reason: run.reason }],
+        });
+        continue;
+      }
+      const { verified, dropped } = await verifyCandidates({
+        candidates: run.candidates,
+        cap: prospectBatchCap(env),
+        fetchText,
+        deadline,
+        seenHosts,
+        source: "apify",
+        maxAttempts: 60,
+        ...(deps.existingCrm ? { existingCrm: deps.existingCrm } : {}),
+      });
+      batches.push({
+        track,
+        campaign,
+        icpSource: `fonte apify — ${run.note}; queries: ${apifySpec.queries.join("; ").slice(0, 160)}`,
+        listed: run.candidates.length,
+        verified,
+        dropped,
+      });
+    }
+    return renderDualProspectBlock(batches);
+  }
 
   for (const track of PROSPECT_TRACKS) {
     const icp = prospectIcp(env, track);
@@ -282,7 +417,15 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
       continue;
     }
     const candidates = parseCandidateList(sourced.output, MAX_CANDIDATES_TO_VERIFY + 8);
-    const { verified, dropped } = await verifyCandidates({ candidates, cap, fetchText, deadline, seenHosts });
+    const { verified, dropped } = await verifyCandidates({
+      candidates,
+      cap,
+      fetchText,
+      deadline,
+      seenHosts,
+      source: "engine",
+      ...(deps.existingCrm ? { existingCrm: deps.existingCrm } : {}),
+    });
     batches.push({ track, campaign, icpSource: icp.source, listed: candidates.length, verified, dropped });
   }
 

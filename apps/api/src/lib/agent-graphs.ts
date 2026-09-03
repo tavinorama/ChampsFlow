@@ -690,10 +690,12 @@ export const CONTENT_EXPERIMENT_GRAPH: GraphDefinition = {
 // ---------------------------------------------------------------------------
 
 /**
- * Builds a short-video sphere cell. One shape, three channels: the only things
- * that differ are the slug, the memory prefix, the publish channel, the
- * harvest metric and the prompt family — kept as data so a fourth channel is
- * one call, not one more hand-copied graph that can drift.
+ * Builds a short-video sphere cell. One shape, two channels today (TikTok,
+ * YouTube — Instagram moved to the CARD cell in 1.6, see
+ * buildSphereInstagramGraph): the only things that differ are the slug, the
+ * memory prefix, the publish channel, the harvest metric and the prompt
+ * family — kept as data so a new channel is one call, not one more
+ * hand-copied graph that can drift.
  *
  * REPORT-ONLY desde 22/08 (decisão B5). Estas três esferas produzem ROTEIRO +
  * [RENDER BRIEF] em texto, e Instagram/TikTok/YouTube exigem um arquivo de
@@ -751,23 +753,87 @@ function shortVideoSphere(input: {
   };
 }
 
-export const SPHERE_INSTAGRAM_GRAPH: GraphDefinition = shortVideoSphere({
-  slug: "sphere-instagram",
-  reportIcon: "📷",
-  reportTitle: "Instagram Reels",
-  channel: "instagram",
-  // 10.C.3: the memory prefix follows the harvest metric's own family — the
-  // collector writes 'instagramstandalone_*' (Postiz channel name), so a
-  // memory reading 'instagram_' would never see this channel's rejections.
-  prefix: "instagramstandalone_",
-  // 22/08 sweep: the VPS 07:40 collector writes 'instagramstandalone_*_7d'
-  // (Postiz's channel name), never 'instagram_*' — the old 'instagram_reach'
-  // prefix-matched NOTHING and this sphere closed blind after the 48h grace.
-  metric: "instagramstandalone_reach",
-  promptFamily: "instagram",
-  description:
-    "Instagram Reels specialist cell with its own memory: read this sphere's OWN harvested reach (instagram* outcomes) → signal → briefing → 2 drafts (talking-head vs caption-story, vertical, phone-shot feel) → critic (virality + compliance + freshness) → finalize (script + [RENDER BRIEF] + caption + hashtags policy) → REPORT the script to the founder (report-only até existir nó de render: Instagram exige mídia e o publish de texto é recusado — decisão B5, 22/08).",
-});
+/**
+ * 1.6 (01/09) — "IG com IMAGEM já". Instagram left the short-video factory:
+ * it now produces a CARD post (branded PNG carrying the [CARD HOOK] + a
+ * caption), which is a legitimate IG post — the text-only failure that made
+ * the three media spheres report-only (#516) does not apply to a post that
+ * carries an image. TikTok/YouTube stay in the factory (video-only channels,
+ * Fase 2 of the video gate).
+ *
+ * The publish TAIL is gated by env `IG_IMAGE_PUBLISH=1` — the founder's word
+ * that the VPS patch (docs/specs/ig-image-fase1.md: /postiz-schedule accepts
+ * the card inline) is live. Until then the cell ends in REPORT (card hook +
+ * caption ready, the unlocking action in the title) and never asks the
+ * founder to approve a publish that would die at the Postiz call — the exact
+ * 22/08 pain. "Mergeado ≠ produção": OFF by default, ON by an explicit env.
+ * Both api and worker import this definition, so the env must be set on both.
+ */
+export function igImagePublishEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env["IG_IMAGE_PUBLISH"] ?? "").trim() === "1";
+}
+
+/** The nominal action that turns the Instagram publish tail on (one source, also in the OFF report title). */
+export const IG_IMAGE_UNLOCK_ACTION =
+  "aplicar docs/specs/ig-image-fase1.md na VPS + env IG_IMAGE_PUBLISH=1 (worker e api)";
+
+export function buildSphereInstagramGraph(imagePublish: boolean): GraphDefinition {
+  const head: GraphNode[] = [
+    // 10.C.3 (sweep 02/09): o prefixo de memória segue a FAMÍLIA da métrica
+    // colhida — o coletor escreve 'instagramstandalone_*' (nome do canal no
+    // Postiz); lendo 'instagram_' esta esfera nunca via as próprias rejeições.
+    { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "instagramstandalone_" } },
+    { id: "signal", kind: "task", dependsOn: [], config: { prompt: "instagram-signal" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "instagram-briefing" } },
+    // Two card styles: a one-line truth (the hook IS the post) vs a mini
+    // story (the hook opens, the caption carries the scene).
+    { id: "draft-one-liner", kind: "task", dependsOn: ["briefing"], config: { prompt: "instagram-draft", style: "one-liner" } },
+    { id: "draft-story", kind: "task", dependsOn: ["briefing"], config: { prompt: "instagram-draft", style: "story" } },
+    // Inherits [__lessons__]/[__memory__]/[__recent__] + ANTI_GENERIC_RULE
+    // like every marketing critic (the runner injects them by kind/allowlist).
+    { id: "critic", kind: "debate", dependsOn: ["draft-one-liner", "draft-story", "memory"], config: { prompt: "instagram-critic" } },
+    // The finalize output is a CODE-checked contract ([CARD HOOK] + [CAPTION]
+    // + [HASHTAGS]); the runner refuses a malformed one before approval.
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft-one-liner", "draft-story", "critic"], config: { prompt: "instagram-finalize" } },
+  ];
+  const tail: GraphNode[] = imagePublish
+    ? [
+        // The founder sees the [CARD HOOK] and the caption verbatim; the card
+        // is deterministic from that hook (no LLM after the approval).
+        { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
+        // media:"card" → the runner renders the branded card through the
+        // worker's media port and sends caption + image. Render failure =
+        // publish step fails; NEVER text-only to a media channel.
+        { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "instagram", via: "postiz", media: "card" } },
+        { id: "wait-48h", kind: "wait", dependsOn: ["publish"], config: { hours: 48 } },
+        // 22/08 sweep: the VPS 07:40 collector writes 'instagramstandalone_*_7d'
+        // (Postiz's channel name), never 'instagram_*' — the old 'instagram_reach'
+        // prefix-matched NOTHING and this sphere closed blind after the 48h grace.
+        { id: "harvest", kind: "harvest", dependsOn: ["wait-48h"], config: { metric: "instagramstandalone_reach" } },
+        { id: "verdict", kind: "verdict", dependsOn: ["harvest"] },
+      ]
+    : [
+        {
+          id: "report",
+          kind: "report",
+          dependsOn: ["finalize"],
+          config: {
+            title: `📷 Instagram: card + legenda prontos (instagram) — publicação DESLIGADA: ${IG_IMAGE_UNLOCK_ACTION}`,
+          },
+        },
+      ];
+  return {
+    slug: "sphere-instagram",
+    version: 2,
+    vpOwner: "marketing",
+    description: imagePublish
+      ? "Instagram CARD cell (1.6): read this sphere's OWN harvested reach (instagram* outcomes) → signal → briefing → 2 drafts (one-liner vs story; each = [CARD HOOK] + caption) → critic (card readability + compliance + freshness + anti-generic vs [__recent__]) → finalize ([CARD HOOK] + [CAPTION] + [HASHTAGS], code-checked) → founder approval (shows hook + caption) → publish caption + branded card PNG via Postiz (render fails = nothing sent) → wait 48h → harvest instagramstandalone_reach → verdict."
+      : `Instagram CARD cell (1.6), publish tail OFF: same loop up to finalize ([CARD HOOK] + [CAPTION] + [HASHTAGS]) → REPORT to the founder. Turns into the real publish pipeline when ${IG_IMAGE_UNLOCK_ACTION}.`,
+    nodes: [...head, ...tail],
+  };
+}
+
+export const SPHERE_INSTAGRAM_GRAPH: GraphDefinition = buildSphereInstagramGraph(igImagePublishEnabled());
 
 export const SPHERE_TIKTOK_GRAPH: GraphDefinition = shortVideoSphere({
   slug: "sphere-tiktok",

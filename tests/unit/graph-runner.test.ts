@@ -35,7 +35,6 @@ import {
   SPHERE_X_GRAPH,
   SPHERE_LINKEDIN_GRAPH,
   SPHERE_BLOG_GRAPH,
-  SPHERE_INSTAGRAM_GRAPH,
   SPHERE_TIKTOK_GRAPH,
   SPHERE_YOUTUBE_GRAPH,
   SPHERE_PPC_GRAPH,
@@ -626,19 +625,20 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
   });
 });
 
-describe("content alive on every platform (17/08) — IG / TikTok / YouTube spheres", () => {
+describe("content alive on every platform (17/08) — TikTok / YouTube spheres (IG moved to the card cell, 1.6)", () => {
   const cells: Array<[GraphDefinition, string, string, string, number]> = [
-    [SPHERE_INSTAGRAM_GRAPH, "instagramstandalone_", "instagram", "instagramstandalone_reach", 1200],
     [SPHERE_TIKTOK_GRAPH, "tiktok_", "tiktok", "tiktok_views", 5400],
     [SPHERE_YOUTUBE_GRAPH, "youtube_", "youtube", "youtube_views", 830],
   ];
 
-  // B5 (22/08): estas três células são REPORT-ONLY até existir um nó de render.
-  // IG/TikTok/YouTube exigem um arquivo de mídia e o publish manda texto — o
+  // B5 (22/08): estas células são REPORT-ONLY até existir um nó de render.
+  // TikTok/YouTube exigem um arquivo de VÍDEO e o publish manda texto — o
   // Postiz recusava ("You need one media" / "No video / images selected") DEPOIS
   // de o founder gastar um clique de aprovação (o sphere-youtube de 22/08 foi
   // aprovado às 15:20 e morreu às 15:40). O roteiro agora chega pronto por
-  // Telegram e o founder grava/publica.
+  // Telegram e o founder grava/publica. 1.6 (01/09): o Instagram saiu daqui —
+  // vira card brandado + legenda (tests/unit/ig-image-sphere.test.ts); estas
+  // duas ficam EXATAMENTE como estavam (Fase 2 do gate de vídeo).
   for (const [def, prefix, channel] of cells) {
     it(`${def.slug}: memory só ${prefix}, 2 drafts + crítico, e termina em REPORT — sem gate, sem publish`, async () => {
       const world = makeWorld(def.slug);
