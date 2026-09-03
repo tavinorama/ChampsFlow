@@ -134,7 +134,7 @@ export function PrimeTab({ brandId, brandName, email, onGoTab }: {
 
   return (
     <>
-      <div style={{ ...V3.card, padding: "var(--space-6)", display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: "var(--space-6)", alignItems: "center" }} data-testid={`prime-hero-${status?.organicPosts.status ?? "loading"}`}>
+      <div style={{ ...V3.card, padding: "var(--space-6)", display: "grid", gridTemplateColumns: "minmax(0, 1.3fr) minmax(0, 1fr)", gap: "var(--space-6)", alignItems: "center" }} data-testid={`prime-hero-${status?.organicPosts.status ?? "loading"}`}>
         <div>
           <span style={{ ...V3.pill, background: "var(--color-badge-ai-bg, var(--color-surface-muted))", color: "var(--color-accent-ink, var(--color-primary))" }}>OrganicPosts by Ozvor</span>
           <h2 style={{ margin: "10px 0 6px", fontSize: "1.4rem", fontWeight: 800, letterSpacing: "-0.02em" }}>

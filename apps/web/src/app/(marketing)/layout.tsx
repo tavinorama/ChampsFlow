@@ -387,9 +387,21 @@ const MARKETING_STYLES = `
   /* ── Responsive navbar: hide secondary links on small screens, keep the
         Free + Kit CTAs + theme toggle + Sign in. Prevents wrapping/overflow. */
   .mk-navlink, .mk-signin { white-space: nowrap; }
-  @media (max-width: 700px) {
+  /* P0-10 (measured 03/09/2026): at a 768px viewport the six centre links were
+     still rendered (they only hid at ≤700px) while the logo block and the whole
+     right-hand cluster are flexShrink:0 — the navbar's min-content width came
+     out at 970px, so `/`, `/pricing` and `/test` all produced a 970px document
+     on a 768px screen. Measured with Playwright before/after; see
+     tests/e2e/mobile-overflow.spec.ts. Hiding the secondary links from 900px
+     down is the smallest change that removes the rigid content, and it does not
+     alter the desktop design (the links reappear unchanged ≥901px). */
+  @media (max-width: 900px) {
     .mk-navlink-hide-sm { display: none !important; }
   }
+  /* Belt and braces for the same band: even without the centre links, the
+     wordmark + full CTA label + "Log in" + theme toggle must be allowed to give
+     ground rather than force the document wider than the viewport. */
+  .mk-navbar nav { min-width: 0; }
   /* On very small phones (≤480px): logo mark + Log in + the free-test CTA are
      the only right-fixed-width items left (the center nav links are already
      hidden below 700px). Without this rule they don't shrink and the CTA

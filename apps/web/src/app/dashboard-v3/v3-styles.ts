@@ -17,7 +17,7 @@ export const V3: Record<string, React.CSSProperties> = {
   pill: { display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 10px", borderRadius: "var(--radius-pill)", fontSize: "0.76rem", fontWeight: 700 },
   btnPri: { background: "var(--color-primary)", color: "#fff", borderRadius: "var(--radius-md)", padding: "9px 16px", fontWeight: 700, fontSize: "0.85rem", textDecoration: "none", border: "none", cursor: "pointer" },
   btnGhost: { border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "7px 13px", fontWeight: 600, fontSize: "0.82rem", cursor: "pointer", textDecoration: "none" },
-  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "var(--space-3)", alignItems: "center" },
+  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" },
   actWhy: { color: "var(--color-muted)", fontSize: "0.84rem", marginTop: "2px", lineHeight: 1.5 },
   imp: { padding: "3px 9px", borderRadius: "var(--radius-pill)", fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" },
   input: { border: "1px solid var(--color-border)", background: "var(--color-bg)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "9px 12px", font: "inherit", fontSize: "0.9rem", fontWeight: 400 },

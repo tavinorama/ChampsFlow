@@ -2553,7 +2553,7 @@ const S: Record<string, React.CSSProperties> = {
   // overflow:hidden clipped the bottom of the sidebar (the email). minmax(0,1fr)
   // clamps the single row to exactly the shell height; panes scroll internally.
   // Measured live in prod: aside 1008px in a 960px shell before, 960px after.
-  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
   rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
   railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
@@ -2573,7 +2573,7 @@ const S: Record<string, React.CSSProperties> = {
   pick: { border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "8px 12px", font: "inherit", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" },
 
   card: { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-card)" },
-  hero: { padding: "var(--space-6)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-6)", alignItems: "center", marginBottom: "var(--space-2)" },
+  hero: { padding: "var(--space-6)", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "var(--space-6)", alignItems: "center", marginBottom: "var(--space-2)" },
   scoreCol: { display: "flex", flexDirection: "column", alignItems: "center", minWidth: 150 },
   scoreBig: { fontSize: "4rem", fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" },
   scoreOf: { color: "var(--color-muted)", fontSize: "0.8rem", fontWeight: 600 },
@@ -2596,7 +2596,7 @@ const S: Record<string, React.CSSProperties> = {
   fmeta: { color: "var(--color-muted)", fontSize: "0.82rem", fontWeight: 600 },
 
   // Do next (fix list)
-  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "var(--space-3)", alignItems: "center" },
+  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" },
   actTitle: { fontWeight: 700, fontSize: "0.96rem" },
   actWhy: { color: "var(--color-muted)", fontSize: "0.84rem", marginTop: "2px", lineHeight: 1.5 },
   chk: { width: 24, height: 24, borderRadius: "7px", border: "2px solid var(--color-border)", background: "transparent", cursor: "pointer", flex: "0 0 auto", padding: 0, color: "#fff", fontWeight: 800, fontSize: "0.8rem", lineHeight: 1 },
@@ -2615,7 +2615,7 @@ const S: Record<string, React.CSSProperties> = {
   // Competitors + sources
   engChip: { fontSize: "0.7rem", fontWeight: 700, padding: "2px 8px", borderRadius: "var(--radius-pill)", background: "var(--color-surface-muted)", color: "var(--color-muted)" },
   engChipRed: { background: "var(--color-badge-status-error-bg)", color: "var(--color-badge-status-error-text)" },
-  compRow: { display: "grid", gridTemplateColumns: "150px 1fr 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
+  compRow: { display: "grid", gridTemplateColumns: "minmax(0, 150px) minmax(0, 1fr) 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
   compTrack: { height: "9px", borderRadius: "99px", background: "var(--color-border)", overflow: "hidden" },
   engIco: { width: 30, height: 30, borderRadius: "8px", background: "var(--color-surface-muted)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.72rem", color: "var(--color-text)", flex: "0 0 auto" },
 
