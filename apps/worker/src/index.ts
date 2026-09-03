@@ -54,6 +54,12 @@ import {
   assertWorkerAppDbRoleSafe,
 } from "./db/rls-client";
 import { applyPlatformKeyOverrides } from "../../../packages/shared/src/platform-keys";
+import { alertOps, formatAuditFailureAlert } from "./alerts";
+import {
+  AUDIT_ATTEMPTS,
+  auditRetryDelayMs,
+  isAuditFailurePermanent,
+} from "../../../packages/shared/src/audit-queue";
 
 // ---------------------------------------------------------------------------
 // Redis connection (ioredis — required by BullMQ)
@@ -170,7 +176,41 @@ auditWorker.on("completed", (job, result) => {
   logger.info("audit_job_succeeded", { job_id: job.id, overall: result?.overall });
 });
 auditWorker.on("failed", (job, err) => {
-  logger.error("audit_job_failed", { job_id: job?.id, message: err?.message });
+  const attempts = job?.opts?.attempts ?? AUDIT_ATTEMPTS;
+  const made = job?.attemptsMade ?? 0;
+  const exhausted = made >= attempts;
+  const message = err?.message ?? "unknown";
+  // Refusals never get another attempt: "insufficient_engine_coverage" means we
+  // deliberately declined to publish a score measured on too few engines, and
+  // asking the same down engines again 10 minutes later costs money to fail
+  // identically. It is the exact error the three 17/08 audits carried.
+  const permanent = exhausted || isAuditFailurePermanent(message);
+
+  logger.error("audit_job_failed", {
+    job_id: job?.id,
+    message,
+    attempt: made,
+    attempts,
+    permanent,
+    next_retry_in_ms: permanent ? null : auditRetryDelayMs(made + 1),
+  });
+
+  // Nada degrada calado. Until now this failure wrote a log line and stopped
+  // there: the customer saw a generic "The audit failed", and nobody was told.
+  // Alert ONLY on the terminal failure — one message per problem, not one per
+  // attempt, or the storm just moves into the notification channel.
+  if (permanent) {
+    void alertOps(
+      formatAuditFailureAlert({
+        jobId: job?.id,
+        attemptsMade: made,
+        attempts,
+        message,
+        auditId: (job?.data as { audit_id?: string } | undefined)?.audit_id ?? null,
+        brandId: (job?.data as { brand_id?: string } | undefined)?.brand_id ?? null,
+      })
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------

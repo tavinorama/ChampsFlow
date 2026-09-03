@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { PUBLISHED_POSTS } from "./(marketing)/blog/posts";
+import { lastModifiedFor } from "./route-lastmod";
 
 /**
  * sitemap.xml — public, AI-crawlable surface of Ozvor.
@@ -73,12 +74,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     // Comparison pages (P2) — high buyer-intent
     ["/vs", "monthly", 0.7],
-    ["/vs/profound", "monthly", 0.7],
-    ["/vs/peec", "monthly", 0.7],
-    ["/vs/otterly", "monthly", 0.7],
-    ["/vs/athenahq", "monthly", 0.7],
-    ["/vs/semrush-ai", "monthly", 0.6],
-    ["/vs/ahrefs-brand-radar", "monthly", 0.6],
+    // P0-05: the six /vs/<competitor> pages are frozen and noindexed until their
+    // claims are re-verified against each competitor's published pricing (see
+    // (marketing)/vs/_claims.ts). A sitemap that advertises a noindexed page is
+    // a contradiction we would only find out about in Search Console, so they
+    // come out of the sitemap for as long as the freeze lasts and go back in
+    // with the claims. /vs itself (the index) stays: it still lists them.
 
     // Resources — the premium GEO content (high-value citation-worthy assets)
     ["/resources", "monthly", 0.7],
@@ -105,9 +106,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/legal/dsr-request", "yearly", 0.3],
   ];
 
+  // P1-04: lastModified is the date the CONTENT last changed, not the moment
+  // this function ran. Stamping `now` told crawlers that all ~27 static routes
+  // changed on every deploy, which trains them to ignore lastmod altogether —
+  // including on the routes that genuinely did change.
   const staticEntries: MetadataRoute.Sitemap = routes.map(([path, changeFrequency, priority]) => ({
     url: `${SITE}${path}`,
-    lastModified: now,
+    lastModified: lastModifiedFor(path, now),
     changeFrequency,
     priority,
   }));

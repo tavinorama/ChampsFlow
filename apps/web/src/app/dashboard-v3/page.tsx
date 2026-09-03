@@ -33,6 +33,7 @@ import { HallucinationFlag, type HallucinationInfo } from "../../components/Hall
 import { useCredits, CreditsPill, CreditsBanner, CreditsCard as SharedCreditsCard } from "../../components/credits/CreditsWidgets";
 import { AiAuditTab } from "./AiAuditTab";
 import { WhereToShowUpTab } from "./WhereToShowUpTab";
+import { OPPORTUNITY_RADAR_ENABLED } from "../../lib/feature-flags";
 import { PrimeTab, PrimeNudge, usePrimeStatus } from "./PrimeTab";
 
 // ---------------------------------------------------------------------------
@@ -200,7 +201,8 @@ const MIGRATED: Record<TabId, boolean> = {
   competitors: true,
   sources: true,
   pages: true,
-  whereToShowUp: true,
+  // P0-03: not a live tab. Kept in the map so the TabId union stays total.
+  whereToShowUp: OPPORTUNITY_RADAR_ENABLED,
   connections: true,
   billing: true,
   aiaudit: true,
@@ -225,7 +227,11 @@ const TAB_TITLE: Record<TabId, { h1: string; sub: string }> = {
   competitors: { h1: "Your competitors in AI", sub: "Who AI names when buyers ask" },
   sources: { h1: "Where AI gets its answers", sub: "The sources that decide who gets named" },
   pages: { h1: "Ozvor Pages", sub: "Your AI-ready mini-site" },
-  whereToShowUp: { h1: "Where to show up", sub: "Live Reddit & AI-search openings, with the exact next move" },
+  // P0-03: the old subtitle promised a live queue of openings with an exact
+  // next move, while the source was never connected and the intended source
+  // is compliance-blocked for commercial use. The claim is removed rather
+  // than softened; the tab itself is off (OPPORTUNITY_RADAR_ENABLED).
+  whereToShowUp: { h1: "Where to show up", sub: "Not available yet" },
   brands: { h1: "Your client brands", sub: "Agency portfolio" },
   connections: { h1: "Connections", sub: "Which AIs we check + your data sources" },
   billing: { h1: "Billing", sub: "Plan & invoices" },
@@ -787,7 +793,11 @@ export default function DashboardV3() {
             <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
             <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
             <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
-            <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            {/* P0-03: hidden until the Opportunity Radar has a source that is
+                cleared for commercial use. See lib/feature-flags.ts. */}
+            {OPPORTUNITY_RADAR_ENABLED && (
+              <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            )}
             <NavItem label="AI Audit" active={tab === "aiaudit"} onClick={() => setTab("aiaudit")} />
           </nav>
 
@@ -919,7 +929,7 @@ export default function DashboardV3() {
           <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "pages" ? (
           <PagesTab sites={sites} loading={sitesLoading} />
-        ) : tab === "whereToShowUp" ? (
+        ) : tab === "whereToShowUp" && OPPORTUNITY_RADAR_ENABLED ? (
           <WhereToShowUpTab brandId={activeBrandId || null} brandName={activeBrand?.name ?? null} />
         ) : tab === "connections" ? (
           <ConnectionsTab brand={activeBrand} onProfilesSaved={() => reloadBrands()} />
@@ -2553,7 +2563,7 @@ const S: Record<string, React.CSSProperties> = {
   // overflow:hidden clipped the bottom of the sidebar (the email). minmax(0,1fr)
   // clamps the single row to exactly the shell height; panes scroll internally.
   // Measured live in prod: aside 1008px in a 960px shell before, 960px after.
-  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
   rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
   railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
@@ -2573,7 +2583,7 @@ const S: Record<string, React.CSSProperties> = {
   pick: { border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "8px 12px", font: "inherit", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" },
 
   card: { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-card)" },
-  hero: { padding: "var(--space-6)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-6)", alignItems: "center", marginBottom: "var(--space-2)" },
+  hero: { padding: "var(--space-6)", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "var(--space-6)", alignItems: "center", marginBottom: "var(--space-2)" },
   scoreCol: { display: "flex", flexDirection: "column", alignItems: "center", minWidth: 150 },
   scoreBig: { fontSize: "4rem", fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" },
   scoreOf: { color: "var(--color-muted)", fontSize: "0.8rem", fontWeight: 600 },
@@ -2596,7 +2606,7 @@ const S: Record<string, React.CSSProperties> = {
   fmeta: { color: "var(--color-muted)", fontSize: "0.82rem", fontWeight: 600 },
 
   // Do next (fix list)
-  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "var(--space-3)", alignItems: "center" },
+  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" },
   actTitle: { fontWeight: 700, fontSize: "0.96rem" },
   actWhy: { color: "var(--color-muted)", fontSize: "0.84rem", marginTop: "2px", lineHeight: 1.5 },
   chk: { width: 24, height: 24, borderRadius: "7px", border: "2px solid var(--color-border)", background: "transparent", cursor: "pointer", flex: "0 0 auto", padding: 0, color: "#fff", fontWeight: 800, fontSize: "0.8rem", lineHeight: 1 },
@@ -2615,7 +2625,7 @@ const S: Record<string, React.CSSProperties> = {
   // Competitors + sources
   engChip: { fontSize: "0.7rem", fontWeight: 700, padding: "2px 8px", borderRadius: "var(--radius-pill)", background: "var(--color-surface-muted)", color: "var(--color-muted)" },
   engChipRed: { background: "var(--color-badge-status-error-bg)", color: "var(--color-badge-status-error-text)" },
-  compRow: { display: "grid", gridTemplateColumns: "150px 1fr 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
+  compRow: { display: "grid", gridTemplateColumns: "minmax(0, 150px) minmax(0, 1fr) 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
   compTrack: { height: "9px", borderRadius: "99px", background: "var(--color-border)", overflow: "hidden" },
   engIco: { width: 30, height: 30, borderRadius: "8px", background: "var(--color-surface-muted)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.72rem", color: "var(--color-text)", flex: "0 0 auto" },
 

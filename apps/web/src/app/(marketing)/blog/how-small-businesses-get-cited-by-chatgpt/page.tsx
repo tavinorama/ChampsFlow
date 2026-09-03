@@ -33,7 +33,7 @@ import { safeJsonLd } from "../../../../lib/safe-json-ld";
 
 export const metadata: Metadata = {
   title:
-    "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity | Ozvor",
+    "How Small Businesses Get Cited by ChatGPT, Claude, and Perplexity",
   description:
     "Learn how small businesses get cited by ChatGPT, Claude, and Perplexity. GEO (Generative Engine Optimization) explained with research, examples, and practical steps.",
   alternates: {

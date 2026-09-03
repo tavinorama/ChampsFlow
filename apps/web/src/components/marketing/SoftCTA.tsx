@@ -136,7 +136,14 @@ export function SoftCTA({
           )}
         </div>
 
-        {/* Actions — shrinks to fit, wraps below text on narrow viewports */}
+        {/* Actions — shrinks to fit, wraps below text on narrow viewports.
+            P0-10 (measured on /compare at 320/375/390px): flexWrap alone never
+            fired, because flexShrink:0 with no upper bound let this row take its
+            max-content width (400px) and hand the document a 441px scrollWidth
+            on a 375px screen. maxWidth:100% + minWidth:0 give wrapping something
+            to wrap against; the desktop layout is unchanged, since the row is
+            narrower than its container there and flexShrink:0 still protects the
+            buttons from being squeezed by the text block. */}
         <div
           style={{
             display: "flex",
@@ -144,6 +151,8 @@ export function SoftCTA({
             alignItems: "center",
             gap: "var(--space-4)",
             flexShrink: 0,
+            maxWidth: "100%",
+            minWidth: 0,
           }}
         >
           {/* Primary CTA — filled button, min 44px tap target */}

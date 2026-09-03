@@ -28,7 +28,7 @@ import {
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 export const metadata: Metadata = {
-  title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
+  title: "Plans — Replace a $30k/yr specialist for under $100/mo",
   description:
     "Start free, climb when you're ready. Free AI test, $29 Get-Cited Kit, $49 AI Audit Stack, Growth $99/mo, Agency $549/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: 30% off annual + a free 5-page website.",
   alternates: { canonical: "https://ozvor.com/pricing" },
