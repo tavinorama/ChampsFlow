@@ -33,6 +33,7 @@ import { HallucinationFlag, type HallucinationInfo } from "../../components/Hall
 import { useCredits, CreditsPill, CreditsBanner, CreditsCard as SharedCreditsCard } from "../../components/credits/CreditsWidgets";
 import { AiAuditTab } from "./AiAuditTab";
 import { WhereToShowUpTab } from "./WhereToShowUpTab";
+import { OPPORTUNITY_RADAR_ENABLED } from "../../lib/feature-flags";
 import { PrimeTab, PrimeNudge, usePrimeStatus } from "./PrimeTab";
 
 // ---------------------------------------------------------------------------
@@ -200,7 +201,8 @@ const MIGRATED: Record<TabId, boolean> = {
   competitors: true,
   sources: true,
   pages: true,
-  whereToShowUp: true,
+  // P0-03: not a live tab. Kept in the map so the TabId union stays total.
+  whereToShowUp: OPPORTUNITY_RADAR_ENABLED,
   connections: true,
   billing: true,
   aiaudit: true,
@@ -225,7 +227,11 @@ const TAB_TITLE: Record<TabId, { h1: string; sub: string }> = {
   competitors: { h1: "Your competitors in AI", sub: "Who AI names when buyers ask" },
   sources: { h1: "Where AI gets its answers", sub: "The sources that decide who gets named" },
   pages: { h1: "Ozvor Pages", sub: "Your AI-ready mini-site" },
-  whereToShowUp: { h1: "Where to show up", sub: "Live Reddit & AI-search openings, with the exact next move" },
+  // P0-03: the old subtitle promised a live queue of openings with an exact
+  // next move, while the source was never connected and the intended source
+  // is compliance-blocked for commercial use. The claim is removed rather
+  // than softened; the tab itself is off (OPPORTUNITY_RADAR_ENABLED).
+  whereToShowUp: { h1: "Where to show up", sub: "Not available yet" },
   brands: { h1: "Your client brands", sub: "Agency portfolio" },
   connections: { h1: "Connections", sub: "Which AIs we check + your data sources" },
   billing: { h1: "Billing", sub: "Plan & invoices" },
@@ -787,7 +793,11 @@ export default function DashboardV3() {
             <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
             <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
             <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
-            <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            {/* P0-03: hidden until the Opportunity Radar has a source that is
+                cleared for commercial use. See lib/feature-flags.ts. */}
+            {OPPORTUNITY_RADAR_ENABLED && (
+              <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            )}
             <NavItem label="AI Audit" active={tab === "aiaudit"} onClick={() => setTab("aiaudit")} />
           </nav>
 
@@ -919,7 +929,7 @@ export default function DashboardV3() {
           <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "pages" ? (
           <PagesTab sites={sites} loading={sitesLoading} />
-        ) : tab === "whereToShowUp" ? (
+        ) : tab === "whereToShowUp" && OPPORTUNITY_RADAR_ENABLED ? (
           <WhereToShowUpTab brandId={activeBrandId || null} brandName={activeBrand?.name ?? null} />
         ) : tab === "connections" ? (
           <ConnectionsTab brand={activeBrand} onProfilesSaved={() => reloadBrands()} />
