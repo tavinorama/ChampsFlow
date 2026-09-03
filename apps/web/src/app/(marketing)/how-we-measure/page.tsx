@@ -8,7 +8,7 @@
  *  - Hero: three distinct scores under one umbrella
  *  - Section 1: Visibility Score
  *  - Section 2: Citation Readiness Score
- *  - Section 3: Execution Progress
+ *  - Section 3: Verified Execution
  *  - Section 4: Five AI engines table
  *  - Section 5: Methodology commitment callout
  *  - Section 6: What changed in version 2.1 (two-pass extraction with a blind
@@ -28,7 +28,7 @@ import { THREE_SCORE_COLORS } from "../../../components/OzvorScorecard";
 export const metadata: Metadata = {
   title: "How We Measure the Ozvor AI Visibility Score | Ozvor",
   description:
-    "The exact methodology behind the Ozvor AI Visibility Score: three distinct sub-scores (Visibility, Citation Readiness, Execution), five AI engines, and an honest account of what's measured.",
+    "The exact methodology behind the Ozvor AI Visibility Score: three distinct sub-scores (Visibility, Citation Readiness, Verified Execution), five AI engines, and an honest account of what's measured.",
 };
 
 // ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ export default function HowWeMeasurePage() {
         >
           The Ozvor AI Visibility Score is one umbrella number. It&rsquo;s made up of{" "}
           <strong style={{ color: "var(--color-text)" }}>three distinct sub-scores</strong>:{" "}
-          Visibility, Citation Readiness, and Execution. Each measures something different,
+          Visibility, Citation Readiness, and Verified Execution. Each measures something different,
           and each is something you can act on. Here is exactly how each is computed.
         </p>
         <p
@@ -199,10 +199,10 @@ export default function HowWeMeasurePage() {
               desc: "Site signals + entity authority you can directly improve.",
             },
             {
-              label: "Execution",
+              label: "Verified Execution",
               color: THREE_SCORE_COLORS.executionProgress,
-              tagline: "How much you've done",
-              desc: "Live progress on your prioritised action plan.",
+              tagline: "What we re-checked and found working",
+              desc: "Fixes confirmed by a later audit — not by a checkbox.",
             },
           ].map(({ label, color, tagline, desc }) => (
             <div
@@ -620,10 +620,10 @@ export default function HowWeMeasurePage() {
         </article>
       </section>
 
-      {/* ── Section 3: Execution Progress ── */}
+      {/* ── Section 3: Verified Execution ── */}
       <section aria-labelledby="score-execution-heading" style={{ marginBottom: "var(--space-12)" }}>
         <h2 id="score-execution-heading" style={sectionHeadingStyle}>
-          3. Execution Progress
+          3. Verified Execution
         </h2>
         <p
           style={{
@@ -633,18 +633,19 @@ export default function HowWeMeasurePage() {
             margin: "0 0 var(--space-6) 0",
           }}
         >
-          After your audit, Ozvor generates a prioritised action plan of tasks
-          (plan_task cards). Execution tracks how far through that plan you are.
-          It is the only score that is fully in your hands.
+          After your audit, Ozvor generates a prioritised action plan. Verified
+          Execution tracks how many of those fixes we re-checked and found
+          working in the AI answers. Marking a card done tells us you did it. It
+          does not move this score. The next audit decides that.
         </p>
 
         <article aria-labelledby="execution-detail-heading" style={cardStyle}>
-          <p style={{ ...labelStyle, color: THREE_SCORE_COLORS.executionProgress }}>Execution Progress</p>
+          <p style={{ ...labelStyle, color: THREE_SCORE_COLORS.executionProgress }}>Verified Execution</p>
           <h3
             id="execution-detail-heading"
             style={{ fontSize: "var(--font-size-h3)", fontWeight: 800, margin: "0 0 var(--space-2) 0" }}
           >
-            % of your recommended action cards completed
+            % of your fixes we re-checked and found working
           </h3>
           <p
             style={{
@@ -655,12 +656,16 @@ export default function HowWeMeasurePage() {
             }}
           >
             After the audit is complete, Ozvor generates a prioritised list of
-            action cards — one per gap identified. Execution is the percentage of
-            non-rejected cards you have marked done.
+            action cards — one per gap identified. A card counts here only once a
+            later audit runs the same questions again and finds the change in the
+            AI answers. Cards you have marked done, and cards published but not
+            yet re-checked, are shown to you separately. They are not counted
+            here, because nobody has confirmed them yet.
           </p>
 
-          <div aria-label="Execution Progress formula" style={formulaBoxStyle}>
-            Execution = (done cards / total non-rejected cards) &times; 100
+          <div aria-label="Verified Execution formula" style={formulaBoxStyle}>
+            Verified Execution = (verified cards / cards owed) &times; 100
+            &nbsp;&nbsp;· cards owed = all cards except the ones you rejected or that expired
           </div>
 
           <div style={{ marginTop: "var(--space-6)" }}>
@@ -687,9 +692,10 @@ export default function HowWeMeasurePage() {
                 paddingLeft: "var(--space-1)",
               }}
             >
-              If no action cards exist yet, we show &ldquo;Not started&rdquo; — not a
-              0% bar. We never fabricate a number. Run an audit and generate your
-              plan to start tracking.
+              If no action cards exist yet, or nothing has been re-checked yet,
+              we leave this blank rather than showing a 0% bar. Not measured and
+              zero are different things, and we will not print one as the other.
+              Run an audit and generate your plan to start tracking.
             </p>
 
             <div style={inputRowStyle}>
@@ -840,10 +846,11 @@ export default function HowWeMeasurePage() {
               margin: 0,
             }}
           >
-            The Execution Progress score is the one number we will never estimate or
-            interpolate — it is always the exact ratio of completed cards to total
-            non-rejected cards, and is shown as &ldquo;Not started&rdquo; (not 0%)
-            until your first action plan exists.
+            Verified Execution is the one number we will never estimate,
+            interpolate, or take your word for. It is the exact ratio of cards a
+            later audit confirmed to the cards we owe you, and it stays blank
+            (not 0%) until there is something real to count. Ticking a card done
+            never moves it.
           </p>
         </blockquote>
       </section>
