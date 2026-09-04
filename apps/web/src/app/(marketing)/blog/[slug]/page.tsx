@@ -39,7 +39,7 @@ export async function generateMetadata({
   if (!post) return {};
   const url = `${SITE_URL}/blog/${post.slug}`;
   return {
-    title: `${post.title} | Ozvor`,
+    title: `${post.title}`,
     description: post.dek,
     keywords: post.keywords,
     alternates: { canonical: url },

@@ -40,7 +40,6 @@ interface OverviewData {
   tenants: {
     total: number;
     byTier: {
-      starter: number;
       growth: number;
       agency: number;
     };
@@ -76,7 +75,7 @@ interface RevenueSummary {
   mrr_usd: number;
   arr_usd: number;
   subscriptions: {
-    active: { growth: number; agency: number; starter: number; total: number };
+    active: { growth: number; agency: number; total: number };
     trialing: number;
     pastDue: number;
     canceled: number;
@@ -204,7 +203,7 @@ interface SystemHealth {
 interface AnalyticsFunnel {
   totalLeads: number;
   kitOrders: { count: number; revenueUsd: number };
-  activeSubscriptions: { growth: number; agency: number; starter: number; total: number };
+  activeSubscriptions: { growth: number; agency: number; total: number };
   mrr: number;
   arr: number;
   engagements: { requested: number; contacted: number; won: number; lost: number; pipelineValueUsd: number };
@@ -352,7 +351,6 @@ function Tile({
 function PlanBadge({ tier }: { tier: string }) {
   const tokenMap: Record<string, { bg: string; color: string }> = {
     free:    { bg: "var(--color-badge-plan-free-bg)",    color: "var(--color-badge-plan-free-text)" },
-    starter: { bg: "var(--color-badge-plan-starter-bg)", color: "var(--color-badge-plan-starter-text)" },
     growth:  { bg: "var(--color-badge-plan-growth-bg)",  color: "var(--color-badge-plan-growth-text)" },
     agency:  { bg: "var(--color-badge-plan-agency-bg)",  color: "var(--color-badge-plan-agency-text)" },
   };
@@ -2620,6 +2618,85 @@ function DossierPanel({ email, onClose }: { email: string; onClose: () => void }
 // Reciclagem 60d (founder 01/09): the batches the weekly worker proposed, each
 // downloadable as CSV for the founder to load into a NEW SmartLead campaign.
 // The machine never sends — this panel is the founder's half of the loop.
+// CCPA/CPRA requests — the table was written by /legal/do-not-sell and never
+// read anywhere: a legal request fell into the void (PENDING 10.A.9). Same
+// lazy-fetch pattern as RecycleBatchesPanel; shown on the Leads tab.
+interface CcpaRequestRow {
+  id: string;
+  requester_email: string;
+  requester_name: string | null;
+  request_type: string;
+  status: string;
+  created_at: string;
+}
+
+function CcpaRequestsPanel({ active }: { active: boolean }) {
+  const [requests, setRequests] = useState<CcpaRequestRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!active || fetchedRef.current) return;
+    fetchedRef.current = true;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/admin/ccpa-requests");
+        if (!res.ok) {
+          setFailed(true);
+          return;
+        }
+        const body = (await res.json()) as { requests: CcpaRequestRow[] };
+        setRequests(body.requests ?? []);
+      } catch {
+        setFailed(true);
+      }
+    })();
+  }, [active]);
+
+  if (failed) {
+    return (
+      <p role="alert" style={{ margin: "0 0 var(--space-4) 0", color: "var(--color-error)", fontSize: "var(--font-size-caption)" }}>
+        CCPA: failed to load requests.
+      </p>
+    );
+  }
+  if (!requests) return null;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-3) var(--space-4)",
+        marginBottom: "var(--space-4)",
+        backgroundColor: "var(--color-surface)",
+      }}
+    >
+      <p style={{ margin: "0 0 var(--space-1) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+        CCPA/CPRA requests ({requests.length})
+      </p>
+      <p style={{ margin: "0 0 var(--space-2) 0", color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>
+        Do-not-sell and limit-sensitive-PI submissions from /legal/do-not-sell — 45-day legal
+        deadline each. Action them by email; the table is append-only.
+      </p>
+      {requests.length === 0 ? (
+        <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>No requests yet.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          {requests.map((r) => (
+            <li key={r.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", fontSize: "var(--font-size-caption)", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{r.requester_email}</span>
+              <span style={{ color: "var(--color-muted)" }}>{r.request_type}</span>
+              <StatusBadge status={r.status} />
+              <span style={{ color: "var(--color-muted)" }}>{fmtShortDate(r.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function RecycleBatchesPanel({ active }: { active: boolean }) {
   const [batches, setBatches] = useState<RecycleBatchView[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -3623,7 +3700,6 @@ export default function AdminPage() {
               }}
             >
               <Tile label="Total clients"       value={overview.tenants.total} />
-              <Tile label="Paid (Starter)"      value={overview.tenants.byTier.starter} />
               <Tile label="Paid (Growth)"       value={overview.tenants.byTier.growth} />
               <Tile label="Paid (Agency)"       value={overview.tenants.byTier.agency} />
               <Tile label="Total leads"         value={overview.leads.total} />
@@ -3898,6 +3974,9 @@ export default function AdminPage() {
 
           {/* Reciclagem 60d — batches proposed by the weekly worker (CSV). */}
           <RecycleBatchesPanel active={activeTab === "leads"} />
+
+          {/* CCPA/CPRA requests — previously write-only (PENDING 10.A.9). */}
+          <CcpaRequestsPanel active={activeTab === "leads"} />
 
           {dossierEmail && (
             <DossierPanel email={dossierEmail} onClose={() => setDossierEmail(null)} />

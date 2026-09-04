@@ -81,9 +81,10 @@ function getStripeConfig() {
 // ---------------------------------------------------------------------------
 // Founding members get a 30% discount — but it is applied ONLY when they pay
 // annually. On monthly billing the founder discount is never applied. The actual
-// percentage lives in the Stripe coupon (STRIPE_FOUNDER_COUPON_ID); this constant
-// is the single source of truth the UI/copy and tests reference.
-export const FOUNDER_DISCOUNT_PERCENT = 30 as const;
+// percentage lives in the Stripe coupon (STRIPE_FOUNDER_COUPON_ID); the constant
+// itself lives in packages/shared/src/pricing.ts so the web copy and the chatbot
+// derive the same number — re-exported here for every existing API import.
+export { FOUNDER_DISCOUNT_PERCENT } from "../../../../packages/shared/src/pricing";
 
 /**
  * Founder-offer kill switch. The 30% annual founder discount is applied while

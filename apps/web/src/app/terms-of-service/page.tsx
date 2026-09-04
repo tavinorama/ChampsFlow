@@ -7,10 +7,14 @@
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Terms of Service | Ozvor",
+  title: "Terms of Service",
   description: "The terms governing your use of Ozvor and OrganicPosts.",
   alternates: { canonical: "https://ozvor.com/terms-of-service" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Terms of Service | Ozvor",
     description: "The terms governing your use of Ozvor and OrganicPosts.",
     url: "https://ozvor.com/terms-of-service",
@@ -27,8 +31,8 @@ export default function TermsOfServicePage() {
   return (
     <LegalPage
       title="Terms of Service"
-      updated="13 June 2026"
-      intro={'These Terms govern your access to and use of the Ozvor platform and the OrganicPosts service (together, the “Service”), operated by Ozvor (a company being incorporated in Brazil). By creating an account or using the Service, you agree to these Terms.'}
+      updated="2 September 2026"
+      intro={'These Terms govern your access to and use of the Ozvor platform and the OrganicPosts service (together, the “Service”), operated by Ozvor (the trade name of a Brazilian individual micro-entrepreneur, CNPJ 67.609.444/0001-08). By creating an account or using the Service, you agree to these Terms.'}
     >
       <LegalSection n="1" title="Who we are">
         <p>The Service is operated by <strong>Ozvor</strong> (“we”, “us”), the trade name of a Brazilian individual micro-entrepreneur (MEI), CNPJ 67.609.444/0001-08, home jurisdiction Brazil. Ozvor is an AI-search visibility (Generative Engine Optimization, “GEO”) platform; <strong>OrganicPosts by Ozvor</strong> is our optional done-for-you content service. We are not affiliated with, and are a different company from, “Trustindex.io” (an online-review widget provider).</p>
@@ -44,7 +48,7 @@ export default function TermsOfServicePage() {
       </LegalSection>
 
       <LegalSection n="4" title="Plans, billing and refunds">
-        <p>Paid plans (e.g. Growth, Agency) are billed in advance on a recurring basis via our payment processor (Stripe) until cancelled. One-time products (e.g. the $29 Get-Cited Kit) are charged once. Prices are shown at checkout and may change prospectively. Paid subscription plans include a 30-day money-back guarantee as described at purchase. The one-time Get-Cited Kit includes a deliverable guarantee: if the three content drafts included in the Kit are not publish-ready, we will refund the $29 on request. Both guarantees cover the deliverable only, not any AI-search outcome (see &ldquo;No guarantee of results&rdquo; above). You can cancel at any time; cancellation takes effect at the end of the current billing period. Taxes may apply based on your location.</p>
+        <p>Paid plans (e.g. Growth, Agency) are billed in advance on a recurring basis via our payment processor (Stripe) until cancelled. One-time products (the $29 Get-Cited Kit, the $49 AI Audit Stack, the $99 Ozvor Pages site, and credit packs) are charged once. Prices are shown at checkout and may change prospectively. Paid subscription plans include a 30-day money-back guarantee as described at purchase. The one-time Get-Cited Kit includes a deliverable guarantee: if the three content drafts included in the Kit are not publish-ready, we will refund the $29 on request. The one-time AI Audit Stack includes a 30-day money-back guarantee: if the result tells you nothing new, we will refund the $49 on request within 30 days of payment. Ozvor Pages includes a deliverable guarantee: if your 5-page site is not live and ready to publish, we will refund the $99 on request. All guarantees cover the deliverable only, not any AI-search or business outcome (see &ldquo;No guarantee of results&rdquo; above). Refund requests go to <a href="mailto:support@ozvor.com" style={{ color: "var(--color-primary)" }}>support@ozvor.com</a>; the full policy is at <a href="/refund" style={{ color: "var(--color-primary)" }}>/refund</a>. Receipts for one-time purchases are the Stripe receipt e-mails sent to your checkout address. You can cancel at any time; cancellation takes effect at the end of the current billing period. Taxes may apply based on your location.</p>
       </LegalSection>
 
       <LegalSection n="5" title="Acceptable use">
@@ -76,7 +80,7 @@ export default function TermsOfServicePage() {
       </LegalSection>
 
       <LegalSection n="12" title="Governing law and contact">
-        <p>These Terms are governed by the laws of Brazil, without prejudice to mandatory consumer-protection rights you may have in your country of residence. Questions: <a href="mailto:hello@ozvor.com" style={{ color: "var(--color-primary)" }}>hello@ozvor.com</a>. For privacy matters: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>.</p>
+        <p>These Terms are governed by the laws of Brazil, without prejudice to mandatory consumer-protection rights you may have in your country of residence. Questions: <a href="mailto:hello@ozvor.com" style={{ color: "var(--color-primary)" }}>hello@ozvor.com</a>. Billing, cancellations and refunds: <a href="mailto:support@ozvor.com" style={{ color: "var(--color-primary)" }}>support@ozvor.com</a>. For privacy matters: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>.</p>
       </LegalSection>
     </LegalPage>
   );

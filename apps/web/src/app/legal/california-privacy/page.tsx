@@ -18,7 +18,9 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "California Privacy Rights | Ozvor",
+  // P1-04: in the sitemap, previously with no canonical.
+  alternates: { canonical: "https://ozvor.com/legal/california-privacy" },
+  title: "California Privacy Rights",
   description:
     "Your California privacy rights under the CCPA/CPRA. Learn how to opt out and exercise your rights.",
 };

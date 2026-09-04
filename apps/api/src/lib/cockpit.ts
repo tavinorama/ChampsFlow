@@ -140,7 +140,7 @@ export interface RevenueSummary {
   /** 'stripe' when mrr_usd is the real received value; 'list' on fallback. */
   mrr_source: "stripe" | "list";
   subscriptions: {
-    active: { growth: number; agency: number; starter: number; total: number };
+    active: { growth: number; agency: number; total: number };
     trialing: number;
     pastDue: number;
     canceled: number;
@@ -198,9 +198,10 @@ export async function fetchRevenueSummary(db: PostgresClient): Promise<RevenueSu
     }
   }
 
+  // Phantom `starter` tier removed 2026-09-02 (PENDING 10.A.7): it never
+  // existed in PLAN_LIMITS and always counted 0 here.
   const growth = activeByTier["growth"] ?? 0;
   const agency = activeByTier["agency"] ?? 0;
-  const starter = activeByTier["starter"] ?? 0;
   // mrrRows is retained only for the list-price transparency figure; the headline
   // MRR is now RECEIVED value from Stripe (amortized + discount-aware).
   void mrrRows;
@@ -222,7 +223,7 @@ export async function fetchRevenueSummary(db: PostgresClient): Promise<RevenueSu
     mrr_list_usd: received.listMonthlyUsd,
     mrr_source: received.source,
     subscriptions: {
-      active: { growth, agency, starter, total: growth + agency + starter },
+      active: { growth, agency, total: growth + agency },
       trialing,
       pastDue,
       canceled,

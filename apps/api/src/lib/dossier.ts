@@ -96,6 +96,12 @@ export function extractReplyText(payload: unknown): string | null {
       return text.trim().slice(0, REPLY_MAX_CHARS);
     }
   }
+  // Produção 03/09: em alguns payloads reais `reply_message` é a PRÓPRIA
+  // string do texto (não um objeto) — aceitar, senão a resposta some.
+  if (typeof rm === "string" && rm.trim() !== "") {
+    const stripped = stripHtml(rm);
+    if (stripped !== "") return stripped.slice(0, REPLY_MAX_CHARS);
+  }
   const preview = p["preview_text"];
   if (typeof preview === "string" && preview.trim() !== "") {
     return preview.trim().slice(0, REPLY_MAX_CHARS);

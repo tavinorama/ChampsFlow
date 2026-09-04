@@ -608,3 +608,69 @@ describe("POST /api/chat — model default", () => {
     expect(body["model"]).toBe("claude-sonnet-4-6");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests — the prompt advertises DERIVED numbers, never literals
+// (2026-09-02 sweep, PENDING 10.A.1: the prompt hand-typed "250-prompt audits"
+// and "15 brands, $36.60/brand" while production enforced 33 and 10 — the
+// chatbot sold a plan that does not exist. Mirror of the credits.test.ts
+// "no credit allowance is hardcoded" pin.)
+// ---------------------------------------------------------------------------
+
+describe("chat system prompt — plan facts derived from packages/shared", () => {
+  it("chat.ts computes plan facts from PLAN_LIMITS/pricing and hardcodes no plan digit", () => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { join } = require("node:path") as typeof import("node:path");
+    const src = readFileSync(join(__dirname, "../../apps/api/src/routes/chat.ts"), "utf8");
+    // Must derive from the shared source of truth.
+    expect(src).toMatch(/PLAN_LIMITS/);
+    expect(src).toMatch(/LIST_PRICE_USD/);
+    expect(src).toMatch(/FOUNDER_DISCOUNT_PERCENT/);
+    // The exact literals the 02/09 sweep caught, plus every current plan digit
+    // as prose — none may reappear as typed text inside the prompt template.
+    const promptStart = src.indexOf("const SYSTEM_PROMPT");
+    const prompt = src.slice(promptStart);
+    for (const literal of [
+      "250-prompt",
+      "15 client brands",
+      "$36.60",
+      "$25.62",
+      "4h SLA",
+      "with 4h",
+      "client approval workflow,",
+      "$99/mo",
+      "$549/mo",
+      "$831",
+      "$1,188",
+      "$4,611",
+      "$6,588",
+      "$29 one-time",
+      "$49 one-time",
+      "$1,500",
+      "$1,900",
+      "33-prompt",
+      "19 prompts",
+      "10 competitors",
+    ]) {
+      expect(prompt, `chat.ts prompt hardcodes "${literal}"`).not.toContain(literal);
+    }
+  });
+
+  it("the rendered prompt states the real PLAN_LIMITS numbers", async () => {
+    // Render one reply and inspect the system prompt actually SENT.
+    const app = buildApp();
+    mockFetch.mockResolvedValue(anthropicOkResponse("hi"));
+    await app.request(makeRequest({ messages: [{ role: "user", content: "plans?" }] }));
+    const call = mockFetch.mock.calls.find((c) => String(c[0]).includes("anthropic.com"));
+    expect(call).toBeTruthy();
+    const body = JSON.parse((call?.[1] as { body: string }).body) as { system: string };
+    const { PLAN_LIMITS } = await import("../../packages/shared/src/plan-limits");
+    const { LIST_PRICE_USD } = await import("../../packages/shared/src/pricing");
+    expect(body.system).toContain(`${PLAN_LIMITS.growth.prompts_per_audit}-prompt deep audits`);
+    expect(body.system).toContain(`up to ${PLAN_LIMITS.agency.max_brands} client brands`);
+    expect(body.system).toContain(`$${LIST_PRICE_USD.agency}/mo`);
+    expect(body.system).toContain("within 1 business day");
+    expect(body.system).not.toContain("client approval workflow,");
+  });
+});
+
