@@ -998,7 +998,7 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       color: "green" | "amber" | "red";
       counts: Record<string, number>;
       reasons: string[];
-      canary: { version: string; status: string };
+      canary: { version: string; universeVersion: string; status: string };
       readAt: string;
     } | null = null;
     try {
@@ -1008,7 +1008,11 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         color: deliveryColor(dh.rollup.status),
         counts: dh.rollup.counts,
         reasons: dh.rollup.reasons,
-        canary: { version: dh.canary.version, status: dh.canary.status },
+        canary: {
+          version: dh.canary.version,
+          universeVersion: dh.canary.universeVersion,
+          status: dh.canary.status,
+        },
         readAt: dh.rollup.readAt,
       };
       if (dh.rollup.status !== "healthy") {
@@ -1086,6 +1090,7 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
           degradedAt: i.degradedAt,
           failingAt: i.failingAt,
           reason: i.reason,
+          note: i.note,
           contract: {
             question: i.contract.question,
             owner: i.contract.owner,
@@ -1102,6 +1107,7 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         })),
         canary: {
           version: dh.canary.version,
+          universeVersion: dh.canary.universeVersion,
           status: dh.canary.status,
           color: deliveryColor(dh.canary.status),
           auditId: dh.canary.auditId,

@@ -38,109 +38,92 @@ import {
   type DeliveryStatus,
   type DeliveryUnknownStatus,
 } from "./delivery-health";
+import { buildOzvorUniverse } from "./prompt-universe-ozvor";
+import { PROMPT_UNIVERSE_VERSION, type PromptIntent } from "./prompt-universe";
 
 /**
- * Bump WITH any edit to OZVOR_GOLDEN_PROMPTS or CANARY_THRESHOLDS.
+ * Bump WITH any edit to CANARY_GOLDEN_IDS or CANARY_THRESHOLDS. The prompt
+ * universe carries its own version (PROMPT_UNIVERSE_VERSION) and both are
+ * stamped on the verdict.
  * Format: YYYY-MM-DD.n
  */
-export const CANARY_VERSION = "2026-09-04.1";
+export const CANARY_VERSION = "2026-09-04.2";
 
-/** Buyer intent categories — same vocabulary as the prompt universe. */
-export type GoldenCategory = "commercial" | "comparison" | "informational" | "local";
+/**
+ * DERIVED FROM THE APPROVED UNIVERSE, NOT WRITTEN AGAIN.
+ *
+ * P0-06 shipped the Ozvor prompt universe (packages/llm/src/prompt-universe-ozvor.ts)
+ * with the founder's approval, an intent and a relevance score per question.
+ * Hand-writing a second list of "our questions" here would guarantee the two
+ * drift apart and would make the canary test a set nobody uses. So the golden
+ * set IS the universe's `benchmark` cohort — the frozen questions that carry
+ * the trend, which is exactly what a canary needs — selected by id.
+ *
+ * `assertGoldenSetComplete()` fails if an id here no longer exists upstream, so
+ * retiring a benchmark prompt cannot silently empty the canary.
+ */
+export const CANARY_GOLDEN_IDS: readonly string[] = [
+  "ozvor-bm-geo-tool",        // discovery — the head question of the category
+  "ozvor-bm-geo-agency",      // solution  — the Agency plan's buying question
+  "ozvor-bm-brand-monitoring",// problem   — the pain in the buyer's own words
+  "ozvor-bm-geo-vs-seo",      // comparison— the question that decides the category
+  "ozvor-bm-local-service",   // local     — the SMB entry point
+  "ozvor-bm-trust",           // trust     — where we win or lose on proof
+  "ozvor-bm-branded-direct",  // branded   — "what is Ozvor" must never go dark
+  "ozvor-bm-branded-compare", // branded   — the head-to-head
+  "ozvor-bm-br-geo",          // pt-BR     — a second language in the canary
+  "ozvor-bm-eu-geo",          // EU        — a second market in the canary
+] as const;
+
+/** The expected category IS the universe's intent vocabulary. */
+export type GoldenCategory = PromptIntent;
 
 export interface GoldenPrompt {
-  /** Stable id — never reused for different text. */
+  /** The universe's own prompt id — never a second identity. */
   id: string;
-  /** The exact question a buyer asks. Matched against audit_prompt.text. */
+  /** The exact question, taken from the universe. Matched against audit_prompt.text. */
   text: string;
-  /** The category the prompt MUST be classified as. */
+  /** The intent the prompt MUST be classified as (from the universe). */
   expectedCategory: GoldenCategory;
-  /** Minimum relevance the prompt must score once relevance is recorded (P0-06). */
+  /** The relevance the prompt must meet or beat (the universe's own score). */
   expectedRelevance: number;
-  market: "US" | "EU" | "BR" | "global";
-  language: "en" | "pt";
-  /** Why this prompt is in the golden set — deleting it needs an argument. */
-  rationale: string;
+  market: string;
+  language: string;
+  /** The universe version this expectation was read from. */
+  universeVersion: string;
 }
 
 /**
- * Eight questions our own buyers ask. Deliberately small: a golden set nobody
- * reads is a golden set nobody maintains.
+ * The canary's clock is fixed: buildOzvorUniverse(now) only uses `now` for the
+ * benchmark freeze window, and the canary reads text/intent/relevance, which do
+ * not depend on it. A constant keeps the golden set byte-identical between
+ * calls, which is what "versioned" has to mean.
  */
-export const OZVOR_GOLDEN_PROMPTS: readonly GoldenPrompt[] = [
-  {
-    id: "gp-01",
-    text: "What is the best AI search visibility tool for small businesses?",
-    expectedCategory: "commercial",
-    expectedRelevance: 0.8,
-    market: "US",
-    language: "en",
-    rationale: "The head commercial query for Ozvor Search. If we are absent here we are absent from the category.",
-  },
-  {
-    id: "gp-02",
-    text: "How do I check if ChatGPT recommends my brand?",
-    expectedCategory: "informational",
-    expectedRelevance: 0.8,
-    market: "global",
-    language: "en",
-    rationale: "The pain in the buyer's own words — the free check's entire reason to exist.",
-  },
-  {
-    id: "gp-03",
-    text: "Ozvor vs Profound for AI visibility tracking",
-    expectedCategory: "comparison",
-    expectedRelevance: 0.75,
-    market: "US",
-    language: "en",
-    rationale: "Named comparison against the closest funded competitor (RELATORIO §13).",
-  },
-  {
-    id: "gp-04",
-    text: "How much does AI search visibility tracking cost?",
-    expectedCategory: "commercial",
-    expectedRelevance: 0.75,
-    market: "global",
-    language: "en",
-    rationale: "Price is the second question every SMB asks; being absent here loses the deal silently.",
-  },
-  {
-    id: "gp-05",
-    text: "What is generative engine optimization and how does it work?",
-    expectedCategory: "informational",
-    expectedRelevance: 0.7,
-    market: "global",
-    language: "en",
-    rationale: "Category-definition query — the one that decides who the AI treats as the authority.",
-  },
-  {
-    id: "gp-06",
-    text: "Which AI tools should a small business actually use?",
-    expectedCategory: "commercial",
-    expectedRelevance: 0.7,
-    market: "BR",
-    language: "en",
-    rationale: "The AI Audit Stack ICP-B entry question — a second product, a second loop to keep honest.",
-  },
-  {
-    id: "gp-07",
-    text: "Best agency for improving brand visibility in AI answers",
-    expectedCategory: "commercial",
-    expectedRelevance: 0.7,
-    market: "EU",
-    language: "en",
-    rationale: "OrganicPosts DFY demand; also our highest-value lead source.",
-  },
-  {
-    id: "gp-08",
-    text: "How do I get my website cited by Perplexity and Google AI Overview?",
-    expectedCategory: "informational",
-    expectedRelevance: 0.75,
-    market: "global",
-    language: "en",
-    rationale: "Execution-intent query; the answer is literally our product's output.",
-  },
-] as const;
+const GOLDEN_EPOCH = "2026-09-03T00:00:00.000Z";
+
+function buildGoldenPrompts(): GoldenPrompt[] {
+  const universe = buildOzvorUniverse(GOLDEN_EPOCH);
+  const out: GoldenPrompt[] = [];
+  for (const id of CANARY_GOLDEN_IDS) {
+    const def = universe.find((p) => p.id === id);
+    if (!def) continue; // reported by assertGoldenSetComplete(), never hidden
+    out.push({
+      id: def.id,
+      text: def.text,
+      expectedCategory: def.intent,
+      expectedRelevance: def.relevanceScore,
+      market: def.market,
+      language: def.locale,
+      universeVersion: def.version,
+    });
+  }
+  return out;
+}
+
+export const OZVOR_GOLDEN_PROMPTS: readonly GoldenPrompt[] = Object.freeze(buildGoldenPrompts());
+
+/** Stamped on every verdict alongside CANARY_VERSION. */
+export const CANARY_UNIVERSE_VERSION = PROMPT_UNIVERSE_VERSION;
 
 export const CANARY_THRESHOLDS = {
   /** Share of golden prompts that must be present in the canary brand's set. */
@@ -220,6 +203,8 @@ export interface CanaryCheck {
 
 export interface CanaryResult {
   version: string;
+  /** The prompt-universe version the expectations were read from (P0-06). */
+  universeVersion: string;
   status: DeliveryStatus;
   checks: CanaryCheck[];
   /** Sentences for every non-healthy check — fed to the System Health flags. */
@@ -483,7 +468,15 @@ function finish(checks: CanaryCheck[], auditId: string | null, readAt: string): 
   else if (checks.some((c) => c.status === "not_measured")) status = "not_measured";
   else if (checks.some((c) => c.status === "insufficient_evidence")) status = "insufficient_evidence";
 
-  return { version: CANARY_VERSION, status, checks, reasons, auditId, readAt };
+  return {
+    version: CANARY_VERSION,
+    universeVersion: CANARY_UNIVERSE_VERSION,
+    status,
+    checks,
+    reasons,
+    auditId,
+    readAt,
+  };
 }
 
 /** Normalises prompt text for matching against audit_prompt.text. */
@@ -491,20 +484,33 @@ export function canaryPromptKey(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-/** Enforced by a unit test: the golden set is complete and internally sane. */
+/**
+ * Enforced by a unit test: the golden set is complete, internally sane, and
+ * still anchored to the approved universe. If a benchmark prompt is retired
+ * upstream, this SHOUTS instead of letting the canary quietly shrink.
+ */
 export function assertGoldenSetComplete(): string[] {
   const problems: string[] = [];
   if (!/^\d{4}-\d{2}-\d{2}\.\d+$/.test(CANARY_VERSION)) {
     problems.push("CANARY_VERSION must look like YYYY-MM-DD.n");
+  }
+  const built = new Set(OZVOR_GOLDEN_PROMPTS.map((g) => g.id));
+  for (const id of CANARY_GOLDEN_IDS) {
+    if (!built.has(id)) {
+      problems.push(`${id}: no longer in the approved Ozvor universe — the canary lost a golden prompt`);
+    }
   }
   const seen = new Set<string>();
   for (const g of OZVOR_GOLDEN_PROMPTS) {
     if (seen.has(g.id)) problems.push(`${g.id}: duplicate id`);
     seen.add(g.id);
     if (g.text.trim().length < 15) problems.push(`${g.id}: text too short to be a real query`);
-    if (g.rationale.trim().length < 20) problems.push(`${g.id}: rationale missing`);
+    if (!g.expectedCategory) problems.push(`${g.id}: no intent on the universe definition`);
     if (!(g.expectedRelevance > 0 && g.expectedRelevance <= 1)) {
       problems.push(`${g.id}: expectedRelevance must be in (0,1]`);
+    }
+    if (g.universeVersion !== PROMPT_UNIVERSE_VERSION) {
+      problems.push(`${g.id}: built from universe ${g.universeVersion}, current is ${PROMPT_UNIVERSE_VERSION}`);
     }
   }
   if (OZVOR_GOLDEN_PROMPTS.length < 5) problems.push("golden set too small to be a canary");

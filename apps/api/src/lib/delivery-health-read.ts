@@ -48,7 +48,14 @@ import {
   OPEN_STATES,
   type PlanTaskState,
 } from "../../../../packages/llm/src/plan-task-state";
+import { DEFAULT_QUALITY_GATE } from "../../../../packages/llm/src/prompt-quality-gate";
 import { markComparableTrend } from "./trend-comparability";
+
+/**
+ * The relevance floor is the quality gate's own (P0-06), not a second number
+ * invented here — the panel must judge prompts by the rule the product uses.
+ */
+const PROMPT_RELEVANCE_FLOOR = DEFAULT_QUALITY_GATE.relevanceFloor;
 import { detectLifecycle } from "./plan-task-lifecycle";
 
 // ---------------------------------------------------------------------------
@@ -219,7 +226,46 @@ async function probeRegressionSla(db: PostgresClient): Promise<DeliveryObservati
 // Prompts, engines, drafts, audits
 // ---------------------------------------------------------------------------
 
+/**
+ * Prompt relevance. P0-06 (PR #588) introduced a real per-prompt
+ * `relevance_score`; its column ships with a founder-merged migration. So this
+ * asks for the real score FIRST and only falls back to the older
+ * intent-classification proxy when the column is not there yet — and it says
+ * which of the two it used, because "90% pass" means different things.
+ */
 async function probePromptRelevance(db: PostgresClient): Promise<DeliveryObservation> {
+  try {
+    const { rows } = await db.query<{ total: string; passing: string }>(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE relevance_score >= $1)::int AS passing
+         FROM audit_prompt
+        WHERE relevance_score IS NOT NULL
+          AND archived_at IS NULL`,
+      [PROMPT_RELEVANCE_FLOOR]
+    );
+    const total = Number(rows[0]?.total ?? 0);
+    if (total > 0) {
+      return {
+        id: "prompt_relevance_pass",
+        value: Number(rows[0]?.passing ?? 0) / total,
+        sample: total,
+        detail: `scored against the P0-06 relevance floor of ${PROMPT_RELEVANCE_FLOOR}`,
+      };
+    }
+    // Column exists but nothing is scored — that is unmeasured, not 0%.
+    return {
+      id: "prompt_relevance_pass",
+      value: null,
+      sample: 0,
+      unknown: "not_measured",
+      detail: "audit_prompt.relevance_score exists but no live prompt carries a score yet",
+    };
+  } catch (err) {
+    const code = (err as { code?: unknown }).code;
+    if (code !== "42703" && code !== "42P01") throw err;
+    // Pre-P0-06 schema: fall back to the intent-classification proxy and SAY SO.
+  }
+
   const { rows } = await db.query<{ total: string; classified: string }>(
     `SELECT COUNT(*)::int AS total,
             COUNT(intent_id)::int AS classified
@@ -235,7 +281,7 @@ async function probePromptRelevance(db: PostgresClient): Promise<DeliveryObserva
     ...(total > 0
       ? {
           detail:
-            "measured as intent-classification coverage — relevance itself is not scored yet (P0-06); the panel does not pretend otherwise",
+            "audit_prompt.relevance_score is not in this database yet (P0-06 migration pending) — this is the weaker intent-classification proxy, and the panel says so rather than pretending",
         }
       : {}),
   };
@@ -484,15 +530,37 @@ export async function readCanaryObservation(db: PostgresClient): Promise<CanaryO
   }
 
   // Golden prompts — matched by normalised text against the brand's own set.
+  // Asks for the P0-06 columns (intent, relevance_score) and degrades to the
+  // older intent_id when the founder-merged migration has not landed; the
+  // relevance then stays null, which the canary reports as unproven.
+  interface PromptRow {
+    text: string;
+    intent: string | null;
+    relevance_score: number | null;
+  }
   let prompts: CanaryPromptObservation[] = [];
   try {
-    const { rows } = await db.query<{ text: string; intent_id: string | null }>(
-      `SELECT text, intent_id FROM audit_prompt WHERE brand_id = $1 LIMIT 500`,
-      [brandId]
-    );
+    let rows: PromptRow[];
+    try {
+      rows = (
+        await db.query<PromptRow>(
+          `SELECT text, intent, relevance_score FROM audit_prompt WHERE brand_id = $1 LIMIT 500`,
+          [brandId]
+        )
+      ).rows;
+    } catch (err) {
+      const code = (err as { code?: unknown }).code;
+      if (code !== "42703" && code !== "42P01") throw err;
+      rows = (
+        await db.query<{ text: string; intent_id: string | null }>(
+          `SELECT text, intent_id FROM audit_prompt WHERE brand_id = $1 LIMIT 500`,
+          [brandId]
+        )
+      ).rows.map((r) => ({ text: r.text, intent: r.intent_id, relevance_score: null }));
+    }
     const byKey = new Map(
       rows
-        .filter((r): r is { text: string; intent_id: string | null } => typeof r.text === "string")
+        .filter((r) => typeof r.text === "string")
         .map((r) => [canaryPromptKey(r.text), r] as const)
     );
     prompts = OZVOR_GOLDEN_PROMPTS.map((g) => {
@@ -500,10 +568,8 @@ export async function readCanaryObservation(db: PostgresClient): Promise<CanaryO
       return {
         goldenId: g.id,
         present: Boolean(hit),
-        category: hit?.intent_id ?? null,
-        // Relevance is not scored anywhere yet (P0-06). null = not measured,
-        // which the canary reports as unproven — never as a pass.
-        relevance: null,
+        category: hit?.intent ?? null,
+        relevance: hit && hit.relevance_score !== null ? Number(hit.relevance_score) : null,
       };
     });
   } catch (err) {

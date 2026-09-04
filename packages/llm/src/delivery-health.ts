@@ -196,12 +196,12 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     id: "prompt_relevance_pass",
     label: "Prompt relevance pass",
     question: "Are we probing questions this buyer would actually ask?",
-    owner: "Engineering — prompt universe (packages/llm/src/prompt-portfolio.ts)",
-    sourceOfTruth: "audit_prompt.intent_id — the intent-classification proxy until P0-06 records a relevance score",
+    owner: "Engineering — prompt universe (packages/llm/src/prompt-universe-ozvor.ts, P0-06)",
+    sourceOfTruth: "audit_prompt.relevance_score against the quality gate's own floor (P0-06); falls back to audit_prompt.intent_id coverage, and says so, until that migration lands",
     grain: "one audit_prompt row",
     timezone: "UTC",
     windowDays: 30,
-    includes: "prompts attached to brands audited in the window; a prompt PASSES when it carries a classified intent (the strongest signal recorded today) — the panel says so, it does not pretend to score relevance",
+    includes: "live (non-archived) prompts carrying a relevance score; a prompt PASSES at or above DEFAULT_QUALITY_GATE.relevanceFloor. On the older schema it degrades to intent-classification coverage and the reason line names the substitution",
     excludes: "nothing — a prompt with no intent is exactly the failure being counted",
     lateData: "recomputed on read",
     qualityTest: "tests/unit/delivery-health.test.ts › prompts with no intent do not pass relevance",
@@ -458,6 +458,14 @@ export interface DeliveryIndicator {
   failingAt: number;
   /** Why it is amber/red, or why there is no number. Empty when healthy. */
   reason: string | null;
+  /**
+   * The reader's own sentence about HOW this number was obtained — which
+   * source it used, which substitution it had to make. Present even when the
+   * indicator is green: "90% pass" measured by a proxy is not the same claim
+   * as "90% pass" measured by the real score, and the panel must not hide the
+   * difference behind a healthy colour.
+   */
+  note: string | null;
   contract: MetricContract;
 }
 
@@ -474,6 +482,7 @@ export function evaluateIndicator(obs: DeliveryObservation): DeliveryIndicator {
     direction: contract.direction,
     degradedAt: contract.degradedAt,
     failingAt: contract.failingAt,
+    note: obs.detail ?? null,
     contract,
   };
 

@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  CANARY_GOLDEN_IDS,
   CANARY_VERSION,
   OZVOR_GOLDEN_PROMPTS,
   assertGoldenSetComplete,
@@ -18,6 +19,7 @@ import {
   type CanaryPromptObservation,
 } from "../../packages/llm/src/delivery-canary";
 import { deliveryColor } from "../../packages/llm/src/delivery-health";
+import { buildOzvorUniverse } from "../../packages/llm/src/prompt-universe-ozvor";
 
 const READ_AT = "2026-09-04T10:00:00.000Z";
 
@@ -59,6 +61,34 @@ describe("golden set", () => {
     }
   });
 
+  it("is DERIVED from the approved Ozvor universe, not a second hand-written list", () => {
+    const universe = buildOzvorUniverse("2026-09-03T00:00:00.000Z");
+    expect(OZVOR_GOLDEN_PROMPTS).toHaveLength(CANARY_GOLDEN_IDS.length);
+    for (const g of OZVOR_GOLDEN_PROMPTS) {
+      const def = universe.find((p) => p.id === g.id);
+      expect(def, `${g.id} must exist in the approved universe`).toBeDefined();
+      // Text, intent and relevance come from upstream — they cannot drift.
+      expect(g.text).toBe(def!.text);
+      expect(g.expectedCategory).toBe(def!.intent);
+      expect(g.expectedRelevance).toBe(def!.relevanceScore);
+    }
+  });
+
+  it("covers more than one market and more than one language", () => {
+    expect(new Set(OZVOR_GOLDEN_PROMPTS.map((g) => g.market)).size).toBeGreaterThan(1);
+    expect(new Set(OZVOR_GOLDEN_PROMPTS.map((g) => g.language)).size).toBeGreaterThan(1);
+  });
+
+  it("retiring a benchmark prompt upstream is reported, not silently absorbed", () => {
+    // assertGoldenSetComplete compares CANARY_GOLDEN_IDS against what the
+    // universe actually built; an id that vanishes upstream becomes a problem
+    // string rather than a quietly shorter canary.
+    const universeIds = new Set(
+      buildOzvorUniverse("2026-09-03T00:00:00.000Z").map((p) => p.id)
+    );
+    for (const id of CANARY_GOLDEN_IDS) expect(universeIds.has(id)).toBe(true);
+  });
+
   it("matching is punctuation- and case-insensitive", () => {
     expect(canaryPromptKey("What is GEO, exactly?")).toBe(canaryPromptKey("what is geo exactly"));
   });
@@ -85,7 +115,7 @@ describe("each canary failure changes the colour", () => {
     const prompts = allPromptsGood().map((p, i) => (i < 2 ? { ...p, present: false } : p));
     const r = evaluateCanary(passing({ prompts }), READ_AT);
     expect(r.status).not.toBe("healthy");
-    expect(r.reasons.join(" ")).toContain("gp-01");
+    expect(r.reasons.join(" ")).toContain(OZVOR_GOLDEN_PROMPTS[0]!.id);
   });
 
   it("a prompt classified into the wrong category is caught", () => {

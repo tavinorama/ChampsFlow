@@ -43,6 +43,9 @@ interface DbOpts {
   /** SQL fragments that should throw with this Postgres error code. */
   throwOn?: { fragment: string; code?: string; message?: string }[];
   drifts?: number;
+  /** false → audit_prompt.relevance_score does not exist (pre-P0-06 schema). */
+  promptScores?: boolean;
+  promptPassing?: number;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -67,6 +70,15 @@ function makeDb(opts: DbOpts = {}) {
     }
     if (sql.includes("FROM plan_task") && sql.includes("INTERVAL '30 days'")) return planTasks;
     if (sql.includes("FROM last_move")) return [{ hours: null, n: 0 }];
+    if (sql.includes("relevance_score >=")) {
+      // The P0-06 column. `promptScores: false` simulates the older schema.
+      if (opts.promptScores === false) {
+        const err = new Error('column "relevance_score" does not exist') as Error & { code?: string };
+        err.code = "42703";
+        throw err;
+      }
+      return [{ total: 30, passing: opts.promptPassing ?? 30 }];
+    }
     if (sql.includes("FROM audit_prompt")) return [{ total: 40, classified: 40 }];
     if (sql.includes("FROM engine_drift_check")) {
       return [{ rate: 0, n: opts.drifts ?? 5 }];
@@ -154,6 +166,23 @@ describe("readDeliveryHealth — the loop's own numbers", () => {
     expect(ind.status).toBe("not_connected");
     expect(ind.value).toBeNull();
     expect(ind.reason).toContain("20260903000001");
+  });
+
+  it("uses P0-06's real relevance score when the column is there", async () => {
+    const dh = await read(makeDb({ promptPassing: 21 }));
+    const ind = find(dh.rollup.indicators, "prompt_relevance_pass")!;
+    expect(ind.value).toBe(0.7); // 21/30 against the quality gate's own floor
+    expect(ind.status).toBe("failing");
+    expect(ind.contract.sourceOfTruth).toContain("relevance_score");
+  });
+
+  it("degrades to the intent proxy on the older schema, and names the substitution", async () => {
+    const dh = await read(makeDb({ promptScores: false }));
+    const ind = find(dh.rollup.indicators, "prompt_relevance_pass")!;
+    expect(ind.value).toBe(1); // 40/40 prompts carry an intent
+    // Green, but the note still says the number came from the weaker source.
+    expect(ind.status).toBe("healthy");
+    expect(ind.note).toContain("proxy");
   });
 
   it("with no drift battery in the window, hallucination is unmeasured, not clean", async () => {

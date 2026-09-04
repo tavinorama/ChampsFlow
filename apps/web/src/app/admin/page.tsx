@@ -204,7 +204,7 @@ interface SystemHealth {
     color: DeliveryColor;
     counts: Record<string, number>;
     reasons: string[];
-    canary: { version: string; status: string };
+    canary: { version: string; universeVersion: string; status: string };
     readAt: string;
   } | null;
 }
@@ -228,6 +228,8 @@ interface DeliveryIndicatorView {
   degradedAt: number;
   failingAt: number;
   reason: string | null;
+  /** How the number was obtained — shown even when green. */
+  note: string | null;
   contract: {
     question: string;
     owner: string;
@@ -252,6 +254,8 @@ interface DeliveryHealthPayload {
   indicators: DeliveryIndicatorView[];
   canary: {
     version: string;
+    /** The P0-06 prompt-universe version the expectations came from. */
+    universeVersion: string;
     status: string;
     color: DeliveryColor;
     auditId: string | null;
@@ -998,7 +1002,8 @@ function DeliveryHealthSection({ delivery }: { delivery: DeliveryHealthPayload |
       </h3>
       <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
         Infrastructure health, below, says the APIs answer. This says the customer received something.
-        Read at {delivery.readAt}. Canary set {delivery.canary.version}.
+        Read at {delivery.readAt}. Canary set {delivery.canary.version}, prompt universe{" "}
+        {delivery.canary.universeVersion}.
       </p>
 
       <div
@@ -1037,7 +1042,8 @@ function DeliveryHealthSection({ delivery }: { delivery: DeliveryHealthPayload |
         }}
       >
         <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
-          Ozvor canary tenant ({delivery.canary.version}) — {STATUS_WORD[delivery.canary.status] ?? delivery.canary.status}
+          Ozvor canary tenant ({delivery.canary.version} · universe {delivery.canary.universeVersion}) —{" "}
+          {STATUS_WORD[delivery.canary.status] ?? delivery.canary.status}
         </p>
         <ul style={{ margin: 0, paddingLeft: "var(--space-5)", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
           {delivery.canary.checks.map((k) => (
@@ -1071,6 +1077,11 @@ function DeliveryHealthSection({ delivery }: { delivery: DeliveryHealthPayload |
             <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
               {i.reason ?? "inside threshold"}
             </p>
+            {i.note && i.note !== i.reason ? (
+              <p style={{ margin: "var(--space-1) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+                {i.note}
+              </p>
+            ) : null}
             <details style={{ marginTop: "var(--space-2)" }}>
               <summary style={{ cursor: "pointer", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
                 Metric contract
