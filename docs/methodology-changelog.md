@@ -11,6 +11,7 @@
 | 1.0 | lançamento | Repetição fixa por prompt × motor |
 | 2.0 | 2026-07-28 | Amostragem estatística sequencial com Wilson IC 95% + 5 motores com busca web |
 | 2.1 | 2026-07-29 | Extração em duas passagens com verificador cego |
+| 3.0 | 2026-09-03 | Prompt Universe v2 + quebra honesta de comparabilidade |
 
 ---
 
@@ -77,6 +78,108 @@
 **Comunicação ao cliente**
 - Página pública: `/how-we-measure`, seção "What changed in version 2.1" + tabela "Methodology version history".
 - E-mail de resultado (`packages/shared/src/emails/free-test-result.ts`): uma linha discreta com link para a página de metodologia, em texto e HTML.
+
+---
+
+## 3.0: Prompt Universe v2 + quebra honesta de comparabilidade (2026-09-03)
+
+**Aprovado pelo founder em 03/09/2026**, com a condição explícita: a quebra pode
+acontecer, desde que seja **rotulada**. Este é o registo dessa quebra.
+
+### O que motivou
+
+Leitura do banco de produção em 03/09/2026, marca `e74fcbc1-a988-4b5d-b054-87329dc881c0`:
+
+| Run | `methodology_version` | Motores | Brand |
+|---|---|---|---|
+| 30/06 | 1.0 | **2** (perplexity, dataforseo) | 90 |
+| 29/07 09:58 | 1.0 | **1** (dataforseo) | 19 |
+| 29/07 14:11 | **2.1** | **5** | 24 |
+| 31/08 | 2.1 | **4** (sem anthropic) | — |
+
+A queda divulgada como "71 → 48" liga esses pontos como se fossem uma tendência.
+Em parte relevante **não são**: são réguas diferentes. `methodology_version`
+sozinha nunca apanharia o caso de 31/08 — mesmo método, painel diferente.
+
+Em paralelo, os prompts padrão perguntavam por "best SaaS for SMBs". A Ozvor não
+compete nessa categoria; medíamo-nos num mercado que não é o nosso e líamos o
+ruído como tendência.
+
+### O que mudou
+
+- **`PromptDefinition` versionado** (`packages/llm/src/prompt-universe.ts`):
+  cohort (`benchmark`|`opportunity`|`customer`), intent, vertical, market,
+  locale, funnelStage, demand `{value, source}`, businessValue, relevanceScore,
+  branded, expectedCompetitors, validFrom/validUntil, version, approvedBy,
+  ownerType, archivedAt/archivedReason.
+- **Composição por coorte configurável.** `DEFAULT_COHORT_MIX` = 60/20/20 é um
+  **default, não uma lei**. `resolveCohortMix()` aceita override por
+  tenant/marca ou env e devolve a mix aplicada + a fonte, que o run grava.
+  Quota por largest-remainder; coorte que não enche redistribui **com nota**.
+- **Quality gate** (`packages/llm/src/prompt-quality-gate.ts`): piso de
+  relevância, dedupe semântico (Jaccard + containment), buyer intent
+  obrigatório, coerência idioma×mercado, branded vs non-branded explícito **e**
+  consistente com o texto, freshness. Nada é descartado em silêncio.
+- **Universo próprio da Ozvor** (`packages/llm/src/prompt-universe-ozvor.ts`):
+  os prompts genéricos saem por **arquivamento** (nunca DELETE), cada um com o
+  motivo; entram prompts de GEO, AI visibility, brand monitoring, local service
+  e agency, em en-US, pt-BR e EU.
+- **Badge de comparabilidade**
+  (`apps/api/src/lib/methodology-comparability.ts`):
+  `Comparable` / `Method changed` / `Prompt set changed` / `Engine changed`,
+  mais um quinto estado honesto — `Not comparable — unknown method` — quando um
+  dos runs não regista o que usou. **Dado ausente nunca vira "igual".**
+  A linha de tendência é cortada em segmentos; pontos incompatíveis nunca são
+  ligados. **A variação do conjunto de motores entre runs conta como
+  incompatibilidade** — é exatamente o caso de 31/08 e o de 30/06.
+- **Migração** `20260903000001_prompt_universe`: colunas do PromptDefinition em
+  `audit_prompt`, tabela append-only `prompt_universe_event`, e
+  `prompt_set_version` / `prompt_set_hash` / `engine_set` em `geo_audit`.
+
+### Integração, não duplicação
+
+A fase 2 do Visibility Loop v2 (PR #582, `apps/api/src/lib/trend-comparability.ts`)
+já decide, **por run**, se ele entra na tendência, via painel pinado + banda de
+checks. Este módulo decide, **por transição**, qual badge mostrar e onde a linha
+quebra. Os dois compõem-se: as marcas de #582 entram em `panelMarks` e o run
+excluído lá é excluído aqui, com a razão **verbatim**. Nada é recalculado nem
+contradito. Sem #582 presente, a mudança de painel ainda quebra a linha — o caso
+de 31/08 não pode esperar por outro PR para ser dito.
+
+### Efeito esperado no score
+
+- **O score de todas as marcas muda**, porque as perguntas mudam. Não há
+  direção uniforme: marca com presença real na categoria certa tende a subir;
+  marca que só pontuava em perguntas genéricas tende a cair.
+- **Score 2.1 e score 3.0 não são comparáveis.** A primeira auditoria 3.0 é uma
+  nova baseline, e o badge diz `Prompt set changed` (ou `Method changed` quando
+  ambos mudam) na transição.
+- Runs anteriores mantêm `prompt_set_version` NULL e o badge lê `unknown`.
+
+### Política de backfill
+
+**Nenhuma, deliberadamente.** Nenhuma linha histórica é rerrotulada, nenhum score
+antigo é recalculado. Rerrotular seria inventar uma continuidade que não existiu
+— o defeito que esta versão fecha.
+
+### Flag de rollback
+
+- `OZVOR_COHORT_MIX` (ex.: `benchmark=0.5,opportunity=0.3,customer=0.2`):
+  ajusta a composição sem deploy. Env malformada **lança** em vez de cair para o
+  default — um typo não pode reformular a medição em silêncio.
+- O universo Ozvor é aplicado por script auditável e reversível
+  (`npx tsx scripts/migrate-ozvor-prompt-universe.ts --apply` / `--restore`), não por
+  deploy. Reverter re-ativa os prompts arquivados e regista o evento `restored`.
+
+### Comunicação ao cliente
+
+- Página pública `/how-we-measure`: entrada 3.0 na tabela de histórico.
+- Dashboard: badge visível em toda transição, com a razão em texto humano.
+
+**Estado no momento deste commit:** a migração está em PR separado (merge do
+founder). Enquanto ela não for aplicada, o stamp de comparabilidade **está
+DESLIGADO** — o worker loga `audit_comparability_stamp_unavailable` nomeando a
+migração, o badge lê `unknown`, e a auditoria não falha por isso.
 
 ---
 
