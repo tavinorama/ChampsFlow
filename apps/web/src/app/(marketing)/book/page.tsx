@@ -42,7 +42,7 @@ import { safeJsonLd } from "../../../lib/safe-json-ld";
 const CALENDLY_URL = process.env.NEXT_PUBLIC_CALENDLY_URL ?? "";
 
 export const metadata: Metadata = {
-  title: "Book a GEO Strategy Call — Ozvor",
+  title: "Book a GEO Strategy Call",
   description:
     "Book a 20-minute GEO strategy call with the Ozvor team. We'll review your AI search visibility gaps. Then we'll walk you through a personalised action plan.",
   alternates: {
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
       // without images silently ships no social card. Naming the default here
       // restores it without changing anything else on the page.
       images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
-    title: "Book a GEO Strategy Call — Ozvor",
+    title: "Book a GEO Strategy Call",
     description:
       "20 minutes to understand your AI search visibility and get a personalised GEO action plan.",
     url: "https://ozvor.com/book",

@@ -29,7 +29,7 @@ import { safeJsonLd } from "../../../lib/safe-json-ld";
 // ---------------------------------------------------------------------------
 
 export const metadata: Metadata = {
-  title: "Blog — Ozvor",
+  title: "Blog",
   description:
     "Articles about AI search visibility and GEO, and how to get your brand cited by ChatGPT, Claude, Perplexity and Gemini.",
   alternates: {
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
       // without images silently ships no social card. Naming the default here
       // restores it without changing anything else on the page.
       images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
-    title: "Blog — Ozvor",
+    title: "Blog",
     description:
       "Articles about AI search visibility and GEO, and how to get your brand cited by ChatGPT, Claude, Perplexity and Gemini.",
     url: "https://ozvor.com/blog",
