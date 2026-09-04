@@ -1,12 +1,19 @@
 name: SmartLead send watch (envio parado grita)
 
-# Por que existe: em 04/09 as campanhas ficaram ATIVAS e simplesmente pararam
-# de enviar — 700 e-mails no dia 02, 340 no dia 03, ZERO no dia 04 com a janela
-# aberta havia horas. Ninguém soube. Regra da casa: nada degrada calado.
+# Por que existe: campanha ATIVA que para de enviar não aparece em lado nenhum
+# — o painel do SmartLead continua verde. Regra da casa: nada degrada calado.
 #
-# Este vigia roda dentro da janela de envio (09:00–18:00 America/New_York) e
-# compara o total enviado AGORA com o total de 1 hora atrás, guardado no cache
-# do Actions. Zero envios numa hora inteira de janela = alarme no Telegram.
+# O QUE NÃO É ALARME (correção do founder, 04/09): uma pausa entre toques da
+# sequência é NORMAL. O e-mail 2 sai 3 dias depois do primeiro; entre um toque e
+# o outro há dias legítimos de silêncio. Um vigia que grita nesses dias treina
+# toda a gente a ignorá-lo — vira o "vigia que também mente".
+#
+# Por isso o alarme exige DUAS condições ao mesmo tempo:
+#   (a) zero e-mails novos desde a medição anterior, E
+#   (b) existirem leads que NUNCA receberam o primeiro toque nessa campanha.
+# Com (b) falso, o silêncio é a sequência a respirar e o vigia cala-se.
+# Se (b) não puder ser determinado pela API, NÃO alarma e diz isso no resumo:
+# alarme adivinhado é pior do que alarme nenhum.
 #
 # Determinístico: python + urllib, sem LLM. Só agregados — nenhum e-mail de
 # lead entra no log (regra da casa).
@@ -68,6 +75,32 @@ jobs:
               except Exception as e:
                   return {"_erro": type(e).__name__}
 
+          def nunca_tocados(cid):
+              """Leads da campanha que ainda não receberam o toque 1.
+
+              Devolve int, ou None quando a API não expõe o estado por lead —
+              e None faz o vigia calar-se, nunca adivinhar. Amostra as duas
+              primeiras páginas: a pergunta é "existe algum?", não "quantos ao
+              certo?", e paginar 4 mil leads por um booleano é desperdício."""
+              vistos, por_tocar, determinou = 0, 0, False
+              for offset in (0, 100):
+                  page = get(f"/campaigns/{cid}/leads?offset={offset}&limit=100")
+                  rows = page.get("data") if isinstance(page, dict) else page
+                  if not isinstance(rows, list) or not rows:
+                      break
+                  for row in rows:
+                      lead = row.get("lead") if isinstance(row.get("lead"), dict) else row
+                      estado = str(row.get("status") or lead.get("status") or "").upper()
+                      if not estado:
+                          continue
+                      determinou = True
+                      vistos += 1
+                      # Vocabulário do SmartLead: quem ainda não entrou na
+                      # sequência aparece como NOT_STARTED/PENDING/STOPPED=False.
+                      if estado in ("NOT_STARTED", "PENDING", "NOTSTARTED"):
+                          por_tocar += 1
+              return por_tocar if determinou else None
+
           camps = get("/campaigns")
           if isinstance(camps, dict):
               print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
@@ -79,7 +112,8 @@ jobs:
                   continue
               a = get(f"/campaigns/{c['id']}/analytics")
               n = int(a.get("sent_count") or 0) if isinstance(a, dict) else 0
-              ativas.append({"nome": c.get("name"), "enviados": n})
+              ativas.append({"nome": c.get("name"), "enviados": n,
+                             "por_tocar": nunca_tocados(c["id"])})
               total += n
 
           estado = pathlib.Path(".sl-watch/estado.json")
@@ -93,13 +127,23 @@ jobs:
           estado.write_text(json.dumps({"total": total}))
 
           delta = None if antes is None else total - antes
+          # (b) alguma campanha ativa ainda tem lead por tocar? None = não sabemos.
+          por_tocar = [a["por_tocar"] for a in ativas]
+          ha_por_tocar = any(v for v in por_tocar if isinstance(v, int) and v > 0)
+          indeterminado = all(v is None for v in por_tocar) if por_tocar else True
           # Sem leitura anterior não há alarme: primeira execução só grava a régua.
-          parado = delta is not None and delta <= 0 and len(ativas) > 0
+          # Sem lead por tocar, o silêncio é a sequência a respirar entre toques.
+          parado = (delta is not None and delta <= 0 and len(ativas) > 0
+                    and ha_por_tocar and not indeterminado)
 
           if parado:
-              linhas = "\n".join(f"· {a['nome']}: {a['enviados']} enviados (acumulado)" for a in ativas)
+              linhas = "\n".join(
+                  f"· {a['nome']}: {a['enviados']} enviados · {a['por_tocar']} leads por tocar"
+                  for a in ativas)
               msg = ("🚨 SmartLead: ENVIO PARADO\n\n"
-                     f"{len(ativas)} campanha(s) ATIVA(s) e ZERO e-mails novos desde a última medição.\n\n"
+                     "Campanha ATIVA, leads que nunca receberam o toque 1, e ZERO "
+                     "e-mails novos desde a última medição. Não é a sequência a "
+                     "respirar entre toques — é envio travado.\n\n"
                      f"{linhas}\n\n"
                      "Janela de envio deveria estar aberta (09–18 Nova Iorque).\n"
                      "Onde olhar: quota/plano da conta no painel do SmartLead, "
@@ -119,8 +163,10 @@ jobs:
 
           print("RESULTADO_OZVOR" + json.dumps(
               {"ok": True, "campanhas_ativas": len(ativas), "total_enviados": total,
-               "medicao_anterior": antes, "delta": delta, "envio_parado": parado,
-               "telegram": avisado}, ensure_ascii=False))
+               "medicao_anterior": antes, "delta": delta,
+               "leads_por_tocar": por_tocar,
+               "estado_por_lead_indeterminado": indeterminado,
+               "envio_parado": parado, "telegram": avisado}, ensure_ascii=False))
           # Envio parado é vermelho: o job falha para aparecer no painel do Actions.
           if parado:
               raise SystemExit(1)
