@@ -48,6 +48,13 @@ import {
   OPEN_STATES,
   type PlanTaskState,
 } from "../../../../packages/llm/src/plan-task-state";
+import {
+  DELIVERY_LOOP_BROKEN,
+  INVESTIGATION_GAP,
+  evaluateDoNextPolicy,
+  resolveVisibilityTarget,
+  rollupDoNextInvariant,
+} from "../../../../packages/llm/src/delivery-policy";
 import { markComparableTrend } from "./trend-comparability";
 import { detectLifecycle } from "./plan-task-lifecycle";
 
@@ -594,6 +601,111 @@ export async function readCanaryObservation(db: PostgresClient): Promise<CanaryO
 // Public entry point
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The Do Next invariant probe (P0-01) — RELATORIO §3.1
+// ---------------------------------------------------------------------------
+
+interface InvariantRow {
+  brand_id: string;
+  score_ai: number | null;
+  lost_prompts: string | number | null;
+  open_cards: string | number | null;
+  investigations: string | number | null;
+}
+
+/**
+ * One row per brand whose latest audit completed in the window, carrying the
+ * three facts the invariant needs: the score, the lost buyer questions, and
+ * whether anything is open for it.
+ *
+ * `score_ai IS NULL` is passed through as null — the policy treats "not
+ * measured" as a reason the client cannot be told they are caught up, and a
+ * COALESCE to 0 here would have turned that into a fake catastrophe.
+ */
+async function probeDoNextInvariant(db: PostgresClient): Promise<DeliveryObservation> {
+  const { rows } = await db.query<InvariantRow>(
+    `WITH latest_audit AS (
+       SELECT DISTINCT ON (brand_id) brand_id, id, score_ai
+         FROM geo_audit
+        WHERE status = 'complete'
+          AND created_at >= NOW() - INTERVAL '30 days'
+        ORDER BY brand_id, created_at DESC
+     ),
+     latest_plan AS (
+       SELECT DISTINCT ON (brand_id) brand_id, id
+         FROM strategy_plan
+        ORDER BY brand_id, created_at DESC
+     )
+     SELECT a.brand_id,
+            a.score_ai,
+            (SELECT COUNT(*) FROM citation_check c
+              WHERE c.audit_id = a.id AND c.cited = FALSE) AS lost_prompts,
+            (SELECT COUNT(*) FROM plan_task t
+              WHERE t.plan_id = p.id
+                AND t.status = ANY($1::text[])
+                AND t.gap <> $2) AS open_cards,
+            (SELECT COUNT(*) FROM plan_task t
+              WHERE t.plan_id = p.id
+                AND t.status = ANY($1::text[])
+                AND t.gap = $2) AS investigations
+       FROM latest_audit a
+       LEFT JOIN latest_plan p ON p.brand_id = a.brand_id
+      LIMIT 2000`,
+    [[...OPEN_STATES, "done", "accepted", "proposed"], INVESTIGATION_GAP]
+  );
+
+  if (rows.length === 0) {
+    return {
+      id: "do_next_invariant",
+      value: null,
+      sample: 0,
+      unknown: "insufficient_evidence",
+      detail: "no brand completed an audit in the last 30 days",
+    };
+  }
+
+  const target = resolveVisibilityTarget(process.env);
+  const verdicts = rows.map((r) => {
+    const investigations = Number(r.investigations ?? 0);
+    const verdict = evaluateDoNextPolicy({
+      brandId: r.brand_id,
+      auditId: null,
+      visibilityScore: r.score_ai === null ? null : Number(r.score_ai),
+      target,
+      lostIntentCount: r.lost_prompts === null ? null : Number(r.lost_prompts),
+      criticalProfileMissing: false,
+      openActionCount: Number(r.open_cards ?? 0),
+      // An open investigation satisfies the invariant for the CLIENT (there is
+      // a way out on screen) and is precisely what this indicator must NOT
+      // treat as health: it is the alarm. So the policy sees it, and the line
+      // below counts the brand as not holding anyway.
+      activeInvestigation: investigations > 0,
+      loopGeneration: { status: "ok", at: null },
+    });
+    if (investigations > 0) {
+      return {
+        brandId: r.brand_id,
+        verdict: {
+          ...verdict,
+          code: DELIVERY_LOOP_BROKEN as typeof DELIVERY_LOOP_BROKEN,
+          reasons: [`an open ${DELIVERY_LOOP_BROKEN} investigation is standing for this brand`, ...verdict.reasons],
+        },
+      };
+    }
+    return { brandId: r.brand_id, verdict };
+  });
+
+  const roll = rollupDoNextInvariant(verdicts);
+  return {
+    id: "do_next_invariant",
+    value: roll.rate,
+    sample: roll.total,
+    ...(roll.broken.length > 0
+      ? { detail: `${roll.broken.length} of ${roll.total} brands: ${roll.broken[0].reason}` }
+      : {}),
+  };
+}
+
 export interface DeliveryHealth {
   rollup: DeliveryRollup;
   canary: CanaryResult;
@@ -608,6 +720,7 @@ export async function readDeliveryHealth(db: PostgresClient): Promise<DeliveryHe
   const readAt = new Date().toISOString();
 
   const groups = await Promise.all([
+    safely(["do_next_invariant"], () => probeDoNextInvariant(db)),
     safely(
       ["recommendation_coverage", "useful_action_rate", "action_verification_rate"],
       () => probePlanTasks(db)

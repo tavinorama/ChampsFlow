@@ -23,6 +23,7 @@ vi.mock("../../apps/api/src/auth/middleware", () => ({
   requireSuperAdmin: async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
+import { DELIVERY_INDICATOR_IDS } from "../../packages/llm/src/delivery-health";
 import { readDeliveryHealth } from "../../apps/api/src/lib/delivery-health-read";
 import { resetLifecycleCapabilityCache } from "../../apps/api/src/lib/plan-task-lifecycle";
 import { registerAdminRoutes } from "../../apps/api/src/routes/admin";
@@ -43,6 +44,14 @@ interface DbOpts {
   /** SQL fragments that should throw with this Postgres error code. */
   throwOn?: { fragment: string; code?: string; message?: string }[];
   drifts?: number;
+  /** P0-01 — one row per brand for the Do Next invariant probe. */
+  invariantRows?: {
+    brand_id: string;
+    score_ai: number | null;
+    lost_prompts: number | null;
+    open_cards: number;
+    investigations: number;
+  }[];
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -62,6 +71,7 @@ function makeDb(opts: DbOpts = {}) {
         throw err;
       }
     }
+    if (sql.includes("latest_audit")) return opts.invariantRows ?? [];
     if (sql.includes("information_schema")) {
       return [{ history: lifecycle, proof_columns: lifecycle, ok: lifecycle }];
     }
@@ -110,9 +120,71 @@ describe("readDeliveryHealth — a read that fails is never a zero", () => {
     expect(ind.reason).toContain("never as zero");
   });
 
+  // -------------------------------------------------------------------------
+  // P0-01 — the Do Next invariant (RELATORIO §3.1). System Health must stop
+  // being green when a client has a gap and an empty fix list.
+  // -------------------------------------------------------------------------
+
+  it("the Do Next invariant indicator goes red when a brand has a gap and no action", async () => {
+    const dh = await read(
+      makeDb({
+        invariantRows: [
+          { brand_id: "b1", score_ai: 18, lost_prompts: 9, open_cards: 0, investigations: 0 },
+          { brand_id: "b2", score_ai: 90, lost_prompts: 0, open_cards: 0, investigations: 0 },
+        ],
+      })
+    );
+    const ind = find(dh.rollup.indicators, "do_next_invariant")!;
+    expect(ind.value).toBe(0.5);
+    expect(ind.status).toBe("failing");
+    expect(ind.reason).toBeTruthy();
+    expect(dh.rollup.status).toBe("failing");
+  });
+
+  it("a brand whose gap already has an open action holds the invariant", async () => {
+    const dh = await read(
+      makeDb({
+        invariantRows: [{ brand_id: "b1", score_ai: 18, lost_prompts: 9, open_cards: 4, investigations: 0 }],
+      })
+    );
+    const ind = find(dh.rollup.indicators, "do_next_invariant")!;
+    expect(ind.value).toBe(1);
+    expect(ind.status).toBe("healthy");
+  });
+
+  it("an open DELIVERY_LOOP_BROKEN investigation is the alarm, not health", async () => {
+    const dh = await read(
+      makeDb({
+        invariantRows: [{ brand_id: "b1", score_ai: 18, lost_prompts: 9, open_cards: 0, investigations: 1 }],
+      })
+    );
+    const ind = find(dh.rollup.indicators, "do_next_invariant")!;
+    expect(ind.value).toBe(0);
+    expect(ind.status).toBe("failing");
+    expect(ind.detail ?? ind.reason ?? "").not.toBe("");
+  });
+
+  it("an unmeasured score is not read as a clean bill of health", async () => {
+    const dh = await read(
+      makeDb({
+        invariantRows: [{ brand_id: "b1", score_ai: null, lost_prompts: null, open_cards: 0, investigations: 0 }],
+      })
+    );
+    const ind = find(dh.rollup.indicators, "do_next_invariant")!;
+    expect(ind.value).toBe(0);
+    expect(ind.status).toBe("failing");
+  });
+
+  it("no audited brand in the window is insufficient evidence, never 100%", async () => {
+    const dh = await read(makeDb({ invariantRows: [] }));
+    const ind = find(dh.rollup.indicators, "do_next_invariant")!;
+    expect(ind.status).toBe("insufficient_evidence");
+    expect(ind.value).toBeNull();
+  });
+
   it("every indicator appears even when a probe drops one", async () => {
     const dh = await read(makeDb({ throwOn: [{ fragment: "FROM geo_audit", message: "nope" }] }));
-    expect(dh.rollup.indicators).toHaveLength(12);
+    expect(dh.rollup.indicators).toHaveLength(DELIVERY_INDICATOR_IDS.length);
     expect(find(dh.rollup.indicators, "queue_age")!.value).toBeNull();
   });
 });
@@ -197,7 +269,7 @@ describe("HTTP surface", () => {
       indicators: { id: string; status: string; value: number | null; contract: Record<string, unknown> }[];
       canary: { version: string; checks: unknown[] };
     };
-    expect(body.indicators).toHaveLength(12);
+    expect(body.indicators).toHaveLength(DELIVERY_INDICATOR_IDS.length);
     for (const i of body.indicators) {
       expect(i.contract.owner).toBeTruthy();
       expect(i.contract.sourceOfTruth).toBeTruthy();

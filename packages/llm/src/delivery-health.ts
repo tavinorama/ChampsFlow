@@ -132,6 +132,7 @@ export interface MetricContract {
 }
 
 export const DELIVERY_INDICATOR_IDS = [
+  "do_next_invariant",
   "recommendation_coverage",
   "useful_action_rate",
   "prompt_relevance_pass",
@@ -154,6 +155,39 @@ export type DeliveryIndicatorId = (typeof DELIVERY_INDICATOR_IDS)[number];
  * data, so moving one is a one-line diff with a test, not a refactor.
  */
 export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricContract>> = {
+  /**
+   * P0-01 — the invariant of RELATORIO §3.1, aggregated.
+   *
+   * It is deliberately the FIRST indicator: a green System Health while a
+   * client stares at an empty fix list is the single failure this whole
+   * workstream exists to stop. One brand out of a handful violating it drops
+   * the rate under the failing threshold and the panel goes red; a single
+   * violation in a large population still goes amber. Nothing measured here
+   * can be "fine on average".
+   */
+  do_next_invariant: {
+    id: "do_next_invariant",
+    label: "Do Next invariant",
+    question:
+      "Does every brand with a material gap have an open action or an active investigation — or are we showing a problem with an empty fix list?",
+    owner: "Engineering — Delivery policy (packages/llm/src/delivery-policy.ts)",
+    sourceOfTruth:
+      "geo_audit (latest complete audit per brand) × citation_check (lost prompts) × plan_task (open cards)",
+    grain: "one brand with a completed audit in the window",
+    timezone: "UTC",
+    windowDays: 30,
+    includes:
+      "brands whose latest audit completed in the window; a brand carrying an open DELIVERY_LOOP_BROKEN investigation counts as NOT holding, because the investigation is the alarm, not the fix",
+    excludes: "brands with no completed audit in the window — unaudited is not the same as underserved",
+    lateData: "recomputed on read from the latest audit per brand",
+    qualityTest:
+      "tests/unit/delivery-health-read.test.ts › the Do Next invariant indicator goes red when a brand has a gap and no action",
+    minSample: 1,
+    direction: "higher_is_better",
+    degradedAt: 1,
+    failingAt: 0.95,
+    unit: "rate",
+  },
   recommendation_coverage: {
     id: "recommendation_coverage",
     label: "Recommendation coverage",
