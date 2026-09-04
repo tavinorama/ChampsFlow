@@ -379,6 +379,7 @@ export {
   gapForUncited,
   gapForLowRank,
   gapForSource,
+  queryFromGap,
   LOOP_OPEN_CAP,
   LOOP_DONE_CARRY_CAP,
   VERIFIED_PREFIX,
