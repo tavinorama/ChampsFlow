@@ -163,7 +163,7 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     grain: "one open plan_task row per gap per brand",
     timezone: "UTC",
     windowDays: 30,
-    includes: "open cards (proposed/accepted/drafting/review/…) on brands audited in the window",
+    includes: "open cards (proposed/accepted/drafting/review/…) created in the window",
     excludes: "rejected and expired cards — a gap we decided not to chase is not an uncovered gap",
     lateData: "recomputed on read; a card written after the window simply appears in the next read",
     qualityTest: "tests/unit/delivery-health.test.ts › recommendation coverage falls when a gap has no action",
@@ -197,11 +197,11 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     label: "Prompt relevance pass",
     question: "Are we probing questions this buyer would actually ask?",
     owner: "Engineering — prompt universe (packages/llm/src/prompt-portfolio.ts)",
-    sourceOfTruth: "audit_prompt.intent_id (P0-06 will add the relevance score itself)",
+    sourceOfTruth: "audit_prompt.intent_id — the intent-classification proxy until P0-06 records a relevance score",
     grain: "one audit_prompt row",
     timezone: "UTC",
     windowDays: 30,
-    includes: "prompts attached to brands audited in the window",
+    includes: "prompts attached to brands audited in the window; a prompt PASSES when it carries a classified intent (the strongest signal recorded today) — the panel says so, it does not pretend to score relevance",
     excludes: "nothing — a prompt with no intent is exactly the failure being counted",
     lateData: "recomputed on read",
     qualityTest: "tests/unit/delivery-health.test.ts › prompts with no intent do not pass relevance",
@@ -637,4 +637,35 @@ export function deliveryColor(s: DeliveryStatus): "green" | "amber" | "red" {
   if (s === "healthy") return "green";
   if (s === "failing") return "red";
   return "amber";
+}
+
+// ---------------------------------------------------------------------------
+// Raw-error leakage (the `raw_error_leak` indicator's classifier)
+// ---------------------------------------------------------------------------
+
+/**
+ * Does this stored failure message read like something a machine wrote at a
+ * customer? We write plain sentences; providers and runtimes write these.
+ *
+ * Deliberately conservative: a false negative costs us one uncounted leak, a
+ * false positive puts a permanent amber on the panel and teaches the founder
+ * to ignore it. Pure and exported so it is tested rather than trusted.
+ */
+export const RAW_ERROR_SIGNATURES: readonly RegExp[] = [
+  /\bat\s+\w+[.\w]*\s*\(.*:\d+:\d+\)/,        // stack frame
+  /\b(TypeError|ReferenceError|SyntaxError|RangeError)\b/,
+  /\bECONN(REFUSED|RESET|ABORTED)\b|\bETIMEDOUT\b|\bENOTFOUND\b|\bEAI_AGAIN\b/,
+  /\berror code\s*[:=]?\s*\d{3,}/i,
+  /\b(?:status|http)\s*[:=]?\s*(?:4\d{2}|5\d{2})\b/i,
+  /^\s*[{[]/,                                       // a raw JSON body
+  /\b(?:PG|SQLSTATE)\s*\d{5}\b|\brelation "[^"]+" does not exist/i,
+  /\bundefined is not a\b|\bcannot read propert(?:y|ies)\b/i,
+  /\bTraceback \(most recent call last\)/,
+];
+
+export function looksLikeRawError(message: string | null | undefined): boolean {
+  if (typeof message !== "string") return false;
+  const m = message.trim();
+  if (m.length === 0) return false;
+  return RAW_ERROR_SIGNATURES.some((re) => re.test(m));
 }

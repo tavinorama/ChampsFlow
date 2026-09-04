@@ -17,6 +17,7 @@ import {
   assertContractsComplete,
   deliveryColor,
   evaluateIndicator,
+  looksLikeRawError,
   rollupDelivery,
   type DeliveryIndicator,
   type DeliveryObservation,
@@ -188,12 +189,38 @@ describe("rollup", () => {
     expect(r.reasons.join(" ")).toContain("Verify canary");
   });
 
-  it("counts every state so the panel can show what it cannot see", () => {
+  it("counts every state so the panel can show what it cannot see (see also the raw-error classifier below)", () => {
     const list = healthyAll();
     list[1] = ind({ id: "useful_action_rate", value: null, sample: 0, unknown: "not_connected" });
     const r = rollupDelivery(list, null, READ_AT);
     expect(r.counts.not_connected).toBe(1);
     expect(r.counts.healthy).toBe(DELIVERY_INDICATOR_IDS.length - 1);
     expect(r.readAt).toBe(READ_AT);
+  });
+});
+
+describe("raw-error leakage classifier", () => {
+  it("flags what a machine wrote at a customer", () => {
+    for (const m of [
+      "TypeError: Cannot read properties of undefined (reading 'score')",
+      "at runAudit (/app/apps/worker/src/jobs/audit-run.ts:412:19)",
+      "connect ECONNREFUSED 10.0.0.4:6379",
+      '{"error":{"type":"rate_limit_error"}}',
+      'relation "geo_score" does not exist',
+      "Request failed with status 502",
+    ]) {
+      expect(looksLikeRawError(m), m).toBe(true);
+    }
+  });
+
+  it("leaves our own written sentences alone", () => {
+    for (const m of [
+      "We could not finish this check because the Perplexity engine is paused. Nothing was charged.",
+      "This audit stopped early — your brand has no prompts yet.",
+      null,
+      "",
+    ]) {
+      expect(looksLikeRawError(m), String(m)).toBe(false);
+    }
   });
 });
