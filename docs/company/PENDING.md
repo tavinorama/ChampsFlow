@@ -291,3 +291,44 @@
 - **Contagem "42 testes pulados"** → 58 + 12 fixme + 2 (10.A.13).
 
 **Apêndice 02/09:** classificação Ozvor 1 concluída (1.254 → aistack, zero duplicata) · 1º lote prospect-batch rodou e foi aprovado (0 e-mails úteis → 10.C.17) · postmortem-scan 2º dia quieto · sphere-reddit 1º brief (SEM DADO, envs 4.1) · bug de créditos (107.900) corrigido no banco + fix #566 · migrações #531/#537 aplicadas (memória+tuner ON).
+
+---
+
+## BLOCO 11 — PROGRAMA CLOSED-LOOP (relatório de auditoria de 03/09, no repo em `RELATORIO-AUDITORIA-COMPLETA-OZVOR.md`)
+
+> **Veredito do relatório: NO-GO para ESCALAR aquisição.** Vender em modo fundador/concierge, volume baixo, acompanhamento manual, até os P0 fecharem. As campanhas já ativas continuam — o que está proibido é AUMENTAR volume/tráfego pago.
+> Sequência obrigatória (do próprio plano): **Parte I (P0 visibilidade) → Parte II (dois funis/catálogo) → Parte III (Signal Intelligence)**. Nada da II ou III começa antes da I fechar.
+
+### 11.A — Parte I, Gate 1 (P0 de 48h)
+| # | Item | Estado | Onde |
+|---|---|---|---|
+| 11.A.1 | P0-01 impedir "All caught up" falso | 🟢 código na main; a política central com `DELIVERY_LOOP_BROKEN` ainda **não** existe como invariante única — o Do Next religado é fail-soft | #574 ✅ |
+| 11.A.2 | P0-02 atividade ≠ execução verificada | 🟡 código pronto; **desligado** até a migração | #587 · migração #586 👤 |
+| 11.A.3 | P0-03 promessas vazias (Radar, Prime/OrganicPosts, 3/3 vs 5) | 🟢 | #589 |
+| 11.A.4 | P0-04 vazamento editorial (lint pré-publicação) | 🟢 código · ⚠️ **o post já publicado é ação do founder** (runbook `docs/departments/marketing/p0-04-linkedin-leak-runbook.md`; ninguém abriu o LinkedIn — não sabemos se ainda está no ar) | #589 |
+| 11.A.5 | P0-05 trust registry dos comparativos | 🟢 estrutura + páginas congeladas · ⚠️ **todos os claims nascem `stale`, fonte nula** — ninguém abriu página de concorrente | #589 |
+| 11.A.6 | P0-10 responsividade | 🟢 320–1440px · **o relatório errou o alvo**: 390px não reproduziu; a faixa real era 768px (navbar com min-width 970px) · ⚠️ **dashboard logado nunca foi medido** (307 → /login) | #589 |
+
+### 11.B — Parte I, Gate 2 (P0 de 7 dias)
+| # | Item | Estado |
+|---|---|---|
+| 11.B.1 | P0-06 Prompt Universe v2 | 🟡 código pronto, **opt-in por marca**; desligado até migração #585 👤 |
+| 11.B.2 | P0-07 Gap Classifier + Action Generator com evidência | 🟠 **parcial**: os cards já nomeiam query/motor/vencedor (#574), mas falta o `NormalizedObservation` completo e os classifiers por tipo de gap (technical/entity/content/proof/reputation/offsite/local) |
+| 11.B.3 | P0-08 geração hospedada (fim do BYOK obrigatório) | 🔴 **NÃO FEITO** — é o item que mais dói para SMB: a auditoria não produz rascunho sem chave do cliente |
+| 11.B.4 | P0-09 Delivery Health + tenant canário | 🔴 **NÃO FEITO** — o System Health continua medindo infraestrutura, não entrega |
+
+### 11.C — Parte I, Gate 3 (P1, 30 dias)
+Measurement v2 completo (7 métricas separadas) · Entity Registry + falso-positivo (a IA confunde a marca com medicamentos) · GSC/GA/GBP operacionais (null ≠ zero) · UX Now/Change/Why/Do/Proof · crawler de SEO em CI · diff de contradições legais para counsel · reconciliação de pacotes/entitlements (10 vs 15 marcas, 9 Kits vs 2 no analytics). **Nenhum iniciado.**
+
+### 11.D — Partes II e III
+Parte II (dois funis, catálogo versionado, AI Ops de 7 dimensões, Command Center, US$10k MRR scorecard) e Parte III (Signal Intelligence: CI, compliance registry, S2S, API v1, outbox, Opportunity contract) — **não iniciadas por decisão de sequência**. Reddit fica `compliance_state=blocked` para uso comercial até haver contrato (P0 legal duro da Parte III).
+
+### 11.E — Decisões do founder
+| # | Decisão | Estado |
+|---|---|---|
+| 11.E.1 | Execution % passa a mostrar o número verificado | ✅ **SIM** (03/09) |
+| 11.E.2 | Trocar prompts padrão, aceitando quebra rotulada da tendência | ✅ **SIM** (03/09) |
+| 11.E.3 | 10 ou 15 marcas no Agency (copy × limite real) | ⏳ pendente |
+| 11.E.4 | Guardião do custo da geração hospedada: contagem de audits ou créditos | ⏳ pendente |
+| 11.E.5 | Manter `strict` na proteção da main (branch atualizada antes de mergear) | ⏳ pendente — recomendo MANTER |
+| 11.E.6 | Aplicar o universo de prompts a TODAS as marcas ou só à Ozvor | ⏳ pendente — hoje só a Ozvor |
