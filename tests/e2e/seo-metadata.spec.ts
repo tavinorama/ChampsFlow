@@ -47,9 +47,18 @@ const ROUTES = [
   "/legal/cookies",
   "/legal/sub-processors",
   "/legal/california-privacy",
-  "/legal/do-not-sell",
-  "/legal/dsr-request",
 ] as const;
+
+/**
+ * Rotas deliberadamente FORA do sitemap e marcadas noindex (10.A.11): são
+ * formulários de pedido de dados pessoais, que nunca devem aparecer na busca.
+ * Estavam na lista acima — que se descreve como "as rotas estáticas do
+ * sitemap" — e por isso o E2E exigia delas o oposto do que o produto decidiu,
+ * falhando com "in the sitemap but noindexed". A contradição era do teste, não
+ * do produto. Aqui elas continuam cobertas, pelo contrato certo: têm de estar
+ * noindex E fora do sitemap.
+ */
+const NOINDEX_ROUTES = ["/legal/do-not-sell", "/legal/dsr-request"] as const;
 
 test.describe("P1-04 — every indexable route", () => {
   test.use({ reducedMotion: "reduce" });
@@ -132,4 +141,25 @@ test.describe("P1-04 — sitemap", () => {
     const robots = await page.locator('meta[name="robots"]').first().getAttribute("content");
     expect(robots).toMatch(/noindex/);
   });
+});
+
+test.describe("10.A.11 — rotas de pedido de dados ficam fora da busca", () => {
+  for (const route of NOINDEX_ROUTES) {
+    test(`${route} é noindex e não está no sitemap`, async ({ page, baseURL }) => {
+      const res = await page.goto(route, { waitUntil: "domcontentloaded" });
+      expect(res?.status(), `${route} não respondeu 200`).toBe(200);
+
+      const robots = await page
+        .locator('meta[name="robots"]')
+        .first()
+        .getAttribute("content")
+        .catch(() => null);
+      expect(robots, `${route} devia declarar noindex e não declara`).toMatch(/\bnoindex\b/);
+
+      const sitemap = await page.request.get(`${baseURL}/sitemap.xml`);
+      expect(sitemap.ok(), "sitemap.xml não respondeu").toBe(true);
+      const xml = await sitemap.text();
+      expect(xml, `${route} é noindex mas está anunciado no sitemap`).not.toContain(`${route}<`);
+    });
+  }
 });
