@@ -122,9 +122,15 @@ describe("17/08 storm — the failure is no longer mute", () => {
   it("the alerter says so when it CANNOT alert", () => {
     // A silent alerter is the exact failure being fixed here:
     // "não consegui olhar" is not the same as "ok".
-    const src = read("apps/worker/src/alerts.ts");
-    expect(src).toContain("ops_alert_undeliverable");
-    expect(src).toContain("ops_alert_send_failed");
+    // alertOps moved to packages/shared on 2026-09-04 (P0-08) so the API can
+    // use the same alerter the worker does; apps/worker/src/alerts.ts re-exports
+    // it. The guarantee is unchanged and is asserted at its new home — plus the
+    // re-export, so a future "tidy-up" that deletes the bridge fails here rather
+    // than in production.
+    const shared = read("packages/shared/src/ops-alert.ts");
+    expect(shared).toContain("ops_alert_undeliverable");
+    expect(shared).toContain("ops_alert_send_failed");
+    expect(read("apps/worker/src/alerts.ts")).toContain("ops-alert");
   });
 
   it("the reason reaches the customer instead of a generic retry prompt", () => {

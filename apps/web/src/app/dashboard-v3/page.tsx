@@ -1702,11 +1702,17 @@ function ContentTab({
   return (
     <>
       <div style={{ ...S.card, padding: "12px 16px", marginBottom: "var(--space-3)", fontSize: "0.85rem", color: "var(--color-muted)", borderLeft: "3px solid var(--color-primary)" }}>
-        Drafts are generated with <b>your own AI API key</b> (BYOK). Add or check it in{" "}
-        <button onClick={onGoConnections} style={{ border: "none", background: "transparent", color: "var(--color-primary)", fontWeight: 600, cursor: "pointer", font: "inherit", padding: 0 }}>Connections →</button>
+        {/* P0-08: this banner used to say a draft needed the customer's own API
+            key. That was true, and it was the wall in the middle of "we do the
+            work". Drafts are now written on our side and counted against the
+            same credits an audit uses; BYOK stays as the advanced, credit-free
+            option it should always have been. */}
+        <b>We write your drafts.</b> No API key needed — each draft uses a few of your credits. Prefer to run them on your own AI account? Add your key in{" "}
+        <button onClick={onGoConnections} style={{ border: "none", background: "transparent", color: "var(--color-primary)", fontWeight: 600, cursor: "pointer", font: "inherit", padding: 0 }}>Connections →</button>{" "}
+        and we will use it instead, free of credits.
       </div>
 
-      <GenerateDraft brandId={brandId} onDone={onReload} onNeedKey={onGoConnections} />
+      <GenerateDraft brandId={brandId} onDone={onReload} />
 
       {loading || items === null ? (
         <div style={S.muted}>Loading your drafts…</div>
@@ -1751,7 +1757,7 @@ function ContentTab({
   );
 }
 
-function GenerateDraft({ brandId, onDone, onNeedKey }: { brandId: string; onDone: () => void; onNeedKey: () => void }) {
+function GenerateDraft({ brandId, onDone }: { brandId: string; onDone: () => void }) {
   const [type, setType] = useState("blog");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1763,12 +1769,32 @@ function GenerateDraft({ brandId, onDone, onNeedKey }: { brandId: string; onDone
     setBusy(true); setMsg(null);
     try {
       const r = await apiFetch(`/api/brands/${brandId}/content`, { method: "POST", body: JSON.stringify({ content_type: type, topic: t }) });
-      const d = (await r.json().catch(() => null)) as { message?: string } | null;
-      if (r.ok) { setTopic(""); setMsg("Draft generated — it’s in your review list below."); onDone(); }
-      else if (r.status === 402 || r.status === 403 || (d?.message ?? "").toLowerCase().includes("key")) {
-        setMsg("Add your AI API key in Connections first — content is generated with your own key (BYOK)."); onNeedKey();
+      // P0-08 response shapes. The API now writes the customer-facing sentence
+      // itself — in drafts, never tokens — so this reads it rather than
+      // inventing one. The old branch here hardcoded "add your API key" for
+      // EVERY 402/403, which is how a customer who was simply out of credits
+      // got sent to a settings page that could not help them.
+      const d = (await r.json().catch(() => null)) as {
+        message?: string;
+        body?: string;
+        error?: string;
+        reused?: boolean;
+        billing?: { message?: string };
+        credits?: { offer?: string };
+      } | null;
+      if (r.ok) {
+        setTopic("");
+        const where = d?.reused ? "That draft already existed — it’s in your review list below." : "Draft ready — it’s in your review list below.";
+        setMsg([where, d?.billing?.message].filter(Boolean).join(" "));
+        onDone();
+      } else if (r.status === 402) {
+        // Out of credits (or we could not read the balance). Say so, and offer
+        // the way out the API named. Connections is NOT the answer here.
+        setMsg([d?.body ?? d?.error, d?.credits?.offer].filter(Boolean).join(" ") || "You’re out of credits for new drafts.");
+      } else if (r.status === 403) {
+        setMsg(d?.message ?? d?.error ?? "You don’t have permission to generate drafts on this brand.");
       } else {
-        setMsg(d?.message ?? "Couldn’t generate the draft. Try again.");
+        setMsg(d?.body ?? d?.error ?? d?.message ?? "Couldn’t generate the draft. Try again.");
       }
     } catch {
       setMsg("Couldn’t generate the draft. Check your connection and try again.");

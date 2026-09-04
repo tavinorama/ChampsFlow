@@ -15,6 +15,7 @@
  */
 
 import { sanitizeUserPrompt } from "./prompt-sanitizer";
+import { renderEvidencePack, type DraftEvidence } from "../../shared/src/content-fact-check";
 
 export type ContentType = "blog" | "linkedin" | "faq";
 
@@ -67,6 +68,17 @@ export interface ContentRequest {
   missingSourceNames?: string[] | null;
   /** Anonymised count of competitors displacing the brand (GEO-A2: no names). */
   competitorPressureCount?: number | null;
+
+  /**
+   * P0-08 item 4 — the evidence pack. The numbered, sourced statements this
+   * draft is allowed to assert, assembled by the route from the audit and
+   * carried through to the reviewer so a human can see what the writer was
+   * given, not only what it wrote.
+   *
+   * Comes from OUR OWN DB (plan_task, citation_check, provider_breakdown), like
+   * auditEvidence above, so it is not sanitized as user input.
+   */
+  evidence?: readonly DraftEvidence[] | null;
 }
 
 export interface ContentDraft {
@@ -166,6 +178,15 @@ function buildSystemPrompt(req: ContentRequest): string {
       `COMPETITIVE CONTEXT — ${req.competitorPressureCount} competitors are currently displacing this brand in AI search results for buyer queries. ` +
         `Do NOT name any competitors — reference only the category and the brand's own distinct positioning.`
     );
+  }
+
+  // P0-08 — the evidence pack, placed LAST among the context blocks and just
+  // before the fabrication rule it enforces. Order is not cosmetic: the model
+  // reads "here are the only facts you have" immediately before "do not invent
+  // facts", so the two are a single instruction rather than two separate ones
+  // several paragraphs apart.
+  if (req.evidence && req.evidence.length > 0) {
+    lines.push(renderEvidencePack(req.evidence));
   }
 
   // Fabrication hard rule.
@@ -492,42 +513,52 @@ async function llmDraft(req: ContentRequest, apiKey: string, provider: ContentPr
 /**
  * Generate a content draft.
  *
- * BYOK-only cost model: content runs on the CLIENT's own key for the LLM THEY
- * choose (`opts.provider`, default "anthropic"). The client pays their own AI
- * cost and picks their model. There is NO platform fallback here — content is a
- * client-key feature. (Audits, scoring, and the action plan run on the platform
- * and need no client key.)
+ * COST MODEL, AS OF P0-08 (2026-09-04). It used to be BYOK-ONLY: no client key,
+ * no draft, full stop. That was a defensible cost decision and an indefensible
+ * product one — the SMB we sell "we do the work" to hit a wall in the middle of
+ * the promise (RELATORIO §3.2). It is now a CASCADE:
  *
- * Routing:
- *   1. opts.apiKey present (client BYOK key for opts.provider) → llmDraft on that provider
- *   2. No key                                                  → generatedBy: "error", keyUsed: "none"
+ *   1. `opts.apiKey` + `keySource: "client"`   → the client's own key. They pay
+ *      their provider, they pick their model, and we charge them nothing. BYOK
+ *      survives as the advanced option it should always have been.
+ *   2. `opts.apiKey` + `keySource: "platform"` → our key. We pay the provider,
+ *      and the CREDIT LEDGER meters it (the founder's 03/09 decision). The
+ *      caller does the metering; this function does not know about credits and
+ *      must not — a generator that can also bill is a generator that bills on
+ *      paths nobody reviewed.
+ *   3. No key at all                            → generatedBy "error". Now this
+ *      means "neither the client nor the platform has a key for this provider",
+ *      which is an operator problem, not a customer instruction.
  *
- * Within the keyed path:
+ * Within the keyed path (unchanged):
  *   - Sanitize user-supplied topic/instructions/tone (GEO-SEC-2)
- *   - llmDraft succeeds → LLM draft (generatedBy: "llm", keyUsed: "client")
+ *   - llmDraft succeeds → LLM draft (generatedBy: "llm")
  *   - llmDraft fails (no credits/quota, timeout, non-200) OR sanitizer rejects
  *     → template fallback (generatedBy: "rules") — the route treats this as an
- *       honest failure and stores nothing.
+ *       honest failure, stores nothing, and charges nothing.
  */
 export async function generateContent(
   req: ContentRequest,
-  opts?: { apiKey?: string; provider?: ContentProvider }
+  opts?: { apiKey?: string; provider?: ContentProvider; keySource?: "client" | "platform" }
 ): Promise<ContentDraft> {
   const apiKey = opts?.apiKey;
   const provider: ContentProvider = opts?.provider ?? "anthropic";
+  // Defaults to "client" so every pre-P0-08 call site keeps its exact previous
+  // meaning: a bare `{ apiKey }` is still a BYOK generation.
+  const keySource: "client" | "platform" = opts?.keySource ?? "client";
 
-  // No client key for the chosen provider → graceful, provider-specific error.
+  // Neither key available for the chosen provider → graceful, honest error.
   if (!apiKey) {
     const label = CONTENT_PROVIDER_LABELS[provider];
     return {
-      title: "Connect your AI key to generate content",
+      title: "We could not generate this draft",
       body: [
-        `Content generation runs on YOUR API key for the LLM you pick — here, ${label}.`,
+        `Ozvor writes this draft for you — you do not need an API key.`,
         "",
-        `Add your ${label} key under Account → AI engines & keys, then select it in the generator.`,
-        "Your key generates and pays for the content — you control the model and the cost.",
+        `Right now no ${label} key is available on our side, so nothing was written and nothing was charged.`,
+        "We have been alerted. Try again shortly.",
         "",
-        "The audit, scoring, and action plan run on Ozvor and need no key from you.",
+        `If you would rather run generation on your own ${label} account, add your key under Account → AI engines & keys and it will be used instead of ours, free of credits.`,
       ].join("\n"),
       schemaMarkup: null,
       generatedBy: "error",
@@ -559,7 +590,7 @@ export async function generateContent(
       apiKey,
       provider
     );
-    if (draft) return { ...draft, keyUsed: "client" };
+    if (draft) return { ...draft, keyUsed: keySource };
   }
 
   // Template fallback: key present but LLM failed (network, timeout, non-200)
