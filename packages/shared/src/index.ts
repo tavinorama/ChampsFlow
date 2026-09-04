@@ -175,6 +175,10 @@ export interface RateLimitHeaders {
 export * from "./plan-limits";
 export * from "./pricing";
 export * from "./credits";
+// P0-08: hosted content generation is metered by the SAME wallet as audits —
+// the founder's 03/09 decision that the cost guardian is the credit balance,
+// not a draft counter. Pure arithmetic + the customer-facing meter strings.
+export * from "./hosted-content";
 export * from "./prime-nudges";
 
 // ---------------------------------------------------------------------------
