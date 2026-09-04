@@ -204,6 +204,14 @@ export * from "./editorial-leak";
 export * from "./competitive-claims";
 
 // ---------------------------------------------------------------------------
+// P0-08 — the fact-check a hosted draft passes BEFORE a human reviews it.
+// Integrates the two registries above rather than adding a third: editorial
+// leaks block the draft, and a competitor may be named only when a `current`
+// claim vouches for them.
+// ---------------------------------------------------------------------------
+export * from "./content-fact-check";
+
+// ---------------------------------------------------------------------------
 // geo-audit retry policy (17/08 retry storm) — ONE policy for a queue that had
 // two producers with different settings and a 30s backoff far too short for the
 // provider outages it was retrying.
