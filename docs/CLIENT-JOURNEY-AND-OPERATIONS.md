@@ -23,9 +23,10 @@ This protects your margin: you only pay for the cheap, bounded "show them the ga
 
 ### Current reality (CODE TRUTH — verified)
 - **Everything runs on the PLATFORM key today.** Both the audit AND content generation read `process.env` (your keys) — `content-studio.ts:149`, all 5 probe adapters, `offsite-signal.ts:96`, `reddit-signal.ts:112`.
-- **BYOK is HALF-built:** clients can SAVE their keys (`POST /api/account/provider-keys`, encrypted AES-256-GCM, `provider_keys` table, RLS-isolated) and list/delete them — but the stored key is **never decrypted or used**. The only query on the table is `SELECT provider` (presence only); `key_encrypted` is written and never read (`system.ts:37`).
-- **No key-selection logic exists** — nothing chooses platform-vs-client key by operation or plan tier. The UI string "platform key or your own (BYOK)" (`system.ts:143`) is aspirational.
-- **Net:** the deep client-internal content work currently runs on YOUR key — the opposite of the intended model.
+- **BYOK is BUILT, and it is optional** (updated 2026-09-04, P0-08 — this section previously said the stored key was "never decrypted or used", which stopped being true when `resolveProviderKey` shipped). Clients can save keys (`POST /api/account/provider-keys`, AES-256-GCM, `provider_keys`, RLS-isolated); the read side is `resolveProviderKey` (`system.ts`).
+- **Key-selection logic EXISTS, for content only:** `resolveContentKey` (`apps/api/src/lib/hosted-content.ts`) tries the client's key first, then ours. Audits, probes, Kit and Pages have always run on the platform key and are unaffected.
+- **The cost guard is the CREDIT BALANCE, not a draft counter** (founder's decision, 03/09). A hosted draft debits `credit_ledger` with reason `content` — after the artifact exists, never before. BYOK generations are free of credits.
+- **Net:** an SMB with no API key gets the content they paid for; an agency that wants its own model and its own bill still can. Before P0-08 the second case was the only case, and the first hit an HTTP 402.
 
 ### What it takes to build the intended model (spec)
 1. **Key-resolution layer:** a function `resolveProviderKey(tenantId, provider) → plaintext` that loads the tenant's `provider_keys` row and decrypts it with `decryptToken` (already proven for OAuth tokens). Returns platform `process.env` key as fallback.

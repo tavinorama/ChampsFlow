@@ -8,7 +8,8 @@
 ## What runs on YOUR key vs the client's
 - **Free AI Invisibility Test** → YOUR key (the wedge).
 - **First audit / $29 Kit** → YOUR key (you eat the small cost; the $29 / the lead covers it).
-- **Client-internal content generation** → CLIENT's BYOK key (once they connect one; falls back to your key otherwise — see `content-studio.ts keyUsed`).
+- **Client-internal content generation** → CLIENT's BYOK key when they have connected one (they pay their provider, we charge no credits); otherwise **YOUR key, metered by the credit ledger** — P0-08, 2026-09-04. A hosted draft costs `creditsForHostedDraft()` (derived from `USD_PER_HOSTED_DRAFT`, see `packages/shared/src/hosted-content.ts`), debited with reason `content` only after a valid artifact exists. A failed or fact-check-rejected draft costs the customer nothing. The cascade is in `apps/api/src/lib/hosted-content.ts`; `content-studio.ts` never reaches for a platform key on its own.
+  - **This line was wrong for months in the other direction** (it claimed a fallback that did not exist while the code returned HTTP 402). If you change the cascade, change this line in the same PR.
 
 ---
 
