@@ -302,7 +302,7 @@
 ### 11.A — Parte I, Gate 1 (P0 de 48h)
 | # | Item | Estado | Onde |
 |---|---|---|---|
-| 11.A.1 | P0-01 impedir "All caught up" falso | 🟢 código na main; a política central com `DELIVERY_LOOP_BROKEN` ainda **não** existe como invariante única — o Do Next religado é fail-soft | #574 ✅ |
+| 11.A.1 | P0-01 impedir "All caught up" falso | 🟢 **fechado**: política central única em `packages/llm/src/delivery-policy.ts` (invariante do §3.1 → `DELIVERY_LOOP_BROKEN`), alvo de visibilidade configurável (`OZVOR_VISIBILITY_TARGET`, default documentado 50). Violação abre card de investigação no worker, derruba o indicador `do_next_invariant` do Delivery Health e faz o dashboard mostrar a frase honesta. Fail-soft do #574 deixou de ser silencioso | #574 · **este PR** |
 | 11.A.2 | P0-02 atividade ≠ execução verificada | 🟡 código pronto; **desligado** até a migração | #587 · migração #586 👤 |
 | 11.A.3 | P0-03 promessas vazias (Radar, Prime/OrganicPosts, 3/3 vs 5) | 🟢 | #589 |
 | 11.A.4 | P0-04 vazamento editorial (lint pré-publicação) | 🟢 código · ⚠️ **o post já publicado é ação do founder** (runbook `docs/departments/marketing/p0-04-linkedin-leak-runbook.md`; ninguém abriu o LinkedIn — não sabemos se ainda está no ar) | #589 |
@@ -313,7 +313,7 @@
 | # | Item | Estado |
 |---|---|---|
 | 11.B.1 | P0-06 Prompt Universe v2 | 🟡 código pronto, **opt-in por marca**; desligado até migração #585 👤 |
-| 11.B.2 | P0-07 Gap Classifier + Action Generator com evidência | 🟠 **parcial**: os cards já nomeiam query/motor/vencedor (#574), mas falta o `NormalizedObservation` completo e os classifiers por tipo de gap (technical/entity/content/proof/reputation/offsite/local) |
+| 11.B.2 | P0-07 Gap Classifier + Action Generator com evidência | 🟢 **fechado**: `packages/llm/src/gap-classifier.ts` traz o `NormalizedObservation` completo (§5.1), as 7 categorias da tabela §5.3, o objeto `VisibilityAction` (§5.2) e o guarda de especificidade que RECUSA template genérico — os 5 templates fotografados no §3.1 têm teste. O worker classifica cada resposta e reescreve a card com hipótese, evidência, owner, artefato/canal, critério de aceite e data da próxima rechecagem |
 | 11.B.3 | P0-08 geração hospedada (fim do BYOK obrigatório) | 🔴 **NÃO FEITO** — é o item que mais dói para SMB: a auditoria não produz rascunho sem chave do cliente |
 | 11.B.4 | P0-09 Delivery Health + tenant canário | 🔴 **NÃO FEITO** — o System Health continua medindo infraestrutura, não entrega |
 

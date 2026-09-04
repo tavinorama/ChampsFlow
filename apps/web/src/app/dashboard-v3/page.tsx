@@ -178,6 +178,16 @@ interface BillingPlan {
   };
 }
 
+/** P0-01 — what GET /api/brands/:id/plan returns alongside the tasks. */
+interface DeliveryVerdict {
+  code: string;
+  mayShowAllCaughtUp: boolean;
+  clientMessage: string;
+  materialGap: boolean;
+  materialGapUnknown: boolean;
+  reasons: string[];
+}
+
 interface PlanTask {
   id: string;
   vector: string;
@@ -357,6 +367,13 @@ export default function DashboardV3() {
   const [auditMsg, setAuditMsg] = useState<string | null>(null);
   const [auditBusy, setAuditBusy] = useState(false);
   const [tasks, setTasks] = useState<PlanTask[] | null>(null);
+  /**
+   * P0-01 — the server's verdict on whether "All caught up" may be shown at
+   * all (packages/llm/src/delivery-policy.ts). null means the API did not send
+   * it (older bundle, or the read failed), and the UI then uses its
+   * conservative copy — never the celebration.
+   */
+  const [delivery, setDelivery] = useState<DeliveryVerdict | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [content, setContent] = useState<ContentPiece[] | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
@@ -513,11 +530,18 @@ export default function DashboardV3() {
     setTasks(null);
     try {
       const res = await apiFetch(`/api/brands/${brandId}/plan`);
-      const next = res.ok ? (((await res.json()) as { tasks?: PlanTask[] }).tasks ?? []) : [];
+      const body = res.ok
+        ? ((await res.json()) as { tasks?: PlanTask[]; delivery?: DeliveryVerdict | null })
+        : null;
+      const next = body?.tasks ?? [];
       if (brandReqRef.current !== brandId) return; // stale — brand switched
       setTasks(next);
+      setDelivery(body?.delivery ?? null);
     } catch {
-      if (brandReqRef.current === brandId) setTasks([]);
+      if (brandReqRef.current === brandId) {
+        setTasks([]);
+        setDelivery(null);
+      }
     } finally {
       if (brandReqRef.current === brandId) setTasksLoading(false);
     }
@@ -952,6 +976,7 @@ export default function DashboardV3() {
           />
         ) : tab === "donext" ? (
           <DoNextTab tasks={tasks} loading={tasksLoading} onToggle={toggleTask} brandId={activeBrandId}
+            delivery={delivery}
             onAddTask={(action) => addTask(activeBrandId, action)} />
         ) : tab === "content" ? (
           <ContentTab items={content} loading={contentLoading} onSet={setContentStatus} brandId={activeBrandId}
@@ -1531,10 +1556,12 @@ function SinceLastAudit({ brandId }: { brandId: string }) {
 }
 
 function DoNextTab({
-  tasks, loading, onToggle, brandId, onAddTask,
+  tasks, loading, onToggle, brandId, onAddTask, delivery,
 }: {
   tasks: PlanTask[] | null;
   loading: boolean;
+  /** P0-01 verdict from the server; null when it could not be evaluated. */
+  delivery?: DeliveryVerdict | null;
   onToggle: (id: string, done: boolean) => void;
   brandId: string;
   onAddTask: (action: string) => Promise<void>;
@@ -1588,8 +1615,20 @@ function DoNextTab({
             {claimed.length === 1 ? "fix is" : "fixes are"} marked done and waiting
             for the next audit to check {claimed.length === 1 ? "it" : "them"}.
           </div>
-        ) : (
+        ) : delivery && delivery.mayShowAllCaughtUp ? (
+          /* P0-01: the ONLY branch that may celebrate, and only because the
+             server's invariant said so — no material gap, nothing unknown,
+             and the generator ran. */
           <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>All caught up — every fix is verified. Nice work. 🎉</div>
+        ) : (
+          /* P0-01: a gap with an empty list, an unmeasured score, or a
+             generator that did not run. Say what is actually happening. The
+             fallback (delivery === null, e.g. an older API) is deliberately
+             this branch too: silence must never render as good news. */
+          <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>
+            {delivery?.clientMessage ??
+              "Nothing is waiting on you right now, and we are still checking the last changes. We will not call this done until an audit confirms it."}
+          </div>
         )
       ) : (
         <div style={S.card}>

@@ -69,8 +69,20 @@ import {
   execForPostgresJs,
   buildLoopCandidates,
   reconcileLoopTasks,
+  queryFromGap,
   type LoopProbe,
   type PrevTask,
+  // P0-07 — gap classifier + action generator (RELATORIO §5.2/§5.3).
+  classifyAndGenerate,
+  type NormalizedObservation,
+  type VisibilityAction,
+  // P0-01 — the one policy that blocks a false "All caught up".
+  DELIVERY_LOOP_BROKEN,
+  INVESTIGATION_GAP,
+  evaluateDoNextPolicy,
+  resolveVisibilityTarget,
+  type LoopGenerationStatus,
+  OPEN_STATES,
   providerSurface,
   permittedProviders,
   probeCacheEnabled,
@@ -372,6 +384,14 @@ export async function planTaskLifecycleReady(
  * Verified Execution reports `null` (not 0) while the migration is pending. So
  * the downgrade loses the number, never fakes it.
  */
+/**
+ * The open lifecycle states, as a Set for the hot paths in this file. The list
+ * itself lives in packages/llm/src/plan-task-state.ts — one definition of
+ * "still needs someone to act", used by the Do Next enrichment (P0-07) and by
+ * the delivery policy's open-action count (P0-01).
+ */
+const OPEN_LOOP_STATES = new Set<string>(OPEN_STATES);
+
 export function legacyStatus(s: string): string {
   switch (s) {
     case "verified":
@@ -440,9 +460,12 @@ export async function processAuditJob(
         trustpilot_url: string | null;
         crunchbase_url: string | null;
         youtube_url: string | null;
+        /** 'EU' | 'US' — the market the gap classifier stamps on an action. */
+        region: string | null;
       }[]
     >`SELECT name, category, domain, tracked_models, tracking_frequency,
-             linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url
+             linkedin_url, reddit_url, wikipedia_url, g2_url, trustpilot_url, crunchbase_url, youtube_url,
+             region
         FROM brands WHERE id = ${brand_id}`;
     const brand = brandRows[0];
     if (!brand) {
@@ -1602,8 +1625,16 @@ export async function processAuditJob(
     // instead of duplicating them; done stays done; a query that flipped to
     // cited flips its card to "Worked — verified in the audit of <date>".
     //
-    // FAIL-SOFT: the audit is already complete and paid for — a loop error is
-    // logged loudly and never fails the job.
+    // FAIL-SOFT, BUT NO LONGER SILENT (P0-01): the audit is already complete and
+    // paid for, so a loop error still never fails the job — but the outcome is
+    // carried out of this block into the delivery policy below, which opens an
+    // investigation and stops the client from being told "All caught up".
+    let loopGeneration: { status: LoopGenerationStatus; at: string | null; detail?: string | null } = {
+      status: "never_ran",
+      at: null,
+    };
+    let loopPlanId: string | null = null;
+    let openCardsAfterLoop: number | null = null;
     try {
       const loopProbes: LoopProbe[] = responses
         .filter((r) => typeof r.queryText === "string" && r.queryText.trim().length > 0)
@@ -1616,8 +1647,85 @@ export async function processAuditJob(
           competitors:
             competitorNames.length > 0 ? detectCompetitors(r.rawText ?? "", competitorNames) : [],
         }));
+      if (loopProbes.length === 0) {
+        loopGeneration = {
+          status: "no_evidence",
+          at: new Date().toISOString(),
+          detail: "no engine answer carried a query text to classify",
+        };
+      }
       if (loopProbes.length > 0) {
         const build = buildLoopCandidates(loopProbes, { brandDomain: brand.domain ?? null });
+
+        // -------------------------------------------------------------------
+        // P0-07 — Gap Classifier + Action Generator (RELATORIO §5.2/§5.3).
+        //
+        // The loop above decides WHICH gaps are open and how they carry across
+        // audits. This decides WHAT each one is (technical/entity/content/
+        // proof/reputation/offsite/local) and writes the recommendation that
+        // quotes the lost prompt, names the engine, names who won it and says
+        // how it will be verified. A recommendation that fails the specificity
+        // guard is refused there and logged here — never shown to a client.
+        //
+        // Fields we do not measure per answer yet (locale, per-answer sentiment,
+        // entity confidence) are passed as NOT MEASURED, never as zero: the
+        // classifier lowers its confidence instead of inventing a diagnosis.
+        const auditCompletedAt = new Date().toISOString();
+        const observations: NormalizedObservation[] = responses
+          .filter((r) => typeof r.queryText === "string" && r.queryText.trim().length > 0)
+          .map((r, ix) => ({
+            auditId: audit_id,
+            promptId: r.queryHash ?? `${audit_id}:${ix}`,
+            promptText: (r.queryText as string).trim(),
+            engine: dbProvider(r.provider),
+            modelOrMode: r.usage?.model ?? null,
+            market: brand.region ?? "unspecified",
+            locale: "unspecified", // not recorded per prompt yet — never guessed
+            runIndex: 0,
+            mentioned: r.mentioned,
+            mentionPosition: r.position ?? null,
+            cited: r.mentioned,
+            citations: sanitizeSources(r.sources),
+            competitors:
+              competitorNames.length > 0 ? detectCompetitors(r.rawText ?? "", competitorNames) : [],
+            sentiment: "unknown", // sentiment is audit-level today, not per answer
+            entityConfidence: null, // the per-answer entity classifier does not run yet
+            falsePositive: false,
+            ambiguityReason: null,
+            rawAnswerRef: r.queryHash ? `${audit_id}:${r.queryHash}:${dbProvider(r.provider)}` : null,
+            latencyMs: null,
+            cost: null,
+            methodologyVersion: GEO_METHODOLOGY_VERSION,
+          }));
+        const generated = classifyAndGenerate(observations, {
+          brandId: brand_id,
+          brandName: brand.name,
+          brandDomain: brand.domain ?? null,
+          auditCompletedAt,
+        });
+        const actionByPrompt = new Map<string, VisibilityAction>();
+        for (const a of generated.actions) {
+          const prev = actionByPrompt.get(a.evidence.lostPrompt);
+          if (!prev || a.priority > prev.priority) actionByPrompt.set(a.evidence.lostPrompt, a);
+        }
+        if (generated.refused.length > 0) {
+          logger.warn("gap_action_refused", {
+            audit_id,
+            brand_id,
+            refused: generated.refused.length,
+            first: generated.refused[0],
+            effect: "the card keeps the deterministic loop text; no generic template was shown",
+          });
+        }
+        logger.info("gap_classifier_ran", {
+          audit_id,
+          brand_id,
+          observations: observations.length,
+          actions: generated.actions.length,
+          refused: generated.refused.length,
+          clean: generated.clean,
+          by_type: generated.byType,
+        });
         const prevPlanRows = await sql<{ id: string }[]>`
           SELECT id FROM strategy_plan
            WHERE brand_id = ${brand_id}
@@ -1632,7 +1740,7 @@ export async function processAuditJob(
              ORDER BY priority DESC, created_at ASC
           `;
         }
-        const { rows: loopRows, stats } = reconcileLoopTasks(
+        let { rows: loopRows, stats } = reconcileLoopTasks(
           prevTasks,
           build,
           new Date().toISOString().slice(0, 10)
@@ -1647,6 +1755,45 @@ export async function processAuditJob(
         // CHECK, those values would abort every INSERT and — because this whole
         // block is fail-soft — silently kill Do Next. So ask the schema what it
         // can take, once, and downgrade rather than break.
+        loopPlanId = loopPlan.id;
+        // P0-01 — the investigation card is EPHEMERAL. It is re-created below,
+        // by the policy, on every audit where the invariant is still violated,
+        // so carrying the previous one forward would leave "Ozvor is
+        // investigating" on screen (and the brand marked unhealthy) long after
+        // the loop recovered. Dropping it here makes it self-clearing.
+        const investigationsCarried = loopRows.filter((t) => t.gap === INVESTIGATION_GAP).length;
+        if (investigationsCarried > 0) {
+          loopRows = loopRows.filter((t) => t.gap !== INVESTIGATION_GAP);
+          logger.info("delivery_investigation_cleared", {
+            audit_id,
+            brand_id,
+            cleared: investigationsCarried,
+            effect: "the policy below re-opens it only if the invariant is still violated",
+          });
+        }
+        // P0-07 — replace the deterministic loop text with the classified
+        // action wherever the classifier produced one for the same question.
+        // The gap KEY is untouched, so cross-audit matching still works.
+        for (const t of loopRows) {
+          const q = queryFromGap(t.gap);
+          const a = q ? actionByPrompt.get(q) : undefined;
+          if (!a) continue;
+          if (!OPEN_LOOP_STATES.has(t.status)) continue;
+          t.action = a.recommendation;
+          t.evidence =
+            `[${a.gapType} gap] ${a.hypothesis} ` +
+            `Evidence: ${a.engine} answered "${a.evidence.lostPrompt}"` +
+            (a.evidence.winningBrands.length > 0
+              ? ` and recommended ${a.evidence.winningBrands.slice(0, 3).join(", ")}`
+              : "") +
+            (a.evidence.citedSources.length > 0
+              ? `, citing ${a.evidence.citedSources.slice(0, 3).join(", ")}`
+              : "") +
+            `. Owner: ${a.ownerType}. Artifact: ${a.artifactType} on ${a.channel}. ` +
+            `Accept when: ${a.acceptanceCriteria.join(" ")} ` +
+            `Next recheck: ${a.verificationPlan.earliestCheckAt.slice(0, 10)}.`;
+          t.metric = a.verificationPlan.successCondition;
+        }
         const lifecycleOk = await planTaskLifecycleReady(sql);
         for (const t of loopRows) {
           const status = lifecycleOk ? t.status : legacyStatus(t.status);
@@ -1660,6 +1807,8 @@ export async function processAuditJob(
                ${t.evidence}, ${t.metric}, ${t.owner}, NOW())
           `;
         }
+        openCardsAfterLoop = loopRows.filter((t) => OPEN_LOOP_STATES.has(t.status)).length;
+        loopGeneration = { status: "ok", at: auditCompletedAt };
         logger.info("visibility_loop_refreshed", {
           audit_id,
           brand_id,
@@ -1677,11 +1826,108 @@ export async function processAuditJob(
         }
       }
     } catch (err) {
+      loopGeneration = {
+        status: "failed",
+        at: new Date().toISOString(),
+        detail: (err as Error).message?.slice(0, 160) ?? "unknown error",
+      };
       logger.error("visibility_loop_failed", {
         audit_id,
         brand_id,
         message: (err as Error).message?.slice(0, 200),
-        effect: "audit delivered but Do Next cards NOT refreshed this run",
+        effect:
+          "Do Next cards NOT refreshed this run — the delivery policy below opens an investigation so the client is never told 'All caught up'",
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // P0-01 — the delivery policy (packages/llm/src/delivery-policy.ts).
+    //
+    // The invariant of RELATORIO §3.1: a material gap with no open action and
+    // no active investigation is DELIVERY_LOOP_BROKEN. Evaluated HERE, once,
+    // with what this audit actually measured — including the case the report
+    // could not see, where the generator itself threw and an empty card list
+    // proves nothing.
+    //
+    // Effect when it is violated: an investigation card is opened for the
+    // brand (owner=platform, stable key, nothing asked of the client), the
+    // Delivery Health indicator turns amber/red, and the dashboard shows the
+    // honest sentence instead of "All caught up".
+    try {
+      const uncitedQueries = new Set(
+        responses
+          .filter((r) => !r.mentioned && typeof r.queryText === "string" && r.queryText.trim())
+          .map((r) => (r.queryText as string).trim())
+      );
+      const target = resolveVisibilityTarget(process.env);
+      const verdict = evaluateDoNextPolicy({
+        brandId: brand_id,
+        auditId: audit_id,
+        // score.ai is the AI Visibility vector this audit just measured.
+        visibilityScore: typeof score.ai === "number" ? score.ai : null,
+        target,
+        lostIntentCount: uncitedQueries.size,
+        criticalProfileMissing: false, // profile completeness is P1-02; never guessed here
+        openActionCount: openCardsAfterLoop ?? 0,
+        activeInvestigation: false, // we are the ones who open it, below
+        loopGeneration,
+      });
+      if (target.invalidValue) {
+        logger.warn("visibility_target_invalid", {
+          brand_id,
+          value: target.invalidValue,
+          effect: `fell back to the documented default of ${target.value}`,
+        });
+      }
+      if (verdict.investigation) {
+        // Reuse this run's plan when the loop wrote one; otherwise the loop
+        // failed before writing a plan and the investigation needs its own.
+        let planId = loopPlanId;
+        if (!planId) {
+          const [p] = await sql<{ id: string }[]>`
+            INSERT INTO strategy_plan (tenant_id, brand_id, audit_id, generated_by, created_at)
+            VALUES (${tenant_id}, ${brand_id}, ${audit_id}, 'loop', NOW())
+            RETURNING id
+          `;
+          planId = p.id;
+        }
+        const inv = verdict.investigation;
+        await sql`
+          INSERT INTO plan_task
+            (tenant_id, plan_id, vector, gap, action, effort, impact, priority,
+             status, evidence, metric, owner, created_at)
+          VALUES
+            (${tenant_id}, ${planId}, ${inv.vector}, ${INVESTIGATION_GAP}, ${inv.action},
+             ${inv.effort}, ${inv.impact}, ${inv.priority}, 'proposed',
+             ${inv.evidence}, ${inv.metric}, ${inv.owner}, NOW())
+        `;
+        logger.error(DELIVERY_LOOP_BROKEN, {
+          audit_id,
+          brand_id,
+          plan_id: planId,
+          reasons: verdict.reasons,
+          loop_generation: loopGeneration.status,
+          open_cards: openCardsAfterLoop,
+          effect:
+            "investigation card opened; the client is told we are generating actions, never 'All caught up'",
+        });
+      } else {
+        logger.info("delivery_policy_ok", {
+          audit_id,
+          brand_id,
+          may_show_all_caught_up: verdict.mayShowAllCaughtUp,
+          open_cards: openCardsAfterLoop,
+          target: target.value,
+          target_source: target.source,
+        });
+      }
+    } catch (err) {
+      // The policy exists so nothing degrades quietly — including the policy.
+      logger.error("delivery_policy_failed", {
+        audit_id,
+        brand_id,
+        message: (err as Error).message?.slice(0, 200),
+        effect: "the P0-01 invariant was NOT evaluated for this audit",
       });
     }
 

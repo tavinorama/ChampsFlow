@@ -379,11 +379,66 @@ export {
   gapForUncited,
   gapForLowRank,
   gapForSource,
+  queryFromGap,
   LOOP_OPEN_CAP,
   LOOP_DONE_CARRY_CAP,
   VERIFIED_PREFIX,
   REGRESSED_PREFIX,
 } from "./visibility-loop";
+
+// Gap Classifier + Action Generator (audit P0-07) — a typed gap and an action
+// that carries its own evidence, per RELATORIO §5.2/§5.3.
+export type {
+  NormalizedObservation,
+  ObservationSentiment,
+  GapType,
+  GapDefinition,
+  GapSignals,
+  GapClassification,
+  VisibilityAction,
+  ActionState,
+  ActionGeneratorContext,
+  SpecificityProblem,
+  GapClassificationSummary,
+} from "./gap-classifier";
+export {
+  GAP_TYPES,
+  GAP_TABLE,
+  RECHECK_DAYS,
+  OFFSITE_SOURCE_HOSTS,
+  GENERIC_RECOMMENDATION_PATTERNS,
+  DEFAULT_ENTITY_CONFIDENCE_FLOOR,
+  assertGapTableComplete,
+  isOffsiteSource,
+  classifyGap,
+  buildVisibilityAction,
+  classifyAndGenerate,
+  validateActionSpecificity,
+  isSpecificAction,
+  assertActionsSpecific,
+  defaultActionId,
+} from "./gap-classifier";
+
+// Delivery policy (audit P0-01) — the single invariant that blocks a false
+// "All caught up" and raises DELIVERY_LOOP_BROKEN.
+export type {
+  DoNextVerdictCode,
+  VisibilityTarget,
+  LoopGenerationStatus,
+  DoNextPolicyInput,
+  DoNextPolicyVerdict,
+  InvestigationCard,
+  DoNextInvariantRollup,
+} from "./delivery-policy";
+export {
+  DELIVERY_LOOP_BROKEN,
+  DEFAULT_VISIBILITY_TARGET,
+  VISIBILITY_TARGET_ENV,
+  INVESTIGATION_GAP,
+  resolveVisibilityTarget,
+  evaluateDoNextPolicy,
+  rollupDoNextInvariant,
+} from "./delivery-policy";
 
 // Plan task lifecycle — Verified Execution state machine (audit P0-02).
 export type {

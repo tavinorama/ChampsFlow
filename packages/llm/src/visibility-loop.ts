@@ -119,6 +119,20 @@ export const gapForUncited = (q: string): string => `Not cited for "${q}"`;
 export const gapForLowRank = (q: string): string => `Cited low for "${q}"`;
 export const gapForSource = (domain: string): string => `Absent from ${domain}`;
 
+/**
+ * The inverse of gapForUncited/gapForLowRank: recover the buyer question a gap
+ * key was built from, or null when the gap is not query-shaped (source cards,
+ * client to-dos, the P0-01 investigation card).
+ *
+ * Used by the worker to line a card up with the VisibilityAction the gap
+ * classifier generated for the same question (audit P0-07), without inventing
+ * a second matching rule — the key format is defined right above.
+ */
+export function queryFromGap(gap: string): string | null {
+  const m = /^(?:Not cited for|Cited low for) "(.+)"$/.exec(gap.trim());
+  return m?.[1] ?? null;
+}
+
 interface QueryAgg {
   query: string;
   citedProviders: string[];
