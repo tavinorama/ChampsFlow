@@ -33,7 +33,35 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
-import { generateContent, type ContentType, type ContentProvider } from "../../../../packages/llm/src/index";
+import { generateContent, type ContentType, type ContentProvider, type ContentDraft } from "../../../../packages/llm/src/index";
+// P0-08 — hosted content generation. Pure meter/idempotency/fact-check from
+// shared; the DB-and-IO half from lib/hosted-content; the ledger debit from
+// lib/credits. Split three ways for the reason documented in each file: the web
+// app must be able to render the same meter this route bills with.
+import {
+  draftGenerationKey,
+  draftsRemaining,
+  describeDraftsLeft,
+  hostedDraftAllowance,
+  factCheckDraft,
+  type HostedDraftAllowance,
+  type DraftEvidence,
+} from "../../../../packages/shared/src/index";
+import { alertOps } from "../../../../packages/shared/src/ops-alert";
+import {
+  resolveContentKey,
+  draftRefId,
+  findExistingDraft,
+  generateWithRetry,
+  recordDraftFailure,
+  type GenerationAttemptOutcome,
+} from "../lib/hosted-content";
+import {
+  ensureMonthlyGrant,
+  creditBalance,
+  debitForContentDraft,
+  ContentLedgerNotReadyError,
+} from "../lib/credits";
 import { compareAudits, type AuditSnapshot } from "../lib/audit-diff";
 import { markComparableTrend, runConfidence } from "../lib/trend-comparability";
 import { buildAuditNarrative } from "../lib/audit-narrative";
@@ -2228,7 +2256,11 @@ export function registerAuditRoutes(
     async (c) => {
       const auth = c.get("auth");
       const brandId = c.req.param("id");
-      let body: { content_type?: string; topic?: string; plan_task_id?: string; source_url?: string; instructions?: string; tone?: string; length?: string; provider?: string; };
+      // `version` (P0-08) is how a caller deliberately asks for a SECOND draft
+      // of the same action: same audit, same task, same artifact type, next
+      // version. Without it, re-posting the same request returns the draft that
+      // already exists instead of writing (and charging for) a duplicate.
+      let body: { content_type?: string; topic?: string; plan_task_id?: string; source_url?: string; instructions?: string; tone?: string; length?: string; provider?: string; version?: number; };
       try {
         body = await c.req.json();
       } catch {
@@ -2339,70 +2371,329 @@ export function registerAuditRoutes(
         if (compCount > 0) competitorPressureCount = compCount;
       }
 
-      // BYOK cost model: content generation runs on the CLIENT's own key for the
-      // LLM THEY selected — no platform fallback (content is a client-key feature;
-      // audits run on the platform). The Content Studio dropdown sends `provider`;
-      // anything unrecognised defaults to Anthropic.
+      // -------------------------------------------------------------------
+      // P0-08 — HOSTED GENERATION. Everything from here down changed on
+      // 2026-09-04, and the shape of the change matters more than any single
+      // line, so it is written out once, here, rather than scattered.
+      //
+      // WHAT IT USED TO DO: resolve the client's BYOK key, and if there wasn't
+      // one, answer 402 "add an AI key". Honest, and a wall. RELATORIO §3.2:
+      // for the SMB we sell "we do the work" to, that is friction incompatible
+      // with the promise.
+      //
+      // WHAT IT DOES NOW, IN ORDER:
+      //   1. Idempotency FIRST — reprocessing returns the existing draft and
+      //      does not spend a cent (item 2).
+      //   2. Key cascade: client BYOK, then ours (item 1).
+      //   3. Credit gate, but ONLY on the hosted path — BYOK is free (item 1,
+      //      and the founder's 03/09 decision that the balance is the guard).
+      //   4. Generate, with exponential retry (item 3).
+      //   5. Fact-check against the existing registries (item 4).
+      //   6. Store as `draft`. Never published (item 5).
+      //   7. Debit LAST, after a valid artifact exists (item 7).
+      // Every refusal answers in drafts, not tokens (item 6), and names the way
+      // out (item 8).
+      // -------------------------------------------------------------------
       const CONTENT_PROVIDERS: readonly ContentProvider[] = ["anthropic", "openai", "gemini", "perplexity"];
       const provider: ContentProvider = (CONTENT_PROVIDERS as readonly string[]).includes(body.provider ?? "")
         ? (body.provider as ContentProvider)
         : "anthropic";
-      const clientKey = await resolveProviderKey(db, auth.tenantId, provider);
-      const draft = await generateContent(
-        {
-          contentType: ct as ContentType,
-          brandName: brand.name,
-          category: brand.category,
-          topic,
-          sourceUrl: body.source_url ?? null,
-          instructions: typeof body.instructions === "string" ? body.instructions.slice(0, 500) : undefined,
-          tone: typeof body.tone === "string" ? body.tone.slice(0, 50) : undefined,
-          length: (["short", "medium", "long"] as const).includes(body.length as "short" | "medium" | "long")
-            ? (body.length as "short" | "medium" | "long")
-            : undefined,
-          brandDescription,
-          brandMarket: brand.market ?? null,
-          auditGap,
-          auditEvidence,
-          absentPrompts,
-          weakContentTraits,
-          missingSourceNames,
-          competitorPressureCount,
-        },
-        { apiKey: clientKey ?? undefined, provider }
-      );
 
-      // INTEGRITY: only a genuine LLM draft (generatedBy === "llm") may be stored
-      // or labelled as AI-generated. The two non-LLM outcomes must NEVER be
-      // presented as AI-authored content (that would claim authorship the AI did
-      // not produce):
-      //   - "error" → no AI key configured at all.
-      //   - "rules" → a key WAS present but the provider returned no draft. In
-      //     production this is almost always an API credit/quota issue (or a
-      //     timeout / a rejected prompt). We surface it honestly and store nothing
-      //     rather than badge a [PLACEHOLDER] skeleton as "AI-generated".
-      if (draft.generatedBy !== "llm") {
-        const noKey = draft.generatedBy === "error";
-        const msg = noKey
-          ? "Content generation needs an AI key. Add one in Account → AI engines & keys."
-          : "Content generation is temporarily unavailable — the AI provider returned no draft (most often an API credit/quota issue). Nothing was saved; try again once credits are available.";
-        // `body` is overridden so the UI (which surfaces data.body) shows the real
-        // reason, never the [PLACEHOLDER] skeleton from the rules template.
+      // --- 1. Idempotency ------------------------------------------------
+      const generationKey = draftGenerationKey({
+        auditId: latestAudit?.audit_id ?? null,
+        actionId: body.plan_task_id ?? null,
+        artifactType: ct,
+        version: Number.isFinite(Number(body.version)) ? Number(body.version) : 1,
+      });
+      const existing = await findExistingDraft(db, auth.tenantId, generationKey);
+      if (existing) {
+        // 200, not 201: nothing was created. The distinction is what lets a
+        // caller tell "your draft is ready" from "your draft was ready".
         return c.json(
-          { ...draft, body: msg, ai_generated: false, status: "error", error: msg },
-          402
+          {
+            id: existing.id,
+            title: existing.title,
+            body: existing.body,
+            schemaMarkup: existing.schema_markup,
+            ai_generated: true,
+            status: existing.status,
+            reused: true,
+            billing: { charged: false, reason: "This draft already exists, so we did not write or charge for it again." },
+          },
+          200
         );
       }
 
-      const id = randomUUID();
-      await db.query(
-        `INSERT INTO content_piece
-           (id, tenant_id, brand_id, plan_task_id, content_type, title, body, schema_markup,
-            ai_generated, status, generated_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, TRUE, 'draft', $9, NOW())`,
-        [id, auth.tenantId, brandId, body.plan_task_id ?? null, ct, draft.title, draft.body, draft.schemaMarkup, draft.generatedBy]
+      // --- 2. Key cascade -------------------------------------------------
+      const key = await resolveContentKey(provider, () =>
+        resolveProviderKey(db, auth.tenantId, provider)
       );
-      return c.json({ id, ...draft, ai_generated: true, status: "draft" }, 201);
+      const hosted = key.source === "platform";
+
+      // --- 3. Credit gate (hosted only) -----------------------------------
+      const tierRow = await db.query<{ plan_tier: string | null }>(
+        `SELECT plan_tier FROM tenants WHERE id = $1`,
+        [auth.tenantId]
+      );
+      const tier = (tierRow.rows[0]?.plan_tier ?? "free") as PlanTier;
+
+      let allowance: HostedDraftAllowance | null = null;
+      if (hosted) {
+        await ensureMonthlyGrant(db, auth.tenantId, tier);
+        // A read that THROWS must not become a balance of zero — "dado ausente
+        // nunca vira zero". null flows into hostedDraftAllowance as
+        // `balance_unknown`, which refuses honestly instead of inventing either
+        // permission or poverty.
+        let balance: number | null = null;
+        try {
+          balance = (await creditBalance(db, auth.tenantId, tier)).balance;
+        } catch (err) {
+          logger.error("content_balance_read_failed", {
+            tenantId: auth.tenantId,
+            message: (err as Error).message?.slice(0, 200),
+          });
+        }
+        allowance = hostedDraftAllowance({ balance });
+        if (!allowance.canGenerate) {
+          // 402 is still the right code — this IS a payment condition — but the
+          // body now names the path out instead of demanding an API key.
+          return c.json(
+            {
+              status: "blocked",
+              code: allowance.block,
+              body: allowance.message,
+              error: allowance.message,
+              ai_generated: false,
+              credits: {
+                drafts_left: allowance.remaining,
+                message: allowance.message,
+                offer: allowance.offer,
+              },
+            },
+            402
+          );
+        }
+      }
+
+      // --- The evidence pack (item 4, prompt side) -------------------------
+      const evidence: DraftEvidence[] = [];
+      if (auditGap) evidence.push({ id: "gap", statement: auditGap, source: "audit gap" });
+      if (auditEvidence) evidence.push({ id: "gap-evidence", statement: auditEvidence, source: "audit evidence" });
+      for (const [i, p] of (absentPrompts ?? []).entries()) {
+        evidence.push({
+          id: `absent-${i + 1}`,
+          statement: `Buyers ask "${p}" and this brand is not cited in the answer.`,
+          source: "AI search probe",
+        });
+      }
+      for (const [i, s] of (missingSourceNames ?? []).entries()) {
+        evidence.push({
+          id: `source-${i + 1}`,
+          statement: `The brand has no presence on ${s}, a source the engines cite for this category.`,
+          source: "source coverage",
+        });
+      }
+      if (competitorPressureCount && competitorPressureCount > 0) {
+        evidence.push({
+          id: "pressure",
+          statement: `${competitorPressureCount} rival brands are cited where this brand is not.`,
+          source: "competitive displacement (names withheld)",
+        });
+      }
+
+      const request = {
+        contentType: ct as ContentType,
+        brandName: brand.name,
+        category: brand.category,
+        topic,
+        sourceUrl: body.source_url ?? null,
+        instructions: typeof body.instructions === "string" ? body.instructions.slice(0, 500) : undefined,
+        tone: typeof body.tone === "string" ? body.tone.slice(0, 50) : undefined,
+        length: (["short", "medium", "long"] as const).includes(body.length as "short" | "medium" | "long")
+          ? (body.length as "short" | "medium" | "long")
+          : undefined,
+        brandDescription,
+        brandMarket: brand.market ?? null,
+        auditGap,
+        auditEvidence,
+        absentPrompts,
+        weakContentTraits,
+        missingSourceNames,
+        competitorPressureCount,
+        evidence,
+      };
+
+      // --- 4. Generate, with retry ----------------------------------------
+      // INTEGRITY, unchanged and still load-bearing: only `generatedBy === "llm"`
+      // is a real draft. "error" means no key on either side; "rules" means a key
+      // was present and the provider gave nothing back — in production almost
+      // always a provider quota/timeout. Neither may be stored or badged as
+      // AI-authored, and neither is charged for.
+      const attempt = async (): Promise<GenerationAttemptOutcome<ContentDraft>> => {
+        const d = await generateContent(request, {
+          apiKey: key.apiKey ?? undefined,
+          provider,
+          keySource: hosted ? "platform" : "client",
+        });
+        if (d.generatedBy === "llm") return { value: d, reason: null };
+        return { value: null, reason: d.generatedBy === "error" ? "no_key" : "provider_no_draft" };
+      };
+      const run = await generateWithRetry<ContentDraft>(attempt);
+
+      if (!run.value) {
+        // NOT SILENCE. Dead-letter row + ops alert, then an honest answer.
+        const failure = await recordDraftFailure(db, {
+          tenantId: auth.tenantId,
+          brandId: brandId ?? null,
+          generationKey,
+          reason: run.reason ?? "unknown",
+          attempts: run.attempts,
+          keySource: key.source,
+        });
+        const msg =
+          key.source === "none"
+            ? "We could not write this draft because no AI engine is available on our side right now. Nothing was charged. Our team has been alerted."
+            : `We tried ${run.attempts} times and the AI engine did not return a usable draft. Nothing was saved and nothing was charged. Our team has been alerted.`;
+        return c.json(
+          {
+            status: "error",
+            code: run.reason ?? "unknown",
+            body: msg,
+            error: msg,
+            ai_generated: false,
+            attempts: run.attempts,
+            alerted: failure.alerted,
+          },
+          502
+        );
+      }
+      const draft = run.value;
+
+      // --- 5. Fact-check, BEFORE review ------------------------------------
+      const competitorRows = await db.query<{ name: string }>(
+        `SELECT name FROM competitor WHERE brand_id = $1 AND tenant_id = $2`,
+        [brandId, auth.tenantId]
+      );
+      const check = factCheckDraft({
+        title: draft.title,
+        body: draft.body,
+        evidence,
+        competitorNames: competitorRows.rows.map((r) => r.name),
+        // No claim registry rows exist for a customer's own competitors, and
+        // that is the point: silence means nobody vouched, so naming one is
+        // blocked. Passing the array explicitly rather than relying on the
+        // default keeps that decision visible.
+        claims: [],
+      });
+      if (!check.ok) {
+        const failure = await recordDraftFailure(db, {
+          tenantId: auth.tenantId,
+          brandId: brandId ?? null,
+          generationKey,
+          reason: "fact_check_failed",
+          attempts: run.attempts,
+          keySource: key.source,
+        });
+        const msg = `We wrote a draft but it did not pass our fact-check, so we threw it away and charged you nothing. ${check.blocking
+          .map((f) => f.detail)
+          .join(" ")}`;
+        return c.json(
+          {
+            status: "error",
+            code: "fact_check_failed",
+            body: msg,
+            error: msg,
+            ai_generated: false,
+            fact_check: check,
+            alerted: failure.alerted,
+          },
+          422
+        );
+      }
+
+      // --- 6. Store as a DRAFT. Never published. ---------------------------
+      const id = randomUUID();
+      try {
+        await db.query(
+          `INSERT INTO content_piece
+             (id, tenant_id, brand_id, plan_task_id, content_type, title, body, schema_markup,
+              ai_generated, status, generated_by, generation_key, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8, TRUE, 'draft', $9, $10, NOW())`,
+          [id, auth.tenantId, brandId, body.plan_task_id ?? null, ct, draft.title, draft.body, draft.schemaMarkup, draft.generatedBy, generationKey]
+        );
+      } catch {
+        // generation_key column missing (migration 20260904000001 not applied).
+        // Store the draft anyway — the customer's artifact is not hostage to our
+        // schema — and say in the log that idempotency is degraded rather than
+        // pretending it is on.
+        logger.warn("content_stored_without_generation_key", {
+          reason: "migration 20260904000001 not applied — draft-level idempotency is OFF",
+          tenantId: auth.tenantId,
+        });
+        await db.query(
+          `INSERT INTO content_piece
+             (id, tenant_id, brand_id, plan_task_id, content_type, title, body, schema_markup,
+              ai_generated, status, generated_by, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8, TRUE, 'draft', $9, NOW())`,
+          [id, auth.tenantId, brandId, body.plan_task_id ?? null, ct, draft.title, draft.body, draft.schemaMarkup, draft.generatedBy]
+        );
+      }
+
+      // --- 7. Debit LAST — a valid artifact now exists ----------------------
+      let billing: { charged: boolean; drafts_left: number | null; message: string } = {
+        charged: false,
+        drafts_left: null,
+        message: "Generated on your own AI key, so no Ozvor credits were used.",
+      };
+      if (hosted && allowance) {
+        try {
+          const debit = await debitForContentDraft(
+            db,
+            auth.tenantId,
+            tier,
+            draftRefId(generationKey),
+            allowance.costCredits
+          );
+          const left = draftsRemaining(debit.balance);
+          billing = { charged: debit.charged, drafts_left: left, message: describeDraftsLeft(left) };
+        } catch (err) {
+          if (err instanceof ContentLedgerNotReadyError) {
+            // The draft is written and it is the customer's. We simply cannot
+            // meter it yet, and saying "charged" when we did not charge is the
+            // kind of quiet lie this codebase keeps paying for.
+            logger.error("content_debit_unavailable", {
+              reason: "migration 20260904000001 not applied — hosted drafts are NOT being metered",
+              tenantId: auth.tenantId,
+            });
+            void alertOps(
+              "⚠️ Hosted content generation ran UNMETERED: migration " +
+                "20260904000001_hosted_content_generation is not applied. Apply it or disable hosted generation."
+            );
+            billing = {
+              charged: false,
+              drafts_left: null,
+              message: "This draft has not been counted against your credits yet.",
+            };
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      return c.json(
+        {
+          id,
+          ...draft,
+          ai_generated: true,
+          status: "draft",
+          reused: false,
+          fact_check: check,
+          evidence,
+          billing,
+        },
+        201
+      );
     }
   );
 

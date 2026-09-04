@@ -192,3 +192,92 @@ export async function debitForAudit(
   const after = await creditBalance(db, tenantId, tier);
   return { charged, balance: after.balance };
 }
+
+// ---------------------------------------------------------------------------
+// P0-08 — hosted content generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown when the ledger cannot record a 'content' debit because migration
+ * 20260904000001 has not been applied to this database.
+ *
+ * It exists so the route can tell the truth about WHY. "Mergeado não é
+ * produção" is a house rule: a feature whose dependency is missing must report
+ * itself OFF, naming the action that switches it on — not fail with a generic
+ * 500, and emphatically not generate on our key with no meter because the
+ * insert quietly failed.
+ */
+export class ContentLedgerNotReadyError extends Error {
+  readonly code = "ledger_not_ready";
+  constructor() {
+    super(
+      "Hosted content generation is not switched on: migration " +
+        "20260904000001_hosted_content_generation has not been applied to this database."
+    );
+    this.name = "ContentLedgerNotReadyError";
+  }
+}
+
+/** Postgres check_violation. The reason CHECK is the only one this insert can hit. */
+const PG_CHECK_VIOLATION = "23514";
+
+function isReasonCheckViolation(err: unknown): boolean {
+  const e = err as { code?: string; constraint?: string } | null;
+  if (!e || e.code !== PG_CHECK_VIOLATION) return false;
+  // constraint is present on every modern node-postgres error; when it is not,
+  // fall back to the code alone rather than mis-reporting a real bug as
+  // "not migrated".
+  return e.constraint === undefined || e.constraint === "credit_ledger_reason_check";
+}
+
+/**
+ * Charge ONE hosted content draft against the ledger, exactly once.
+ *
+ * Idempotent by the same uniq_credit_ref the audit debit relies on, keyed by
+ * `refId` — the UUID derived from auditId + actionId + artifactType + version
+ * (see apps/api/src/lib/hosted-content.ts). Reprocessing the same job inserts a
+ * conflicting row, is told DO NOTHING, and reports charged:false. The customer
+ * is never billed twice for one draft.
+ *
+ * CALL ORDER MATTERS, and it is the caller's job: this must run only AFTER the
+ * generation has produced a valid artifact. RELATORIO §16 P0-08 item 7 —
+ * failure does not charge. Debiting up front and refunding on failure would put
+ * a compensating UPDATE-shaped hole in an append-only ledger; not spending in
+ * the first place has no such hole.
+ *
+ * BYOK never reaches here. A client generating on their own key pays their own
+ * provider and owes us nothing.
+ */
+export async function debitForContentDraft(
+  db: PostgresClient,
+  tenantId: string,
+  tier: PlanTier,
+  refId: string,
+  amount: number
+): Promise<DebitResult> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`debitForContentDraft: amount must be a positive integer, got ${String(amount)}`);
+  }
+  const credits = Math.ceil(amount);
+  let res: { rows: Array<{ id: string }> };
+  try {
+    res = await db.query<{ id: string }>(
+      `INSERT INTO credit_ledger (tenant_id, delta, reason, ref_type, ref_id, balance_after)
+       SELECT $1::uuid, $2::integer, 'content', 'content_draft', $3::uuid,
+              (COALESCE((SELECT SUM(delta) FROM credit_ledger WHERE tenant_id = $1::uuid), 0) + $2::integer)::integer
+        ON CONFLICT (tenant_id, ref_type, ref_id)
+          WHERE ref_type IS NOT NULL AND ref_id IS NOT NULL DO NOTHING
+        RETURNING id`,
+      [tenantId, -credits, refId]
+    );
+  } catch (err) {
+    if (isReasonCheckViolation(err)) throw new ContentLedgerNotReadyError();
+    throw err;
+  }
+  const charged = res.rows.length > 0;
+  if (!charged) {
+    logger.info("content_debit_already_recorded", { tenantId, refId, credits });
+  }
+  const after = await creditBalance(db, tenantId, tier);
+  return { charged, balance: after.balance };
+}

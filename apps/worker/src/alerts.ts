@@ -1,66 +1,18 @@
 /**
- * alerts.ts — make a job failure audible.
+ * alerts.ts — worker-side operational alerting.
  *
- * "Nada degrada calado" is a house rule, and the geo-audit queue was breaking
- * it in the most expensive way: on 17/08 three audits failed a minute apart with
- * the same message, wrote it to `geo_audit.error_message`, and told nobody. The
- * customer saw a generic "The audit failed. Please run it again." The founder
- * found out weeks later, from a report.
+ * `alertOps` MOVED to packages/shared/src/ops-alert.ts (P0-08, 2026-09-04) and
+ * is re-exported here so every existing import site in this app keeps working
+ * unchanged. The move happened because the API now needs the same alerter: the
+ * hosted content path fails inside an HTTP request rather than in a queue, and
+ * "nada degrada calado" is not a rule about queues, it is a rule about
+ * failures. A second copy would be a second alerter to keep configured, and the
+ * copy that rots is the one nobody notices has gone quiet.
  *
- * There was no shortage of alerting machinery — the worker already talks to
- * Telegram from graph-tick — only no path from a failed job to it. The
- * `sendTelegram` there is private to that module and carries approve/reject
- * button plumbing this does not need, so rather than widen it, this is a small
- * self-contained sender for operational alerts.
- *
- * Rules it follows:
- *  - Never throws. An alerter that can break the thing it is watching is worse
- *    than no alerter.
- *  - Says so in the log when it CANNOT alert (missing env). A silent alerter is
- *    the exact failure mode being fixed — "não consegui olhar" ≠ "ok".
- *  - Carries no secrets, no tokens, no draft bodies.
+ * What stays here is the worker's own alert FORMATTING — text about BullMQ jobs
+ * has no business in a shared package.
  */
-import { logger } from "../../../packages/shared/src/logger";
-
-const TG_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
-const TG_CHAT = process.env["TELEGRAM_CHAT_ID"] ?? "";
-
-/**
- * Fire-and-forget operational alert.
- *
- * Returns whether the message actually left the process, so a caller that needs
- * to record "we alerted" can record the truth rather than the intention.
- */
-export async function alertOps(text: string): Promise<boolean> {
-  const body = text.slice(0, 3500);
-  if (!TG_TOKEN || !TG_CHAT) {
-    // Loud on purpose: this is the branch where the watchdog is blind.
-    logger.error("ops_alert_undeliverable", {
-      reason: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set",
-      preview: body.slice(0, 200),
-    });
-    return false;
-  }
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: TG_CHAT, text: body }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) {
-      logger.error("ops_alert_send_failed", { status: res.status, preview: body.slice(0, 200) });
-      return false;
-    }
-    return true;
-  } catch (err) {
-    logger.error("ops_alert_send_threw", {
-      message: (err as Error).message?.slice(0, 200),
-      preview: body.slice(0, 200),
-    });
-    return false;
-  }
-}
+export { alertOps } from "../../../packages/shared/src/ops-alert";
 
 /**
  * The alert for an audit job that has run out of attempts.
