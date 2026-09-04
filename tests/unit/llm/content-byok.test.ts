@@ -1,10 +1,23 @@
 /**
- * content-byok.test.ts — verifies the BYOK key-routing in generateContent:
- * content is CLIENT-KEY ONLY (no platform fallback). A client key (opts.apiKey)
- * for the chosen provider → keyUsed "client"; no client key → "none" (error),
- * even if a platform env key is set; client key but LLM fails → "rules" template.
- * The client also picks the provider (anthropic/openai/gemini/perplexity).
- * fetch is stubbed so no real provider is hit.
+ * content-byok.test.ts — key routing INSIDE generateContent.
+ *
+ * READ THIS BEFORE CONCLUDING THAT CONTENT IS BYOK-ONLY. It no longer is, as of
+ * P0-08 (2026-09-04): a customer without their own key now gets a hosted draft
+ * on our key, metered by their credit balance. What is still true, and what
+ * these tests pin, is that `generateContent` ITSELF never goes looking for a
+ * platform key — it uses exactly the key it is handed and nothing else. The
+ * client→platform cascade lives one layer up, in
+ * apps/api/src/lib/hosted-content.ts, precisely so a generator can never start
+ * spending platform money on a path nobody reviewed.
+ *
+ * So: a key in `opts.apiKey` → keyUsed reflects `opts.keySource` (default
+ * "client"); NO key → "none" (error) even with a platform env var set; key
+ * present but the LLM fails → "rules" template. The caller also picks the
+ * provider (anthropic/openai/gemini/perplexity). fetch is stubbed so no real
+ * provider is hit.
+ *
+ * The hosted path's own tests are in tests/unit/hosted-content-debit.test.ts
+ * and tests/unit/content-hosted-route.test.ts.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { generateContent } from "../../../packages/llm/src/content-studio";
@@ -30,9 +43,11 @@ describe("generateContent — BYOK key routing", () => {
     expect(d.generatedBy).toBe("llm");
   });
 
-  it("does NOT fall back to the platform env key — content is client-key only", async () => {
-    // Content is BYOK: with no client key it refuses even when a platform env key
-    // is set (audits use the platform; content never does). No provider is hit.
+  it("never reads a platform env key itself — the cascade is the callers job", async () => {
+    // With no key handed in, it refuses even when ANTHROPIC_API_KEY is set. The
+    // hosted path works by PASSING the platform key in (see lib/hosted-content),
+    // never by this function reaching for env behind the callers back. No
+    // provider is hit.
     process.env["ANTHROPIC_API_KEY"] = "sk-ant-platform-key";
     const fetchSpy = vi.fn(async () => anthropicOk());
     vi.stubGlobal("fetch", fetchSpy);
@@ -79,8 +94,15 @@ describe("generateContent — no-key graceful error", () => {
     const d = await generateContent(req);
     expect(d.generatedBy).toBe("error");
     expect(d.keyUsed).toBe("none");
+    // P0-08 changed this copy, deliberately. "No key at all" no longer means
+    // "the customer forgot to bring one" — it means neither they nor WE have
+    // one, which is our problem, not theirs. The old text ("Connect your AI key
+    // to generate content") instructed the customer to fix our outage.
+    expect(d.title).toBe("We could not generate this draft");
+    expect(d.body).toContain("you do not need an API key");
+    expect(d.body).toMatch(/nothing was charged/i);
+    // BYOK is still offered — as an option, at the end, not as a precondition.
     expect(d.body).toContain("Account → AI engines & keys");
-    expect(d.title).toBe("Connect your AI key to generate content");
   });
 
   it("returns template (not error) when client key present but LLM call fails", async () => {
