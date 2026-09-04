@@ -186,6 +186,69 @@ export { wilson95, aggregateIntentEngine } from "./wilson";
 export type { PortfolioPrompt, PortfolioIntent } from "./prompt-portfolio";
 export { buildIntentPortfolio, PORTFOLIO_INTENTS } from "./prompt-portfolio";
 
+// P0-06 — Prompt Universe v2: versioned PromptDefinition, configurable cohort
+// composition (60/20/20 is a DEFAULT, not a law) and prompt-set identity.
+export type {
+  PromptDefinition,
+  PromptCohort,
+  PromptIntent,
+  PromptDemand,
+  PromptOwnerType,
+  FunnelStage,
+  CohortMix,
+  CohortMixResolution,
+  ComposeOptions,
+  ComposedUniverse,
+} from "./prompt-universe";
+export {
+  PROMPT_UNIVERSE_VERSION,
+  LEGACY_PROMPT_SET_VERSION,
+  PROMPT_COHORTS,
+  PROMPT_INTENTS,
+  FUNNEL_STAGES,
+  OWNER_TYPES,
+  DEFAULT_COHORT_MIX,
+  resolveCohortMix,
+  parseCohortMixEnv,
+  composeUniverse,
+  largestRemainder,
+  promptPriority,
+  promptSetHash,
+} from "./prompt-universe";
+
+// P0-06 — the Ozvor workspace's own universe + the archive plan for the
+// generic "best SaaS for SMBs" prompts it replaces.
+export type { RetiredPrompt, ArchivePlan, ArchivePlanEntry } from "./prompt-universe-ozvor";
+export {
+  OZVOR_RETIRED_PROMPTS,
+  OZVOR_UNIVERSE_APPROVED_AT,
+  BENCHMARK_FREEZE_DAYS,
+  buildOzvorUniverse,
+  findRetirement,
+  planOzvorArchive,
+} from "./prompt-universe-ozvor";
+
+// P0-06 — what may enter the universe (and therefore the score's denominator).
+export type {
+  Violation,
+  ViolationCode,
+  ViolationSeverity,
+  PromptVerdict,
+  QualityGateConfig,
+  QualityGateContext,
+  QualityGateResult,
+} from "./prompt-quality-gate";
+export {
+  DEFAULT_QUALITY_GATE,
+  evaluatePrompt,
+  runQualityGate,
+  mentionsBrand,
+  normaliseTokens,
+  jaccard,
+  containment,
+  promptSimilarity,
+} from "./prompt-quality-gate";
+
 // B1 — sequential sampling protocol (lean base + escalate-on-ambiguity)
 export type {
   SamplingQuery,
