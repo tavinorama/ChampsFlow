@@ -19,6 +19,9 @@
  *   GET   /api/admin/engagements      — all engagement rows (cross-tenant)
  *   PATCH /api/admin/engagements/:id  — update engagement status
  *   GET   /api/admin/system-health    — infra + env key presence + engine liveness
+ *                                       + the Delivery Health summary (P0-09)
+ *   GET   /api/admin/delivery-health  — "are we delivering?" — indicators with
+ *                                       their contracts + the Ozvor canary
  *   GET   /api/admin/analytics        — funnel metrics, MRR, ARR, trends
  *   GET   /api/admin/opportunities    — upsell targets (kit buyers without sub, hot DFY leads)
  *   GET   /api/admin/contacts/:email/dossier — per-client timeline (o ficheiro)
@@ -67,6 +70,8 @@ import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
 import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
 import { fetchReceivedMrr } from "../lib/received-mrr";
 import { fetchOperatingCadence } from "../lib/cadence";
+import { readDeliveryHealth } from "../lib/delivery-health-read";
+import { deliveryColor } from "../../../../packages/llm/src/delivery-health";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -976,7 +981,61 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       attentionFlags.push("api_spend: measured columns missing (migration 20260815000001 not applied) — ledger is estimate-only");
     }
 
-    logger.info("admin_system_health_fetched", { postgres: postgresStatus, redis: redisStatus, mode });
+    // -----------------------------------------------------------------------
+    // P0-09 — Delivery Health, BESIDE the infra block, never in place of it.
+    //
+    // The audit's finding was that this panel stayed green through delivery
+    // incidents because everything above measures infrastructure. So the same
+    // response now carries the answer to "are we delivering?", and its
+    // non-green states become attention flags here: a broken loop or a failing
+    // canary changes the colour of System Health. That is the whole item.
+    //
+    // Never fatal: if the delivery read itself falls over, the infra panel
+    // still renders and the failure is reported as a flag.
+    // -----------------------------------------------------------------------
+    let delivery: {
+      status: string;
+      color: "green" | "amber" | "red";
+      counts: Record<string, number>;
+      reasons: string[];
+      canary: { version: string; status: string };
+      readAt: string;
+    } | null = null;
+    try {
+      const dh = await readDeliveryHealth(db);
+      delivery = {
+        status: dh.rollup.status,
+        color: deliveryColor(dh.rollup.status),
+        counts: dh.rollup.counts,
+        reasons: dh.rollup.reasons,
+        canary: { version: dh.canary.version, status: dh.canary.status },
+        readAt: dh.rollup.readAt,
+      };
+      if (dh.rollup.status !== "healthy") {
+        attentionFlags.push(
+          `Delivery Health is ${dh.rollup.status.replace(/_/g, " ")} — ${dh.rollup.reasons.length} finding(s); see the Delivery Health panel`
+        );
+      }
+      if (dh.canary.status !== "healthy") {
+        attentionFlags.push(
+          `Ozvor canary (${dh.canary.version}) is ${dh.canary.status.replace(/_/g, " ")}: ${
+            dh.canary.reasons[0] ?? "see the Delivery Health panel"
+          }`
+        );
+      }
+    } catch (err) {
+      logger.error("admin_delivery_health_failed", {
+        message: (err as Error).message?.slice(0, 200),
+      });
+      attentionFlags.push("Delivery Health could not be read — delivery is UNKNOWN, not healthy");
+    }
+
+    logger.info("admin_system_health_fetched", {
+      postgres: postgresStatus,
+      redis: redisStatus,
+      mode,
+      delivery: delivery?.status ?? "unreadable",
+    });
 
     return c.json({
       engines,
@@ -988,7 +1047,77 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       attentionFlags,
       mode,
       apiSpend,
+      delivery,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/delivery-health — P0-09, RELATORIO §3.4 / §14.
+  //
+  // "Estamos entregando?" before "as APIs estão online?". Every indicator ships
+  // with its contract (owner, source of truth, grain, timezone, inclusion/
+  // exclusion, late-data policy, quality test) so the panel can show what a
+  // number means and who answers for it. Absent data is returned as
+  // not_measured / not_connected / insufficient_evidence — never as 0.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/delivery-health", requireAuth, requireSuperAdmin, async (c) => {
+    try {
+      const dh = await readDeliveryHealth(db);
+      logger.info("admin_delivery_health_fetched", {
+        status: dh.rollup.status,
+        canary: dh.canary.status,
+        canary_version: dh.canaryVersion,
+      });
+      return c.json({
+        status: dh.rollup.status,
+        color: deliveryColor(dh.rollup.status),
+        readAt: dh.rollup.readAt,
+        counts: dh.rollup.counts,
+        reasons: dh.rollup.reasons,
+        indicators: dh.rollup.indicators.map((i) => ({
+          id: i.id,
+          label: i.label,
+          status: i.status,
+          color: deliveryColor(i.status),
+          value: i.value,
+          sample: i.sample,
+          unit: i.unit,
+          direction: i.direction,
+          degradedAt: i.degradedAt,
+          failingAt: i.failingAt,
+          reason: i.reason,
+          contract: {
+            question: i.contract.question,
+            owner: i.contract.owner,
+            sourceOfTruth: i.contract.sourceOfTruth,
+            grain: i.contract.grain,
+            timezone: i.contract.timezone,
+            windowDays: i.contract.windowDays,
+            includes: i.contract.includes,
+            excludes: i.contract.excludes,
+            lateData: i.contract.lateData,
+            qualityTest: i.contract.qualityTest,
+            minSample: i.contract.minSample,
+          },
+        })),
+        canary: {
+          version: dh.canary.version,
+          status: dh.canary.status,
+          color: deliveryColor(dh.canary.status),
+          auditId: dh.canary.auditId,
+          checks: dh.canary.checks.map((k) => ({
+            id: k.id,
+            label: k.label,
+            status: k.status,
+            color: deliveryColor(k.status),
+            detail: k.detail,
+          })),
+        },
+      });
+    } catch (err) {
+      logger.error("admin_delivery_health_error", { message: (err as Error).message?.slice(0, 200) });
+      return c.json({ error: "internal_error", code: "DELIVERY_HEALTH_FAILED" }, 500);
+    }
   });
 
   // -------------------------------------------------------------------------
