@@ -251,7 +251,7 @@ function KitView({ d, downloads }: { d: Deliverable; downloads: KitDownload[] })
           },
           {
             title: "Agency Plan",
-            why: "Weekly monitoring across up to 10 brands. Includes white-label reports and a client approval workflow.",
+            why: "Weekly monitoring across up to 10 brands. Includes white-label reports and shareable client report links.", // PENDING 10.A.4: approval workflow not built — say share links until it exists
             price: "$549/mo",
             plan: "agency", interval: "year",
             accent: "ghost",

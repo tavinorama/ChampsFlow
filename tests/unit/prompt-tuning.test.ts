@@ -564,7 +564,7 @@ function fakeTuningSql(rows: TuningRows): postgres.Sql {
 }
 
 describe("snapshot source 'tuning' — fatos agregados por código, por graph", () => {
-  it("agrega vereditos, rejeições (contagem POR GRAPH + motivo literal), timeouts e overrides ativos", async () => {
+  it("agrega vereditos, rejeições (contagem POR GRAPH + motivo literal) e overrides ativos — timeouts FORA (10.C.13)", async () => {
     const snap = await buildSnapshot(
       fakeTuningSql({
         verdicts: [{ graph: "sphere-x", summary: "verdict x_impressions: total=0 n=4", started_at: "2026-08-20T08:00:00Z" }],
@@ -580,7 +580,9 @@ describe("snapshot source 'tuning' — fatos agregados por código, por graph", 
     expect(snap).toContain("- 2026-08-20 (sphere-x): verdict x_impressions: total=0 n=4");
     expect(snap).toContain("- sphere-linkedin: 3 rejeicao(oes)"); // contagem por SQL, nunca pelo modelo
     expect(snap).toContain("- 2026-08-12 (sphere-linkedin): tom vendedor"); // o motivo literal
-    expect(snap).toContain("- daily-video: 2 aprovacao(oes) expiraram sem decisao");
+    // 10.C.13: a ausência do founder NÃO é evidência sobre o prompt.
+    expect(snap).not.toContain("APROVACOES EXPIRADAS");
+    expect(snap).not.toContain("expiraram sem decisao");
     expect(snap).toContain("- x-critic: desde 2026-08-25 (120 chars)");
   });
 

@@ -30,6 +30,7 @@ import { EngineConfidence } from "../../components/EngineConfidence";
 import { IntentBreakdown, type IntentRow } from "../../components/IntentBreakdown";
 import { CoverageNote, type CoverageData } from "../../components/CoverageNote";
 import { HallucinationFlag, type HallucinationInfo } from "../../components/HallucinationFlag";
+import { VerifiedExecutionNote } from "../../components/VerifiedExecutionNote";
 import { useCredits, CreditsPill, CreditsBanner, CreditsCard as SharedCreditsCard } from "../../components/credits/CreditsWidgets";
 import { AiAuditTab } from "./AiAuditTab";
 import { WhereToShowUpTab } from "./WhereToShowUpTab";
@@ -97,6 +98,26 @@ interface ScorePayload {
   trend: TrendPoint[];
   threeScores: ThreeScores | null;
   executionProgress: number | null;
+  /**
+   * Verified Execution with its working shown (audit P0-02). `verifiedPct: null`
+   * plus an `unavailableReason` means NOT MEASURED — which must never render the
+   * same as 0, which means "measured, nothing confirmed yet".
+   */
+  execution?: {
+    verifiedPct: number | null;
+    selfReportedPct: number | null;
+    counts: {
+      total: number;
+      denominator: number;
+      verified: number;
+      inFlight: number;
+      selfReported: number;
+      open: number;
+      notOwed: number;
+    };
+    unavailableReason: "no_plan" | "no_tasks" | "migration_pending" | "read_failed" | null;
+    measurable: boolean;
+  } | null;
   /** Phase 2: checks/citations of the latest run + stability note when small. */
   confidence?: { checks: number | null; citations: number | null; stabilityNote: string | null } | null;
 }
@@ -165,7 +186,12 @@ interface PlanTask {
   effort: string;
   impact: string; // "high" | "medium" | "low"
   priority: number;
-  status: string; // "proposed" | "accepted" | "rejected" | "done"
+  /**
+   * Lifecycle state (packages/llm/src/plan-task-state.ts). Kept as a string
+   * because the server is the authority; the UI groups by known values and
+   * treats anything it does not recognise as open work.
+   */
+  status: string;
   evidence: string | null;
 }
 
@@ -609,8 +635,14 @@ export default function DashboardV3() {
   }, [tab, activeBrandId, tasks, content, breakdown, sites, billing, tasksLoading, contentLoading, breakdownLoading, sitesLoading, billingLoading, latestAuditId, loadTasks, loadContent, loadBreakdown, loadSites, loadBilling]);
 
   // Optimistic mutations -----------------------------------------------------
+  /**
+   * P0-02: the checkbox records a CLAIM, and says so.
+   * `manual_done_pending_verification` is the highest state a client can reach.
+   * `verified` is set only by the next audit, on the server, and the API
+   * refuses it from a client session with a 403 — this is belt to that braces.
+   */
   const toggleTask = useCallback(async (taskId: string, done: boolean) => {
-    const next = done ? "done" : "accepted";
+    const next = done ? "manual_done_pending_verification" : "accepted";
     let prevStatus: string | undefined; // snapshot the ACTUAL prior value to revert to
     setTasks((prev) => (prev ? prev.map((t) => {
       if (t.id !== taskId) return t;
@@ -903,6 +935,7 @@ export default function DashboardV3() {
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
             coverage={score?.latest?.coverage ?? null}
+            execution={score?.execution ?? null}
             confidence={score?.confidence ?? null}
             hallucination={(breakdown as { hallucination?: HallucinationInfo | null } | null)?.hallucination ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
@@ -969,6 +1002,7 @@ export default function DashboardV3() {
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditBlocked, onTopUp, auditMsg,
   auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination, confidence,
+  execution,
 }: {
   brandName?: string;
   overall: number | null;
@@ -998,6 +1032,8 @@ function OverviewTab({
   coverage?: CoverageData | null;
   /** P7 — same-day negative-control hit on an engine in this panel. */
   hallucination?: HallucinationInfo | null;
+  /** P0-02 — Verified Execution with its working shown. */
+  execution?: ScorePayload["execution"];
 }) {
   // The hero shows Visibility now, so "has data" follows Visibility. Keying it
   // on the composite would print a big "—" next to a filled three-score card.
@@ -1068,7 +1104,7 @@ function OverviewTab({
             This is the measurement, and nothing else: how often the AI engines
             named you when asked your customers&rsquo; questions. Your own work
             is not in this number{typeof threeScores?.executionProgress === "number" ? (
-              <> — it is the <b>Execution</b> line below, at {threeScores.executionProgress}%</>
+              <> — it is the <b>Verified Execution</b> line below, at {threeScores.executionProgress}%</>
             ) : null}.
             {" "}AI answers move on their own, so the &plusmn; is the range this
             number could honestly sit in. When it changes, look for the reason
@@ -1090,7 +1126,10 @@ function OverviewTab({
       {loading ? (
         <div style={S.muted}>Loading score…</div>
       ) : hasData ? (
-        <OzvorScorecard overall={overall} threeScores={threeScores} brandName={brandName} />
+        <>
+          <OzvorScorecard overall={overall} threeScores={threeScores} brandName={brandName} />
+          <VerifiedExecutionNote execution={execution} />
+        </>
       ) : (
         <div style={{ ...S.card, padding: "var(--space-6)" }}>
           <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No audit yet for this brand. Run the first one — it takes ~30–60 seconds across the AI engines.</p>
@@ -1500,8 +1539,27 @@ function DoNextTab({
   brandId: string;
   onAddTask: (action: string) => Promise<void>;
 }) {
-  const open = (tasks ?? []).filter((t) => t.status !== "done" && t.status !== "rejected");
-  const done = (tasks ?? []).filter((t) => t.status === "done");
+  // P0-02 — three columns, not two, because "you said it's done" and "we
+  // checked and it worked" are different facts and must not share a heading.
+  //   verified      — proven by a later audit. The only thing that scores.
+  //   claimed       — the client ticked it, or an old row from the checkbox era.
+  //                   Sits in "Marked done", waiting to be checked.
+  //   open          — everything still needing work, regressions included.
+  const VERIFIED_LIKE = ["verified"];
+  const CLAIMED_LIKE = ["done", "legacy_self_reported", "manual_done_pending_verification"];
+  const CLOSED_LIKE = ["rejected", "expired"];
+
+  const verified = (tasks ?? []).filter((t) => VERIFIED_LIKE.includes(t.status));
+  const claimed = (tasks ?? []).filter((t) => CLAIMED_LIKE.includes(t.status));
+  const open = (tasks ?? []).filter(
+    (t) =>
+      !VERIFIED_LIKE.includes(t.status) &&
+      !CLAIMED_LIKE.includes(t.status) &&
+      !CLOSED_LIKE.includes(t.status)
+  );
+  // Kept for the "Marked done" column, which now holds claims AND proof.
+  const done = [...verified, ...claimed];
+  const isVerified = (t: PlanTask) => VERIFIED_LIKE.includes(t.status);
 
   return (
     <>
@@ -1516,10 +1574,23 @@ function DoNextTab({
       ) : (
     <>
       <div style={S.secH}>
-        Your fix list <span style={S.secN}>— {open.length} to do, {done.length} done. Finish these and your base score climbs.</span>
+        Your fix list{" "}
+        <span style={S.secN}>
+          — {open.length} to do, {claimed.length} waiting to be checked, {verified.length} verified.
+        </span>
       </div>
       {open.length === 0 ? (
-        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>All caught up — every fix is done. Nice work. 🎉</div>
+        claimed.length > 0 ? (
+          /* P0-01/P0-02: never say "all caught up" while claims are unchecked.
+             Nothing here is finished until an audit says so. */
+          <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>
+            Nothing left for you to do right now. {claimed.length}{" "}
+            {claimed.length === 1 ? "fix is" : "fixes are"} marked done and waiting
+            for the next audit to check {claimed.length === 1 ? "it" : "them"}.
+          </div>
+        ) : (
+          <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>All caught up — every fix is verified. Nice work. 🎉</div>
+        )
       ) : (
         <div style={S.card}>
           {open.map((t, i) => (
@@ -1541,7 +1612,13 @@ function DoNextTab({
 
       {done.length > 0 && (
         <>
-          <div style={S.secH}>Done <span style={S.secN}>— nice work</span></div>
+          <div style={S.secH}>
+            Marked done{" "}
+            <span style={S.secN}>
+              — &ldquo;Verified&rdquo; means we ran the questions again and saw the
+              change. The rest are waiting for the next audit to check them.
+            </span>
+          </div>
           <div style={S.card}>
             {done.map((t, i) => (
               <div key={t.id} style={{ ...S.actRow, opacity: 0.7, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
@@ -1552,21 +1629,30 @@ function DoNextTab({
                       the evidence carries "Worked — verified in the audit of
                       <date>". Showing it is the whole point: the client sees
                       that doing X moved the number, in their own data. */}
-                  {t.evidence?.startsWith("Worked — verified") && (
+                  {isVerified(t) && t.evidence?.startsWith("Worked — verified") && (
                     <div style={{ ...S.actWhy, color: "var(--color-success)" }}>{t.evidence.split(".")[0]}.</div>
                   )}
+                  {!isVerified(t) && (
+                    /* The state is the badge's source of truth, not a string
+                       match on the evidence text. A claim says it is a claim. */
+                    <div style={S.actWhy}>You marked this done. We&rsquo;ll check it on the next audit.</div>
+                  )}
                 </div>
-                <span style={{ ...S.imp, ...(t.evidence?.startsWith("Worked — verified")
+                <span style={{ ...S.imp, ...(isVerified(t)
                   ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }
                   : { background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }) }}>
-                  {t.evidence?.startsWith("Worked — verified") ? "Verified" : "Done"}
+                  {isVerified(t) ? "Verified" : "Not checked yet"}
                 </span>
               </div>
             ))}
           </div>
         </>
       )}
-      <p style={S.note}>Checking a box marks it done here and updates your Execution score. Nothing is published from this list.</p>
+      <p style={S.note}>
+        Checking a box tells us you did it. It does not move your Verified
+        Execution score — that only counts fixes we re-check and find working in
+        the AI answers. Nothing is published from this list.
+      </p>
     </>
       )}
     </>
@@ -1754,8 +1840,18 @@ function TrackedCompetitors({ brandId }: { brandId: string }) {
     }
   }
   async function remove(id: string) {
-    setList((prev) => (prev ?? []).filter((c) => c.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Remove from the UI only AFTER the server confirms — an optimistic delete
+    // that swallows the error leaves the row "deleted" on screen but alive in
+    // the DB (2026-09-02 sweep, PENDING 10.A.8).
+    const prev = list;
+    setList((p) => (p ?? []).filter((c) => c.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setList(prev);
+      setErr("Couldn't remove that competitor. Try again.");
+    }
   }
 
   return (
@@ -1970,8 +2066,17 @@ function ManagePrompts({ brandId }: { brandId: string }) {
     finally { setBusy(false); }
   }
   async function remove(id: string) {
-    setCustom((prev) => prev.filter((p) => p.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): on failure the prompt comes back
+    // and the existing inline error shows — never a silent fake delete.
+    const prev = custom;
+    setCustom((p) => p.filter((x) => x.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setCustom(prev);
+      setErr("Couldn't remove that prompt. Try again.");
+    }
   }
 
   const total = (defaults?.length ?? 0) + custom.length;
@@ -2102,6 +2207,7 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
   const [connected, setConnected] = useState<string[] | null>(null);
   const [apiKeys, setApiKeys] = useState<OzvorApiKey[] | null>(null);
   const [minted, setMinted] = useState<string | null>(null); // plaintext shown once
+  const [keyErr, setKeyErr] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -2130,8 +2236,18 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
     } catch { /* ignore */ } finally { setBusy(false); }
   }
   async function revokeKey(id: string) {
-    setApiKeys((prev) => (prev ?? []).filter((k) => k.id !== id));
-    try { await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): a swallowed error here showed a
+    // key as "revoked" while it kept working — a security lie, not just UI.
+    const prev = apiKeys;
+    setApiKeys((p) => (p ?? []).filter((k) => k.id !== id));
+    try {
+      const r = await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setKeyErr(null);
+    } catch {
+      setApiKeys(prev);
+      setKeyErr("Couldn't revoke that key — it is still ACTIVE. Try again.");
+    }
   }
 
   return (
@@ -2170,6 +2286,7 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
           <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name (e.g. CI, my-script)" style={{ ...S.input, flex: 1, minWidth: 180 }} />
           <button onClick={() => void generateKey()} disabled={busy} style={{ ...S.btnPri, opacity: busy ? 0.6 : 1 }}>{busy ? "Generating…" : "Generate API key"}</button>
         </div>
+        {keyErr && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "var(--space-2)" }}>{keyErr}</div>}
         {apiKeys && apiKeys.filter((k) => !k.revoked_at).length > 0 && (
           <div style={{ marginTop: "var(--space-3)" }}>
             {apiKeys.filter((k) => !k.revoked_at).map((k) => (
@@ -2199,6 +2316,7 @@ const GOOGLE_KINDS: Array<{ kind: "gsc" | "ga4"; key: string; name: string; note
 function GoogleConnect({ brandId }: { brandId: string }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [conns, setConns] = useState<GoogleConn[] | null>(null);
+  const [connErr, setConnErr] = useState<string | null>(null);
   const [busyKind, setBusyKind] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -2229,8 +2347,18 @@ function GoogleConnect({ brandId }: { brandId: string }) {
     setBusyKind(null); // only reached if we didn't redirect
   }
   async function disconnect(id: string) {
-    setConns((prev) => (prev ?? []).filter((x) => x.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): only drop the row after a 2xx; on
+    // failure restore it and say so instead of pretending it disconnected.
+    const prev = conns;
+    setConns((p) => (p ?? []).filter((x) => x.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setConnErr(null);
+    } catch {
+      setConns(prev);
+      setConnErr("Couldn't disconnect. It is still connected — try again.");
+    }
     void reload();
   }
 
@@ -2258,6 +2386,9 @@ function GoogleConnect({ brandId }: { brandId: string }) {
           </div>
         );
       })}
+      {connErr && (
+        <div style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: "var(--space-2) var(--space-2) 0" }}>{connErr}</div>
+      )}
       {configured === false && (
         <p style={{ ...S.note, margin: "var(--space-3) var(--space-2) 0" }}>Google connections aren’t configured on this environment yet.</p>
       )}

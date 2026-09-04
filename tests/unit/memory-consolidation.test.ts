@@ -292,7 +292,7 @@ function fakeMemorySql(rows: MemoryWorldRows): postgres.Sql {
 }
 
 describe("snapshot source 'memory' — fatos agregados por código, por canal", () => {
-  it("agrega publicações por canal (parse do channel= do summary), métricas, rejeições, timeouts e vereditos", async () => {
+  it("agrega publicações por canal (parse do channel= do summary), métricas, rejeições e vereditos — timeouts FORA (10.C.13)", async () => {
     const sql = fakeMemorySql({
       pubs: [
         { graph: "sphere-linkedin", summary: "published via postiz channel=linkedin", started_at: "2026-08-20T10:00:00Z" },
@@ -316,8 +316,9 @@ describe("snapshot source 'memory' — fatos agregados por código, por canal", 
     expect(snap).toContain("- x_impressions_7d: n=9 · total=360 · media=40 · ultima 2026-08-25");
     // O sinal mais forte: o motivo literal do founder.
     expect(snap).toContain("- 2026-08-12 (sphere-linkedin): tom vendedor");
-    // Timeout = rejeição por silêncio — também é lição.
-    expect(snap).toContain("- daily-video: 2 aprovacao(oes) expiraram sem decisao");
+    // 10.C.13: aprovação expirada é ausência do founder, NUNCA lição de conteúdo.
+    expect(snap).not.toContain("APROVACOES EXPIRADAS");
+    expect(snap).not.toContain("expiraram sem decisao");
     expect(snap).toContain("verdict x_impressions: total=30 n=8");
   });
 
