@@ -1,0 +1,127 @@
+name: SmartLead send watch (envio parado grita)
+
+# Por que existe: em 04/09 as campanhas ficaram ATIVAS e simplesmente pararam
+# de enviar — 700 e-mails no dia 02, 340 no dia 03, ZERO no dia 04 com a janela
+# aberta havia horas. Ninguém soube. Regra da casa: nada degrada calado.
+#
+# Este vigia roda dentro da janela de envio (09:00–18:00 America/New_York) e
+# compara o total enviado AGORA com o total de 1 hora atrás, guardado no cache
+# do Actions. Zero envios numa hora inteira de janela = alarme no Telegram.
+#
+# Determinístico: python + urllib, sem LLM. Só agregados — nenhum e-mail de
+# lead entra no log (regra da casa).
+
+on:
+  schedule:
+    # 14:00 e 18:00 UTC = 10:00 e 14:00 em Nova Iorque (janela aberta nos dois).
+    - cron: "0 14,18 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preflight — segredos obrigatórios
+        env:
+          SL: ${{ secrets.SMARTLEAD_API_KEY }}
+          TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CH: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "${SL}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          test -n "${TG}" || { echo "::error::secret TELEGRAM_BOT_TOKEN ausente — o vigia falha VERMELHO de propósito"; exit 1; }
+          test -n "${CH}" || { echo "::error::secret TELEGRAM_CHAT_ID ausente"; exit 1; }
+
+      - name: Estado anterior (cache)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: .sl-watch
+          key: sl-send-watch-${{ github.run_id }}
+          restore-keys: |
+            sl-send-watch-
+
+      - name: Medir e alarmar
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, pathlib, urllib.parse, urllib.request, urllib.error
+
+          KEY = os.environ["SL_KEY"]
+          BASE = "https://server.smartlead.ai/api/v1"
+          UA = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json"}
+
+          def get(path):
+              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
+                      return json.load(r)
+              except urllib.error.HTTPError as e:
+                  return {"_http": e.code}
+              except Exception as e:
+                  return {"_erro": type(e).__name__}
+
+          camps = get("/campaigns")
+          if isinstance(camps, dict):
+              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
+              raise SystemExit(1)
+
+          ativas, total = [], 0
+          for c in camps:
+              if str(c.get("status", "")).upper() not in ("ACTIVE", "START", "STARTED"):
+                  continue
+              a = get(f"/campaigns/{c['id']}/analytics")
+              n = int(a.get("sent_count") or 0) if isinstance(a, dict) else 0
+              ativas.append({"nome": c.get("name"), "enviados": n})
+              total += n
+
+          estado = pathlib.Path(".sl-watch/estado.json")
+          antes = None
+          if estado.exists():
+              try:
+                  antes = json.loads(estado.read_text()).get("total")
+              except Exception:
+                  antes = None
+          estado.parent.mkdir(parents=True, exist_ok=True)
+          estado.write_text(json.dumps({"total": total}))
+
+          delta = None if antes is None else total - antes
+          # Sem leitura anterior não há alarme: primeira execução só grava a régua.
+          parado = delta is not None and delta <= 0 and len(ativas) > 0
+
+          if parado:
+              linhas = "\n".join(f"· {a['nome']}: {a['enviados']} enviados (acumulado)" for a in ativas)
+              msg = ("🚨 SmartLead: ENVIO PARADO\n\n"
+                     f"{len(ativas)} campanha(s) ATIVA(s) e ZERO e-mails novos desde a última medição.\n\n"
+                     f"{linhas}\n\n"
+                     "Janela de envio deveria estar aberta (09–18 Nova Iorque).\n"
+                     "Onde olhar: quota/plano da conta no painel do SmartLead, "
+                     "saúde das caixas, e se alguma campanha foi pausada na UI.")
+              data = urllib.parse.urlencode({"chat_id": os.environ["TG_CHAT"], "text": msg}).encode()
+              try:
+                  urllib.request.urlopen(
+                      urllib.request.Request(
+                          f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
+                          data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}),
+                      timeout=30).read()
+                  avisado = True
+              except Exception as e:
+                  avisado = f"FALHOU: {type(e).__name__}"
+          else:
+              avisado = "nao_aplicavel"
+
+          print("RESULTADO_OZVOR" + json.dumps(
+              {"ok": True, "campanhas_ativas": len(ativas), "total_enviados": total,
+               "medicao_anterior": antes, "delta": delta, "envio_parado": parado,
+               "telegram": avisado}, ensure_ascii=False))
+          # Envio parado é vermelho: o job falha para aparecer no painel do Actions.
+          if parado:
+              raise SystemExit(1)
+          PYEOF
