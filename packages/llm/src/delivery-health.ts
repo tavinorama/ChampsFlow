@@ -181,7 +181,7 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     excludes: "brands with no completed audit in the window — unaudited is not the same as underserved",
     lateData: "recomputed on read from the latest audit per brand",
     qualityTest:
-      "tests/unit/delivery-health-read.test.ts › the Do Next invariant indicator goes red when a brand has a gap and no action",
+      "tests/unit/delivery-health.test.ts › the Do Next invariant indicator goes red when a brand has a gap and no action (probe: tests/unit/delivery-health-read.test.ts)",
     minSample: 1,
     direction: "higher_is_better",
     degradedAt: 1,

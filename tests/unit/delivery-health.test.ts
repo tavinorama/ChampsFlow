@@ -224,3 +224,40 @@ describe("raw-error leakage classifier", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// P0-01 — the Do Next invariant indicator (RELATORIO §3.1). The arithmetic
+// here; the database probe that feeds it is proved in
+// tests/unit/delivery-health-read.test.ts.
+// ---------------------------------------------------------------------------
+
+describe("the Do Next invariant indicator", () => {
+  it("goes red when a brand has a gap and no action", () => {
+    // 1 of 2 brands holding = 0.5, well under the failing threshold.
+    const i = ind({ id: "do_next_invariant", value: 0.5, sample: 2 });
+    expect(i.status).toBe("failing");
+    expect(i.reason).toContain("below");
+  });
+
+  it("goes amber on a single violation in a large population — never green", () => {
+    const i = ind({ id: "do_next_invariant", value: 0.99, sample: 100 });
+    expect(i.status).toBe("degraded");
+  });
+
+  it("is green only when every audited brand holds the invariant", () => {
+    expect(ind({ id: "do_next_invariant", value: 1, sample: 12 }).status).toBe("healthy");
+  });
+
+  it("with no audited brand it is insufficient evidence, never 100%", () => {
+    const i = ind({
+      id: "do_next_invariant",
+      value: null,
+      sample: 0,
+      unknown: "insufficient_evidence",
+      detail: "no brand completed an audit in the last 30 days",
+    });
+    expect(i.status).toBe("insufficient_evidence");
+    expect(i.value).toBeNull();
+  });
+});
+

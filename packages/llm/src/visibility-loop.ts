@@ -130,7 +130,7 @@ export const gapForSource = (domain: string): string => `Absent from ${domain}`;
  */
 export function queryFromGap(gap: string): string | null {
   const m = /^(?:Not cited for|Cited low for) "(.+)"$/.exec(gap.trim());
-  return m ? m[1] : null;
+  return m?.[1] ?? null;
 }
 
 interface QueryAgg {
