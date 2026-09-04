@@ -48,7 +48,16 @@ interface Recorded {
  * A database that behaves like a MIGRATED one, so the full state machine is
  * exercised. `lifecycle: false` simulates the pre-migration schema.
  */
-function makeDb(opts: { currentStatus?: string; lifecycle?: boolean } = {}) {
+function makeDb(
+  opts: {
+    currentStatus?: string;
+    lifecycle?: boolean;
+    /** P0-01 — rows for GET /api/brands/:id/plan and its delivery verdict. */
+    planTasks?: { id: string; gap: string; status: string }[];
+    latestAudit?: { id: string; score_ai: number | null } | null;
+    lostPrompts?: number;
+  } = {}
+) {
   const lifecycle = opts.lifecycle !== false;
   const recorded: Recorded[] = [];
   const status = opts.currentStatus ?? "proposed";
@@ -58,6 +67,35 @@ function makeDb(opts: { currentStatus?: string; lifecycle?: boolean } = {}) {
     if (sql.includes("information_schema")) {
       return [{ history: lifecycle, proof_columns: lifecycle, ok: lifecycle }];
     }
+    // P0-01 — GET /api/brands/:id/plan
+    if (sql.includes("calendar, created_at FROM strategy_plan")) {
+      return [{ id: PLAN_ID, calendar: [], created_at: "2026-09-04T10:00:00.000Z" }];
+    }
+    if (sql.includes("FROM plan_task WHERE plan_id")) {
+      return (opts.planTasks ?? []).map((t) => ({
+        id: t.id,
+        vector: "ai",
+        gap: t.gap,
+        action: "do the thing",
+        effort: "medium",
+        impact: "high",
+        priority: 60,
+        status: t.status,
+        evidence: null,
+        metric: null,
+        owner: "you",
+        due_date: null,
+        landing_site_id: null,
+      }));
+    }
+    if (sql.includes("FROM geo_audit")) {
+      return opts.latestAudit === undefined
+        ? [{ id: "audit-1", score_ai: 90 }]
+        : opts.latestAudit
+          ? [opts.latestAudit]
+          : [];
+    }
+    if (sql.includes("FROM citation_check")) return [{ n: opts.lostPrompts ?? 0 }];
     if (sql.includes("SELECT status FROM plan_task WHERE id")) return [{ status }];
     if (sql.includes("SELECT id, status, due_date FROM plan_task")) {
       return [{ id: TASK_ID, status, due_date: null }];
@@ -215,5 +253,79 @@ describe("POST /api/brands/:id/tasks — the button that never worked", () => {
     const insert = db._recorded.find((r) => r.sql.includes("INSERT INTO plan_task"));
     expect(insert!.sql).toContain("'accepted'");
     expect(insert!.sql).not.toContain("'verified'");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P0-01 — GET /api/brands/:id/plan carries the delivery verdict, so the client
+// can never be told "All caught up" while a gap is open (RELATORIO §3.1).
+// ---------------------------------------------------------------------------
+
+const getPlan = (db: ReturnType<typeof makeDb>) =>
+  auditApp(db).request(`/api/brands/${BRAND_ID}/plan`, {
+    headers: { Authorization: "Bearer dev" },
+  });
+
+interface PlanBody {
+  tasks: { id: string }[];
+  delivery: {
+    code: string;
+    mayShowAllCaughtUp: boolean;
+    clientMessage: string;
+    materialGap: boolean;
+    materialGapUnknown: boolean;
+    reasons: string[];
+  } | null;
+}
+
+describe("GET /api/brands/:id/plan — the delivery verdict travels with the plan", () => {
+  it("refuses 'All caught up' when the score is below target and nothing is open", async () => {
+    const res = await getPlan(makeDb({ latestAudit: { id: "audit-1", score_ai: 21 }, lostPrompts: 7, planTasks: [] }));
+    const body = (await res.json()) as PlanBody;
+    expect(body.delivery).not.toBeNull();
+    expect(body.delivery!.code).toBe("DELIVERY_LOOP_BROKEN");
+    expect(body.delivery!.mayShowAllCaughtUp).toBe(false);
+    expect(body.delivery!.clientMessage).toContain("generating and reviewing the actions");
+    expect(body.delivery!.clientMessage).not.toContain("All caught up");
+  });
+
+  it("allows it only when there is no gap, nothing unknown and nothing open", async () => {
+    const res = await getPlan(makeDb({ latestAudit: { id: "audit-1", score_ai: 88 }, lostPrompts: 0, planTasks: [] }));
+    const body = (await res.json()) as PlanBody;
+    expect(body.delivery!.code).toBe("OK");
+    expect(body.delivery!.mayShowAllCaughtUp).toBe(true);
+  });
+
+  it("an unmeasured score is never read as caught up", async () => {
+    const res = await getPlan(makeDb({ latestAudit: { id: "audit-1", score_ai: null }, planTasks: [] }));
+    const body = (await res.json()) as PlanBody;
+    expect(body.delivery!.materialGapUnknown).toBe(true);
+    expect(body.delivery!.mayShowAllCaughtUp).toBe(false);
+  });
+
+  it("an open investigation card satisfies the invariant without celebrating", async () => {
+    const res = await getPlan(
+      makeDb({
+        latestAudit: { id: "audit-1", score_ai: 21 },
+        lostPrompts: 7,
+        planTasks: [
+          {
+            id: TASK_ID,
+            gap: "Investigation: DELIVERY_LOOP_BROKEN — a gap is open and no action was generated",
+            status: "proposed",
+          },
+        ],
+      })
+    );
+    const body = (await res.json()) as PlanBody;
+    expect(body.delivery!.code).toBe("OK"); // there IS a way out on screen
+    expect(body.delivery!.mayShowAllCaughtUp).toBe(false);
+  });
+
+  it("a brand with no completed audit cannot be caught up either", async () => {
+    const res = await getPlan(makeDb({ latestAudit: null, planTasks: [] }));
+    const body = (await res.json()) as PlanBody;
+    expect(body.delivery!.mayShowAllCaughtUp).toBe(false);
+    expect(body.delivery!.reasons.join(" ")).toContain("never run");
   });
 });

@@ -70,8 +70,16 @@ import {
   CLIENT_TODO_VECTOR,
   DONE_COMPAT_STATE,
   isPlanTaskState,
+  normalizePlanTaskState,
+  OPEN_STATES,
   type PlanTaskState,
 } from "../../../../packages/llm/src/plan-task-state";
+// P0-01 — the single invariant that decides whether "All caught up" may be shown.
+import {
+  INVESTIGATION_GAP,
+  evaluateDoNextPolicy,
+  resolveVisibilityTarget,
+} from "../../../../packages/llm/src/delivery-policy";
 import {
   applyTransition,
   readVerifiedExecution,
@@ -2114,9 +2122,85 @@ export function registerAuditRoutes(
     if (typeof calendar === "string") {
       try { calendar = JSON.parse(calendar); } catch { calendar = []; }
     }
+    // -----------------------------------------------------------------------
+    // P0-01 — the delivery policy travels with the plan.
+    //
+    // The dashboard cannot decide on its own whether "All caught up" is true:
+    // an empty task list means "nothing to do" and "the generator broke" at
+    // exactly the same pixel. So the server evaluates the ONE invariant
+    // (packages/llm/src/delivery-policy.ts) against the brand's latest audit
+    // and hands the client both the verdict and the sentence to show.
+    //
+    // If this block fails, `delivery` is null and the UI falls back to its
+    // conservative copy — it never falls back to the celebration.
+    let delivery: {
+      code: string;
+      mayShowAllCaughtUp: boolean;
+      clientMessage: string;
+      materialGap: boolean;
+      materialGapUnknown: boolean;
+      reasons: string[];
+    } | null = null;
+    try {
+      const auditRes = await db.query<{ id: string; score_ai: number | null }>(
+        `SELECT id, score_ai FROM geo_audit
+          WHERE brand_id = $1 AND status = 'complete'
+          ORDER BY created_at DESC LIMIT 1`,
+        [brandId]
+      );
+      const latest = auditRes.rows[0] ?? null;
+      let lost: number | null = null;
+      if (latest) {
+        const lostRes = await db.query<{ n: string | number }>(
+          `SELECT COUNT(*) AS n FROM citation_check WHERE audit_id = $1 AND cited = FALSE`,
+          [latest.id]
+        );
+        const n = Number(lostRes.rows[0]?.n);
+        lost = Number.isFinite(n) ? n : null;
+      }
+      const openCards = taskRes.rows.filter((t) =>
+        (OPEN_STATES as readonly string[]).includes(normalizePlanTaskState(t.status))
+      );
+      const investigations = openCards.filter((t) => t.gap === INVESTIGATION_GAP).length;
+      const verdict = evaluateDoNextPolicy({
+        brandId: String(brandId),
+        auditId: latest?.id ?? null,
+        visibilityScore:
+          latest && latest.score_ai !== null && Number.isFinite(Number(latest.score_ai))
+            ? Number(latest.score_ai)
+            : null,
+        target: resolveVisibilityTarget(process.env),
+        lostIntentCount: lost,
+        criticalProfileMissing: false,
+        openActionCount: openCards.length - investigations,
+        activeInvestigation: investigations > 0,
+        loopGeneration: {
+          // The plan row itself is the receipt that the generator ran for this
+          // brand; a brand with no loop-generated plan has never had one.
+          status: latest ? "ok" : "never_ran",
+          at: plan.created_at,
+        },
+      });
+      delivery = {
+        code: verdict.code,
+        mayShowAllCaughtUp: verdict.mayShowAllCaughtUp,
+        clientMessage: verdict.clientMessage,
+        materialGap: verdict.materialGap,
+        materialGapUnknown: verdict.materialGapUnknown,
+        reasons: verdict.reasons,
+      };
+    } catch (err) {
+      logger.warn("delivery_policy_read_failed", {
+        brand_id: brandId,
+        message: (err as Error).message?.slice(0, 200),
+        effect: "the dashboard falls back to its conservative copy — never to 'All caught up'",
+      });
+    }
+
     return c.json({
       plan: { id: plan.id, calendar, created_at: plan.created_at },
       tasks: taskRes.rows,
+      delivery,
     });
   });
 
