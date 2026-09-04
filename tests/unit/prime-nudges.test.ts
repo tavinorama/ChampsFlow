@@ -59,7 +59,7 @@ describe("pickNudge", () => {
 });
 
 const DAY = 24 * 60 * 60 * 1000;
-function fakeDb(o: { won?: boolean; scores?: Array<{ score_ai: number; recorded_at: string }>; competitors?: number; done?: number }, log: unknown[][] = []): PostgresClient {
+function fakeDb(o: { won?: boolean; scores?: Array<{ score_ai: number; recorded_at: string }>; competitors?: number; done?: number; total?: number }, log: unknown[][] = []): PostgresClient {
   return {
     setTenantId: async () => {},
     async query(sql: string, params?: unknown[]) {
@@ -67,7 +67,10 @@ function fakeDb(o: { won?: boolean; scores?: Array<{ score_ai: number; recorded_
       if (sql.includes("FROM brands ")) return { rows: [{ id: "b1" }] }; // real table is `brands` (prod 500 on 22/08 when it read `brand`)
       if (sql.includes("FROM geo_score")) return { rows: o.scores ?? [] };
       if (sql.includes("FROM competitor")) return { rows: [{ n: String(o.competitors ?? 0) }] };
-      if (sql.includes("FROM plan_task")) return { rows: [{ n: String(o.done ?? 0) }] };
+      // P0-03/R12: the route now reads done AND total from the LATEST plan
+      // (excluding rejected), the same scope deriveExecutionProgress uses, so
+      // the OrganicPosts screen stops inventing its own denominator.
+      if (sql.includes("FROM plan_task")) return { rows: [{ done: String(o.done ?? 0), total: String(o.total ?? o.done ?? 0) }] };
       if (sql.includes("FROM billing_subscriptions")) return { rows: [{ plan_tier: "growth" }] };
       if (sql.includes("FROM credit_ledger")) return { rows: [{ balance: "0" }] };
       if (sql.includes("INSERT INTO audit_log")) { log.push(params ?? []); return { rows: [] }; }
@@ -93,6 +96,7 @@ describe("GET /api/prime/status", () => {
       ],
       competitors: 2,
       done: 3,
+      total: 5,
     });
     const res = await appWith(db).request("/api/prime/status?brand=b1");
     expect(res.status).toBe(200);
@@ -102,6 +106,10 @@ describe("GET /api/prime/status", () => {
     expect(b.firstAuditDone).toBe(true);
     expect(b.competitorsAdded).toBe(2);
     expect(b.actionCardsDone).toBe(3);
+    // R12: the denominator travels with the count. It used to be absent, so the
+    // screen hard-coded 3 and read "3 of 3" (complete) on a 5-task plan while
+    // Do Next read "3 of 5".
+    expect(b.actionCardsTotal).toBe(5);
     expect(b.visibility).toBe(28);
     expect(b.weeklyChange).toBe(-13);
     expect(b.credits.balance).toBe(0);

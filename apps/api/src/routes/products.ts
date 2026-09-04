@@ -678,6 +678,18 @@ export function registerProductRoutes(app: Hono, db: PostgresClient): void {
   // login — onboarding.ts). No dev unlock: there is nothing to deliver without
   // the webhook credit, so absent Stripe config this is simply unavailable.
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // GET /api/pages/status — PUBLIC. Whether the $99 Pages checkout is live.
+  // Derived from the SAME env presence the checkout route enforces, so the
+  // marketing page's JSON-LD availability + hero CTA can never say "InStock"
+  // while the buy button 503s (2026-09-02 sweep, PENDING 10.A.5).
+  // -------------------------------------------------------------------------
+  app.get("/api/pages/status", (c) => {
+    const available =
+      !!process.env["STRIPE_SECRET_KEY"] && !!process.env["STRIPE_PRICE_ID_PAGES"];
+    return c.json({ available });
+  });
+
   app.post("/api/pages/checkout", async (c) => {
     // 10.B.9 — same posture as /api/kit/checkout (row INSERT + Stripe session).
     const limited = await publicRateLimit(c, {

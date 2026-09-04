@@ -8,10 +8,14 @@
 import { LegalPage, LegalSection } from "../../components/legal/LegalPage";
 
 export const metadata = {
-  title: "Privacy Policy | Ozvor",
+  title: "Privacy Policy",
   description: "How Ozvor collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
   alternates: { canonical: "https://ozvor.com/privacy-policy" },
   openGraph: {
+      // P1-04: a page-level openGraph REPLACES the root layout's, so a block
+      // without images silently ships no social card. Naming the default here
+      // restores it without changing anything else on the page.
+      images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Ozvor" }],
     title: "Privacy Policy | Ozvor",
     description: "How Ozvor collects, uses, shares, and protects personal data under LGPD, GDPR, and CCPA/CPRA.",
     url: "https://ozvor.com/privacy-policy",
@@ -31,11 +35,11 @@ export default function PrivacyPolicyPage() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updated="13 June 2026"
+      updated="2 September 2026"
       intro="This Policy explains how Ozvor (home jurisdiction Brazil) collects, uses, shares, and protects personal data, and your rights under the LGPD (Brazil), GDPR (EU/EEA & UK), and CCPA/CPRA (California) and other US state laws. Ozvor is the data controller for account data; for data you process about your own customers via the Service, see our Data Processing Agreement."
     >
       <LegalSection n="1" title="Who is responsible (controller)">
-        <p>Ozvor is the controller of personal data described here. Ozvor is the trade name of a Brazilian individual micro-entrepreneur (MEI), registered under CNPJ 67.609.444/0001-08, with registered office at Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brazil. Privacy contact: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>. Ozvor&rsquo;s Encarregado de Dados (LGPD Art. 41) is the founder, the natural person who holds the CNPJ above, reachable at <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>. Ozvor is established in Brazil and offers this Service to users in the EU/EEA; a GDPR Article 27 representative in the Union <b>has not yet been designated</b>. Until one is named here, EU/EEA data subjects can reach us directly at <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a> and may lodge a complaint with their national supervisory authority.</p>
+        <p>Ozvor is the controller of personal data described here. Ozvor is the trade name of a Brazilian individual micro-entrepreneur (MEI), registered under CNPJ 67.609.444/0001-08, with registered office at Rua José Borges Abrantes, nº 1, Centro, Muriaé — MG, CEP 36.880-063, Brazil. Privacy contact: <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>. Ozvor&rsquo;s Encarregado de Dados (LGPD Art. 41) is the founder, the natural person who holds the CNPJ above, reachable at <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a>. Ozvor is established in Brazil and offers this Service to users in the EU/EEA. The designated GDPR Article 27 representative in the Union is the founder himself, a natural person resident in Lisbon, Portugal (designation decided 7 August 2026; the written mandate is in signature). EU/EEA data subjects can reach the representative and us at <a href="mailto:dpo@ozvor.com" style={{ color: "var(--color-primary)" }}>dpo@ozvor.com</a> and may lodge a complaint with their national supervisory authority.</p>
       </LegalSection>
 
       <LegalSection n="2" title="What we collect and why">
@@ -71,8 +75,9 @@ export default function PrivacyPolicyPage() {
           <li><strong>Stripe</strong> — payment processing (PCI-compliant; we never store card data)</li>
           <li><strong>Resend</strong> — transactional email delivery</li>
           <li><strong>Railway / Cloudflare</strong> — hosting and network/CDN</li>
+          <li><strong>SmartLead</strong> — cold-outreach e-mail platform for Ozvor&rsquo;s own sales prospecting (US business prospects only; stores outreach e-mails, replies, and engagement events; &ldquo;reply STOP&rdquo; suppresses a contact immediately and permanently)</li>
         </ul>
-        <p>We do not sell your personal information. A current sub-processor list is available on request.</p>
+        <p>We do not sell your personal information. The full, current sub-processor list is published at <a href="/legal/sub-processors" style={{ color: "var(--color-primary)" }}>/legal/sub-processors</a>.</p>
       </LegalSection>
 
       <LegalSection n="5" title="International transfers">
@@ -80,7 +85,7 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection n="6" title="Retention">
-        <p>We keep data only as long as needed: audit citation evidence is purged after 90 days; AI generation logs (hashes only) are kept 3 years; score history rolls 12 months; account, brand, plan, and draft data are kept for your account’s life plus a 30-day grace period; DSR records 30 days after closure. Encrypted BYOK keys are kept until rotation or account deletion.</p>
+        <p>We keep data only as long as needed: raw AI-engine responses kept as evidence behind delivered reports are retained for <strong>12 months</strong> from generation, then hard-deleted (targeted earlier deletion available on a data-subject request); AI generation logs (hashes only) are kept 3 years; score history rolls 12 months; account, brand, plan, and draft data are kept for your account&rsquo;s life plus a 30-day grace period; DSR records 30 days after closure. Encrypted BYOK keys are kept until rotation or account deletion. Sales-prospecting contacts with no reply are erased after 3 outreach cycles or 12 months, whichever comes first.</p>
       </LegalSection>
 
       <LegalSection n="7" title="Your rights">

@@ -173,7 +173,12 @@ export interface RateLimitHeaders {
 // (credits-on-pages, 2026-08-10)
 // ---------------------------------------------------------------------------
 export * from "./plan-limits";
+export * from "./pricing";
 export * from "./credits";
+// P0-08: hosted content generation is metered by the SAME wallet as audits —
+// the founder's 03/09 decision that the cost guardian is the credit balance,
+// not a draft counter. Pure arithmetic + the customer-facing meter strings.
+export * from "./hosted-content";
 export * from "./prime-nudges";
 
 // ---------------------------------------------------------------------------
@@ -181,3 +186,35 @@ export * from "./prime-nudges";
 // (prod failure 17/08: over-limit post rejected by Postiz, whole run wasted)
 // ---------------------------------------------------------------------------
 export * from "./x-post-limit";
+
+// ---------------------------------------------------------------------------
+// Editorial leak guard (P0-04) — blocks internal drafting scaffolding (claim
+// basis, owner:, TODO, PR #, "link no 1o comentario") from reaching a public
+// feed. Shared so the API approval path and the worker publish path run the
+// identical check; a UI-only validator is one a scheduled job walks past.
+// ---------------------------------------------------------------------------
+export * from "./editorial-leak";
+
+
+// ---------------------------------------------------------------------------
+// Competitive claim trust registry (P0-05) — source, check date, owner, review
+// date and confidence for everything we say in public about a competitor.
+// Staleness is COMPUTED, so a claim expires on its own.
+// ---------------------------------------------------------------------------
+export * from "./competitive-claims";
+
+// ---------------------------------------------------------------------------
+// P0-08 — the fact-check a hosted draft passes BEFORE a human reviews it.
+// Integrates the two registries above rather than adding a third: editorial
+// leaks block the draft, and a competitor may be named only when a `current`
+// claim vouches for them.
+// ---------------------------------------------------------------------------
+export * from "./content-fact-check";
+
+// ---------------------------------------------------------------------------
+// geo-audit retry policy (17/08 retry storm) — ONE policy for a queue that had
+// two producers with different settings and a 30s backoff far too short for the
+// provider outages it was retrying.
+// ---------------------------------------------------------------------------
+export * from "./audit-queue";
+

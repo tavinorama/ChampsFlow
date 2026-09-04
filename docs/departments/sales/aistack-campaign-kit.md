@@ -20,6 +20,18 @@ O AI Stack Audit é o segundo produto e tem ICP próprio: SMB dos EUA afogado em
 
 Regras aplicadas: 1º e-mail texto puro, ZERO links/URLs/domínios, UMA pergunta, 40–80 palavras, frases ≤12 palavras, nível 15-17 anos, sonho honesto, assinatura "Otavio". Links só a partir do e-mail 2, sempre com `?from=aistack-<lote>`.
 
+### Rodapé obrigatório (todos os e-mails, todos os toques) — adicionado 02/09/2026
+
+Todo e-mail da campanha termina com este bloco, DEPOIS da assinatura:
+
+> P.S. If you'd rather not hear from me, just reply STOP and I won't write again.
+>
+> {{POSTAL_ADDRESS}}
+
+- A linha de opt-out ("reply STOP") é **obrigatória e literal** — o validador de código deve reprovar e-mail sem ela (a implementação do validador é do agente de código).
+- **Decisão do founder 02/09/2026**: por ora publica-se **SÓ a linha de opt-out**, SEM endereço postal. O placeholder `{{POSTAL_ADDRESS}}` fica documentado como a recomendação CAN-SPAM (§5(a)(5) exige "valid physical postal address" em commercial e-mail) **não adotada por enquanto** — risco aceito e registrado no [sop-dia-do-disparo.md](sop-dia-do-disparo.md) §Riscos aceitos. Quando o founder fornecer o endereço (pode ser caixa postal ou endereço comercial registrado), substituir o placeholder em TODOS os kits e nas campanhas já criadas no SmartLead.
+- Reply "STOP" = supressão imediata: SmartLead marca unsubscribed (webhook grava `LEAD_UNSUBSCRIBED`), o contato sai de TODAS as trilhas e nunca entra em reciclagem.
+
 **Email 1 (dia 0) — sem link, busca resposta**
 
 > Subject: quick question about your tools
@@ -65,7 +77,7 @@ Regras aplicadas: 1º e-mail texto puro, ZERO links/URLs/domínios, UMA pergunta
 ## 3. Carga no SmartLead (passo a passo do founder)
 
 1. SmartLead → **Create campaign** → nome `aistack-<data do lote>` (ex.: `aistack-2026-09-08`)
-2. Colar os 3 e-mails acima (delays: 0 / 3 / 7 dias) — conferir que o e-mail 1 ficou **sem nenhum link** (o SmartLead às vezes auto-lineariza domínios; escrever "ozvor" por extenso só a partir do 2º)
+2. Colar os 3 e-mails acima **com o rodapé obrigatório** (delays: 0 / 3 / 7 dias) — conferir que o e-mail 1 ficou **sem nenhum link** (o SmartLead às vezes auto-lineariza domínios; escrever "ozvor" por extenso só a partir do 2º)
 3. Trocar `{{lote}}` pelo slug do lote (o artifact do `prospect-batch` traz o slug pronto)
 4. Importar os leads da trilha AI STACK do lote aprovado (o artifact separa as trilhas)
 5. Conferir que o webhook global já cobre a campanha (provado 27/08; se a conta não propagar, registrar o webhook na campanha com a mesma URL)

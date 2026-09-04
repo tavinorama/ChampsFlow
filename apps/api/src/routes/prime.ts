@@ -31,6 +31,13 @@ export interface PrimeStatus {
   firstAuditDone: boolean;
   competitorsAdded: number;
   actionCardsDone: number;
+  /**
+   * P0-03/R12: the denominator the Do Next tab actually shows. Without it
+   * the UI had to invent one (it hard-coded 3 while Do Next listed 5), so
+   * the same workspace read "3 of 3" on one screen and "3 of 5" on the
+   * other. Null when the brand has no plan yet.
+   */
+  actionCardsTotal: number | null;
   visibility: number | null;
   /** Visibility now minus Visibility ~7 days ago (negative = drop). Null without two points. */
   weeklyChange: number | null;
@@ -50,6 +57,7 @@ export function registerPrimeRoutes(app: Hono, db: PostgresClient): void {
       firstAuditDone: false,
       competitorsAdded: 0,
       actionCardsDone: 0,
+      actionCardsTotal: null,
       visibility: null,
       weeklyChange: null,
       credits: null,
@@ -109,13 +117,33 @@ export function registerPrimeRoutes(app: Hono, db: PostgresClient): void {
         logger.warn("prime_status_competitors_failed", { tenant_id: auth.tenantId, message: (err as Error).message?.slice(0, 120) });
       }
       try {
-        const { rows } = await db.query<{ n: string }>(
-          `SELECT COUNT(*)::text AS n FROM plan_task t
-             JOIN strategy_plan p ON p.id = t.plan_id
-            WHERE p.brand_id = $1 AND t.status = 'done'`,
+        // P0-03/R12 + P0-02 — um só denominador, e "concluído" inclui os estados
+        // do ciclo de vida. A main já corrigira o escopo (plano MAIS RECENTE,
+        // excluindo rejected) para casar com deriveExecutionProgress; este PR
+        // acrescenta os estados novos ao numerador. Contagem DECLARADA de
+        // propósito: aqui a pergunta é "o cliente mexeu na lista?", não "há
+        // prova?" — a métrica que exige prova é a Verified Execution
+        // (apps/api/src/lib/plan-task-lifecycle.ts). 'done' fica para as linhas
+        // escritas antes da migração do ciclo de vida.
+        const { rows } = await db.query<{ total: string; done: string }>(
+          `SELECT
+             COUNT(*) FILTER (WHERE t.status != 'rejected') AS total,
+             COUNT(*) FILTER (WHERE t.status IN ('done', 'legacy_self_reported',
+                                                 'manual_done_pending_verification',
+                                                 'published', 'indexed', 'cited',
+                                                 'verified'))                AS done
+           FROM plan_task t
+           WHERE t.plan_id = (
+             SELECT id FROM strategy_plan
+              WHERE brand_id = $1
+              ORDER BY created_at DESC
+              LIMIT 1
+           )`,
           [out.brandId]
         );
-        out.actionCardsDone = Number(rows[0]?.n ?? 0);
+        const total = Number(rows[0]?.total ?? 0);
+        out.actionCardsDone = Number(rows[0]?.done ?? 0);
+        out.actionCardsTotal = total > 0 ? total : null;
       } catch (err) {
         logger.warn("prime_status_tasks_failed", { tenant_id: auth.tenantId, message: (err as Error).message?.slice(0, 120) });
       }

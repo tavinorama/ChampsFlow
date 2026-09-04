@@ -427,7 +427,15 @@ describe("GET /api/landing/sites/:id — open_fixes (#208 PR-7)", () => {
     await landingApp(db).request(`/api/landing/sites/${SITE_ID}`, { headers: { Authorization: "Bearer dev" } });
     expect(capturedSql).toContain("FROM plan_task pt");
     expect(capturedSql).toContain("JOIN strategy_plan sp ON sp.id = pt.plan_id");
-    expect(capturedSql).toContain("pt.status IN ('proposed', 'accepted')");
+    // P0-02: "open" is now the whole open set, not just proposed/accepted.
+    // A fix sitting in `regressed` or waiting to be checked is open work, and
+    // leaving it out of open_fixes would understate what is left to do.
+    expect(capturedSql).toContain("pt.status IN ('proposed', 'accepted'");
+    for (const s of ["regressed", "manual_done_pending_verification", "legacy_self_reported"]) {
+      expect(capturedSql).toContain(`'${s}'`);
+    }
+    // …and states with proof behind them are NOT counted as open fixes.
+    expect(capturedSql).not.toContain("'verified'");
   });
 
   it("404s when the site isn't found (never queries open_fixes for a nonexistent site)", async () => {

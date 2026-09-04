@@ -31,6 +31,8 @@ interface AuditState {
   score_performance: number | null;
   score_ai: number | null;
   providers_used?: string[] | null;
+  /** Why a failed audit failed. Written by the worker, previously never shown. */
+  error_message?: string | null;
 }
 
 interface Evidence {
@@ -309,7 +311,16 @@ export default function BrandDetailPage() {
             return;
           }
           if (a.status === "failed") {
-            setStatusMsg("The audit failed. Please run it again.");
+            // The worker records WHY (e.g. "Only 2 of 5 AI engines answered
+            // … we did not score this run — a partial panel is not comparable
+            // to your history."). That reason was written and then never shown,
+            // so the only advice we gave was "run it again" — which re-runs
+            // against the same unavailable engines and bills us for it. Show
+            // the real reason, and fall back to the generic line only when
+            // there genuinely is none.
+            setStatusMsg(
+              a.error_message?.trim() || "The audit failed. Please run it again."
+            );
             return;
           }
           setStatusMsg(a.status === "running" ? "Probing AI engines…" : "Queued…");

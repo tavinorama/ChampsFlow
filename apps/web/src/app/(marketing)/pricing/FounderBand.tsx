@@ -14,6 +14,9 @@
  */
 
 import { useEffect, useState } from "react";
+// Derived from packages/shared/src/pricing.ts — the band cannot advertise a
+// per-month figure checkout does not charge (PENDING 10.A.6).
+import { FOUNDER_DISCOUNT_PERCENT, founderAnnualPerMonthUsd } from "@organic-posts/shared";
 
 export function FounderBand() {
   const [active, setActive] = useState<boolean | null>(null);
@@ -59,14 +62,14 @@ export function FounderBand() {
           Founding member offer{remaining != null ? ` · ${remaining} of 100 left` : " · first 100"}
         </span>
         <h2 style={{ margin: "var(--space-2) 0 var(--space-1)", fontSize: "var(--font-size-h2)", fontWeight: 800 }}>
-          30% founder discount + a free 5-page website
+          {FOUNDER_DISCOUNT_PERCENT}% founder discount + a free 5-page website
         </h2>
         <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6, maxWidth: "560px" }}>
           Applied only when you pay annually. No countdown, no fake scarcity — when the cohort fills, it fills.
         </p>
       </div>
       <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>
-        Growth $69/mo · Agency $384/mo
+        Growth ${founderAnnualPerMonthUsd("growth")}/mo · Agency ${founderAnnualPerMonthUsd("agency")}/mo
       </div>
     </div>
   );

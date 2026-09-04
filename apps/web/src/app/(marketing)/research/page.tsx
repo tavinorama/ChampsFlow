@@ -20,7 +20,7 @@ import Link from "next/link";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 
 export const metadata: Metadata = {
-  title: "The AI Search Shift — Research & Sources | Ozvor",
+  title: "The AI Search Shift — Research & Sources",
   description:
     "Why AI search changes who gets found: sourced numbers on AI's reach, the disappearing click, AI-visitor value, the science behind getting cited, and the local-business gap.",
   alternates: { canonical: "https://ozvor.com/research" },

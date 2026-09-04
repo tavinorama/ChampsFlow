@@ -27,12 +27,24 @@
  */
 
 import { parseSmartleadPayload } from "./dossier";
+import { CONTENT_LESSONS, ANTI_GENERIC_SALES_RULE } from "./graph-prompts";
 
 export const FOLLOWUP_GRAPH = "followup-reply";
 /** Approval timeout — silence is rejection, never approval (18-20/08 lesson). */
 export const FOLLOWUP_APPROVAL_TIMEOUT_HOURS = 96;
-/** New proposals per scan — approvals must trickle, never flood the founder. */
-export const FOLLOWUP_BATCH_CAP = 5;
+/**
+ * 10.C.13 — new proposals PER DAY (UTC), not per scan. The old cap was 5 per
+ * 30-min scan = 240/day on paper; the flood control was an illusion. The scan
+ * counts today's followup-reply runs and proposes at most the remainder.
+ * Env FOLLOWUP_BATCH_CAP overrides; the number is a DAILY budget.
+ */
+export const FOLLOWUP_DAILY_CAP_DEFAULT = 20;
+export function followupDailyCap(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env["FOLLOWUP_BATCH_CAP"];
+  if (raw === undefined || raw.trim() === "") return FOLLOWUP_DAILY_CAP_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : FOLLOWUP_DAILY_CAP_DEFAULT;
+}
 /** Only replies this recent are scanned — bounds retries AND LLM spend. */
 export const FOLLOWUP_LOOKBACK_DAYS = 14;
 
@@ -157,6 +169,31 @@ export function looksLikeAutoReplyNoise(replyText: string): boolean {
   );
 }
 
+/**
+ * Adendo 03/09 (founder olhou as 8-9 respostas reais: todas OOO ou "STOP"):
+ * pedido de saída TEXTUAL é decidido por CÓDIGO, ANTES de qualquer LLM —
+ * gratuito, determinístico, e o pedido do lead é soberano. Cobre o "reply
+ * STOP" do CAN-SPAM (10.D.1) e as formas comuns de opt-out. O caminho de
+ * unsubscribe rebaixa contacted→lost via nextStageFor (contacted é estágio de
+ * MÁQUINA — o webhook promoveu errado; qualified/customer humanos seguem
+ * intocáveis por aquela regra).
+ */
+export function looksLikeTextualUnsubscribe(replyText: string): boolean {
+  const t = (replyText || "").trim();
+  const s = t.toLowerCase();
+  return (
+    /^stop\b/i.test(t) ||
+    /^unsubscribe\b/.test(s) ||
+    /\bstop (emailing|contacting|messaging|sending)\b/.test(s) ||
+    /\bunsubscribe\b/.test(s) ||
+    /\bremove me\b/.test(s) ||
+    /\btake me off\b/.test(s) ||
+    /\bdo not (email|contact) me\b/.test(s) ||
+    /\bdon'?t (email|contact) me\b/.test(s) ||
+    /\bopt me out\b/.test(s)
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Payload extraction (beyond what dossier.ts already gives us).
 // ---------------------------------------------------------------------------
@@ -190,6 +227,24 @@ export function extractReplyRouting(payload: unknown): {
   }
   if (!messageId) messageId = pick(p, ["message_id", "reply_message_id"]);
   return { statsId, messageId };
+}
+
+/**
+ * BUG DE PRODUÇÃO 03/09 (700 enviados, 8 respostas reais, proposed=0): no
+ * payload REAL de EMAIL_REPLY o e-mail do lead vem em `sl_lead_email` — a
+ * chave `lead_email` NÃO existe, e `to_email` numa RESPOSTA é a NOSSA caixa
+ * remetente (o webhook gravava a caixa errada na coluna). Este extractor lê o
+ * lead VERDADEIRO do payload, na ordem sl_lead_email → lead_email → email;
+ * to_email fica de fora de propósito num reply. Null quando nada resolve —
+ * o chamador conta como `unparseable`, nunca engole.
+ */
+export function extractReplyLeadEmail(payload: unknown): string | null {
+  const p = parseSmartleadPayload(payload);
+  for (const key of ["sl_lead_email", "lead_email", "email"]) {
+    const v = p[key];
+    if (typeof v === "string" && v.includes("@")) return v.trim().toLowerCase();
+  }
+  return null;
 }
 
 /**
@@ -250,6 +305,8 @@ export function buildDraftPrompt(input: {
   replyText: string;
   intent: FollowupIntent;
   trilha: "geo" | "aistack" | null;
+  /** 10.C.6 — as últimas respostas REALMENTE enviadas/propostas (lidas do registro por código). */
+  recent?: string | null;
 }): string {
   const links = allowedFollowupLinks(input.trilha);
   return [
@@ -269,6 +326,13 @@ export function buildDraftPrompt(input: {
     "",
     "FACTS (the only facts you may use):",
     ...HOUSE_FACTS.map((f) => `- ${f}`),
+    "",
+    // 10.C.6 — as réguas da casa chegam ao follow-up como chegam aos grafos:
+    // [__lessons__] (constante em código) + anti-genérico de vendas + o bloco
+    // [__recent__] quando o chamador o leu do registro.
+    `[__lessons__]\n${CONTENT_LESSONS}`,
+    ANTI_GENERIC_SALES_RULE,
+    ...(input.recent && input.recent.trim() ? ["", `[__recent__]\n${input.recent.trim().slice(0, 2000)}`] : []),
     "",
     "Their reply:",
     "---",
@@ -302,6 +366,10 @@ export function validateFollowupDraft(
   if (text.length > DRAFT_MAX_CHARS) errors.push(`rascunho > ${DRAFT_MAX_CHARS} chars`);
   if (text.includes("{{") || text.includes("}}")) errors.push("residuo de template {{...}}");
 
+  // 10.C.9 — a regra "sem travessão" também é código aqui: o que se valida é
+  // exatamente o que se envia.
+  if (/[—–]/.test(text)) errors.push("travessao no texto (regra da casa)");
+
   const urls = text.match(URL_RE) ?? [];
   if (urls.length > 1) errors.push(`mais de um link (${urls.length})`);
   const allowed = new Set(allowedFollowupLinks(trilha));
@@ -326,6 +394,29 @@ export function validateFollowupDraft(
     }
   }
   return { ok: errors.length === 0, errors };
+}
+
+// ---------------------------------------------------------------------------
+// GEO-D7 (decisão do founder, 02/09): ZERO PII de prospect no Telegram. O
+// portão de follow-up mandava o texto INTEGRAL da resposta do lead para o
+// chat — e-mails, telefones, o que fosse. Agora o Telegram recebe um RESUMO
+// MASCARADO (intent + primeiros 80 chars com e-mails/telefones redigidos);
+// o texto completo fica só no dossiê (crm/smartlead_event, dentro do banco).
+// ---------------------------------------------------------------------------
+
+export const REPLY_PREVIEW_MAX_CHARS = 80;
+const EMAIL_IN_TEXT_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+/** Sequências telefônicas: 7+ dígitos com separadores comuns. */
+const PHONE_IN_TEXT_RE = /\+?\d[\d\s().\/-]{5,}\d/g;
+
+/**
+ * O resumo que PODE ir ao Telegram: uma linha, e-mails → [email] e telefones
+ * → [tel], cortada em REPLY_PREVIEW_MAX_CHARS. Nunca o texto integral.
+ */
+export function maskedReplyPreview(replyText: string): string {
+  const oneLine = (replyText || "").replace(/\s+/g, " ").trim();
+  const masked = oneLine.replace(EMAIL_IN_TEXT_RE, "[email]").replace(PHONE_IN_TEXT_RE, "[tel]");
+  return masked.length > REPLY_PREVIEW_MAX_CHARS ? `${masked.slice(0, REPLY_PREVIEW_MAX_CHARS)}…` : masked;
 }
 
 /** The SmartLead API sends HTML; the founder approved plain text. Minimal, lossless. */

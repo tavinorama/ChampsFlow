@@ -30,9 +30,11 @@ import { EngineConfidence } from "../../components/EngineConfidence";
 import { IntentBreakdown, type IntentRow } from "../../components/IntentBreakdown";
 import { CoverageNote, type CoverageData } from "../../components/CoverageNote";
 import { HallucinationFlag, type HallucinationInfo } from "../../components/HallucinationFlag";
+import { VerifiedExecutionNote } from "../../components/VerifiedExecutionNote";
 import { useCredits, CreditsPill, CreditsBanner, CreditsCard as SharedCreditsCard } from "../../components/credits/CreditsWidgets";
 import { AiAuditTab } from "./AiAuditTab";
 import { WhereToShowUpTab } from "./WhereToShowUpTab";
+import { OPPORTUNITY_RADAR_ENABLED } from "../../lib/feature-flags";
 import { PrimeTab, PrimeNudge, usePrimeStatus } from "./PrimeTab";
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,26 @@ interface ScorePayload {
   trend: TrendPoint[];
   threeScores: ThreeScores | null;
   executionProgress: number | null;
+  /**
+   * Verified Execution with its working shown (audit P0-02). `verifiedPct: null`
+   * plus an `unavailableReason` means NOT MEASURED — which must never render the
+   * same as 0, which means "measured, nothing confirmed yet".
+   */
+  execution?: {
+    verifiedPct: number | null;
+    selfReportedPct: number | null;
+    counts: {
+      total: number;
+      denominator: number;
+      verified: number;
+      inFlight: number;
+      selfReported: number;
+      open: number;
+      notOwed: number;
+    };
+    unavailableReason: "no_plan" | "no_tasks" | "migration_pending" | "read_failed" | null;
+    measurable: boolean;
+  } | null;
   /** Phase 2: checks/citations of the latest run + stability note when small. */
   confidence?: { checks: number | null; citations: number | null; stabilityNote: string | null } | null;
 }
@@ -164,7 +186,12 @@ interface PlanTask {
   effort: string;
   impact: string; // "high" | "medium" | "low"
   priority: number;
-  status: string; // "proposed" | "accepted" | "rejected" | "done"
+  /**
+   * Lifecycle state (packages/llm/src/plan-task-state.ts). Kept as a string
+   * because the server is the authority; the UI groups by known values and
+   * treats anything it does not recognise as open work.
+   */
+  status: string;
   evidence: string | null;
 }
 
@@ -200,7 +227,8 @@ const MIGRATED: Record<TabId, boolean> = {
   competitors: true,
   sources: true,
   pages: true,
-  whereToShowUp: true,
+  // P0-03: not a live tab. Kept in the map so the TabId union stays total.
+  whereToShowUp: OPPORTUNITY_RADAR_ENABLED,
   connections: true,
   billing: true,
   aiaudit: true,
@@ -225,7 +253,11 @@ const TAB_TITLE: Record<TabId, { h1: string; sub: string }> = {
   competitors: { h1: "Your competitors in AI", sub: "Who AI names when buyers ask" },
   sources: { h1: "Where AI gets its answers", sub: "The sources that decide who gets named" },
   pages: { h1: "Ozvor Pages", sub: "Your AI-ready mini-site" },
-  whereToShowUp: { h1: "Where to show up", sub: "Live Reddit & AI-search openings, with the exact next move" },
+  // P0-03: the old subtitle promised a live queue of openings with an exact
+  // next move, while the source was never connected and the intended source
+  // is compliance-blocked for commercial use. The claim is removed rather
+  // than softened; the tab itself is off (OPPORTUNITY_RADAR_ENABLED).
+  whereToShowUp: { h1: "Where to show up", sub: "Not available yet" },
   brands: { h1: "Your client brands", sub: "Agency portfolio" },
   connections: { h1: "Connections", sub: "Which AIs we check + your data sources" },
   billing: { h1: "Billing", sub: "Plan & invoices" },
@@ -603,8 +635,14 @@ export default function DashboardV3() {
   }, [tab, activeBrandId, tasks, content, breakdown, sites, billing, tasksLoading, contentLoading, breakdownLoading, sitesLoading, billingLoading, latestAuditId, loadTasks, loadContent, loadBreakdown, loadSites, loadBilling]);
 
   // Optimistic mutations -----------------------------------------------------
+  /**
+   * P0-02: the checkbox records a CLAIM, and says so.
+   * `manual_done_pending_verification` is the highest state a client can reach.
+   * `verified` is set only by the next audit, on the server, and the API
+   * refuses it from a client session with a 403 — this is belt to that braces.
+   */
   const toggleTask = useCallback(async (taskId: string, done: boolean) => {
-    const next = done ? "done" : "accepted";
+    const next = done ? "manual_done_pending_verification" : "accepted";
     let prevStatus: string | undefined; // snapshot the ACTUAL prior value to revert to
     setTasks((prev) => (prev ? prev.map((t) => {
       if (t.id !== taskId) return t;
@@ -787,7 +825,11 @@ export default function DashboardV3() {
             <NavItem label="Competitors" active={tab === "competitors"} onClick={() => setTab("competitors")} />
             <NavItem label="Sources" active={tab === "sources"} onClick={() => setTab("sources")} />
             <NavItem label="Ozvor Pages" active={tab === "pages"} onClick={() => setTab("pages")} />
-            <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            {/* P0-03: hidden until the Opportunity Radar has a source that is
+                cleared for commercial use. See lib/feature-flags.ts. */}
+            {OPPORTUNITY_RADAR_ENABLED && (
+              <NavItem label="Where to show up" active={tab === "whereToShowUp"} onClick={() => setTab("whereToShowUp")} />
+            )}
             <NavItem label="AI Audit" active={tab === "aiaudit"} onClick={() => setTab("aiaudit")} />
           </nav>
 
@@ -893,6 +935,7 @@ export default function DashboardV3() {
             methodologyVersion={(breakdown as { methodology_version?: string | null } | null)?.methodology_version ?? null}
             citationCI={(breakdown as { citation_ci?: { rate: number; low: number; high: number; n: number } | null } | null)?.citation_ci ?? null}
             coverage={score?.latest?.coverage ?? null}
+            execution={score?.execution ?? null}
             confidence={score?.confidence ?? null}
             hallucination={(breakdown as { hallucination?: HallucinationInfo | null } | null)?.hallucination ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
@@ -919,7 +962,7 @@ export default function DashboardV3() {
           <SourcesTab breakdown={breakdown} loading={breakdownLoading || scoreLoading} hasAudit={!!latestAuditId} brandId={activeBrandId} />
         ) : tab === "pages" ? (
           <PagesTab sites={sites} loading={sitesLoading} />
-        ) : tab === "whereToShowUp" ? (
+        ) : tab === "whereToShowUp" && OPPORTUNITY_RADAR_ENABLED ? (
           <WhereToShowUpTab brandId={activeBrandId || null} brandName={activeBrand?.name ?? null} />
         ) : tab === "connections" ? (
           <ConnectionsTab brand={activeBrand} onProfilesSaved={() => reloadBrands()} />
@@ -959,6 +1002,7 @@ export default function DashboardV3() {
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditBlocked, onTopUp, auditMsg,
   auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination, confidence,
+  execution,
 }: {
   brandName?: string;
   overall: number | null;
@@ -988,6 +1032,8 @@ function OverviewTab({
   coverage?: CoverageData | null;
   /** P7 — same-day negative-control hit on an engine in this panel. */
   hallucination?: HallucinationInfo | null;
+  /** P0-02 — Verified Execution with its working shown. */
+  execution?: ScorePayload["execution"];
 }) {
   // The hero shows Visibility now, so "has data" follows Visibility. Keying it
   // on the composite would print a big "—" next to a filled three-score card.
@@ -1058,7 +1104,7 @@ function OverviewTab({
             This is the measurement, and nothing else: how often the AI engines
             named you when asked your customers&rsquo; questions. Your own work
             is not in this number{typeof threeScores?.executionProgress === "number" ? (
-              <> — it is the <b>Execution</b> line below, at {threeScores.executionProgress}%</>
+              <> — it is the <b>Verified Execution</b> line below, at {threeScores.executionProgress}%</>
             ) : null}.
             {" "}AI answers move on their own, so the &plusmn; is the range this
             number could honestly sit in. When it changes, look for the reason
@@ -1080,7 +1126,10 @@ function OverviewTab({
       {loading ? (
         <div style={S.muted}>Loading score…</div>
       ) : hasData ? (
-        <OzvorScorecard overall={overall} threeScores={threeScores} brandName={brandName} />
+        <>
+          <OzvorScorecard overall={overall} threeScores={threeScores} brandName={brandName} />
+          <VerifiedExecutionNote execution={execution} />
+        </>
       ) : (
         <div style={{ ...S.card, padding: "var(--space-6)" }}>
           <p style={{ margin: "0 0 var(--space-4)", color: "var(--color-muted)" }}>No audit yet for this brand. Run the first one — it takes ~30–60 seconds across the AI engines.</p>
@@ -1490,8 +1539,27 @@ function DoNextTab({
   brandId: string;
   onAddTask: (action: string) => Promise<void>;
 }) {
-  const open = (tasks ?? []).filter((t) => t.status !== "done" && t.status !== "rejected");
-  const done = (tasks ?? []).filter((t) => t.status === "done");
+  // P0-02 — three columns, not two, because "you said it's done" and "we
+  // checked and it worked" are different facts and must not share a heading.
+  //   verified      — proven by a later audit. The only thing that scores.
+  //   claimed       — the client ticked it, or an old row from the checkbox era.
+  //                   Sits in "Marked done", waiting to be checked.
+  //   open          — everything still needing work, regressions included.
+  const VERIFIED_LIKE = ["verified"];
+  const CLAIMED_LIKE = ["done", "legacy_self_reported", "manual_done_pending_verification"];
+  const CLOSED_LIKE = ["rejected", "expired"];
+
+  const verified = (tasks ?? []).filter((t) => VERIFIED_LIKE.includes(t.status));
+  const claimed = (tasks ?? []).filter((t) => CLAIMED_LIKE.includes(t.status));
+  const open = (tasks ?? []).filter(
+    (t) =>
+      !VERIFIED_LIKE.includes(t.status) &&
+      !CLAIMED_LIKE.includes(t.status) &&
+      !CLOSED_LIKE.includes(t.status)
+  );
+  // Kept for the "Marked done" column, which now holds claims AND proof.
+  const done = [...verified, ...claimed];
+  const isVerified = (t: PlanTask) => VERIFIED_LIKE.includes(t.status);
 
   return (
     <>
@@ -1506,10 +1574,23 @@ function DoNextTab({
       ) : (
     <>
       <div style={S.secH}>
-        Your fix list <span style={S.secN}>— {open.length} to do, {done.length} done. Finish these and your base score climbs.</span>
+        Your fix list{" "}
+        <span style={S.secN}>
+          — {open.length} to do, {claimed.length} waiting to be checked, {verified.length} verified.
+        </span>
       </div>
       {open.length === 0 ? (
-        <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>All caught up — every fix is done. Nice work. 🎉</div>
+        claimed.length > 0 ? (
+          /* P0-01/P0-02: never say "all caught up" while claims are unchecked.
+             Nothing here is finished until an audit says so. */
+          <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>
+            Nothing left for you to do right now. {claimed.length}{" "}
+            {claimed.length === 1 ? "fix is" : "fixes are"} marked done and waiting
+            for the next audit to check {claimed.length === 1 ? "it" : "them"}.
+          </div>
+        ) : (
+          <div style={{ ...S.card, padding: "var(--space-6)", color: "var(--color-muted)" }}>All caught up — every fix is verified. Nice work. 🎉</div>
+        )
       ) : (
         <div style={S.card}>
           {open.map((t, i) => (
@@ -1531,7 +1612,13 @@ function DoNextTab({
 
       {done.length > 0 && (
         <>
-          <div style={S.secH}>Done <span style={S.secN}>— nice work</span></div>
+          <div style={S.secH}>
+            Marked done{" "}
+            <span style={S.secN}>
+              — &ldquo;Verified&rdquo; means we ran the questions again and saw the
+              change. The rest are waiting for the next audit to check them.
+            </span>
+          </div>
           <div style={S.card}>
             {done.map((t, i) => (
               <div key={t.id} style={{ ...S.actRow, opacity: 0.7, borderTop: i === 0 ? "none" : "1px solid var(--color-border)" }}>
@@ -1542,21 +1629,30 @@ function DoNextTab({
                       the evidence carries "Worked — verified in the audit of
                       <date>". Showing it is the whole point: the client sees
                       that doing X moved the number, in their own data. */}
-                  {t.evidence?.startsWith("Worked — verified") && (
+                  {isVerified(t) && t.evidence?.startsWith("Worked — verified") && (
                     <div style={{ ...S.actWhy, color: "var(--color-success)" }}>{t.evidence.split(".")[0]}.</div>
                   )}
+                  {!isVerified(t) && (
+                    /* The state is the badge's source of truth, not a string
+                       match on the evidence text. A claim says it is a claim. */
+                    <div style={S.actWhy}>You marked this done. We&rsquo;ll check it on the next audit.</div>
+                  )}
                 </div>
-                <span style={{ ...S.imp, ...(t.evidence?.startsWith("Worked — verified")
+                <span style={{ ...S.imp, ...(isVerified(t)
                   ? { background: "var(--color-badge-connected-bg)", color: "var(--color-success)" }
                   : { background: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" }) }}>
-                  {t.evidence?.startsWith("Worked — verified") ? "Verified" : "Done"}
+                  {isVerified(t) ? "Verified" : "Not checked yet"}
                 </span>
               </div>
             ))}
           </div>
         </>
       )}
-      <p style={S.note}>Checking a box marks it done here and updates your Execution score. Nothing is published from this list.</p>
+      <p style={S.note}>
+        Checking a box tells us you did it. It does not move your Verified
+        Execution score — that only counts fixes we re-check and find working in
+        the AI answers. Nothing is published from this list.
+      </p>
     </>
       )}
     </>
@@ -1606,11 +1702,17 @@ function ContentTab({
   return (
     <>
       <div style={{ ...S.card, padding: "12px 16px", marginBottom: "var(--space-3)", fontSize: "0.85rem", color: "var(--color-muted)", borderLeft: "3px solid var(--color-primary)" }}>
-        Drafts are generated with <b>your own AI API key</b> (BYOK). Add or check it in{" "}
-        <button onClick={onGoConnections} style={{ border: "none", background: "transparent", color: "var(--color-primary)", fontWeight: 600, cursor: "pointer", font: "inherit", padding: 0 }}>Connections →</button>
+        {/* P0-08: this banner used to say a draft needed the customer's own API
+            key. That was true, and it was the wall in the middle of "we do the
+            work". Drafts are now written on our side and counted against the
+            same credits an audit uses; BYOK stays as the advanced, credit-free
+            option it should always have been. */}
+        <b>We write your drafts.</b> No API key needed — each draft uses a few of your credits. Prefer to run them on your own AI account? Add your key in{" "}
+        <button onClick={onGoConnections} style={{ border: "none", background: "transparent", color: "var(--color-primary)", fontWeight: 600, cursor: "pointer", font: "inherit", padding: 0 }}>Connections →</button>{" "}
+        and we will use it instead, free of credits.
       </div>
 
-      <GenerateDraft brandId={brandId} onDone={onReload} onNeedKey={onGoConnections} />
+      <GenerateDraft brandId={brandId} onDone={onReload} />
 
       {loading || items === null ? (
         <div style={S.muted}>Loading your drafts…</div>
@@ -1655,7 +1757,7 @@ function ContentTab({
   );
 }
 
-function GenerateDraft({ brandId, onDone, onNeedKey }: { brandId: string; onDone: () => void; onNeedKey: () => void }) {
+function GenerateDraft({ brandId, onDone }: { brandId: string; onDone: () => void }) {
   const [type, setType] = useState("blog");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1667,12 +1769,32 @@ function GenerateDraft({ brandId, onDone, onNeedKey }: { brandId: string; onDone
     setBusy(true); setMsg(null);
     try {
       const r = await apiFetch(`/api/brands/${brandId}/content`, { method: "POST", body: JSON.stringify({ content_type: type, topic: t }) });
-      const d = (await r.json().catch(() => null)) as { message?: string } | null;
-      if (r.ok) { setTopic(""); setMsg("Draft generated — it’s in your review list below."); onDone(); }
-      else if (r.status === 402 || r.status === 403 || (d?.message ?? "").toLowerCase().includes("key")) {
-        setMsg("Add your AI API key in Connections first — content is generated with your own key (BYOK)."); onNeedKey();
+      // P0-08 response shapes. The API now writes the customer-facing sentence
+      // itself — in drafts, never tokens — so this reads it rather than
+      // inventing one. The old branch here hardcoded "add your API key" for
+      // EVERY 402/403, which is how a customer who was simply out of credits
+      // got sent to a settings page that could not help them.
+      const d = (await r.json().catch(() => null)) as {
+        message?: string;
+        body?: string;
+        error?: string;
+        reused?: boolean;
+        billing?: { message?: string };
+        credits?: { offer?: string };
+      } | null;
+      if (r.ok) {
+        setTopic("");
+        const where = d?.reused ? "That draft already existed — it’s in your review list below." : "Draft ready — it’s in your review list below.";
+        setMsg([where, d?.billing?.message].filter(Boolean).join(" "));
+        onDone();
+      } else if (r.status === 402) {
+        // Out of credits (or we could not read the balance). Say so, and offer
+        // the way out the API named. Connections is NOT the answer here.
+        setMsg([d?.body ?? d?.error, d?.credits?.offer].filter(Boolean).join(" ") || "You’re out of credits for new drafts.");
+      } else if (r.status === 403) {
+        setMsg(d?.message ?? d?.error ?? "You don’t have permission to generate drafts on this brand.");
       } else {
-        setMsg(d?.message ?? "Couldn’t generate the draft. Try again.");
+        setMsg(d?.body ?? d?.error ?? d?.message ?? "Couldn’t generate the draft. Try again.");
       }
     } catch {
       setMsg("Couldn’t generate the draft. Check your connection and try again.");
@@ -1744,8 +1866,18 @@ function TrackedCompetitors({ brandId }: { brandId: string }) {
     }
   }
   async function remove(id: string) {
-    setList((prev) => (prev ?? []).filter((c) => c.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Remove from the UI only AFTER the server confirms — an optimistic delete
+    // that swallows the error leaves the row "deleted" on screen but alive in
+    // the DB (2026-09-02 sweep, PENDING 10.A.8).
+    const prev = list;
+    setList((p) => (p ?? []).filter((c) => c.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/competitors/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setList(prev);
+      setErr("Couldn't remove that competitor. Try again.");
+    }
   }
 
   return (
@@ -1960,8 +2092,17 @@ function ManagePrompts({ brandId }: { brandId: string }) {
     finally { setBusy(false); }
   }
   async function remove(id: string) {
-    setCustom((prev) => prev.filter((p) => p.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): on failure the prompt comes back
+    // and the existing inline error shows — never a silent fake delete.
+    const prev = custom;
+    setCustom((p) => p.filter((x) => x.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/prompts/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+    } catch {
+      setCustom(prev);
+      setErr("Couldn't remove that prompt. Try again.");
+    }
   }
 
   const total = (defaults?.length ?? 0) + custom.length;
@@ -2092,6 +2233,7 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
   const [connected, setConnected] = useState<string[] | null>(null);
   const [apiKeys, setApiKeys] = useState<OzvorApiKey[] | null>(null);
   const [minted, setMinted] = useState<string | null>(null); // plaintext shown once
+  const [keyErr, setKeyErr] = useState<string | null>(null);
   const [newKeyName, setNewKeyName] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -2120,8 +2262,18 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
     } catch { /* ignore */ } finally { setBusy(false); }
   }
   async function revokeKey(id: string) {
-    setApiKeys((prev) => (prev ?? []).filter((k) => k.id !== id));
-    try { await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): a swallowed error here showed a
+    // key as "revoked" while it kept working — a security lie, not just UI.
+    const prev = apiKeys;
+    setApiKeys((p) => (p ?? []).filter((k) => k.id !== id));
+    try {
+      const r = await apiFetch(`/api/account/api-keys/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setKeyErr(null);
+    } catch {
+      setApiKeys(prev);
+      setKeyErr("Couldn't revoke that key — it is still ACTIVE. Try again.");
+    }
   }
 
   return (
@@ -2160,6 +2312,7 @@ function ConnectionsTab({ brand, onProfilesSaved }: { brand: BrandRow | null; on
           <input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name (e.g. CI, my-script)" style={{ ...S.input, flex: 1, minWidth: 180 }} />
           <button onClick={() => void generateKey()} disabled={busy} style={{ ...S.btnPri, opacity: busy ? 0.6 : 1 }}>{busy ? "Generating…" : "Generate API key"}</button>
         </div>
+        {keyErr && <div style={{ color: "var(--color-error)", fontSize: "0.8rem", marginTop: "var(--space-2)" }}>{keyErr}</div>}
         {apiKeys && apiKeys.filter((k) => !k.revoked_at).length > 0 && (
           <div style={{ marginTop: "var(--space-3)" }}>
             {apiKeys.filter((k) => !k.revoked_at).map((k) => (
@@ -2189,6 +2342,7 @@ const GOOGLE_KINDS: Array<{ kind: "gsc" | "ga4"; key: string; name: string; note
 function GoogleConnect({ brandId }: { brandId: string }) {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [conns, setConns] = useState<GoogleConn[] | null>(null);
+  const [connErr, setConnErr] = useState<string | null>(null);
   const [busyKind, setBusyKind] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -2219,8 +2373,18 @@ function GoogleConnect({ brandId }: { brandId: string }) {
     setBusyKind(null); // only reached if we didn't redirect
   }
   async function disconnect(id: string) {
-    setConns((prev) => (prev ?? []).filter((x) => x.id !== id));
-    try { await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" }); } catch { /* best-effort */ }
+    // Confirm-then-remove (PENDING 10.A.8): only drop the row after a 2xx; on
+    // failure restore it and say so instead of pretending it disconnected.
+    const prev = conns;
+    setConns((p) => (p ?? []).filter((x) => x.id !== id));
+    try {
+      const r = await apiFetch(`/api/brands/${brandId}/google/connections/${id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error();
+      setConnErr(null);
+    } catch {
+      setConns(prev);
+      setConnErr("Couldn't disconnect. It is still connected — try again.");
+    }
     void reload();
   }
 
@@ -2248,6 +2412,9 @@ function GoogleConnect({ brandId }: { brandId: string }) {
           </div>
         );
       })}
+      {connErr && (
+        <div style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: "var(--space-2) var(--space-2) 0" }}>{connErr}</div>
+      )}
       {configured === false && (
         <p style={{ ...S.note, margin: "var(--space-3) var(--space-2) 0" }}>Google connections aren’t configured on this environment yet.</p>
       )}
@@ -2553,7 +2720,7 @@ const S: Record<string, React.CSSProperties> = {
   // overflow:hidden clipped the bottom of the sidebar (the email). minmax(0,1fr)
   // clamps the single row to exactly the shell height; panes scroll internally.
   // Measured live in prod: aside 1008px in a 960px shell before, 960px after.
-  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) 1fr", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
+  shell: { display: "grid", gridTemplateColumns: "clamp(200px, 18vw, 240px) minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)", height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-family)" },
   rail: { borderRight: "1px solid var(--color-border)", padding: "var(--space-5) var(--space-3)", display: "flex", flexDirection: "column", gap: "2px", background: "var(--color-surface)", overflow: "hidden", minHeight: 0 },
   railScroll: { display: "flex", flexDirection: "column", gap: "2px", flex: 1, overflowY: "auto", minHeight: 0 },
   brand: { display: "flex", alignItems: "center", gap: "var(--space-2)", padding: "var(--space-1) var(--space-2) var(--space-4)" },
@@ -2573,7 +2740,7 @@ const S: Record<string, React.CSSProperties> = {
   pick: { border: "1px solid var(--color-border)", background: "var(--color-surface)", color: "var(--color-text)", borderRadius: "var(--radius-md)", padding: "8px 12px", font: "inherit", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer" },
 
   card: { background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-card)" },
-  hero: { padding: "var(--space-6)", display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-6)", alignItems: "center", marginBottom: "var(--space-2)" },
+  hero: { padding: "var(--space-6)", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "var(--space-6)", alignItems: "center", marginBottom: "var(--space-2)" },
   scoreCol: { display: "flex", flexDirection: "column", alignItems: "center", minWidth: 150 },
   scoreBig: { fontSize: "4rem", fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" },
   scoreOf: { color: "var(--color-muted)", fontSize: "0.8rem", fontWeight: 600 },
@@ -2596,7 +2763,7 @@ const S: Record<string, React.CSSProperties> = {
   fmeta: { color: "var(--color-muted)", fontSize: "0.82rem", fontWeight: 600 },
 
   // Do next (fix list)
-  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "var(--space-3)", alignItems: "center" },
+  actRow: { padding: "13px 18px", display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", gap: "var(--space-3)", alignItems: "center" },
   actTitle: { fontWeight: 700, fontSize: "0.96rem" },
   actWhy: { color: "var(--color-muted)", fontSize: "0.84rem", marginTop: "2px", lineHeight: 1.5 },
   chk: { width: 24, height: 24, borderRadius: "7px", border: "2px solid var(--color-border)", background: "transparent", cursor: "pointer", flex: "0 0 auto", padding: 0, color: "#fff", fontWeight: 800, fontSize: "0.8rem", lineHeight: 1 },
@@ -2615,7 +2782,7 @@ const S: Record<string, React.CSSProperties> = {
   // Competitors + sources
   engChip: { fontSize: "0.7rem", fontWeight: 700, padding: "2px 8px", borderRadius: "var(--radius-pill)", background: "var(--color-surface-muted)", color: "var(--color-muted)" },
   engChipRed: { background: "var(--color-badge-status-error-bg)", color: "var(--color-badge-status-error-text)" },
-  compRow: { display: "grid", gridTemplateColumns: "150px 1fr 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
+  compRow: { display: "grid", gridTemplateColumns: "minmax(0, 150px) minmax(0, 1fr) 42px", gap: "var(--space-3)", alignItems: "center", padding: "11px 18px" },
   compTrack: { height: "9px", borderRadius: "99px", background: "var(--color-border)", overflow: "hidden" },
   engIco: { width: 30, height: 30, borderRadius: "8px", background: "var(--color-surface-muted)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: "0.72rem", color: "var(--color-text)", flex: "0 0 auto" },
 
