@@ -738,3 +738,23 @@ GEO-5 (Sentiment classification): Classifies text about the client's brand. Does
 - Conditions GEO-A1 (HIGH) and GEO-A2 (HIGH) and GEO-A3 (HIGH): must be resolved at or before Gate 3→4. GEO-A1 requires FTC external counsel confirmation and UX spec update before C5 Reddit module architecture is locked. GEO-A2 requires system-prompt constraints documented in architecture §12. GEO-A3 requires multi-provider GPAI deployer checklist.
 - Verdict: APPROVED_WITH_CONDITIONS (see gate-log for formal verdict)
 - Next update: Gate 3→4 (system-architect confirms all five providers; GEO-A2 system prompt constraints; GEO-A5 sentiment classification approach; GEO-A6 generation audit log; GEO-A3 deployer checklist)
+
+---
+
+## Addendum — Legacy Video Pipeline Exception + EU AI Act Art. 50(4) Marking — 2026-09-02
+
+> Added by `ai-ethics-reviewer` (02/09 sweep; PENDING 10.D.15). Records two items about the daily marketing video pipeline (VPS: script claude→fallbacks, Pexels/Remotion render, Postiz publish to IG/TikTok/YouTube — ROPA G24).
+
+### 1. The founder-accepted human-oversight exception (PENDING 1.1)
+
+House rule: **nothing publishes without founder approval**. The legacy video pipeline is the documented, temporary exception: the founder DECIDED on 2026-09-01 (PENDING 1.1) that it keeps publishing daily WITHOUT a gate until the Phase-1 script-injection gate (spec `docs/specs/video-gate-fase1.md`, PR #523) is applied on the VPS. Risk posture: the pipeline produces Ozvor's own marketing content from templated scripts and stock media; it cannot touch customer data or money. The exception is time-boxed to the Phase-1 patch and recorded here so the AI-risk register matches operational reality. (Sweep correction 10.C.7: the blog announce posts to LinkedIn/X via `/publish-async` also lack a gate — a second undocumented exception; owner: engineering, to be gated or documented in its own decision. Noted here for honesty; not founder-accepted yet.)
+
+### 2. EU AI Act Art. 50(4) — deep-fake / synthetic-content marking of videos
+
+Art. 50(4) requires deployers of AI systems that generate or manipulate video/audio/image content to **disclose that the content has been artificially generated or manipulated**, in a machine-readable and visible way where feasible. Applied to Ozvor's videos:
+
+- The daily videos are AI-scripted with stock footage; when the HeyGen presenter (founder digital twin, G18) enters production, the output is a synthetic likeness — squarely in Art. 50(4) scope.
+- **Requirement**: every published video must carry an "AI-generated" disclosure (caption line and/or platform-native AI label where the platform offers one — IG/TikTok/YouTube all expose an AI-content flag). The Remotion template should bake a visible label; the Postiz publish step should set the platform AI flag where the API allows.
+- **Status**: NOT yet implemented in the pipeline — open condition **AIA-1 (MEDIUM)**, owner: engineering (VPS job + Remotion template), due before the HeyGen presenter ships and in any case at the Phase-1 gate patch. Until then the videos are stock-footage montages with AI-written narration, the lower-risk end of Art. 50(4), but labeling is still owed.
+
+No risk-classification change: the platform remains LIMITED RISK (Art. 50); this addendum adds transparency obligations, not a new risk tier.

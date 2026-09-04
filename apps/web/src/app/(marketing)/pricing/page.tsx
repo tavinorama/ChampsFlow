@@ -19,6 +19,9 @@ import { FounderBand } from "./FounderBand";
 // product enforces — the page cannot drift from what customers receive.
 import {
   PLAN_LIMITS,
+  LIST_PRICE_USD,
+  FOUNDER_DISCOUNT_PERCENT,
+  perBrandUsd,
   CREDITS_PER_PROMPT_AUDIT,
   creditsForAudit,
   monthlyCreditsFor,
@@ -28,13 +31,16 @@ import {
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 export const metadata: Metadata = {
-  title: "Plans — Replace a $30k/yr specialist for under $100/mo | Ozvor",
-  description:
-    "Start free, climb when you're ready. Free AI test, $29 Get-Cited Kit, $49 AI Audit Stack, Growth $99/mo, Agency $549/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: 30% off annual + a free 5-page website.",
+  // Título SEM o sufixo "| Ozvor": a main centralizou o sufixo no template de
+  // metadata (era a causa dos 38 títulos "| Ozvor | Ozvor"). A descrição fica a
+  // deste PR, derivada de packages/shared/src/pricing.ts, para o metadata nunca
+  // divergir do que o checkout cobra (PENDING 10.A.6).
+  title: "Plans — Replace a $30k/yr specialist for under $100/mo",
+  description: `Start free, climb when you're ready. Free AI test, $${LIST_PRICE_USD.kit} Get-Cited Kit, $${LIST_PRICE_USD.aiAudit} AI Audit Stack, Growth $${LIST_PRICE_USD.growth}/mo, Agency $${LIST_PRICE_USD.agency}/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: ${FOUNDER_DISCOUNT_PERCENT}% off annual + a free 5-page website.`,
   alternates: { canonical: "https://ozvor.com/pricing" },
   openGraph: {
     title: "Plans — Ozvor",
-    description: "Free → Kit $29 → Growth $99/mo → Agency $549/mo. 30-day money-back, no lock-in.",
+    description: `Free → Kit $${LIST_PRICE_USD.kit} → Growth $${LIST_PRICE_USD.growth}/mo → Agency $${LIST_PRICE_USD.agency}/mo. 30-day money-back, no lock-in.`,
     url: "https://ozvor.com/pricing",
     siteName: "Ozvor",
     type: "website",
@@ -50,8 +56,8 @@ const COMPARE_ROWS: { f: string; vals: string[]; us: string }[] = [
   { f: "Ready-to-publish content drafts", vals: ["✗", "✗", "✗", "✗"], us: "Yes — structured for AI citation" },
   { f: "Evidence-backed action plan", vals: ["✗", "✗", "✗", "✗"], us: "Every audit" },
   { f: "Done-for-you execution", vals: ["✗", "✗", "✗", "✗"], us: "OrganicPosts, from $1,500" },
-  { f: "Starts free", vals: ["✗", "✗", "✗", "✗"], us: "Free audit → $29 → $99/mo" },
-  { f: "White-label agency tier ($549/mo)", vals: ["~", "?", "?", "?"], us: "Yes — 10 brands ($54.90 each)" },
+  { f: "Starts free", vals: ["✗", "✗", "✗", "✗"], us: `Free audit → $${LIST_PRICE_USD.kit} → $${LIST_PRICE_USD.growth}/mo` },
+  { f: `White-label agency tier ($${LIST_PRICE_USD.agency}/mo)`, vals: ["~", "?", "?", "?"], us: `Yes — ${PLAN_LIMITS.agency.max_brands} brands ($${perBrandUsd(LIST_PRICE_USD.agency, PLAN_LIMITS.agency.max_brands)} each)` },
   { f: "Public measurement methodology", vals: ["✗", "✗", "✗", "✗"], us: "Yes — /how-we-measure" },
 ];
 

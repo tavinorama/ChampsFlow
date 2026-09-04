@@ -22,9 +22,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { safeJsonLd } from "../../../components/landing-public/json-ld";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
+// Plan figures derived from packages/shared so this page cannot drift from
+// what the product enforces (2026-09-02 sweep, PENDING 10.A.2/6).
+import { PLAN_LIMITS, LIST_PRICE_USD, founderAnnualPerMonthUsd, perBrandUsd } from "@organic-posts/shared";
+
+const AGENCY_ANSWER = `Agency covers up to ${PLAN_LIMITS.agency.max_brands} client brands, at $${perBrandUsd(LIST_PRICE_USD.agency, PLAN_LIMITS.agency.max_brands)} each ($${perBrandUsd(founderAnnualPerMonthUsd("agency"), PLAN_LIMITS.agency.max_brands)} on founder annual). Reports carry your brand, not ours. You get priority support, answered within 1 business day.`;
 
 export const metadata: Metadata = {
-  title: "FAQ — Answers about Ozvor, pricing, and the AI Visibility Score | Ozvor",
+  title: "FAQ — Answers about Ozvor, pricing, and the AI Visibility Score",
   description:
     "Answers about the Ozvor AI Visibility Score, how the audit works, the free test, the $29 Kit, Growth, Agency, Ozvor Pages, OrganicPosts, SEO vs GEO, and data privacy.",
   alternates: { canonical: "https://ozvor.com/faq" },
@@ -107,10 +112,9 @@ const GROUPS: FaqGroup[] = [
         a: "Growth checks all 5 AIs every week. You get a monthly content plan. Plus a free Ozvor Pages site. You can track up to 10 competitors.",
       },
       {
-        q: "What's included in Agency ($549/mo)?",
-        aText:
-          "Agency covers up to 10 client brands, at $54.90 each ($38.40 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
-        a: "Agency covers up to 10 client brands, at $54.90 each ($38.40 on founder annual). Reports carry your brand, not ours. You get priority support, with a 4-hour response time.",
+        q: `What's included in Agency ($${LIST_PRICE_USD.agency}/mo)?`,
+        aText: AGENCY_ANSWER,
+        a: AGENCY_ANSWER,
       },
     ],
   },

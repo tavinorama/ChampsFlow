@@ -20,13 +20,23 @@ Allow: /
 
 # Authenticated app + legacy routes (not useful to crawl):
 Disallow: /account/
+Disallow: /admin
 Disallow: /dashboard
+Disallow: /dashboard-v3
 Disallow: /brands
 Disallow: /login
 Disallow: /create
 Disallow: /schedule
 Disallow: /drafts/
-# Per-buyer Kit delivery tokens (the /kit landing page itself stays indexable):
+Disallow: /agency
+Disallow: /competitors
+Disallow: /sources
+Disallow: /marketing
+Disallow: /landing-pages
+# Per-buyer delivery tokens and share links (the /kit and /ai-audit landing
+# pages themselves stay indexable — only their token subpaths are blocked):
 Disallow: /kit/
+Disallow: /ai-audit/
+Disallow: /r/
 
 Sitemap: https://ozvor.com/sitemap.xml

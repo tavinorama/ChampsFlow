@@ -39,6 +39,7 @@ import type { PostgresClient } from "./social-accounts";
 import { llmGateway, LLMGatewayError } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
+import { checkEditorialLeaks, describeEditorialLeaks } from "../../../../packages/shared/src/editorial-leak";
 
 // ---------------------------------------------------------------------------
 // Platform-specific prompt config (architecture §12 — system prompt hardcoded)
@@ -746,7 +747,10 @@ export function registerDraftRoutes(app: Hono, db: PostgresClient): void {
       const { tenantId, userId } = auth;
       const draftId = ctx.req.param("id");
 
-      let body: { scheduled_at?: string; platform_overrides?: unknown } = {};
+      // approved_text (optional): the exact text the approver saw. When present
+      // it must still match, so an approval cannot land on text that changed
+      // after the preview was rendered (P0-04).
+      let body: { scheduled_at?: string; platform_overrides?: unknown; approved_text?: string } = {};
       try {
         body = await ctx.req.json();
       } catch {
@@ -760,8 +764,13 @@ export function registerDraftRoutes(app: Hono, db: PostgresClient): void {
         ai_generated: boolean;
         generation_id: string;
         platform: string;
+        body: string;
+        hashtags: string[] | null;
       }>(
-        `SELECT id, status, ai_generated, generation_id, platform
+        // P0-04: body + hashtags are read here so approval can run the editorial
+        // leak check against the exact text that will be published, and hand the
+        // approver a final preview of it.
+        `SELECT id, status, ai_generated, generation_id, platform, body, hashtags
          FROM drafts
          WHERE id = $1 AND tenant_id = $2`,
         [draftId, tenantId]
@@ -778,6 +787,54 @@ export function registerDraftRoutes(app: Hono, db: PostgresClient): void {
         return ctx.json({
           error: `Draft cannot be approved in status '${draft.status}'`,
           code: "INVALID_STATUS_TRANSITION",
+        });
+      }
+
+      // -----------------------------------------------------------------
+      // P0-04 — editorial leak guard + explicit final approval.
+      //
+      // A public LinkedIn post shipped with its drafting scaffolding attached
+      // (claim-basis note, owner field, "link no 1o comentario"). The markers
+      // come from the template, so the check belongs on the way out, not in a
+      // reminder. Fail-closed: the draft cannot reach 'approved' while a marker
+      // is present, and the response carries the exact offending excerpts plus
+      // the full final text so the approver sees what would have gone public.
+      //
+      // The check runs against body + hashtags, i.e. everything the publish
+      // adapters send. The same function runs again in the worker at publish
+      // time, because approval is not the only door.
+      // -----------------------------------------------------------------
+      const finalText = [draft.body, ...(draft.hashtags ?? [])].join("\n");
+      const leaks = checkEditorialLeaks(finalText);
+      if (!leaks.ok) {
+        logger.warn("draft_approval_blocked_editorial_leak", {
+          tenant_id: tenantId,
+          draft_id: draftId,
+          // ids + short excerpts only — never the whole body in a log line.
+          markers: describeEditorialLeaks(leaks).slice(0, 400),
+        });
+        ctx.status(422);
+        return ctx.json({
+          error:
+            "This draft still contains internal drafting notes. Remove them before approving.",
+          code: "EDITORIAL_LEAK",
+          markers: leaks.matches,
+          preview: finalText,
+        });
+      }
+
+      // Explicit approval. A draft that a human has never seen in its final
+      // form must not be approvable by a client that simply POSTs the id, so
+      // the caller has to state that it is approving THIS text. The UI sends
+      // the preview it rendered; a mismatch means the text moved underneath the
+      // approver and the approval is refused rather than silently applied.
+      if (typeof body.approved_text === "string" && body.approved_text !== finalText) {
+        ctx.status(409);
+        return ctx.json({
+          error:
+            "The draft changed since you previewed it. Review the current text and approve again.",
+          code: "APPROVAL_TEXT_STALE",
+          preview: finalText,
         });
       }
 

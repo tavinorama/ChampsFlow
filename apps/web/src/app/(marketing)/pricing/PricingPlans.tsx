@@ -39,7 +39,7 @@ type Plan = {
   monthly: string; // headline price when Monthly is selected (or the one-time price)
   annualYear: string; // founder annual /yr total (while the offer is active)
   annualYearList?: string; // LIST annual /yr total (shown once the founder offer ends)
-  annualPerMonth: string; // "≈ $69/mo" helper shown under the founder annual price
+  annualPerMonth: string; // derived "≈ $NN/mo" helper shown under the founder annual price
   sub: string;
   features: string[];
   cta: string;
@@ -54,7 +54,18 @@ type Plan = {
 // Credit/depth figures are DERIVED from @organic-posts/shared — the same
 // PLAN_LIMITS production enforces — so this page cannot advertise a number
 // the product no longer delivers.
-import { PLAN_LIMITS, monthlyCreditsFor, overagePackUsd } from "@organic-posts/shared";
+import {
+  PLAN_LIMITS,
+  LIST_PRICE_USD,
+  FOUNDER_DISCOUNT_PERCENT,
+  founderAnnualUsd,
+  founderAnnualPerMonthUsd,
+  listAnnualUsd,
+  perBrandUsd,
+  fmtUsd,
+  monthlyCreditsFor,
+  overagePackUsd,
+} from "@organic-posts/shared";
 const fmt = (n: number) => n.toLocaleString("en-US");
 
 const PLANS: Plan[] = [
@@ -75,8 +86,8 @@ const PLANS: Plan[] = [
     id: "kit",
     kind: "onetime",
     name: "Get-Cited Kit",
-    monthly: "$29",
-    annualYear: "$29",
+    monthly: `$${LIST_PRICE_USD.kit}`,
+    annualYear: `$${LIST_PRICE_USD.kit}`,
     annualPerMonth: "",
     sub: "One payment. We write your fixes.",
     features: [
@@ -88,7 +99,7 @@ const PLANS: Plan[] = [
       "30-day re-test plan",
       "No subscription",
     ],
-    cta: "Get the Kit — $29",
+    cta: `Get the Kit — $${LIST_PRICE_USD.kit}`,
     href: "/kit",
     guarantee: "Deliverable guarantee. Drafts not publish-ready, we refund.",
     accent: "emerald",
@@ -97,8 +108,8 @@ const PLANS: Plan[] = [
     id: "ai-audit",
     kind: "onetime",
     name: "AI Audit Stack",
-    monthly: "$49",
-    annualYear: "$49",
+    monthly: `$${LIST_PRICE_USD.aiAudit}`,
+    annualYear: `$${LIST_PRICE_USD.aiAudit}`,
     annualPerMonth: "",
     sub: "One payment. We pick your AI tool.",
     features: [
@@ -109,7 +120,7 @@ const PLANS: Plan[] = [
       "Full audit lives in OrganicPosts",
       "No subscription",
     ],
-    cta: "Get my AI stack — $49",
+    cta: `Get my AI stack — $${LIST_PRICE_USD.aiAudit}`,
     href: "/ai-audit",
     guarantee: "One tool and the counts. Numbers are estimates when our catalog says so.",
     accent: "muted",
@@ -118,12 +129,12 @@ const PLANS: Plan[] = [
     id: "growth",
     kind: "sub",
     name: "Growth",
-    monthly: "$99",
-    annualYear: "$831",
-    annualYearList: "$1,188",
-    annualPerMonth: "≈ $69/mo · 30% founder discount",
+    monthly: `$${LIST_PRICE_USD.growth}`,
+    annualYear: `$${fmtUsd(founderAnnualUsd("growth"))}`,
+    annualYearList: `$${fmtUsd(listAnnualUsd("growth"))}`,
+    annualPerMonth: `≈ $${founderAnnualPerMonthUsd("growth")}/mo · ${FOUNDER_DISCOUNT_PERCENT}% founder discount`,
     sub: "For one brand you want cited.",
-    features: [`${fmt(monthlyCreditsFor("growth"))} credits/mo — ${PLAN_LIMITS.growth.prompts_per_audit}-prompt deep audits`, "One manual re-audit per brand each week.", "Weekly monitoring", "Up to 10 competitors.", "GEO content plan + Content Studio", "CSV export", "Email support"],
+    features: [`${fmt(monthlyCreditsFor("growth"))} credits/mo — ${PLAN_LIMITS.growth.prompts_per_audit}-prompt deep audits`, "One manual re-audit per brand each week.", "Weekly monitoring", `Up to ${PLAN_LIMITS.growth.max_competitors} competitors.`, "GEO content plan + Content Studio", "CSV export", "Email support"],
     cta: "Start Growth",
     guarantee: "30 day money back.",
     accent: "emerald",
@@ -133,12 +144,23 @@ const PLANS: Plan[] = [
     id: "agency",
     kind: "sub",
     name: "Agency",
-    monthly: "$549",
-    annualYear: "$4,611",
-    annualYearList: "$6,588",
-    annualPerMonth: "≈ $384/mo · 30% founder discount",
+    monthly: `$${LIST_PRICE_USD.agency}`,
+    annualYear: `$${fmtUsd(founderAnnualUsd("agency"))}`,
+    annualYearList: `$${fmtUsd(listAnnualUsd("agency"))}`,
+    annualPerMonth: `≈ $${founderAnnualPerMonthUsd("agency")}/mo · ${FOUNDER_DISCOUNT_PERCENT}% founder discount`,
     sub: "For agencies & multi-brand teams.",
-    features: ["$54.90 per brand — $38.40 on founder annual", `${fmt(monthlyCreditsFor("agency"))} credits/mo across your portfolio`, "Multi-client dashboard (up to 10 brands)", "10 competitors per brand", "Weekly monitoring on every client", "White-label reports", "Client approval workflow", "Priority support · 4h SLA", "Annual bonus: one free website GEO audit."],
+    // PENDING 10.A.4: no in-product approval flow for clients yet — the honest
+    // feature is share links + white-label reports (routes/agency.ts).
+    features: [
+      `$${perBrandUsd(LIST_PRICE_USD.agency, PLAN_LIMITS.agency.max_brands)} per brand — $${perBrandUsd(founderAnnualPerMonthUsd("agency"), PLAN_LIMITS.agency.max_brands)} on founder annual`,
+      `${fmt(monthlyCreditsFor("agency"))} credits/mo across your portfolio`,
+      `Multi-client dashboard (up to ${PLAN_LIMITS.agency.max_brands} brands)`,
+      `${PLAN_LIMITS.agency.max_competitors} competitors per brand`,
+      "Weekly monitoring on every client",
+      "White-label reports + shareable client links",
+      "Priority support · 1 business day",
+      "Annual bonus: one free website GEO audit.",
+    ],
     cta: "Start Agency",
     guarantee: "30 day money back.",
     accent: "emerald",

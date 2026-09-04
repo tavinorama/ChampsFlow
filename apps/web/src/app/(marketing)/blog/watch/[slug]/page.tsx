@@ -75,7 +75,7 @@ export async function generateMetadata({
   }
 
   return {
-    title: `${post.title} | Ozvor`,
+    title: `${post.title}`,
     description: post.excerpt,
     alternates: {
       canonical: `https://ozvor.com/blog/watch/${post.slug}`,

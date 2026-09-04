@@ -208,9 +208,10 @@ export function usageFromCounts(
 /**
  * ProviderAdapter — every GEO provider adapter must implement this interface.
  *
- * Critical mock mode: if the provider's key env var is absent, adapters return
- * a DETERMINISTIC mock response seeded by a hash of the query. This is the
- * primary test path. Live HTTP is a clearly-marked TODO stub.
+ * Live HTTP is fully wired in every adapter and is the production path (the
+ * provider's key env var present = real API call). Keyless mock mode returns a
+ * DETERMINISTIC response seeded by a hash of the query — dev/test only, and
+ * blocked in production by assertLiveOrThrow (integrity guard, PR #90).
  *
  * Error handling: classify errors as retryable vs permanent.
  * Wrap all calls in try/catch; never let uncaught errors escape (hard rule 10).

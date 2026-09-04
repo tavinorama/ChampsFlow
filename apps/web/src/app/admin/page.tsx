@@ -40,7 +40,6 @@ interface OverviewData {
   tenants: {
     total: number;
     byTier: {
-      starter: number;
       growth: number;
       agency: number;
     };
@@ -76,7 +75,7 @@ interface RevenueSummary {
   mrr_usd: number;
   arr_usd: number;
   subscriptions: {
-    active: { growth: number; agency: number; starter: number; total: number };
+    active: { growth: number; agency: number; total: number };
     trialing: number;
     pastDue: number;
     canceled: number;
@@ -199,12 +198,71 @@ interface SystemHealth {
   envKeys: Array<{ name: string; set: boolean }>;
   attentionFlags: string[];
   mode: "live" | "demo";
+  /** P0-09 — the delivery summary that rides along with the infra health. */
+  delivery?: {
+    status: string;
+    color: DeliveryColor;
+    counts: Record<string, number>;
+    reasons: string[];
+    canary: { version: string; status: string };
+    readAt: string;
+  } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Delivery Health (audit P0-09) — "are we delivering?", beside "are the APIs up?"
+// ---------------------------------------------------------------------------
+
+type DeliveryColor = "green" | "amber" | "red";
+
+interface DeliveryIndicatorView {
+  id: string;
+  label: string;
+  status: string;
+  color: DeliveryColor;
+  /** null whenever the status is one of the unknown states. Never rendered as 0. */
+  value: number | null;
+  sample: number;
+  unit: "rate" | "count" | "hours" | "minutes" | "seconds";
+  direction: "higher_is_better" | "lower_is_better";
+  degradedAt: number;
+  failingAt: number;
+  reason: string | null;
+  contract: {
+    question: string;
+    owner: string;
+    sourceOfTruth: string;
+    grain: string;
+    timezone: string;
+    windowDays: number;
+    includes: string;
+    excludes: string;
+    lateData: string;
+    qualityTest: string;
+    minSample: number;
+  };
+}
+
+interface DeliveryHealthPayload {
+  status: string;
+  color: DeliveryColor;
+  readAt: string;
+  counts: Record<string, number>;
+  reasons: string[];
+  indicators: DeliveryIndicatorView[];
+  canary: {
+    version: string;
+    status: string;
+    color: DeliveryColor;
+    auditId: string | null;
+    checks: Array<{ id: string; label: string; status: string; color: DeliveryColor; detail: string | null }>;
+  };
 }
 
 interface AnalyticsFunnel {
   totalLeads: number;
   kitOrders: { count: number; revenueUsd: number };
-  activeSubscriptions: { growth: number; agency: number; starter: number; total: number };
+  activeSubscriptions: { growth: number; agency: number; total: number };
   mrr: number;
   arr: number;
   engagements: { requested: number; contacted: number; won: number; lost: number; pipelineValueUsd: number };
@@ -352,7 +410,6 @@ function Tile({
 function PlanBadge({ tier }: { tier: string }) {
   const tokenMap: Record<string, { bg: string; color: string }> = {
     free:    { bg: "var(--color-badge-plan-free-bg)",    color: "var(--color-badge-plan-free-text)" },
-    starter: { bg: "var(--color-badge-plan-starter-bg)", color: "var(--color-badge-plan-starter-text)" },
     growth:  { bg: "var(--color-badge-plan-growth-bg)",  color: "var(--color-badge-plan-growth-text)" },
     agency:  { bg: "var(--color-badge-plan-agency-bg)",  color: "var(--color-badge-plan-agency-text)" },
   };
@@ -872,7 +929,188 @@ function ConversionFunnel({ analytics }: { analytics: Analytics }) {
 // SystemHealthTab — loaded eagerly on auth
 // ---------------------------------------------------------------------------
 
-function SystemHealthTab({ health }: { health: SystemHealth | null; loading: boolean }) {
+/** Amber for every unknown state: "we cannot see" is not green and not red. */
+const DELIVERY_TONE: Record<DeliveryColor, { border: string; text: string; bg: string }> = {
+  green: { border: "var(--color-success)", text: "var(--color-success)", bg: "var(--color-success-surface)" },
+  amber: {
+    border: "var(--color-accent-amber)",
+    text: "var(--color-badge-status-warn-text)",
+    bg: "var(--color-badge-status-warn-bg)",
+  },
+  red: { border: "var(--color-error)", text: "var(--color-error)", bg: "var(--color-badge-status-warn-bg)" },
+};
+
+const STATUS_WORD: Record<string, string> = {
+  healthy: "healthy",
+  degraded: "degraded",
+  failing: "failing",
+  not_measured: "not measured",
+  not_connected: "not connected",
+  insufficient_evidence: "insufficient evidence",
+};
+
+/**
+ * Renders the number, or the WORD for why there is no number. It never renders
+ * a missing value as 0 — that substitution is the bug this panel exists to fix.
+ */
+function deliveryValueText(i: DeliveryIndicatorView): string {
+  if (i.value === null) return STATUS_WORD[i.status] ?? i.status;
+  switch (i.unit) {
+    case "rate":
+      return `${Math.round(i.value * 1000) / 10}%`;
+    case "hours":
+      return `${Math.round(i.value)}h`;
+    case "minutes":
+      return `${Math.round(i.value)}min`;
+    case "seconds":
+      return `${Math.round(i.value)}s`;
+    default:
+      return String(i.value);
+  }
+}
+
+function DeliveryHealthSection({ delivery }: { delivery: DeliveryHealthPayload | null }) {
+  if (!delivery) {
+    return (
+      <section aria-labelledby="delivery-health-heading">
+        <h3
+          id="delivery-health-heading"
+          style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, margin: "0 0 var(--space-2) 0" }}
+        >
+          Delivery Health
+        </h3>
+        <p style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", margin: 0 }}>
+          Delivery Health could not be read. That means delivery is <strong>unknown</strong> — not healthy.
+        </p>
+      </section>
+    );
+  }
+
+  const tone = DELIVERY_TONE[delivery.color];
+
+  return (
+    <section aria-labelledby="delivery-health-heading" style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+      <h3
+        id="delivery-health-heading"
+        style={{ fontSize: "var(--font-size-h4)", fontWeight: 700, margin: 0, color: "var(--color-text)" }}
+      >
+        Delivery Health — are we delivering?
+      </h3>
+      <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+        Infrastructure health, below, says the APIs answer. This says the customer received something.
+        Read at {delivery.readAt}. Canary set {delivery.canary.version}.
+      </p>
+
+      <div
+        role="status"
+        style={{
+          border: `1px solid ${tone.border}`,
+          borderRadius: "var(--radius-md)",
+          padding: "var(--space-4) var(--space-5)",
+          backgroundColor: tone.bg,
+        }}
+      >
+        <p style={{ margin: 0, fontWeight: 700, fontSize: "var(--font-size-body-sm)", color: tone.text }}>
+          Delivery is {STATUS_WORD[delivery.status] ?? delivery.status}
+        </p>
+        {delivery.reasons.length > 0 ? (
+          <ul style={{ margin: "var(--space-2) 0 0 0", paddingLeft: "var(--space-5)", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+            {delivery.reasons.map((r, i) => (
+              <li key={i} style={{ marginBottom: "var(--space-1)" }}>
+                {r}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+            Every indicator measured and inside threshold.
+          </p>
+        )}
+      </div>
+
+      {/* Canary — the alert that changes this panel's colour */}
+      <div
+        style={{
+          border: `1px solid ${DELIVERY_TONE[delivery.canary.color].border}`,
+          borderRadius: "var(--radius-md)",
+          padding: "var(--space-3) var(--space-4)",
+        }}
+      >
+        <p style={{ margin: "0 0 var(--space-2) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+          Ozvor canary tenant ({delivery.canary.version}) — {STATUS_WORD[delivery.canary.status] ?? delivery.canary.status}
+        </p>
+        <ul style={{ margin: 0, paddingLeft: "var(--space-5)", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+          {delivery.canary.checks.map((k) => (
+            <li key={k.id} style={{ marginBottom: "var(--space-1)" }}>
+              <span style={{ color: DELIVERY_TONE[k.color].text, fontWeight: 600 }}>
+                {STATUS_WORD[k.status] ?? k.status}
+              </span>{" "}
+              — {k.label}
+              {k.detail ? <span style={{ color: "var(--color-muted)" }}>: {k.detail}</span> : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Indicators — each one carries its contract */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "var(--space-3)" }}>
+        {delivery.indicators.map((i) => (
+          <div
+            key={i.id}
+            style={{
+              border: `1px solid ${DELIVERY_TONE[i.color].border}`,
+              borderRadius: "var(--radius-md)",
+              padding: "var(--space-3) var(--space-4)",
+              minWidth: 0,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>{i.label}</p>
+            <p style={{ margin: "var(--space-1) 0", fontSize: "var(--font-size-h4)", fontWeight: 700, color: DELIVERY_TONE[i.color].text }}>
+              {deliveryValueText(i)}
+            </p>
+            <p style={{ margin: 0, fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+              {i.reason ?? "inside threshold"}
+            </p>
+            <details style={{ marginTop: "var(--space-2)" }}>
+              <summary style={{ cursor: "pointer", fontSize: "var(--font-size-body-sm)", color: "var(--color-muted)" }}>
+                Metric contract
+              </summary>
+              <dl style={{ margin: "var(--space-2) 0 0 0", fontSize: "var(--font-size-body-sm)", color: "var(--color-text)" }}>
+                <dt style={{ fontWeight: 700 }}>Question</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0" }}>{i.contract.question}</dd>
+                <dt style={{ fontWeight: 700 }}>Owner</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0" }}>{i.contract.owner}</dd>
+                <dt style={{ fontWeight: 700 }}>Source of truth</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0", wordBreak: "break-word" }}>{i.contract.sourceOfTruth}</dd>
+                <dt style={{ fontWeight: 700 }}>Grain / window / timezone</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0" }}>
+                  {i.contract.grain} · {i.contract.windowDays}d · {i.contract.timezone}
+                </dd>
+                <dt style={{ fontWeight: 700 }}>Includes</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0" }}>{i.contract.includes}</dd>
+                <dt style={{ fontWeight: 700 }}>Excludes</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0" }}>{i.contract.excludes}</dd>
+                <dt style={{ fontWeight: 700 }}>Late data</dt>
+                <dd style={{ margin: "0 0 var(--space-1) 0" }}>{i.contract.lateData}</dd>
+                <dt style={{ fontWeight: 700 }}>Quality test</dt>
+                <dd style={{ margin: 0, wordBreak: "break-word" }}>{i.contract.qualityTest}</dd>
+              </dl>
+            </details>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SystemHealthTab({
+  health,
+  delivery,
+}: {
+  health: SystemHealth | null;
+  loading: boolean;
+  delivery: DeliveryHealthPayload | null;
+}) {
   if (!health) {
     return (
       <p
@@ -978,6 +1216,11 @@ function SystemHealthTab({ health }: { health: SystemHealth | null; loading: boo
           All systems OK
         </div>
       )}
+
+      {/* Delivery Health — P0-09. First, because "are we delivering?" comes
+          before "are the APIs online?". The infra blocks below stay exactly as
+          they were: this is added beside them, never in place of them. */}
+      <DeliveryHealthSection delivery={delivery} />
 
       {/* AI Engines */}
       <section aria-labelledby="health-engines-heading">
@@ -2620,6 +2863,85 @@ function DossierPanel({ email, onClose }: { email: string; onClose: () => void }
 // Reciclagem 60d (founder 01/09): the batches the weekly worker proposed, each
 // downloadable as CSV for the founder to load into a NEW SmartLead campaign.
 // The machine never sends — this panel is the founder's half of the loop.
+// CCPA/CPRA requests — the table was written by /legal/do-not-sell and never
+// read anywhere: a legal request fell into the void (PENDING 10.A.9). Same
+// lazy-fetch pattern as RecycleBatchesPanel; shown on the Leads tab.
+interface CcpaRequestRow {
+  id: string;
+  requester_email: string;
+  requester_name: string | null;
+  request_type: string;
+  status: string;
+  created_at: string;
+}
+
+function CcpaRequestsPanel({ active }: { active: boolean }) {
+  const [requests, setRequests] = useState<CcpaRequestRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!active || fetchedRef.current) return;
+    fetchedRef.current = true;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/admin/ccpa-requests");
+        if (!res.ok) {
+          setFailed(true);
+          return;
+        }
+        const body = (await res.json()) as { requests: CcpaRequestRow[] };
+        setRequests(body.requests ?? []);
+      } catch {
+        setFailed(true);
+      }
+    })();
+  }, [active]);
+
+  if (failed) {
+    return (
+      <p role="alert" style={{ margin: "0 0 var(--space-4) 0", color: "var(--color-error)", fontSize: "var(--font-size-caption)" }}>
+        CCPA: failed to load requests.
+      </p>
+    );
+  }
+  if (!requests) return null;
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-3) var(--space-4)",
+        marginBottom: "var(--space-4)",
+        backgroundColor: "var(--color-surface)",
+      }}
+    >
+      <p style={{ margin: "0 0 var(--space-1) 0", fontWeight: 700, fontSize: "var(--font-size-body-sm)" }}>
+        CCPA/CPRA requests ({requests.length})
+      </p>
+      <p style={{ margin: "0 0 var(--space-2) 0", color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>
+        Do-not-sell and limit-sensitive-PI submissions from /legal/do-not-sell — 45-day legal
+        deadline each. Action them by email; the table is append-only.
+      </p>
+      {requests.length === 0 ? (
+        <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--font-size-caption)" }}>No requests yet.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          {requests.map((r) => (
+            <li key={r.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", fontSize: "var(--font-size-caption)", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{r.requester_email}</span>
+              <span style={{ color: "var(--color-muted)" }}>{r.request_type}</span>
+              <StatusBadge status={r.status} />
+              <span style={{ color: "var(--color-muted)" }}>{fmtShortDate(r.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function RecycleBatchesPanel({ active }: { active: boolean }) {
   const [batches, setBatches] = useState<RecycleBatchView[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -3141,6 +3463,7 @@ export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null); // null = checking
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [deliveryHealth, setDeliveryHealth] = useState<DeliveryHealthPayload | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -3244,11 +3567,20 @@ export default function AdminPage() {
     if (fetchedTabs.has("system-health")) return;
     setLoadingHealth(true);
     try {
-      const res = await apiFetch("/api/admin/system-health");
+      const [res, deliveryRes] = await Promise.all([
+        apiFetch("/api/admin/system-health"),
+        // P0-09 — the delivery panel. Fetched alongside, never instead: a
+        // failure here leaves the infra panel intact and the delivery block
+        // says "unknown", which is the honest reading.
+        apiFetch("/api/admin/delivery-health").catch(() => null),
+      ]);
       if (res.ok) {
         const data = (await res.json()) as SystemHealth;
         setSystemHealth(data);
         setFetchedTabs((prev) => new Set([...prev, "system-health"]));
+      }
+      if (deliveryRes && deliveryRes.ok) {
+        setDeliveryHealth((await deliveryRes.json()) as DeliveryHealthPayload);
       }
     } catch {
       // Health load failure is non-fatal — tab will show "unavailable"
@@ -3623,7 +3955,6 @@ export default function AdminPage() {
               }}
             >
               <Tile label="Total clients"       value={overview.tenants.total} />
-              <Tile label="Paid (Starter)"      value={overview.tenants.byTier.starter} />
               <Tile label="Paid (Growth)"       value={overview.tenants.byTier.growth} />
               <Tile label="Paid (Agency)"       value={overview.tenants.byTier.agency} />
               <Tile label="Total leads"         value={overview.leads.total} />
@@ -3710,7 +4041,7 @@ export default function AdminPage() {
           >
             System Health
           </h2>
-          <SystemHealthTab health={systemHealth} loading={loadingHealth} />
+          <SystemHealthTab health={systemHealth} loading={loadingHealth} delivery={deliveryHealth} />
         </section>
 
         {/* ── Analytics tab ── */}
@@ -3898,6 +4229,9 @@ export default function AdminPage() {
 
           {/* Reciclagem 60d — batches proposed by the weekly worker (CSV). */}
           <RecycleBatchesPanel active={activeTab === "leads"} />
+
+          {/* CCPA/CPRA requests — previously write-only (PENDING 10.A.9). */}
+          <CcpaRequestsPanel active={activeTab === "leads"} />
 
           {dossierEmail && (
             <DossierPanel email={dossierEmail} onClose={() => setDossierEmail(null)} />

@@ -18,15 +18,28 @@ import { DirectCheckoutButton } from "../../../components/marketing/DirectChecko
 import { FounderAnnualNote } from "../../../components/marketing/FounderAnnualNote";
 import { AgenciesFilmHero } from "./AgenciesFilmHero";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
+// Every plan figure on this page is DERIVED from packages/shared — the same
+// PLAN_LIMITS/pricing production enforces — so the page can never again say
+// a brand count the product does not enforce (2026-09-02 sweep, PENDING 10.A.2).
+import {
+  PLAN_LIMITS,
+  LIST_PRICE_USD,
+  founderAnnualPerMonthUsd,
+  perBrandUsd,
+} from "@organic-posts/shared";
+
+const AGENCY_BRANDS = PLAN_LIMITS.agency.max_brands;
+const AGENCY_MONTHLY = LIST_PRICE_USD.agency;
+const PER_BRAND = perBrandUsd(AGENCY_MONTHLY, AGENCY_BRANDS);
+const PER_BRAND_FOUNDER = perBrandUsd(founderAnnualPerMonthUsd("agency"), AGENCY_BRANDS);
 
 export const metadata: Metadata = {
   title: "Ozvor for agencies — white-label AI-visibility for every client",
-  description:
-    "Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to 10 client brands. $549/mo, $54.90 per brand ($38.40 on founder annual). Win the GEO line item before your competitor agency does.",
+  description: `Run AI-search audits, evidence-backed GEO plans, and white-label reports for up to ${AGENCY_BRANDS} client brands. $${AGENCY_MONTHLY}/mo, $${PER_BRAND} per brand ($${PER_BRAND_FOUNDER} on founder annual). Win the GEO line item before your competitor agency does.`,
   alternates: { canonical: "https://ozvor.com/agencies" },
   openGraph: {
     title: "Ozvor for agencies — white-label AI visibility",
-    description: "Audits, evidence, plans and white-label reports for up to 10 client brands. $549/mo.",
+    description: `Audits, evidence, plans and white-label reports for up to ${AGENCY_BRANDS} client brands. $${AGENCY_MONTHLY}/mo.`,
     url: "https://ozvor.com/agencies",
     siteName: "Ozvor",
     type: "website",
@@ -35,13 +48,15 @@ export const metadata: Metadata = {
 };
 
 const FEATURES: { t: string; d: string }[] = [
-  { t: "Multi-client dashboard", d: "Up to 10 brands in one portfolio view. See every client's AI Visibility Score, trend, and next action in one screen." },
+  { t: "Multi-client dashboard", d: `Up to ${AGENCY_BRANDS} brands in one portfolio view. See every client's AI Visibility Score, trend, and next action in one screen.` },
   { t: "White-label reports", d: "Client-facing reports under your agency's brand. The evidence is Ozvor's. The relationship is yours." },
   { t: "Weekly monitoring on every client", d: "Every brand re-probed weekly across ChatGPT, Claude, Perplexity, Gemini and Google AI Overview." },
-  { t: "10 competitors per brand", d: "Show each client exactly who AI recommends instead of them. It's the single most persuasive slide you'll present all year." },
-  { t: "Client approval workflow", d: "Drafts move through review and approval — nothing publishes without a sign-off. Your process, enforced by the tool." },
+  { t: `${PLAN_LIMITS.agency.max_competitors} competitors per brand`, d: "Show each client exactly who AI recommends instead of them. It's the single most persuasive slide you'll present all year." },
+  // PENDING 10.A.4: an in-product approval flow for clients does not exist yet —
+  // this card sells what DOES ship: share links + white-label reports (routes/agency.ts).
+  { t: "Shareable client reports", d: "Create a revocable share link for any client's branded report — send it, present it, revoke it. No client login needed." },
   { t: "Pitch mode", d: "Run a free test on a prospect before the meeting. Open with their real AI-visibility gaps. Evidence beats promises." },
-  { t: "Priority support · 4h SLA", d: "When a client call is tomorrow, you get answers today." },
+  { t: "Priority support · 1 business day", d: "When a client call is coming up, you get answers within 1 business day — the same promise as /support." },
   { t: "CSV export + API", d: "Pull the data into your own decks, dashboards and reporting stack." },
 ];
 
@@ -91,10 +106,10 @@ export default function AgenciesPage() {
 
       {/* Economics strip */}
       <div className="ag-card" style={{ marginTop: "var(--space-12)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-2)" }}>
-        <div className="ag-stat"><b>15</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>client brands on one plan</span></div>
-        <div className="ag-stat"><b>$54.90</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>per brand per month. Just $38.40 on founder annual pricing.</span></div>
+        <div className="ag-stat"><b>{AGENCY_BRANDS}</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>client brands on one plan</span></div>
+        <div className="ag-stat"><b>${PER_BRAND}</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>per brand per month. Just ${PER_BRAND_FOUNDER} on founder annual pricing.</span></div>
         <div className="ag-stat"><b>5</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>AI engines probed weekly</span></div>
-        <div className="ag-stat"><b>4h</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>priority-support SLA</span></div>
+        <div className="ag-stat"><b>1 day</b><span style={{ color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)" }}>priority support answered within 1 business day</span></div>
       </div>
       <FounderAnnualNote style={{ marginTop: "var(--space-3)", fontSize: "var(--font-size-caption)", color: "var(--color-muted)", textAlign: "center" }} />
 

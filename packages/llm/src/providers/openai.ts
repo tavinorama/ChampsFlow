@@ -19,7 +19,10 @@
  *
  * Mock mode (CRITICAL): if OPENAI_API_KEY is absent, returns a deterministic
  * mock response seeded by a hash of the query text.
- * Live HTTP path: clearly-marked TODO stub that throws "live mode not yet wired".
+ * Live path: when OPENAI_API_KEY is set, calls the real OpenAI API (Responses
+ * API with web_search, or Chat Completions when GEO_WEB_SEARCH=0) — fully
+ * wired and the production path. Mock is dev/test only and blocked in
+ * production by assertLiveOrThrow (integrity guard).
  *
  * Key env vars:
  *  - OPENAI_API_KEY — OpenAI API key (absent = mock)

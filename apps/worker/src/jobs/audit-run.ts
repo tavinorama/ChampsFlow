@@ -32,6 +32,12 @@ import {
   responseSuccesses,
   GEO_METHODOLOGY_VERSION,
   buildIntentPortfolio,
+  PROMPT_UNIVERSE_VERSION,
+  LEGACY_PROMPT_SET_VERSION,
+  promptSetHash,
+  composeUniverse,
+  parseCohortMixEnv,
+  type PromptDefinition,
   type PortfolioPrompt,
   wilson95,
   aggregateIntentEngine,
@@ -82,6 +88,7 @@ import { PLAN_LIMITS, type PlanTier } from "../../../api/src/integrations/stripe
 import { creditsForAudit } from "../../../api/src/lib/credits";
 import { overagePackUsd } from "../../../../packages/shared/src/credits";
 import { sendCreditsOutEmail } from "../../../../packages/shared/src/emails/credits-out";
+import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
 
 /**
  * D1: one "You are out of credits" email per tenant per month, sent when a
@@ -310,6 +317,79 @@ function dbProvider(p: string): string {
   return p;
 }
 
+// ---------------------------------------------------------------------------
+// plan_task lifecycle — schema capability probe (audit P0-02)
+// ---------------------------------------------------------------------------
+
+/**
+ * Memoized per process. The schema does not change under a running worker, and
+ * this sits in the hot path of every audit.
+ * `undefined` = not yet asked.
+ */
+let planTaskLifecycleCache: boolean | undefined;
+
+/** Test seam. */
+export function resetPlanTaskLifecycleCache(): void {
+  planTaskLifecycleCache = undefined;
+}
+
+/**
+ * Has migration 20260903000001_plan_task_lifecycle been applied?
+ *
+ * Asked instead of assumed, because the migration ships in its own PR that the
+ * founder merges by hand. On any error the answer is `false` — the safe side:
+ * we write the vocabulary that certainly exists rather than gambling an INSERT
+ * that a fail-soft catch would swallow.
+ */
+export async function planTaskLifecycleReady(
+  sql: postgres.Sql
+): Promise<boolean> {
+  if (planTaskLifecycleCache !== undefined) return planTaskLifecycleCache;
+  try {
+    const rows = await sql`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'plan_task' AND column_name = 'verified_at'
+      ) AS ok
+    `;
+    planTaskLifecycleCache = rows[0]?.ok === true;
+  } catch (err) {
+    logger.warn("plan_task_lifecycle_probe_failed", {
+      message: (err as Error).message?.slice(0, 160),
+    });
+    planTaskLifecycleCache = false;
+  }
+  return planTaskLifecycleCache;
+}
+
+/**
+ * Downgrade a lifecycle state to the pre-migration vocabulary
+ * (proposed|accepted|rejected|done).
+ *
+ * `verified` becomes `done` only here, and only because the column physically
+ * cannot hold anything else yet. The read side does NOT read that back as
+ * proof: normalizePlanTaskState coerces 'done' to `legacy_self_reported`, and
+ * Verified Execution reports `null` (not 0) while the migration is pending. So
+ * the downgrade loses the number, never fakes it.
+ */
+export function legacyStatus(s: string): string {
+  switch (s) {
+    case "verified":
+      return "done";
+    case "rejected":
+      return "rejected";
+    case "expired":
+      return "rejected";
+    case "proposed":
+      return "proposed";
+    default:
+      // drafting / review / published / indexed / cited / regressed /
+      // blocked / client_acknowledged / manual_done_pending_verification /
+      // legacy_self_reported — all still open work.
+      return "accepted";
+  }
+}
+
 /**
  * Process one audit job. `sql` is a postgres-js client created by the worker.
  */
@@ -409,6 +489,114 @@ export async function processAuditJob(
       logger.warn("custom_prompts_load_failed", {
         brand_id,
         message: (err as Error).message,
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // P0-06 — Prompt Universe v2, per brand and OPT-IN BY DATA.
+    //
+    // A brand only takes this path once it actually HAS a v2 universe: live
+    // audit_prompt rows carrying cohort + intent. Brands that never migrated
+    // keep the legacy portfolio above, byte for byte — swapping every tenant's
+    // questions at once would change every customer's score in one deploy,
+    // which is precisely the unlabelled break this capability exists to end.
+    //
+    // The Ozvor workspace opts in via scripts/migrate-ozvor-prompt-universe.ts,
+    // which archives the generic prompts (never deletes) and writes the audit
+    // trail in the same transaction.
+    //
+    // Failure here NEVER blocks the audit — but it is logged loudly, because a
+    // brand that silently fell back to the generic portfolio after opting in
+    // would be measured on the wrong questions without anyone being told.
+    let universeApplied = false;
+    try {
+      const universeRows = await sql<
+        Array<{
+          id: string;
+          text: string;
+          cohort: string;
+          intent: string;
+          business_value: string | null;
+          relevance_score: string | null;
+        }>
+      >`
+        SELECT id, text, cohort, intent, business_value, relevance_score
+          FROM audit_prompt
+         WHERE brand_id = ${brand_id}
+           AND archived_at IS NULL
+           AND cohort IS NOT NULL
+           AND intent IS NOT NULL
+      `;
+
+      if (universeRows.length > 0) {
+        const defs: PromptDefinition[] = universeRows.map((r) => ({
+          id: r.id,
+          text: r.text,
+          cohort: r.cohort as PromptDefinition["cohort"],
+          intent: r.intent as PromptDefinition["intent"],
+          vertical: null,
+          market: "US",
+          locale: "en-US",
+          funnelStage: "awareness",
+          demand: null,
+          // A NULL score is "not scored", not zero. Defaulting to 0 would sink
+          // every unscored prompt to the bottom of the priority order and
+          // quietly reshape the universe; 0.5 is the neutral middle.
+          businessValue: r.business_value === null ? 0.5 : Number(r.business_value),
+          relevanceScore: r.relevance_score === null ? 0.5 : Number(r.relevance_score),
+          branded: false,
+          expectedCompetitors: [],
+          validFrom: "1970-01-01T00:00:00.000Z",
+          validUntil: null,
+          version: PROMPT_UNIVERSE_VERSION,
+          approvedBy: null,
+          ownerType: "client",
+          archivedAt: null,
+          archivedReason: null,
+        }));
+
+        // Composition is configurable and NOT hardcoded as a universal truth.
+        // A malformed OZVOR_COHORT_MIX throws rather than falling back, so a
+        // typo cannot silently reshape the measurement — the catch below turns
+        // that into a loud warning and the legacy portfolio, never a quiet
+        // half-applied mix.
+        const mixOverride = parseCohortMixEnv(process.env["OZVOR_COHORT_MIX"]);
+        const composed = composeUniverse(defs, {
+          size: defs.length,
+          mix: mixOverride,
+          now: new Date().toISOString(),
+        });
+
+        // Each universe prompt is its OWN single-formulation intent. Pooling
+        // different questions under one shared intent would sum their runs and
+        // fabricate a tighter confidence interval than the data has — the same
+        // reason custom prompts get custom_1, custom_2, … above.
+        prompts.length = 0;
+        prompts.push(
+          ...composed.prompts.map((p) => ({
+            text: p.text,
+            intentId: `uv_${p.id}`,
+            formulationIx: 0,
+          }))
+        );
+        universeApplied = true;
+
+        logger.info("prompt_universe_v2_applied", {
+          brand_id,
+          version: composed.version,
+          set_hash: composed.setHash,
+          mix_source: composed.mixSource,
+          counts: composed.counts,
+          // Unmet quotas and renormalisations travel with the run. A
+          // composition nobody can read back is a hidden methodology change.
+          notes: composed.notes,
+        });
+      }
+    } catch (err) {
+      logger.error("prompt_universe_v2_failed", {
+        brand_id,
+        detail: "fell back to the legacy portfolio — this brand may be measured on the wrong questions",
+        message: (err as Error).message?.slice(0, 200),
       });
     }
 
@@ -1224,6 +1412,12 @@ export async function processAuditJob(
       probeRepeat: result.baseRuns,
       // B1 — protocol identity + audit-level citation rate with Wilson 95% CI.
       methodologyVersion: GEO_METHODOLOGY_VERSION,
+      // P0-06 — which questions produced this score. Carried in the breakdown
+      // as well as in geo_audit columns, so a report read straight from the
+      // JSONB can still tell whether two runs are prompt-comparable.
+      promptSetVersion: universeApplied ? PROMPT_UNIVERSE_VERSION : LEGACY_PROMPT_SET_VERSION,
+      promptSetHash: promptSetHash(prompts.map((p) => p.text)),
+      promptUniverseApplied: universeApplied,
       citationCI: {
         rate: round4(citationCI.rate),
         low: round4(citationCI.low),
@@ -1359,6 +1553,42 @@ export async function processAuditJob(
        WHERE id = ${audit_id}
     `;
 
+    // P0-06 — stamp the other two facts the trend badge needs: WHICH questions
+    // were asked, and WHICH engines answered.
+    //
+    // Why this exists: on 2026-09-03 the founder's own history had 30/06 with
+    // two engines, 29/07 09:58 with one, 29/07 14:11 with five on a new
+    // method, and 31/08 without anthropic — all drawn as one falling line,
+    // because nothing recorded the ruler. methodology_version alone could not
+    // catch the 31/08 case: same method, different panel.
+    //
+    // These columns arrive with migration 20260903000001_prompt_universe,
+    // which is the founder's to merge. Until it lands the UPDATE fails and the
+    // feature is simply OFF: the badge reads "unknown" (never "comparable"),
+    // and the audit is NOT failed over it — the measurement itself is sound,
+    // it is only its label that is missing. The warning names the migration so
+    // "off" is never mistaken for "working".
+    try {
+      await sql`
+        UPDATE geo_audit
+           SET prompt_set_version = ${universeApplied ? PROMPT_UNIVERSE_VERSION : LEGACY_PROMPT_SET_VERSION},
+               prompt_set_hash    = ${promptSetHash(prompts.map((p) => p.text))},
+               -- Plain parameter with an explicit ::text[] cast, NOT
+               -- sql.array(): that serialisation is what silently killed
+               -- monitor-reconcile for weeks (see its comment).
+               engine_set         = ${[...providersUsed].sort()}::text[]
+         WHERE id = ${audit_id}
+      `;
+    } catch (err) {
+      logger.warn("audit_comparability_stamp_unavailable", {
+        audit_id,
+        brand_id,
+        migration: "20260903000001_prompt_universe",
+        detail: "trend badge degrades to 'unknown' until this migration is applied",
+        message: (err as Error).message?.slice(0, 200),
+      });
+    }
+
     // -----------------------------------------------------------------------
     // Visibility Loop v2 (Phase 1): every COMPLETED audit refreshes the
     // client's "Do Next" cards, deterministically from the probe evidence that
@@ -1412,14 +1642,21 @@ export async function processAuditJob(
           VALUES (${tenant_id}, ${brand_id}, ${audit_id}, 'loop', NOW())
           RETURNING id
         `;
+        // The loop now writes lifecycle states (verified / regressed /
+        // legacy_self_reported). Until migration 20260903000001 widens the
+        // CHECK, those values would abort every INSERT and — because this whole
+        // block is fail-soft — silently kill Do Next. So ask the schema what it
+        // can take, once, and downgrade rather than break.
+        const lifecycleOk = await planTaskLifecycleReady(sql);
         for (const t of loopRows) {
+          const status = lifecycleOk ? t.status : legacyStatus(t.status);
           await sql`
             INSERT INTO plan_task
               (tenant_id, plan_id, vector, gap, action, effort, impact, priority,
                status, evidence, metric, owner, created_at)
             VALUES
               (${tenant_id}, ${loopPlan.id}, ${t.vector}, ${t.gap}, ${t.action},
-               ${t.effort}, ${t.impact}, ${t.priority}, ${t.status},
+               ${t.effort}, ${t.impact}, ${t.priority}, ${status},
                ${t.evidence}, ${t.metric}, ${t.owner}, NOW())
           `;
         }
@@ -1427,8 +1664,17 @@ export async function processAuditJob(
           audit_id,
           brand_id,
           plan_id: loopPlan.id,
+          lifecycle_states: lifecycleOk,
           ...stats,
         });
+        if (!lifecycleOk) {
+          logger.warn("visibility_loop_states_downgraded", {
+            audit_id,
+            brand_id,
+            effect:
+              "verified/regressed written as the legacy vocabulary; Verified Execution stays unmeasured until 20260903000001_plan_task_lifecycle is applied",
+          });
+        }
       }
     } catch (err) {
       logger.error("visibility_loop_failed", {
@@ -1739,7 +1985,14 @@ function getDailyAuditQueue(): Queue {
   redis.on("error", (err: Error) => {
     logger.error("daily_monitor_redis_error", { message: err.message });
   });
-  _dailyAuditQueue = new Queue("geo-audit", { connection: redis });
+  // 17/08 retry storm: this producer used to be constructed with no
+  // defaultJobOptions, so the DAILY SCHEDULED audit — the one a customer never
+  // watches fail — ran on BullMQ's defaults (attempts:1, no backoff) while the
+  // manual audit from the API retried three times. Same queue, two policies.
+  _dailyAuditQueue = new Queue(AUDIT_QUEUE_NAME, {
+    connection: redis,
+    defaultJobOptions: AUDIT_JOB_OPTIONS,
+  });
   return _dailyAuditQueue;
 }
 

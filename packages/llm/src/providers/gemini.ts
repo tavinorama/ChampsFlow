@@ -18,7 +18,10 @@
  *
  * Mock mode (CRITICAL): if GEMINI_API_KEY is absent, returns a deterministic
  * mock response seeded by a hash of the query text.
- * Live HTTP path: clearly-marked TODO stub that throws "live mode not yet wired".
+ * Live path: when GEMINI_API_KEY is set, calls the real generateContent API
+ * (Google Search grounding per GEO_WEB_SEARCH) — fully wired and the
+ * production path. Mock is dev/test only and blocked in production by
+ * assertLiveOrThrow (integrity guard).
  *
  * Key env vars:
  *  - GEMINI_API_KEY — Google AI API key (absent = mock)
