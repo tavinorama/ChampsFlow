@@ -6,6 +6,8 @@
  * the honest sentence instead of "All caught up".
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   DELIVERY_LOOP_BROKEN,
   DEFAULT_VISIBILITY_TARGET,
@@ -180,3 +182,46 @@ describe("the aggregate Delivery Health reads", () => {
     expect(rollupDoNextInvariant([]).rate).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// The worker wiring. audit-run.ts cannot be exercised without a database, so
+// these are source-level assertions — the same pattern the repo already uses
+// for it (tests/unit/hallucination-flag.test.ts). They exist because each of
+// these lines is the difference between the policy running and the policy
+// being dead code.
+// ---------------------------------------------------------------------------
+
+const workerSource = readFileSync(
+  join(process.cwd(), "apps/worker/src/jobs/audit-run.ts"),
+  "utf8"
+);
+
+describe("the worker actually runs the policy", () => {
+  it("carries the loop's outcome out of the fail-soft block", () => {
+    expect(workerSource).toContain("let loopGeneration:");
+    expect(workerSource).toContain('loopGeneration = { status: "ok"');
+    expect(workerSource).toContain('status: "failed"');
+    expect(workerSource).toContain('status: "no_evidence"');
+  });
+
+  it("evaluates the invariant on every audit and opens the investigation", () => {
+    expect(workerSource).toContain("evaluateDoNextPolicy({");
+    expect(workerSource).toContain("verdict.investigation");
+    expect(workerSource).toContain("INSERT INTO plan_task");
+    expect(workerSource).toContain("resolveVisibilityTarget(process.env)");
+  });
+
+  it("never hardcodes a visibility target in the worker", () => {
+    expect(workerSource).not.toMatch(/visibilityScore:\s*\d+/);
+  });
+
+  it("clears the previous investigation card so it is not carried forever", () => {
+    expect(workerSource).toContain("t.gap !== INVESTIGATION_GAP");
+    expect(workerSource).toContain("delivery_investigation_cleared");
+  });
+
+  it("passes an unmeasured score through as null, never as zero", () => {
+    expect(workerSource).toContain('typeof score.ai === "number" ? score.ai : null');
+  });
+});
+

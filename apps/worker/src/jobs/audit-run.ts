@@ -1740,7 +1740,7 @@ export async function processAuditJob(
              ORDER BY priority DESC, created_at ASC
           `;
         }
-        const { rows: loopRows, stats } = reconcileLoopTasks(
+        let { rows: loopRows, stats } = reconcileLoopTasks(
           prevTasks,
           build,
           new Date().toISOString().slice(0, 10)
@@ -1756,6 +1756,21 @@ export async function processAuditJob(
         // block is fail-soft — silently kill Do Next. So ask the schema what it
         // can take, once, and downgrade rather than break.
         loopPlanId = loopPlan.id;
+        // P0-01 — the investigation card is EPHEMERAL. It is re-created below,
+        // by the policy, on every audit where the invariant is still violated,
+        // so carrying the previous one forward would leave "Ozvor is
+        // investigating" on screen (and the brand marked unhealthy) long after
+        // the loop recovered. Dropping it here makes it self-clearing.
+        const investigationsCarried = loopRows.filter((t) => t.gap === INVESTIGATION_GAP).length;
+        if (investigationsCarried > 0) {
+          loopRows = loopRows.filter((t) => t.gap !== INVESTIGATION_GAP);
+          logger.info("delivery_investigation_cleared", {
+            audit_id,
+            brand_id,
+            cleared: investigationsCarried,
+            effect: "the policy below re-opens it only if the invariant is still violated",
+          });
+        }
         // P0-07 — replace the deterministic loop text with the classified
         // action wherever the classifier produced one for the same question.
         // The gap KEY is untouched, so cross-audit matching still works.
