@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "the-small-engine-shop-chatgpt-named-then-almost-lost",
+    title: "The Small-Engine Shop ChatGPT Named, Then Almost Lost",
+    excerpt: "A Bozeman small-engine repair shop got named by ChatGPT, then nearly lost the customer anyway, a lesson in what AI search traffic actually needs from your page.",
+    readTime: "5 min read",
+    publishedAt: "2026-09-07",
+    publishedAtDisplay: "7 September 2026",
+  },
+  {
+    type: "article",
     slug: "why-doesnt-chatgpt-mention-my-business",
     title: "Why Doesn't ChatGPT Mention My Business? A Plain-English Guide to Generative Engine Optimisation",
     excerpt: "A Leeds plumbing firm's brush with AI search explains, in plain terms, how generative engines decide which small businesses get named and which get skipped.",
