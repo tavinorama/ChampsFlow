@@ -15,6 +15,8 @@
  * writing should go.
  */
 
+import { resolveIntentLabel } from "@organic-posts/shared";
+
 export interface IntentEngine {
   engine: string;
   n: number;
@@ -26,20 +28,17 @@ export interface IntentEngine {
 }
 
 export interface IntentRow {
+  /** Internal id: `uv_<prompt id>`, `custom_3`, or a legacy intent key. */
   intent: string;
+  /**
+   * The QUESTION TEXT. Resolved by the breakdown route (and stamped by the
+   * worker on new audits). Absent only when the prompt row is gone — the row
+   * then says "Archived question", never the id. See P1-07.
+   */
+  label?: string | null;
   overall: { n: number; citationRate: number; ciLow: number; ciHigh: number } | null;
   engines?: IntentEngine[] | null;
 }
-
-/** Buyer-facing names. An unknown key renders raw so it gets noticed. */
-const INTENT_LABEL: Record<string, string> = {
-  brand_direct: "When they ask about you by name",
-  category_discovery: "When they ask who does this",
-  comparison: "When they compare you to someone",
-  problem_solution: "When they describe the problem",
-  local_intent: "When they ask for someone nearby",
-  best_of: "When they ask for the best",
-};
 
 const ENGINE_LABEL: Record<string, string> = {
   anthropic: "Claude",
@@ -115,7 +114,7 @@ export function IntentBreakdown({ intents }: { intents?: IntentRow[] | null }) {
                 }}
               >
                 <h3 style={{ margin: 0, fontSize: "var(--font-size-body)", fontWeight: 700 }}>
-                  {INTENT_LABEL[row.intent] ?? row.intent}
+                  {resolveIntentLabel(row)}
                 </h3>
                 <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>
                   {pct}%{" "}

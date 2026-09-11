@@ -1294,10 +1294,17 @@ export async function processAuditJob(
       g.n += s.n;
       intentGroups.set(s.intentId, g);
     }
+    // P1-07 — every intent row ships with the QUESTION it was measured on.
+    // Prompt Universe v2 keys intents as `uv_<prompt id>`; without this the
+    // dashboard had only the uuid to show, and showed it.
+    const promptTextByIntent = new Map(prompts.map((p) => [p.intentId, p.text]));
     const intentBreakdown = [...intentGroups.entries()].map(([intentId, g]) => {
       const w = wilson95(g.successes, g.n);
+      const label = promptTextByIntent.get(intentId) ?? null;
       return {
         intent: intentId,
+        // null, never the id: a missing question is reported as missing.
+        label,
         overall: {
           citationRate: round4(w.rate),
           ciLow: round4(w.low),

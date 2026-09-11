@@ -218,3 +218,10 @@ export * from "./content-fact-check";
 // ---------------------------------------------------------------------------
 export * from "./audit-queue";
 
+
+// ---------------------------------------------------------------------------
+// P1-07 — a question is titled by its text, never by its id. Prompt Universe
+// v2 gave every prompt an `uv_<uuid>` intent id and the dashboard rendered it
+// raw; this is the one resolver every surface uses.
+// ---------------------------------------------------------------------------
+export * from "./intent-label";
