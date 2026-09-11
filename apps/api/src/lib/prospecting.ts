@@ -742,6 +742,13 @@ export interface CrmProspectContact {
 /** The crm_contact note line for one approved prospect — one source (worker + tests). */
 export function crmNoteFor(c: CrmProspectContact): string {
   const proxies: string[] = [];
+  // Canal C (11/09): the business NAME joins the note. It was already the
+  // first thing the batch knew (the verifier matches it against the site's
+  // HTML) and was the one public fact the note threw away — which left the
+  // daily proof feed guessing a brand out of a domain label when it needs an
+  // exact string to scan an AI answer for. Public business data, same class as
+  // the rating and the review count already here.
+  if (c.name && c.name.trim()) proxies.push(`nome=${c.name.trim().replace(/[\n·]/g, " ")}`);
   if (c.phone) proxies.push(`fone=${c.phone}`);
   if (c.rating != null) proxies.push(`rating=${c.rating}`);
   if (c.reviewsCount != null) proxies.push(`reviews=${c.reviewsCount}`);
