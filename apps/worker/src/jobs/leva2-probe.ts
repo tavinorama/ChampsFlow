@@ -30,7 +30,10 @@
 
 import type postgres from "postgres";
 import { logger } from "../../../../packages/shared/src/logger";
-import { recordSpend, execForPostgresJs } from "../../../../packages/llm/src/api-spend";
+import {
+  recordSpend,
+  execForPostgresJs,
+} from "../../../../packages/llm/src/api-spend";
 import {
   runColdProofProbe,
   proofMergeVars,
@@ -78,7 +81,11 @@ export interface Leva2ProbeDeps {
   store: Leva2Store;
   sql?: postgres.Sql | null;
   fetchText?: FetchTextFn;
-  coldProof?(input: { name: string; service: string; city: string }): Promise<ColdProofResult>;
+  coldProof?(input: {
+    name: string;
+    service: string;
+    city: string;
+  }): Promise<ColdProofResult>;
   now?(): Date;
   env?: NodeJS.ProcessEnv;
 }
@@ -93,7 +100,12 @@ function cityFromLead(lead: Leva2PilotLead): string | null {
 /** Escreve a prova na nota do CRM quando aquele domínio já é um contato. */
 async function writeCrmNote(
   sql: postgres.Sql,
-  input: { domain: string; company: string; campaign: string; proof: { engine: string; query: string; competitors: string[] } }
+  input: {
+    domain: string;
+    company: string;
+    campaign: string;
+    proof: { engine: string; query: string; competitors: string[] };
+  },
 ): Promise<boolean> {
   const line =
     `[leva2-piloto] campanha=${input.campaign} nome=${input.company.replace(/[\n·]/g, " ")} — ` +
@@ -104,13 +116,16 @@ async function writeCrmNote(
             updated_at = NOW()
       WHERE lower(split_part(email, '@', 2)) = $2
       RETURNING email`,
-    [line, input.domain]
+    [line, input.domain],
   )) as unknown as Array<{ email: string }>;
   return Array.isArray(rows) && rows.length > 0;
 }
 
 /** Lê o lote que a API deixou no Redis. Ausente = job honestamente falhado. */
-export async function loadLeva2Input(store: Leva2Store, jobId: string): Promise<Leva2ProbeInput | null> {
+export async function loadLeva2Input(
+  store: Leva2Store,
+  jobId: string,
+): Promise<Leva2ProbeInput | null> {
   const raw = await store.get(leva2InputKey(jobId)).catch(() => null);
   if (!raw) return null;
   try {
@@ -123,12 +138,15 @@ export async function loadLeva2Input(store: Leva2Store, jobId: string): Promise<
 
 export async function processLeva2ProbeJob(
   data: Leva2ProbeJobData & Leva2ProbeInput,
-  deps: Leva2ProbeDeps
+  deps: Leva2ProbeDeps,
 ): Promise<Leva2JobRecord> {
   const now = deps.now ?? ((): Date => new Date());
   const env = deps.env ?? process.env;
   const fetchText = deps.fetchText ?? defaultFetchText;
-  const probe = deps.coldProof ?? ((input: { name: string; service: string; city: string }) => runColdProofProbe(input));
+  const probe =
+    deps.coldProof ??
+    ((input: { name: string; service: string; city: string }) =>
+      runColdProofProbe(input));
   const key = leva2JobKey(data.job_id);
 
   const stored = await deps.store.get(key).catch(() => null);
@@ -155,9 +173,14 @@ export async function processLeva2ProbeJob(
   const save = async (): Promise<void> => {
     record.updated_at = now().toISOString();
     record = summarizeLeva2(record);
-    await deps.store.set(key, JSON.stringify(record), LEVA2_RESULT_TTL_SECONDS).catch((err: Error) => {
-      logger.error("leva2_probe_store_failed", { job_id: data.job_id, message: err.message.slice(0, 160) });
-    });
+    await deps.store
+      .set(key, JSON.stringify(record), LEVA2_RESULT_TTL_SECONDS)
+      .catch((err: Error) => {
+        logger.error("leva2_probe_store_failed", {
+          job_id: data.job_id,
+          message: err.message.slice(0, 160),
+        });
+      });
   };
 
   // A env só existe para DESLIGAR. Se alguém desligou, o job diz qual é e
@@ -183,136 +206,179 @@ export async function processLeva2ProbeJob(
   const spendExec = deps.sql ? execForPostgresJs(deps.sql) : null;
   const done = new Set(record.results.map((r) => r.smartlead_lead_id));
 
-  for (const lead of data.leads) {
-    if (done.has(lead.smartleadLeadId)) continue;
-    const destino = LEVA2_PILOT_CAMPAIGNS[lead.bucket];
-    const base: Leva2LeadResult = {
-      smartlead_lead_id: lead.smartleadLeadId,
-      bucket: lead.bucket,
-      company: lead.company,
-      domain: lead.domain,
-      campaign_id_origem: lead.campaignIdOrigem,
-      campanha_destino: destino.slug,
-      campaign_id_destino: destino.smartleadId,
-      ok: false,
-      cost_usd: 0,
-    };
+  try {
+    for (const lead of data.leads) {
+      if (done.has(lead.smartleadLeadId)) continue;
+      const destino = LEVA2_PILOT_CAMPAIGNS[lead.bucket];
+      const base: Leva2LeadResult = {
+        smartlead_lead_id: lead.smartleadLeadId,
+        bucket: lead.bucket,
+        company: lead.company,
+        domain: lead.domain,
+        campaign_id_origem: lead.campaignIdOrigem,
+        campanha_destino: destino.slug,
+        campaign_id_destino: destino.smartleadId,
+        ok: false,
+        cost_usd: 0,
+      };
 
-    const push = (extra: Partial<Leva2LeadResult>): void => {
-      const r = { ...base, ...extra };
-      if (!r.ok && r.reason) r.reason_bucket = leva2DiscardBucketOf(r.reason);
-      record.results.push(r);
-    };
+      const push = (extra: Partial<Leva2LeadResult>): void => {
+        const r = { ...base, ...extra };
+        if (!r.ok && r.reason) r.reason_bucket = leva2DiscardBucketOf(r.reason);
+        record.results.push(r);
+      };
 
-    // 1) o site do lead, de verdade.
-    const home = await fetchText(lead.website);
-    if (!home || home.status !== 200 || !home.text.trim()) {
-      push({ reason: home ? `site respondeu ${home.status}` : "site nao respondeu (timeout/erro de rede)" });
-      await save();
-      continue;
-    }
-
-    // 2) a pergunta certa — nicho e cidade do PRÓPRIO site.
-    const where = inferServiceAndCity({ name: lead.company, category: lead.segment, html: home.text });
-    let city = where.city;
-    let whereSource = where.source;
-    if (!city) {
-      const fallback = cityFromLead(lead);
-      if (fallback) {
-        city = fallback;
-        whereSource = `${where.source} · cidade: registro do SmartLead (shortlist), nao o site`;
+      // 1) o site do lead, de verdade.
+      const home = await fetchText(lead.website);
+      if (!home || home.status !== 200 || !home.text.trim()) {
+        push({
+          reason: home
+            ? `site respondeu ${home.status}`
+            : "site nao respondeu (timeout/erro de rede)",
+        });
+        await save();
+        continue;
       }
-    }
-    if (!where.service || !city) {
-      push({
-        reason: `sem nicho/cidade (${whereSource}) — impossivel fazer a pergunta certa (lead fora da leva 2)`,
-        where_source: whereSource,
+
+      // 2) a pergunta certa — nicho e cidade do PRÓPRIO site.
+      const where = inferServiceAndCity({
+        name: lead.company,
+        category: lead.segment,
+        html: home.text,
+      });
+      let city = where.city;
+      let whereSource = where.source;
+      if (!city) {
+        const fallback = cityFromLead(lead);
+        if (fallback) {
+          city = fallback;
+          whereSource = `${where.source} · cidade: registro do SmartLead (shortlist), nao o site`;
+        }
+      }
+      if (!where.service || !city) {
+        push({
+          reason: `sem nicho/cidade (${whereSource}) — impossivel fazer a pergunta certa (lead fora da leva 2)`,
+          where_source: whereSource,
+          service: where.service,
+          city,
+        });
+        await save();
+        continue;
+      }
+
+      // 3) orçamento ANTES de chamar motor.
+      if (
+        record.spent_usd + COLD_PROOF_COST_PER_LEAD_USD >
+        record.budget_usd + 1e-9
+      ) {
+        record.budget_exhausted = true;
+        push({
+          reason: `orcamento do piloto esgotado (US$${record.budget_usd.toFixed(2)}) — lead nao foi probada`,
+          where_source: whereSource,
+          service: where.service,
+          city,
+        });
+        await save();
+        continue;
+      }
+
+      // 4) o probe.
+      const res = await probe({
+        name: lead.company,
         service: where.service,
         city,
       });
-      await save();
-      continue;
-    }
+      record.probed += 1;
+      record.spent_usd =
+        Math.round((record.spent_usd + res.costUsd) * 100) / 100;
 
-    // 3) orçamento ANTES de chamar motor.
-    if (record.spent_usd + COLD_PROOF_COST_PER_LEAD_USD > record.budget_usd + 1e-9) {
-      record.budget_exhausted = true;
+      // 5) o gasto no ledger — inclusive quando não virou prova (o motor rodou).
+      if (spendExec && res.costUsd > 0) {
+        await recordSpend(spendExec, {
+          op: "cold_proof",
+          estCents: Math.round(res.costUsd * 100),
+          estSource: "rate",
+          ref: `leva2:${data.job_id}`,
+          ...(res.engine ? { engine: res.engine } : {}),
+        }).catch((err: Error) => {
+          logger.error("leva2_probe_spend_record_failed", {
+            job_id: data.job_id,
+            message: err.message.slice(0, 160),
+          });
+        });
+      }
+
+      const vars = proofMergeVars(res);
+      if (!res.ok || !vars) {
+        push({
+          reason:
+            res.reason ?? "probe sem prova utilizavel (lead fora da leva 2)",
+          where_source: whereSource,
+          service: where.service,
+          city,
+          cost_usd: res.costUsd,
+        });
+        await save();
+        continue;
+      }
+
+      // 6) o dossiê: nota do CRM quando o contato existe; sempre no resultado.
+      const reportUrl = proofReportUrl({
+        campaign: destino.slug,
+        company: lead.company,
+        competitor: res.competitors[0] ?? null,
+        website: lead.website,
+        ...(lead.segment ? { category: lead.segment } : {}),
+      });
+      let dossie = "resultado do piloto (leva2:probe:job)";
+      if (deps.sql) {
+        try {
+          const wrote = await writeCrmNote(deps.sql, {
+            domain: lead.domain,
+            company: lead.company,
+            campaign: destino.slug,
+            proof: {
+              engine: vars.ai_engine,
+              query: vars.query,
+              competitors: res.competitors,
+            },
+          });
+          if (wrote) dossie = "crm_contact.note + resultado do piloto";
+        } catch (err) {
+          // Falha de escrita no CRM não some: ela vira parte do resultado.
+          dossie = `resultado do piloto (crm_contact falhou: ${(err as Error).message.slice(0, 80)})`;
+          logger.warn("leva2_probe_crm_note_failed", {
+            job_id: data.job_id,
+            message: (err as Error).message.slice(0, 160),
+          });
+        }
+      }
+
       push({
-        reason: `orcamento do piloto esgotado (US$${record.budget_usd.toFixed(2)}) — lead nao foi probada`,
+        ok: true,
+        vars: { ...vars, report_url: reportUrl },
         where_source: whereSource,
         service: where.service,
         city,
-      });
-      await save();
-      continue;
-    }
-
-    // 4) o probe.
-    const res = await probe({ name: lead.company, service: where.service, city });
-    record.probed += 1;
-    record.spent_usd = Math.round((record.spent_usd + res.costUsd) * 100) / 100;
-
-    // 5) o gasto no ledger — inclusive quando não virou prova (o motor rodou).
-    if (spendExec && res.costUsd > 0) {
-      await recordSpend(spendExec, {
-        op: "cold_proof",
-        estCents: Math.round(res.costUsd * 100),
-        estSource: "rate",
-        ref: `leva2:${data.job_id}`,
-        ...(res.engine ? { engine: res.engine } : {}),
-      }).catch((err: Error) => {
-        logger.error("leva2_probe_spend_record_failed", { job_id: data.job_id, message: err.message.slice(0, 160) });
-      });
-    }
-
-    const vars = proofMergeVars(res);
-    if (!res.ok || !vars) {
-      push({
-        reason: res.reason ?? "probe sem prova utilizavel (lead fora da leva 2)",
-        where_source: whereSource,
-        service: where.service,
-        city,
+        dossie,
         cost_usd: res.costUsd,
       });
       await save();
-      continue;
     }
-
-    // 6) o dossiê: nota do CRM quando o contato existe; sempre no resultado.
-    const reportUrl = proofReportUrl({
-      campaign: destino.slug,
-      company: lead.company,
-      competitor: res.competitors[0] ?? null,
-      website: lead.website,
-      ...(lead.segment ? { category: lead.segment } : {}),
-    });
-    let dossie = "resultado do piloto (leva2:probe:job)";
-    if (deps.sql) {
-      try {
-        const wrote = await writeCrmNote(deps.sql, {
-          domain: lead.domain,
-          company: lead.company,
-          campaign: destino.slug,
-          proof: { engine: vars.ai_engine, query: vars.query, competitors: res.competitors },
-        });
-        if (wrote) dossie = "crm_contact.note + resultado do piloto";
-      } catch (err) {
-        // Falha de escrita no CRM não some: ela vira parte do resultado.
-        dossie = `resultado do piloto (crm_contact falhou: ${(err as Error).message.slice(0, 80)})`;
-        logger.warn("leva2_probe_crm_note_failed", { job_id: data.job_id, message: (err as Error).message.slice(0, 160) });
-      }
-    }
-
-    push({
-      ok: true,
-      vars: { ...vars, report_url: reportUrl },
-      where_source: whereSource,
-      service: where.service,
-      city,
-      dossie,
-      cost_usd: res.costUsd,
-    });
+  } catch (err) {
+    // Um erro inesperado no meio do lote NÃO pode deixar o job "running" para
+    // sempre: o workflow ficaria esperando e o founder leria silêncio. O que já
+    // foi probado (e pago) continua no resultado; o motivo fica escrito.
+    record.status = "failed";
+    record.error =
+      `erro inesperado no lote apos ${record.probed} probe(s): ${(err as Error).message.slice(0, 160)} — ` +
+      "o que ja tinha prova continua no resultado; NENHUMA lead foi carregada por este job.";
     await save();
+    logger.error("leva2_probe_crashed", {
+      job_id: data.job_id,
+      message: (err as Error).message.slice(0, 200),
+    });
+    return record;
   }
 
   record.status = "done";
@@ -332,7 +398,10 @@ export async function processLeva2ProbeJob(
  * O que a fila chama: lê o lote no Redis e roda. Lote sumido (TTL, Redis
  * trocado) NÃO vira job "ok" com zero leads — vira FAILED com o motivo.
  */
-export async function runLeva2ProbeJob(data: Leva2ProbeJobData, deps: Leva2ProbeDeps): Promise<Leva2JobRecord> {
+export async function runLeva2ProbeJob(
+  data: Leva2ProbeJobData,
+  deps: Leva2ProbeDeps,
+): Promise<Leva2JobRecord> {
   const now = deps.now ?? ((): Date => new Date());
   const input = await loadLeva2Input(deps.store, data.job_id);
   if (!input) {
@@ -355,7 +424,13 @@ export async function runLeva2ProbeJob(data: Leva2ProbeJobData, deps: Leva2Probe
         "NENHUM probe foi rodado. Redispare o workflow com um idempotency_key novo.",
       results: [],
     };
-    await deps.store.set(leva2JobKey(data.job_id), JSON.stringify(failed), LEVA2_RESULT_TTL_SECONDS).catch(() => undefined);
+    await deps.store
+      .set(
+        leva2JobKey(data.job_id),
+        JSON.stringify(failed),
+        LEVA2_RESULT_TTL_SECONDS,
+      )
+      .catch(() => undefined);
     logger.error("leva2_probe_input_missing", { job_id: data.job_id });
     return failed;
   }
