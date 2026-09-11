@@ -18,7 +18,7 @@ A trilha GEO é o primeiro ICP da casa: negócio local/organic-dependent dos EUA
 
 Regra anti-genérico (01/09): cada lote passa por verificar→criar→aplicar→auditar; o crítico veta repetição de ângulo/gancho/estrutura contra os lotes anteriores.
 
-## 2. Sequência da campanha GEO (inglês, pronta para colar)
+## 2. Sequência da leva 1 — 3 toques (HISTÓRICO; a sequência em vigor é a da §5)
 
 Regras aplicadas: 1º e-mail texto puro, ZERO links/URLs/domínios, UMA pergunta, 40–80 palavras, frases ≤12 palavras, nível 15-17 anos, sonho honesto, assinatura "Otavio". Links só a partir do e-mail 2, sempre com `?from=cold-<lote>`. Quando o lote vem do `prospect-batch`, o e-mail 1 abre com o achado REAL do mini-GEO-probe do site do prospect (robots bloqueando GPTBot, JSON-LD ausente, etc.) — nunca um achado inventado.
 
@@ -90,6 +90,84 @@ Todo e-mail termina com este bloco, DEPOIS da assinatura:
 - Resposta ao e-mail 1 (a métrica-mestra do frio) — webhook grava
 - Free tests e compras com `from=cold-*` — atribuição first-touch (#527) grava no lead/pedido
 - Free test → nurture de conversão já ativa (test → Kit → Growth)
+
+---
+
+## 5. LEVA 2 — "outbound com prova" (a partir de 11/09) — **esta é a sequência em vigor**
+
+> Campanha viva: `oz-local-2026-09-14` (id **3939141**), criada DRAFTED em 11/09 pelo
+> `smartlead-campaign.yml` (`leva=2`). Diagnóstico e conta da capacidade:
+> [leva2-outbound-com-prova.md](leva2-outbound-com-prova.md).
+
+A leva 1 (§2 acima, 3 toques) fica registrada como histórico. O que muda:
+**4 toques em 14 dias (0/3/7/14), só em dias úteis, 80 leads novos/dia por
+campanha, lista ≤800** — e o e-mail 1 abre com a PROVA, não com um argumento.
+
+### Variáveis de merge obrigatórias no CSV
+
+`{{ai_engine}}` · `{{competitor_1}}` · `{{competitor_2}}` · `{{query}}` · `{{report_url}}`
+
+Todas produzidas pelo `prospect-batch` (mini free test de 1 execução, ~US$0,03
+por lead). **Lead sem prova não entra na campanha** — nunca um placeholder.
+
+**Email 1 (dia 0) — sem link, a prova e uma pergunta**
+
+> Subject: {{ai_engine}} named someone else
+>
+> Hi {{first_name}},
+>
+> This week I asked {{ai_engine}} one question: "{{query}}"
+>
+> It named {{competitor_1}}. Then {{competitor_2}}. It never named {{company_name}}.
+>
+> That is the answer your next customer gets.
+>
+> Want me to send you the exact words it used?
+
+**Email 2 (dia 3) — o resto da resposta, com link rastreado**
+
+> Subject: the exact words
+>
+> Hi {{first_name}},
+>
+> Here is the rest of it. {{ai_engine}} put {{competitor_1}} first, then {{competitor_2}}.
+>
+> You can check the other engines yourself. It takes 60 seconds. You type your business and one competitor.
+>
+> See what every engine says → https://ozvor.com/test?from=oz-local-2026-09-14
+
+**Email 3 (dia 7) — por que acontece**
+
+> Subject: why it happens
+>
+> Hi {{first_name}},
+>
+> This is not about ads. AI answers are built from pages the engines can read and quote.
+>
+> The businesses AI names usually have those pages. Most local sites do not. That is the whole gap.
+>
+> The test shows which part is missing → https://ozvor.com/test?from=oz-local-2026-09-14
+
+**Email 4 (dia 14) — o relatório dele, sem digitar nada**
+
+> Subject: your report, nothing to type
+>
+> Hi {{first_name}},
+>
+> Last note from me. I set your test up so you type nothing.
+>
+> It runs the same question I asked: "{{query}}"
+>
+> Your report → {{report_url}}
+>
+> If now is not the time, no worries. The door stays open.
+
+Todos os toques terminam com `%signature%` e, depois dela, o rodapé literal
+"P.S. If you'd rather not hear from me, just reply STOP and I won't write
+again." — sem endereço postal (decisão do founder 02/09, risco registrado).
+`{{report_url}}` chega pronto e percent-encoded do `prospect-batch`: o
+template **nunca** monta URL com nome de empresa (espaço ou `&` quebrariam o
+href).
 
 ---
 

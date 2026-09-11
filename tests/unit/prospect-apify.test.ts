@@ -309,7 +309,14 @@ function fakeFetchText() {
 }
 
 describe("buildProspectBatchBlock — fonte apify", () => {
-  const env = { APIFY_TOKEN: "t", APIFY_MAPS_ACTOR: "compass/crawler-google-places" } as unknown as NodeJS.ProcessEnv;
+  // LEVA 2 desligada neste bloco de proposito: aqui se prega a FONTE apify
+  // (actor, orcamento, proxies), nao o filtro de sinal da leva 2 — esse tem
+  // o seu proprio arquivo, tests/unit/prospect-leva2.test.ts.
+  const env = {
+    APIFY_TOKEN: "t",
+    APIFY_MAPS_ACTOR: "compass/crawler-google-places",
+    COLD_PROOF_ENABLED: "0",
+  } as unknown as NodeJS.ProcessEnv;
 
   function apifyDeps(spec: ApifyRunSpec | null, items: unknown[] = ITEMS) {
     let taken = false;
@@ -376,7 +383,9 @@ describe("buildProspectBatchBlock — fonte apify", () => {
     const block = await buildProspectBatchBlock({
       task: async () => ({ ok: true, output: "", engineUsed: null, ms: null }),
       fetchText: fakeFetchText(),
-      env: {} as NodeJS.ProcessEnv,
+      // LEVA 2 desligada aqui de proposito: este teste prega a FONTE apify,
+      // nao o filtro de sinal (que tem o seu proprio arquivo).
+      env: { COLD_PROOF_ENABLED: "0" } as NodeJS.ProcessEnv,
       apify: apifyDeps(SPEC),
     });
     expect(block).toContain("APIFY_TOKEN");

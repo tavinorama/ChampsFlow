@@ -1,12 +1,28 @@
 # SOP — Dia do Disparo (1ª campanha real de cold e-mail)
 
-> Owner: VP Sales (executor: founder) · Criado: 2026-09-02 (fecha 10.D.9)
-> Kits: [aistack-campaign-kit.md](aistack-campaign-kit.md) · [geo-campaign-kit.md](geo-campaign-kit.md)
-> Estado no dia da escrita: 4 campanhas DRAFTED no SmartLead, 7.881 leads na conta, warm-up das caixas encerrado 02/09, zero e-mails enviados.
+> Owner: VP Sales (executor: founder) · Criado: 2026-09-02 (fecha 10.D.9) · **Atualizado 2026-09-11 (leva 2)**
+> Kits: [aistack-campaign-kit.md](aistack-campaign-kit.md) · [geo-campaign-kit.md](geo-campaign-kit.md) · [leva2-outbound-com-prova.md](leva2-outbound-com-prova.md)
+> Estado em 11/09: leva 1 encerrada (as duas campanhas em COMPLETED); leva 2 criada DRAFTED — `oz-local-2026-09-14` (3939141) e `aistack-2026-09-14` (3939142).
 
 ## TL;DR
 
-Checklist único para o dia em que a primeira campanha sai do DRAFTED. Ordem: conferir copy (opt-out em TODOS os e-mails, e-mail 1 sem link), testar webhook e origem, mandar um envio-teste para a própria caixa, configurar limites por caixa, ativar, e saber quem responde reply em quanto tempo. Nada dispara sem cada caixa deste SOP marcada. O risco CAN-SPAM do endereço postal ausente está ACEITO pelo founder (02/09) e registrado abaixo.
+Checklist único para o dia em que uma campanha sai do DRAFTED. Ordem: conferir copy (opt-out em TODOS os e-mails, e-mail 1 sem link), testar webhook e origem, mandar um envio-teste para a própria caixa, configurar limites por caixa, ativar, e saber quem responde reply em quanto tempo. Nada dispara sem cada caixa deste SOP marcada. O risco CAN-SPAM do endereço postal ausente está ACEITO pelo founder (02/09) e registrado abaixo. **Desde 11/09 há duas travas novas: a régua do padrão Ozvor (§8) e a trava de reativação (§9) — nenhuma campanha volta a enviar antes do diagnóstico `leads-status`.**
+
+---
+
+## 0. TRAVA DE REATIVAÇÃO (regra 11/09 — leva ancorada em diagnóstico)
+
+**Nenhuma campanha é (re)ativada antes de rodar o diagnóstico da Tarefa 1 e ler o resultado:**
+
+```
+gh workflow run smartlead-analysis.yml -f mode=leads-status -f campaign_id=all
+```
+
+O que o diagnóstico tem de responder, com número, antes do GO:
+
+- [ ] **Quantas leads estão em `STARTED`** (importadas, ainda sem toque 1) em cada campanha. Numa campanha que já enviou, `STARTED` alto e parado = follow-up comendo o cano; o teto de novos leads/dia desce para 60 antes de qualquer reativação.
+- [ ] **Quantas estão em `BLOCKED`** — são leads sem campo obrigatório; >3% da lista = consertar o CSV antes de enviar.
+- [ ] **Que `sent_count` a campanha declara.** Atenção ao campo: em `/campaigns/{id}/analytics` o `total_count` **é igual ao `sent_count`** — ele conta ENVIOS, não leads. Ler `total_count` como "leads na campanha" foi o que criou o fantasma dos "2.016 leads sem toque 1" na leva 1 (o número real era ~1.040 leads, todos tocados). A contagem de leads honesta vem do `leads-status`, nunca do analytics.
 
 ---
 
@@ -23,15 +39,26 @@ Checklist único para o dia em que a primeira campanha sai do DRAFTED. Ordem: co
 - [ ] **Janela de envio**: dias úteis, horário comercial do fuso do lead (US); nunca fim de semana no 1º toque.
 - [ ] **Supressão**: lista de unsubscribed/STOP importada e ativa; domínio ozvor.com e clientes existentes na blocklist.
 
-## 2. Cronograma da campanha
+## 2. Cronograma da campanha — LEVA 2 (a partir de 11/09)
 
 | Toque | Dia | Conteúdo |
 |---|---|---|
-| E-mail 1 | 0 | Sem link, uma pergunta, achado real |
-| E-mail 2 | 3 | Oferta com link `?from=` |
-| E-mail 3 | 7 | Última, honesta e curta |
+| E-mail 1 | 0 | Sem link, uma pergunta, **a prova do mini free test** ({{ai_engine}} / {{query}} / {{competitor_1}} / {{competitor_2}}) |
+| E-mail 2 | 3 | O resto da resposta + link `?from=<lote>` |
+| E-mail 3 | 7 | Por que acontece + link `?from=<lote>` |
+| E-mail 4 | 14 | `{{report_url}}` — o relatório dele, sem digitar nada |
 
-Lotes: campanha AI Stack (3888686, 1.254 leads classificados) e trilha GEO (OZ-B 1.866 primeiro; depois OZ-A/OZ-C e a parte GEO da Ozvor 1). Um lote novo por semana via `prospect-batch` (quarta 07:30 UTC, gate no Telegram).
+**Capacidade (a conta, não o chute):**
+
+```
+500 e-mails/dia reais  ÷  4 toques  ÷  2 campanhas  ≈  62 leads novos/dia por campanha
+```
+
+- `max_new_leads_per_day` = **80 por campanha** (teto, não meta: stop-on-reply, bounces e fim de semana sem envio derrubam a carga ~20%). Na leva 1 esse valor era 1.000 — acima da capacidade, portanto teto nenhum.
+- Schedule **só em dias úteis** (seg-sex), 09-18 America/New_York, 8 min entre e-mails.
+- **Lista ≤ 800 leads por campanha** (80/dia × 10 dias úteis) — é o que faz a régua "lista 100% tocada em ≤10 dias" fechar.
+
+Lotes: um lote novo por semana via `prospect-batch` (quarta 07:30 UTC, gate no Telegram), agora com filtro de sinal e gancho com prova — ver [leva2-outbound-com-prova.md](leva2-outbound-com-prova.md).
 
 ## 3. Fontes de leads — ordem e custo (regra 01/09)
 
@@ -57,6 +84,31 @@ Lotes: campanha AI Stack (3888686, 1.254 leads classificados) e trilha GEO (OZ-B
 
 - O artifact do `prospect-batch` é o **dossiê por prospect** (site verificado, achados do mini-probe, e-mails rascunhados). Fica no artefato do lote + nota do `crm_contact`; ROPA G30 registra o padrão de acesso.
 - Uso permitido: personalizar o toque 1 (achado real), preparar call, escalar para auditoria funda. Uso proibido: colar o dossiê em ferramenta não registrada no ROPA, ou enriquecer o contato com dados fora do site público do prospect.
+
+## 8. A régua — padrão Ozvor de cold outreach (11/09)
+
+Esta é a régua de TODA campanha fria da casa. O número é medido em cima dos leads efetivamente tocados, não da lista carregada.
+
+| Métrica | Mínimo | Como se mede |
+|---|---|---|
+| Bounce | **< 2%** | `bounce_count ÷ sent_count` (analytics) |
+| Resposta real | **≥ 3%** | respostas menos OOO e menos "não trabalho mais aqui", ÷ leads tocados |
+| STOP | **< 15% das respostas** | classificação do `smartlead-classify` |
+| Resposta positiva | **≥ 1,5%** | interesse declarado ÷ leads tocados |
+| Reunião marcada | **≥ 0,7%** | `/book` com `from=cold-*` ÷ leads tocados |
+| Fecho (de quem reuniu) | **≥ 20%** | pedidos pagos ÷ reuniões |
+| Tempo de resposta a interesse | **< 2h** | do webhook ao envio do reply |
+| Lista 100% tocada | **≤ 10 dias** | do 1º envio ao último lead em `STARTED` zerar |
+
+**Regra de parada: abaixo de qualquer mínimo com 500 leads tocados, a campanha PARA e é consertada.** Não se aumenta volume em cima de uma régua vermelha — é assim que se queima domínio.
+
+Para calibrar: a leva 1 fechou com bounce 1,3% (ok), 24 respostas em 1.021 tocados = 2,3% (abaixo de 3%), 12 STOPs = 50% das respostas (contra o teto de 15%) e 1 interesse real = **0,1%** (contra 1,5%). Régua vermelha em três de quatro — exatamente o caso de "parar e consertar", que é o que a leva 2 é.
+
+## 9. Reativação de campanha (regra 11/09)
+
+- Uma campanha em `COMPLETED` ou `PAUSED` **só volta a enviar depois do diagnóstico da §0**, com os números colados na decisão.
+- Quem inicia é o founder, pelo `smartlead-launch.yml` com `action=start` e `confirm=GO`. Nenhum workflow inicia campanha sozinho: o `smartlead-campaign.yml` **não tem ação start**.
+- Se o diagnóstico mostrar leads em `STARTED` paradas há mais de 48h numa campanha ativa, o teto de novos leads/dia desce para 60 ANTES de reativar, e o `smartlead-send-watch.yml` fica como vigia.
 
 ## 7. Riscos aceitos (registrados)
 
