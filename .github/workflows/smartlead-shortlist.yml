@@ -1,0 +1,524 @@
+name: SmartLead shortlist (design partners + piloto leva 2)
+
+# Seleciona, DENTRO das leads que já temos no SmartLead:
+#   (1) 10 design partners (+10 reservas) para o canal B (Managed Visibility),
+#   (2) 100 leads para o piloto da leva 2 ("outbound com prova").
+#
+# Determinístico (python puro, sem LLM, sem API paga). A chave vem do secret
+# SMARTLEAD_API_KEY. REGRA DE PII: nenhum e-mail, nome de pessoa ou telefone
+# vai para o log. O log traz só agregados + dados de NEGÓCIO das empresas
+# escolhidas (empresa, site, cidade/estado, segmento, score). Os registros
+# completos saem como ARTEFATO privado do workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "probe (descobre os campos reais da lead) | run (shortlist completa)"
+        required: true
+        default: "run"
+      http_budget:
+        description: "Máximo de sites verificados por HTTP (teto duro)"
+        required: false
+        default: "400"
+      piloto_size:
+        description: "Tamanho do piloto da leva 2"
+        required: false
+        default: "100"
+
+permissions:
+  contents: read
+
+jobs:
+  shortlist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Shortlist (deterministic)
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          MODE: ${{ github.event.inputs.mode }}
+          HTTP_BUDGET: ${{ github.event.inputs.http_budget }}
+          PILOTO_SIZE: ${{ github.event.inputs.piloto_size }}
+        run: |
+          set -euo pipefail
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          mkdir -p out
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import csv, json, os, re, ssl, time, urllib.parse, urllib.request, urllib.error
+          from concurrent.futures import ThreadPoolExecutor
+
+          KEY  = os.environ["SL_KEY"]
+          MODE = (os.environ.get("MODE") or "run").strip().lower()
+          HTTP_BUDGET = int(os.environ.get("HTTP_BUDGET") or 400)
+          PILOTO_SIZE = int(os.environ.get("PILOTO_SIZE") or 100)
+          BASE = "https://server.smartlead.ai/api/v1"
+          UA   = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json",
+                  "Content-Type": "application/json"}
+
+          # campanha -> (rotulo, bucket)   bucket: local | aistack | misto
+          CAMPS = {
+              3783525: ("OZ-B Local",   "local"),
+              3888686: ("aistack",      "aistack"),
+              3783524: ("OZ-A Agencies","aistack"),
+              3783526: ("OZ-C SaaS",    "aistack"),
+              3741204: ("Ozvor 1",      "misto"),
+          }
+
+          def call(method, path, payload=None):
+              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
+              data = json.dumps(payload).encode() if payload is not None else None
+              for attempt in range(4):
+                  req = urllib.request.Request(url, data=data, headers=UA, method=method)
+                  try:
+                      with urllib.request.urlopen(req, timeout=60) as r:
+                          b = r.read().decode()
+                          return json.loads(b) if b.strip() else {}
+                  except urllib.error.HTTPError as e:
+                      if e.code == 429:
+                          time.sleep(3 * (attempt + 1)); continue
+                      return {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:160]}
+                  except Exception as e:
+                      if attempt < 3:
+                          time.sleep(2); continue
+                      return {"_error": type(e).__name__}
+              return {"_error": "retries_exhausted"}
+
+          def out(d):
+              print("RESULTADO_OZVOR" + json.dumps(d, ensure_ascii=False))
+
+          def fetch_campaign(cid):
+              rows_all, off = [], 0
+              while True:
+                  res = call("GET", f"/campaigns/{cid}/leads?offset={off}&limit=100")
+                  rows = res.get("data") if isinstance(res, dict) else None
+                  if rows is None:
+                      return None, f"offset {off}: {str(res)[:160]}"
+                  if not rows:
+                      break
+                  rows_all.extend(rows)
+                  off += len(rows)
+                  if off > 20000:
+                      break
+              return rows_all, None
+
+          # ---------------------------------------------------------------- PROBE
+          if MODE == "probe":
+              # Descobre os campos REAIS sem vazar PII: imprime nomes de chave +
+              # amostras SÓ das chaves de negócio (allowlist).
+              ALLOW = re.compile(r"company|website|url|city|state|country|location|status|"
+                                 r"unsub|block|categ|industry|type|seq|touch|sent|revenue|zip", re.I)
+              DENY  = re.compile(r"mail|phone|first_?name|last_?name|linkedin|contact", re.I)
+              report = {}
+              for cid, (label, _b) in CAMPS.items():
+                  res = call("GET", f"/campaigns/{cid}/leads?offset=0&limit=100")
+                  rows = res.get("data") if isinstance(res, dict) else None
+                  if not rows:
+                      report[label] = {"erro": str(res)[:160]}; continue
+                  rowkeys, leadkeys, cfkeys, samples = set(), set(), set(), {}
+                  filled = {}
+                  for row in rows:
+                      rowkeys |= set(row.keys())
+                      lead = row.get("lead") or {}
+                      leadkeys |= set(lead.keys())
+                      cf = lead.get("custom_fields")
+                      if isinstance(cf, dict):
+                          cfkeys |= set(cf.keys())
+                      for src, pref in ((row, "row."), (lead, "lead.")):
+                          for k, v in src.items():
+                              if v not in (None, "", [], {}):
+                                  filled[pref + k] = filled.get(pref + k, 0) + 1
+                              if ALLOW.search(k) and not DENY.search(k) and isinstance(v, (str, int, float, bool)):
+                                  s = samples.setdefault(pref + k, [])
+                                  sv = str(v)[:60]
+                                  if sv and sv not in s and len(s) < 5:
+                                      s.append(sv)
+                  report[label] = {"id": cid, "amostra": len(rows),
+                                   "row_keys": sorted(rowkeys), "lead_keys": sorted(leadkeys),
+                                   "custom_field_keys": sorted(cfkeys),
+                                   "preenchimento": dict(sorted(filled.items())),
+                                   "amostras_negocio": samples}
+              out({"ok": True, "mode": "probe", "campanhas": report})
+              raise SystemExit(0)
+
+          # ------------------------------------------------------------- SEGMENTOS
+          # Segmentos de ticket alto + recorrência (critério (a) do founder).
+          SEGMENTS = [
+              ("ortho",        32, r"orthodont|\bortho\b|braces|invisalign"),
+              ("med spa",      32, r"med\s?spa|medspa|aesthetic|botox|laser\s?(clinic|center)|skin\s?(clinic|studio)"),
+              ("law firm",     32, r"\blaw\b|law\s?(firm|office|group)|attorney|lawyer|\blegal\b|litigat|counsel\b"),
+              ("dental",       30, r"dental|dentist|\bdds\b|smile\s?(center|studio)|endodont|periodont"),
+              ("roofing",      30, r"roof(ing|er|s)?\b"),
+              ("remodeling",   28, r"remodel|renovation|kitchen\s?(and|&)?\s?bath|general\s?contract|custom\s?home|builder"),
+              ("hvac",         28, r"\bhvac\b|heating|air\s?condition|furnace|cooling"),
+              ("plumbing",     26, r"plumb(ing|er|ers)?\b|drain|septic|rooter|water\s?heater"),
+              ("accounting",   26, r"accounting|accountant|\bcpa\b|bookkeep|tax\s?(service|group|pro)"),
+              ("auto body",    24, r"auto\s?body|collision|body\s?shop|auto\s?(repair|care|service)|paint\s?(and|&)\s?body"),
+              ("real estate",  24, r"real\s?estate|realty|realtor|home\s?(team|group)\b|properties\b"),
+          ]
+          SEGMENTS = [(n, w, re.compile(p, re.I)) for (n, w, p) in SEGMENTS]
+
+          # Segmentos locais de fit menor, mas bons para cold (só piloto).
+          SEG_SOFT = [
+              ("electrical",  r"electric(al|ian)?\b"),
+              ("landscaping", r"landscap|lawn\s?care|tree\s?service|irrigation|hardscape"),
+              ("cleaning",    r"clean(ing|ers)?\b|janitor|maid\b|restoration|water\s?damage"),
+              ("pest",        r"pest\b|exterminat|termite"),
+              ("chiro/pt",    r"chiropract|physical\s?therapy|wellness\s?(center|clinic)"),
+              ("vet",         r"veterinar|animal\s?hospital"),
+              ("salon",       r"salon|barber|\bspa\b|hair\s?studio|nail\s?(bar|salon)"),
+              ("insurance",   r"insurance"),
+              ("moving",      r"mov(ers|ing)\b|relocation|junk\s?removal|hauling"),
+              ("fitness",     r"fitness|\bgym\b|pilates|crossfit|yoga\b"),
+              ("garage/doors", r"garage\s?door|window(s)?\s?(and|&)?\s?door|fenc(e|ing)|flooring|paving|concrete|siding|gutter"),
+              ("pool",        r"\bpool\b"),
+              ("agency/saas", r"agency|marketing|\bseo\b|digital|studio|software|saas|platform|consult"),
+          ]
+          SEG_SOFT = [(n, re.compile(p, re.I)) for (n, p) in SEG_SOFT]
+
+          # Exclusões duras (critério (e)).
+          EXCLUDE = re.compile(
+              r"hotel|motel|\binn\b|resort|hostel|bed\s?(and|&)\s?breakfast|\bb&b\b|vacation\s?rental|airbnb|"
+              r"hospital|health\s?system|medical\s?cent(er|re)|urgent\s?care|clinic\s?network|"
+              r"university|college|school\s?district|church|city\s?of\s|county\s?of\s|\bgov\b", re.I)
+          FRANCHISE = re.compile(
+              r"servpro|roto[-\s]?rooter|mr\.?\s?rooter|benjamin\s?franklin\s?plumb|aire\s?serv|one\s?hour\s?heating|"
+              r"mister\s?sparky|1-?800|re/?max|keller\s?williams|century\s?21|coldwell\s?banker|sotheby|"
+              r"exp\s?realty|compass\s?real|berkshire\s?hathaway|jackson\s?hewitt|h&r\s?block|liberty\s?tax|"
+              r"aspen\s?dental|heartland\s?dental|western\s?dental|smile\s?brands|pacific\s?dental|"
+              r"european\s?wax|massage\s?envy|hand\s?(and|&)\s?stone|midas|maaco|meineke|jiffy\s?lube|"
+              r"caliber\s?collision|gerber\s?collision|service\s?king|crash\s?champions|precision\s?tune|"
+              r"chem[-\s]?dry|molly\s?maid|merry\s?maids|two\s?men\s?and\s?a\s?truck|terminix|orkin|"
+              r"mosquito\s?joe|lawn\s?doctor|weed\s?man|anytime\s?fitness|planet\s?fitness|orangetheory|"
+              r"great\s?clips|sport\s?clips|supercuts|banfield|vca\s?animal|subway|mcdonald", re.I)
+          # Hosts que não contam como "site próprio".
+          NOT_OWN = re.compile(
+              r"facebook\.com|instagram\.com|linkedin\.com|linktr\.ee|sites\.google\.com|business\.site|"
+              r"wixsite\.com|weebly\.com|godaddysites\.com|yelp\.com|"
+              r"tripadvisor\.|angi\.com|thumbtack\.com|nextdoor\.com|mysite\.com", re.I)
+
+          US_STATES = set("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV "
+                          "NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC".split())
+          US_NAMES = {"us", "usa", "u.s.", "u.s.a.", "united states", "united states of america", ""}
+
+          def sget(d, *names):
+              for n in names:
+                  v = d.get(n)
+                  if isinstance(v, str) and v.strip():
+                      return v.strip()
+                  if isinstance(v, (int, float)):
+                      return str(v)
+              return ""
+
+          # -------------------------------------------------------------- COLETA
+          leads, erros, per_camp = {}, {}, {}
+          for cid, (label, bucket) in CAMPS.items():
+              rows, err = fetch_campaign(cid)
+              if err:
+                  erros[label] = err
+                  continue
+              per_camp[label] = {"id": cid, "linhas": len(rows)}
+              for row in rows:
+                  lead = row.get("lead") or row
+                  lid = lead.get("id")
+                  if lid is None:
+                      continue
+                  cf = lead.get("custom_fields")
+                  cf = cf if isinstance(cf, dict) else {}
+                  rec = {
+                      "lead_id": lid,
+                      "campaign_id": cid,
+                      "campaign": label,
+                      "bucket": bucket,
+                      "map_id": row.get("campaign_lead_map_id"),
+                      "company": sget(lead, "company_name", "company", "organization") or sget(cf, "company", "company_name"),
+                      "website": sget(lead, "website", "company_url", "company_website", "url") or sget(cf, "website", "company_url"),
+                      "city": sget(lead, "city", "location") or sget(cf, "city", "location"),
+                      "state": sget(lead, "state", "region") or sget(cf, "state"),
+                      "country": sget(lead, "country") or sget(cf, "country"),
+                      "lead_status": (sget(row, "status") or sget(lead, "status")).upper(),
+                      "unsub": bool(lead.get("is_unsubscribed") or row.get("is_unsubscribed")
+                                    or lead.get("is_blocked") or row.get("is_blocked")),
+                      "cf_text": " ".join(str(v) for v in cf.values() if isinstance(v, (str, int, float)))[:400],
+                  }
+                  prev = leads.get(lid)
+                  if prev is None or (prev["bucket"] == "misto" and bucket != "misto"):
+                      leads[lid] = rec
+          if erros and not leads:
+              out({"ok": False, "motivo": "coleta falhou", "erros": erros}); raise SystemExit(1)
+
+          # STOP / unsubscribed: SmartLead marca no status do lead.
+          STOPPED = re.compile(r"UNSUBSCRIB|BLOCK|STOP|BOUNCE|DO_?NOT", re.I)
+          TOUCHED = re.compile(r"INPROGRESS|IN_PROGRESS|COMPLETED|STARTED|PAUSED|REPLIED|OPENED|CLICKED", re.I)
+
+          def domain_of(site):
+              s = (site or "").strip()
+              if not s:
+                  return ""
+              if not s.startswith("http"):
+                  s = "https://" + s
+              try:
+                  h = urllib.parse.urlparse(s).netloc.lower()
+              except Exception:
+                  return ""
+              h = h.split(":")[0]
+              return h[4:] if h.startswith("www.") else h
+
+          def classify(rec):
+              text = " ".join([rec["company"], rec["website"], rec["cf_text"]])
+              for name, weight, rx in SEGMENTS:
+                  if rx.search(text):
+                      return name, weight
+              for name, rx in SEG_SOFT:
+                  if rx.search(text):
+                      return name, 10
+              return "", 0
+
+          # ------------------------------------------------------- FILTRO BASE
+          stats = {"total_unicas": len(leads), "sem_site": 0, "stop_ou_unsub": 0, "excluidas_regra_e": 0,
+                   "franquia_nacional": 0, "nao_us": 0, "sem_segmento": 0, "dominio_duplicado": 0,
+                   "elegiveis": 0}
+          dom_seen = {}
+          elig = []
+          for rec in leads.values():
+              rec["domain"] = domain_of(rec["website"])
+              if rec["unsub"] or STOPPED.search(rec["lead_status"] or ""):
+                  stats["stop_ou_unsub"] += 1; continue
+              if not rec["domain"] or "." not in rec["domain"]:
+                  stats["sem_site"] += 1; continue
+              text = " ".join([rec["company"], rec["website"], rec["cf_text"]])
+              if EXCLUDE.search(text):
+                  stats["excluidas_regra_e"] += 1; continue
+              if FRANCHISE.search(text):
+                  stats["franquia_nacional"] += 1; continue
+              ctry = rec["country"].strip().lower()
+              st = rec["state"].strip().upper()
+              if ctry and ctry not in US_NAMES:
+                  stats["nao_us"] += 1; continue
+              if st and len(st) == 2 and st not in US_STATES:
+                  stats["nao_us"] += 1; continue
+              seg, w = classify(rec)
+              if not seg:
+                  stats["sem_segmento"] += 1; continue
+              rec["segment"] = seg
+              rec["seg_weight"] = w
+              rec["touched"] = bool(TOUCHED.search(rec["lead_status"] or ""))
+              d = rec["domain"]
+              if d in dom_seen:            # dedupe por domínio: uma empresa = uma lead
+                  stats["dominio_duplicado"] += 1; continue
+              dom_seen[d] = rec["lead_id"]
+              rec["own_domain"] = not bool(NOT_OWN.search(rec["website"] or d))
+              rec["pre"] = (w
+                            + (8 if not rec["touched"] else 2)
+                            + (6 if rec["own_domain"] else 0)
+                            + (4 if st in US_STATES else 0))
+              elig.append(rec)
+          stats["elegiveis"] = len(elig)
+
+          # ------------------------------------------- ORÇAMENTO HTTP ESTRATIFICADO
+          def bucket_of(rec):
+              if rec["bucket"] == "misto":
+                  return "aistack" if rec["segment"] == "agency/saas" else "local"
+              return rec["bucket"]
+
+          for r in elig:
+              r["bkt"] = bucket_of(r)
+          elig.sort(key=lambda r: (-r["pre"], r["segment"], r["lead_id"]))
+          quota = {"local": int(HTTP_BUDGET * 0.6), "aistack": HTTP_BUDGET - int(HTTP_BUDGET * 0.6)}
+          cand, used = [], {"local": 0, "aistack": 0}
+          for r in elig:
+              b = r["bkt"]
+              if used[b] < quota[b]:
+                  cand.append(r); used[b] += 1
+              if len(cand) >= HTTP_BUDGET:
+                  break
+          if len(cand) < HTTP_BUDGET:       # sobra de cota vai para o outro bucket
+              taken = {r["lead_id"] for r in cand}
+              for r in elig:
+                  if r["lead_id"] not in taken:
+                      cand.append(r)
+                      if len(cand) >= HTTP_BUDGET:
+                          break
+
+          # ------------------------------------------------------- VERIFICAÇÃO HTTP
+          CTX = ssl.create_default_context()
+          CTX.check_hostname = False
+          CTX.verify_mode = ssl.CERT_NONE
+          BROWSER = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                     "Accept": "text/html,application/xhtml+xml"}
+          LD_TYPE = re.compile(r'"@type"\s*:\s*(\[[^\]]*\]|"[^"]+")', re.I)
+          LOCAL_TYPES = re.compile(r"LocalBusiness|Dentist|Dental|RoofingContractor|HVACBusiness|Plumber|"
+                                   r"HomeAndConstruction|GeneralContractor|LegalService|Attorney|Accounting|"
+                                   r"RealEstateAgent|AutoBody|AutoRepair|HealthAndBeauty|MedicalBusiness|"
+                                   r"BeautySalon|DaySpa|ProfessionalService|Electrician|Locksmith|MovingCompany", re.I)
+          ADS = re.compile(r"connect\.facebook\.net|fbq\s*\(|googletagmanager\.com|gtag\s*\(|AW-\d{6,}|"
+                           r"google_conversion|bat\.bing\.com|snap\.licdn\.com", re.I)
+          REVIEWS = re.compile(r'aggregateRating|href="[^"]*(review|testimonial)|>\s*(reviews|testimonials)\s*<', re.I)
+          BLOG = re.compile(r'href="[^"]*/(blog|news|articles|insights|resources)', re.I)
+          YEAR = re.compile(r"20(2[5-9])[-/ ]")
+          DATEPUB = re.compile(r'"datePublished"\s*:\s*"(20\d\d)')
+          NAP = re.compile(r"\(\d{3}\)\s?\d{3}-\d{4}|\b\d{3}-\d{3}-\d{4}\b")
+
+          def check(rec):
+              res = {"http": 0, "ld_local": False, "ads": False, "reviews": False, "blog_recent": False,
+                     "nap": False, "https": False, "err": ""}
+              for scheme in ("https://", "http://"):
+                  html = ""
+                  try:
+                      req = urllib.request.Request(scheme + rec["domain"], headers=BROWSER)
+                      with urllib.request.urlopen(req, timeout=8, context=CTX) as r:
+                          res["http"] = r.status
+                          res["https"] = r.url.startswith("https")
+                          html = r.read(400000).decode("utf-8", "replace")
+                  except urllib.error.HTTPError as e:
+                      res["http"] = e.code; res["err"] = f"http{e.code}"
+                  except Exception as e:
+                      res["err"] = type(e).__name__
+                  if res["http"] == 200 and html:
+                      types = " ".join(m.group(1) for m in LD_TYPE.finditer(html))
+                      res["ld_local"] = bool(LOCAL_TYPES.search(types))
+                      res["ads"] = bool(ADS.search(html))
+                      res["reviews"] = bool(REVIEWS.search(html))
+                      yrs = [int(m.group(1)) for m in DATEPUB.finditer(html)]
+                      res["blog_recent"] = bool(BLOG.search(html)) and (bool(YEAR.search(html)) or any(y >= 2025 for y in yrs))
+                      res["nap"] = bool(NAP.search(html))
+                      break
+              return rec["lead_id"], res
+
+          t0 = time.time()
+          with ThreadPoolExecutor(max_workers=16) as ex:
+              checked = dict(ex.map(check, cand))
+          http_secs = round(time.time() - t0, 1)
+
+          alive = 0
+          for r in cand:
+              c = checked.get(r["lead_id"], {})
+              r["check"] = c
+              r["alive"] = c.get("http") == 200
+              if r["alive"]:
+                  alive += 1
+              r["score"] = (r["seg_weight"]
+                            + (10 if r["alive"] else -100)
+                            + (6 if r["own_domain"] else 0)
+                            + (12 if c.get("ld_local") else 0)
+                            + (10 if c.get("blog_recent") else 0)
+                            + (10 if c.get("ads") else 0)
+                            + (8 if c.get("reviews") else 0)
+                            + (4 if c.get("nap") else 0)
+                            + (2 if c.get("https") else 0)
+                            + (8 if not r["touched"] else 2)
+                            + (4 if r["state"].strip().upper() in US_STATES else 0))
+              r["marketing_sinais"] = sum(1 for k in ("ld_local", "blog_recent", "ads", "reviews") if c.get(k))
+
+          # --------------------------------------------------- CANAL B: 10 + 10
+          DP_SEGMENTS = {n for (n, w, _rx) in SEGMENTS}
+          dp_pool = [r for r in cand if r["alive"] and r["own_domain"]
+                     and r["segment"] in DP_SEGMENTS and r["marketing_sinais"] >= 1]
+          dp_pool.sort(key=lambda r: (-r["score"], -r["marketing_sinais"], r["lead_id"]))
+          # no máximo 2 por segmento no top 10 — o piloto de parceria não pode ser monotema
+          top, reserva, per_seg = [], [], {}
+          for r in dp_pool:
+              s = r["segment"]
+              if len(top) < 10 and per_seg.get(s, 0) < 2:
+                  top.append(r); per_seg[s] = per_seg.get(s, 0) + 1
+              elif len(reserva) < 10:
+                  reserva.append(r)
+              if len(top) == 10 and len(reserva) == 10:
+                  break
+          dp_ids = {r["lead_id"] for r in top + reserva}
+
+          # ------------------------------------------------------- PILOTO (100)
+          pil_pool = [r for r in cand if r["alive"] and r["own_domain"] and not r["touched"]
+                      and r["lead_id"] not in dp_ids]
+          pil_pool.sort(key=lambda r: (-r["score"], r["lead_id"]))
+          want = {"local": int(round(PILOTO_SIZE * 0.6))}
+          want["aistack"] = PILOTO_SIZE - want["local"]
+          piloto, got = [], {"local": 0, "aistack": 0}
+          for r in pil_pool:
+              b = r["bkt"]
+              if got[b] < want[b]:
+                  piloto.append(r); got[b] += 1
+              if len(piloto) >= PILOTO_SIZE:
+                  break
+          if len(piloto) < PILOTO_SIZE:     # completa com quem sobrou (fit manda sobre a cota)
+              taken = {r["lead_id"] for r in piloto}
+              for r in pil_pool:
+                  if r["lead_id"] not in taken:
+                      piloto.append(r)
+                      if len(piloto) >= PILOTO_SIZE:
+                          break
+
+          # ------------------------------------------------------------ ARTEFATOS
+          def rec_out(r, rank):
+              c = r["check"]
+              return {"rank": rank, "smartlead_lead_id": r["lead_id"], "campaign_id_origem": r["campaign_id"],
+                      "campanha_origem": r["campaign"], "bucket": r["bkt"], "company": r["company"],
+                      "website": r["website"], "domain": r["domain"], "city": r["city"], "state": r["state"],
+                      "segment": r["segment"], "score": r["score"], "tocada_leva1": r["touched"],
+                      "site_http": c.get("http"), "jsonld_localbusiness": c.get("ld_local"),
+                      "blog_recente": c.get("blog_recent"), "pixel_ads": c.get("ads"),
+                      "pagina_reviews": c.get("reviews"), "nap_no_html": c.get("nap")}
+
+          agora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+          with open("out/design-partners-2026-09.json", "w") as f:
+              json.dump({"gerado_em": agora,
+                         "top10": [rec_out(r, i + 1) for i, r in enumerate(top)],
+                         "reservas": [rec_out(r, i + 1) for i, r in enumerate(reserva)]},
+                        f, ensure_ascii=False, indent=2)
+
+          pil_rows = [rec_out(r, i + 1) for i, r in enumerate(piloto)]
+          with open("out/piloto-leva2-2026-09.json", "w") as f:
+              json.dump({"gerado_em": agora, "tamanho": len(pil_rows),
+                         "destino": {"local": "oz-local-2026-09-14", "aistack": "aistack-2026-09-14"},
+                         "como_carregar": "mover por smartlead_lead_id: POST /campaigns/{destino}/leads com o "
+                                          "lead existente + DELETE /campaigns/{origem}/leads/{lead_id}. "
+                                          "NUNCA reimportar por CSV (duplica e reseta o histórico).",
+                         "leads": pil_rows}, f, ensure_ascii=False, indent=2)
+          cols = list(pil_rows[0].keys()) if pil_rows else ["rank"]
+          with open("out/piloto-leva2-2026-09.csv", "w", newline="") as f:
+              w = csv.DictWriter(f, fieldnames=cols); w.writeheader(); w.writerows(pil_rows)
+
+          # --------------------------------------------------------------- LOG
+          def agg(rows, key):
+              d = {}
+              for r in rows:
+                  k = r.get(key) or "(vazio)"
+                  d[k] = d.get(k, 0) + 1
+              return dict(sorted(d.items(), key=lambda kv: (-kv[1], str(kv[0]))))
+
+          print("## Canal B - top 10 (dados de negocio; zero PII)")
+          for i, r in enumerate(top, 1):
+              c = r["check"]
+              print(f"{i}. {r['company']} | {r['domain']} | {r['city']}/{r['state']} | {r['segment']} | "
+                    f"score {r['score']} | jsonld={int(bool(c.get('ld_local')))} blog={int(bool(c.get('blog_recent')))} "
+                    f"ads={int(bool(c.get('ads')))} reviews={int(bool(c.get('reviews')))} nap={int(bool(c.get('nap')))} "
+                    f"tocada={int(r['touched'])} | camp={r['campaign']}")
+          print("## Canal B - 10 reservas")
+          for i, r in enumerate(reserva, 1):
+              c = r["check"]
+              print(f"R{i}. {r['company']} | {r['domain']} | {r['city']}/{r['state']} | {r['segment']} | "
+                    f"score {r['score']} | jsonld={int(bool(c.get('ld_local')))} blog={int(bool(c.get('blog_recent')))} "
+                    f"ads={int(bool(c.get('ads')))} reviews={int(bool(c.get('reviews')))} nap={int(bool(c.get('nap')))} "
+                    f"tocada={int(r['touched'])} | camp={r['campaign']}")
+
+          out({"ok": True, "mode": "run", "campanhas": per_camp, "erros_coleta": erros, "funil": stats,
+               "http": {"orcamento": HTTP_BUDGET, "verificados": len(cand), "vivos_200": alive,
+                        "segundos": http_secs},
+               "canal_b": {"pool": len(dp_pool), "top10": len(top), "reservas": len(reserva),
+                           "por_segmento": agg(top + reserva, "segment"),
+                           "por_estado": agg(top + reserva, "state")},
+               "piloto": {"tamanho": len(pil_rows), "pool": len(pil_pool),
+                          "por_bucket": agg(piloto, "bkt"), "por_campanha": agg(piloto, "campaign"),
+                          "por_segmento": agg(piloto, "segment"), "por_estado": agg(piloto, "state"),
+                          "sinais_marketing_medios": round(sum(r["marketing_sinais"] for r in piloto) / max(1, len(piloto)), 2)},
+               "artefatos": ["out/design-partners-2026-09.json", "out/piloto-leva2-2026-09.json",
+                             "out/piloto-leva2-2026-09.csv"]})
+          PYEOF
+      - name: Upload artefatos (privados)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartlead-shortlist-2026-09
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
