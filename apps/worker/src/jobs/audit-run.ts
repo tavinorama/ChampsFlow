@@ -96,6 +96,10 @@ import {
   auditCostCents as totalAuditCostCents,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+// P1-07 — the customer-facing vocabulary for a discarded citation. The raw
+// verifier line stays in the breakdown for the admin trace; the class is what
+// the dashboard renders.
+import { classifyRejection } from "../../../../packages/shared/src/rejection-language";
 import {
   coverageNoticeNeeded,
   sendAuditCoverageNoticeEmail,
@@ -107,6 +111,14 @@ import { creditsForAudit } from "../../../api/src/lib/credits";
 import { overagePackUsd } from "../../../../packages/shared/src/credits";
 import { sendCreditsOutEmail } from "../../../../packages/shared/src/emails/credits-out";
 import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
+// P1-07 — a scheduled run measured on an incomplete panel schedules ONE
+// repeat, and only spends when the panel is whole again.
+import {
+  applyCoverageRetry,
+  panelReadyForRetry,
+  COVERAGE_RETRY_MAX_ATTEMPTS,
+  type CoverageRetryState,
+} from "../../../../packages/shared/src/coverage-retry";
 
 /**
  * D1: one "You are out of credits" email per tenant per month, sent when a
@@ -173,6 +185,13 @@ export interface AuditJobData {
   tenant_id: string;
   brand_id: string;
   region: string; // 'EU' | 'US'
+  /**
+   * P1-07 — present ONLY on an automatic repeat of a run that measured an
+   * incomplete panel. `origin_audit_id` is the run being repaired: its
+   * breakdown carries the coverage_retry state the admin and Delivery Health
+   * read.
+   */
+  coverage_retry?: { attempt: number; origin_audit_id: string };
 }
 
 function randomUuid(): string {
@@ -790,6 +809,66 @@ export async function processAuditJob(
       });
     }
 
+    // -----------------------------------------------------------------------
+    // P1-07 — a repeat spends nothing while the panel is still incomplete.
+    //
+    // This run exists only because an earlier scheduled audit measured 4 of 5
+    // engines. If the engine that was held back is STILL held back, probing
+    // would reproduce the same non-comparable run and bill ~US$0.80 for it.
+    // So: drop this un-run audit, and either queue the next repeat (if any is
+    // left) or record why we stopped.
+    // -----------------------------------------------------------------------
+    const coverageRetryJob = job.data.coverage_retry ?? null;
+    if (coverageRetryJob) {
+      const readiness = panelReadyForRetry(comparisonPanel, pausedProviders);
+      if (!readiness.ready) {
+        logger.warn("audit_coverage_retry_panel_not_ready", {
+          audit_id,
+          origin_audit_id: coverageRetryJob.origin_audit_id,
+          attempt: coverageRetryJob.attempt,
+          blocking: readiness.blocking.join(","),
+          note: "not probing — a repeat on the same incomplete panel costs money and changes nothing",
+        });
+        await sql`DELETE FROM geo_audit WHERE id = ${audit_id}`;
+        try {
+          await applyCoverageRetry(
+            {
+              scheduled: true,
+              comparable: false,
+              paused: readiness.blocking,
+              missing: [],
+              attemptsUsed: coverageRetryJob.attempt,
+              nextScheduledInMs: nextScheduledInMs(brand.tracking_frequency),
+            },
+            {
+              enqueue: async ({ attempt, delayMs, originAuditId }) => {
+                await getDailyAuditQueue().add(
+                  "scheduled-audit",
+                  {
+                    tenant_id,
+                    brand_id,
+                    region,
+                    coverage_retry: { attempt, origin_audit_id: originAuditId },
+                  },
+                  { jobId: `coverage-retry:${originAuditId}:${attempt}`, delay: delayMs }
+                );
+              },
+              record: async (state) =>
+                recordCoverageRetry(sql, coverageRetryJob.origin_audit_id, state),
+            },
+            { originAuditId: coverageRetryJob.origin_audit_id }
+          );
+        } catch (err) {
+          // Never silent: a repeat we neither queued nor recorded is a hole.
+          logger.error("audit_coverage_retry_reschedule_failed", {
+            origin_audit_id: coverageRetryJob.origin_audit_id,
+            message: (err as Error).message?.slice(0, 200),
+          });
+        }
+        return { audit_id, overall: 0 };
+      }
+    }
+
     // In LIVE mode, repeat each probe to capture AI non-determinism as a mention
     // RATE with confidence. B1 lean protocol: base = 2 runs per formulation
     // (GEO_PROBE_REPEAT still overrides, clamped 1–5), then SEQUENTIAL
@@ -1003,6 +1082,11 @@ export async function processAuditJob(
     let extractionAdjusted = 0;
     const extractionByKind: Record<string, number> = {};
     const extractionRejections: Array<{ text: string; reason: string }> = [];
+    // P1-07 — EVERY rejection tallied by the class the customer is told about
+    // (not just the three raw samples kept for the admin trace). Without a
+    // full tally the panel could only show "up to three examples", and a
+    // partial count reads as the whole truth.
+    const extractionRejectionClasses: Record<string, number> = {};
     // Index-aligned with result.responses.
     let extractions: ExtractionResult[] = [];
 
@@ -1026,6 +1110,10 @@ export async function processAuditJob(
           for (const m of e.mentions) {
             const k: MentionKind = m.kind_confirmed;
             extractionByKind[k] = (extractionByKind[k] ?? 0) + 1;
+            if (m.verdict === "REJECTED") {
+              const cls = classifyRejection(m.reason);
+              extractionRejectionClasses[cls] = (extractionRejectionClasses[cls] ?? 0) + 1;
+            }
             if (m.verdict === "REJECTED" && extractionRejections.length < 3) {
               extractionRejections.push({
                 // Bounded excerpt of the model's own answer — no PII, no tenant data.
@@ -1300,10 +1388,17 @@ export async function processAuditJob(
       g.n += s.n;
       intentGroups.set(s.intentId, g);
     }
+    // P1-07 — every intent row ships with the QUESTION it was measured on.
+    // Prompt Universe v2 keys intents as `uv_<prompt id>`; without this the
+    // dashboard had only the uuid to show, and showed it.
+    const promptTextByIntent = new Map(prompts.map((p) => [p.intentId, p.text]));
     const intentBreakdown = [...intentGroups.entries()].map(([intentId, g]) => {
       const w = wilson95(g.successes, g.n);
+      const label = promptTextByIntent.get(intentId) ?? null;
       return {
         intent: intentId,
+        // null, never the id: a missing question is reported as missing.
+        label,
         overall: {
           citationRate: round4(w.rate),
           ciLow: round4(w.low),
@@ -1483,7 +1578,13 @@ export async function processAuditJob(
         verified_count: extractionVerified,
         rejected_count: extractionRejected,
         by_kind: extractionByKind,
+        // ADMIN ONLY. The breakdown route never forwards these raw verifier
+        // lines to a customer (P1-07) — they are read at
+        // GET /api/admin/audits/:id/extraction, keyed by the audit id.
         sample_rejections: extractionRejections,
+        // Customer-facing: every rejection counted by class. The sentence for
+        // each class lives in packages/shared/src/rejection-language.ts.
+        rejection_classes: extractionRejectionClasses,
         // How many probe aggregates lost their citation because no verified
         // recommendation/source mention survived (the false positives B3 kills).
         probes_adjusted: extractionAdjusted,
@@ -2165,6 +2266,73 @@ export async function processAuditJob(
       }
     }
 
+    // -----------------------------------------------------------------------
+    // P1-07 — the 2026-09-07 hole: a scheduled run measured 4 of 5 engines,
+    // said so honestly, and was never repeated. One automatic repeat is
+    // scheduled here; when the panel never comes back the reason is recorded
+    // and Delivery Health's incomplete_panel_recovery goes amber with it.
+    // -----------------------------------------------------------------------
+    try {
+      const isScheduledRun = !job.data.audit_id;
+      const originAuditId = coverageRetryJob?.origin_audit_id ?? audit_id;
+      if (coverageRetryJob && cov.comparable) {
+        // The repair worked — say so on the run it repaired.
+        await recordCoverageRetry(sql, originAuditId, {
+          status: "recovered",
+          attempt: coverageRetryJob.attempt,
+          reason: `repeated on the full panel; audit ${audit_id} is the comparable measurement`,
+          engines: [],
+          at: new Date().toISOString(),
+        });
+        logger.info("audit_coverage_retry_recovered", {
+          audit_id,
+          origin_audit_id: originAuditId,
+          attempt: coverageRetryJob.attempt,
+        });
+      } else if (isScheduledRun && !cov.comparable) {
+        const decision = await applyCoverageRetry(
+          {
+            scheduled: true,
+            comparable: cov.comparable,
+            paused: cov.paused,
+            missing: cov.missing,
+            attemptsUsed: coverageRetryJob?.attempt ?? 0,
+            nextScheduledInMs: nextScheduledInMs(brand.tracking_frequency),
+          },
+          {
+            enqueue: async ({ attempt, delayMs, originAuditId: origin }) => {
+              await getDailyAuditQueue().add(
+                "scheduled-audit",
+                {
+                  tenant_id,
+                  brand_id,
+                  region,
+                  coverage_retry: { attempt, origin_audit_id: origin },
+                },
+                { jobId: `coverage-retry:${origin}:${attempt}`, delay: delayMs }
+              );
+            },
+            record: async (state) => recordCoverageRetry(sql, originAuditId, state),
+          },
+          { originAuditId }
+        );
+        logger.warn("audit_incomplete_panel", {
+          audit_id,
+          origin_audit_id: originAuditId,
+          action: decision.action,
+          attempts_used: coverageRetryJob?.attempt ?? 0,
+          max_attempts: COVERAGE_RETRY_MAX_ATTEMPTS,
+          reason: decision.reason,
+        });
+      }
+    } catch (err) {
+      logger.error("audit_coverage_retry_failed", {
+        audit_id,
+        message: (err as Error).message?.slice(0, 200),
+        effect: "an incomplete-panel run may not be repeated — check it by hand",
+      });
+    }
+
     logger.info("audit_completed", {
       audit_id,
       overall: score.overall,
@@ -2211,6 +2379,29 @@ function getDailyAuditQueue(): Queue {
     defaultJobOptions: AUDIT_JOB_OPTIONS,
   });
   return _dailyAuditQueue;
+}
+
+/**
+ * P1-07 — writes the repeat state onto the ORIGINAL audit's breakdown. That is
+ * where the admin trace and Delivery Health read it from, so a repeat that was
+ * decided but never recorded would be invisible: hence the loud log on failure.
+ */
+async function recordCoverageRetry(
+  sql: postgres.Sql,
+  originAuditId: string,
+  state: CoverageRetryState
+): Promise<void> {
+  await sql`
+    UPDATE geo_score
+       SET provider_breakdown = provider_breakdown || ${sql.json({ coverage_retry: state })}
+     WHERE audit_id = ${originAuditId}`;
+}
+
+/** Milliseconds to this brand's next scheduled audit, or null if unmonitored. */
+function nextScheduledInMs(trackingFrequency: string | null): number | null {
+  if (trackingFrequency === "daily") return 24 * 60 * 60 * 1000;
+  if (trackingFrequency === "weekly") return 7 * 24 * 60 * 60 * 1000;
+  return null;
 }
 
 export async function processDailyMonitoredBrands(sql: postgres.Sql): Promise<void> {

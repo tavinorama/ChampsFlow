@@ -5,12 +5,16 @@
  *   1. the loop breaking turns the panel amber/red (RELATORIO:142-153);
  *   2. missing data NEVER becomes a zero and NEVER becomes green.
  *
- * Every contract-quality-test name referenced from DELIVERY_CONTRACTS lives in
- * this file; `assertContractsComplete` is enforced below so a future indicator
+ * Every contract names a quality test that EXISTS on disk (checked below, which
+ * is stricter than the old assertion that it be this file — P1-07's indicator
+ * is pinned by tests/unit/coverage-retry.test.ts, next to the policy it
+ * measures); `assertContractsComplete` is enforced below so a future indicator
  * cannot ship without its contract.
  */
 
 import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   DELIVERY_CONTRACTS,
   DELIVERY_INDICATOR_IDS,
@@ -40,7 +44,11 @@ describe("metric contracts", () => {
       expect(c.grain.length).toBeGreaterThan(3);
       expect(c.timezone).toBe("UTC");
       expect(c.lateData.length).toBeGreaterThan(8);
-      expect(c.qualityTest).toContain("delivery-health.test.ts");
+      // The named test must be a real file: a contract pointing at a test
+      // that does not exist is a contract nothing enforces.
+      const file = c.qualityTest.split("›")[0]!.trim();
+      expect(file).toMatch(/^tests\/unit\/[\w./-]+\.test\.ts$/);
+      expect(existsSync(join(__dirname, "../..", file))).toBe(true);
     }
   });
 });
