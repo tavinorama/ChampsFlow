@@ -42,7 +42,7 @@ jobs:
       - name: Shortlist (deterministic)
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
-          MODE: ${{ github.event.inputs.mode || 'count' }}
+          MODE: ${{ github.event.inputs.mode || 'run' }}
           HTTP_BUDGET: ${{ github.event.inputs.http_budget }}
           PILOTO_SIZE: ${{ github.event.inputs.piloto_size }}
         run: |
@@ -204,7 +204,7 @@ jobs:
               ("plumbing",     26, r"plumb(ing|er|ers)?\b|drain|septic|rooter|water\s?heater"),
               ("accounting",   26, r"accounting|accountant|\bcpa\b|bookkeep|tax\s?(service|group|pro)"),
               ("auto body",    24, r"auto\s?body|collision|body\s?shop|auto\s?(repair|care|service)|paint\s?(and|&)\s?body"),
-              ("real estate",  24, r"real\s?estate|realty|realtor|home\s?(team|group)\b|properties\b"),
+              ("real estate",  24, r"real\s?estate|realty|realtor\b"),
           ]
           SEGMENTS = [(n, w, re.compile(p, re.I)) for (n, w, p) in SEGMENTS]
 
@@ -309,7 +309,13 @@ jobs:
               if err:
                   erros[label] = err
                   continue
-              per_camp[label] = {"id": cid, "linhas": len(rows)}
+              an = call("GET", f"/campaigns/{cid}/analytics")
+              oficial = None
+              if isinstance(an, dict) and isinstance(an.get("campaign_lead_stats"), dict):
+                  oficial = an["campaign_lead_stats"].get("total")
+              per_camp[label] = {"id": cid, "linhas": len(rows), "total_oficial_smartlead": oficial,
+                                 "completo": (oficial is None or int(oficial) == len(rows)),
+                                 "lead_stats": (an.get("campaign_lead_stats") if isinstance(an, dict) else None)}
               for row in rows:
                   lead = row.get("lead") or row
                   lid = lead.get("id")
@@ -427,22 +433,33 @@ jobs:
 
           for r in elig:
               r["bkt"] = bucket_of(r)
+          DP_SEGMENTS = {n for (n, _w, _rx) in SEGMENTS}
           elig.sort(key=lambda r: (-r["pre"], r["segment"], r["lead_id"]))
-          quota = {"local": int(HTTP_BUDGET * 0.6), "aistack": HTTP_BUDGET - int(HTTP_BUDGET * 0.6)}
-          cand, used = [], {"local": 0, "aistack": 0}
-          for r in elig:
-              b = r["bkt"]
-              if used[b] < quota[b]:
-                  cand.append(r); used[b] += 1
-              if len(cand) >= HTTP_BUDGET:
-                  break
-          if len(cand) < HTTP_BUDGET:       # sobra de cota vai para o outro bucket
-              taken = {r["lead_id"] for r in cand}
-              for r in elig:
-                  if r["lead_id"] not in taken:
-                      cand.append(r)
-                      if len(cand) >= HTTP_BUDGET:
-                          break
+
+          # Dois pedidos, dois pools. O canal B aceita lead tocada (sem STOP); o
+          # piloto so aceita NAO tocada. Sem essa separacao o orcamento de HTTP
+          # e gasto em leads que o piloto nao pode usar (foi o que aconteceu na
+          # corrida 34569149330: sobraram 23 candidatas da trilha aistack).
+          cand, seen_ids = [], set()
+          def take(rows, limite):
+              n = 0
+              for r in rows:
+                  if n >= limite:
+                      break
+                  if r["lead_id"] in seen_ids or len(cand) >= HTTP_BUDGET:
+                      continue
+                  seen_ids.add(r["lead_id"]); cand.append(r); n += 1
+              return n
+
+          dp_share  = int(HTTP_BUDGET * 0.50)
+          pil_local = int(HTTP_BUDGET * 0.30)
+          pil_ai    = HTTP_BUDGET - dp_share - pil_local
+          orcamento = {
+              "canal_b": take([r for r in elig if r["segment"] in DP_SEGMENTS and r["own_domain"]], dp_share),
+              "piloto_local": take([r for r in elig if not r["touched"] and r["own_domain"] and r["bkt"] == "local"], pil_local),
+              "piloto_aistack": take([r for r in elig if not r["touched"] and r["own_domain"] and r["bkt"] == "aistack"], pil_ai),
+          }
+          orcamento["sobra_preenchida"] = take(elig, HTTP_BUDGET)   # usa o teto inteiro
 
           # ------------------------------------------------------- VERIFICAÇÃO HTTP
           CTX = ssl.create_default_context()
@@ -516,7 +533,6 @@ jobs:
               r["marketing_sinais"] = sum(1 for k in ("ld_local", "blog_recent", "ads", "reviews") if c.get(k))
 
           # --------------------------------------------------- CANAL B: 10 + 10
-          DP_SEGMENTS = {n for (n, w, _rx) in SEGMENTS}
           dp_pool = [r for r in cand if r["alive"] and r["own_domain"]
                      and r["segment"] in DP_SEGMENTS and r["marketing_sinais"] >= 1]
           dp_pool.sort(key=lambda r: (-r["score"], -r["marketing_sinais"], r["lead_id"]))
@@ -538,18 +554,22 @@ jobs:
           pil_pool.sort(key=lambda r: (-r["score"], r["lead_id"]))
           want = {"local": int(round(PILOTO_SIZE * 0.6))}
           want["aistack"] = PILOTO_SIZE - want["local"]
-          piloto, got = [], {"local": 0, "aistack": 0}
+          SEG_CAP = max(10, int(PILOTO_SIZE * 0.25))   # nenhum segmento domina o teste
+          piloto, got, seg_got = [], {"local": 0, "aistack": 0}, {}
           for r in pil_pool:
               b = r["bkt"]
-              if got[b] < want[b]:
+              if got[b] < want[b] and seg_got.get(r["segment"], 0) < SEG_CAP:
                   piloto.append(r); got[b] += 1
+                  seg_got[r["segment"]] = seg_got.get(r["segment"], 0) + 1
               if len(piloto) >= PILOTO_SIZE:
                   break
-          if len(piloto) < PILOTO_SIZE:     # completa com quem sobrou (fit manda sobre a cota)
+          if len(piloto) < PILOTO_SIZE:     # cota nao fechou: completa por fit e reporta
               taken = {r["lead_id"] for r in piloto}
               for r in pil_pool:
-                  if r["lead_id"] not in taken:
-                      piloto.append(r)
+                  if r["lead_id"] not in taken and seg_got.get(r["segment"], 0) < SEG_CAP:
+                      piloto.append(r); taken.add(r["lead_id"])
+                      seg_got[r["segment"]] = seg_got.get(r["segment"], 0) + 1
+                      got[r["bkt"]] = got[r["bkt"]] + 1
                       if len(piloto) >= PILOTO_SIZE:
                           break
 
@@ -611,11 +631,12 @@ jobs:
 
           out({"ok": True, "mode": "run", "campanhas": per_camp, "erros_coleta": erros, "funil": stats,
                "http": {"orcamento": HTTP_BUDGET, "verificados": len(cand), "vivos_200": alive,
-                        "segundos": http_secs},
+                        "segundos": http_secs, "por_pool": orcamento},
                "canal_b": {"pool": len(dp_pool), "top10": len(top), "reservas": len(reserva),
                            "por_segmento": agg(top + reserva, "segment"),
                            "por_estado": agg(top + reserva, "state")},
                "piloto": {"tamanho": len(pil_rows), "pool": len(pil_pool),
+                          "cota_pedida": want, "cota_entregue": got, "teto_por_segmento": SEG_CAP,
                           "por_bucket": agg(piloto, "bkt"), "por_campanha": agg(piloto, "campaign"),
                           "por_segmento": agg(piloto, "segment"), "por_estado": agg(piloto, "state"),
                           "sinais_marketing_medios": round(sum(r["marketing_sinais"] for r in piloto) / max(1, len(piloto)), 2)},
