@@ -14,8 +14,12 @@
  *      (the recycle-marker mechanism — NO new table).
  *   3. Intent via callWithFallback (never a pinned engine): unsubscribe is
  *      FINAL (stage per the existing webhook rules, no draft); noise is
- *      marked and silent; the four human intents get a SHORT English draft
- *      grounded ONLY in the reply + trilha + house facts, validated by CODE.
+ *      marked and silent — MAS só quando o código também não vê prosa humana
+ *      (incidente 05-09/09: o modelo chamou ruído a um lead vivo e o descarte
+ *      silencioso durou 4 dias); os quatro intents humanos ganham um rascunho
+ *      curto em inglês, ancorado só na resposta + trilha + factos da casa e
+ *      validado por CÓDIGO. Resposta que o extrator não consegue ler NÃO é
+ *      tratada: conta como unparseable, fica sem marcador e é re-tentada.
  *   4. PORTÃO: the draft parks as an ops.agent_run('followup-reply') with a
  *      'waiting' approval step — the SAME ap:/rj: Telegram buttons and the
  *      same webhook route (#445) every graph uses. The graph slug is NOT in
