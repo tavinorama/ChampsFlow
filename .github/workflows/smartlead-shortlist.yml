@@ -42,7 +42,7 @@ jobs:
       - name: Shortlist (deterministic)
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
-          MODE: ${{ github.event.inputs.mode || 'probe' }}
+          MODE: ${{ github.event.inputs.mode || 'run' }}
           HTTP_BUDGET: ${{ github.event.inputs.http_budget }}
           PILOTO_SIZE: ${{ github.event.inputs.piloto_size }}
         run: |
@@ -215,8 +215,50 @@ jobs:
                       return str(v)
               return ""
 
+          # A lead do SmartLead NAO tem city/state/country (probe 11/09): existe um
+          # campo unico `location`, texto livre — "Cockeysville, Maryland, United States",
+          # "Houston", "United States". Parse deterministico abaixo.
+          ST_NAMES = {"alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
+              "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA","hawaii":"HI",
+              "idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA","kansas":"KS","kentucky":"KY",
+              "louisiana":"LA","maine":"ME","maryland":"MD","massachusetts":"MA","michigan":"MI",
+              "minnesota":"MN","mississippi":"MS","missouri":"MO","montana":"MT","nebraska":"NE",
+              "nevada":"NV","new hampshire":"NH","new jersey":"NJ","new mexico":"NM","new york":"NY",
+              "north carolina":"NC","north dakota":"ND","ohio":"OH","oklahoma":"OK","oregon":"OR",
+              "pennsylvania":"PA","rhode island":"RI","south carolina":"SC","south dakota":"SD",
+              "tennessee":"TN","texas":"TX","utah":"UT","vermont":"VT","virginia":"VA","washington":"WA",
+              "west virginia":"WV","wisconsin":"WI","wyoming":"WY","district of columbia":"DC"}
+          NON_US = re.compile(r"\b(canada|united kingdom|england|scotland|ireland|australia|new zealand|"
+                              r"india|pakistan|philippines|singapore|germany|france|spain|italy|portugal|"
+                              r"brazil|brasil|mexico|argentina|colombia|chile|netherlands|belgium|sweden|"
+                              r"norway|denmark|poland|romania|ukraine|israel|uae|dubai|south africa|nigeria|"
+                              r"kenya|japan|china|hong kong|malaysia|indonesia|vietnam|thailand|turkey|"
+                              r"switzerland|austria|greece|czech|hungary)\b", re.I)
+
+          def parse_location(loc):
+              parts = [p.strip() for p in (loc or "").split(",") if p.strip()]
+              city = state = country = ""
+              if not parts:
+                  return city, state, country
+              tail = parts[-1]
+              if tail.lower() in ("united states", "usa", "us", "u.s.", "u.s.a."):
+                  country = "US"; parts = parts[:-1]
+              elif NON_US.search(tail):
+                  country = tail; parts = parts[:-1]
+              if parts:
+                  last = parts[-1]
+                  if last.lower() in ST_NAMES:
+                      state = ST_NAMES[last.lower()]; parts = parts[:-1]
+                      country = country or "US"
+                  elif len(last) == 2 and last.upper() in US_STATES:
+                      state = last.upper(); parts = parts[:-1]
+                      country = country or "US"
+              if parts:
+                  city = parts[0]
+              return city, state, country
+
           # -------------------------------------------------------------- COLETA
-          leads, erros, per_camp = {}, {}, {}
+          leads, erros, per_camp, status_count = {}, {}, {}, {}
           for cid, (label, bucket) in CAMPS.items():
               rows, err = fetch_campaign(cid)
               if err:
@@ -230,31 +272,44 @@ jobs:
                       continue
                   cf = lead.get("custom_fields")
                   cf = cf if isinstance(cf, dict) else {}
+                  city, state, country = parse_location(sget(lead, "location"))
+                  st = (row.get("status") or "").strip().upper()
+                  status_count[label] = status_count.get(label, {})
+                  status_count[label][st or "(vazio)"] = status_count[label].get(st or "(vazio)", 0) + 1
                   rec = {
                       "lead_id": lid,
                       "campaign_id": cid,
                       "campaign": label,
                       "bucket": bucket,
                       "map_id": row.get("campaign_lead_map_id"),
-                      "company": sget(lead, "company_name", "company", "organization") or sget(cf, "company", "company_name"),
-                      "website": sget(lead, "website", "company_url", "company_website", "url") or sget(cf, "website", "company_url"),
-                      "city": sget(lead, "city", "location") or sget(cf, "city", "location"),
-                      "state": sget(lead, "state", "region") or sget(cf, "state"),
-                      "country": sget(lead, "country") or sget(cf, "country"),
-                      "lead_status": (sget(row, "status") or sget(lead, "status")).upper(),
-                      "unsub": bool(lead.get("is_unsubscribed") or row.get("is_unsubscribed")
-                                    or lead.get("is_blocked") or row.get("is_blocked")),
-                      "cf_text": " ".join(str(v) for v in cf.values() if isinstance(v, (str, int, float)))[:400],
+                      "company": sget(lead, "company_name"),
+                      "website": sget(lead, "website") or sget(lead, "company_url"),
+                      "city": city, "state": state, "country": country,
+                      "lead_status": st,
+                      "category": row.get("lead_category_id"),
+                      "unsub": bool(lead.get("is_unsubscribed")),
+                      # SO campos de EMPRESA do custom_fields (title/department/level sao
+                      # dados da PESSOA e nunca entram em classificacao, log ou artefato).
+                      "industry": sget(cf, "industry"),
+                      "sector": sget(cf, "sector"),
+                      "headcount": sget(cf, "company_headcount"),
+                      "revenue": sget(cf, "company_revenue"),
                   }
+                  rec["cf_text"] = " ".join([rec["industry"], rec["sector"]]).strip()
                   prev = leads.get(lid)
                   if prev is None or (prev["bucket"] == "misto" and bucket != "misto"):
                       leads[lid] = rec
           if erros and not leads:
               out({"ok": False, "motivo": "coleta falhou", "erros": erros}); raise SystemExit(1)
 
-          # STOP / unsubscribed: SmartLead marca no status do lead.
+          # Vocabulario REAL de status (probe 11/09): STARTED = na campanha e ainda
+          # nao tocada (campanhas nunca disparadas so tem STARTED); COMPLETED =
+          # sequencia terminada (tocada); BLOCKED = unsubscribed/STOP/bounce.
           STOPPED = re.compile(r"UNSUBSCRIB|BLOCK|STOP|BOUNCE|DO_?NOT", re.I)
-          TOUCHED = re.compile(r"INPROGRESS|IN_PROGRESS|COMPLETED|STARTED|PAUSED|REPLIED|OPENED|CLICKED", re.I)
+          NOT_TOUCHED = {"STARTED", "NOT_STARTED", "NOTSTARTED", "PENDING", "PAUSED", "(VAZIO)", ""}
+          # lead_category_id: 3 Not Interested, 4 Do Not Contact, 7 Wrong Person,
+          # 9 observada nas linhas BLOCKED. Qualquer uma delas = nao tocar.
+          BAD_CATEGORY = {3, 4, 7, 9}
 
           def domain_of(site):
               s = (site or "").strip()
@@ -287,7 +342,8 @@ jobs:
           elig = []
           for rec in leads.values():
               rec["domain"] = domain_of(rec["website"])
-              if rec["unsub"] or STOPPED.search(rec["lead_status"] or ""):
+              if (rec["unsub"] or STOPPED.search(rec["lead_status"] or "")
+                      or (rec["category"] in BAD_CATEGORY)):
                   stats["stop_ou_unsub"] += 1; continue
               if not rec["domain"] or "." not in rec["domain"]:
                   stats["sem_site"] += 1; continue
@@ -296,18 +352,16 @@ jobs:
                   stats["excluidas_regra_e"] += 1; continue
               if FRANCHISE.search(text):
                   stats["franquia_nacional"] += 1; continue
-              ctry = rec["country"].strip().lower()
+              ctry = rec["country"].strip().upper()
               st = rec["state"].strip().upper()
-              if ctry and ctry not in US_NAMES:
-                  stats["nao_us"] += 1; continue
-              if st and len(st) == 2 and st not in US_STATES:
+              if ctry and ctry != "US":
                   stats["nao_us"] += 1; continue
               seg, w = classify(rec)
               if not seg:
                   stats["sem_segmento"] += 1; continue
               rec["segment"] = seg
               rec["seg_weight"] = w
-              rec["touched"] = bool(TOUCHED.search(rec["lead_status"] or ""))
+              rec["touched"] = rec["lead_status"] not in NOT_TOUCHED
               d = rec["domain"]
               if d in dom_seen:            # dedupe por domínio: uma empresa = uma lead
                   stats["dominio_duplicado"] += 1; continue
@@ -460,7 +514,10 @@ jobs:
               return {"rank": rank, "smartlead_lead_id": r["lead_id"], "campaign_id_origem": r["campaign_id"],
                       "campanha_origem": r["campaign"], "bucket": r["bkt"], "company": r["company"],
                       "website": r["website"], "domain": r["domain"], "city": r["city"], "state": r["state"],
-                      "segment": r["segment"], "score": r["score"], "tocada_leva1": r["touched"],
+                      "segment": r["segment"], "industry": r["industry"], "sector": r["sector"],
+                      "headcount": r["headcount"], "revenue": r["revenue"],
+                      "score": r["score"], "tocada_leva1": r["touched"],
+                      "status_smartlead": r["lead_status"],
                       "site_http": c.get("http"), "jsonld_localbusiness": c.get("ld_local"),
                       "blog_recente": c.get("blog_recent"), "pixel_ads": c.get("ads"),
                       "pagina_reviews": c.get("reviews"), "nap_no_html": c.get("nap")}
