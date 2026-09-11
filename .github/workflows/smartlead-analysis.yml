@@ -4,9 +4,27 @@ name: SmartLead lead analysis (one-shot, founder-triggered)
 # sem LLM, sem VPS). A chave vem do secret SMARTLEAD_API_KEY (o GitHub Actions
 # mascara secrets em qualquer log). Saída = SÓ AGREGADOS: nenhum e-mail/nome
 # de lead é impresso. workflow_dispatch apenas.
+#
+# modes:
+#   analytics    — (default) por campanha: enviados/abertos/respostas/bounces
+#   leads-status — por campanha: CONTAGEM DE LEADS POR STATUS, paginando
+#                  /campaigns/{id}/leads (offset avança por len(rows)).
+#                  Responde "quantas leads nunca começaram, e em que status".
+#                  O vocabulário de status NÃO é presumido: o modo tallia o
+#                  valor bruto de cada campo candidato e imprime os campos que
+#                  encontrou (nomes de campo, nunca valores de PII).
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "analytics | leads-status"
+        required: false
+        default: "analytics"
+      campaign_id:
+        description: "Para leads-status: ID da campanha, ou all (default: all)"
+        required: false
+        default: "all"
 
 permissions:
   contents: read
@@ -18,6 +36,8 @@ jobs:
       - name: Analyze (deterministic)
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          MODE: ${{ github.event.inputs.mode }}
+          CID: ${{ github.event.inputs.campaign_id }}
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente — adicionar em Settings > Secrets and variables > Actions"; exit 1; }
@@ -25,6 +45,8 @@ jobs:
           import json, os, urllib.request, urllib.error
 
           KEY = os.environ["SL_KEY"]
+          MODE = (os.environ.get("MODE") or "analytics").strip().lower()
+          CID_IN = (os.environ.get("CID") or "all").strip()
           BASE = "https://server.smartlead.ai/api/v1"
 
           def get(path):
@@ -38,10 +60,114 @@ jobs:
               except Exception as e:
                   return {"_error": type(e).__name__}
 
+          def out(d):
+              print("RESULTADO_OZVOR" + json.dumps(d, ensure_ascii=False))
+
+          # ------------------------------------------------------------------
+          # leads-status — a pergunta da leva 1: quantas leads NUNCA começaram?
+          # ------------------------------------------------------------------
+          if MODE == "leads-status":
+              # Campos candidatos a "status da lead na campanha". Não presumimos
+              # qual existe: talliamos todos os que aparecerem. Valores de status
+              # são enums do SmartLead (NOT_STARTED/INPROGRESS/...), nunca PII.
+              STATUS_FIELDS = ["status", "lead_status", "campaign_lead_status", "lead_category", "lead_category_name"]
+              # Campos que, se presentes, provam se a lead já recebeu o toque 1.
+              TOUCH_FIELDS = ["sent_count", "email_count", "last_email_sequence_sent", "sequence_number", "open_count", "reply_count"]
+
+              camps = get("/campaigns")
+              if isinstance(camps, dict):
+                  out({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"})
+                  raise SystemExit(1)
+              if CID_IN.lower() != "all":
+                  camps = [c for c in camps if str(c.get("id")) == CID_IN]
+                  if not camps:
+                      out({"ok": False, "motivo": f"campanha {CID_IN} nao encontrada"})
+                      raise SystemExit(1)
+
+              report = []
+              grand = {}
+              for c in camps:
+                  cid = c.get("id")
+                  row = {"id": cid, "nome": c.get("name"), "status_campanha": c.get("status")}
+                  tally = {}          # campo -> {valor: contagem}
+                  campos_vistos = set()
+                  nunca_tocada = 0    # leads sem nenhum e-mail enviado (prova por contador)
+                  tocada = 0
+                  sem_prova_de_toque = 0
+                  total = 0
+                  offset = 0
+                  erro = None
+                  while True:
+                      res = get(f"/campaigns/{cid}/leads?offset={offset}&limit=100")
+                      if isinstance(res, dict) and ("_http_error" in res or "_error" in res):
+                          erro = str(res)[:200]
+                          break
+                      rows = res if isinstance(res, list) else (res.get("data") if isinstance(res, dict) else None)
+                      if not rows:
+                          break
+                      for r in rows:
+                          total += 1
+                          # A linha pode ser {..., lead: {...}} — olhamos os dois níveis.
+                          lead = r.get("lead") if isinstance(r.get("lead"), dict) else {}
+                          merged = {}
+                          merged.update(lead if isinstance(lead, dict) else {})
+                          merged.update(r if isinstance(r, dict) else {})
+                          campos_vistos.update(k for k in merged.keys() if isinstance(k, str))
+                          for f in STATUS_FIELDS:
+                              v = merged.get(f)
+                              if v is None or isinstance(v, (dict, list)):
+                                  continue
+                              tally.setdefault(f, {})
+                              key = str(v).upper()[:40]
+                              tally[f][key] = tally[f].get(key, 0) + 1
+                          # Prova independente do vocabulário: contador de envio.
+                          touched = None
+                          for f in TOUCH_FIELDS[:4]:
+                              v = merged.get(f)
+                              if isinstance(v, (int, float)):
+                                  touched = (touched or False) or v > 0
+                          if touched is None:
+                              sem_prova_de_toque += 1
+                          elif touched:
+                              tocada += 1
+                          else:
+                              nunca_tocada += 1
+                      offset += len(rows)   # avança por len(rows), nunca por limit
+                      if offset > 100000:
+                          erro = "paginacao passou de 100k — abortada"
+                          break
+                  row["leads_lidas"] = total
+                  row["status_tally"] = tally
+                  row["nunca_receberam_email"] = nunca_tocada
+                  row["ja_receberam_email"] = tocada
+                  row["sem_contador_de_envio_na_api"] = sem_prova_de_toque
+                  # Nomes de campo apenas — nenhum valor (nenhuma PII).
+                  row["campos_disponiveis"] = sorted(campos_vistos)[:60]
+                  if erro:
+                      row["erro"] = erro
+                  report.append(row)
+                  for f, vals in tally.items():
+                      g = grand.setdefault(f, {})
+                      for k, n in vals.items():
+                          g[k] = g.get(k, 0) + n
+
+              out({
+                  "ok": all("erro" not in r for r in report),
+                  "modo": "leads-status",
+                  "campanhas": report,
+                  "tally_geral": grand,
+                  "total_nunca_receberam_email": sum(r.get("nunca_receberam_email", 0) for r in report),
+                  "total_leads_lidas": sum(r.get("leads_lidas", 0) for r in report),
+              })
+              raise SystemExit(0 if all("erro" not in r for r in report) else 1)
+
+          # ------------------------------------------------------------------
+          # analytics — comportamento historico (default)
+          # ------------------------------------------------------------------
           camps = get("/campaigns")
-          out = {"ok": True, "campanhas": [], "total_leads": 0}
+          out_d = {"ok": True, "campanhas": [], "total_leads": 0}
           if isinstance(camps, dict):
-              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
+              out({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"})
               raise SystemExit(1)
           for c in camps:
               cid = c.get("id")
@@ -52,11 +178,11 @@ jobs:
                       if k_src in stats and stats[k_src] is not None:
                           row[k_dst] = stats[k_src]
               try:
-                  out["total_leads"] += int(row.get("leads") or 0)
+                  out_d["total_leads"] += int(row.get("leads") or 0)
               except (TypeError, ValueError):
                   pass
-              out["campanhas"].append(row)
-          out["listas_orfas"] = "API v1 nao expoe listas fora de campanha"
-          out["lead_finder_api"] = "nao (creditos de prospeccao = so via UI)"
-          print("RESULTADO_OZVOR" + json.dumps(out, ensure_ascii=False))
+              out_d["campanhas"].append(row)
+          out_d["listas_orfas"] = "API v1 nao expoe listas fora de campanha"
+          out_d["lead_finder_api"] = "nao (creditos de prospeccao = so via UI)"
+          out(out_d)
           PYEOF
