@@ -310,3 +310,32 @@ export function proofMergeVars(r: ColdProofResult): ColdProofMergeVars | null {
 export function coldProofBatchBudgetUsd(leads: number): number {
   return Math.round(Math.max(0, leads) * COLD_PROOF_COST_PER_LEAD_USD * 100) / 100;
 }
+
+/**
+ * LEVA 2 — orçamento do PROBE COM PROVA, em dólares por LOTE. Default US$1,50
+ * (≈50 leads a US$0,03). O gasto é orçado ANTES de chamar os motores e o
+ * consumido é impresso: custo de API por lote explícito é regra da casa.
+ * Override: env COLD_PROOF_BUDGET_USD (0 = probe desligado).
+ *
+ * Vive aqui, e não só no worker, porque o PILOTO da leva 2 (endpoint operador
+ * `/api/v1/operator/leva2-probe`) precisa da MESMA regra do lote semanal —
+ * duas cópias da mesma decisão de gasto é como um teto vira fantasia.
+ */
+export const DEFAULT_COLD_PROOF_BUDGET_USD = 1.5;
+
+export function coldProofBudgetUsd(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env["COLD_PROOF_BUDGET_USD"];
+  if (raw === undefined || raw.trim() === "") return DEFAULT_COLD_PROOF_BUDGET_USD;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_COLD_PROOF_BUDGET_USD;
+}
+
+/**
+ * LEVA 2 ligada? Default SIM — `COLD_PROOF_ENABLED` não precisa existir em
+ * lado nenhum para a leva 2 funcionar; a env só existe para DESLIGAR
+ * (COLD_PROOF_ENABLED=0 volta ao comportamento da leva 1).
+ */
+export function coldProofEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env["COLD_PROOF_ENABLED"] ?? "").trim();
+  return raw !== "0" && raw.toLowerCase() !== "false";
+}

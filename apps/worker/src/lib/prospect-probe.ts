@@ -49,7 +49,10 @@ import {
   runColdProofProbe,
   proofMergeVars,
   coldProofBatchBudgetUsd,
+  coldProofBudgetUsd,
+  coldProofEnabled,
   COLD_PROOF_COST_PER_LEAD_USD,
+  DEFAULT_COLD_PROOF_BUDGET_USD,
   type ColdProofResult,
 } from "../../../../packages/llm/src/cold-proof-probe";
 import { runApifySource, type ApifySpecMailbox, type ApifyLedger, type ApifyFetchFn } from "./apify-source";
@@ -119,26 +122,12 @@ export function prospectIcp(
 }
 
 /**
- * LEVA 2 (11/09) — orçamento do PROBE COM PROVA, em dólares por lote.
- * Default US$1,50 (≈50 leads a US$0,03). O gasto é orçado ANTES de chamar os
- * motores e o consumido é impresso no bloco: custo de API por lote explícito
- * é regra da casa. Override: env COLD_PROOF_BUDGET_USD (0 = probe desligado,
- * e aí a leva 2 inteira fica sem prova — a trilha degrada declarando isso).
+ * LEVA 2 — orçamento/chave do probe com prova. A regra mora em
+ * `packages/llm/src/cold-proof-probe.ts` (fonte única, agora compartilhada com
+ * o PILOTO da leva 2 no endpoint operador); aqui só re-exportamos, para não
+ * quebrar quem já importava daqui.
  */
-export const DEFAULT_COLD_PROOF_BUDGET_USD = 1.5;
-
-export function coldProofBudgetUsd(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env["COLD_PROOF_BUDGET_USD"];
-  if (raw === undefined || raw.trim() === "") return DEFAULT_COLD_PROOF_BUDGET_USD;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_COLD_PROOF_BUDGET_USD;
-}
-
-/** LEVA 2 ligada? Default sim; COLD_PROOF_ENABLED=0 volta ao comportamento da leva 1. */
-export function coldProofEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = (env["COLD_PROOF_ENABLED"] ?? "").trim();
-  return raw !== "0" && raw.toLowerCase() !== "false";
-}
+export { DEFAULT_COLD_PROOF_BUDGET_USD, coldProofBudgetUsd, coldProofEnabled };
 
 export function prospectBatchCap(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env["PROSPECT_BATCH_CAP"];

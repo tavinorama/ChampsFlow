@@ -104,3 +104,26 @@ não insista.
 
 Antes de disparar, a leva 2 ainda precisa: free test rodado para as 100 (≈ US$ 3,00) e o 1º e-mail
 **sem link** (regra de 27/08).
+
+### O caminho de execução (existe desde 11/09)
+
+Um comando faz a etapa inteira — e a primeira forma dele **não gasta nada**:
+
+```bash
+gh workflow run smartlead-leva2-pilot.yml -f run_id_shortlist=34570426016 -f confirm=false  # estimativa
+gh workflow run smartlead-leva2-pilot.yml -f run_id_shortlist=34570426016 -f confirm=true   # ≈US$3,00
+```
+
+Com `confirm=true` ele: baixa este artefato → chama `POST /api/v1/operator/leva2-probe` (que
+imprime a estimativa antes de qualquer gasto) → o worker prova lead a lead → **só as leads com
+prova** são adicionadas na campanha de destino, com os custom fields `ai_engine`, `competitor_1`,
+`competitor_2`, `query` e `report_url`, e removidas da campanha de origem (mover por id; nunca CSV).
+
+Travas: destino tem de estar **DRAFTED** (senão o job para antes de tocar em lead), teto de
+**80 leads/campanha/dia**, lote não é probado duas vezes (impressão digital de 14 dias;
+`-f idempotency_key=…` para repetir de propósito) e **nenhum start** — quem inicia é o founder,
+pelo `smartlead-launch.yml`. Detalhe operacional em [sop-dia-do-disparo.md §0.1](sop-dia-do-disparo.md).
+
+Onde ler o resultado sem esperar o workflow: `GET /api/v1/operator/leva2-probe/<job_id>` —
+por lead, `ok` + variáveis de merge ou `descartado` + motivo; e o custo real, que também fica no
+ledger `api_spend` (`op='cold_proof'`).
