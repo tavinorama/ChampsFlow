@@ -41,6 +41,7 @@ import {
   type DroppedCandidate,
   type ApifyCandidate,
   type ApifyRunSpec,
+  proofReportUrl,
   type ColdProof,
 } from "../../../api/src/lib/prospecting";
 import { signalGate, inferServiceAndCity } from "../../../api/src/lib/prospect-signal";
@@ -204,6 +205,8 @@ export function candidateSourcingPrompt(icpText: string): string {
 /** LEVA 2 — o probe com prova, mais o orçamento COMPARTILHADO pelas trilhas. */
 export interface ProofRunner {
   enabled: boolean;
+  /** Slug da campanha da trilha corrente — entra no ?from= do relatório. */
+  campaign: string;
   budgetUsd: number;
   spentUsd: number;
   probed: number;
@@ -388,7 +391,20 @@ async function verifyCandidates(input: {
         });
         continue;
       }
-      proof = { query: res.query, engine: vars.ai_engine, competitors: res.competitors };
+      proof = {
+        query: res.query,
+        engine: vars.ai_engine,
+        competitors: res.competitors,
+        // O link do relatório DELE (4º toque), montado e codificado aqui —
+        // o template do SmartLead nunca monta URL com nome de empresa.
+        reportUrl: proofReportUrl({
+          campaign: input.proof.campaign,
+          company: candidate.name,
+          competitor: res.competitors[0] ?? null,
+          website: candidate.website,
+          ...(candidate.category != null ? { category: candidate.category } : {}),
+        }),
+      };
     }
 
     let emails = extractContactEmails(home.text);
@@ -450,6 +466,7 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
   const budgetUsd = coldProofBudgetUsd(env);
   const proof: ProofRunner = {
     enabled: coldProofEnabled(env) && budgetUsd > 0,
+    campaign: "",
     budgetUsd,
     spentUsd: 0,
     probed: 0,
@@ -501,6 +518,7 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
         });
         continue;
       }
+      proof.campaign = campaign;
       const { verified, dropped } = await verifyCandidates({
         candidates: run.candidates,
         cap: prospectBatchCap(env),
@@ -553,6 +571,7 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
       continue;
     }
     const candidates = parseCandidateList(sourced.output, MAX_CANDIDATES_TO_VERIFY + 8);
+    proof.campaign = campaign;
     const { verified, dropped } = await verifyCandidates({
       candidates,
       cap,

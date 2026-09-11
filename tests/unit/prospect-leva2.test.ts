@@ -42,6 +42,7 @@ import {
   parseProspectsForCrm,
   crmNoteFor,
   validateColdSequenceBatch,
+  proofReportUrl,
 } from "../../apps/api/src/lib/prospecting";
 import { buildProspectBatchBlock, coldProofBudgetUsd } from "../../apps/worker/src/lib/prospect-probe";
 
@@ -371,6 +372,37 @@ describe("leva 2 — o lote inteiro: só entra quem tem sinal E prova", () => {
     // Custo do lote explícito e logado.
     expect(block).toContain("PROVA (leva 2): 1 probe(s)");
     expect(block).toContain("gasto US$0.03");
+  });
+
+  it("o 4º toque recebe {{report_url}} pronto e PERCENT-ENCODED (nome com espaço não quebra o link)", async () => {
+    const block = await buildProspectBatchBlock({
+      task: async () => ({ ok: true, output: "1. Acme Roofing | https://acmeroofing.com", engineUsed: "c", ms: 1 }),
+      fetchText,
+      now: () => NOW,
+      env: { PROSPECT_BATCH_CAP_AISTACK: "0" },
+      coldProof: proofOk,
+    });
+    const vars = JSON.parse(/^VARS: (.+)$/m.exec(block)![1]!) as Record<string, string>;
+    expect(vars["report_url"]).toBe(
+      "https://ozvor.com/test?from=cold-2026-09-11&b=Acme+Roofing&d=acmeroofing.com&c=Lone+Star+Roofing"
+    );
+    // Nenhum espaço cru na URL — é isso que um href do SmartLead quebraria.
+    expect(vars["report_url"]).not.toContain(" ");
+    // Só dado público de negócio na URL: nunca e-mail, nunca nome de pessoa.
+    expect(vars["report_url"]).not.toContain("@");
+  });
+
+  it("proofReportUrl codifica & e espaço, e cai para o domínio cru quando a URL é inválida", () => {
+    const url = proofReportUrl({
+      campaign: "oz-local-2026-09-14",
+      company: "Smith & Sons Roofing",
+      competitor: "A+B Roofers",
+      website: "https://www.smithsons.com/home",
+    });
+    expect(url).toContain("b=Smith+%26+Sons+Roofing");
+    expect(url).toContain("c=A%2BB+Roofers");
+    expect(url).toContain("d=smithsons.com");
+    expect(url).toContain("from=oz-local-2026-09-14");
   });
 
   it("probe sem prova = ZERO prospects (nada de placeholder para encher o lote)", async () => {

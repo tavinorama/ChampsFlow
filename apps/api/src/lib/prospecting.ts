@@ -548,6 +548,42 @@ export interface ColdProof {
   engine: string;
   /** Quem a IA recomendou no lugar dele → {{competitor_1}}, {{competitor_2}}. */
   competitors: string[];
+  /** O link do relatório DELE (4º toque) → {{report_url}}. Já percent-encoded. */
+  reportUrl?: string;
+}
+
+/**
+ * O link do relatório do próprio lead — o 4º toque da leva 2. Leva ao /test
+ * com a marca, o site e o concorrente JÁ preenchidos (prefill lido em
+ * InvisibilityTestClient), para o lead não encarar um formulário em branco.
+ *
+ * A codificação é feita AQUI, em código: um nome de empresa com espaço ou
+ * "&" quebraria um href montado à mão no SmartLead — por isso o e-mail usa
+ * a variável {{report_url}} pronta, nunca monta a URL no template.
+ * Só dado PÚBLICO de negócio entra na URL (nunca e-mail ou nome de pessoa).
+ */
+export function proofReportUrl(input: {
+  campaign: string;
+  company: string;
+  competitor?: string | null;
+  website?: string | null;
+  category?: string | null;
+}): string {
+  const params = new URLSearchParams();
+  params.set("from", input.campaign);
+  if (input.company.trim()) params.set("b", input.company.trim().slice(0, 80));
+  if (input.website) {
+    let host = input.website;
+    try {
+      host = new URL(input.website).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep as-is */
+    }
+    params.set("d", host.slice(0, 80));
+  }
+  if (input.competitor && input.competitor.trim()) params.set("c", input.competitor.trim().slice(0, 80));
+  if (input.category && input.category.trim()) params.set("cat", input.category.trim().slice(0, 80));
+  return `https://ozvor.com/test?${params.toString()}`;
 }
 
 /** As variáveis de merge do SmartLead para a leva 2 (ordem estável). */
@@ -557,6 +593,7 @@ export function proofMergeVarsOf(p: ColdProof): Record<string, string> {
     competitor_1: p.competitors[0] ?? "",
     competitor_2: p.competitors[1] ?? "",
     query: p.query,
+    ...(p.reportUrl ? { report_url: p.reportUrl } : {}),
   };
 }
 

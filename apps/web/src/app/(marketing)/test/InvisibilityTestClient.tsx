@@ -1264,6 +1264,33 @@ export function InvisibilityTestClient() {
     attributionRef.current = readAttributionFromLocation();
   }, []);
 
+  // LEVA 2 do cold outbound (11/09) — o 4º toque manda o lead para o SEU
+  // relatório, não para um formulário em branco: o link do e-mail carrega
+  // ?b=<marca>&d=<site>&c=<concorrente>&cat=<nicho>, tudo dado PÚBLICO de
+  // negócio (nunca dado pessoal — e-mail continua sendo digitado por ele).
+  // Só preenche campo vazio, nunca sobrescreve o que o visitante já digitou,
+  // e o teste continua sendo disparado por ele: prefill não roda nada.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let params: URLSearchParams;
+    try {
+      params = new URLSearchParams(window.location.search);
+    } catch {
+      return;
+    }
+    const read = (key: string): string => (params.get(key) ?? "").trim().slice(0, 80);
+    const b = read("b");
+    const d = read("d");
+    const c = read("c");
+    const cat = read("cat");
+    if (!b && !d && !c && !cat) return;
+    if (b) setBrand((v) => v || b);
+    if (d) setDomain((v) => v || d);
+    if (c) setCompetitor((v) => v || c);
+    if (cat) setCategory((v) => v || cat);
+    if (b || cat || c) setStepTwoOpen(true);
+  }, []);
+
   // Progressive disclosure: the visitor first sees two boxes only (website and
   // email). Brand and category appear once those two are valid. Both stay
   // REQUIRED in the payload — /api/test cannot run a real audit without them,
