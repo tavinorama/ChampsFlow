@@ -68,7 +68,7 @@ export function FounderBand() {
           Applied only when you pay annually. No countdown, no fake scarcity — when the cohort fills, it fills.
         </p>
       </div>
-      {/* Sem nowrap: em fonte mono a 18px, "Growth $69/mo · Agency $384/mo" mede ~330px na
+      {/* Sem nowrap: em fonte mono a 18px, a linha "Growth …/mo · Agency …/mo" mede ~330px na
           fonte do Linux do CI (DejaVu Sans Mono é mais larga que a SF Mono do Mac) e
           estourava a 320px — o único vermelho do E2E que sobreviveu ao #608. Localmente
           nunca reproduziu, por isso a prova é a run do E2E no CI. Deixa-se o texto quebrar
