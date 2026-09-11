@@ -44,6 +44,7 @@ import { processDriftControlJob } from "./jobs/drift-control";
 import { runGraphTick, runBrainDaily, runBrainWeekly, runDiscoveryWeekly, runSphereStart, runVideoDaily, runVideoAbsenceCheck, runSphereLinkedinStart, runSphereBlogStart, runSphereRedditStart, runPlatformCellStart, runWeeklyReport, runIncidentPostmortemDaily, runMemoryConsolidationMonthly, runPromptTunerWeekly, runAbExperimentWeekly, runProspectBatchWeekly } from "./jobs/graph-tick";
 import { processLandingGenerateJob } from "./jobs/landing-generate";
 import { runRecycleScanWeekly } from "./jobs/recycle-scan";
+import { runLeva2ProbeJob, leva2StoreFromIoRedis, type Leva2ProbeJobData } from "./jobs/leva2-probe";
 import { runRetentionMonthly } from "./jobs/retention";
 import { runFollowupScan } from "./jobs/followup-scan";
 import { processNurtureJobs } from "./jobs/nurture-send";
@@ -511,6 +512,21 @@ async function registerProspectBatchSchedule(): Promise<void> {
 // lives in /admin → Leads & CRM → Reciclagem. A MÁQUINA NUNCA ENVIA — the
 // founder loads the batch into a new SmartLead campaign by hand. 'lost'
 // (unsubscribed) is never recycled; neither is anyone who ever replied.
+// leva2-probe (founder 11/09): o PILOTO da leva 2 — "prove estes 100 ids".
+// NÃO EXISTE cron aqui e nunca deve existir: cada job custa dinheiro (US$0,03
+// por lead) e só nasce de um dispatch confirmado no endpoint operador
+// POST /api/v1/operator/leva2-probe. attempts:1 na fila — um retry automático
+// compraria o probe de novo. A máquina não envia nada: o job só produz prova.
+const leva2ProbeWorker = new Worker(
+  "leva2-probe",
+  async (job) =>
+    void (await runLeva2ProbeJob(job.data as Leva2ProbeJobData, {
+      store: leva2StoreFromIoRedis(connection),
+      sql: getGraphSql(),
+    })),
+  { connection, concurrency: 1, autorun: false }
+);
+
 const recycleScanWorker = new Worker(
   "recycle-scan",
   async () => runRecycleScanWeekly(getGraphSql()),
@@ -772,6 +788,7 @@ void platformKeysReady.finally(() => {
   void promptTunerWorker.run();
   void abExperimentWorker.run();
   void prospectBatchWorker.run();
+  void leva2ProbeWorker.run();
   void recycleScanWorker.run();
   void followupScanWorker.run();
   void discoveryWorker.run();

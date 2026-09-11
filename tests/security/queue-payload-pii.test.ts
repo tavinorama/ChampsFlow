@@ -84,8 +84,12 @@ describe("BullMQ queue payloads — IDs + region only (GEO-SEC-3)", () => {
     // coverage_retry/origin_audit_id/attempt: P1-07 — an automatic repeat of a
     // run that measured an incomplete engine panel. An opaque audit id and a
     // small integer; no PII, no prompt text, nothing a provider wrote.
+    // job_id: leva2-probe (piloto da leva 2, 11/09) — an opaque uuid, and
+    // deliberately the WHOLE payload: the 100-business batch it refers to
+    // waits in Redis (leva2:probe:input:<job_id>) precisely so the queue
+    // payload stays "ids only" like every other one here.
     const ALLOWED =
-      /^(audit_id|tenant_id|brand_id|region|publish_job_id|site_id|job_kind|coverage_retry|origin_audit_id|attempt)$/;
+      /^(audit_id|tenant_id|brand_id|region|publish_job_id|site_id|job_kind|coverage_retry|origin_audit_id|attempt|job_id)$/;
     const violations: string[] = [];
     for (const { file, payload } of allPayloads) {
       // Extract object keys (identifier followed by ':').
