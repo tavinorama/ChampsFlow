@@ -97,14 +97,24 @@ jobs:
                   total = 0
                   offset = 0
                   erro = None
+                  paginas = 0
+                  envelope_total = None    # total_leads que a PROPRIA API declara
+                  fim_da_paginacao = None  # 'pagina vazia' | 'envelope esgotado'
                   while True:
                       res = get(f"/campaigns/{cid}/leads?offset={offset}&limit=100")
                       if isinstance(res, dict) and ("_http_error" in res or "_error" in res):
                           erro = str(res)[:200]
                           break
+                      if isinstance(res, dict):
+                          for k in ("total_leads", "total_count", "total"):
+                              if isinstance(res.get(k), (int, float)):
+                                  envelope_total = int(res[k])
+                                  break
                       rows = res if isinstance(res, list) else (res.get("data") if isinstance(res, dict) else None)
                       if not rows:
+                          fim_da_paginacao = "pagina vazia"
                           break
+                      paginas += 1
                       for r in rows:
                           total += 1
                           # A linha pode ser {..., lead: {...}} — olhamos os dois níveis.
@@ -137,6 +147,11 @@ jobs:
                           erro = "paginacao passou de 100k — abortada"
                           break
                   row["leads_lidas"] = total
+                  row["total_declarado_pela_api"] = envelope_total
+                  row["paginas_lidas"] = paginas
+                  row["fim_da_paginacao"] = fim_da_paginacao
+                  if envelope_total is not None and total < envelope_total:
+                      row["LEADS_QUE_A_API_NAO_DEVOLVEU"] = envelope_total - total
                   row["status_tally"] = tally
                   row["nunca_receberam_email"] = nunca_tocada
                   row["ja_receberam_email"] = tocada
@@ -158,6 +173,7 @@ jobs:
                   "tally_geral": grand,
                   "total_nunca_receberam_email": sum(r.get("nunca_receberam_email", 0) for r in report),
                   "total_leads_lidas": sum(r.get("leads_lidas", 0) for r in report),
+                  "total_declarado_pela_api": sum((r.get("total_declarado_pela_api") or 0) for r in report),
               })
               raise SystemExit(0 if all("erro" not in r for r in report) else 1)
 
