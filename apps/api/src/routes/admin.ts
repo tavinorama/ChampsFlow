@@ -54,7 +54,7 @@ import {
 import { refreshPlatformKeys } from "../lib/platform-keys";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { normalizeCrmPatch } from "../lib/crm-validation";
-import { upsertCrmContact } from "../lib/crm";
+import { upsertCrmContact, CrmStageUnsupportedError } from "../lib/crm";
 import {
   buildDossier,
   crmNoteEntries,
@@ -598,22 +598,38 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
   // for web-client compatibility.
   // -------------------------------------------------------------------------
   app.get("/api/admin/crm", requireAuth, requireSuperAdmin, async (c) => {
+    type CrmRow = {
+      email: string;
+      stage: string;
+      note: string | null;
+      next_follow_up: string | null;
+      owner: string | null;
+      source?: string | null;
+      updated_at: string;
+    };
+    const ORDER = `ORDER BY (next_follow_up IS NULL), next_follow_up ASC, updated_at DESC
+          LIMIT 1000`;
     try {
-      const result = await db.query<{
-        email: string;
-        stage: string;
-        note: string | null;
-        next_follow_up: string | null;
-        owner: string | null;
-        updated_at: string;
-      }>(
-        `SELECT email, stage, note, next_follow_up, owner, updated_at
-           FROM crm_contact
-          ORDER BY (next_follow_up IS NULL), next_follow_up ASC, updated_at DESC
-          LIMIT 1000`
-      );
-      logger.info("admin_crm_fetched", { count: result.rows.length });
-      return c.json({ contacts: result.rows, migrationPending: false });
+      let rows: CrmRow[];
+      let sourceAvailable = true;
+      try {
+        // `source` lands with migration 20260911000001 (founder-gated).
+        ({ rows } = await db.query<CrmRow>(
+          `SELECT email, stage, note, next_follow_up, owner, source, updated_at
+             FROM crm_contact ${ORDER}`
+        ));
+      } catch (err) {
+        if ((err as { code?: string }).code !== "42703") throw err;
+        sourceAvailable = false;
+        ({ rows } = await db.query<CrmRow>(
+          `SELECT email, stage, note, next_follow_up, owner, updated_at
+             FROM crm_contact ${ORDER}`
+        ));
+      }
+      logger.info("admin_crm_fetched", { count: rows.length, source_available: sourceAvailable });
+      // sourceAvailable is explicit so the dashboard can say "the label is not
+      // stored yet" instead of rendering every contact as source-less.
+      return c.json({ contacts: rows, migrationPending: false, sourceAvailable });
     } catch (err) {
       logger.error("admin_crm_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_FAILED" }, 500);
@@ -641,10 +657,29 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     const auth = c.get("auth") as { userId?: string } | undefined;
 
     try {
-      const contact = await upsertCrmContact(db, p, auth?.userId ?? null);
-      logger.info("admin_crm_upserted", { stage: p.stage ?? "unchanged" });
-      return c.json({ contact });
+      const result = await upsertCrmContact(db, p, auth?.userId ?? null);
+      logger.info("admin_crm_upserted", {
+        stage: p.stage ?? "unchanged",
+        source_recorded: result.sourceRecorded,
+      });
+      return c.json({
+        contact: result.contact,
+        ...(result.degraded ? { degraded: result.degraded } : {}),
+      });
     } catch (err) {
+      // The design-partner funnel stages need migration 20260911000001. Until
+      // it runs, say so with the nominal action instead of a blank 500 — and
+      // never store a different stage to make the write "succeed".
+      if (err instanceof CrmStageUnsupportedError) {
+        logger.warn("admin_crm_stage_migration_pending", {
+          stage: err.stage,
+          migration: err.migration,
+        });
+        return c.json(
+          { error: "Conflict", code: err.code, message: err.message, migration: err.migration },
+          409
+        );
+      }
       logger.error("admin_crm_upsert_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
     }

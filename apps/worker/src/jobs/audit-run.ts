@@ -88,6 +88,12 @@ import {
   probeCacheEnabled,
   getCachedProbe,
   setCachedProbe,
+  // Audit cost model — the single source of truth for per-engine rates, env
+  // overrides and the ledger arithmetic (packages/llm/src/audit-cost.ts).
+  genRateCents,
+  extractionRateCents,
+  flatAuditOverrideCents,
+  auditCostCents as totalAuditCostCents,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
 // P1-07 — the customer-facing vocabulary for a discarded citation. The raw
@@ -2042,39 +2048,12 @@ export async function processAuditJob(
       // and an average of wrong numbers cannot stay right as the engine mix
       // shifts, which it does every time drift pauses one.
       //
-      // These are still ESTIMATES pending invoice reconciliation (#152), but
-      // they are per-engine measurements rather than one guessed blend:
-      //   anthropic  1.64¢  measured ($0.36 delta / 22 calls)
-      //   openai     0.41¢  measured ($0.09 / 22)
-      //   perplexity 0.68¢  measured ($0.15 / 22)
-      //   gemini     0¢     measured — FREE TIER today. Deliberately recorded
-      //                     as 0 (this ledger reports actual spend, not
-      //                     worst-case planning; planning lives in
-      //                     credits.USD_PER_PROMPT_AUDIT). If Google starts
-      //                     charging, this single line is a +52% audit-cost
-      //                     jump — set AUDIT_COST_PER_GEN_CENTS_GEMINI.
-      //   serp       0.40¢  DataForSEO list-derived (0.34¢/SERP measured on
-      //                     the shared account + 0.06¢ load_async_ai_overview)
-      // Per-engine override: AUDIT_COST_PER_GEN_CENTS_<ENGINE>. The legacy
-      // uniform AUDIT_COST_PER_GEN_CENTS, if set, applies to engines without a
-      // specific override; unknown engines fall back to 1.2¢.
-      const MEASURED_GEN_CENTS: Record<string, number> = {
-        anthropic: 1.64,
-        openai: 0.41,
-        perplexity: 0.68,
-        gemini: 0,
-        serp: 0.4,
-      };
-      const uniformRaw = Number(process.env["AUDIT_COST_PER_GEN_CENTS"] ?? NaN);
-      const uniform = Number.isFinite(uniformRaw) && uniformRaw > 0 ? uniformRaw : null;
-      const rateFor = (engine: string): number => {
-        const specific = Number(
-          process.env[`AUDIT_COST_PER_GEN_CENTS_${engine.toUpperCase()}`] ?? NaN
-        );
-        if (Number.isFinite(specific) && specific >= 0) return specific;
-        if (uniform !== null) return uniform;
-        return MEASURED_GEN_CENTS[engine] ?? 1.2;
-      };
+      // The rates, the env overrides and the arithmetic now live in
+      // packages/llm/src/audit-cost.ts (see its header for provenance), because
+      // the design-partner pack generator must PRINT this forecast before it
+      // spends anything — and a second copy of these numbers would drift from
+      // the ledger the moment one of them moved. Behaviour here is unchanged.
+      const rateFor = (engine: string): number => genRateCents(engine);
 
       // Live generations per engine, from the same accounting generationsUsed
       // uses: cached probes are frozen seed units and cost nothing this run.
@@ -2092,18 +2071,10 @@ export async function processAuditJob(
 
       // B3: the extraction + verification passes are extra (cheap-tier) calls.
       // ≈0.2¢ each (haiku-4-5 / gpt-4o-mini, ~1k in + ~200 out, no web search).
-      const perExtractionRaw = Number(process.env["AUDIT_COST_PER_EXTRACTION_CENTS"] ?? 0.2);
-      const perExtractionCents =
-        Number.isFinite(perExtractionRaw) && perExtractionRaw > 0 ? perExtractionRaw : 0.2;
+      const perExtractionCents = extractionRateCents();
 
-      const genCost = Object.entries(gensByEngine).reduce(
-        (sum, [eng, gens]) => sum + gens * rateFor(eng),
-        0
-      );
-      const flatOverride = Number(process.env["AUDIT_COST_CENTS"] ?? NaN);
-      const auditCostCents = Number.isFinite(flatOverride)
-        ? flatOverride
-        : Math.max(1, Math.round(genCost + extractionCalls * perExtractionCents));
+      const flatOverrideCents = flatAuditOverrideCents();
+      const auditCostCents = totalAuditCostCents({ gensByEngine, extractionCalls });
 
       // #152 — MEASURE, not estimate. One api_spend row per live engine, with
       // engine/model/tokens and the list-price cost when the adapter reported
@@ -2118,10 +2089,10 @@ export async function processAuditJob(
       const bySource: Record<string, number> = { measured: 0, rate: 0, flat: 0 };
       let measuredEngines = 0;
       let rateEngines = 0;
-      if (Number.isFinite(flatOverride)) {
+      if (flatOverrideCents !== null) {
         const r = await recordSpend(spendExec, {
           op: "audit",
-          estCents: flatOverride,
+          estCents: flatOverrideCents,
           estSource: "flat",
           ref: audit_id,
           tenantId: tenant_id,
