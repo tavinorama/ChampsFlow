@@ -68,7 +68,12 @@ export function FounderBand() {
           Applied only when you pay annually. No countdown, no fake scarcity — when the cohort fills, it fills.
         </p>
       </div>
-      <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>
+      {/* Sem nowrap: em fonte mono a 18px, "Growth $69/mo · Agency $384/mo" mede ~330px na
+          fonte do Linux do CI (DejaVu Sans Mono é mais larga que a SF Mono do Mac) e
+          estourava a 320px — o único vermelho do E2E que sobreviveu ao #608. Localmente
+          nunca reproduziu, por isso a prova é a run do E2E no CI. Deixa-se o texto quebrar
+          no " · ": duas linhas num telemóvel é o comportamento certo. */}
+        <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", overflowWrap: "anywhere" }}>
         Growth ${founderAnnualPerMonthUsd("growth")}/mo · Agency ${founderAnnualPerMonthUsd("agency")}/mo
       </div>
     </div>
