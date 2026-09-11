@@ -41,7 +41,16 @@ import {
   type DroppedCandidate,
   type ApifyCandidate,
   type ApifyRunSpec,
+  type ColdProof,
 } from "../../../api/src/lib/prospecting";
+import { signalGate, inferServiceAndCity } from "../../../api/src/lib/prospect-signal";
+import {
+  runColdProofProbe,
+  proofMergeVars,
+  coldProofBatchBudgetUsd,
+  COLD_PROOF_COST_PER_LEAD_USD,
+  type ColdProofResult,
+} from "../../../../packages/llm/src/cold-proof-probe";
 import { runApifySource, type ApifySpecMailbox, type ApifyLedger, type ApifyFetchFn } from "./apify-source";
 
 export interface FetchTextResult {
@@ -108,6 +117,28 @@ export function prospectIcp(
   };
 }
 
+/**
+ * LEVA 2 (11/09) — orçamento do PROBE COM PROVA, em dólares por lote.
+ * Default US$1,50 (≈50 leads a US$0,03). O gasto é orçado ANTES de chamar os
+ * motores e o consumido é impresso no bloco: custo de API por lote explícito
+ * é regra da casa. Override: env COLD_PROOF_BUDGET_USD (0 = probe desligado,
+ * e aí a leva 2 inteira fica sem prova — a trilha degrada declarando isso).
+ */
+export const DEFAULT_COLD_PROOF_BUDGET_USD = 1.5;
+
+export function coldProofBudgetUsd(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env["COLD_PROOF_BUDGET_USD"];
+  if (raw === undefined || raw.trim() === "") return DEFAULT_COLD_PROOF_BUDGET_USD;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_COLD_PROOF_BUDGET_USD;
+}
+
+/** LEVA 2 ligada? Default sim; COLD_PROOF_ENABLED=0 volta ao comportamento da leva 1. */
+export function coldProofEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env["COLD_PROOF_ENABLED"] ?? "").trim();
+  return raw !== "0" && raw.toLowerCase() !== "false";
+}
+
 export function prospectBatchCap(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env["PROSPECT_BATCH_CAP"];
   if (raw === undefined || raw.trim() === "") return DEFAULT_PROSPECT_BATCH_CAP;
@@ -170,6 +201,16 @@ export function candidateSourcingPrompt(icpText: string): string {
   ].join("\n");
 }
 
+/** LEVA 2 — o probe com prova, mais o orçamento COMPARTILHADO pelas trilhas. */
+export interface ProofRunner {
+  enabled: boolean;
+  budgetUsd: number;
+  spentUsd: number;
+  probed: number;
+  budgetExhausted: boolean;
+  run(input: { name: string; service: string; city: string }): Promise<ColdProofResult>;
+}
+
 export interface ProspectProbeDeps {
   /** The tick's hermes task fn (already callWithFallback-chained upstream). */
   task(prompt: string): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null }>;
@@ -190,6 +231,11 @@ export interface ProspectProbeDeps {
    * emailed). Loaded by the caller (graph-tick) from crm_contact.
    */
   existingCrm?: { emails: Set<string>; domains: Set<string> };
+  /**
+   * LEVA 2 — injeção do probe com prova (teste passa um fake). Ausente = o
+   * probe real do gateway, com o orçamento de env COLD_PROOF_BUDGET_USD.
+   */
+  coldProof?(input: { name: string; service: string; city: string }): Promise<ColdProofResult>;
 }
 
 /**
@@ -208,6 +254,10 @@ async function verifyCandidates(input: {
   existingCrm?: { emails: Set<string>; domains: Set<string> };
   /** Attempt ceiling — apify batches (paid data) get a higher one. */
   maxAttempts?: number;
+  /** LEVA 2 — relógio do lote (idade de conteúdo, janela de reviews). */
+  now: Date;
+  /** LEVA 2 — o probe com prova e o orçamento compartilhado do lote. */
+  proof?: ProofRunner;
 }): Promise<{ verified: VerifiedProspect[]; dropped: DroppedCandidate[] }> {
   const { candidates, cap, fetchText, deadline, seenHosts, source, existingCrm } = input;
   const maxAttempts = input.maxAttempts ?? MAX_CANDIDATES_TO_VERIFY;
@@ -266,6 +316,30 @@ async function verifyCandidates(input: {
     } catch {
       /* keep as-is; the homepage already fetched fine */
     }
+    // LEVA 2, passo 2 — LISTA COM SINAL. Antes de gastar qualquer dólar com
+    // o probe, o filtro de código decide se este negócio merece um toque:
+    // presença local (GBP ou JSON-LD LocalBusiness) + sinal de marketing
+    // (conteúdo datado ≤12m, review recente ou pixel de anúncio), e fora as
+    // verticais que só deram STOP na leva 1.
+    let signals: string[] | null = null;
+    if (input.proof?.enabled) {
+      const verdict = signalGate({
+        name: candidate.name,
+        ...(candidate.category != null ? { category: candidate.category } : {}),
+        html: home.text,
+        now: input.now,
+      });
+      if (!verdict.pass) {
+        dropped.push({
+          name: candidate.name,
+          website: candidate.website,
+          reason: verdict.dropReason ?? "reprovado no filtro de sinal da leva 2",
+        });
+        continue;
+      }
+      signals = verdict.reasons;
+    }
+
     const robots = await fetchText(`${origin}/robots.txt`);
     const robotsTxt = robots && robots.status === 200 ? robots.text : null;
     const { findings } = probeSite({ html: home.text, robotsTxt });
@@ -273,6 +347,48 @@ async function verifyCandidates(input: {
       // No honest ammunition = no cold email. Better a smaller batch.
       dropped.push({ name: candidate.name, website: candidate.website, reason: "sem achado de GEO verificavel na homepage (sem municao honesta)" });
       continue;
+    }
+
+    // LEVA 2, passo 1 — GANCHO COM PROVA. Um mini free test sobre a pergunta
+    // do nicho/cidade DELE. Sem resultado, o lead não entra na leva: nada de
+    // placeholder, nada de concorrente inventado.
+    let proof: ColdProof | null = null;
+    if (input.proof?.enabled) {
+      const where = inferServiceAndCity({
+        name: candidate.name,
+        ...(candidate.category != null ? { category: candidate.category } : {}),
+        html: home.text,
+      });
+      if (!where.service || !where.city) {
+        dropped.push({
+          name: candidate.name,
+          website: candidate.website,
+          reason: `sem nicho/cidade no site (${where.source}) — impossivel fazer a pergunta certa (lead fora da leva 2)`,
+        });
+        continue;
+      }
+      if (input.proof.spentUsd + COLD_PROOF_COST_PER_LEAD_USD > input.proof.budgetUsd + 1e-9) {
+        dropped.push({
+          name: candidate.name,
+          website: candidate.website,
+          reason: `orcamento do probe esgotado (US$${input.proof.budgetUsd.toFixed(2)} do lote) — lead fica para o proximo lote`,
+        });
+        input.proof.budgetExhausted = true;
+        continue;
+      }
+      const res = await input.proof.run({ name: candidate.name, service: where.service, city: where.city });
+      input.proof.spentUsd += res.costUsd;
+      input.proof.probed += 1;
+      const vars = proofMergeVars(res);
+      if (!res.ok || !vars) {
+        dropped.push({
+          name: candidate.name,
+          website: candidate.website,
+          reason: res.reason ?? "probe sem prova utilizavel (lead fora da leva 2)",
+        });
+        continue;
+      }
+      proof = { query: res.query, engine: vars.ai_engine, competitors: res.competitors };
     }
 
     let emails = extractContactEmails(home.text);
@@ -296,6 +412,8 @@ async function verifyCandidates(input: {
       website: candidate.website,
       email,
       findings,
+      ...(signals && signals.length > 0 ? { signals } : {}),
+      ...(proof ? { proof } : {}),
       ...(source === "apify"
         ? {
             source: "apify" as const,
@@ -326,6 +444,22 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
   const deadline = Date.now() + VERIFY_DEADLINE_MS;
   const seenHosts = new Set<string>();
   const batches: TrackBatch[] = [];
+
+  // LEVA 2 — um único orçamento para o lote inteiro (as duas trilhas somam no
+  // mesmo saldo). Orçado ANTES de gastar, e o consumido entra no bloco.
+  const budgetUsd = coldProofBudgetUsd(env);
+  const proof: ProofRunner = {
+    enabled: coldProofEnabled(env) && budgetUsd > 0,
+    budgetUsd,
+    spentUsd: 0,
+    probed: 0,
+    budgetExhausted: false,
+    run: deps.coldProof ?? ((input) => runColdProofProbe(input)),
+  };
+  const proofNote = (): string =>
+    proof.enabled
+      ? `PROVA (leva 2): ${proof.probed} probe(s) · orcamento US$${proof.budgetUsd.toFixed(2)} (teto ${coldProofBatchBudgetUsd(Math.ceil(proof.budgetUsd / COLD_PROOF_COST_PER_LEAD_USD))} = ${Math.floor(proof.budgetUsd / COLD_PROOF_COST_PER_LEAD_USD)} leads a US$${COLD_PROOF_COST_PER_LEAD_USD}) · gasto US$${proof.spentUsd.toFixed(2)}${proof.budgetExhausted ? " · ORCAMENTO ESGOTADO no lote" : ""}`
+      : "PROVA (leva 2): DESLIGADA (COLD_PROOF_ENABLED=0 ou orcamento 0) — lote sem gancho com prova";
 
   // Source switch (10.C.17/5.A.6): a founder-confirmed Apify spec in the
   // mailbox routes ITS track to the actor and turns the other track OFF for
@@ -375,6 +509,8 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
         seenHosts,
         source: "apify",
         maxAttempts: 60,
+        now: now(),
+        proof,
         ...(deps.existingCrm ? { existingCrm: deps.existingCrm } : {}),
       });
       batches.push({
@@ -386,7 +522,7 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
         dropped,
       });
     }
-    return renderDualProspectBlock(batches);
+    return `${renderDualProspectBlock(batches)}\n\n${proofNote()}`;
   }
 
   for (const track of PROSPECT_TRACKS) {
@@ -424,10 +560,12 @@ export async function buildProspectBatchBlock(deps: ProspectProbeDeps): Promise<
       deadline,
       seenHosts,
       source: "engine",
+      now: now(),
+      proof,
       ...(deps.existingCrm ? { existingCrm: deps.existingCrm } : {}),
     });
     batches.push({ track, campaign, icpSource: icp.source, listed: candidates.length, verified, dropped });
   }
 
-  return renderDualProspectBlock(batches);
+  return `${renderDualProspectBlock(batches)}\n\n${proofNote()}`;
 }
