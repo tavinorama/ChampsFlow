@@ -11,12 +11,6 @@ name: SmartLead shortlist (design partners + piloto leva 2)
 # completos saem como ARTEFATO privado do workflow.
 
 on:
-  # TEMPORARIO (removido antes do merge): workflow_dispatch so existe depois
-  # que o arquivo esta na main; o push nesta branch e o unico jeito de rodar
-  # e provar o resultado antes do PR.
-  push:
-    branches: [ops/smartlead-shortlist]
-    paths: ['.github/workflows/smartlead-shortlist.yml']
   workflow_dispatch:
     inputs:
       mode:
@@ -42,7 +36,7 @@ jobs:
       - name: Shortlist (deterministic)
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
-          MODE: ${{ github.event.inputs.mode || 'run' }}
+          MODE: ${{ github.event.inputs.mode }}
           HTTP_BUDGET: ${{ github.event.inputs.http_budget }}
           PILOTO_SIZE: ${{ github.event.inputs.piloto_size }}
         run: |
