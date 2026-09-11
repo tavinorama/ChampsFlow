@@ -513,7 +513,8 @@ jobs:
           nao_tocadas = [r for r in elig if not r["touched"] and r["own_domain"]]
           dp_share  = int(HTTP_BUDGET * 0.35)
           orcamento = {
-              "canal_b": take([r for r in elig if r["segment"] in DP_SEGMENTS and r["own_domain"]], dp_share),
+              "canal_b": take([r for r in elig if r["segment"] in DP_SEGMENTS and r["own_domain"]
+                               and r.get("segmento_fonte") == "empresa"], dp_share),
               # O resto do orcamento vai TODO para lead nao tocada: e a unica que
               # o piloto pode usar. Na corrida 34569744711 a sobra foi gasta em
               # lead ja tocada e o piloto parou em 71/100.
@@ -598,8 +599,13 @@ jobs:
               r["marketing_sinais"] = sum(1 for k in ("ld_local", "blog_recent", "ads", "reviews") if c.get(k))
 
           # --------------------------------------------------- CANAL B: 10 + 10
+          # O canal B so aceita segmento PROVADO pelo nome/site da propria empresa.
+          # Palpite de taxonomia de enriquecimento nao entra numa proposta de
+          # US$ 1.500/mes (foi assim que 'AC Yard Services', paisagismo, apareceu
+          # como real estate no top 10 da corrida 34570283967).
           dp_pool = [r for r in cand if r["alive"] and r["own_domain"]
-                     and r["segment"] in DP_SEGMENTS and r["marketing_sinais"] >= 1]
+                     and r["segment"] in DP_SEGMENTS and r["marketing_sinais"] >= 1
+                     and r.get("segmento_fonte") == "empresa"]
           dp_pool.sort(key=lambda r: (-r["score"], -r["marketing_sinais"], r["lead_id"]))
           # no máximo 2 por segmento no top 10 — o piloto de parceria não pode ser monotema
           top, reserva, per_seg = [], [], {}
