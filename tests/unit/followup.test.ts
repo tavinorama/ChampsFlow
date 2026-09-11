@@ -29,12 +29,14 @@ import {
   extractTrilha,
   followupMarkerLine,
   hasFollowupMarker,
+  hasHumanText,
   hasOpenFollowupProposal,
   looksLikeAutoReplyNoise,
   parseIntent,
   validateFollowupDraft,
+  HUMAN_COURTESY_OPENERS,
 } from "../../apps/api/src/lib/followup";
-import { extractReplyText } from "../../apps/api/src/lib/dossier";
+import { extractReplyText, htmlToText } from "../../apps/api/src/lib/dossier";
 
 const NOW = new Date("2026-09-01T12:00:00.000Z");
 const EVENT_A = "11111111-2222-3333-4444-555555555555";
@@ -206,5 +208,111 @@ describe("prompts and delivery shape", () => {
 
   it("the approval timeout is 96h — silence is rejection, never approval", () => {
     expect(FOLLOWUP_APPROVAL_TIMEOUT_HOURS).toBe(96);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INCIDENTE 05-09/09 — a única resposta de interesse real chegou 05/09 18:53
+// UTC e o rascunho só nasceu 09/09 19:00 (≈190 varreduras mudas). Postmortem:
+// docs/learning/postmortems/2026-09-11-followup-4-dias.md. O texto abaixo é
+// SINTÉTICO, com a mesma FORMA da resposta real (HTML de cliente de e-mail +
+// abertura de cortesia). Zero PII: nome, e-mail e domínio inventados.
+// ---------------------------------------------------------------------------
+
+/** A prosa humana por baixo do markup (sintética, sem PII). */
+const REAL_REPLY_HUMAN_TEXT = [
+  "Hello there! Thank you so much for taking the time to write me.",
+  "We all only have so much time in our lives, and I'm trying to be really intentional with mine.",
+  "Right now I'm focused on getting found when people ask AI about roof repair.",
+  "Can you tell me what the audit actually looks at?",
+].join(" ");
+
+/** Como um cliente de e-mail real embrulha essa prosa (head enorme primeiro). */
+const REAL_REPLY_HTML = `<html xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta name="Generator" content="Microsoft Word 15 (filtered medium)"><style><!--/* Font Definitions */@font-face {font-family:"Cambria Math"; panose-1:2 4 5 3 5 4 6 3 2 4;}p.MsoNormal, li.MsoNormal, div.MsoNormal {margin:0cm; font-size:11.0pt; font-family:"Calibri",sans-serif;}--></style></head><body lang="EN-GB"><div class="WordSection1"><p class="MsoNormal">${REAL_REPLY_HUMAN_TEXT.replace(/'/g, "&#39;")}</p></div></body></html>`;
+
+describe("incidente 05-09/09 — a resposta humana que morreu em silêncio", () => {
+  it("html de cliente de e-mail vira PROSA, nunca <head> cru", () => {
+    const text = htmlToText(REAL_REPLY_HTML);
+    expect(text).toContain("Thank you so much for taking the time");
+    expect(text).toContain("audit actually looks at");
+    expect(text).not.toContain("<");
+    expect(text).not.toContain("font-family");
+    expect(text).not.toContain("&#39;");
+    expect(text).toContain("I'm trying");
+  });
+
+  it("o corpo COMPLETO vence o preview truncado (o classificador via 40 chars)", () => {
+    // Forma de produção: preview_text é um excerto curto, reply_body é o corpo.
+    const payload = JSON.stringify({
+      event_type: "EMAIL_REPLY",
+      sl_lead_email: "owner@rooferco.example",
+      reply_body: REAL_REPLY_HTML,
+      preview_text: REAL_REPLY_HUMAN_TEXT.slice(0, 40),
+    });
+    const text = extractReplyText(payload)!;
+    expect(text).toContain("Can you tell me what the audit actually looks at?");
+    expect(text.length).toBeGreaterThan(200);
+  });
+
+  it("reply_message.text em HTML é lido como texto (era devolvido cru)", () => {
+    const payload = JSON.stringify({
+      event_type: "EMAIL_REPLY",
+      reply_message: { message_id: "<m@x>", text: REAL_REPLY_HTML },
+    });
+    const text = extractReplyText(payload)!;
+    expect(text).toContain("Thank you so much for taking the time");
+    expect(text).not.toContain("<head>");
+  });
+
+  it("uma fonte sem texto não envenena a leitura — cai para a seguinte", () => {
+    const payload = JSON.stringify({
+      event_type: "EMAIL_REPLY",
+      reply_message: { text: "   " },
+      preview_text: "<html><head><style>p {margin:0cm;}</style></head><body></body></html>",
+      reply_body: `<div>${REAL_REPLY_HUMAN_TEXT}</div>`,
+    });
+    expect(extractReplyText(payload)).toContain("audit actually looks at");
+  });
+
+  it("payload sem nenhum texto legível devolve null (ilegível, nunca vazio)", () => {
+    const payload = JSON.stringify({
+      event_type: "EMAIL_REPLY",
+      reply_body: '<html><head><style>p {margin:0cm;}</style></head><body><img src="cid:x"></body></html>',
+    });
+    expect(extractReplyText(payload)).toBeNull();
+  });
+
+  it("CORTESIA NUNCA é auto-reply: 'thank you for your email' é como humano abre", () => {
+    for (const opener of HUMAN_COURTESY_OPENERS) {
+      expect(looksLikeAutoReplyNoise(opener)).toBe(false);
+      expect(looksLikeAutoReplyNoise(`${opener} ${REAL_REPLY_HUMAN_TEXT}`)).toBe(false);
+    }
+    expect(looksLikeAutoReplyNoise(REAL_REPLY_HUMAN_TEXT)).toBe(false);
+  });
+
+  it("auto-reply DE VERDADE continua apanhado por código, sem LLM", () => {
+    const machine = [
+      "Automatic reply: I am away from my desk",
+      "Auto-Submitted: auto-replied",
+      "X-Autoreply: yes",
+      "I am out of the office until Monday.",
+      "I am currently away and will reply on my return.",
+      "She is on maternity leave until March.",
+      "I am on leave until the 20th.",
+      "Delivery has failed to these recipients",
+      "Your message is undeliverable.",
+      "mailer-daemon@example.com",
+    ];
+    for (const m of machine) expect(looksLikeAutoReplyNoise(m)).toBe(true);
+  });
+
+  it("hasHumanText: prosa sim, markup cru e vazio não", () => {
+    expect(hasHumanText(REAL_REPLY_HUMAN_TEXT)).toBe(true);
+    expect(hasHumanText("Sounds good, tell me more please")).toBe(true);
+    expect(hasHumanText(REAL_REPLY_HTML)).toBe(false);
+    expect(hasHumanText('p.MsoNormal {margin:0cm; font-family:"Calibri";}')).toBe(false);
+    expect(hasHumanText("")).toBe(false);
+    expect(hasHumanText(null)).toBe(false);
+    expect(hasHumanText("ok")).toBe(false); // curto demais para ser resposta
   });
 });
