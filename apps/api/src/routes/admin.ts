@@ -23,6 +23,8 @@
  *   GET   /api/admin/delivery-health  — "are we delivering?" — indicators with
  *                                       their contracts + the Ozvor canary
  *   GET   /api/admin/analytics        — funnel metrics, MRR, ARR, trends
+ *   GET   /api/admin/audits/:id/extraction — raw verifier reasons + coverage
+ *                                       (the debug the customer UI no longer shows)
  *   GET   /api/admin/opportunities    — upsell targets (kit buyers without sub, hot DFY leads)
  *   GET   /api/admin/contacts/:email/dossier — per-client timeline (o ficheiro)
  *   GET   /api/admin/recycle-batches  — 60-day recycling batches (from CRM markers)
@@ -348,6 +350,61 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
     } catch (err) {
       logger.error("admin_audits_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "AUDITS_FAILED" }, 500);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/audits/:id/extraction — the engine room (P1-07).
+  //
+  // The customer's dashboard used to print the verifier's own working notes
+  // ("WRONG OFFSET - characters 811-818 are 'services' not 'Ozvor's' (offsets
+  // recomputed from text_exact)"). RELATORIO §6: debug belongs in admin, with
+  // a trace id. The audit id IS the trace id.
+  //
+  // Nothing was deleted when the UI stopped showing it — this is where it went.
+  // -------------------------------------------------------------------------
+  app.get("/api/admin/audits/:id/extraction", requireAuth, requireSuperAdmin, async (c) => {
+    const auditId = c.req.param("id");
+    try {
+      const result = await db.query<{
+        provider_breakdown: unknown;
+        recorded_at: string;
+        brand_id: string | null;
+        status: string | null;
+        triggered_by: string | null;
+      }>(
+        `SELECT s.provider_breakdown, s.recorded_at, a.brand_id, a.status, a.triggered_by
+           FROM geo_score s
+           JOIN geo_audit a ON a.id = s.audit_id
+          WHERE s.audit_id = $1
+          ORDER BY s.recorded_at DESC
+          LIMIT 1`,
+        [auditId]
+      );
+      const row = result.rows[0];
+      if (!row) return c.json({ error: "not_found", code: "AUDIT_NOT_SCORED" }, 404);
+
+      const bd = (row.provider_breakdown ?? {}) as Record<string, unknown>;
+      logger.info("admin_audit_extraction_read", { audit_id: auditId });
+      return c.json({
+        trace_id: auditId,
+        recorded_at: row.recorded_at,
+        brand_id: row.brand_id,
+        status: row.status,
+        triggered_by: row.triggered_by,
+        // Verbatim, raw reasons included. This is the only surface that shows
+        // them; the customer route sanitises through
+        // packages/shared/src/rejection-language.ts.
+        extraction: bd["extraction"] ?? null,
+        coverage: bd["coverage"] ?? null,
+        coverage_retry: bd["coverage_retry"] ?? null,
+      });
+    } catch (err) {
+      logger.error("admin_audit_extraction_error", {
+        audit_id: auditId,
+        message: (err as Error).message?.slice(0, 200),
+      });
+      return c.json({ error: "internal_error", code: "AUDIT_EXTRACTION_FAILED" }, 500);
     }
   });
 
