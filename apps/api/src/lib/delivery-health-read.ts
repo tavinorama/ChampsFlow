@@ -371,6 +371,65 @@ async function probeRawErrorLeak(db: PostgresClient): Promise<DeliveryObservatio
   };
 }
 
+/**
+ * P1-07 — scheduled runs that measured an incomplete engine panel and never
+ * got a comparable re-run. The worker writes
+ * provider_breakdown->'coverage_retry' ({status, reason, engines}); this reads
+ * it back.
+ *
+ * A repeat still inside its window is NOT counted — it is working as designed.
+ * A repeat queued more than two days ago never landed, and that is a hole.
+ */
+async function probeIncompletePanelRecovery(db: PostgresClient): Promise<DeliveryObservation> {
+  const { rows } = await db.query<{
+    status: string | null;
+    reason: string | null;
+    stale: boolean | null;
+  }>(
+    `SELECT s.provider_breakdown->'coverage_retry'->>'status' AS status,
+            s.provider_breakdown->'coverage_retry'->>'reason' AS reason,
+            (s.recorded_at < NOW() - INTERVAL '2 days')       AS stale
+       FROM geo_score s
+       JOIN geo_audit a ON a.id = s.audit_id
+      WHERE s.recorded_at >= NOW() - INTERVAL '30 days'
+        AND a.triggered_by = 'cron'
+        AND s.provider_breakdown ? 'coverage_retry'
+      ORDER BY s.recorded_at DESC
+      LIMIT 500`
+  );
+
+  const unrecovered = rows.filter(
+    (r) => r.status === "exhausted" || (r.status === "scheduled" && r.stale === true)
+  );
+
+  // The population is every scheduled run we could observe in the window —
+  // without it, a company with zero incomplete panels would read as
+  // "insufficient evidence" forever instead of the healthy zero it is.
+  const { rows: scheduledRows } = await db.query<{ n: string }>(
+    `SELECT COUNT(*)::int AS n
+       FROM geo_audit
+      WHERE triggered_by = 'cron'
+        AND created_at >= NOW() - INTERVAL '30 days'`
+  );
+  const sample = Number(scheduledRows[0]?.n ?? 0);
+
+  const reasons = [...new Set(unrecovered.map((r) => (r.reason ?? "").trim()).filter(Boolean))];
+
+  return {
+    id: "incomplete_panel_recovery",
+    value: unrecovered.length,
+    sample,
+    ...(sample === 0
+      ? {
+          unknown: "insufficient_evidence" as const,
+          detail: "no scheduled audit ran in the window — nothing to recover",
+        }
+      : unrecovered.length > 0
+        ? { detail: reasons.slice(0, 2).join(" · ") || "an incomplete panel was never re-measured" }
+        : {}),
+  };
+}
+
 async function probeComparableTrend(db: PostgresClient): Promise<DeliveryObservation> {
   const { rows } = await db.query<{
     brand_id: string;
@@ -732,6 +791,7 @@ export async function readDeliveryHealth(db: PostgresClient): Promise<DeliveryHe
     safely(["failed_jobs", "queue_age"], () => probeAudits(db)),
     safely(["raw_error_leak"], () => probeRawErrorLeak(db)),
     safely(["comparable_trend_coverage"], () => probeComparableTrend(db)),
+    safely(["incomplete_panel_recovery"], () => probeIncompletePanelRecovery(db)),
   ]);
 
   const byId = new Map<DeliveryIndicatorId, DeliveryObservation>();

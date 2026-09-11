@@ -32,6 +32,9 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
+// P1-07 — allowlist that turns the worker's extraction telemetry into the only
+// shape a customer sees. Raw verifier lines stay behind the admin route.
+import { sanitizeExtractionForClient } from "../../../../packages/shared/src/rejection-language";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType, type ContentProvider, type ContentDraft } from "../../../../packages/llm/src/index";
 // P0-08 — hosted content generation. Pure meter/idempotency/fact-check from
@@ -222,6 +225,71 @@ import {
   type IpRateLimiter,
 } from "../lib/ip-rate-limit";
 import { clientIp } from "../lib/client-ip";
+
+// ---------------------------------------------------------------------------
+// P1-07 — intent rows are titled by the QUESTION, never by an id.
+//
+// Prompt Universe v2 (#588) keys each prompt as `uv_<audit_prompt.id>`, and the
+// dashboard had no text to render, so it printed the uuid. New audits carry
+// `label` from the worker; every audit written before that gets the text
+// resolved here, from the prompt table, in ONE query.
+//
+// Deliberate failure mode: unresolved rows come back WITHOUT a label and the
+// UI titles them "Archived question". We never emit the id as a label, and we
+// never drop the row — the rate was really measured.
+// ---------------------------------------------------------------------------
+
+const PROMPT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function resolveIntentQuestionText(
+  db: PostgresClient,
+  brandId: string | null,
+  intents: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (intents.length === 0) return intents;
+
+  // Only rows that still need text, and only ids shaped like a prompt id.
+  const wanted = new Set<string>();
+  for (const row of intents) {
+    const label = typeof row["label"] === "string" ? row["label"].trim() : "";
+    if (label.length > 0) continue;
+    const intent = typeof row["intent"] === "string" ? row["intent"] : "";
+    const id = intent.startsWith("uv_") ? intent.slice(3) : "";
+    if (PROMPT_UUID_RE.test(id)) wanted.add(id);
+  }
+  if (wanted.size === 0) return intents;
+
+  const textById = new Map<string, string>();
+  try {
+    const params: unknown[] = [[...wanted]];
+    let sqlText =
+      `SELECT id::text AS id, text FROM audit_prompt WHERE id = ANY($1::uuid[])`;
+    if (brandId) {
+      params.push(brandId);
+      sqlText += ` AND brand_id = $2`;
+    }
+    const { rows } = await db.query<{ id: string; text: string | null }>(sqlText, params);
+    for (const r of rows) {
+      if (typeof r.text === "string" && r.text.trim().length > 0) {
+        textById.set(r.id, r.text.trim());
+      }
+    }
+  } catch (err) {
+    // Never fail a breakdown over a label. Loud, because a dashboard full of
+    // "Archived question" means this query is broken, not that the prompts are.
+    logger.warn("intent_label_resolve_failed", {
+      message: (err as Error).message?.slice(0, 160),
+    });
+  }
+
+  return intents.map((row) => {
+    const label = typeof row["label"] === "string" ? row["label"].trim() : "";
+    if (label.length > 0) return row;
+    const intent = typeof row["intent"] === "string" ? row["intent"] : "";
+    const text = intent.startsWith("uv_") ? textById.get(intent.slice(3)) : undefined;
+    return text ? { ...row, label: text } : row;
+  });
+}
 
 // ---------------------------------------------------------------------------
 // topSources helper — aggregates citation URLs from evidence rows and offsite
@@ -1645,6 +1713,19 @@ export function registerAuditRoutes(
     // Compute top cited sources — pure aggregation, no extra DB query.
     const topSources = computeTopSources(evidenceRes.rows, bd, brandDomainForSources);
 
+    // P1-07 — the question, not its id. Prompt Universe v2 (#588) keys every
+    // intent as `uv_<audit_prompt.id>`; audits written before this fix carry no
+    // text at all, so the text is resolved here from the prompt table. Failure
+    // to resolve leaves `label` absent and the UI says "Archived question" — it
+    // never falls back to the id.
+    const intentsWithText = await resolveIntentQuestionText(
+      db,
+      auditBrandId,
+      Array.isArray((bd as { intents?: unknown }).intents)
+        ? ((bd as { intents?: unknown[] }).intents as Array<Record<string, unknown>>)
+        : []
+    );
+
     return c.json({
       scores: scoreRow
         ? {
@@ -1669,8 +1750,9 @@ export function registerAuditRoutes(
       // Audit-level run-weighted citation rate with its Wilson 95% interval —
       // the honesty rule: the rate always travels with its ± width.
       citation_ci: (bd as { citationCI?: unknown }).citationCI ?? null,
-      // Per-intent breakdown: rate ± CI, n, share of voice per engine.
-      intents: (bd as { intents?: unknown }).intents ?? [],
+      // Per-intent breakdown: rate ± CI, n, share of voice per engine, and
+      // the question text each row is titled by (P1-07).
+      intents: intentsWithText,
       // Sampling telemetry: base runs, escalations, generation ceiling, cache.
       sampling: (bd as { sampling?: unknown }).sampling ?? null,
       // Engine coverage (#163): which engines this run reached, which were
@@ -1711,9 +1793,13 @@ export function registerAuditRoutes(
         };
       })(),
       // B3 — two-pass citation extraction: mode, verified/rejected counts,
-      // kinds, and sample false positives this audit refused to count.
+      // kinds, and WHY citations were discarded — in the customer's language.
+      // P1-07: the verifier's own lines ("WRONG OFFSET - characters 811-818 …")
+      // are engine-room notes and never leave the building through here. They
+      // are kept verbatim in provider_breakdown and read by the admin at
+      // GET /api/admin/audits/:id/extraction. Nothing is deleted; it moved.
       // null on pre-B3 audits (additive; old clients ignore it).
-      extraction: (bd as { extraction?: unknown }).extraction ?? null,
+      extraction: sanitizeExtractionForClient((bd as { extraction?: unknown }).extraction),
       // Site-crawl evidence shown under Brand/Performance.
       site_crawl: (bd as { siteCrawl?: unknown }).siteCrawl ?? null,
       // Competitor benchmark — who AI recommends instead of you (ranked).
