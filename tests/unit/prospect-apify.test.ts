@@ -431,10 +431,27 @@ describe("fechabilidade no round-trip bloco → CRM", () => {
     expect(note).toContain("reviews=128");
   });
 
-  it("prospect da fonte engine (sem proxies) mantém a nota histórica intacta", () => {
+  it("prospect da fonte engine (sem proxies) guarda trilha, campanha, nome e site", () => {
+    // Canal C (11/09): o NOME entrou na nota. Era o único facto público que o
+    // lote já conhecia (o verificador casa-o contra o HTML do site) e que a
+    // nota deitava fora — e é ele que o feed de prova diária precisa de ter
+    // exato para procurar a empresa dentro de uma resposta de IA. Sem ele o
+    // feed adivinhava uma marca a partir do domínio.
     const note = crmNoteFor({
       email: "a@b.com",
-      name: "X",
+      name: "X Roofing",
+      website: "https://x.com",
+      finding: "f",
+      track: "geo",
+      campaign: "cold-2026-09-09",
+    });
+    expect(note).toBe("[prospect-batch] trilha=geo campanha=cold-2026-09-09 nome=X Roofing — f — https://x.com");
+  });
+
+  it("o nome só entra quando existe — nota sem nome continua válida", () => {
+    const note = crmNoteFor({
+      email: "a@b.com",
+      name: "",
       website: "https://x.com",
       finding: "f",
       track: "geo",
