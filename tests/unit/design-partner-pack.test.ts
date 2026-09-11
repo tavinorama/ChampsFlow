@@ -294,6 +294,24 @@ describe("the generator over a recorded audit (no engine calls, no cost)", () =>
     }
   });
 
+  it("writes the artifact and the acceptance in the PACK's language", () => {
+    const record = parseAuditFixture(fixtureRaw());
+    const pt = assemblePack(record, { ...BASE_OPTS, language: "pt-BR" });
+    for (const a of pt.model.actions) {
+      // The classifier's own strings are English; a pt-BR pack must not leak
+      // them, or it reads as a translation nobody finished.
+      expect(a.artifact, a.artifact).not.toMatch(/^(page|proof asset|off-site presence)$/);
+      expect(a.acceptance, a.acceptance).not.toMatch(/\b(The|answers|exists|page is live)\b/);
+    }
+    // And both lines stay inside the house sentence cap, in both languages.
+    for (const language of PACK_LANGUAGES) {
+      const pack = assemblePack(record, { ...BASE_OPTS, language });
+      for (const a of pack.model.actions) {
+        expect(longSentences(a.acceptance), `${language}: ${a.acceptance}`).toEqual([]);
+      }
+    }
+  });
+
   it("shows three DIFFERENT moves, not the same move three times", () => {
     const record = parseAuditFixture(fixtureRaw());
     const pack = assemblePack(record, BASE_OPTS);
@@ -330,7 +348,7 @@ describe("the generator over a recorded audit (no engine calls, no cost)", () =>
     const pack = assemblePack(record, { ...BASE_OPTS, language: "pt-BR" });
     expect(pack.html).toContain('lang="pt-BR"');
     expect(pack.html).toContain("US$ 750");
-    expect(pack.html).toContain("US$ 1.500 por mes");
+    expect(pack.html).toContain("US$ 1.500 por mês");
     expect(pack.html).toContain("Sem fidelidade");
     // Same evidence, different language.
     expect(pack.html).toContain("Summit Roofworks");

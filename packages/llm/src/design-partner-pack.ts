@@ -284,7 +284,7 @@ const EN: CopyTable = {
   ownerNames: { ozvor: "Ozvor", client: "You, with our draft", partner: "Ozvor, with a partner" },
   weeks: [
     {
-      label: "Week 1 - baseline",
+      label: "Week 1 — baseline",
       lines: [
         "We confirm you own the brand.",
         "We load your entity, market, language and products.",
@@ -294,7 +294,7 @@ const EN: CopyTable = {
       ],
     },
     {
-      label: "Week 2 - first action shipped",
+      label: "Week 2 — first action shipped",
       lines: [
         "We pick the strongest gap from week 1.",
         "We write the artifact. You read it.",
@@ -303,7 +303,7 @@ const EN: CopyTable = {
       ],
     },
     {
-      label: "Week 3 - breadth",
+      label: "Week 3 — breadth",
       lines: [
         "We ship the next two actions.",
         "We work on the places AI quotes about you.",
@@ -311,7 +311,7 @@ const EN: CopyTable = {
       ],
     },
     {
-      label: "Week 4 - re-measure and review",
+      label: "Week 4 — re-measure and review",
       lines: [
         "We ask the same questions again.",
         "We show you what moved and what did not.",
@@ -342,32 +342,32 @@ const EN: CopyTable = {
     "You see the method, the evidence and the failures.",
     "Five design partners only. You get our attention.",
   ],
-  footer: "Ozvor - AI search visibility - ozvor.com",
+  footer: "Ozvor · AI search visibility · ozvor.com",
 };
 
 const PT: CopyTable = {
   packTitle: (company) => `${company} na busca com IA`,
   subtitle: (domain, market) => `Uma auditoria real de ${domain}. Mercado: ${market}.`,
-  runLine: (date, version) => `Rodada em ${date}. Versao do metodo ${version}.`,
+  runLine: (date, version) => `Rodada em ${date}. Versão do método ${version}.`,
   coverageLine: (probed) => `Perguntamos a estes motores: ${probed.join(", ")}.`,
   blockedLine: (items) =>
-    `Nao perguntamos: ${items.map((i) => `${i.engine} (${i.reason})`).join("; ")}.`,
+    `Não perguntamos: ${items.map((i) => `${i.engine} (${i.reason})`).join("; ")}.`,
   failedLine: (items) =>
-    `Perguntamos e nao houve resposta: ${items.map((i) => `${i.engine} (${i.reason})`).join("; ")}.`,
+    `Perguntamos e não houve resposta: ${items.map((i) => `${i.engine} (${i.reason})`).join("; ")}.`,
   summaryLine: (asked, read, cited) =>
-    `Fizemos ${asked} perguntas de comprador. Lemos ${read} respostas. Voce apareceu em ${cited}.`,
-  gapsTitle: "Onde o comprador procura e voce nao esta",
-  gapsIntro: (company) => `Estas perguntas sao reais. ${company} nao apareceu.`,
-  gapsEmpty: "Todas as perguntas citaram voce. Nada a relatar aqui.",
-  winsTitle: "Onde voce ja aparece",
-  winsEmpty: "Nenhuma resposta citou voce nesta rodada. Este e o resultado honesto.",
-  actionsTitle: "Os tres movimentos mais fortes",
-  actionsIntro: "Cada um diz a pergunta que resolve. Cada um tem data de conferencia.",
-  noGapLine: "Esta rodada nao achou lacuna que valha acao. Nao vamos inventar trabalho.",
+    `Fizemos ${asked} perguntas de comprador. Lemos ${read} respostas. Você apareceu em ${cited}.`,
+  gapsTitle: "Onde o comprador procura e você não está",
+  gapsIntro: (company) => `Estas perguntas são reais. ${company} não apareceu.`,
+  gapsEmpty: "Todas as perguntas citaram você. Nada a relatar aqui.",
+  winsTitle: "Onde você já aparece",
+  winsEmpty: "Nenhuma resposta citou você nesta rodada. Este é o resultado honesto.",
+  actionsTitle: "Os três movimentos mais fortes",
+  actionsIntro: "Cada um diz a pergunta que resolve. Cada um tem data de conferência.",
+  noGapLine: "Esta rodada não achou lacuna que valha ação. Não vamos inventar trabalho.",
   planTitle: "O que fazemos nos primeiros 30 dias",
-  planIntro: "Nos fazemos o trabalho. Voce aprova. Nada sai sem o seu sim.",
-  notPromisedTitle: "O que nao prometemos",
-  notPromisedIntro: "A resposta da IA e probabilistica. Quem promete mais esta chutando.",
+  planIntro: "Nós fazemos o trabalho. Você aprova. Nada sai sem o seu sim.",
+  notPromisedTitle: "O que não prometemos",
+  notPromisedIntro: "A resposta da IA é probabilística. Quem promete mais está chutando.",
   offerTitle: "A oferta de design partner",
   ctaTitle: "Quer ver o resto?",
   ctaLine: "Marque 20 minutos. Eu mostro cada pergunta que fizemos.",
@@ -377,81 +377,81 @@ const PT: CopyTable = {
   colEngine: "Motor",
   colInstead: "Citou no lugar",
   colSource: "Montou a partir de",
-  colRank: "Posicao",
+  colRank: "Posição",
   absentLabel: "sem resposta exibida",
-  nobodyLabel: "ninguem citado",
+  nobodyLabel: "ninguém citado",
   noSourceLabel: "sem fonte exibida",
-  becauseLabel: "Porque",
-  artifactLabel: "Nos produzimos",
+  becauseLabel: "Porquê",
+  artifactLabel: "Nós produzimos",
   acceptanceLabel: "Pronto significa",
   recheckLabel: "Perguntamos de novo em",
   ownerLabel: "Quem faz",
   ownerNames: {
     ozvor: "Ozvor",
-    client: "Voce, com o nosso rascunho",
+    client: "Você, com o nosso rascunho",
     partner: "Ozvor, com um parceiro",
   },
   weeks: [
     {
-      label: "Semana 1 - linha de base",
+      label: "Semana 1 — linha de base",
       lines: [
-        "Confirmamos que a marca e sua.",
+        "Confirmamos que a marca é sua.",
         "Carregamos entidade, mercado, idioma e produtos.",
         "Importamos seus dados de busca e seus concorrentes.",
-        "Voce aprova as perguntas que vamos acompanhar.",
+        "Você aprova as perguntas que vamos acompanhar.",
         "Rodamos a linha de base e mostramos a primeira lacuna.",
       ],
     },
     {
-      label: "Semana 2 - primeira acao no ar",
+      label: "Semana 2 — primeira ação no ar",
       lines: [
         "Escolhemos a lacuna mais forte da semana 1.",
-        "Escrevemos o artefato. Voce le.",
-        "Voce aprova. Publicamos onde voce permitir.",
+        "Escrevemos o artefato. Você lê.",
+        "Você aprova. Publicamos onde você permitir.",
         "Registramos o que mudou e por que.",
       ],
     },
     {
-      label: "Semana 3 - alcance",
+      label: "Semana 3 — alcance",
       lines: [
-        "Entregamos as duas acoes seguintes.",
-        "Trabalhamos os lugares que a IA cita sobre voce.",
+        "Entregamos as duas ações seguintes.",
+        "Trabalhamos os lugares que a IA cita sobre você.",
         "Corrigimos os perfis que se contradizem.",
       ],
     },
     {
-      label: "Semana 4 - medir de novo e revisar",
+      label: "Semana 4 — medir de novo e revisar",
       lines: [
         "Fazemos as mesmas perguntas outra vez.",
-        "Mostramos o que mudou e o que nao mudou.",
-        "Explicamos por que, com as respostas lado a lado.",
-        "Combinamos o mes seguinte junto com voce.",
+        "Mostramos o que mudou e o que não mudou.",
+        "Explicamos por quê, com as respostas lado a lado.",
+        "Combinamos o mês seguinte junto com você.",
       ],
     },
     {
       label: "Todo dia, por baixo",
       lines: [
-        "Saude dos motores, filas e frescor sao vigiados.",
-        "Uma queda e investigada em ate um dia.",
-        "Se nao conseguimos medir algo, nos dizemos.",
+        "Saúde dos motores, filas e frescor são vigiados.",
+        "Uma queda é investigada em até um dia.",
+        "Se não conseguimos medir algo, nós dizemos.",
       ],
     },
   ],
   notPromised: [
-    "Nao prometemos ranking nem citacao.",
-    "Nao prometemos data para nenhum dos dois.",
-    "Nao prometemos mexer em score.",
-    "Nao relatamos avanco que nao possamos mostrar.",
-    "Nao dizemos que a fila esta vazia com lacuna aberta.",
+    "Não prometemos ranking nem citação.",
+    "Não prometemos data para nenhum dos dois.",
+    "Não prometemos mexer em score.",
+    "Não relatamos avanço que não possamos mostrar.",
+    "Nunca dizemos fila vazia com lacuna aberta.",
   ],
   offer: [
-    "Primeiro mes: US$ 750. Depois: US$ 1.500 por mes.",
-    "Sem fidelidade. Cancele no fim de qualquer mes.",
-    "Tudo o que construimos e seu. Exportacao completa, quando quiser.",
-    "Voce ve o metodo, a evidencia e as falhas.",
-    "Apenas cinco design partners. Voce tem a nossa atencao.",
+    "Primeiro mês: US$ 750. Depois: US$ 1.500 por mês.",
+    "Sem fidelidade. Cancele no fim de qualquer mês.",
+    "Tudo o que construímos é seu. Exportação completa, quando quiser.",
+    "Você vê o método, a evidência e as falhas.",
+    "Apenas cinco design partners. Você tem a nossa atenção.",
   ],
-  footer: "Ozvor - visibilidade na busca com IA - ozvor.com",
+  footer: "Ozvor · visibilidade na busca com IA · ozvor.com",
 };
 
 const COPY: Record<PackLanguage, CopyTable> = { en: EN, "pt-BR": PT };
@@ -720,7 +720,7 @@ export function toActionCard(action: VisibilityAction, language: PackLanguage): 
           ? `a resposta vem de ${sources.join(" e ")}`
           : `the answer comes from ${sources.join(" and ")}`
         : language === "pt-BR"
-          ? "a resposta nao mostrou fonte"
+          ? "a resposta não mostrou fonte"
           : "the answer showed no source";
   const because =
     language === "pt-BR"
@@ -729,8 +729,13 @@ export function toActionCard(action: VisibilityAction, language: PackLanguage): 
   return {
     headline: headlineFor(action, language),
     because,
-    artifact: action.artifactType,
-    acceptance: action.acceptanceCriteria[0] ?? c.acceptanceLabel,
+    // Pack-owned when we know the gap type; the classifier's own English
+    // strings are the fallback, so a new type degrades to English, not blank.
+    artifact: ARTIFACT_LABEL[language][action.gapType] ?? action.artifactType,
+    acceptance:
+      ACCEPTANCE_LABEL[language][action.gapType] ??
+      action.acceptanceCriteria[0] ??
+      c.acceptanceLabel,
     recheckOn: action.verificationPlan.earliestCheckAt.slice(0, 10),
     owner: action.ownerType,
     gapType: action.gapType,
@@ -756,12 +761,12 @@ const HEADLINES: Record<PackLanguage, Record<GapType, string>> = {
     local: "Fix your local listings so AI trusts them",
   },
   "pt-BR": {
-    technical: "Deixe os robos de IA lerem seu site",
-    entity: "Faca a IA saber qual empresa e a sua",
+    technical: "Deixe os robôs de IA lerem seu site",
+    entity: "Faça a IA saber qual empresa é a sua",
     content: "Responda a pergunta que o comprador faz",
-    proof: "Coloque seus resultados onde a IA le",
-    reputation: "Conquiste as avaliacoes que a IA cita",
-    offsite: "Apareca nos lugares que a IA consulta",
+    proof: "Coloque seus resultados onde a IA lê",
+    reputation: "Conquiste as avaliações que a IA cita",
+    offsite: "Apareça nos lugares que a IA consulta",
     local: "Arrume seus cadastros locais para a IA confiar",
   },
 };
@@ -769,6 +774,63 @@ const HEADLINES: Record<PackLanguage, Record<GapType, string>> = {
 function headlineFor(action: VisibilityAction, language: PackLanguage): string {
   return HEADLINES[language][action.gapType] ?? HEADLINES.en[action.gapType];
 }
+
+/**
+ * What we produce, and what "done" means — in the pack's language.
+ *
+ * The gap classifier's `artifactType` and `acceptanceCriteria` are written for
+ * the client dashboard and the worker: English, long, and quoting the prompt
+ * again. Two things make them wrong HERE. A pt-BR pack would carry an English
+ * line per card, which reads as a translation nobody finished. And the card
+ * already names the exact question in `because`, so repeating it in the
+ * acceptance line spends half the card saying the same thing twice.
+ *
+ * So the pack owns these two lines, per gap type, in both languages. They say
+ * the same thing the classifier says — shorter, and to the person paying.
+ * `toActionCard` falls back to the classifier's own strings for a gap type this
+ * table does not know, so a new type degrades to English rather than to blank.
+ */
+const ARTIFACT_LABEL: Record<PackLanguage, Record<GapType, string>> = {
+  en: {
+    technical: "the crawl fix, on your pages",
+    entity: "your identity markup and profiles",
+    content: "one page that answers it",
+    proof: "your proof, published",
+    reputation: "the public answer, on the record",
+    offsite: "a real presence on that source",
+    local: "your local listings, corrected",
+  },
+  "pt-BR": {
+    technical: "a correção de rastreio, nas suas páginas",
+    entity: "a marcação de identidade e os seus perfis",
+    content: "uma página que responde a pergunta",
+    proof: "a sua prova, publicada",
+    reputation: "a resposta pública, no registro",
+    offsite: "presença real naquela fonte",
+    local: "seus cadastros locais, corrigidos",
+  },
+};
+
+const ACCEPTANCE_LABEL: Record<PackLanguage, Record<GapType, string>> = {
+  en: {
+    technical: "The page loads, and the AI crawlers are allowed in.",
+    entity: "One outside record states the same name and category.",
+    content: "The page answers it in the first paragraph.",
+    proof: "Two proofs on the page that anyone can check.",
+    reputation: "The public answer is live, where it was said.",
+    offsite: "You are present on that source, under your name.",
+    local: "Your listings match your site, everywhere.",
+  },
+  "pt-BR": {
+    technical: "A página carrega, e os robôs de IA podem entrar.",
+    entity: "Um registro de fora diz o mesmo nome e categoria.",
+    content: "A página responde no primeiro parágrafo.",
+    proof: "Duas provas na página que qualquer um confere.",
+    reputation: "A resposta pública está no ar, onde foi dito.",
+    offsite: "Você está naquela fonte, com o seu nome.",
+    local: "Seus cadastros batem com o site, em todo lado.",
+  },
+};
 
 /**
  * Pick the three actions the pack shows.
