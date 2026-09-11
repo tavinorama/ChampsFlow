@@ -115,6 +115,16 @@ jobs:
               rep = {}
               for cid, (label, _b) in CAMPS.items():
                   info = {"id": cid}
+                  an = call("GET", f"/campaigns/{cid}/analytics")
+                  if isinstance(an, dict):
+                      info["analytics"] = {k: an.get(k) for k in
+                                           ("total_count", "sent_count", "unique_sent_count", "reply_count",
+                                            "bounce_count", "unsubscribed_count", "campaign_lead_stats")
+                                           if an.get(k) is not None}
+                  st = call("GET", f"/campaigns/{cid}/statistics?offset=0&limit=1")
+                  if isinstance(st, dict):
+                      info["statistics_envelope"] = {k: v for k, v in st.items()
+                                                     if k != "data" and isinstance(v, (int, str, bool))}
                   first = call("GET", f"/campaigns/{cid}/leads?offset=0&limit=100")
                   if isinstance(first, dict):
                       info["envelope_keys"] = sorted(k for k in first.keys() if k != "data")
