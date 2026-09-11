@@ -75,6 +75,47 @@ gh api -X PUT repos/tavinorama/ChampsFlow/branches/main/protection \
 JSON
 ```
 
+## "Verde na main" = run de `ci.yml` no SHA do HEAD (regra de 2026-09-11)
+
+Os 6 checks acima protegem o **PR**. Depois do merge, a `main` só tem CI própria
+se houver **uma run de `ci.yml` cujo `head_sha` é o HEAD da main** — e desde
+04/09 isso não acontecia sozinho:
+
+- `automerge.yml` arma o auto-merge nativo com o `GITHUB_TOKEN`; o merge é
+  feito por `github-actions[bot]`. Regra do GitHub (docs "Triggering a workflow
+  from a workflow"): *"events triggered by the `GITHUB_TOKEN` will not create a
+  new workflow run, with the following exceptions: `workflow_dispatch` and
+  `repository_dispatch`"*. O `push` na main gerado pelo auto-merge **não**
+  dispara `ci.yml` nem `post-deploy-smoke.yml`; `pull_request: closed` também
+  não (mesmo actor, não está na exceção).
+- Evidência 11/09: os 8 merges do dia (#599 #600 #601 #602 #603 #605 #607 #608,
+  `mergedBy: app/github-actions`) tinham **zero** runs de `ci.yml` no SHA de
+  merge; a única run da main foi o push manual do founder (`4e61a46`,
+  run 34570390983). A main deployou no Railway 8× sem CI própria.
+
+**Fecho do furo — `.github/workflows/main-after-merge.yml`** (cron `*/15`):
+lê o HEAD da main, consulta as runs de `ci.yml` e `post-deploy-smoke.yml`
+filtradas por `head_sha` e, se não houver run, despacha `gh workflow run <wf>
+--ref main` — `workflow_dispatch` com o `GITHUB_TOKEN` **é** a exceção
+documentada, por isso funciona sem PAT e sem GitHub App. Dedup por `head_sha`
+(a run despachada aparece com esse SHA; in-progress conta). O smoke
+despachado recebe `github.sha` = HEAD e compara `api.sha == web.sha == HEAD`
+(#576). Alarme: HEAD >30 min sem run de `ci.yml`, ou run de `ci.yml` no HEAD
+vermelha → Telegram + summary + run vermelho; `TELEGRAM_*` ausentes = vermelho
+já no preflight (o dispatch corre na mesma). `cron-absence-watch.yml` vigia
+este vigia (janela 2 h).
+
+Como provar "verde na main" para um SHA `X`:
+
+```bash
+gh api "repos/tavinorama/ChampsFlow/actions/workflows/ci.yml/runs?branch=main&head_sha=X" \
+  --jq '.workflow_runs[] | {id, event, conclusion}'
+# vazio = NÃO está verde na main, por mais verde que o PR tenha sido.
+```
+
+Nunca "provar" verde na main com a run do PR: o PR corre no merge-commit
+provisório (`refs/pull/N/merge`), não no SHA que deployou.
+
 ## Se renomear um job de ci.yml
 
 O nome do job É o context da proteção. Renomear job = o check antigo fica

@@ -5,6 +5,17 @@ on:
     branches: [main]
   pull_request:
     branches: [main, "claude/**"]
+  # 11/09: merges feitos pelo auto-merge (GITHUB_TOKEN) NÃO disparam `push`
+  # (regra do GitHub: eventos gerados pelo GITHUB_TOKEN não criam runs, salvo
+  # workflow_dispatch/repository_dispatch). main-after-merge.yml vigia a main
+  # e despacha este workflow no HEAD sem run. `sha` é opcional e só para
+  # forense manual (rodar a CI num commit específico); vazio = HEAD do ref.
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to check out (optional; default = HEAD of the ref you dispatch on)"
+        required: false
+        default: ""
 
 # Cancel superseded runs for the same branch/PR
 concurrency:
@@ -32,6 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -81,6 +94,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -136,6 +151,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -214,6 +231,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -242,6 +261,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -286,6 +307,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:

@@ -108,6 +108,26 @@ When the change genuinely alters an E2E-covered flow, prefer a **targeted** run
 of just those spec(s) (`npx playwright test tests/e2e/<file> --project=chromium-desktop`)
 over the whole flaky suite. Do **not** hard-gate HIGH PRs on a green full E2E.
 
+### "Green on main" = a `ci.yml` run on the HEAD SHA (2026-09-11)
+
+The six required checks gate the **PR**. After the merge, `main` only has its own
+CI if there is a **`ci.yml` run whose `head_sha` is the HEAD of `main`**. A merge
+performed by the auto-merge bot (`GITHUB_TOKEN`) does **not** trigger `push`
+workflows (GitHub rule: events triggered by the `GITHUB_TOKEN` create no workflow
+run, except `workflow_dispatch`/`repository_dispatch`) — on 11/09 eight merges
+deployed to Railway with zero CI runs on their merge SHAs. The fix is
+`.github/workflows/main-after-merge.yml`: a 15-min cron that dispatches
+`ci.yml` and `post-deploy-smoke.yml` on the HEAD of `main` when no run exists
+for that SHA (dedup by `head_sha`), and alarms on Telegram if `main` sits >30 min
+without CI on its HEAD or that CI is red. Rules:
+
+- Never report "green on main" from the PR's checks. Prove it with a `ci.yml`
+  run on the merged SHA (`gh api .../workflows/ci.yml/runs?branch=main&head_sha=<sha>`).
+- The post-deploy smoke must run against the SHA Railway deployed: it compares
+  `api.sha == web.sha == github.sha` (#576); a dispatched run's `github.sha` is HEAD.
+- Never "fix" this with the founder's PAT or by disabling checks — the
+  `workflow_dispatch` exception is the sanctioned path.
+
 ### Auto-merge — no manual merge routine (ever)
 
 Merging must **never** require relaxing branch protection, dismissing a review, or `gh pr merge --admin`. That routine is banned. `.github/workflows/automerge.yml` arms GitHub's **native auto-merge** from the PR's **risk label**, and GitHub completes the squash-merge the instant the six required checks pass.
