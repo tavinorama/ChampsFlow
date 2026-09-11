@@ -111,8 +111,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ["/terms-of-service", "yearly", 0.3],
     ["/legal/dpa", "yearly", 0.3],
     ["/legal/california-privacy", "yearly", 0.3],
-    // /legal/do-not-sell and /legal/dsr-request are noindex (privacy request
-    // forms — PENDING 10.A.11) and therefore intentionally NOT in the sitemap.
+    // The two public privacy-rights forms are indexable on purpose (see the
+    // decision in their layout.tsx files, 2026-09-11): they are the CCPA/CPRA
+    // opt-out and the GDPR/LGPD/CCPA request channels, linked from the privacy
+    // policy, the footer and the cookie banner, and carry no personal data.
+    // Being findable in search facilitates the right; noindex did not protect
+    // anything. 10.A.11 had noindexed them while the P1-04 E2E still listed
+    // them as indexable — that contradiction was the red suite on main.
+    ["/legal/do-not-sell", "yearly", 0.3],
+    ["/legal/dsr-request", "yearly", 0.3],
     ["/legal/cookies", "yearly", 0.3],
     ["/legal/sub-processors", "yearly", 0.3],
   ];

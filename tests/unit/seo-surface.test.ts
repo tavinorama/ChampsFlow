@@ -6,7 +6,10 @@
  *     from the filesystem, so a new marketing page cannot silently ship
  *     invisible to crawlers. (Noindex or token-delivery routes are excluded
  *     explicitly, with the reason.)
- *  2. Token/delivery and privacy-form routes carry robots noindex.
+ *  2. Token/delivery routes carry robots noindex, and the two public
+ *     privacy-rights forms (/legal/do-not-sell, /legal/dsr-request) do NOT:
+ *     they are in the sitemap on purpose (decision 2026-09-11, see their
+ *     layout.tsx), so sitemap and robots must keep agreeing in that direction.
  *  3. robots.txt disallows the authenticated app + token subpaths while
  *     keeping the /kit and /ai-audit landing pages indexable.
  */
@@ -40,18 +43,26 @@ describe("sitemap covers every public (marketing) route", () => {
   it("excluded routes really are noindex (the exclusion reason stays true)", () => {
     const welcome = readFileSync(join(MARKETING, "welcome/page.tsx"), "utf8");
     expect(welcome).toMatch(/robots:\s*\{\s*index:\s*false/);
-    // Noindexed privacy forms must not be advertised in the sitemap either.
-    expect(SITEMAP_SRC).not.toContain('"/legal/do-not-sell"');
-    expect(SITEMAP_SRC).not.toContain('"/legal/dsr-request"');
+  });
+
+  it("the public privacy-rights forms are in the sitemap AND indexable (no contradiction either way)", () => {
+    // 10.A.11 (#572) noindexed these two and pulled them from the sitemap while
+    // the P1-04 E2E (#589) still listed them as indexable routes; the suite
+    // stayed red on main until the contradiction was resolved in favour of
+    // indexable (they are the CCPA opt-out and GDPR/LGPD request channels,
+    // linked from the privacy policy, and carry no personal data).
+    for (const route of ["/legal/do-not-sell", "/legal/dsr-request"]) {
+      expect(SITEMAP_SRC, `sitemap.ts is missing ${route}`).toContain(`"${route}"`);
+      const layout = readFileSync(join(WEB, `src/app${route}/layout.tsx`), "utf8");
+      expect(layout, `${route} is in the sitemap but its layout says noindex`).not.toMatch(/index:\s*false/);
+    }
   });
 });
 
-describe("token/delivery and privacy-form routes are noindex", () => {
+describe("token/delivery routes are noindex", () => {
   for (const rel of [
     "src/app/(marketing)/ai-audit/[token]/layout.tsx",
     "src/app/(marketing)/kit/[token]/layout.tsx",
-    "src/app/legal/do-not-sell/layout.tsx",
-    "src/app/legal/dsr-request/layout.tsx",
   ]) {
     it(`${rel} declares robots index:false`, () => {
       const src = readFileSync(join(WEB, rel), "utf8");

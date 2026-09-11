@@ -237,9 +237,15 @@ html[data-theme="light"] .film {
 .film-jump:hover { transform: translateY(-1px); filter: brightness(1.04); }
 
 /* ── AI answer device ─────────────────────────────────────────────── */
+/* Sized border-box so the card can never be wider than the copy column it
+   sits in. Content-box it measured 320px at a 320px viewport (88vw + 36px
+   padding + 2px border) and its right edge was clipped by the stage on every
+   phone width. 538px = the old 500px content + padding + border, so nothing
+   changes above 598px. */
 .film-answer {
   margin-top: 26px;
-  width: min(500px, 88vw);
+  box-sizing: border-box;
+  width: min(538px, 100%);
   background: var(--film-card-bg);
   border: 1px solid var(--film-line);
   border-radius: 14px;
@@ -279,7 +285,8 @@ html[data-theme="light"] .film {
 /* ── Product panel ────────────────────────────────────────────────── */
 .film-panel {
   margin-top: 26px;
-  width: min(520px, 88vw);
+  box-sizing: border-box;
+  width: min(558px, 100%);
   background: var(--film-card-bg);
   border: 1px solid var(--film-line);
   border-radius: 14px;

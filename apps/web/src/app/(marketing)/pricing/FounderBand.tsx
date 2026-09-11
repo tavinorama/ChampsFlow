@@ -68,8 +68,15 @@ export function FounderBand() {
           Applied only when you pay annually. No countdown, no fake scarcity — when the cohort fills, it fills.
         </p>
       </div>
-      <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", whiteSpace: "nowrap" }}>
-        Growth ${founderAnnualPerMonthUsd("growth")}/mo · Agency ${founderAnnualPerMonthUsd("agency")}/mo
+      {/* Two prices, each unbreakable on its own, with a breakable separator
+          between them. As ONE nowrap string this line measured 324px at a
+          320px viewport (the band sits inside main + its own padding, so it
+          has 240px to work with) and was the element that widened the
+          document on /pricing — the P0-10 mobile-overflow failure. */}
+      <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-accent-ink)", fontSize: "1.125rem", minWidth: 0 }}>
+        <span style={{ whiteSpace: "nowrap" }}>Growth ${founderAnnualPerMonthUsd("growth")}/mo</span>
+        {" · "}
+        <span style={{ whiteSpace: "nowrap" }}>Agency ${founderAnnualPerMonthUsd("agency")}/mo</span>
       </div>
     </div>
   );
