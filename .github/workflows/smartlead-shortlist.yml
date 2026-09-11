@@ -258,6 +258,21 @@ jobs:
               r"wixsite\.com|weebly\.com|godaddysites\.com|yelp\.com|"
               r"tripadvisor\.|angi\.com|thumbtack\.com|nextdoor\.com|mysite\.com", re.I)
 
+          # Um escritorio batizado com o nome do dono tem nome de PESSOA. No log,
+          # no PR e no doc esse registro e identificado pelo dominio; o nome da
+          # empresa continua so no artefato privado.
+          BIZ_WORD = re.compile(r"llc|inc\b|corp|co\.|company|group|firm|law|associates|partners|"
+                                r"services|solutions|systems|design|build|roof|plumb|hvac|heating|"
+                                r"dental|clinic|realty|estate|homes|builders|construction|studio|"
+                                r"agency|media|\&|and\b|of\b|the\b|\d", re.I)
+
+          def display_name(rec):
+              nome = (rec.get("company") or "").strip()
+              toks = [t for t in re.split(r"\s+", nome) if t]
+              if 1 <= len(toks) <= 3 and not BIZ_WORD.search(nome) and all(t.isalpha() for t in toks):
+                  return "(nome pessoal - ver artefato)"
+              return nome
+
           US_STATES = set("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV "
                           "NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC".split())
           US_NAMES = {"us", "usa", "u.s.", "u.s.a.", "united states", "united states of america", ""}
@@ -392,14 +407,26 @@ jobs:
           CAMP_FALLBACK = {3783524: ("agency", 10), 3783526: ("saas", 10)}
 
           def classify(rec):
-              text = " ".join([rec["company"], rec["website"], rec["cf_text"]])
-              for name, weight, rx in SEGMENTS:
-                  if rx.search(text):
-                      return name, weight
-              for name, rx in SEG_SOFT:
-                  if rx.search(text):
-                      return name, 10
-              return CAMP_FALLBACK.get(rec["campaign_id"], ("", 0))
+              # O nome/site da empresa manda. O campo `industry` do enriquecimento
+              # (taxonomia Adapt) so entra como ULTIMO recurso: ele rotula mudanca,
+              # marcenaria e construtora como "Real Estate" e contaminou a corrida
+              # 34570075080 (131 de 186 do pool do piloto viraram real estate).
+              proprio = " ".join([rec["company"], rec["website"]])
+              for texto, fonte in ((proprio, "empresa"), (rec["cf_text"], "industry")):
+                  if not texto.strip():
+                      continue
+                  for name, weight, rx in SEGMENTS:
+                      if rx.search(texto):
+                          rec["segmento_fonte"] = fonte
+                          return name, weight if fonte == "empresa" else weight - 6
+                  for name, rx in SEG_SOFT:
+                      if rx.search(texto):
+                          rec["segmento_fonte"] = fonte
+                          return name, 10 if fonte == "empresa" else 6
+              fb = CAMP_FALLBACK.get(rec["campaign_id"], ("", 0))
+              if fb[0]:
+                  rec["segmento_fonte"] = "campanha"
+              return fb
 
           # ------------------------------------------------------- FILTRO BASE
           stats = {"total_unicas": len(leads), "sem_site": 0, "stop_ou_unsub": 0, "excluidas_regra_e": 0,
@@ -626,7 +653,8 @@ jobs:
               return {"rank": rank, "smartlead_lead_id": r["lead_id"], "campaign_id_origem": r["campaign_id"],
                       "campanha_origem": r["campaign"], "bucket": r["bkt"], "company": r["company"],
                       "website": r["website"], "domain": r["domain"], "city": r["city"], "state": r["state"],
-                      "segment": r["segment"], "industry": r["industry"], "sector": r["sector"],
+                      "segment": r["segment"], "segmento_fonte": r.get("segmento_fonte", ""),
+                      "industry": r["industry"], "sector": r["sector"],
                       "headcount": r["headcount"], "revenue": r["revenue"],
                       "score": r["score"], "tocada_leva1": r["touched"],
                       "status_smartlead": r["lead_status"],
@@ -664,14 +692,14 @@ jobs:
           print("## Canal B - top 10 (dados de negocio; zero PII)")
           for i, r in enumerate(top, 1):
               c = r["check"]
-              print(f"{i}. {r['company']} | {r['domain']} | {r['city']}/{r['state']} | {r['segment']} | "
+              print(f"{i}. {display_name(r)} | {r['domain']} | {r['city']}/{r['state']} | {r['segment']} | "
                     f"score {r['score']} | jsonld={int(bool(c.get('ld_local')))} blog={int(bool(c.get('blog_recent')))} "
                     f"ads={int(bool(c.get('ads')))} reviews={int(bool(c.get('reviews')))} nap={int(bool(c.get('nap')))} "
                     f"tocada={int(r['touched'])} | camp={r['campaign']}")
           print("## Canal B - 10 reservas")
           for i, r in enumerate(reserva, 1):
               c = r["check"]
-              print(f"R{i}. {r['company']} | {r['domain']} | {r['city']}/{r['state']} | {r['segment']} | "
+              print(f"R{i}. {display_name(r)} | {r['domain']} | {r['city']}/{r['state']} | {r['segment']} | "
                     f"score {r['score']} | jsonld={int(bool(c.get('ld_local')))} blog={int(bool(c.get('blog_recent')))} "
                     f"ads={int(bool(c.get('ads')))} reviews={int(bool(c.get('reviews')))} nap={int(bool(c.get('nap')))} "
                     f"tocada={int(r['touched'])} | camp={r['campaign']}")
