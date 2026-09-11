@@ -256,7 +256,7 @@ jobs:
           #                  "custom_fields":{"ai_engine":..., ...}}]}
           # A resposta REAL da 1a chamada é registrada abaixo (sem PII), para o
           # formato ficar provado por observação e não por fé.
-          adicionados, add_falhas, sem_email = {}, 0, 0
+          adicionados, add_falhas, sem_email, var_vazia = {}, 0, 0, 0
           removidos, del_falhas = 0, 0
           primeira_resposta = None
           primeiro_erro = None
@@ -278,6 +278,13 @@ jobs:
                           sem_email += 1
                           continue
                       v = r.get("vars") or {}
+                      faltando = [k for k in ("ai_engine", "competitor_1", "competitor_2", "query", "report_url")
+                                  if not (v.get(k) or "").strip()]
+                      if faltando:
+                          # Sem prova, sem leva: uma variável vazia viraria um
+                          # buraco no e-mail 1. Conta e não carrega.
+                          var_vazia += 1
+                          continue
                       lote.append({
                           "email": em,
                           "company_name": r.get("company"),
@@ -320,7 +327,7 @@ jobs:
                           removidos += 1
 
           motivos = rec.get("by_reason", {})
-          ok_final = add_falhas == 0 and del_falhas == 0 and sem_email == 0
+          ok_final = add_falhas == 0 and del_falhas == 0 and sem_email == 0 and var_vazia == 0
           print("")
           print(f"- Adicionados: {json.dumps(adicionados, ensure_ascii=False)} · removidos da origem: {removidos}")
           print(f"- Campanhas continuam **{json.dumps(estados, ensure_ascii=False)}** — nenhum start foi dado. "
@@ -331,7 +338,8 @@ jobs:
                "orcamento_esgotado": rec.get("budget_exhausted"),
                "custo_real_usd": rec.get("spent_usd"),
                "adicionados_por_campanha": adicionados, "removidos_da_origem": removidos,
-               "sem_email_no_smartlead": sem_email, "falhas_add": add_falhas, "falhas_delete": del_falhas,
+               "sem_email_no_smartlead": sem_email, "variavel_de_merge_vazia": var_vazia,
+               "falhas_add": add_falhas, "falhas_delete": del_falhas,
                "primeira_resposta_add": primeira_resposta, "primeiro_erro": primeiro_erro,
                "estado_das_campanhas": estados})
           raise SystemExit(0 if ok_final else 1)
