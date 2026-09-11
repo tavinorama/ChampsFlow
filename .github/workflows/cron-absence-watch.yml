@@ -6,6 +6,8 @@ name: Cron absence watch (Monday 09:00 UTC)
 # uma vez por semana, se cada vigia agendado teve run dentro da sua janela:
 #
 #   agent-org-liveness  (*/30 min)  → run nas últimas 2 h
+#   main-after-merge    (*/15 min)  → run nas últimas 2 h (11/09: é quem dá
+#                        CI ao HEAD da main depois de um merge do bot)
 #   link-crawl          (07:00 diário) → run nas últimas 26 h
 #   e2e                 (06:00 noturno) → run agendado nas últimas 26 h
 #   post-deploy-smoke   (push na main) → run desde o último push na main
@@ -64,6 +66,12 @@ jobs:
           TS=$(last_run_epoch "agent-org-liveness.yml" "schedule")
           if [ "$TS" -eq 0 ] || [ $((NOW - TS)) -gt 7200 ]; then
             add_problem "agent-org-liveness sem run agendado nas ultimas 2h"
+          fi
+
+          # main-after-merge: */15 min → janela 2 h (sem ele, merge do bot = main sem CI)
+          TS=$(last_run_epoch "main-after-merge.yml" "schedule")
+          if [ "$TS" -eq 0 ] || [ $((NOW - TS)) -gt 7200 ]; then
+            add_problem "main-after-merge sem run agendado nas ultimas 2h"
           fi
 
           # link-crawl: diário 07:00 → janela 26 h
