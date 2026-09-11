@@ -145,6 +145,17 @@ describe("thresholds — lower_is_better", () => {
     expect(ind({ id: "failed_jobs", value: 0.02, sample: 50 }).status).toBe("healthy");
     expect(ind({ id: "failed_jobs", value: 0.3, sample: 50 }).status).toBe("failing");
   });
+
+  // INCIDENTE 05-09/09 — 4 dias entre a resposta do lead e o rascunho, e
+  // nenhum número do painel mudou de cor.
+  // docs/learning/postmortems/2026-09-11-followup-4-dias.md
+  it("uma resposta parada 4 dias sem rascunho é vermelha", () => {
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 0.4, sample: 3 }).status).toBe("healthy");
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 3, sample: 3 }).status).toBe("degraded");
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 96, sample: 1 }).status).toBe("failing");
+    // Uma única resposta já é amostra: este número nunca espera por volume.
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 30, sample: 1 }).status).toBe("failing");
+  });
 });
 
 describe("rollup", () => {

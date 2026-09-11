@@ -145,6 +145,7 @@ export const DELIVERY_INDICATOR_IDS = [
   "comparable_trend_coverage",
   "queue_age",
   "failed_jobs",
+  "reply_to_draft_latency_p95",
 ] as const;
 
 export type DeliveryIndicatorId = (typeof DELIVERY_INDICATOR_IDS)[number];
@@ -415,6 +416,39 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     degradedAt: 0.05,
     failingAt: 0.15,
     unit: "rate",
+  },
+  /**
+   * INCIDENTE 05-09/09 (docs/learning/postmortems/2026-09-11-followup-4-dias.md):
+   * a única resposta de interesse real da campanha esperou 4 dias por um
+   * rascunho e NENHUM número mudou de cor — o painel não media a única coisa
+   * que o founder sente ("um lead que espera 4 dias é um lead morto"). Este
+   * indicador é a memória desse dia: uma resposta parada envelhece sozinha
+   * para âmbar às 2h e para vermelho às 24h, sem depender de ninguém reparar.
+   */
+  reply_to_draft_latency_p95: {
+    id: "reply_to_draft_latency_p95",
+    label: "Reply → draft latency (p95)",
+    question:
+      "Quando um lead responde, quanto tempo passa até existir um rascunho no portão do founder?",
+    owner: "Sales + Engineering — followup-scan (apps/worker/src/jobs/followup-scan.ts)",
+    sourceOfTruth:
+      "smartlead_event.received_at (EMAIL_REPLY) → ops.agent_run.started_at do run 'followup-reply' que cita o evento no trigger ('cron:followup-scan reply:<event_id>')",
+    grain: "uma resposta EMAIL_REPLY, em horas até o primeiro rascunho",
+    timezone: "UTC",
+    windowDays: 14,
+    includes:
+      "as respostas da janela do próprio scan: as que viraram rascunho entram com a latência real, e as que continuam SEM decisão nenhuma entram com a idade até agora — uma resposta que nunca vira rascunho tem de envelhecer para vermelho, que é exatamente o que não aconteceu em 05-09/09",
+    excludes:
+      "respostas que o código fechou por decisão legítima sem rascunho (auto-reply/bounce e pedido de saída: marcador '[followup] …' sem run) e as propostas antes de 11/09, cujo run não carrega o id do evento — ausência de elo é exclusão, nunca latência zero",
+    lateData:
+      "uma resposta ainda sem rascunho entra com a idade corrente, logo a leitura seguinte reporta uma idade MAIOR, nunca menor; o rascunho que aparece depois fixa a latência real",
+    qualityTest:
+      "tests/unit/delivery-health.test.ts › uma resposta parada 4 dias sem rascunho é vermelha (probe: tests/unit/delivery-health-read.test.ts)",
+    minSample: 1,
+    direction: "lower_is_better",
+    degradedAt: 2,
+    failingAt: 24,
+    unit: "hours",
   },
 };
 

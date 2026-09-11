@@ -351,6 +351,74 @@ async function probeAudits(db: PostgresClient): Promise<DeliveryObservation[]> {
   ];
 }
 
+/**
+ * INCIDENTE 05-09/09 — resposta do lead → rascunho no portão, em horas.
+ *
+ * O elo é o trigger do run ('cron:followup-scan reply:<event_id>', gravado em
+ * apps/worker/src/jobs/followup-scan.ts): é a ÚNICA ligação em banco entre a
+ * resposta e o rascunho. Uma resposta que ainda não tem rascunho e também não
+ * tem marcador '[followup] …' está À ESPERA e entra com a idade CORRENTE — é
+ * isso que faz o painel ficar vermelho sozinho quando alguém fica parado, em
+ * vez de ficar verde por falta de linhas.
+ */
+async function probeReplyToDraftLatency(db: PostgresClient): Promise<DeliveryObservation> {
+  const { rows } = await db.query<{ n: string; p95: string | null; worst: string | null }>(
+    `WITH reply AS (
+       SELECT e.id, e.received_at, e.lead_email
+         FROM smartlead_event e
+        WHERE e.event_type = 'EMAIL_REPLY'
+          AND e.received_at >= NOW() - INTERVAL '14 days'
+     ),
+     first_draft AS (
+       SELECT r.id, MIN(run.started_at) AS drafted_at
+         FROM reply r
+         JOIN ops.agent_run run
+           ON run.graph = 'followup-reply'
+          AND run.trigger = 'cron:followup-scan reply:' || r.id::text
+        GROUP BY r.id
+     ),
+     decided AS (
+       SELECT DISTINCT r.id
+         FROM reply r
+         JOIN crm_contact c ON c.email = r.lead_email
+        WHERE c.note LIKE '%[followup] %' || r.id::text || '%'
+     ),
+     latency AS (
+       SELECT CASE
+                WHEN f.drafted_at IS NOT NULL
+                  THEN EXTRACT(EPOCH FROM (f.drafted_at - r.received_at)) / 3600.0
+                ELSE EXTRACT(EPOCH FROM (NOW() - r.received_at)) / 3600.0
+              END AS hours
+         FROM reply r
+         LEFT JOIN first_draft f ON f.id = r.id
+         LEFT JOIN decided d ON d.id = r.id
+        WHERE f.drafted_at IS NOT NULL OR d.id IS NULL
+     )
+     SELECT COUNT(*)::int                                          AS n,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY hours)::float AS p95,
+            MAX(hours)::float                                      AS worst
+       FROM latency`
+  );
+  const n = Number(rows[0]?.n ?? 0);
+  if (n === 0) {
+    return {
+      id: "reply_to_draft_latency_p95",
+      value: null,
+      sample: 0,
+      unknown: "insufficient_evidence",
+      detail: "nenhuma resposta de lead à espera ou respondida nos últimos 14 dias",
+    };
+  }
+  // O p95 é o número; a resposta MAIS parada vai para o log, porque é a linha
+  // que o founder quer abrir quando o indicador fica vermelho (o painel só
+  // mostra valor + razão gerada pelo contrato).
+  const worst = num(rows[0]?.worst);
+  if (worst !== null && worst >= 24) {
+    logger.warn("followup_reply_waiting_too_long", { worstHours: Math.round(worst), sample: n });
+  }
+  return { id: "reply_to_draft_latency_p95", value: num(rows[0]?.p95), sample: n };
+}
+
 async function probeRawErrorLeak(db: PostgresClient): Promise<DeliveryObservation> {
   const { rows } = await db.query<{ error_message: string | null }>(
     `SELECT error_message
@@ -732,6 +800,7 @@ export async function readDeliveryHealth(db: PostgresClient): Promise<DeliveryHe
     safely(["failed_jobs", "queue_age"], () => probeAudits(db)),
     safely(["raw_error_leak"], () => probeRawErrorLeak(db)),
     safely(["comparable_trend_coverage"], () => probeComparableTrend(db)),
+    safely(["reply_to_draft_latency_p95"], () => probeReplyToDraftLatency(db)),
   ]);
 
   const byId = new Map<DeliveryIndicatorId, DeliveryObservation>();
