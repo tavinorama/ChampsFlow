@@ -225,3 +225,10 @@ export * from "./audit-queue";
 // raw; this is the one resolver every surface uses.
 // ---------------------------------------------------------------------------
 export * from "./intent-label";
+
+// ---------------------------------------------------------------------------
+// P1-07 — what a customer is told about a discarded citation. The verifier's
+// own lines stay in the breakdown for the admin trace; the dashboard gets a
+// sentence and a count.
+// ---------------------------------------------------------------------------
+export * from "./rejection-language";

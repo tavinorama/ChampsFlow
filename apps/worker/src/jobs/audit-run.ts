@@ -90,6 +90,10 @@ import {
   setCachedProbe,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+// P1-07 — the customer-facing vocabulary for a discarded citation. The raw
+// verifier line stays in the breakdown for the admin trace; the class is what
+// the dashboard renders.
+import { classifyRejection } from "../../../../packages/shared/src/rejection-language";
 import {
   coverageNoticeNeeded,
   sendAuditCoverageNoticeEmail,
@@ -997,6 +1001,11 @@ export async function processAuditJob(
     let extractionAdjusted = 0;
     const extractionByKind: Record<string, number> = {};
     const extractionRejections: Array<{ text: string; reason: string }> = [];
+    // P1-07 — EVERY rejection tallied by the class the customer is told about
+    // (not just the three raw samples kept for the admin trace). Without a
+    // full tally the panel could only show "up to three examples", and a
+    // partial count reads as the whole truth.
+    const extractionRejectionClasses: Record<string, number> = {};
     // Index-aligned with result.responses.
     let extractions: ExtractionResult[] = [];
 
@@ -1020,6 +1029,10 @@ export async function processAuditJob(
           for (const m of e.mentions) {
             const k: MentionKind = m.kind_confirmed;
             extractionByKind[k] = (extractionByKind[k] ?? 0) + 1;
+            if (m.verdict === "REJECTED") {
+              const cls = classifyRejection(m.reason);
+              extractionRejectionClasses[cls] = (extractionRejectionClasses[cls] ?? 0) + 1;
+            }
             if (m.verdict === "REJECTED" && extractionRejections.length < 3) {
               extractionRejections.push({
                 // Bounded excerpt of the model's own answer — no PII, no tenant data.
@@ -1484,7 +1497,13 @@ export async function processAuditJob(
         verified_count: extractionVerified,
         rejected_count: extractionRejected,
         by_kind: extractionByKind,
+        // ADMIN ONLY. The breakdown route never forwards these raw verifier
+        // lines to a customer (P1-07) — they are read at
+        // GET /api/admin/audits/:id/extraction, keyed by the audit id.
         sample_rejections: extractionRejections,
+        // Customer-facing: every rejection counted by class. The sentence for
+        // each class lives in packages/shared/src/rejection-language.ts.
+        rejection_classes: extractionRejectionClasses,
         // How many probe aggregates lost their citation because no verified
         // recommendation/source mention survived (the false positives B3 kills).
         probes_adjusted: extractionAdjusted,

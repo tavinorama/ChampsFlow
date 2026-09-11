@@ -32,6 +32,9 @@ import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { jsonbParam } from "../../../../packages/shared/src/jsonb";
 import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared/src/audit-queue";
+// P1-07 — allowlist that turns the worker's extraction telemetry into the only
+// shape a customer sees. Raw verifier lines stay behind the admin route.
+import { sanitizeExtractionForClient } from "../../../../packages/shared/src/rejection-language";
 import { generateStrategy, type StrategyInputs } from "../../../../packages/llm/src/index";
 import { generateContent, type ContentType, type ContentProvider, type ContentDraft } from "../../../../packages/llm/src/index";
 // P0-08 — hosted content generation. Pure meter/idempotency/fact-check from
@@ -1790,9 +1793,13 @@ export function registerAuditRoutes(
         };
       })(),
       // B3 — two-pass citation extraction: mode, verified/rejected counts,
-      // kinds, and sample false positives this audit refused to count.
+      // kinds, and WHY citations were discarded — in the customer's language.
+      // P1-07: the verifier's own lines ("WRONG OFFSET - characters 811-818 …")
+      // are engine-room notes and never leave the building through here. They
+      // are kept verbatim in provider_breakdown and read by the admin at
+      // GET /api/admin/audits/:id/extraction. Nothing is deleted; it moved.
       // null on pre-B3 audits (additive; old clients ignore it).
-      extraction: (bd as { extraction?: unknown }).extraction ?? null,
+      extraction: sanitizeExtractionForClient((bd as { extraction?: unknown }).extraction),
       // Site-crawl evidence shown under Brand/Performance.
       site_crawl: (bd as { siteCrawl?: unknown }).siteCrawl ?? null,
       // Competitor benchmark — who AI recommends instead of you (ranked).
