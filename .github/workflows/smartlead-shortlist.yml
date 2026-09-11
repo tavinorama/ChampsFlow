@@ -386,6 +386,11 @@ jobs:
               h = h.split(":")[0]
               return h[4:] if h.startswith("www.") else h
 
+          # Quando nenhum padrao casa, a CAMPANHA de origem ainda e um rotulo
+          # honesto: OZ-A Agencies e OZ-C SaaS foram montadas por nos com esse
+          # criterio. Ozvor 1 e mista, entao fica sem segmento de proposito.
+          CAMP_FALLBACK = {3783524: ("agency", 10), 3783526: ("saas", 10)}
+
           def classify(rec):
               text = " ".join([rec["company"], rec["website"], rec["cf_text"]])
               for name, weight, rx in SEGMENTS:
@@ -394,7 +399,7 @@ jobs:
               for name, rx in SEG_SOFT:
                   if rx.search(text):
                       return name, 10
-              return "", 0
+              return CAMP_FALLBACK.get(rec["campaign_id"], ("", 0))
 
           # ------------------------------------------------------- FILTRO BASE
           stats = {"total_unicas": len(leads), "sem_site": 0, "stop_ou_unsub": 0, "excluidas_regra_e": 0,
@@ -439,7 +444,8 @@ jobs:
           # ------------------------------------------- ORÇAMENTO HTTP ESTRATIFICADO
           def bucket_of(rec):
               if rec["bucket"] == "misto":
-                  return "aistack" if rec["segment"] == "agency/saas" else "local"
+                  return "aistack" if rec["segment"] in ("agency/saas", "it services",
+                                                         "design/media", "agency", "saas") else "local"
               return rec["bucket"]
 
           for r in elig:
