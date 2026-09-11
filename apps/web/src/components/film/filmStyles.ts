@@ -240,6 +240,12 @@ html[data-theme="light"] .film {
 .film-answer {
   margin-top: 26px;
   width: min(500px, 88vw);
+  /* content-box fazia a largura declarada IGNORAR os 36px de padding e os
+     2px de borda: a 320px o cartão media 320 e começava a 16px, saindo 16px
+     para fora da janela. Medido no browser (box-sizing content-box, width
+     281.59px, rect 320). border-box faz a largura declarada ser a largura
+     final. */
+  box-sizing: border-box;
   background: var(--film-card-bg);
   border: 1px solid var(--film-line);
   border-radius: 14px;
@@ -280,6 +286,12 @@ html[data-theme="light"] .film {
 .film-panel {
   margin-top: 26px;
   width: min(520px, 88vw);
+  /* content-box fazia a largura declarada IGNORAR os 36px de padding e os
+     2px de borda: a 320px o cartão media 320 e começava a 16px, saindo 16px
+     para fora da janela. Medido no browser (box-sizing content-box, width
+     281.59px, rect 320). border-box faz a largura declarada ser a largura
+     final. */
+  box-sizing: border-box;
   background: var(--film-card-bg);
   border: 1px solid var(--film-line);
   border-radius: 14px;
