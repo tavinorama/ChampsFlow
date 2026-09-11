@@ -44,6 +44,8 @@ interface DbOpts {
   /** SQL fragments that should throw with this Postgres error code. */
   throwOn?: { fragment: string; code?: string; message?: string }[];
   drifts?: number;
+  /** INCIDENTE 05-09/09 — resposta do lead → rascunho, em horas (p95 e pior). */
+  replyLatency?: { n: number; p95: number | null; worst: number | null } | null;
   /** P0-01 — one row per brand for the Do Next invariant probe. */
   invariantRows?: {
     brand_id: string;
@@ -84,6 +86,11 @@ function makeDb(opts: DbOpts = {}) {
     if (sql.includes("FROM drafts")) return [{ total: 10, failed: 0, timed: 10, p95: 60 }];
     if (sql.includes("FROM geo_audit") && sql.includes("queue_minutes")) {
       return [{ complete: 50, failed: 0, queue_minutes: null, waiting: 0 }];
+    }
+    if (sql.includes("FROM latency")) {
+      const l = opts.replyLatency;
+      if (l === null) return [];
+      return [l ?? { n: 4, p95: 0.6, worst: 0.9 }];
     }
     if (sql.includes("error_message")) return [];
     if (sql.includes("FROM geo_score")) return [];
@@ -231,6 +238,43 @@ describe("readDeliveryHealth — the loop's own numbers", () => {
   it("with no drift battery in the window, hallucination is unmeasured, not clean", async () => {
     const dh = await read(makeDb({ drifts: 0 }));
     const ind = find(dh.rollup.indicators, "entity_false_positive_rate")!;
+    expect(ind.status).toBe("not_measured");
+    expect(ind.value).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // INCIDENTE 05-09/09 — a resposta de 05/09 18:53 UTC só virou rascunho em
+  // 09/09 19:00 e o painel ficou verde os quatro dias. Este é o número que
+  // passa a gritar sozinho. docs/learning/postmortems/2026-09-11-followup-4-dias.md
+  // -------------------------------------------------------------------------
+
+  it("uma resposta parada há 4 dias pinta o painel de vermelho", async () => {
+    const dh = await read(makeDb({ replyLatency: { n: 1, p95: 96.1, worst: 96.1 } }));
+    const ind = find(dh.rollup.indicators, "reply_to_draft_latency_p95")!;
+    expect(ind.status).toBe("failing");
+    expect(ind.value).toBeCloseTo(96.1, 1);
+    expect(ind.reason ?? "").toContain("96");
+    expect(dh.rollup.status).toBe("failing");
+  });
+
+  it("respostas respondidas em minutos ficam verdes", async () => {
+    const dh = await read(makeDb({ replyLatency: { n: 6, p95: 0.5, worst: 0.8 } }));
+    const ind = find(dh.rollup.indicators, "reply_to_draft_latency_p95")!;
+    expect(ind.status).toBe("healthy");
+    expect(ind.value).toBe(0.5);
+  });
+
+  it("sem respostas na janela a latência é evidência insuficiente, nunca 0h verdes", async () => {
+    const dh = await read(makeDb({ replyLatency: null }));
+    const ind = find(dh.rollup.indicators, "reply_to_draft_latency_p95")!;
+    expect(ind.status).toBe("insufficient_evidence");
+    expect(ind.value).toBeNull();
+    expect(dh.rollup.status).not.toBe("healthy");
+  });
+
+  it("se a leitura da latência falha, o painel diz não medido — não zero", async () => {
+    const dh = await read(makeDb({ throwOn: [{ fragment: "FROM latency", message: "connection lost" }] }));
+    const ind = find(dh.rollup.indicators, "reply_to_draft_latency_p95")!;
     expect(ind.status).toBe("not_measured");
     expect(ind.value).toBeNull();
   });

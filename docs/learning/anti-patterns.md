@@ -38,7 +38,11 @@ _(empty on init)_
 
 ## Data Handling
 
-_(empty on init)_
+### Nunca classificar um excerto: truncar antes de classificar é adulterar a evidência
+O follow-up preferia `preview_text` (o excerto de ~40 chars da SmartLead) ao `reply_body`, e devolvia HTML cru no caminho de `reply_message.text`. O classificador recebia `"Hello there! Thank you so much for takin"` — cortado a meio da palavra, sem a pergunta do lead — e chamou ruído a um interesse real (postmortem 2026-09-11). **Em vez disso:** o que se classifica é o que a pessoa escreveu — corpo completo antes de excerto, html→texto em TODA fonte, e uma fonte que não rende texto cai para a seguinte em vez de envenenar a leitura.
+
+### Regex de "auto-reply" nunca apanha cortesia
+"Thank you for your email / for taking the time" é como MUITO humano abre uma resposta real. Auto-reply detecta-se por cabeçalho (`Auto-Submitted`, `X-Autoreply`), assunto ("Automatic reply") e ausência declarada ("out of the office", "on leave") — nunca por educação (postmortem 2026-09-11). **Em vez disso:** lista explícita de aberturas humanas fixada em teste, que falha se alguma voltar a ser tratada como ruído.
 
 ---
 
@@ -77,3 +81,12 @@ Primeira noite do vigia externo: 6 falsos alarmes porque runs em `wait-72h` não
 
 ### Um canal com N produtores precisa de válvula de cadência
 LinkedIn recebia de 3 grafos (esfera + adaptação do vídeo + experimento): 3 posts/dia numa company page (24/08, #520). **Em vez disso:** cap por canal com adiamento (nunca descarte) para o dia seguinte.
+
+### Veredito de modelo nunca escreve verdade permanente em banco sem revisão nem alarme
+O classificador disse `noise` sobre uma resposta humana e o scan gravou o marcador de descarte na 1ª passagem: as ~190 varreduras seguintes trataram o engano como facto e ninguém foi avisado (postmortem 2026-09-11). **Em vez disso:** o modelo opina, o código decide — havendo prosa humana e nenhum sinal determinístico de máquina, a peça segue para o portão humano, diga o modelo o que disser.
+
+### "Não consegui ler" nunca é "tratado"
+`if (!replyText) return discard("sem-texto")` gravava marcador e fechava o item para sempre — o mesmo balde que engole em silêncio (postmortem 2026-09-11). **Em vez disso:** ilegível fica ELEGÍVEL — sem marcador, re-tentado na próxima passagem e barulhento 1×/dia; só decisão consciente escreve estado final.
+
+### Todo loop com humano do outro lado precisa de um relógio com cor
+Uma resposta de lead esperou 4 dias por um rascunho e nenhum indicador mudou: o painel não mentiu, não estava a olhar (postmortem 2026-09-11, `reply_to_draft_latency_p95`). **Em vez disso:** métrica de latência com contrato, contando também os itens AINDA sem resposta pela idade corrente — um item parado tem de envelhecer sozinho para vermelho.
