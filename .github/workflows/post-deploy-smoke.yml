@@ -17,7 +17,16 @@ name: Post-deploy smoke (main)
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  # 11/09: merges do auto-merge (GITHUB_TOKEN) não disparam `push`; o vigia
+  # main-after-merge.yml despacha este smoke no HEAD da main sem run. `sha` é
+  # opcional: vazio = github.sha (HEAD do ref despachado), que é o que o
+  # Railway deployou. Preencher só para conferir um deploy específico.
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Expected deployed SHA (optional; default = HEAD of the ref you dispatch on)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -29,6 +38,8 @@ concurrency:
 env:
   API_URL: "https://api-production-2052.up.railway.app"
   WEB_URL: "https://ozvor.com"
+  # SHA que o Railway deve estar servindo: input manual > HEAD do ref.
+  WANT_SHA: ${{ inputs.sha || github.sha }}
 
 jobs:
   smoke:
@@ -42,8 +53,6 @@ jobs:
 
       - name: Verify deployed version + vitals (retries ~8 min)
         id: probe
-        env:
-          WANT_SHA: ${{ github.sha }}
         run: |
           set -uo pipefail
           # Uma passada de verificação. Ecoa as falhas restantes; vazio = tudo ok.
@@ -101,7 +110,7 @@ jobs:
 
       - name: Quiet when healthy
         if: steps.probe.outputs.fails == ''
-        run: echo "Deploy saudável — versão ${GITHUB_SHA:0:8} confirmada em api + web; worker com pulso."
+        run: echo "Deploy saudável — versão ${WANT_SHA:0:8} confirmada em api + web; worker com pulso."
 
       - name: SCREAM on failure
         if: steps.probe.outputs.fails != ''
@@ -114,13 +123,13 @@ jobs:
             echo "## 🔴 SMOKE PÓS-DEPLOY FALHOU"
             echo ""
             echo "Após ~8 min de retries:${{ steps.probe.outputs.fails }}"
-            echo "Commit esperado: ${{ github.sha }}"
+            echo "Commit esperado: ${WANT_SHA}"
             echo ""
             echo "api-sha/web-sha = a imagem VELHA ainda está servindo (deploy falhou no Railway)."
             echo "Rollback: docs/runbooks/rollback.md"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
-            export MSG="SMOKE POS-DEPLOY FALHOU:${{ steps.probe.outputs.fails }} — commit ${GITHUB_SHA:0:8} nao confirmado apos 8 min. Se api-sha/web-sha: imagem velha servindo. Log: ${RUN_URL}"
+            export MSG="SMOKE POS-DEPLOY FALHOU:${{ steps.probe.outputs.fails }} — commit ${WANT_SHA:0:8} nao confirmado apos 8 min. Se api-sha/web-sha: imagem velha servindo. Log: ${RUN_URL}"
             PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
             curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
           fi
