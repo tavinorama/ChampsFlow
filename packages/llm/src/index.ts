@@ -164,6 +164,83 @@ export {
   type SpendSource,
 } from "./api-spend";
 
+// Audit cost model — per-engine rates, env overrides and the ledger arithmetic.
+// One source of truth: audit-run writes it, the design-partner pack forecasts it.
+export {
+  MEASURED_GEN_CENTS,
+  UNKNOWN_ENGINE_GEN_CENTS,
+  DEFAULT_EXTRACTION_CENTS,
+  MAX_EXTRACTION_CALLS_PER_ANSWER,
+  genRateCents,
+  extractionRateCents,
+  flatAuditOverrideCents,
+  auditCostCents,
+  estimateAuditCost,
+  forecastAuditCost,
+  formatUsd,
+  type CostEnv,
+  type AuditCostInput,
+  type AuditCostEstimate,
+  type EngineCostLine,
+} from "./audit-cost";
+
+// Design Partner Pack — the 1-2 page document the founder carries into a
+// design-partner conversation, built ONLY from a real audit (canal B, 2026-09-11).
+export {
+  PACK_LANGUAGES,
+  MAX_GAP_ROWS,
+  MAX_WIN_ROWS,
+  MAX_ACTIONS,
+  FORBIDDEN_CLAIMS,
+  PackEvidenceError,
+  packCopy,
+  findForbiddenClaims,
+  assertPackCopyClean,
+  lintablePackText,
+  longSentences,
+  toActionCard,
+  buildDesignPartnerPack,
+  renderDesignPartnerPackHtml,
+  generateDesignPartnerPack,
+  packEvidenceFromAnswers,
+  esc as escapePackHtml,
+  type PackLanguage,
+  type PackFinding,
+  type PackCoverage,
+  type PackInput,
+  type PackModel,
+  type PackGapLine,
+  type PackWinLine,
+  type PackActionCard,
+  type PackWeek,
+  type ForbiddenClaimPattern,
+  type ForbiddenClaimHit,
+  type PackAnswer,
+  type PackEvidence,
+  type PackEvidenceMeta,
+} from "./design-partner-pack";
+export {
+  DEFAULT_PACK_ENGINES,
+  DEFAULT_RUNS_PER_PROMPT,
+  DEFAULT_PROMPT_COUNT,
+  DEFAULT_BOOK_URL,
+  DEFAULT_CONTACT_EMAIL,
+  PACK_USAGE,
+  ENGINE_KEY_ENV,
+  enginesInMockMode,
+  normalizeDomain,
+  parsePackArgs,
+  forecastPackCost,
+  costPreflightLines,
+  parseAuditFixture,
+  assemblePack,
+  packSummaryLines,
+  type PackCliOptions,
+  type PackForecast,
+  type PackAuditRecord,
+  type AssembledPack,
+} from "./design-partner-cli";
+
 // Routing gate — single chokepoint for EU/US provider access control (GEO-A3)
 export { routeProvider, permittedProviders } from "./providers/routing";
 
