@@ -28,6 +28,20 @@ O que o diagnóstico tem de responder, com número, antes do GO:
 
 ## 0.1 RODAR O PILOTO (100 leads com prova) — antes de qualquer disparo da leva 2
 
+> **DESLIGADO até o founder pôr um segredo (medido 11/09).** O workflow existe e
+> roda, mas para no primeiro passo: **o repositório NÃO tem o segredo
+> `OZVOR_OPERATOR_KEY`** (`gh secret list` devolve só `HERMES_BLOG_TOKEN`,
+> `HERMES_TASK_TOKEN` e `SMARTLEAD_API_KEY`; os dois environments não têm
+> segredo nenhum). Corrida de referência:
+> [34592662466](https://github.com/tavinorama/ChampsFlow/actions/runs/34592662466)
+> — artefato baixado (78.453 bytes, 100 leads), e então
+> `::error::secret OZVOR_OPERATOR_KEY ausente`.
+>
+> **A ação que destrava (é do founder, ninguém mais):**
+> `gh secret set OZVOR_OPERATOR_KEY` com uma chave `ozk_` de escopos
+> **operator+business**. O mesmo segredo faltando desliga também o
+> `prospect-apify.yml`, que depende dele desde 02/09.
+
 O piloto tem duas etapas e **só a segunda gasta**. As duas são o mesmo workflow,
 `smartlead-leva2-pilot.yml`, e nenhuma delas inicia campanha nenhuma.
 
