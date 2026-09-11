@@ -154,3 +154,13 @@ Sem acesso ao banco nem ao Railway nesta sessão, estas cinco leituras fecham o 
 - Anterior neste mesmo loop: #578 (03/09) — invariante "todo item scanned cai em exatamente um contador" e o balde `unparseable`. **A invariante fechava enquanto o lead morria**: contar tudo não é o mesmo que decidir bem.
 - Delivery Health: #591 (P0-09).
 - Pulsos de fila / vigia externo: #576 (10.B.15), postmortem 2026-08-18.
+
+## Leituras em produção (feitas em 11/09/2026, SQL no Supabase — só agregados, sem PII)
+
+1. **Marcador gravado no `crm_contact.note` do lead da resposta de 05/09:** `[followup] descartado <run> 2026-09-05 motivo=noise`. Confirma a causa raiz: o classificador viu o excerto de 40 caracteres, disse `noise`, e o marcador bloqueou as varreduras seguintes.
+2. **Segundo `EMAIL_REPLY` do mesmo lead:** não existe — o lead respondeu **uma** vez (05/09 19:51 UTC). A hipótese "segunda resposta destravou em 09/09" está **refutada**.
+3. **O run `followup-reply` de 09/09 19:00 era de OUTRO lead** (campanha aistack, `intent=not-now`, aprovado pelo founder com `entrega=manual`). Ou seja: **a única resposta de interesse real da leva 1 nunca foi respondida** — continua com o marcador `noise` e, sem intervenção, o fix deste PR não a reprocessa (o marcador de descarte é anterior à regra "ilegível ≠ tratado").
+4. **Descartes por `noise` na base:** 14 no total. Reclassificados por regex sobre o `reply_body` (HTML removido): 8 são fora-do-escritório de verdade, 2 são "saiu da empresa", **3 têm prosa humana** — candidatos a reprocessamento depois deste PR entrar.
+5. **Ação operacional decorrente:** (a) o founder responde o lead de 05/09 pelo master inbox do SmartLead hoje (6 dias de atraso; rascunho automático já não faz sentido); (b) depois do merge, um one-off apaga o marcador `motivo=noise` dos 3 descartes com prosa humana para o scan os reprocessar com o classificador novo — escrito como ajuste explícito, não como UPDATE silencioso.
+
+**Lição adicional:** o "resolvido em 09/09" que o relatório inicial deste postmortem assumiu era uma coincidência de horário (96h = timeout de aprovação de outro run). Confirmar a identidade do lead antes de ligar dois eventos pelo relógio.
