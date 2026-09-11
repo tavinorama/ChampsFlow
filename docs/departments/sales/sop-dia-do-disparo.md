@@ -26,6 +26,53 @@ O que o diagnóstico tem de responder, com número, antes do GO:
 
 ---
 
+## 0.1 RODAR O PILOTO (100 leads com prova) — antes de qualquer disparo da leva 2
+
+O piloto tem duas etapas e **só a segunda gasta**. As duas são o mesmo workflow,
+`smartlead-leva2-pilot.yml`, e nenhuma delas inicia campanha nenhuma.
+
+```bash
+# 1) ESTIMATIVA — não gasta, não move lead, não chama motor.
+gh workflow run smartlead-leva2-pilot.yml \
+  -f run_id_shortlist=34570426016 \
+  -f confirm=false
+
+# 2) EXECUÇÃO — decisão do founder. ≈US$3,00 de motores (100 × US$0,03).
+gh workflow run smartlead-leva2-pilot.yml \
+  -f run_id_shortlist=34570426016 \
+  -f confirm=true
+```
+
+O que a etapa 2 faz, nesta ordem: baixa o artefato privado do shortlist →
+chama `POST /api/v1/operator/leva2-probe` (estimativa primeiro, sempre) →
+o worker prova lead a lead (site → nicho+cidade → 1 pergunta, repeat=1) →
+para cada lead **com prova**, adiciona na campanha de destino com os custom
+fields `ai_engine / competitor_1 / competitor_2 / query / report_url` e remove
+da campanha de origem (move por id; **nunca** reimportar por CSV).
+
+Travas que param o job antes de tocar em lead alguma:
+
+- [ ] campanha de destino **tem de estar DRAFTED** (adicionar lead a campanha
+      ativa é enviar e-mail) — o workflow lê o status e aborta se não estiver;
+- [ ] **≤ 80 leads novas por campanha** (o piloto tem 60 + 40);
+- [ ] lead descartada (sem prova, já citada, sem nicho/cidade, orçamento)
+      **não é carregada** — sem prova, sem leva, nunca placeholder;
+- [ ] o lote não é probado duas vezes: os mesmos ids têm a mesma impressão
+      digital por 14 dias. Para repetir de propósito (gasto novo), passar
+      `-f idempotency_key=piloto-r2`.
+
+Ler o resultado sem esperar o workflow:
+`GET /api/v1/operator/leva2-probe/<job_id>` (chave `OZVOR_OPERATOR_KEY`) —
+`ok` + variáveis de merge por lead, ou `descartado` + motivo, mais o custo real.
+O gasto fica no ledger `api_spend` com `op='cold_proof'` e `ref='leva2:<job_id>'`.
+
+**Envs**: nenhuma nova. `COLD_PROOF_ENABLED` só existe para DESLIGAR (o default
+é ligado); se alguém a puser em `0`, o endpoint responde **503 nomeando a
+variável** e o job sai `failed` com o motivo — nunca um lote vazio "ok".
+
+**Depois do piloto, quem inicia é o founder**, pelo `smartlead-launch.yml`
+(`action=start`, `confirm=GO`), e só depois do §0 e do §1 abaixo.
+
 ## 1. Checklist pré-disparo (na ordem)
 
 - [ ] **Copy — opt-out**: TODOS os e-mails de TODAS as sequências terminam com a linha literal "P.S. If you'd rather not hear from me, just reply STOP and I won't write again." (depois da assinatura).

@@ -154,6 +154,30 @@ lê `b` / `d` / `c` / `cat` da query string). **Só dado público de negócio en
 na URL** — e-mail continua sendo digitado pelo lead, e o prefill não dispara
 teste nenhum sozinho.
 
+### O piloto: provar leads que JÁ existem (11/09)
+
+O §3 acima descreve o gancho dentro do lote SEMANAL, sobre candidatos novos. O
+**piloto dos 100** é o caminho inverso — "prove estes ids" — e tem porta
+própria, no mesmo padrão do `/prospect-apify`:
+
+```
+POST /api/v1/operator/leva2-probe   { leads:[…], budget_usd?, idempotency_key?, confirm? }
+GET  /api/v1/operator/leva2-probe/:jobId
+```
+
+Sem `confirm`, o endpoint devolve **só a estimativa** (n × US$0,03) e não chama
+nada. Com `confirm`, enfileira UM job (sem retry automático: um retry compraria
+o probe de novo) e o worker faz, por lead: homepage → `inferServiceAndCity` →
+orçamento → probe (repeat=1) → gasto em `api_spend` (`op='cold_proof'`) →
+prova no dossiê (`crm_contact.note` quando o contato existe; sempre no
+resultado do piloto, que vive 14 dias no Redis — zero migração).
+
+Por lead o resultado é `ok` + as 5 variáveis de merge, **ou** `descartado` +
+motivo literal (sem prova / já citado / sem nicho-cidade / site morto /
+orçamento). O `POST` recusa com 400 qualquer lote que traga e-mail, telefone ou
+nome de pessoa: os e-mails ficam no SmartLead e só o workflow os lê, em memória,
+na hora de mover a lead. Comando exato: [sop-dia-do-disparo.md §0.1](sop-dia-do-disparo.md).
+
 ### Orçamento do probe
 
 `COLD_PROOF_BUDGET_USD`, default **US$1,50** por lote (= 50 leads a US$0,03).
@@ -201,7 +225,12 @@ Endereço postal continua sendo decisão do founder; o código não inventa um.
 
 | Peça | Arquivo |
 |---|---|
-| Probe com prova + parser + orçamento | `packages/llm/src/cold-proof-probe.ts` |
+| Probe com prova + parser + orçamento + chave de ligar/desligar | `packages/llm/src/cold-proof-probe.ts` |
+| **Piloto (100 leads): contrato, estimativa, idempotência** | `apps/api/src/lib/leva2-pilot.ts` |
+| **Piloto: endpoint operador (estimativa → confirm → resultado)** | `apps/api/src/routes/operator-leva2.ts` |
+| **Piloto: job do worker (site → pergunta → probe → dossiê)** | `apps/worker/src/jobs/leva2-probe.ts` |
+| **Piloto: carga nas campanhas (SmartLead)** | `.github/workflows/smartlead-leva2-pilot.yml` |
+| **Piloto: testes** | `tests/unit/leva2-piloto.test.ts` |
 | Filtro de sinal + nicho/cidade | `apps/api/src/lib/prospect-signal.ts` |
 | Dossiê (bloco, VARS, nota do CRM) | `apps/api/src/lib/prospecting.ts` |
 | Integração no lote | `apps/worker/src/lib/prospect-probe.ts` |
