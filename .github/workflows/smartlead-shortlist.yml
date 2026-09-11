@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "probe (descobre os campos reais da lead) | run (shortlist completa)"
+        description: "probe (campos da lead) | count (diagnostico de paginacao) | run (shortlist)"
         required: true
         default: "run"
       http_budget:
@@ -42,7 +42,7 @@ jobs:
       - name: Shortlist (deterministic)
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
-          MODE: ${{ github.event.inputs.mode || 'run' }}
+          MODE: ${{ github.event.inputs.mode || 'count' }}
           HTTP_BUDGET: ${{ github.event.inputs.http_budget }}
           PILOTO_SIZE: ${{ github.event.inputs.piloto_size }}
         run: |
@@ -106,6 +106,41 @@ jobs:
                   if off > 20000:
                       break
               return rows_all, None
+
+          # ---------------------------------------------------------------- COUNT
+          if MODE == "count":
+              # Diagnostico de paginacao: a 1a corrida trouxe ~1/3 das leads de
+              # CADA campanha. Mede as duas estrategias de offset e o envelope
+              # da resposta. Só contagens — nenhum dado de lead é impresso.
+              rep = {}
+              for cid, (label, _b) in CAMPS.items():
+                  info = {"id": cid}
+                  first = call("GET", f"/campaigns/{cid}/leads?offset=0&limit=100")
+                  if isinstance(first, dict):
+                      info["envelope_keys"] = sorted(k for k in first.keys() if k != "data")
+                      info["envelope_vals"] = {k: v for k, v in first.items()
+                                               if k != "data" and isinstance(v, (int, str, bool))}
+                  # A) offset += len(rows)   B) offset += limit fixo
+                  for nome, fixo in (("A_len_rows", False), ("B_limit_fixo", True)):
+                      ids, sizes, off, pages = set(), [], 0, 0
+                      while pages < 80:
+                          res = call("GET", f"/campaigns/{cid}/leads?offset={off}&limit=100")
+                          rows = res.get("data") if isinstance(res, dict) else None
+                          if rows is None:
+                              sizes.append(f"ERRO:{str(res)[:60]}"); break
+                          sizes.append(len(rows))
+                          for row in rows:
+                              lead = row.get("lead") or row
+                              if lead.get("id") is not None:
+                                  ids.add(lead["id"])
+                          if not rows:
+                              break
+                          off += 100 if fixo else len(rows)
+                          pages += 1
+                      info[nome] = {"paginas": pages, "unicas": len(ids), "tamanhos": sizes[:25]}
+                  rep[label] = info
+              out({"ok": True, "mode": "count", "campanhas": rep})
+              raise SystemExit(0)
 
           # ---------------------------------------------------------------- PROBE
           if MODE == "probe":
