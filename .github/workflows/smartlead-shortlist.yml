@@ -222,7 +222,18 @@ jobs:
               ("fitness",     r"fitness|\bgym\b|pilates|crossfit|yoga\b"),
               ("garage/doors", r"garage\s?door|window(s)?\s?(and|&)?\s?door|fenc(e|ing)|flooring|paving|concrete|siding|gutter"),
               ("pool",        r"\bpool\b"),
-              ("agency/saas", r"agency|marketing|\bseo\b|digital|studio|software|saas|platform|consult"),
+              ("agency/saas", r"agency|marketing|\bseo\b|digital|software|saas|platform|consult|advertis"),
+              ("design/media", r"design|media|creative|brand(ing)?\b|studios?\b|photo|video|print(ing)?\b|"
+                               r"\bsigns?\b|graphics|production"),
+              ("it services", r"\bit\b|managed\s?service|network(s|ing)?\b|cyber|comput(er|ing)|technolog|"
+                              r"systems?\b|solutions?\b|\blabs?\b|cloud|data\b|web\s?(dev|design)"),
+              ("construction", r"contractor|construction|excavat|drywall|painting|masonry|welding|roofing|"
+                               r"builders?\b|exteriors?\b|restorations?\b"),
+              ("medical other", r"optometr|dermatol|podiatr|pediatr|family\s?(practice|medicine)|orthoped|"
+                                r"counsel(ing)?\b|psych|audiolog|\beye\s?(care|center)"),
+              ("finance other", r"financial|wealth|advisor|mortgage|lending|\btitle\s?(co|company|agency)|escrow"),
+              ("staffing", r"staffing|recruit|talent|payroll|employment"),
+              ("food/retail", r"restaurant|cafe|bakery|catering|brewery|pizz|grill\b|boutique|jewel|furniture"),
           ]
           SEG_SOFT = [(n, re.compile(p, re.I)) for (n, p) in SEG_SOFT]
 
@@ -441,6 +452,21 @@ jobs:
           # e gasto em leads que o piloto nao pode usar (foi o que aconteceu na
           # corrida 34569149330: sobraram 23 candidatas da trilha aistack).
           cand, seen_ids = [], set()
+
+          def round_robin(rows, campo="pre"):
+              by = {}
+              for r in rows:
+                  by.setdefault(r["segment"], []).append(r)
+              for v in by.values():
+                  v.sort(key=lambda r: (-r[campo], r["lead_id"]))
+              order = sorted(by.keys())
+              saida = []
+              while any(by[k] for k in order):
+                  for k in order:
+                      if by[k]:
+                          saida.append(by[k].pop(0))
+              return saida
+
           def take(rows, limite):
               n = 0
               for r in rows:
@@ -451,13 +477,15 @@ jobs:
                   seen_ids.add(r["lead_id"]); cand.append(r); n += 1
               return n
 
-          dp_share  = int(HTTP_BUDGET * 0.50)
-          pil_local = int(HTTP_BUDGET * 0.30)
+          dp_share  = int(HTTP_BUDGET * 0.40)
+          pil_local = int(HTTP_BUDGET * 0.35)
           pil_ai    = HTTP_BUDGET - dp_share - pil_local
           orcamento = {
               "canal_b": take([r for r in elig if r["segment"] in DP_SEGMENTS and r["own_domain"]], dp_share),
-              "piloto_local": take([r for r in elig if not r["touched"] and r["own_domain"] and r["bkt"] == "local"], pil_local),
-              "piloto_aistack": take([r for r in elig if not r["touched"] and r["own_domain"] and r["bkt"] == "aistack"], pil_ai),
+              "piloto_local": take(round_robin([r for r in elig if not r["touched"] and r["own_domain"]
+                                                and r["bkt"] == "local"]), pil_local),
+              "piloto_aistack": take(round_robin([r for r in elig if not r["touched"] and r["own_domain"]
+                                                  and r["bkt"] == "aistack"]), pil_ai),
           }
           orcamento["sobra_preenchida"] = take(elig, HTTP_BUDGET)   # usa o teto inteiro
 
@@ -552,6 +580,7 @@ jobs:
           pil_pool = [r for r in cand if r["alive"] and r["own_domain"] and not r["touched"]
                       and r["lead_id"] not in dp_ids]
           pil_pool.sort(key=lambda r: (-r["score"], r["lead_id"]))
+          pil_pool = round_robin(pil_pool, "score")   # intercala segmentos: o teste precisa ler por segmento
           want = {"local": int(round(PILOTO_SIZE * 0.6))}
           want["aistack"] = PILOTO_SIZE - want["local"]
           SEG_CAP = max(10, int(PILOTO_SIZE * 0.25))   # nenhum segmento domina o teste
