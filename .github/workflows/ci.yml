@@ -10,10 +10,19 @@ on:
   # workflow_dispatch/repository_dispatch). main-after-merge.yml vigia a main
   # e despacha este workflow no HEAD sem run. `sha` é opcional e só para
   # forense manual (rodar a CI num commit específico); vazio = HEAD do ref.
+  #
+  # 11/09: o SHA tem de ter 40 caracteres. `actions/checkout` com
+  # fetch-depth:1 faz `git fetch origin <sha>` e o servidor não resolve
+  # abreviações → "The process '/usr/bin/git' failed with exit code 1" nos 6
+  # jobs (run 34593023213, `-f sha=3c9805f`). A leitura ingénua desse
+  # resultado é "CI vermelha na main" quando foi o input. O step
+  # "Resolve dispatch SHA" (primeiro de cada job) valida ^[0-9a-f]{40}$,
+  # expande um SHA curto via API e falha com mensagem clara em qualquer outro
+  # caso — o checkout nunca recebe um ref que não consegue buscar.
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit SHA to check out (optional; default = HEAD of the ref you dispatch on)"
+        description: "Commit SHA to check out — FULL 40-hex SHA (git rev-parse <short>). Optional; empty = HEAD of the ref you dispatch on. A short SHA is expanded via the API; anything else fails before checkout."
         required: false
         default: ""
 
@@ -42,9 +51,45 @@ jobs:
     name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve dispatch SHA (40-hex only; short SHA expanded via API)
+        id: sha
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(printf '%s' "$INPUT_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$sha" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "no sha input → checkout uses HEAD of ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "full SHA ok: ${sha}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{4,39}$ ]]; then
+            # actions/checkout (fetch-depth:1) cannot resolve an abbreviation —
+            # expand it here so a short SHA does not read as "CI red on main".
+            full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha 2>/dev/null || true)"
+            if [[ "$full" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::notice title=sha expanded::short SHA ${sha} → ${full}"
+              echo "sha=${full}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=sha input invalid::short SHA '${sha}' could not be expanded (unknown or ambiguous). Use the FULL 40-hex SHA: git rev-parse ${sha}"
+            exit 1
+          fi
+          echo "::error title=sha input invalid::'${sha}' is not a commit SHA. Use the FULL 40-hex SHA (git rev-parse <ref>), or leave empty for HEAD of the ref."
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || '' }}
+          # Empty when the step above was skipped (push / pull_request) or
+          # when no sha was given → HEAD of the ref.
+          ref: ${{ steps.sha.outputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -93,9 +138,45 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Resolve dispatch SHA (40-hex only; short SHA expanded via API)
+        id: sha
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(printf '%s' "$INPUT_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$sha" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "no sha input → checkout uses HEAD of ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "full SHA ok: ${sha}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{4,39}$ ]]; then
+            # actions/checkout (fetch-depth:1) cannot resolve an abbreviation —
+            # expand it here so a short SHA does not read as "CI red on main".
+            full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha 2>/dev/null || true)"
+            if [[ "$full" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::notice title=sha expanded::short SHA ${sha} → ${full}"
+              echo "sha=${full}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=sha input invalid::short SHA '${sha}' could not be expanded (unknown or ambiguous). Use the FULL 40-hex SHA: git rev-parse ${sha}"
+            exit 1
+          fi
+          echo "::error title=sha input invalid::'${sha}' is not a commit SHA. Use the FULL 40-hex SHA (git rev-parse <ref>), or leave empty for HEAD of the ref."
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || '' }}
+          # Empty when the step above was skipped (push / pull_request) or
+          # when no sha was given → HEAD of the ref.
+          ref: ${{ steps.sha.outputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -150,9 +231,45 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Resolve dispatch SHA (40-hex only; short SHA expanded via API)
+        id: sha
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(printf '%s' "$INPUT_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$sha" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "no sha input → checkout uses HEAD of ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "full SHA ok: ${sha}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{4,39}$ ]]; then
+            # actions/checkout (fetch-depth:1) cannot resolve an abbreviation —
+            # expand it here so a short SHA does not read as "CI red on main".
+            full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha 2>/dev/null || true)"
+            if [[ "$full" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::notice title=sha expanded::short SHA ${sha} → ${full}"
+              echo "sha=${full}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=sha input invalid::short SHA '${sha}' could not be expanded (unknown or ambiguous). Use the FULL 40-hex SHA: git rev-parse ${sha}"
+            exit 1
+          fi
+          echo "::error title=sha input invalid::'${sha}' is not a commit SHA. Use the FULL 40-hex SHA (git rev-parse <ref>), or leave empty for HEAD of the ref."
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || '' }}
+          # Empty when the step above was skipped (push / pull_request) or
+          # when no sha was given → HEAD of the ref.
+          ref: ${{ steps.sha.outputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -230,9 +347,45 @@ jobs:
     needs: [lint]
 
     steps:
+      - name: Resolve dispatch SHA (40-hex only; short SHA expanded via API)
+        id: sha
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(printf '%s' "$INPUT_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$sha" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "no sha input → checkout uses HEAD of ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "full SHA ok: ${sha}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{4,39}$ ]]; then
+            # actions/checkout (fetch-depth:1) cannot resolve an abbreviation —
+            # expand it here so a short SHA does not read as "CI red on main".
+            full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha 2>/dev/null || true)"
+            if [[ "$full" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::notice title=sha expanded::short SHA ${sha} → ${full}"
+              echo "sha=${full}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=sha input invalid::short SHA '${sha}' could not be expanded (unknown or ambiguous). Use the FULL 40-hex SHA: git rev-parse ${sha}"
+            exit 1
+          fi
+          echo "::error title=sha input invalid::'${sha}' is not a commit SHA. Use the FULL 40-hex SHA (git rev-parse <ref>), or leave empty for HEAD of the ref."
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || '' }}
+          # Empty when the step above was skipped (push / pull_request) or
+          # when no sha was given → HEAD of the ref.
+          ref: ${{ steps.sha.outputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -260,9 +413,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve dispatch SHA (40-hex only; short SHA expanded via API)
+        id: sha
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(printf '%s' "$INPUT_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$sha" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "no sha input → checkout uses HEAD of ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "full SHA ok: ${sha}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{4,39}$ ]]; then
+            # actions/checkout (fetch-depth:1) cannot resolve an abbreviation —
+            # expand it here so a short SHA does not read as "CI red on main".
+            full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha 2>/dev/null || true)"
+            if [[ "$full" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::notice title=sha expanded::short SHA ${sha} → ${full}"
+              echo "sha=${full}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=sha input invalid::short SHA '${sha}' could not be expanded (unknown or ambiguous). Use the FULL 40-hex SHA: git rev-parse ${sha}"
+            exit 1
+          fi
+          echo "::error title=sha input invalid::'${sha}' is not a commit SHA. Use the FULL 40-hex SHA (git rev-parse <ref>), or leave empty for HEAD of the ref."
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || '' }}
+          # Empty when the step above was skipped (push / pull_request) or
+          # when no sha was given → HEAD of the ref.
+          ref: ${{ steps.sha.outputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -306,9 +495,45 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Resolve dispatch SHA (40-hex only; short SHA expanded via API)
+        id: sha
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="$(printf '%s' "$INPUT_SHA" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          if [ -z "$sha" ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "no sha input → checkout uses HEAD of ${GITHUB_REF_NAME}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+            echo "full SHA ok: ${sha}"
+            exit 0
+          fi
+          if [[ "$sha" =~ ^[0-9a-f]{4,39}$ ]]; then
+            # actions/checkout (fetch-depth:1) cannot resolve an abbreviation —
+            # expand it here so a short SHA does not read as "CI red on main".
+            full="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}" --jq .sha 2>/dev/null || true)"
+            if [[ "$full" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::notice title=sha expanded::short SHA ${sha} → ${full}"
+              echo "sha=${full}" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=sha input invalid::short SHA '${sha}' could not be expanded (unknown or ambiguous). Use the FULL 40-hex SHA: git rev-parse ${sha}"
+            exit 1
+          fi
+          echo "::error title=sha input invalid::'${sha}' is not a commit SHA. Use the FULL 40-hex SHA (git rev-parse <ref>), or leave empty for HEAD of the ref."
+          exit 1
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || '' }}
+          # Empty when the step above was skipped (push / pull_request) or
+          # when no sha was given → HEAD of the ref.
+          ref: ${{ steps.sha.outputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:
