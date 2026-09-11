@@ -38,6 +38,9 @@ name: Main CI after auto-merge (15 min)
 # quem garante que essa run existe quando o merge foi do bot.
 
 on:
+  # TEMP-PROOF (remover antes do PR): dispara na branch para provar o dispatch.
+  push:
+    branches: [ops/main-ci-after-automerge]
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
