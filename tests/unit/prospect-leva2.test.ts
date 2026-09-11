@@ -229,6 +229,9 @@ const LIST_ANSWER = [
   "Please check current availability before hiring.",
 ].join("\n");
 
+/** Nos testes todo motor conta como vivo, exceto quando o teste diz o contrário. */
+const ALL_LIVE = { isLive: () => true } as const;
+
 function fakeProbes(texts: Array<{ provider: string; rawText: string }>) {
   return (async () => ({
     responses: texts.map((t) => ({
@@ -253,7 +256,7 @@ describe("leva 2 — o gancho com prova (parser determinístico, nunca um 2º LL
   it("resposta em prosa (sem lista) não vira prova — e o lead fica fora", async () => {
     const r = await runColdProofProbe(
       { name: "Acme Roofing", service: "a roofing contractor", city: "Austin, TX" },
-      { runProbes: fakeProbes([{ provider: "openai", rawText: "It really depends on your budget and roof type." }]) }
+      { ...ALL_LIVE, runProbes: fakeProbes([{ provider: "openai", rawText: "It really depends on your budget and roof type." }]) }
     );
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("concorrentes");
@@ -263,7 +266,7 @@ describe("leva 2 — o gancho com prova (parser determinístico, nunca um 2º LL
   it("prova boa: motor, dois concorrentes e a pergunta viram variáveis de merge", async () => {
     const r = await runColdProofProbe(
       { name: "Acme Roofing", service: "a roofing contractor", city: "Austin, TX" },
-      { runProbes: fakeProbes([{ provider: "openai", rawText: LIST_ANSWER }]) }
+      { ...ALL_LIVE, runProbes: fakeProbes([{ provider: "openai", rawText: LIST_ANSWER }]) }
     );
     expect(r.ok).toBe(true);
     expect(r.engine).toBe("ChatGPT");
@@ -280,7 +283,7 @@ describe("leva 2 — o gancho com prova (parser determinístico, nunca um 2º LL
     const cited = LIST_ANSWER.replace("Lone Star Roofing", "Acme Roofing");
     const r = await runColdProofProbe(
       { name: "Acme Roofing", service: "a roofing contractor", city: "Austin, TX" },
-      { runProbes: fakeProbes([{ provider: "anthropic", rawText: cited }]) }
+      { ...ALL_LIVE, runProbes: fakeProbes([{ provider: "anthropic", rawText: cited }]) }
     );
     expect(r.ok).toBe(false);
     expect(r.selfCited).toBe(true);
@@ -290,10 +293,20 @@ describe("leva 2 — o gancho com prova (parser determinístico, nunca um 2º LL
   it("motores mudos = sem prova, sem placeholder", async () => {
     const r = await runColdProofProbe(
       { name: "Acme Roofing", service: "a roofing contractor", city: "Austin, TX" },
-      { runProbes: fakeProbes([{ provider: "openai", rawText: "   " }]) }
+      { ...ALL_LIVE, runProbes: fakeProbes([{ provider: "openai", rawText: "   " }]) }
     );
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("nenhum motor respondeu");
+  });
+
+  it("GUARDA DE INTEGRIDADE: motor SEM CHAVE (mock) nunca vira prova", async () => {
+    const r = await runColdProofProbe(
+      { name: "Acme Roofing", service: "a roofing contractor", city: "Austin, TX" },
+      { runProbes: fakeProbes([{ provider: "openai", rawText: LIST_ANSWER }]), isLive: () => false }
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("SEM CHAVE");
+    expect(proofMergeVars(r)).toBeNull();
   });
 
   it("orçamento por lote é aritmética explícita", () => {

@@ -38,6 +38,27 @@ export const COLD_PROOF_MIN_COMPETITORS = 2;
 /** Os motores do probe frio — os mesmos do /test. */
 const PROOF_PROVIDERS: LLMProvider[] = ["anthropic", "openai", "gemini", "perplexity"];
 
+/**
+ * GUARDA DE INTEGRIDADE (a lição do PR #90, e a pior falha possível aqui).
+ *
+ * Um motor sem chave devolve resposta MOCK determinística. No audit isso
+ * inflava um score; aqui seria pior: um nome de concorrente INVENTADO num
+ * e-mail frio para um negócio real, apresentado como "o que a IA respondeu".
+ * Por isso a prova só aceita resposta de motor com chave configurada —
+ * qualquer outra é descartada antes de virar copy. Sem motor vivo, o lead
+ * simplesmente não entra na leva.
+ */
+function providerIsLive(provider: LLMProvider, env: NodeJS.ProcessEnv = process.env): boolean {
+  switch (provider) {
+    case "anthropic": return !!env["ANTHROPIC_API_KEY"];
+    case "openai": return !!env["OPENAI_API_KEY"];
+    case "gemini": return !!env["GEMINI_API_KEY"];
+    case "perplexity": return !!env["PERPLEXITY_API_KEY"];
+    case "serp": return !!env["SERP_API_KEY"];
+    default: return false;
+  }
+}
+
 function sha256(s: string): string {
   return createHash("sha256").update(s).digest("hex");
 }
@@ -162,6 +183,11 @@ export interface ColdProofDeps {
   /** Injetável para teste — por padrão, o gateway real (mesma via do /test). */
   runProbes?: typeof runProbes;
   region?: UserRegion;
+  /**
+   * Testes injetam o motor vivo aqui. Em produção, a guarda lê as chaves de
+   * verdade — e um motor sem chave NUNCA vira prova.
+   */
+  isLive?(provider: LLMProvider): boolean;
 }
 
 /**
@@ -202,10 +228,21 @@ export async function runColdProofProbe(
   }
 
   const costUsd = COLD_PROOF_COST_PER_LEAD_USD;
-  const responses = result.responses.filter((r) => (r.rawText ?? "").trim().length > 0 && r.absent !== true);
+  const isLive = deps.isLive ?? ((p: LLMProvider) => providerIsLive(p));
+  const answered = result.responses.filter((r) => (r.rawText ?? "").trim().length > 0 && r.absent !== true);
+  // A guarda: só motor COM CHAVE vira prova. Resposta mock jamais entra num
+  // e-mail frio — seria um concorrente inventado apresentado como fato.
+  const responses = answered.filter((r) => isLive(r.provider));
   const enginesLive = responses.length;
   if (enginesLive === 0) {
-    return { ...base, costUsd, reason: "nenhum motor respondeu a pergunta do lead (lead fora da leva)" };
+    return {
+      ...base,
+      costUsd,
+      reason:
+        answered.length > 0
+          ? "so motores SEM CHAVE responderam (resposta mock nunca vira prova) — lead fora da leva"
+          : "nenhum motor respondeu a pergunta do lead (lead fora da leva)",
+    };
   }
 
   let anySelfCited = false;
