@@ -1,15 +1,46 @@
 name: SmartLead campaign (one-shot, founder-triggered)
 
-# Cria a campanha AI Stack no SmartLead — código DETERMINÍSTICO (python, sem
-# LLM). Idempotente: se a campanha já existir pelo nome, não duplica. A
-# campanha NUNCA é iniciada (nasce DRAFTED; se aparecer ativa, pausa).
+# Cria campanhas no SmartLead — código DETERMINÍSTICO (python, sem LLM).
+# Idempotente: se a campanha já existir pelo nome, não duplica.
+# A campanha NUNCA é iniciada (nasce DRAFTED; se aparecer ativa, PAUSA).
 # Chave: secret SMARTLEAD_API_KEY (mascarado). workflow_dispatch apenas.
+#
+# leva=2 (default, regra do founder 11/09 — "outbound com prova"):
+#   cria AS DUAS campanhas da leva 2 (oz-local-* e aistack-*) com
+#   4 toques em 14 dias (0/3/7/14), schedule só em dias ÚTEIS e
+#   max_new_leads_per_day = 80 POR CAMPANHA.
+#
+#   A conta do 80/dia (documentada em sop-dia-do-disparo.md §Capacidade):
+#     throughput real observado na leva 1 ≈ 500 e-mails/dia
+#     ÷ 4 toques por lead (cada lead consome 4 envios ao longo da vida)
+#     ÷ 2 campanhas simultâneas
+#     ≈ 62 leads novos/dia por campanha em regime permanente estrito.
+#   80 é o TETO (não a meta): stop-on-reply, bounces e o fim de semana sem
+#   envio derrubam a carga real abaixo do regime estrito. O 1.000/dia da
+#   leva 1 não era teto nenhum — era um número maior que a capacidade, e foi
+#   por isso que ele nunca protegeu o início de leads novos.
+#   Corolário: lista de no MÁXIMO 800 leads por campanha (80 × 10 dias), para
+#   a régua "lista 100% tocada em ≤10 dias" fechar.
+#
+# leva=1: comportamento histórico (uma campanha aistack, 3 toques).
 
 on:
   workflow_dispatch:
     inputs:
+      leva:
+        description: "2 (default — cria as duas campanhas da leva 2) | 1 (histórico)"
+        required: false
+        default: "2"
+      local_name:
+        description: "Leva 2 — nome da campanha GEO/local"
+        required: false
+        default: "oz-local-2026-09-14"
+      aistack_name:
+        description: "Leva 2 — nome da campanha AI Stack"
+        required: false
+        default: "aistack-2026-09-14"
       campaign_name:
-        description: "Nome da campanha"
+        description: "Leva 1 — nome da campanha (histórico)"
         required: false
         default: "aistack-2026-09-08"
 
@@ -20,9 +51,12 @@ jobs:
   create:
     runs-on: ubuntu-latest
     steps:
-      - name: Create paused campaign (deterministic, idempotent)
+      - name: Create DRAFTED campaign(s) (deterministic, idempotent, never started)
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          LEVA: ${{ github.event.inputs.leva }}
+          LOCAL_NAME: ${{ github.event.inputs.local_name }}
+          AISTACK_NAME: ${{ github.event.inputs.aistack_name }}
           CAMPAIGN: ${{ github.event.inputs.campaign_name }}
         run: |
           set -euo pipefail
@@ -31,7 +65,7 @@ jobs:
           import json, os, re, urllib.request, urllib.error
 
           KEY = os.environ["SL_KEY"]
-          NAME = os.environ.get("CAMPAIGN") or "aistack-2026-09-08"
+          LEVA = (os.environ.get("LEVA") or "2").strip()
           BASE = "https://server.smartlead.ai/api/v1"
 
           def call(path, payload=None):
@@ -43,60 +77,198 @@ jobs:
                       body = r.read().decode()
                       return json.loads(body) if body.strip() else {}
               except urllib.error.HTTPError as e:
-                  return {"_http_error": e.code, "_body": e.read().decode()[:300]}
+                  return {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:300]}
 
-          E1_BODY = ("Hi {{first_name}},<br><br>Most small businesses I talk to pay for 5+ tools. "
-                     "And still do the boring work by hand.<br><br>AI could take half of it. "
-                     "But nobody has time to test 100 apps.<br><br>If I could tell you the ONE tool "
-                     "that fits your exact bottleneck - would you want to know what it is?<br><br>Otavio")
-          # Regra da casa imposta por código: e-mail 1 sem link/URL/domínio.
-          assert not re.search(r"https?://|www\.|\.com|\.ai\b", E1_BODY, re.I), "ERRO_LINK_EMAIL1"
+          def bad(r):
+              return isinstance(r, dict) and ("_http_error" in r or "_error" in r)
 
-          SEQ = [
-              {"seq_number": 1, "seq_delay_details": {"delay_in_days": 0},
-               "subject": "quick question about your tools", "email_body": E1_BODY},
-              {"seq_number": 2, "seq_delay_details": {"delay_in_days": 3},
-               "subject": "the one tool for {{company_name}}",
-               "email_body": ("Hi {{first_name}},<br><br>I built a 60-second audit for this. "
-                              "You answer 5 questions about your business. It tells you the right AI tool "
-                              "for your worst pain. The full result lands in your inbox.<br><br>"
-                              "It costs $49. Money back in 30 days if it tells you nothing new.<br><br>"
-                              f"I want to see my stack -> https://ozvor.com/ai-audit?from={NAME}<br><br>Otavio")},
-              {"seq_number": 3, "seq_delay_details": {"delay_in_days": 4},
-               "subject": "closing the loop",
-               "email_body": ("Hi {{first_name}},<br><br>Last note from me. Wrong tools cost small businesses "
-                              "hours every week. The audit finds the right one in 60 seconds.<br><br>"
-                              "If now is not the time, no worries. The door stays open.<br><br>"
-                              f"https://ozvor.com/ai-audit?from={NAME}<br><br>Otavio")},
-          ]
+          def out(d):
+              print("RESULTADO_OZVOR" + json.dumps(d, ensure_ascii=False))
 
-          camps = call("/campaigns")
-          if isinstance(camps, dict):
-              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
-              raise SystemExit(1)
-          existing = next((c for c in camps if c.get("name") == NAME), None)
-          if existing:
-              cid = existing["id"]
-              created = False
-          else:
-              res = call("/campaigns/create", {"name": NAME})
-              cid = res.get("id")
-              created = True
-              if not cid:
-                  print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"create falhou: {res}"}))
+          # Rodapé obrigatório em TODO e-mail. Opt-out textual, literal.
+          # SEM endereço postal: decisão do founder 02/09 (risco CAN-SPAM
+          # §5(a)(5) ACEITO e registrado em sop-dia-do-disparo.md). Nunca
+          # inventar endereço aqui — é decisão do founder, não do código.
+          FOOTER = "P.S. If you'd rather not hear from me, just reply STOP and I won't write again."
+
+          # O e-mail 1 é TEXTO PURO, ZERO link — regra da casa 27/08.
+          # Esta asserção é o validador: qualquer URL/domínio derruba o job
+          # ANTES de tocar a API.
+          LINK_RE = re.compile(r"https?://|www\.|\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|ai|co|us|dev|app)\b", re.I)
+
+          def assert_email1_clean(subject, body, campaign):
+              plain = re.sub(r"<[^>]+>", " ", body)
+              # As variáveis de merge não são links — são substituídas pelo
+              # SmartLead por texto (nome de motor, nome de concorrente, a
+              # pergunta). Tiradas antes da checagem para não dar falso positivo.
+              plain = re.sub(r"\{\{[^}]+\}\}", " ", plain)
+              subj = re.sub(r"\{\{[^}]+\}\}", " ", subject)
+              hit = LINK_RE.search(plain) or LINK_RE.search(subj)
+              if hit:
+                  out({"ok": False, "motivo": f"ERRO_LINK_EMAIL1 em {campaign}: '{hit.group(0)}' (regra 27/08)"})
+                  raise SystemExit(1)
+              words = len([w for w in plain.split() if w.strip()])
+              if not (25 <= words <= 110):
+                  out({"ok": False, "motivo": f"e-mail 1 de {campaign} com {words} palavras (alvo 40-80 apos merge; janela dura 25-110)"})
+                  raise SystemExit(1)
+              if "?" not in plain:
+                  out({"ok": False, "motivo": f"e-mail 1 de {campaign} sem pergunta — o 1o toque busca RESPOSTA"})
                   raise SystemExit(1)
 
-          seq_res = call(f"/campaigns/{cid}/sequences", {"sequences": SEQ})
-          if isinstance(seq_res, dict) and "_http_error" in seq_res:
-              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"sequences falhou: {seq_res}", "campaign_id": cid}))
+          def seq(n, delay, subject, body):
+              return {"seq_number": n, "seq_delay_details": {"delay_in_days": delay},
+                      "subject": subject, "email_body": body + "<br><br>%signature%<br><br>" + FOOTER}
+
+          # ------------------------------------------------------------------
+          # LEVA 2 — 4 toques em 14 dias (0/3/7/14).
+          # E-mail 1 abre com a PROVA: o que a IA respondeu sobre o nicho e a
+          # cidade DELE. As variáveis vêm do prospect-batch (cold-proof-probe):
+          # {{ai_engine}} {{competitor_1}} {{competitor_2}} {{query}}
+          # {{report_url}} — e um lead sem prova NÃO entra na campanha.
+          # ------------------------------------------------------------------
+
+          def leva2_local(slug):
+              e1 = ("Hi {{first_name}},<br><br>"
+                    "This week I asked {{ai_engine}} one question: \"{{query}}\"<br><br>"
+                    "It named {{competitor_1}}. Then {{competitor_2}}. It never named {{company_name}}.<br><br>"
+                    "That is the answer your next customer gets.<br><br>"
+                    "Want me to send you the exact words it used?")
+              e2 = ("Hi {{first_name}},<br><br>"
+                    "Here is the rest of it. {{ai_engine}} put {{competitor_1}} first, then {{competitor_2}}.<br><br>"
+                    "You can check the other engines yourself. It takes 60 seconds. "
+                    "You type your business and one competitor.<br><br>"
+                    f"See what every engine says -&gt; https://ozvor.com/test?from={slug}")
+              e3 = ("Hi {{first_name}},<br><br>"
+                    "This is not about ads. AI answers are built from pages the engines can read and quote.<br><br>"
+                    "The businesses AI names usually have those pages. Most local sites do not. "
+                    "That is the whole gap.<br><br>"
+                    f"The test shows which part is missing -&gt; https://ozvor.com/test?from={slug}")
+              e4 = ("Hi {{first_name}},<br><br>"
+                    "Last note from me. I set your test up so you type nothing.<br><br>"
+                    "It runs the same question I asked: \"{{query}}\"<br><br>"
+                    "Your report -&gt; {{report_url}}<br><br>"
+                    "If now is not the time, no worries. The door stays open.")
+              assert_email1_clean("{{ai_engine}} named someone else", e1, slug)
+              return [seq(1, 0, "{{ai_engine}} named someone else", e1),
+                      seq(2, 3, "the exact words", e2),
+                      seq(3, 7, "why it happens", e3),
+                      seq(4, 14, "your report, nothing to type", e4)]
+
+          def leva2_aistack(slug):
+              e1 = ("Hi {{first_name}},<br><br>"
+                    "I asked {{ai_engine}} this: \"{{query}}\"<br><br>"
+                    "It answered with {{competitor_1}} and {{competitor_2}}. Not you.<br><br>"
+                    "Most owners never see that answer. They just see fewer calls.<br><br>"
+                    "Would you want to know which tool closes that gap for {{company_name}}?")
+              e2 = ("Hi {{first_name}},<br><br>"
+                    "I built a 60-second audit for this. You answer 5 questions about your business. "
+                    "It names the right AI tool for your worst bottleneck.<br><br>"
+                    "It costs $49. Money back in 30 days if it tells you nothing new.<br><br>"
+                    f"I want to see my stack -&gt; https://ozvor.com/ai-audit?from={slug}")
+              e3 = ("Hi {{first_name}},<br><br>"
+                    "Quick math. Two hours a week of manual work is a hundred hours a year.<br><br>"
+                    "The audit finds the one tool that takes those hours back. "
+                    "It does not sell you ten.<br><br>"
+                    f"https://ozvor.com/ai-audit?from={slug}")
+              e4 = ("Hi {{first_name}},<br><br>"
+                    "Last note from me. Before the audit, see the free part: what AI says when "
+                    "someone asks for what you sell.<br><br>"
+                    "Your report -&gt; {{report_url}}<br><br>"
+                    "If now is not the time, no worries. The door stays open.")
+              assert_email1_clean("{{ai_engine}} answered with two names", e1, slug)
+              return [seq(1, 0, "{{ai_engine}} answered with two names", e1),
+                      seq(2, 3, "the one tool for {{company_name}}", e2),
+                      seq(3, 7, "a hundred hours", e3),
+                      seq(4, 14, "your report, nothing to type", e4)]
+
+          # Schedule da leva 2: DIAS ÚTEIS apenas (0=domingo ... 6=sábado →
+          # 1..5), 09h-18h Nova Iorque, 8 min entre e-mails, e o teto de 80
+          # leads novos/dia POR CAMPANHA (a conta está no cabeçalho).
+          SCHEDULE_LEVA2 = {"timezone": "America/New_York", "days_of_the_week": [1, 2, 3, 4, 5],
+                            "start_hour": "09:00", "end_hour": "18:00",
+                            "min_time_btw_emails": 8, "max_new_leads_per_day": 80,
+                            "schedule_start_time": None}
+          SETTINGS = {"track_settings": ["DONT_TRACK_EMAIL_OPEN", "DONT_TRACK_LINK_CLICK"],
+                      "stop_lead_settings": "REPLY_TO_AN_EMAIL", "send_as_plain_text": True,
+                      "follow_up_percentage": 100, "enable_ai_esp_matching": True}
+
+          # ------------------------------------------------------------------
+          # LEVA 1 — histórico (3 toques), mantido para não quebrar nada.
+          # ------------------------------------------------------------------
+          def leva1(name):
+              e1 = ("Hi {{first_name}},<br><br>Most small businesses I talk to pay for 5+ tools. "
+                    "And still do the boring work by hand.<br><br>AI could take half of it. "
+                    "But nobody has time to test 100 apps.<br><br>If I could tell you the ONE tool "
+                    "that fits your exact bottleneck - would you want to know what it is?")
+              assert_email1_clean("quick question about your tools", e1, name)
+              return [seq(1, 0, "quick question about your tools", e1),
+                      seq(2, 3, "the one tool for {{company_name}}",
+                          "Hi {{first_name}},<br><br>I built a 60-second audit for this. "
+                          "You answer 5 questions about your business. It tells you the right AI tool "
+                          "for your worst pain. The full result lands in your inbox.<br><br>"
+                          "It costs $49. Money back in 30 days if it tells you nothing new.<br><br>"
+                          f"I want to see my stack -&gt; https://ozvor.com/ai-audit?from={name}"),
+                      seq(3, 4, "closing the loop",
+                          "Hi {{first_name}},<br><br>Last note from me. Wrong tools cost small businesses "
+                          "hours every week. The audit finds the right one in 60 seconds.<br><br>"
+                          "If now is not the time, no worries. The door stays open.<br><br>"
+                          f"https://ozvor.com/ai-audit?from={name}")]
+
+          # ------------------------------------------------------------------
+          # Execução — cria, aplica sequência/schedule/settings, NUNCA inicia.
+          # ------------------------------------------------------------------
+          camps = call("/campaigns")
+          if isinstance(camps, dict):
+              out({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"})
               raise SystemExit(1)
+          by_name = {c.get("name"): c for c in camps}
 
-          detail = call(f"/campaigns/{cid}")
-          status = detail.get("status", "?") if isinstance(detail, dict) else "?"
-          if str(status).upper() in ("ACTIVE", "STARTED", "START"):
-              call(f"/campaigns/{cid}/status", {"status": "PAUSED"})
-              status = "PAUSED"
+          def ensure(name, sequences, schedule):
+              existing = by_name.get(name)
+              created = False
+              if existing:
+                  cid = existing["id"]
+              else:
+                  res = call("/campaigns/create", {"name": name})
+                  cid = res.get("id")
+                  created = True
+                  if not cid:
+                      out({"ok": False, "motivo": f"create de {name} falhou: {res}"})
+                      raise SystemExit(1)
+              steps = {}
+              r = call(f"/campaigns/{cid}/sequences", {"sequences": sequences})
+              steps["sequences"] = "ok" if not bad(r) else str(r)[:160]
+              if schedule is not None:
+                  r = call(f"/campaigns/{cid}/schedule", schedule)
+                  steps["schedule"] = "ok" if not bad(r) else str(r)[:160]
+                  r = call(f"/campaigns/{cid}/settings", SETTINGS)
+                  steps["settings"] = "ok" if not bad(r) else str(r)[:160]
+              # A máquina NUNCA inicia: se estiver ativa, pausa e diz.
+              detail = call(f"/campaigns/{cid}")
+              status = detail.get("status", "?") if isinstance(detail, dict) else "?"
+              if str(status).upper() in ("ACTIVE", "STARTED", "START"):
+                  call(f"/campaigns/{cid}/status", {"status": "PAUSED"})
+                  status = "PAUSED (estava ativa — pausada pelo workflow)"
+              return {"campanha": name, "campaign_id": cid, "criada_agora": created,
+                      "status": status, "emails": len(sequences), "passos": steps}
 
-          print("RESULTADO_OZVOR" + json.dumps({"ok": True, "campaign_id": cid, "criada_agora": created,
-                                                "status": status, "emails": 3}, ensure_ascii=False))
+          if LEVA == "1":
+              name = os.environ.get("CAMPAIGN") or "aistack-2026-09-08"
+              res = ensure(name, leva1(name), None)
+              out({"ok": all(v == "ok" for v in res["passos"].values()), "leva": 1, "campanhas": [res]})
+              raise SystemExit(0)
+
+          local_name = (os.environ.get("LOCAL_NAME") or "oz-local-2026-09-14").strip()
+          aistack_name = (os.environ.get("AISTACK_NAME") or "aistack-2026-09-14").strip()
+          results = [
+              ensure(local_name, leva2_local(local_name), SCHEDULE_LEVA2),
+              ensure(aistack_name, leva2_aistack(aistack_name), SCHEDULE_LEVA2),
+          ]
+          ok = all(v == "ok" for r in results for v in r["passos"].values())
+          out({"ok": ok, "leva": 2, "toques": 4, "dias": [0, 3, 7, 14],
+               "max_new_leads_per_day": 80, "dias_da_semana": "seg-sex",
+               "lista_maxima_por_campanha": 800,
+               "nunca_iniciada": "o workflow nao tem acao start — quem inicia e o founder, pelo smartlead-launch.yml com confirm=GO",
+               "campanhas": results})
+          raise SystemExit(0 if ok else 1)
           PYEOF

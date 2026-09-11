@@ -16,7 +16,7 @@ O AI Stack Audit é o segundo produto e tem ICP próprio: SMB dos EUA afogado em
 | Escalação | Growth/Agency mensal | OrganicPosts $1.5k (o audit é a porta de entrada) |
 | Cruzamento | Quem tem dor de stack quase sempre tem dor de visibilidade — e vice-versa. O CRM é um só; a nota do contato diz a trilha de origem |
 
-## 2. Sequência da campanha AI STACK (inglês, pronta para colar)
+## 2. Sequência da leva 1 — 3 toques (HISTÓRICO; a sequência em vigor é a da §5)
 
 Regras aplicadas: 1º e-mail texto puro, ZERO links/URLs/domínios, UMA pergunta, 40–80 palavras, frases ≤12 palavras, nível 15-17 anos, sonho honesto, assinatura "Otavio". Links só a partir do e-mail 2, sempre com `?from=aistack-<lote>`.
 
@@ -88,6 +88,77 @@ Todo e-mail da campanha termina com este bloco, DEPOIS da assinatura:
 - Resposta ao e-mail 1 (a métrica-mestra do frio) — webhook grava
 - Cliques/compras com `from=aistack-*` — atribuição first-touch (#527) grava no pedido
 - Compra do audit → nurture `ai_audit_to_full` já ativa (upsell $1.5k automático)
+
+---
+
+## 5. LEVA 2 — "outbound com prova" (a partir de 11/09) — **esta é a sequência em vigor**
+
+> Campanha viva: `aistack-2026-09-14` (id **3939142**), criada DRAFTED em 11/09 pelo
+> `smartlead-campaign.yml` (`leva=2`). Diagnóstico, conta da capacidade e régua:
+> [leva2-outbound-com-prova.md](leva2-outbound-com-prova.md) · [sop-dia-do-disparo.md](sop-dia-do-disparo.md).
+
+A sequência de 3 toques do §2 fica como histórico da leva 1. Agora são
+**4 toques em 14 dias (0/3/7/14)**, só em dias úteis, **80 leads novos/dia**
+por campanha, lista ≤800 — e o e-mail 1 abre com a prova do mini free test.
+
+### Variáveis de merge obrigatórias no CSV
+
+`{{ai_engine}}` · `{{competitor_1}}` · `{{competitor_2}}` · `{{query}}` · `{{report_url}}`
+
+**Lead sem prova não entra na campanha.**
+
+**Email 1 (dia 0) — sem link, a prova e uma pergunta**
+
+> Subject: {{ai_engine}} answered with two names
+>
+> Hi {{first_name}},
+>
+> I asked {{ai_engine}} this: "{{query}}"
+>
+> It answered with {{competitor_1}} and {{competitor_2}}. Not you.
+>
+> Most owners never see that answer. They just see fewer calls.
+>
+> Would you want to know which tool closes that gap for {{company_name}}?
+
+**Email 2 (dia 3) — a oferta, com link rastreado**
+
+> Subject: the one tool for {{company_name}}
+>
+> Hi {{first_name}},
+>
+> I built a 60-second audit for this. You answer 5 questions about your business. It names the right AI tool for your worst bottleneck.
+>
+> It costs $49. Money back in 30 days if it tells you nothing new.
+>
+> I want to see my stack → https://ozvor.com/ai-audit?from=aistack-2026-09-14
+
+**Email 3 (dia 7) — a conta das horas**
+
+> Subject: a hundred hours
+>
+> Hi {{first_name}},
+>
+> Quick math. Two hours a week of manual work is a hundred hours a year.
+>
+> The audit finds the one tool that takes those hours back. It does not sell you ten.
+>
+> https://ozvor.com/ai-audit?from=aistack-2026-09-14
+
+**Email 4 (dia 14) — o relatório dele, sem digitar nada**
+
+> Subject: your report, nothing to type
+>
+> Hi {{first_name}},
+>
+> Last note from me. Before the audit, see the free part: what AI says when someone asks for what you sell.
+>
+> Your report → {{report_url}}
+>
+> If now is not the time, no worries. The door stays open.
+
+Rodapé de opt-out literal em todos os toques, depois de `%signature%`, sem
+endereço postal (decisão do founder 02/09).
 
 ---
 

@@ -780,7 +780,10 @@ describe("0.6 — split do cap e ICP por trilha no worker", () => {
       },
       fetchText: async (url: string) => fetchMap[url] ?? { status: 404, text: "" },
       now: () => new Date("2026-09-02T07:30:00Z"),
-      env: { PROSPECT_BATCH_CAP_GEO: "2", PROSPECT_BATCH_CAP_AISTACK: "1" },
+      // LEVA 2 desligada aqui de proposito: este teste prega a verificacao
+      // por CODIGO da leva 1 (site 200 + nome no HTML). O filtro de sinal e o
+      // gancho com prova tem o seu proprio arquivo (prospect-leva2.test.ts).
+      env: { PROSPECT_BATCH_CAP_GEO: "2", PROSPECT_BATCH_CAP_AISTACK: "1", COLD_PROOF_ENABLED: "0" },
     });
 
     expect(prompts).toHaveLength(2);
@@ -866,7 +869,10 @@ describe("prospect-probe — verificação por código", () => {
         "https://unrelated.com/robots.txt": { status: 404, text: "" },
       }),
       now: () => new Date("2026-09-02T07:30:00Z"),
-      env: {},
+      // LEVA 2 desligada aqui de proposito: este teste prega a verificacao
+      // por CODIGO da leva 1 (site 200 + nome no HTML). O filtro de sinal e o
+      // gancho com prova tem o seu proprio arquivo (prospect-leva2.test.ts).
+      env: { COLD_PROOF_ENABLED: "0" },
     });
 
     expect(block).toContain("CAMPANHA: cold-2026-09-02");
@@ -887,7 +893,10 @@ describe("prospect-probe — verificação por código", () => {
       task: async () => ({ ok: false, output: "all engines failed", engineUsed: null, ms: null }),
       fetchText: fakeFetch({}),
       now: () => new Date("2026-09-02T07:30:00Z"),
-      env: {},
+      // LEVA 2 desligada aqui de proposito: este teste prega a verificacao
+      // por CODIGO da leva 1 (site 200 + nome no HTML). O filtro de sinal e o
+      // gancho com prova tem o seu proprio arquivo (prospect-leva2.test.ts).
+      env: { COLD_PROOF_ENABLED: "0" },
     });
     expect(block.startsWith(EMPTY_BATCH_SENTINEL)).toBe(true);
     expect(block).toContain("engines indisponiveis");
@@ -913,7 +922,10 @@ describe("prospect-probe — verificação por código", () => {
         "https://b.com/contact": { status: 404, text: "" },
       }),
       now: () => new Date("2026-09-02T07:30:00Z"),
-      env: { PROSPECT_BATCH_CAP: "1" },
+      // LEVA 2 desligada aqui de proposito: este teste prega a verificacao
+      // por CODIGO da leva 1 (site 200 + nome no HTML). O filtro de sinal e o
+      // gancho com prova tem o seu proprio arquivo (prospect-leva2.test.ts).
+      env: { PROSPECT_BATCH_CAP: "1", COLD_PROOF_ENABLED: "0" },
     });
     expect(block).toContain("VERIFICADOS: 1");
     expect(block).toContain("docs/departments/sales/icp.md");
