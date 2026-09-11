@@ -232,3 +232,9 @@ export * from "./intent-label";
 // sentence and a count.
 // ---------------------------------------------------------------------------
 export * from "./rejection-language";
+
+// ---------------------------------------------------------------------------
+// P1-07 — an audit measured on an incomplete engine panel schedules ONE repeat
+// (24h, max 2 per week) and only spends when the panel is whole again.
+// ---------------------------------------------------------------------------
+export * from "./coverage-retry";
