@@ -24,8 +24,15 @@ export interface ExtractionTelemetry {
   rejected_count: number;
   /** Kind of EVERY mention looked at, verified and rejected alike. */
   by_kind?: Record<string, number> | null;
-  /** Up to three concrete false positives this audit refused to count. */
-  sample_rejections?: Array<{ reason?: string; text?: string; engine?: string }> | null;
+  /**
+   * WHY citations were discarded, in the customer's language, with counts.
+   * P1-07: the API sends this instead of the verifier's own lines — those read
+   * "WRONG OFFSET - characters 811-818 are 'services' not 'Ozvor's'" and are
+   * kept for the admin trace (GET /api/admin/audits/:id/extraction).
+   */
+  rejections?: Array<{ code?: string; reason?: string; count?: number | null }> | null;
+  /** False when the audit predates the per-class tally: counts are omitted. */
+  rejections_itemised?: boolean | null;
   /** Probes that lost their citation entirely once the rejections were applied. */
   probes_adjusted?: number | null;
   llm_calls?: number | null;
@@ -52,7 +59,8 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
   if (looked === 0) return null;
 
   const kinds = Object.entries(extraction.by_kind ?? {}).filter(([, n]) => n > 0);
-  const samples = (extraction.sample_rejections ?? []).slice(0, 3);
+  const rejections = (extraction.rejections ?? []).filter((r) => r.reason);
+  const itemised = extraction.rejections_itemised === true;
   const adjusted = extraction.probes_adjusted ?? 0;
 
   return (
@@ -142,7 +150,7 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
           </>
         )}
 
-        {samples.length > 0 && (
+        {rejections.length > 0 && (
           <div style={{ marginTop: "var(--space-5)", paddingTop: "var(--space-4)", borderTop: "1px solid var(--color-border)" }}>
             <p
               style={{
@@ -154,13 +162,16 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
                 color: "var(--color-muted)",
               }}
             >
-              Refused to count
+              Why we refused to count them
             </p>
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-              {samples.map((s, i) => (
+              {rejections.map((r, i) => (
                 <li
-                  key={i}
+                  key={r.code ?? i}
                   style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "var(--space-3)",
                     fontSize: "var(--font-size-body-sm)",
                     color: "var(--color-muted)",
                     lineHeight: 1.55,
@@ -168,16 +179,22 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
                     borderLeft: "2px solid var(--color-border)",
                   }}
                 >
-                  {s.text ? <span style={{ fontStyle: "italic" }}>&ldquo;{trim(s.text)}&rdquo;</span> : null}
-                  {s.reason ? (
-                    <span style={{ display: "block", color: "var(--color-text)", fontWeight: 600, marginTop: "2px" }}>
-                      {s.reason}
-                      {s.engine ? <span style={{ fontWeight: 400, color: "var(--color-muted)" }}> · {s.engine}</span> : null}
-                    </span>
+                  <span>{r.reason}</span>
+                  {/* A missing count stays missing. Printing 0 next to a
+                      rejection we DID make would be a new lie. */}
+                  {typeof r.count === "number" ? (
+                    <b style={{ color: "var(--color-text)", fontVariantNumeric: "tabular-nums" }}>{r.count}</b>
                   ) : null}
                 </li>
               ))}
             </ul>
+            {!itemised && (
+              <p style={{ margin: "var(--space-3) 0 0", fontSize: "var(--font-size-caption)", color: "var(--color-muted)" }}>
+                This audit ran before we counted the reasons one by one, so they
+                are listed without their split. {dropped} were thrown away in
+                total.
+              </p>
+            )}
           </div>
         )}
 

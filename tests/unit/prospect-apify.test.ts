@@ -309,7 +309,14 @@ function fakeFetchText() {
 }
 
 describe("buildProspectBatchBlock — fonte apify", () => {
-  const env = { APIFY_TOKEN: "t", APIFY_MAPS_ACTOR: "compass/crawler-google-places" } as unknown as NodeJS.ProcessEnv;
+  // LEVA 2 desligada neste bloco de proposito: aqui se prega a FONTE apify
+  // (actor, orcamento, proxies), nao o filtro de sinal da leva 2 — esse tem
+  // o seu proprio arquivo, tests/unit/prospect-leva2.test.ts.
+  const env = {
+    APIFY_TOKEN: "t",
+    APIFY_MAPS_ACTOR: "compass/crawler-google-places",
+    COLD_PROOF_ENABLED: "0",
+  } as unknown as NodeJS.ProcessEnv;
 
   function apifyDeps(spec: ApifyRunSpec | null, items: unknown[] = ITEMS) {
     let taken = false;
@@ -376,7 +383,9 @@ describe("buildProspectBatchBlock — fonte apify", () => {
     const block = await buildProspectBatchBlock({
       task: async () => ({ ok: true, output: "", engineUsed: null, ms: null }),
       fetchText: fakeFetchText(),
-      env: {} as NodeJS.ProcessEnv,
+      // LEVA 2 desligada aqui de proposito: este teste prega a FONTE apify,
+      // nao o filtro de sinal (que tem o seu proprio arquivo).
+      env: { COLD_PROOF_ENABLED: "0" } as NodeJS.ProcessEnv,
       apify: apifyDeps(SPEC),
     });
     expect(block).toContain("APIFY_TOKEN");
@@ -431,10 +440,27 @@ describe("fechabilidade no round-trip bloco → CRM", () => {
     expect(note).toContain("reviews=128");
   });
 
-  it("prospect da fonte engine (sem proxies) mantém a nota histórica intacta", () => {
+  it("prospect da fonte engine (sem proxies) guarda trilha, campanha, nome e site", () => {
+    // Canal C (11/09): o NOME entrou na nota. Era o único facto público que o
+    // lote já conhecia (o verificador casa-o contra o HTML do site) e que a
+    // nota deitava fora — e é ele que o feed de prova diária precisa de ter
+    // exato para procurar a empresa dentro de uma resposta de IA. Sem ele o
+    // feed adivinhava uma marca a partir do domínio.
     const note = crmNoteFor({
       email: "a@b.com",
-      name: "X",
+      name: "X Roofing",
+      website: "https://x.com",
+      finding: "f",
+      track: "geo",
+      campaign: "cold-2026-09-09",
+    });
+    expect(note).toBe("[prospect-batch] trilha=geo campanha=cold-2026-09-09 nome=X Roofing — f — https://x.com");
+  });
+
+  it("o nome só entra quando existe — nota sem nome continua válida", () => {
+    const note = crmNoteFor({
+      email: "a@b.com",
+      name: "",
       website: "https://x.com",
       finding: "f",
       track: "geo",

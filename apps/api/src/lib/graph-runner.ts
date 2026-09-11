@@ -74,6 +74,10 @@ import {
   adaptXForPublish,
   splitXSegments,
 } from "../../../../packages/shared/src/x-post-limit";
+import {
+  validateProofNumbers,
+  type ProofFacts,
+} from "../../../../packages/shared/src/proof-feed";
 
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
 export const SEED_ARTIFACT = "__seed__";
@@ -93,6 +97,28 @@ export const SIGNALS_ARTIFACT = "__signals__";
  * cards, or a read error all mean the artifact is simply absent.
  */
 export const GAPS_ARTIFACT = "__gaps__";
+/**
+ * Upstream key carrying the DAY'S REAL MEASUREMENT to the LinkedIn cell
+ * (canal C, founder 11/09). The daily proof job asks one local buyer question
+ * across the engines about one real business from our own untouched outbound
+ * pool, writes the result to ops.proof_run, and hands the anonymized half here.
+ *
+ * This is the difference between "brands are disappearing from AI answers"
+ * (a category post) and "I asked four engines who to hire for roofing in
+ * Austin; zero named the shop with 4.9 stars and 300 reviews" (a post with a
+ * number that exists outside the model that wrote the sentence).
+ *
+ * Two contracts ride with it:
+ *  - ANONYMOUS BY SHAPE. The block carries segment, city, engine counts and
+ *    public rating/reviews. The target's name, domain and e-mail stay in the
+ *    table; renderProofBlock never emits them, so "nunca nome de empresa sem
+ *    consentimento" is a property of the data, not a plea to the model.
+ *  - FAIL-OPEN, NEVER A PLACEHOLDER. No migration, no pool, engines down, or
+ *    a read error all mean the artifact is simply ABSENT and the cell drafts
+ *    exactly as it does today. A post that says "[number]" is worse than a
+ *    post with no number.
+ */
+export const PROOF_ARTIFACT = "__proof__";
 /**
  * Upstream key carrying the house CONTENT LESSONS (5.F.3) to the CRITICS.
  * Same pattern as [__day__] — a constant, no I/O — but narrower: only the
@@ -341,6 +367,15 @@ export interface SubstratePort {
    * Must never throw; "SEM DADO" is a valid answer.
    */
   ownVisibilityGaps?(): Promise<string | null>;
+  /**
+   * The day's REAL proof measurement (canal C): the anonymized block for the
+   * [__proof__] artifact plus the facts behind it, which the finalize
+   * validator uses to refuse a post carrying a number the measurement does not
+   * license. Optional on purpose and must never throw — absent port, missing
+   * ops.proof_run migration, empty pool or engines down all return null and
+   * the LinkedIn cell drafts exactly as it does today (fail-open).
+   */
+  dailyProof?(): Promise<{ block: string; facts: ProofFacts } | null>;
   /**
    * The ACTIVE approved memory lessons (5.F.1) — the newest row the founder
    * approved in ops.memory_lesson, or null when the store is empty OR the
@@ -1361,6 +1396,25 @@ export async function advanceRun(
     }
     return recentBlock;
   };
+  // Canal C (11/09) — the day's REAL measurement, loaded LAZILY and at most
+  // once per advance. Kept as {block, facts} rather than a string because the
+  // finalize validator needs the NUMBERS, not the prose: a critic asked to
+  // veto invented figures is a request, `validateProofNumbers` is enforcement.
+  // Fail-open by contract: no port / port error / no proof today → null, and
+  // the cell drafts exactly as it does today. Never a placeholder.
+  let proof: { block: string; facts: ProofFacts } | null = null;
+  let proofLoaded = false;
+  const loadProof = async (): Promise<{ block: string; facts: ProofFacts } | null> => {
+    if (proofLoaded) return proof;
+    proofLoaded = true;
+    if (!substrate.dailyProof) return null;
+    try {
+      proof = await substrate.dailyProof();
+    } catch {
+      proof = null; // fail-open by contract; the port should not throw
+    }
+    return proof;
+  };
   // 10.C.6 — the [__recent__] of SALES: last real cold sequences / follow-up
   // replies, read from the durable record (recentSalesOutputs) with text
   // recovered from Redis artifacts while the TTL lives. Lazy, once per
@@ -1471,6 +1525,14 @@ export async function advanceRun(
             /* fail-open by contract; the port should not throw */
           }
         }
+        // Canal C: the day's measured proof, for the cells that declare they
+        // want it (config.proof on the node). Opt-in per node rather than
+        // blanket-injected, because a block this prescriptive ("use only these
+        // numbers") would distort cells that are not building a proof post.
+        if (config["proof"] === true) {
+          const p = await loadProof();
+          if (p) upstream.unshift([PROOF_ARTIFACT, p.block]);
+        }
       } else if (def.vpOwner === "sales") {
         // 10.C.6 — o dono sales entrava no loop SEM as injeções anti-genérico:
         // prospect-batch (e o follow-up, no seu próprio job) desenhavam cegos.
@@ -1515,6 +1577,25 @@ export async function advanceRun(
           await substrate.finishStep(stepId, {
             status: "failed",
             summary: `validador cold-email reprovou: ${v.errors.slice(0, 2).join(" · ").slice(0, 400)}`,
+            ms: res.ms,
+            engine: res.engineUsed,
+          });
+          continue; // retry pass (2c) re-attempts; exhausted budget fails the run
+        }
+      }
+      // Canal C (11/09) — a number in a published post must exist in the day's
+      // measurement. The critic prompt ASKS for that; this line ENFORCES it, on
+      // the artifact that actually ships. A finalize carrying a figure the proof
+      // does not license fails the STEP, so the retry budget gets fresh shots
+      // and the founder's approval box never sees an invented number.
+      // Fail-open stays intact: no proof today → validateProofNumbers passes.
+      if (res.ok && res.output && config["validate"] === "linkedin-proof") {
+        const p = await loadProof();
+        const v = validateProofNumbers(res.output, p?.facts ?? null);
+        if (!v.ok) {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `numero sem prova no post: ${v.unbacked.slice(0, 5).join(", ")} — nao esta em [__proof__] (ops.proof_run ${p?.facts.date ?? "sem prova"})`,
             ms: res.ms,
             engine: res.engineUsed,
           });

@@ -554,24 +554,44 @@ export const SPHERE_X_GRAPH: GraphDefinition = {
  * this cell inherits the adapt discipline: English, native to the feed,
  * never a raw script.
  */
+/**
+ * Language of the founder's PERSONAL draft (canal C). English-first governs
+ * what the BRAND publishes; this draft is pasted by a human on his own
+ * profile, so it follows him. env LI_FOUNDER_LANG = 'pt' | 'en' (default 'en').
+ */
+export const FOUNDER_POST_LANG: "pt" | "en" =
+  (process.env["LI_FOUNDER_LANG"] ?? "").toLowerCase() === "pt" ? "pt" : "en";
+
 export const SPHERE_LINKEDIN_GRAPH: GraphDefinition = {
   slug: "sphere-linkedin",
   // v2 (10.C.3, sweep 02/09): the memory read 'linkedin_' but the collector
   // writes 'linkedinpage_*' — the JS startsWith path (rejections) matched
   // NOTHING, so this sphere never saw the founder's nos. The memory prefix is
   // now derived from the harvest metric's own family.
-  version: 2,
+  // v3 (canal C, founder 11/09): every post now opens with a REAL measurement.
+  // The [__proof__] artifact (ops.proof_run, ~US$0.03/day) reaches briefing →
+  // drafts → critic → finalize via config.proof, finalize is code-checked
+  // against it (validate: 'linkedin-proof'), and a parallel founder-draft node
+  // writes the same proof in his first-person voice for him to paste on his
+  // PERSONAL profile by hand. That leg reports and never publishes — a
+  // personal profile is not a channel the machine may speak on.
+  version: 3,
   vpOwner: "marketing",
   description:
-    "LinkedIn specialist cell with its own memory: read this sphere's OWN harvested reach (linkedinpage_* outcomes — the collector's real family) → signal → briefing that must confront the channel's record → 2 drafts (story vs contrarian) → critic → finalize → human approval → publish to LinkedIn → wait 72h → harvest linkedinpage_impressions → verdict.",
+    "LinkedIn specialist cell with its own memory, agora com PROVA REAL DO DIA (canal C, 11/09): mede-se por código 1 pergunta de comprador local (setor × cidade do ICP US) contra os motores sobre UM negócio real do nosso próprio pool de outbound ainda não tocado, grava em ops.proof_run (~US$0,03/dia, 1 por dia travado por UNIQUE) e injeta o bloco ANONIMIZADO [__proof__] (segmento, cidade, contagens, rating/reviews públicos — nunca nome, site ou e-mail do alvo). Fluxo: memória (linkedinpage_* outcomes) → sinal → briefing que abre com a prova → 2 rascunhos (story vs contrarian) → crítico (veta número fora de [__proof__]) → finalize (validador de CÓDIGO 'linkedin-proof' reprova número inventado) → aprovação humana → publish no LinkedIn → wait 72h → harvest linkedinpage_impressions → veredito. Em paralelo: founder-draft (1ª pessoa, voz dele) vai como RASCUNHO ao Telegram — ele copia e cola; nada publica sozinho no perfil pessoal. Sem prova do dia, a célula roda exatamente como rodava (fail-open, nunca placeholder).",
   nodes: [
     { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes", days: 30, metricPrefix: "linkedinpage_" } },
     { id: "signal", kind: "task", dependsOn: [], config: { prompt: "linkedin-signal" } },
-    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "linkedin-briefing" } },
-    { id: "draft-story", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "story" } },
-    { id: "draft-contrarian", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "contrarian" } },
-    { id: "critic", kind: "debate", dependsOn: ["draft-story", "draft-contrarian", "memory"], config: { prompt: "linkedin-critic" } },
-    { id: "finalize", kind: "synthesis", dependsOn: ["draft-story", "draft-contrarian", "critic"], config: { prompt: "linkedin-finalize" } },
+    { id: "briefing", kind: "task", dependsOn: ["signal", "memory"], config: { prompt: "linkedin-briefing", proof: true } },
+    { id: "draft-story", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "story", proof: true } },
+    { id: "draft-contrarian", kind: "task", dependsOn: ["briefing"], config: { prompt: "linkedin-draft", style: "contrarian", proof: true } },
+    { id: "critic", kind: "debate", dependsOn: ["draft-story", "draft-contrarian", "memory"], config: { prompt: "linkedin-critic", proof: true } },
+    { id: "finalize", kind: "synthesis", dependsOn: ["draft-story", "draft-contrarian", "critic"], config: { prompt: "linkedin-finalize", proof: true, validate: "linkedin-proof" } },
+    // The founder's own copy: same proof, his voice, PT or EN per env
+    // (LI_FOUNDER_LANG). Depends on 'finalize' so brand and founder tell the
+    // SAME day's story, never two contradictory readings of one measurement.
+    { id: "founder-draft", kind: "task", dependsOn: ["finalize"], config: { prompt: "linkedin-founder-draft", proof: true, lang: FOUNDER_POST_LANG } },
+    { id: "founder-report", kind: "report", dependsOn: ["founder-draft"], config: { title: "👤 Rascunho do teu perfil (copia e cola — nada publica sozinho)" } },
     { id: "approval", kind: "approval", dependsOn: ["finalize"], config: { channel: "telegram" } },
     { id: "publish", kind: "publish", dependsOn: ["approval"], config: { channel: "linkedin", via: "postiz" } },
     { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },

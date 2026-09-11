@@ -103,6 +103,30 @@ const LESSONS_VETO_RULE =
  * aprovação e do publish) carrega. O publish recusa travessão por CÓDIGO
  * (graph-runner, hasDash); esta linha faz o modelo não chegar lá. Uma fonte.
  */
+/**
+ * Canal C (founder 11/09) — the ruler that turns the LinkedIn cell from a
+ * category-post machine into a proof machine.
+ *
+ * Three things are non-negotiable and all three are stated here so the same
+ * words reach briefing, drafts, critic and the founder's version:
+ *  1. THE NUMBER COMES FROM THE BLOCK. [__proof__] is a measurement written by
+ *     code into ops.proof_run before any model saw it. A figure that is not in
+ *     that block is a fabrication, and the finalize validator fails the step
+ *     over it (validate: 'linkedin-proof') — this is not a style note.
+ *  2. THE TARGET IS ANONYMOUS. A real business is being written about without
+ *     having asked for it. Segment + city + number, never a name, a site or a
+ *     phone — the block does not even carry them.
+ *  3. NO PROOF, NO PRETENDING. When the block is absent the post is a normal
+ *     category post. Writing "[number]" or inventing one to fill the shape is
+ *     the worst available outcome.
+ */
+export const PROOF_HOOK_RULE = [
+  "PROVA REAL (canal C, regra do founder 11/09): se houver um bloco [__proof__] abaixo, ele e a MEDICAO DO DIA — codigo perguntou a pergunta de comprador aos motores de IA sobre um negocio local real e gravou o resultado antes de qualquer modelo ler. O post ABRE com essa prova.",
+  "NUMERO: todo numero do post tem que estar no bloco [__proof__]. Numero que nao esta la e invencao, e um validador de CODIGO reprova o post antes da aprovacao. Nao arredonde, nao 'melhore', nao some.",
+  "ANONIMATO: o negocio medido nao consentiu. NUNCA o nome dele, o site, o telefone ou qualquer coisa que o identifique. Ele e 'o <setor> em <cidade>' e mais nada. Tambem nao nomeie os concorrentes que a IA citou.",
+  "SEM PROVA: se NAO houver bloco [__proof__], escreva o post normal de categoria, sem numero nenhum. NUNCA escreva placeholder ('[numero]', 'X motores'), nunca invente para preencher o formato.",
+].join(" ");
+
 export const FINALIZE_COPY_RULE =
   "REGRA FINAL DE COPY (validada por CODIGO no publish): sem travessao (nem — nem –; use virgula, ponto ou dois-pontos), frases <=12 palavras, nivel 15-17 anos, sonho honesto (gente real, numero so com fonte). Texto com travessao NAO publica.";
 
@@ -984,9 +1008,11 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "linkedin-briefing": (ctx) =>
     [
       "Voce e o editor da esfera LinkedIn da Ozvor. O bloco [memory] abaixo e o alcance REAL dos nossos posts recentes no LinkedIn — leia primeiro.",
-      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes.",
+      PROOF_HOOK_RULE,
+      "COM PROVA: o angulo do dia E a prova. O bloco [__proof__] manda no briefing — o sinal em [signal] entra so como enquadramento. A linha PROVA copia os numeros do bloco, sem mexer.",
+      "CALENDARIO EDITORIAL: o bloco [__day__] abaixo diz o TEMA DO DIA, o angulo e o CTA natural. O briefing TEM que honrar o tema do dia — a semana precisa ler como 7 coisas diferentes, nao 1 coisa 7 vezes. Quando houver [__proof__], o tema do dia e a LENTE sobre a prova, nao um assunto concorrente.",
       "REGRA: o briefing de hoje tem que ser MENSURAVELMENTE diferente do que ja publicamos em [memory] — outro gancho, outra tese ou outro formato. Repetir o que ja rodou nao e opcao.",
-      "Dos sinais em [signal], escolha O MELHOR angulo para UM post de LinkedIn hoje e produza: TESE (1 frase, a virada) · PUBLICO (quem comenta) · PROVA (fato/numero real ou historia real) · CTA (1a pessoa, leve, sem link na 1a linha) · DIFERENTE-DE (1 linha: o que fazemos diferente do historico em [memory]).",
+      "Escolha O MELHOR angulo para UM post de LinkedIn hoje e produza: TESE (1 frase, a virada) · PUBLICO (quem comenta) · PROVA (com [__proof__]: os numeros do bloco, literais, com setor e cidade; sem [__proof__]: um fato ou historia real, sem numero) · CTA (1a pessoa, leve) · DIFERENTE-DE (1 linha: o que fazemos diferente do historico em [memory]).",
       "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sonho honesto, zero jargao, sem travessao.",
       ENGLISH_FIRST,
       "Formato de saida: 5 linhas rotuladas TESE/PUBLICO/PROVA/CTA/DIFERENTE-DE (rotulos em PT, conteudo em ingles), nada mais.",
@@ -997,7 +1023,11 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       `Voce e um escritor de LinkedIn. A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "story")}":`,
       "story = post em 1a pessoa, 6-10 linhas curtas, uma cena real no comeco, a licao no fim, as 2 primeiras linhas seguram o 'ver mais'. · contrarian = post que abre com uma opiniao que contraria o senso comum, prova em 3 linhas, fecha com a consequencia pratica.",
-      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, no maximo 1 emoji, honesto (nada que o produto nao cumpre), zero link no corpo (link vai no comentario).",
+      PROOF_HOOK_RULE,
+      "COM PROVA — FORMA DO POST: (1) a PRIMEIRA linha e a prova do dia, concreta: a pergunta que foi feita, a cidade, o setor, o numero. (2) 4-6 frases contando o que isso significa para quem vive daquele telefone tocar. (3) o fecho com o CTA. Nada de abrir com tese abstrata e deixar o numero para o fim.",
+      "O bloco [__proof__] traz uma frase pronta ('A FRASE QUE ESTES NUMEROS SUSTENTAM'). Ela e a BASE, nao o texto final: reescreva na voz do canal, mantendo os numeros intactos.",
+      "Regras: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag generica, no maximo 1 emoji, honesto (nada que o produto nao cumpre).",
+      "FECHO OBRIGATORIO quando houver [__proof__] — duas linhas, exatamente nesta ordem e nada depois: 'Try it on your business.' e depois o link tal como o bloco [__proof__] o escreve (com o ?from=). O link vai NO FIM DO POST porque o nosso publicador nao sabe postar primeiro comentario; NAO escreva 'link in the first comment' (essa frase e instrucao de producao e o lint de vazamento editorial barra o post).",
       ANTI_GENERIC_DRAFT_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o post, pronto para colar, uma linha em branco entre paragrafos.",
@@ -1008,6 +1038,11 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o critico da esfera LinkedIn da Ozvor. Abaixo: 2 versoes (story e contrarian), o briefing e o historico real do canal em [memory].",
       "Avalie por 3 perguntas: 1) as 2 primeiras linhas fazem clicar em 'ver mais'? 2) isso repete o padrao de [memory]? 3) algum risco de compliance (promessa que nao cumprimos, claim sem base, dado inventado)?",
+      PROOF_HOOK_RULE,
+      "- NUMERO SEM PROVA (VETO, o mais grave): confira NUMERO POR NUMERO do post contra o bloco [__proof__]. Numero que nao esta la = 'VETO: numero sem prova — <qual numero>'. Inclui numero por extenso ('three names') e numero 'arredondado'. Sem bloco [__proof__], qualquer numero no post = 'VETO: numero sem prova'.",
+      "- NOME DO ALVO (VETO): nome de empresa, dominio ou telefone no post = 'VETO: identifica o alvo — <o que vazou>'. O negocio medido nao consentiu.",
+      "- GANCHO REPETIDO (VETO, 7 dias): se a prova de hoje for do mesmo setor e da mesma cidade de uma peca em [__recent__], ou se a primeira linha repetir a construcao de qualquer peca de la, = 'VETO: repete <qual peca — data>'. A prova muda, o gancho tambem tem que mudar.",
+      "- INSTRUCAO DE PRODUCAO (VETO): 'link in the first comment', 'nota interna', 'owner:', 'claim-basis' ou 'TODO' dentro do post = 'VETO: instrucao interna no texto publico'. O publicador nao posta primeiro comentario e o lint barra o post.",
       LESSONS_VETO_RULE,
       "Para cada versao: nota 0-10 + 1 frase do maior problema + 1 correcao concreta.",
       "Compliance e freshness tem VETO: risco apontado tem que sair; padrao repetido tem que mudar.",
@@ -1020,10 +1055,43 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
     [
       "Voce e o editor-chefe da esfera LinkedIn. Abaixo: as 2 versoes e a critica.",
       "Pegue o VENCEDOR da critica e reescreva UMA vez incorporando as correcoes. Vetos da critica sao lei: risco sai, padrao repetido muda.",
-      "Confirme: post nativo do LinkedIn (nao e roteiro, nao tem marcadores [HOOK]/[BEAT]), sem travessao, sem link no corpo.",
+      PROOF_HOOK_RULE,
+      "ANTES DE ENTREGAR, confira numero por numero contra [__proof__]. Um validador de CODIGO roda depois de voce e REPROVA o post inteiro por um unico numero que nao esteja no bloco. Na duvida, tire o numero.",
+      "Confirme: post nativo do LinkedIn (nao e roteiro, nao tem marcadores [HOOK]/[BEAT]), sem travessao, sem nome do negocio medido.",
+      "Com [__proof__]: o post termina em 'Try it on your business.' + a linha do link do bloco (com ?from=), nessa ordem, e nada depois. Sem [__proof__]: sem link e sem numero.",
       FINALIZE_COPY_RULE,
       ENGLISH_FIRST,
       "Formato de saida: so o texto final pronto para publicar, nada antes nem depois.",
+      upstreamBlock(ctx.upstream),
+    ].join("\n"),
+
+  /**
+   * Canal C (11/09) — the founder's own copy of the day's proof.
+   *
+   * Two rules shaped this prompt. First, his personal profile is NOT a channel
+   * the machine may speak on: this node ends in a REPORT, never a publish, and
+   * he pastes it himself. Second, the brand post and his post must be the same
+   * day's truth in two voices, not two readings of one measurement — so this
+   * depends on `finalize` and is told, in writing, not to contradict it.
+   *
+   * Language is his, not the audience's: English-first governs what the BRAND
+   * publishes; this is a draft for a human to paste, so env LI_FOUNDER_LANG
+   * ('pt' | 'en', default 'en') decides, and the node config carries it.
+   */
+  "linkedin-founder-draft": (ctx) =>
+    [
+      "Voce escreve PARA O FOUNDER da Ozvor (Otavio) — um rascunho para ele colar no PERFIL PESSOAL dele. Nao e post de marca.",
+      String(ctx.config["lang"] ?? "en") === "pt"
+        ? "IDIOMA: escreva em PORTUGUES DE PORTUGAL neutro (ele vive em Lisboa). Nao traduza os numeros."
+        : "IDIOMA: escreva em INGLES (US English).",
+      PROOF_HOOK_RULE,
+      "VOZ DELE: primeira pessoa do singular, sem 'nos da Ozvor'. Ele e um tipo que testa coisas e conta o que viu. Curto, direto, sem marketing. Ele pode dizer 'fiz este teste esta manha' porque a medicao e de hoje, de verdade.",
+      "Escreva 5-8 linhas curtas: (1) a prova do dia na primeira linha, com a cidade e o numero; (2) o que ele pensou quando viu; (3) por que isto importa para o dono do negocio; (4) o convite, leve, para quem quiser ver o proprio resultado.",
+      "NAO repita o post da marca palavra por palavra — o post final da marca esta abaixo em [finalize]. Mesma prova, angulo dele, outra abertura. Se ficar igual, mude a abertura.",
+      "NAO contradiga o post da marca: os numeros sao os mesmos, a leitura tem que ser a mesma.",
+      "Regras da casa: nivel 15-17 anos, frases <=12 palavras, sem travessao, sem hashtag, no maximo 1 emoji, nome nenhum do negocio medido.",
+      "Fecho: o convite + o link do bloco [__proof__] com o ?from=, no fim. Sem 'link in the first comment'.",
+      "Formato de saida: so o texto do post, pronto para colar, nada antes nem depois. Sem titulo, sem rotulo, sem aspas em volta.",
       upstreamBlock(ctx.upstream),
     ].join("\n"),
 

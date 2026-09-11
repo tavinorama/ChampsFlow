@@ -218,3 +218,23 @@ export * from "./content-fact-check";
 // ---------------------------------------------------------------------------
 export * from "./audit-queue";
 
+
+// ---------------------------------------------------------------------------
+// P1-07 — a question is titled by its text, never by its id. Prompt Universe
+// v2 gave every prompt an `uv_<uuid>` intent id and the dashboard rendered it
+// raw; this is the one resolver every surface uses.
+// ---------------------------------------------------------------------------
+export * from "./intent-label";
+
+// ---------------------------------------------------------------------------
+// P1-07 — what a customer is told about a discarded citation. The verifier's
+// own lines stay in the breakdown for the admin trace; the dashboard gets a
+// sentence and a count.
+// ---------------------------------------------------------------------------
+export * from "./rejection-language";
+
+// ---------------------------------------------------------------------------
+// P1-07 — an audit measured on an incomplete engine panel schedules ONE repeat
+// (24h, max 2 per week) and only spends when the panel is whole again.
+// ---------------------------------------------------------------------------
+export * from "./coverage-retry";
