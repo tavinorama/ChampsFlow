@@ -32,6 +32,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendlyEmbedSection } from "./CalendlyEmbedSection";
+import {
+  resolveBookMode,
+  bookFallbackMailto,
+  BOOK_FALLBACK_COPY,
+} from "./book-config";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 
@@ -103,7 +108,9 @@ const VALUE_POINTS = [
 // ---------------------------------------------------------------------------
 
 export default function BookPage() {
-  const hasCalendly = Boolean(CALENDLY_URL);
+  // Not `Boolean(CALENDLY_URL)`: a relative path or a committed placeholder is
+  // "set" and still unusable, and it would embed a widget that never loads.
+  const hasCalendly = resolveBookMode(CALENDLY_URL) === "calendar";
 
   return (
     <>
@@ -251,7 +258,13 @@ export default function BookPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Fallback — shown when NEXT_PUBLIC_CALENDLY_URL is not set
+// Fallback — shown when NEXT_PUBLIC_CALENDLY_URL is not set or not usable
+//
+// This page is the CTA printed on the Design Partner Pack the founder hands to
+// a prospect. "Booking coming soon" with a link to another page would waste the
+// conversation that produced the visit. So the unconfigured state says plainly
+// what is going on and hands over a REAL address — an email link that opens the
+// visitor's mail client with the subject filled in. Never a dead button.
 // ---------------------------------------------------------------------------
 
 function FallbackSection() {
@@ -276,7 +289,7 @@ function FallbackSection() {
             marginBottom: "var(--space-4)",
           }}
         >
-          Booking coming soon
+          {BOOK_FALLBACK_COPY.heading}
         </h2>
         <p
           style={{
@@ -287,12 +300,10 @@ function FallbackSection() {
             marginBottom: "var(--space-6)",
           }}
         >
-          The booking calendar is not yet configured. In the meantime, run your
-          free Ozvor AI Visibility Audit. Get your AI search visibility score
-          instantly.
+          {BOOK_FALLBACK_COPY.body}
         </p>
-        <Link
-          href="/test"
+        <a
+          href={bookFallbackMailto()}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -310,8 +321,30 @@ function FallbackSection() {
             letterSpacing: "-0.01em",
           }}
         >
-          Run your free AI Visibility Test
-        </Link>
+          {BOOK_FALLBACK_COPY.mailtoLabel}
+        </a>
+        <p
+          style={{
+            fontSize: "var(--font-size-body-sm)",
+            color: "var(--color-muted)",
+            fontFamily: "var(--font-family)",
+            lineHeight: "var(--line-height-body)",
+            marginTop: "var(--space-6)",
+            marginBottom: 0,
+          }}
+        >
+          {BOOK_FALLBACK_COPY.secondary}{" "}
+          <Link
+            href="/test"
+            style={{
+              color: "var(--color-primary)",
+              textDecoration: "underline",
+              fontWeight: "var(--font-weight-semibold)",
+            }}
+          >
+            Run the free test
+          </Link>
+        </p>
       </div>
     </section>
   );

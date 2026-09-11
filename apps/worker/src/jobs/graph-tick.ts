@@ -24,6 +24,8 @@ import type Redis from "ioredis";
 import { logger } from "../../../../packages/shared/src/logger";
 import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../../../packages/llm/src/signal-engine";
 import { ownGapsBlock, type OwnGap } from "../../../../packages/llm/src/visibility-loop";
+import { buildDailyProof } from "./proof-feed";
+import { PROOF_CAMPAIGN_LIKE } from "../../../../packages/shared/src/proof-feed";
 import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
 import { buildProspectBatchBlock, crmDedupSets } from "../lib/prospect-probe";
 import { redisSpecMailbox, apiSpendLedger } from "../lib/apify-source";
@@ -298,6 +300,79 @@ export async function sendDailyTelegramDigest(
  * section degrades to ONE honest line — it never breaks the snapshot the
  * other lenses depend on.
  */
+/**
+ * Canal C (11/09) — what the daily LinkedIn proof post actually SOLD.
+ *
+ * The post carries ozvor.com/test?from=li-proof-<date>. The /test page stores
+ * that value first-touch into lead_capture.result->'attribution'->>'from'
+ * (#527), and a Kit order points back at the lead_capture row it came from —
+ * so a Kit bought three weeks after the click is still attributed to the post
+ * that produced the lead, which is the whole point of first-touch.
+ *
+ * Every number here is SQL. The weekly report's compose node may only quote
+ * this block; it may not recompute it, because "o vigia também mente" and an
+ * LLM guessing at a funnel is exactly how a channel gets killed or kept for
+ * the wrong reason. Missing tables (42P01) print the nominal unlocking action
+ * instead of a zero: a silent zero reads as "the channel failed".
+ */
+async function proofFunnelSection(sql: postgres.Sql, d: number): Promise<string[]> {
+  try {
+    const leads = await sql<{ from_tag: string; leads: string }[]>`
+      /* snap:li-proof-funnel */
+      SELECT lc.result->'attribution'->>'from' AS from_tag,
+             COUNT(*)::text AS leads
+        FROM lead_capture lc
+       WHERE lc.created_at >= NOW() - make_interval(days => ${d})
+         AND lc.result->'attribution'->>'from' LIKE ${PROOF_CAMPAIGN_LIKE}
+       GROUP BY 1
+       ORDER BY COUNT(*) DESC
+       LIMIT 12`;
+    const kits = await sql<{ paid: string; pending: string }[]>`
+      /* snap:li-proof-kits */
+      SELECT COUNT(*) FILTER (WHERE ko.status IN ('paid', 'delivered'))::text AS paid,
+             COUNT(*) FILTER (WHERE ko.status NOT IN ('paid', 'delivered'))::text AS pending
+        FROM kit_order ko
+        JOIN lead_capture lc ON lc.id = ko.lead_capture_id
+       WHERE ko.created_at >= NOW() - make_interval(days => ${d})
+         AND lc.result->'attribution'->>'from' LIKE ${PROOF_CAMPAIGN_LIKE}`;
+    const proofs = await sql<{ n: string; cost: string | null }[]>`
+      /* snap:li-proof-runs */
+      SELECT COUNT(*)::text AS n, COALESCE(SUM(cost_cents), 0)::text AS cost
+        FROM ops.proof_run
+       WHERE proof_date >= (CURRENT_DATE - make_interval(days => ${d}))`;
+
+    const totalLeads = leads.reduce((acc, r) => acc + Number(r.leads), 0);
+    const paid = Number(kits[0]?.paid ?? 0);
+    const pending = Number(kits[0]?.pending ?? 0);
+    const measured = Number(proofs[0]?.n ?? 0);
+    const costUsd = (Number(proofs[0]?.cost ?? 0) / 100).toFixed(2);
+    const out: string[] = [
+      ``,
+      `CANAL C — prova diaria no LinkedIn (${d}d, atribuicao first-touch ?from=li-proof-*):`,
+      `- provas medidas (ops.proof_run): ${measured} · custo total dos motores: ${costUsd} USD`,
+      `- leads /test vindos da prova: ${totalLeads}`,
+      `- Kit: ${paid} pago(s) · ${pending} iniciado(s) sem pagar`,
+    ];
+    if (leads.length > 0) {
+      out.push(`- por post:`);
+      for (const r of leads) out.push(`  · ${r.from_tag}: ${r.leads} lead(s)`);
+    } else {
+      out.push(`- por post: nenhum lead com ?from=li-proof-* ainda`);
+    }
+    return out;
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? "";
+    if (code === "42P01") {
+      return [
+        ``,
+        `CANAL C — prova diaria no LinkedIn: NAO MEDIDO. Falta a tabela (ops.proof_run ou o funil).`,
+        `  Acao que destrava: aplicar a migracao 20260911000001_ops_proof_run em producao.`,
+      ];
+    }
+    return [``, `CANAL C — prova diaria no LinkedIn: leitura FALHOU (${code || "erro"}). Nao e zero, e cegueira.`];
+  }
+}
+
 async function tenantCostSection(sql: postgres.Sql, d: number): Promise<string[]> {
   try {
     const tenants = await sql<
@@ -644,6 +719,10 @@ export async function buildSnapshot(
     }
     // 5.C.2 — the tenant-level spend the ledger records but nobody read.
     lines.push(...(await tenantCostSection(sql, d)));
+    // Canal C: the funnel the daily LinkedIn proof post feeds. Lives in the
+    // OPS snapshot because that is what the Monday report reads — a channel
+    // whose result nobody reports is a channel nobody can decide about.
+    lines.push(...(await proofFunnelSection(sql, d)));
     // 5.F.7 — active incident lessons: the approved-postmortem lessons the
     // store-lessons node wrote into ops.memory_lesson (INCIDENT_LESSON_PREFIX
     // rows). They are OPS lessons, so they surface to the ops brain (the
@@ -1635,6 +1714,22 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           /* fine */
         }
         return block;
+      },
+      /**
+       * Canal C (11/09) - the day's REAL measurement for the LinkedIn cell.
+       * Idempotent by construction (ops.proof_run has one row per day), so a
+       * second tick re-reads instead of re-buying, and every honest "not
+       * today" (missing migration, empty pool, engines down) returns null and
+       * the cell drafts exactly as it does now. Never throws: a proof feed
+       * that can break the daily post is worse than no proof feed.
+       */
+      async dailyProof() {
+        try {
+          return await buildDailyProof(sql);
+        } catch (err) {
+          logger.warn("li_proof_port_failed", { message: (err as Error).message?.slice(0, 160) });
+          return null;
+        }
       },
       async activeMemoryLessons() {
         // 5.F.1: the newest founder-approved lessons batch — the store is
