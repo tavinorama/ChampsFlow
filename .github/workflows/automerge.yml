@@ -77,4 +77,27 @@ jobs:
           echo "Arming native auto-merge (squash) for PR #$PR."
           # GitHub completes the merge once the required checks pass. Idempotent:
           # re-arming an already-armed PR is a no-op.
-          gh pr merge "$PR" --auto --squash -R "$REPO"
+          #
+          # Retry on transient GitHub API errors (2026-09-11, run 34591398429 on
+          # PR #610: a single `HTTP 504: 504 Gateway Timeout (api.github.com/graphql)`
+          # went red and would have left an eligible PR un-armed and silent had a
+          # previous run not already armed it). 4 attempts, 10/20/40 s backoff.
+          armed=false
+          delay=10
+          for attempt in 1 2 3 4; do
+            if gh pr merge "$PR" --auto --squash -R "$REPO"; then
+              armed=true
+              break
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "::warning::gh pr merge --auto failed for PR #$PR (attempt $attempt/4) — retrying in ${delay}s."
+              sleep "$delay"
+              delay=$((delay * 2))
+            fi
+          done
+
+          if [ "$armed" != "true" ]; then
+            echo "::error::Could not arm auto-merge for PR #$PR after 4 attempts. The PR is eligible by label but is NOT armed — re-run this job or re-apply the label."
+            exit 1
+          fi
+          echo "Auto-merge armed for PR #$PR."
