@@ -477,17 +477,21 @@ jobs:
                   seen_ids.add(r["lead_id"]); cand.append(r); n += 1
               return n
 
-          dp_share  = int(HTTP_BUDGET * 0.40)
-          pil_local = int(HTTP_BUDGET * 0.35)
-          pil_ai    = HTTP_BUDGET - dp_share - pil_local
+          nao_tocadas = [r for r in elig if not r["touched"] and r["own_domain"]]
+          dp_share  = int(HTTP_BUDGET * 0.35)
           orcamento = {
               "canal_b": take([r for r in elig if r["segment"] in DP_SEGMENTS and r["own_domain"]], dp_share),
-              "piloto_local": take(round_robin([r for r in elig if not r["touched"] and r["own_domain"]
-                                                and r["bkt"] == "local"]), pil_local),
-              "piloto_aistack": take(round_robin([r for r in elig if not r["touched"] and r["own_domain"]
-                                                  and r["bkt"] == "aistack"]), pil_ai),
+              # O resto do orcamento vai TODO para lead nao tocada: e a unica que
+              # o piloto pode usar. Na corrida 34569744711 a sobra foi gasta em
+              # lead ja tocada e o piloto parou em 71/100.
+              "piloto_local": take(round_robin([r for r in nao_tocadas if r["bkt"] == "local"]),
+                                   int(HTTP_BUDGET * 0.40)),
+              "piloto_aistack": take(round_robin([r for r in nao_tocadas if r["bkt"] == "aistack"]),
+                                     HTTP_BUDGET),
+              "piloto_extra": take(round_robin(nao_tocadas), HTTP_BUDGET),
           }
           orcamento["sobra_preenchida"] = take(elig, HTTP_BUDGET)   # usa o teto inteiro
+          orcamento["nao_tocadas_elegiveis"] = len(nao_tocadas)
 
           # ------------------------------------------------------- VERIFICAÇÃO HTTP
           CTX = ssl.create_default_context()
@@ -592,15 +596,23 @@ jobs:
                   seg_got[r["segment"]] = seg_got.get(r["segment"], 0) + 1
               if len(piloto) >= PILOTO_SIZE:
                   break
-          if len(piloto) < PILOTO_SIZE:     # cota nao fechou: completa por fit e reporta
+          cap_relaxado = False
+          for passada in (1, 2):            # 1a respeita o teto por segmento; 2a relaxa
+              if len(piloto) >= PILOTO_SIZE:
+                  break
+              if passada == 2:
+                  cap_relaxado = True
               taken = {r["lead_id"] for r in piloto}
               for r in pil_pool:
-                  if r["lead_id"] not in taken and seg_got.get(r["segment"], 0) < SEG_CAP:
-                      piloto.append(r); taken.add(r["lead_id"])
-                      seg_got[r["segment"]] = seg_got.get(r["segment"], 0) + 1
-                      got[r["bkt"]] = got[r["bkt"]] + 1
-                      if len(piloto) >= PILOTO_SIZE:
-                          break
+                  if r["lead_id"] in taken:
+                      continue
+                  if passada == 1 and seg_got.get(r["segment"], 0) >= SEG_CAP:
+                      continue
+                  piloto.append(r); taken.add(r["lead_id"])
+                  seg_got[r["segment"]] = seg_got.get(r["segment"], 0) + 1
+                  got[r["bkt"]] = got[r["bkt"]] + 1
+                  if len(piloto) >= PILOTO_SIZE:
+                      break
 
           # ------------------------------------------------------------ ARTEFATOS
           def rec_out(r, rank):
@@ -666,6 +678,8 @@ jobs:
                            "por_estado": agg(top + reserva, "state")},
                "piloto": {"tamanho": len(pil_rows), "pool": len(pil_pool),
                           "cota_pedida": want, "cota_entregue": got, "teto_por_segmento": SEG_CAP,
+                          "teto_relaxado": cap_relaxado,
+                          "pool_por_segmento": agg(pil_pool, "segment"),
                           "por_bucket": agg(piloto, "bkt"), "por_campanha": agg(piloto, "campaign"),
                           "por_segmento": agg(piloto, "segment"), "por_estado": agg(piloto, "state"),
                           "sinais_marketing_medios": round(sum(r["marketing_sinais"] for r in piloto) / max(1, len(piloto)), 2)},
