@@ -49,6 +49,7 @@ import {
   followupDailyCap,
   followupMarkerLine,
   hasFollowupMarker,
+  hasHumanText,
   hasOpenFollowupProposal,
   looksLikeAutoReplyNoise,
   looksLikeTextualUnsubscribe,
@@ -568,16 +569,10 @@ async function proposeNewFollowups(
     seenEmails.add(row.lead_email);
     candidates.push(row);
   }
-  // unparseable>0 NUNCA fica só no log — 1 grito/dia no Telegram.
-  if (result.unparseable > 0) {
-    const day = ports.now().toISOString().slice(0, 10);
-    if (await ports.onceKey(`followup:unparseable:${day}`)) {
-      await ports.telegram(
-        `🔴 FOLLOW-UP: ${result.unparseable} resposta(s) de lead IRRESOLVÍVEL(EIS) no scan (sem e-mail na coluna nem no payload). Nada degrada calado: ver smartlead_event e o log followup_reply_unparseable.`
-      );
-    }
+  if (candidates.length === 0) {
+    await alarmUnparseable(ports, result);
+    return;
   }
-  if (candidates.length === 0) return;
 
   if (!ports.hermesToken) {
     // Loud OFF, once per window: replies are waiting and the engine chain is
@@ -589,6 +584,7 @@ async function proposeNewFollowups(
     }
     logger.error("followup_no_executor", { waiting: candidates.length });
     result.skipped += candidates.length;
+    await alarmUnparseable(ports, result);
     return;
   }
 
@@ -638,7 +634,7 @@ async function proposeNewFollowups(
       result.skipped += 1;
       continue;
     }
-    let handled: "proposed" | "discarded" | "unsubscribed" | "engines-down";
+    let handled: HandledOutcome;
     try {
       handled = await handleReply(sql, ports, row, result, recentBlock);
     } catch (err) {
@@ -664,7 +660,28 @@ async function proposeNewFollowups(
     logger.error("followup_scan_invariant_broken", { scanned: result.scanned, bucketed });
     result.unparseable += Math.max(0, result.scanned - bucketed);
   }
+
+  await alarmUnparseable(ports, result);
 }
+
+/**
+ * unparseable NUNCA fica só no log — 1 grito/dia no Telegram. Chamado DEPOIS
+ * do loop (incidente 05-09/09: uma resposta ilegível entrava no balde já
+ * depois do alarme antigo e passava a noite calada). Item unparseable não leva
+ * marcador: a varredura seguinte tenta de novo — ilegível hoje pode ser
+ * legível amanhã (payload corrigido, deploy do extrator), enquanto
+ * "descartado" é para sempre.
+ */
+async function alarmUnparseable(ports: FollowupPorts, result: FollowupScanResult): Promise<void> {
+  if (result.unparseable === 0) return;
+  const day = ports.now().toISOString().slice(0, 10);
+  if (!(await ports.onceKey(`followup:unparseable:${day}`))) return;
+  await ports.telegram(
+    `🔴 FOLLOW-UP: ${result.unparseable} resposta(s) de lead que o scan NÃO conseguiu ler (sem e-mail resolvível, ou corpo sem texto nenhum). Não foram tratadas: a próxima varredura tenta de novo. Nada degrada calado — ver smartlead_event e os logs followup_reply_unparseable / followup_reply_no_text.`
+  );
+}
+
+type HandledOutcome = "proposed" | "discarded" | "unsubscribed" | "unreadable" | "engines-down";
 
 async function handleReply(
   sql: postgres.Sql,
@@ -672,7 +689,7 @@ async function handleReply(
   row: ReplyRow & { lead_email: string },
   result: FollowupScanResult,
   recentBlock: string | null = null
-): Promise<"proposed" | "discarded" | "unsubscribed" | "engines-down"> {
+): Promise<HandledOutcome> {
   const now = ports.now();
   const replyText = extractReplyText(row.payload);
   const stage = (row.stage as Stage | null) ?? null;
@@ -688,7 +705,18 @@ async function handleReply(
 
   // A 'lost' contact said no already — a human no is final, whatever they sent.
   if (stage === "lost") return discard("lead-lost");
-  if (!replyText) return discard("sem-texto");
+  // INCIDENTE 05-09/09: "não consegui ler" ≠ "tratado". Antes isto virava um
+  // descarte SILENCIOSO e PERMANENTE (marcador gravado), e uma resposta viva
+  // morria por um extrator que devolveu vazio. Agora é ilegível: sem marcador,
+  // re-tentada na varredura seguinte, e gritada 1×/dia.
+  if (!replyText) {
+    result.unparseable += 1;
+    logger.error("followup_reply_no_text", {
+      eventId: row.id,
+      reason: "payload de EMAIL_REPLY sem texto legível em reply_message/reply_body/preview_text",
+    });
+    return "unreadable";
+  }
   // Adendo 03/09 — "STOP"/unsubscribe TEXTUAL decide por CÓDIGO, antes do
   // ruído e de QUALQUER LLM: o pedido de saída do lead é soberano e não
   // precisa de modelo para ser entendido. Rebaixa contacted→lost (estágio de
@@ -714,9 +742,20 @@ async function handleReply(
     logger.error("followup_intent_engines_down", { eventId: row.id, error: errorHead(intentRes.output, 160) });
     return "engines-down";
   }
-  const intent = parseIntent(intentRes.output);
+  let intent = parseIntent(intentRes.output);
 
-  if (intent === "noise") return discard("noise");
+  if (intent === "noise") {
+    // INCIDENTE 05-09/09 — "o modelo classifica, o CÓDIGO decide". O
+    // classificador chamou ruído a uma resposta humana (recebia um excerto
+    // cortado: "Hello there! Thank you so much for takin") e o scan matou o
+    // lead em silêncio. Regra nova: se o código não vê auto-reply nem pedido
+    // de saída e VÊ prosa humana, o veredito do modelo não descarta nada — vai
+    // a rascunho como 'question' (o default seguro: só produz rascunho, que
+    // ainda passa pelo portão do founder).
+    if (!hasHumanText(replyText)) return discard("noise");
+    logger.warn("followup_noise_overridden", { eventId: row.id, reason: "texto humano: rascunho manda" });
+    intent = "question";
+  }
   if (intent === "unsubscribe") {
     // FINAL. Stage moves by the SAME rule the webhook uses for
     // LEAD_UNSUBSCRIBED (human-set stages are never downgraded). No draft.
@@ -771,10 +810,14 @@ async function handleReply(
   }
 
   // PORTÃO — artifact first (run + step + Redis + marker), Telegram second.
+  // O trigger carrega o EVENTO que o originou ("cron:followup-scan reply:<uuid>").
+  // É o único elo em BANCO entre a resposta e o rascunho — sem ele, o
+  // reply_to_draft_latency_p95 do Delivery Health (#591) não teria fonte de
+  // verdade e o atraso de 4 dias de 05-09/09 continuaria invisível.
   const runRows = (await sql`
     /* fu:run-start */
     INSERT INTO ops.agent_run (graph, trigger, vp_owner)
-    VALUES (${FOLLOWUP_GRAPH}, 'cron:followup-scan', 'sales')
+    VALUES (${FOLLOWUP_GRAPH}, ${`cron:followup-scan reply:${row.id}`}, 'sales')
     RETURNING id
   `) as unknown as Array<{ id: string }>;
   const runId = runRows[0]!.id;
