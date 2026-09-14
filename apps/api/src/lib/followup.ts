@@ -152,21 +152,75 @@ export function parseIntent(raw: string): FollowupIntent {
  * Deterministic pre-filter for machine noise — free, code-only, runs BEFORE
  * any LLM call. Catches the obvious auto-responder / delivery-failure shapes;
  * everything else goes to the classifier.
+ *
+ * INCIDENTE 05-09/09: a fronteira aqui é ESTREITA de propósito. Só entra o que
+ * uma MÁQUINA escreveu: cabeçalhos de auto-resposta (Auto-Submitted,
+ * X-Autoreply, X-Autorespond), o assunto "Automatic reply", ausência declarada
+ * ("out of the office", "on leave", "annual leave") e falhas de entrega.
+ * Cortesia NUNCA entra: "thank you for your email", "thanks for reaching out",
+ * "thank you for taking the time" são como MUITO humano começa uma resposta
+ * real — foi assim que a única resposta de interesse do trimestre morreu.
  */
 export function looksLikeAutoReplyNoise(replyText: string): boolean {
-  const t = replyText.toLowerCase();
+  const t = (replyText || "").toLowerCase();
   return (
-    /\bout of (the )?office\b/.test(t) ||
+    // Cabeçalhos que SÓ um auto-responder põe (RFC 3834 e os de-facto).
+    /\bauto-submitted:\s*auto-(replied|generated|notified)\b/.test(t) ||
+    /\bx-auto(reply|respond|response|-response-suppress)\b/.test(t) ||
+    /\bprecedence:\s*(auto_reply|bulk)\b/.test(t) ||
+    // Assunto de auto-resposta dos clientes de e-mail.
+    /\b(subject:\s*)?automatic reply\b/.test(t) ||
     /\bauto[- ]?repl(y|ied)\b/.test(t) ||
-    /\bautomatic reply\b/.test(t) ||
     /\bautoresponder\b/.test(t) ||
+    /\bvacation respon(se|der)\b/.test(t) ||
+    // Ausência declarada — a pessoa não está lá para ler.
+    /\bout of (the )?office\b/.test(t) ||
+    /\bcurrently (away|out of office)\b/.test(t) ||
+    /\b(on|taking) (annual|parental|maternity|paternity|sick|medical) leave\b/.test(t) ||
+    /\bon leave until\b/.test(t) ||
+    // Falha de entrega — nem pessoa é.
     /\bdelivery (status notification|has failed)\b/.test(t) ||
     /\bmailer-daemon\b/.test(t) ||
     /\bundeliverable\b/.test(t) ||
-    /\bno longer with (the company|us)\b/.test(t) ||
-    /\bon (parental|maternity|paternity) leave\b/.test(t) ||
-    /\bvacation respon(se|der)\b/.test(t)
+    /\bno longer with (the company|us)\b/.test(t)
   );
+}
+
+/**
+ * Palavras de cortesia que abrem respostas HUMANAS reais. Listadas aqui para
+ * que fiquem explicitamente FORA de looksLikeAutoReplyNoise: o teste
+ * followup.test.ts percorre esta lista e falha se alguma voltar a ser ruído.
+ */
+export const HUMAN_COURTESY_OPENERS: readonly string[] = [
+  "Thank you for your email.",
+  "Thank you for your message.",
+  "Thanks for reaching out.",
+  "Hello there! Thank you so much for taking the time to write me.",
+  "Thank you for taking the time to write.",
+  "Appreciate you reaching out.",
+] as const;
+
+/** Sinais de que o "texto" é markup, não prosa (um reply que chegou cru). */
+const MARKUP_NOISE_RE = /<[a-z!/][^>]*>|\{[^}]*(font|margin|color|panose)[^}]*\}|^\s*urn:schemas/im;
+/** Quantas palavras de prosa bastam para haver alguém do outro lado. */
+export const HUMAN_TEXT_MIN_WORDS = 4;
+
+/**
+ * Há um HUMANO escrevendo aqui? Código, não modelo.
+ *
+ * INCIDENTE 05-09/09: o classificador chamou "noise" a uma resposta humana e
+ * o scan descartou-a em SILÊNCIO e para sempre. A regra da casa é que o modelo
+ * classifica e o CÓDIGO decide: se a resposta não é auto-reply nem pedido de
+ * saída e tem prosa humana, ela vai SEMPRE a rascunho, diga o modelo o que
+ * disser. O pior caso é um rascunho a mais no portão do founder; o caso que
+ * esta função impede é um lead vivo morto em silêncio.
+ */
+export function hasHumanText(replyText: string | null | undefined): boolean {
+  const text = (replyText || "").trim();
+  if (text === "") return false;
+  if (MARKUP_NOISE_RE.test(text)) return false;
+  const words = text.split(/\s+/).filter((w) => /[a-z]/i.test(w));
+  return words.length >= HUMAN_TEXT_MIN_WORDS;
 }
 
 /**

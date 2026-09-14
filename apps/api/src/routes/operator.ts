@@ -46,7 +46,8 @@ import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
 import { fetchReceivedMrr } from "../lib/received-mrr";
 import { fetchOperatingCadence } from "../lib/cadence";
 import { normalizeCrmPatch } from "../lib/crm-validation";
-import { upsertCrmContact } from "../lib/crm";
+import { upsertCrmContact, CrmStageUnsupportedError, CRM_FUNNEL_MIGRATION } from "../lib/crm";
+import { buildDesignPartnerFunnel, unavailableFunnel } from "../lib/design-partner-funnel";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -400,22 +401,54 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
   // empty list if the crm_contact table has not been migrated yet.
   // -------------------------------------------------------------------------
   app.get("/api/v1/operator/crm", businessKey, async (c) => {
+    type Row = {
+      email: string;
+      stage: string;
+      note: string | null;
+      next_follow_up: string | null;
+      source?: string | null;
+      updated_at: string;
+    };
+    const ORDER = `ORDER BY (next_follow_up IS NULL), next_follow_up ASC, updated_at DESC
+          LIMIT 1000`;
     try {
-      const { rows } = await db.query<{
-        email: string;
-        stage: string;
-        note: string | null;
-        next_follow_up: string | null;
-        updated_at: string;
-      }>(
-        `SELECT email, stage, note, next_follow_up, updated_at
-           FROM crm_contact
-          ORDER BY (next_follow_up IS NULL), next_follow_up ASC, updated_at DESC
-          LIMIT 1000`
-      );
+      let rows: Row[];
+      let funnel;
+      try {
+        // `source` lands with migration 20260911000001 (founder-gated).
+        ({ rows } = await db.query<Row>(
+          `SELECT email, stage, note, next_follow_up, source, updated_at
+             FROM crm_contact ${ORDER}`
+        ));
+        funnel = buildDesignPartnerFunnel(rows);
+      } catch (err) {
+        // 42703 undefined_column: the migration has not run. Serve the CRM
+        // without the label and say the funnel is OFF — a row of zeros here
+        // reads as "nobody in the funnel", which is a different fact.
+        if ((err as { code?: string }).code !== "42703") throw err;
+        ({ rows } = await db.query<Row>(
+          `SELECT email, stage, note, next_follow_up, updated_at
+             FROM crm_contact ${ORDER}`
+        ));
+        funnel = unavailableFunnel(
+          `crm_contact.source does not exist: migration ${CRM_FUNNEL_MIGRATION} has not been applied. ` +
+            `The design-partner funnel is OFF until the founder runs it.`
+        );
+        logger.warn("operator_crm_source_column_absent", { migration: CRM_FUNNEL_MIGRATION });
+      }
       const key = c.get("apiKey");
-      logger.info("operator_crm_accessed", { key_id: key.id, count: rows.length });
-      return c.json({ contacts: rows, migrationPending: false });
+      logger.info("operator_crm_accessed", {
+        key_id: key.id,
+        count: rows.length,
+        design_partner_funnel: funnel.available ? funnel.total : "unavailable",
+      });
+      return c.json({
+        contacts: rows,
+        migrationPending: false,
+        // The 19-day canal B funnel, already rolled up so the weekly report
+        // reads a number instead of re-deriving the rule (and drifting from it).
+        designPartnerFunnel: funnel,
+      });
     } catch (err) {
       logger.error("operator_crm_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_FAILED" }, 500);
@@ -441,11 +474,30 @@ export function registerOperatorBusinessRoutes(app: Hono, db: PostgresClient): v
     }
     try {
       // updated_by is null: the operator key is a machine actor, not a user row.
-      const contact = await upsertCrmContact(db, parsed.patch, null);
+      const result = await upsertCrmContact(db, parsed.patch, null);
       const key = c.get("apiKey");
-      logger.info("operator_crm_upserted", { key_id: key.id, stage: parsed.patch.stage ?? "unchanged" });
-      return c.json({ contact });
+      logger.info("operator_crm_upserted", {
+        key_id: key.id,
+        stage: parsed.patch.stage ?? "unchanged",
+        source_recorded: result.sourceRecorded,
+      });
+      // `degraded` is non-null when something asked for was not stored. The
+      // caller is told in the same response, not left to assume it landed.
+      return c.json({
+        contact: result.contact,
+        ...(result.degraded ? { degraded: result.degraded } : {}),
+      });
     } catch (err) {
+      if (err instanceof CrmStageUnsupportedError) {
+        logger.warn("operator_crm_stage_migration_pending", {
+          stage: err.stage,
+          migration: err.migration,
+        });
+        return c.json(
+          { error: "migration_pending", code: err.code, message: err.message, migration: err.migration },
+          409
+        );
+      }
       logger.error("operator_crm_upsert_error", { message: (err as Error).message });
       return c.json({ error: "internal_error", code: "CRM_UPSERT_FAILED" }, 500);
     }

@@ -17,7 +17,12 @@ name: E2E Tests
 # flips that once a few nightly runs prove the gate stable (command in the
 # #146 PR body).
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA to check out (optional; default = HEAD of the ref you dispatch on)"
+        required: false
+        default: ""
   schedule:
     # 06:00 UTC nightly full regression sweep (advisory).
     - cron: "0 6 * * *"
@@ -113,6 +118,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || '' }}
 
       - uses: actions/setup-node@v4
         with:

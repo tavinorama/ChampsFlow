@@ -5,12 +5,16 @@
  *   1. the loop breaking turns the panel amber/red (RELATORIO:142-153);
  *   2. missing data NEVER becomes a zero and NEVER becomes green.
  *
- * Every contract-quality-test name referenced from DELIVERY_CONTRACTS lives in
- * this file; `assertContractsComplete` is enforced below so a future indicator
+ * Every contract names a quality test that EXISTS on disk (checked below, which
+ * is stricter than the old assertion that it be this file — P1-07's indicator
+ * is pinned by tests/unit/coverage-retry.test.ts, next to the policy it
+ * measures); `assertContractsComplete` is enforced below so a future indicator
  * cannot ship without its contract.
  */
 
 import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   DELIVERY_CONTRACTS,
   DELIVERY_INDICATOR_IDS,
@@ -40,7 +44,11 @@ describe("metric contracts", () => {
       expect(c.grain.length).toBeGreaterThan(3);
       expect(c.timezone).toBe("UTC");
       expect(c.lateData.length).toBeGreaterThan(8);
-      expect(c.qualityTest).toContain("delivery-health.test.ts");
+      // The named test must be a real file: a contract pointing at a test
+      // that does not exist is a contract nothing enforces.
+      const file = c.qualityTest.split("›")[0]!.trim();
+      expect(file).toMatch(/^tests\/unit\/[\w./-]+\.test\.ts$/);
+      expect(existsSync(join(__dirname, "../..", file))).toBe(true);
     }
   });
 });
@@ -144,6 +152,17 @@ describe("thresholds — lower_is_better", () => {
   it("a failing worker is not green", () => {
     expect(ind({ id: "failed_jobs", value: 0.02, sample: 50 }).status).toBe("healthy");
     expect(ind({ id: "failed_jobs", value: 0.3, sample: 50 }).status).toBe("failing");
+  });
+
+  // INCIDENTE 05-09/09 — 4 dias entre a resposta do lead e o rascunho, e
+  // nenhum número do painel mudou de cor.
+  // docs/learning/postmortems/2026-09-11-followup-4-dias.md
+  it("uma resposta parada 4 dias sem rascunho é vermelha", () => {
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 0.4, sample: 3 }).status).toBe("healthy");
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 3, sample: 3 }).status).toBe("degraded");
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 96, sample: 1 }).status).toBe("failing");
+    // Uma única resposta já é amostra: este número nunca espera por volume.
+    expect(ind({ id: "reply_to_draft_latency_p95", value: 30, sample: 1 }).status).toBe("failing");
   });
 });
 

@@ -67,49 +67,98 @@ export function parseSmartleadPayload(payload: unknown): Record<string, unknown>
   return {};
 }
 
-/** Strips tags/entities from an html fragment — good enough for a preview. */
-function stripHtml(html: string): string {
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: " ",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  rsquo: "'",
+  lsquo: "'",
+  ldquo: '"',
+  rdquo: '"',
+  mdash: "-",
+  ndash: "-",
+  hellip: "...",
+};
+
+/**
+ * INCIDENTE 05-09/09 — html → texto. O extrator antigo devolvia o HTML CRU em
+ * dois dos quatro caminhos (`reply_message.text` e `preview_text`), então um
+ * reply de Outlook/Word chegava ao classificador como 600 chars de `<head>`:
+ * zero palavra humana. Aqui o `<head>` inteiro (style/script/title incluídos)
+ * e os comentários condicionais do Outlook saem ANTES das tags, as entidades
+ * (incluindo `&#39;`, que enche um reply de Word) viram caracteres, e os
+ * blocos viram quebra de linha em vez de colarem palavras.
+ */
+export function htmlToText(html: string): string {
   return html
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(style|script|head|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6]|blockquote)\s*>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/\s+/g, " ")
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => safeCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => safeCodePoint(Number(dec)))
+    .replace(/&([a-z]+);/gi, (m, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? m)
+    .replace(/[ \t ]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .replace(/\n{2,}/g, "\n")
     .trim();
+}
+
+function safeCodePoint(code: number): string {
+  if (!Number.isFinite(code) || code < 9 || code > 0x10ffff) return " ";
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return " ";
+  }
+}
+
+/** Does this string carry markup that must be rendered before it is read? */
+function looksLikeHtml(s: string): boolean {
+  return /<[a-z!/][^>]*>/i.test(s);
+}
+
+/** One source → the readable text it actually contains ("" when it has none). */
+function toPlainText(raw: unknown): string {
+  if (typeof raw !== "string" || raw.trim() === "") return "";
+  const text = looksLikeHtml(raw) ? htmlToText(raw) : raw.replace(/[ \t ]+/g, " ").trim();
+  return text;
 }
 
 const REPLY_MAX_CHARS = 600;
 
 /**
- * Reply content, when the stored payload carries it (EMAIL_REPLY does):
- * reply_message.text → preview_text → reply_body (html, stripped). Truncated
- * to keep the dossier response bounded. Null when nothing usable exists.
+ * Reply content, when the stored payload carries it (EMAIL_REPLY does).
+ *
+ * INCIDENTE 05-09/09 (postmortem docs/learning/postmortems/2026-09-11-followup-4-dias.md):
+ * a ordem antiga preferia `preview_text` — o EXCERTO curto que a SmartLead
+ * manda (ver a fixture de produção em tests/unit/followup-scan.test.ts) — ao
+ * `reply_body`, o corpo COMPLETO. O classificador recebia 40 chars cortados a
+ * meio da palavra ("Hello there! Thank you so much for takin") e chamava
+ * ruído a um lead com pergunta real. Agora: corpo primeiro, excerto por
+ * último, cada fonte passada por html→texto, e uma fonte que não rende texto
+ * NÃO envenena a leitura — cai para a seguinte. Null só quando NENHUMA fonte
+ * tem texto (o chamador trata isso como ilegível, nunca como "tratado").
  */
 export function extractReplyText(payload: unknown): string | null {
   const p = parseSmartleadPayload(payload);
   const rm = p["reply_message"];
+  const sources: unknown[] = [];
   if (rm !== null && typeof rm === "object" && !Array.isArray(rm)) {
-    const text = (rm as Record<string, unknown>)["text"];
-    if (typeof text === "string" && text.trim() !== "") {
-      return text.trim().slice(0, REPLY_MAX_CHARS);
-    }
+    sources.push((rm as Record<string, unknown>)["text"], (rm as Record<string, unknown>)["html"]);
   }
   // Produção 03/09: em alguns payloads reais `reply_message` é a PRÓPRIA
   // string do texto (não um objeto) — aceitar, senão a resposta some.
-  if (typeof rm === "string" && rm.trim() !== "") {
-    const stripped = stripHtml(rm);
-    if (stripped !== "") return stripped.slice(0, REPLY_MAX_CHARS);
-  }
-  const preview = p["preview_text"];
-  if (typeof preview === "string" && preview.trim() !== "") {
-    return preview.trim().slice(0, REPLY_MAX_CHARS);
-  }
-  const body = p["reply_body"];
-  if (typeof body === "string" && body.trim() !== "") {
-    const stripped = stripHtml(body);
-    return stripped === "" ? null : stripped.slice(0, REPLY_MAX_CHARS);
+  if (typeof rm === "string") sources.push(rm);
+  sources.push(p["reply_body"], p["preview_text"]);
+
+  for (const source of sources) {
+    const text = toPlainText(source);
+    if (text !== "") return text.slice(0, REPLY_MAX_CHARS);
   }
   return null;
 }

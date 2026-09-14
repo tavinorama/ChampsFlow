@@ -1,0 +1,180 @@
+name: Main CI after auto-merge (15 min)
+
+# 11/09/2026 — fecha o furo "verde na main" (ver docs/runbooks/branch-protection.md).
+#
+# O problema: automerge.yml arma o auto-merge nativo com o GITHUB_TOKEN, e o
+# merge resultante é feito por `github-actions[bot]`. Regra do GitHub
+# (docs → "Triggering a workflow from a workflow"): "events triggered by the
+# GITHUB_TOKEN will not create a new workflow run, with the following
+# exceptions: workflow_dispatch and repository_dispatch". Ou seja: o `push` na
+# main gerado pelo auto-merge NÃO dispara ci.yml nem post-deploy-smoke.yml, e
+# `pull_request: closed` também não (é o mesmo actor, não está na exceção).
+# Evidência de 11/09: os 8 merges do dia (#599 #600 #601 #602 #603 #605 #607
+# #608, todos `mergedBy: app/github-actions`) têm ZERO runs de ci.yml no SHA
+# de merge; a única run do dia é o push manual do founder (4e61a46).
+#
+# A solução usa exatamente a exceção da regra: um cron (que roda no HEAD da
+# default branch) compara o HEAD da main com as runs de ci.yml e de
+# post-deploy-smoke.yml filtradas por `head_sha` e, quando o HEAD não tem run,
+# despacha `gh workflow run <wf> --ref main` — workflow_dispatch COM o
+# GITHUB_TOKEN cria run (exceção documentada). Sem PAT, sem GitHub App.
+#
+#   dedup       : a chave é o head_sha — a run despachada aparece com esse SHA
+#                 e o tick seguinte não despacha de novo (in-progress conta).
+#   smoke       : só para a main (é o que o Railway deploya); github.sha da
+#                 run despachada = HEAD, e o smoke já compara api.sha ==
+#                 web.sha == github.sha (#576).
+#   alarme      : HEAD com >30 min e sem run de ci.yml = um tick anterior
+#                 falhou ou o cron foi pulado → Telegram + summary + vermelho.
+#                 Run de ci.yml no HEAD que terminou vermelha → também grita
+#                 (uma CI vermelha na main despachada por cron não tem PR onde
+#                 alguém a veja).
+#   vigia mudo  : TELEGRAM_* ausentes = run VERMELHO já no preflight (padrão
+#                 blog-autopublish / agent-org-liveness). O conserto (dispatch)
+#                 corre na mesma (`if: always()`): o vermelho é o alarme sobre
+#                 o alarme, não uma razão para deixar a main sem CI.
+#
+# "Verde na main" = run de ci.yml no SHA do HEAD (AGENTS.md §3). Este vigia é
+# quem garante que essa run existe quando o merge foi do bot.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to reconcile (default: the branch this run is on — main on schedule)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: write   # gh workflow run (workflow_dispatch) + ler runs
+
+concurrency:
+  group: main-after-merge
+  cancel-in-progress: false
+
+env:
+  # Limiar do alarme: HEAD sem run de ci.yml há mais do que isto = grita.
+  STALE_AFTER_SECONDS: "1800"
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+        id: alarm
+        run: |
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
+
+      - name: Reconcile — HEAD sem run de CI? despacha (dedup por head_sha)
+        id: reconcile
+        # always(): o dispatch é o conserto; um vigia mudo não deixa a main
+        # sem CI. O run continua vermelho por causa do preflight.
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ inputs.branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Agregação é jq/gh — o modelo só redige (lição 30/07).
+          HEAD=$(gh api "repos/${REPO}/commits/${BRANCH}" --jq '.sha')
+          HEAD_AT=$(gh api "repos/${REPO}/commits/${BRANCH}" --jq '.commit.committer.date')
+          HEAD_EPOCH=$(date -d "$HEAD_AT" +%s)
+          NOW=$(date +%s)
+          AGE=$((NOW - HEAD_EPOCH))
+          echo "branch=${BRANCH} head=${HEAD} committed=${HEAD_AT} age=${AGE}s"
+
+          # runs_for <workflow-file> → "<count> <conclusion-of-latest>"
+          # (conclusion vazio enquanto a run corre). Filtro por head_sha: é a
+          # chave da deduplicação — push, dispatch, qualquer evento conta.
+          runs_for () {
+            gh api "repos/${REPO}/actions/workflows/$1/runs?branch=${BRANCH}&head_sha=${HEAD}&per_page=5" \
+              --jq '"\(.total_count) \(.workflow_runs[0].conclusion // "")"'
+          }
+
+          PROBLEMS=""
+          add_problem () { PROBLEMS="${PROBLEMS}${PROBLEMS:+ | }$1"; }
+          DISPATCHED=""
+
+          # ---- ci.yml -------------------------------------------------------
+          read -r CI_COUNT CI_CONCL <<<"$(runs_for ci.yml)"
+          echo "ci.yml runs no HEAD: ${CI_COUNT} (última: ${CI_CONCL:-em curso})"
+          if [ "$CI_COUNT" -eq 0 ]; then
+            if [ "$AGE" -gt "$STALE_AFTER_SECONDS" ]; then
+              add_problem "main HEAD ${HEAD:0:8} ficou $((AGE / 60)) min sem run de ci.yml (limiar $((STALE_AFTER_SECONDS / 60)) min)"
+            fi
+            echo "Despachando ci.yml --ref ${BRANCH} (HEAD ${HEAD:0:8})"
+            if gh workflow run ci.yml --ref "$BRANCH" -R "$REPO"; then
+              DISPATCHED="${DISPATCHED} ci.yml"
+            else
+              add_problem "gh workflow run ci.yml --ref ${BRANCH} FALHOU (workflow_dispatch ausente no ref? permissão actions:write?)"
+            fi
+          elif [ "$CI_CONCL" != "" ] && [ "$CI_CONCL" != "success" ]; then
+            add_problem "ci.yml no HEAD ${HEAD:0:8} terminou '${CI_CONCL}' — CI VERMELHA NA MAIN"
+          fi
+
+          # ---- post-deploy-smoke.yml (só a main deploya) --------------------
+          if [ "$BRANCH" = "main" ]; then
+            read -r SM_COUNT SM_CONCL <<<"$(runs_for post-deploy-smoke.yml)"
+            echo "post-deploy-smoke.yml runs no HEAD: ${SM_COUNT} (última: ${SM_CONCL:-em curso})"
+            if [ "$SM_COUNT" -eq 0 ]; then
+              echo "Despachando post-deploy-smoke.yml --ref main (HEAD ${HEAD:0:8})"
+              if gh workflow run post-deploy-smoke.yml --ref main -R "$REPO"; then
+                DISPATCHED="${DISPATCHED} post-deploy-smoke.yml"
+              else
+                add_problem "gh workflow run post-deploy-smoke.yml FALHOU"
+              fi
+            fi
+            # Smoke vermelho já grita sozinho (post-deploy-smoke.yml) — não duplicar.
+          else
+            echo "branch ${BRANCH} != main — smoke pós-deploy não se aplica (só a main deploya)."
+          fi
+
+          {
+            echo "## Main CI after auto-merge"
+            echo ""
+            echo "- branch: \`${BRANCH}\` HEAD: \`${HEAD}\` (${HEAD_AT}, $((AGE / 60)) min)"
+            echo "- ci.yml runs no HEAD antes deste tick: ${CI_COUNT}"
+            echo "- despachado agora:${DISPATCHED:- nada}"
+            echo "- problemas: ${PROBLEMS:-nenhum}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "head=${HEAD}" >> "$GITHUB_OUTPUT"
+          echo "dispatched=${DISPATCHED}" >> "$GITHUB_OUTPUT"
+          echo "problems=${PROBLEMS}" >> "$GITHUB_OUTPUT"
+
+      - name: Quiet when the HEAD has its CI
+        if: always() && steps.reconcile.outputs.problems == ''
+        run: echo "OK — HEAD ${{ steps.reconcile.outputs.head }} com run de CI (ou despachada agora:${{ steps.reconcile.outputs.dispatched }})."
+
+      - name: SCREAM — main sem CI no HEAD / CI vermelha
+        if: always() && steps.reconcile.outputs.problems != ''
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROBLEMS: ${{ steps.reconcile.outputs.problems }}
+          DISPATCHED: ${{ steps.reconcile.outputs.dispatched }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "## 🔴 MAIN SEM CI NO HEAD"
+            echo ""
+            echo "$PROBLEMS"
+            echo ""
+            echo "Despachado agora:${DISPATCHED:- nada}"
+            echo "$RUN_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG="MAIN SEM CI NO HEAD: ${PROBLEMS}. Despachado agora:${DISPATCHED:- nada}. Log: ${RUN_URL}"
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes nos Actions secrets — alarme só no summary (o preflight já deixou o run vermelho)."
+          fi
+          exit 1

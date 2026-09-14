@@ -1,0 +1,346 @@
+name: SmartLead — piloto da leva 2 (100 leads, founder-triggered)
+
+# O CAMINHO DE EXECUÇÃO DO PILOTO (founder 11/09). Três coisas, nesta ordem:
+#
+#   1. baixa o artefato PRIVADO do shortlist (run 34570426016 →
+#      piloto-leva2-2026-09.json: 100 leads, SEM e-mail);
+#   2. chama o operador `POST /api/v1/operator/leva2-probe` — SEM confirm ele
+#      só devolve a ESTIMATIVA (100 × US$0,03 = US$3,00) e nada roda; com
+#      confirm=true o worker prova lead a lead (motores reais, repeat=1) e o
+#      workflow espera o job terminar;
+#   3. para cada lead com PROVA, adiciona a lead na campanha de destino COM os
+#      custom fields das variáveis de merge e a remove da campanha de origem.
+#      Mover por id: NUNCA reimportar por CSV (duplica e zera o histórico).
+#
+# A DIVISÃO DE SEGREDOS É DE PROPÓSITO: o worker tem motores e banco mas não
+# tem SMARTLEAD_API_KEY; o Actions tem SMARTLEAD_API_KEY e OZVOR_OPERATOR_KEY
+# mas não tem banco nem motor. Nenhum segredo novo foi criado para o piloto.
+#
+# REGRAS DURAS:
+#   - NENHUM e-mail de lead no log, no resumo ou no artefato. Os e-mails são
+#     lidos do SmartLead só em memória, para mover a lead.
+#   - A campanha continua DRAFTED: este workflow não tem ação de start. Quem
+#     inicia é o founder, pelo smartlead-launch.yml (action=start, confirm=GO).
+#     Se a campanha de destino NÃO estiver DRAFTED, o job para antes de tocar
+#     em qualquer lead (adicionar lead a campanha ativa = e-mail enviado).
+#   - Teto de 80 leads novas por campanha por dia (leva2 §2) — verificado aqui.
+#   - Sem prova, sem leva: lead descartada nunca é carregada com placeholder.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id_shortlist:
+        description: "Run do smartlead-shortlist.yml que gerou o piloto (artefato privado)"
+        required: true
+        default: "34570426016"
+      confirm:
+        description: "false = só estimativa (nada gasto, nada movido). true = roda o probe E carrega as campanhas"
+        required: true
+        default: "false"
+      idempotency_key:
+        description: "Opcional: só para probar DE NOVO o mesmo lote (gasto novo, decisão do founder)"
+        required: false
+        default: ""
+      artifact:
+        description: "Nome do artefato do shortlist"
+        required: false
+        default: "smartlead-shortlist-2026-09"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o artefato privado do shortlist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p shortlist
+          gh run download "${{ github.event.inputs.run_id_shortlist }}" \
+            -R "${{ github.repository }}" \
+            -n "${{ github.event.inputs.artifact }}" \
+            -D shortlist
+          test -f shortlist/piloto-leva2-2026-09.json || { echo "::error::piloto-leva2-2026-09.json ausente no artefato"; exit 1; }
+          echo "artefato baixado ($(wc -c < shortlist/piloto-leva2-2026-09.json) bytes)"
+
+      - name: Estimativa, probe com prova e carga nas campanhas DRAFTED
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          OPERATOR_KEY: ${{ secrets.OZVOR_OPERATOR_KEY }}
+          API_URL: ${{ vars.OZVOR_API_URL || 'https://api-production-2052.up.railway.app' }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          IDEM: ${{ github.event.inputs.idempotency_key }}
+        run: |
+          set -euo pipefail
+          test -n "${OPERATOR_KEY:-}" || { echo "::error::secret OZVOR_OPERATOR_KEY ausente (chave ozk_ com escopos operator+business)"; exit 1; }
+          test -n "${SL_KEY:-}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
+          import json, os, sys, time, urllib.request, urllib.error
+
+          API   = os.environ["API_URL"].rstrip("/")
+          OKEY  = os.environ["OPERATOR_KEY"]
+          SLKEY = os.environ["SL_KEY"]
+          CONFIRM = (os.environ.get("CONFIRM") or "false").strip().lower() == "true"
+          IDEM  = (os.environ.get("IDEM") or "").strip()
+          SL    = "https://server.smartlead.ai/api/v1"
+          UA    = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json",
+                   "Content-Type": "application/json"}
+          # Teto da leva 2 (§2): 80 leads NOVAS por campanha por dia.
+          CAP_DIA = 80
+
+          def out(d):
+              print("RESULTADO_OZVOR" + json.dumps(d, ensure_ascii=False))
+
+          def http(url, headers, payload=None, method="GET", timeout=60, retries=3):
+              data = json.dumps(payload).encode() if payload is not None else None
+              for attempt in range(retries + 1):
+                  req = urllib.request.Request(url, data=data, headers=headers, method=method)
+                  try:
+                      with urllib.request.urlopen(req, timeout=timeout) as r:
+                          b = r.read().decode()
+                          return r.status, (json.loads(b) if b.strip() else {})
+                  except urllib.error.HTTPError as e:
+                      body = e.read().decode(errors="replace")[:300]
+                      if e.code == 429 and attempt < retries:
+                          time.sleep(3 * (attempt + 1)); continue
+                      try:
+                          return e.code, json.loads(body or "{}")
+                      except Exception:
+                          return e.code, {"_body": body}
+                  except Exception as e:
+                      if attempt < retries:
+                          time.sleep(2); continue
+                      return 0, {"_error": type(e).__name__}
+              return 0, {"_error": "retries_exhausted"}
+
+          def op(path, payload=None, method="GET"):
+              return http(f"{API}{path}", {**UA, "Authorization": f"Bearer {OKEY}"}, payload, method)
+
+          def sl(path, payload=None, method="GET"):
+              url = f"{SL}{path}{'&' if '?' in path else '?'}api_key={SLKEY}"
+              return http(url, UA, payload, method)
+
+          def sl_bad(body):
+              return isinstance(body, dict) and ("_http_error" in body or "_error" in body or "_body" in body)
+
+          # ------------------------------------------------------ 1) a lista
+          doc = json.load(open("shortlist/piloto-leva2-2026-09.json"))
+          rows = doc.get("leads") or []
+          PII = ("email", "phone", "first_name", "last_name")
+          leads, por_bucket, por_origem = [], {}, {}
+          for r in rows:
+              b = (r.get("bucket") or "").strip().lower()
+              if b not in ("local", "aistack"):
+                  continue
+              rec = {"smartlead_lead_id": r.get("smartlead_lead_id"),
+                     "company": r.get("company"), "website": r.get("website"),
+                     "domain": r.get("domain"), "city": r.get("city"), "state": r.get("state"),
+                     "segment": r.get("segment"), "bucket": b,
+                     "campaign_id_origem": r.get("campaign_id_origem")}
+              # Cinto e suspensório: se o artefato um dia trouxer PII, ela para aqui.
+              for k in PII:
+                  rec.pop(k, None)
+              leads.append(rec)
+              por_bucket[b] = por_bucket.get(b, 0) + 1
+              o = str(r.get("campaign_id_origem"))
+              por_origem[o] = por_origem.get(o, 0) + 1
+
+          if not leads:
+              out({"ok": False, "motivo": "artefato sem leads utilizaveis"}); raise SystemExit(1)
+          estouro = {b: n for b, n in por_bucket.items() if n > CAP_DIA}
+          if estouro:
+              out({"ok": False, "motivo": f"teto de {CAP_DIA} leads/campanha/dia estourado", "por_bucket": por_bucket})
+              raise SystemExit(1)
+
+          print("## Piloto da leva 2 — estimativa (nada foi gasto ainda)")
+          print("")
+          print(f"- Leads no artefato: **{len(leads)}** ({json.dumps(por_bucket)})")
+
+          # -------------------------------------- 2) estimativa no operador
+          status, body = op("/api/v1/operator/leva2-probe", {"leads": leads}, method="POST")
+          if status != 200:
+              print(f"::error::estimativa falhou: HTTP {status} {json.dumps(body)[:400]}")
+              out({"ok": False, "etapa": "estimativa", "http": status, "resp": json.dumps(body)[:400]})
+              raise SystemExit(1)
+          est = body.get("estimate", {})
+          print(f"- Custo por lead: ${est.get('custo_por_lead_usd')}")
+          print(f"- **Custo estimado do piloto: ${est.get('custo_estimado_usd')}**")
+          print(f"- Destinos: {json.dumps(est.get('campanhas_destino', {}), ensure_ascii=False)}")
+          print("")
+
+          if not CONFIRM:
+              print("**NÃO RODOU** (confirm=false). Nenhum motor foi chamado, nenhuma lead foi movida, "
+                    "nenhuma campanha foi iniciada. Para rodar de verdade: confirm=true.")
+              out({"ok": True, "modo": "estimativa", "leads": len(leads), "por_bucket": por_bucket,
+                   "por_campanha_origem": por_origem, "estimativa": est})
+              raise SystemExit(0)
+
+          # ------------------------- 3) trava: destino tem de estar DRAFTED
+          destinos = {b: est["campanhas_destino"][b]["smartlead_id"] for b in por_bucket if b in est.get("campanhas_destino", {})}
+          slugs = {b: est["campanhas_destino"][b]["slug"] for b in destinos}
+          estados = {}
+          for b, cid in destinos.items():
+              s, d = sl(f"/campaigns/{cid}")
+              estado = (d.get("status") if isinstance(d, dict) else None) or f"?({s})"
+              estados[slugs[b]] = estado
+              if estado != "DRAFTED":
+                  out({"ok": False, "motivo": f"campanha {slugs[b]} esta {estado}, nao DRAFTED — "
+                                              "adicionar lead a campanha ativa seria ENVIAR. Nada foi feito.",
+                       "estados": estados})
+                  raise SystemExit(1)
+
+          # ----------------------------------- 4) o probe (gasto autorizado)
+          payload = {"leads": leads, "confirm": True}
+          if IDEM:
+              payload["idempotency_key"] = IDEM
+          status, body = op("/api/v1/operator/leva2-probe", payload, method="POST")
+          if status == 409 and body.get("job_id"):
+              job_id = body["job_id"]
+              print(f"- Lote JÁ probado antes (idempotência): reaproveitando o job `{job_id}` sem gastar de novo.")
+          elif status == 201 and body.get("ran"):
+              job_id = body["job_id"]
+              print(f"- Probe autorizado e enfileirado: job `{job_id}`.")
+          else:
+              print(f"::error::probe recusado: HTTP {status} {json.dumps(body)[:400]}")
+              out({"ok": False, "etapa": "probe", "http": status, "resp": json.dumps(body)[:400]})
+              raise SystemExit(1)
+
+          # Espera o worker (100 leads × ~1 site + 1 probe cada).
+          deadline = time.time() + 45 * 60
+          rec = None
+          while time.time() < deadline:
+              s, rec = op(f"/api/v1/operator/leva2-probe/{job_id}")
+              if s != 200:
+                  print(f"::warning::leitura do job devolveu HTTP {s}")
+                  time.sleep(20); continue
+              if rec.get("status") in ("done", "failed"):
+                  break
+              time.sleep(20)
+          if not rec or rec.get("status") != "done":
+              out({"ok": False, "etapa": "probe", "job_id": job_id,
+                   "status": (rec or {}).get("status"), "erro": (rec or {}).get("error"),
+                   "probados": (rec or {}).get("probed"), "custo_real_usd": (rec or {}).get("spent_usd"),
+                   "motivo": "job nao terminou (ou falhou) — NENHUMA lead foi carregada"})
+              raise SystemExit(1)
+
+          provados = [r for r in rec.get("results", []) if r.get("ok")]
+          print(f"- Probados: **{rec.get('probed')}** · com prova: **{len(provados)}** · "
+                f"descartados: **{rec.get('discarded')}** · custo real: **${rec.get('spent_usd')}**")
+          if rec.get("budget_exhausted"):
+              print("- **ORÇAMENTO ESGOTADO durante o lote** — parte das leads não foi probada.")
+
+          # --------------- 5) e-mails: lidos do SmartLead, só em memória
+          emails = {}
+          for cid in sorted({str(r.get("campaign_id_origem")) for r in provados if r.get("campaign_id_origem")}):
+              off = 0
+              while True:
+                  s, d = sl(f"/campaigns/{cid}/leads?offset={off}&limit=100")
+                  batch = d.get("data") if isinstance(d, dict) else None
+                  if not batch:
+                      break
+                  for row in batch:
+                      lead = row.get("lead") or row
+                      if lead.get("id") is not None and lead.get("email"):
+                          emails[str(lead["id"])] = lead["email"]
+                  off += len(batch)
+                  if off > 20000:
+                      break
+
+          # ------------------------------- 6) carga na campanha de destino
+          # Formato (doc SmartLead): POST /campaigns/{id}/leads
+          #   {"lead_list":[{"email":..., "company_name":..., "website":...,
+          #                  "custom_fields":{"ai_engine":..., ...}}]}
+          # A resposta REAL da 1a chamada é registrada abaixo (sem PII), para o
+          # formato ficar provado por observação e não por fé.
+          adicionados, add_falhas, sem_email, var_vazia = {}, 0, 0, 0
+          removidos, del_falhas = 0, 0
+          primeira_resposta = None
+          primeiro_erro = None
+          por_destino = {}
+          for r in provados:
+              por_destino.setdefault(r["campaign_id_destino"], []).append(r)
+
+          for cid_dst, grupo in por_destino.items():
+              slug = grupo[0]["campanha_destino"]
+              if len(grupo) > CAP_DIA:
+                  out({"ok": False, "motivo": f"{len(grupo)} leads para {slug} acima do teto de {CAP_DIA}/dia"})
+                  raise SystemExit(1)
+              for i in range(0, len(grupo), 100):
+                  chunk = grupo[i:i + 100]
+                  lote, ids = [], []
+                  for r in chunk:
+                      em = emails.get(str(r["smartlead_lead_id"]))
+                      if not em:
+                          sem_email += 1
+                          continue
+                      v = r.get("vars") or {}
+                      faltando = [k for k in ("ai_engine", "competitor_1", "competitor_2", "query", "report_url")
+                                  if not (v.get(k) or "").strip()]
+                      if faltando:
+                          # Sem prova, sem leva: uma variável vazia viraria um
+                          # buraco no e-mail 1. Conta e não carrega.
+                          var_vazia += 1
+                          continue
+                      lote.append({
+                          "email": em,
+                          "company_name": r.get("company"),
+                          "website": r.get("domain"),
+                          "custom_fields": {
+                              "ai_engine": v.get("ai_engine", ""),
+                              "competitor_1": v.get("competitor_1", ""),
+                              "competitor_2": v.get("competitor_2", ""),
+                              "query": v.get("query", ""),
+                              "report_url": v.get("report_url", ""),
+                          },
+                      })
+                      ids.append((r["smartlead_lead_id"], r.get("campaign_id_origem")))
+                  if not lote:
+                      continue
+                  s, d = sl(f"/campaigns/{cid_dst}/leads", {"lead_list": lote}, method="POST")
+                  if primeira_resposta is None:
+                      # Só chaves e contagens — nunca o corpo com e-mail dentro.
+                      primeira_resposta = {"http": s, "chaves": sorted(d.keys()) if isinstance(d, dict) else str(type(d)),
+                                           "upload_count": (d.get("upload_count") if isinstance(d, dict) else None),
+                                           "already_added": (d.get("already_added_to_campaign") if isinstance(d, dict) else None)}
+                  if s >= 400 or sl_bad(d):
+                      add_falhas += len(lote)
+                      if primeiro_erro is None:
+                          primeiro_erro = {"etapa": "add", "http": s, "resp": json.dumps(d)[:300]}
+                      break
+                  adicionados[slug] = adicionados.get(slug, 0) + len(lote)
+                  # Remoção da origem, uma a uma, contando as DUAS pontas.
+                  for lid, cid_src in ids:
+                      if not cid_src:
+                          continue
+                      s2, d2 = sl(f"/campaigns/{cid_src}/leads/{lid}", method="DELETE")
+                      if s2 >= 400 or sl_bad(d2):
+                          del_falhas += 1
+                          if primeiro_erro is None:
+                              primeiro_erro = {"etapa": "delete", "http": s2, "resp": json.dumps(d2)[:300]}
+                          if del_falhas >= 3 and removidos == 0:
+                              break   # pare e conte — nao insista 100x no mesmo erro
+                      else:
+                          removidos += 1
+
+          motivos = rec.get("by_reason", {})
+          ok_final = add_falhas == 0 and del_falhas == 0 and sem_email == 0 and var_vazia == 0
+          print("")
+          print(f"- Adicionados: {json.dumps(adicionados, ensure_ascii=False)} · removidos da origem: {removidos}")
+          print(f"- Campanhas continuam **{json.dumps(estados, ensure_ascii=False)}** — nenhum start foi dado. "
+                "Quem inicia é o founder, pelo smartlead-launch.yml (action=start, confirm=GO).")
+          out({"ok": ok_final, "modo": "execucao", "job_id": job_id,
+               "probados": rec.get("probed"), "com_prova": len(provados),
+               "descartados": rec.get("discarded"), "descartados_por_motivo": motivos,
+               "orcamento_esgotado": rec.get("budget_exhausted"),
+               "custo_real_usd": rec.get("spent_usd"),
+               "adicionados_por_campanha": adicionados, "removidos_da_origem": removidos,
+               "sem_email_no_smartlead": sem_email, "variavel_de_merge_vazia": var_vazia,
+               "falhas_add": add_falhas, "falhas_delete": del_falhas,
+               "primeira_resposta_add": primeira_resposta, "primeiro_erro": primeiro_erro,
+               "estado_das_campanhas": estados})
+          raise SystemExit(0 if ok_final else 1)
+          PYEOF

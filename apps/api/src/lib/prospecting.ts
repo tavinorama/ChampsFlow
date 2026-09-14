@@ -530,6 +530,71 @@ export interface VerifiedProspect {
   rating?: number | null;
   reviewsCount?: number | null;
   category?: string | null;
+  /** LEVA 2: os sinais de lista que este negócio PASSOU (signalGate). */
+  signals?: string[];
+  /** LEVA 2: a prova do mini free test — sem ela o lead não entra na leva. */
+  proof?: ColdProof;
+}
+
+/**
+ * LEVA 2 (11/09) — a prova que abre o e-mail 1: o resultado real do mini free
+ * test feito sobre a pergunta do nicho/cidade do lead. Produzida por
+ * packages/llm/src/cold-proof-probe.ts; aqui só viaja e é renderizada.
+ */
+export interface ColdProof {
+  /** A pergunta feita, palavra por palavra → {{query}}. */
+  query: string;
+  /** Motor que respondeu, em nome de exibição → {{ai_engine}}. */
+  engine: string;
+  /** Quem a IA recomendou no lugar dele → {{competitor_1}}, {{competitor_2}}. */
+  competitors: string[];
+  /** O link do relatório DELE (4º toque) → {{report_url}}. Já percent-encoded. */
+  reportUrl?: string;
+}
+
+/**
+ * O link do relatório do próprio lead — o 4º toque da leva 2. Leva ao /test
+ * com a marca, o site e o concorrente JÁ preenchidos (prefill lido em
+ * InvisibilityTestClient), para o lead não encarar um formulário em branco.
+ *
+ * A codificação é feita AQUI, em código: um nome de empresa com espaço ou
+ * "&" quebraria um href montado à mão no SmartLead — por isso o e-mail usa
+ * a variável {{report_url}} pronta, nunca monta a URL no template.
+ * Só dado PÚBLICO de negócio entra na URL (nunca e-mail ou nome de pessoa).
+ */
+export function proofReportUrl(input: {
+  campaign: string;
+  company: string;
+  competitor?: string | null;
+  website?: string | null;
+  category?: string | null;
+}): string {
+  const params = new URLSearchParams();
+  params.set("from", input.campaign);
+  if (input.company.trim()) params.set("b", input.company.trim().slice(0, 80));
+  if (input.website) {
+    let host = input.website;
+    try {
+      host = new URL(input.website).hostname.replace(/^www\./, "");
+    } catch {
+      /* keep as-is */
+    }
+    params.set("d", host.slice(0, 80));
+  }
+  if (input.competitor && input.competitor.trim()) params.set("c", input.competitor.trim().slice(0, 80));
+  if (input.category && input.category.trim()) params.set("cat", input.category.trim().slice(0, 80));
+  return `https://ozvor.com/test?${params.toString()}`;
+}
+
+/** As variáveis de merge do SmartLead para a leva 2 (ordem estável). */
+export function proofMergeVarsOf(p: ColdProof): Record<string, string> {
+  return {
+    ai_engine: p.engine,
+    competitor_1: p.competitors[0] ?? "",
+    competitor_2: p.competitors[1] ?? "",
+    query: p.query,
+    ...(p.reportUrl ? { report_url: p.reportUrl } : {}),
+  };
 }
 
 export interface DroppedCandidate {
@@ -584,6 +649,17 @@ export function renderProspectBlock(input: {
       lines.push(`RATING: ${p.rating != null ? p.rating : "?"} (${p.reviewsCount != null ? p.reviewsCount : "?"} reviews)`);
     }
     if (p.category) lines.push(`CATEGORIA: ${p.category}`);
+    if (p.signals && p.signals.length > 0) {
+      lines.push("SINAIS (leva 2 — lista com sinal, verificados por codigo):");
+      for (const s of p.signals) lines.push(`- ${s}`);
+    }
+    if (p.proof) {
+      lines.push("PROVA (mini free test, 1 execucao, motores reais):");
+      lines.push(`PERGUNTA: ${p.proof.query}`);
+      lines.push(`MOTOR: ${p.proof.engine}`);
+      lines.push(`RECOMENDADOS NO SEU LUGAR: ${p.proof.competitors.join(" | ")}`);
+      lines.push(`VARS: ${JSON.stringify(proofMergeVarsOf(p.proof))}`);
+    }
     lines.push("ACHADOS (verificados por codigo):");
     for (const f of p.findings) lines.push(`- ${f}`);
   }
@@ -655,16 +731,32 @@ export interface CrmProspectContact {
   phone?: string | null;
   rating?: number | null;
   reviewsCount?: number | null;
+  /**
+   * LEVA 2 — a prova do mini free test viaja no DOSSIÊ do lead. Guardada em
+   * `crm_contact.note` (coluna TEXT que já existe): é a menor mudança
+   * possível — zero migração para uma leva que precisa sair esta semana.
+   */
+  proof?: ColdProof;
 }
 
 /** The crm_contact note line for one approved prospect — one source (worker + tests). */
 export function crmNoteFor(c: CrmProspectContact): string {
   const proxies: string[] = [];
+  // Canal C (11/09): the business NAME joins the note. It was already the
+  // first thing the batch knew (the verifier matches it against the site's
+  // HTML) and was the one public fact the note threw away — which left the
+  // daily proof feed guessing a brand out of a domain label when it needs an
+  // exact string to scan an AI answer for. Public business data, same class as
+  // the rating and the review count already here.
+  if (c.name && c.name.trim()) proxies.push(`nome=${c.name.trim().replace(/[\n·]/g, " ")}`);
   if (c.phone) proxies.push(`fone=${c.phone}`);
   if (c.rating != null) proxies.push(`rating=${c.rating}`);
   if (c.reviewsCount != null) proxies.push(`reviews=${c.reviewsCount}`);
   const proxyPart = proxies.length > 0 ? ` ${proxies.join(" ")}` : "";
-  return `[prospect-batch] trilha=${c.track} campanha=${c.campaign}${proxyPart} — ${c.finding || "sem achado registrado"} — ${c.website}`;
+  const proofPart = c.proof
+    ? ` — PROVA ${c.proof.engine} p/ "${c.proof.query}": ${c.proof.competitors.slice(0, 2).join(", ")}`
+    : "";
+  return `[prospect-batch] trilha=${c.track} campanha=${c.campaign}${proxyPart} — ${c.finding || "sem achado registrado"} — ${c.website}${proofPart}`;
 }
 
 /**
@@ -697,6 +789,17 @@ export function parseProspectsForCrm(block: string): { campaign: string; contact
     const ratingM = /^RATING:\s*([\d.]+|\?)\s*\((\d+|\?)\s*reviews\)/m.exec(section);
     const rating = ratingM && ratingM[1] !== "?" ? Number(ratingM[1]) : null;
     const reviewsCount = ratingM && ratingM[2] !== "?" ? Number(ratingM[2]) : null;
+    // LEVA 2 — a prova, lida de volta do bloco de CÓDIGO (nunca do LLM).
+    const proofQuery = /^PERGUNTA:\s*(.+)$/m.exec(section)?.[1]?.trim() ?? "";
+    const proofEngine = /^MOTOR:\s*(.+)$/m.exec(section)?.[1]?.trim() ?? "";
+    const proofNames = (/^RECOMENDADOS NO SEU LUGAR:\s*(.+)$/m.exec(section)?.[1] ?? "")
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const proof: ColdProof | null =
+      proofQuery && proofEngine && proofNames.length >= 2
+        ? { query: proofQuery, engine: proofEngine, competitors: proofNames }
+        : null;
     contacts.push({
       email: emailRaw.toLowerCase(),
       name,
@@ -707,6 +810,7 @@ export function parseProspectsForCrm(block: string): { campaign: string; contact
       ...(phone ? { phone } : {}),
       ...(rating != null ? { rating } : {}),
       ...(reviewsCount != null ? { reviewsCount } : {}),
+      ...(proof ? { proof } : {}),
     });
   }
   return { campaign, contacts };
@@ -819,7 +923,14 @@ export interface SequenceValidation {
  * The exact-sentinel empty batch ("SEM PROSPECTS VERIFICADOS...") is VALID:
  * an honest nothing beats an invented prospect.
  */
-export function validateColdSequenceBatch(text: string, prospectsBlock?: string | null): SequenceValidation {
+export function validateColdSequenceBatch(
+  text: string,
+  prospectsBlock?: string | null,
+  opts: { touches?: number } = {}
+): SequenceValidation {
+  // LEVA 2 (11/09): a sequência passa a ter 4 toques (0/3/7/14). O default
+  // continua 3 para não quebrar a leva 1 nem os artefatos já gravados.
+  const touches = Math.max(1, Math.min(6, Math.floor(opts.touches ?? 3)));
   const errors: string[] = [];
   const trimmed = text.trim();
   if (trimmed.startsWith(EMPTY_BATCH_SENTINEL)) return { ok: true, errors };
@@ -828,6 +939,7 @@ export function validateColdSequenceBatch(text: string, prospectsBlock?: string 
     return { ok: false, errors: ["nenhum bloco '=== PROSPECT: ... ===' encontrado no lote"] };
   }
   const tracks = prospectsBlock ? prospectTracksFromBlock(prospectsBlock) : null;
+  const followUps = Array.from({ length: touches - 1 }, (_, i) => i + 2);
   for (const seq of sequences) {
     const label = seq.prospect || "(sem nome)";
     const info = tracks?.get(seq.prospect.trim());
@@ -835,7 +947,7 @@ export function validateColdSequenceBatch(text: string, prospectsBlock?: string 
       errors.push(`'${label}': prospect fora do bloco verificado — sequencia para nome nao verificado por codigo`);
     }
     const byIndex = new Map(seq.emails.map((e) => [e.index, e]));
-    for (const n of [1, 2, 3]) {
+    for (let n = 1; n <= touches; n++) {
       if (!byIndex.get(n)?.body) errors.push(`'${label}': [EMAIL ${n}] ausente ou vazio`);
     }
     const email1 = byIndex.get(1);
@@ -848,7 +960,7 @@ export function validateColdSequenceBatch(text: string, prospectsBlock?: string 
         errors.push(`'${label}': EMAIL 1 sem pergunta — o primeiro toque busca RESPOSTA (uma pergunta)`);
       }
     }
-    for (const n of [2, 3]) {
+    for (const n of followUps) {
       const email = byIndex.get(n);
       if (!email) continue;
       const urls = ozvorUrlsIn(`${email.subject ?? ""}\n${email.body}`);

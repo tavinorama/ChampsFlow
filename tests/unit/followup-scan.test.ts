@@ -546,7 +546,7 @@ describe("bug 03/09 — payload real de produção (sl_lead_email + reply_body)"
     expect(r.scanned).toBe(2);
     expect(r.unparseable).toBe(1);
     expect(r.proposed + r.discarded + r.unsubscribed + r.skipped + r.unparseable).toBe(r.scanned);
-    expect(f.telegrams.some((t) => t.text.includes("IRRESOLVÍVEL"))).toBe(true);
+    expect(f.telegrams.some((t) => t.text.includes("NÃO conseguiu ler"))).toBe(true);
     expect(onceKeys.some((k) => k.startsWith("followup:unparseable:"))).toBe(true);
   });
 
@@ -626,5 +626,155 @@ describe("adendo 03/09 — as respostas reais eram OOO ou STOP", () => {
     expect(r2.proposed).toBe(0);
     expect(f2.telegrams.filter((t) => t.buttons?.length === 2)).toHaveLength(0);
     expect(world.contacts.get("owner@rooferco.com")!.stage).toBe("lost");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INCIDENTE 05-09/09 — a ÚNICA resposta de interesse real da campanha chegou
+// 05/09 18:53:15 UTC e o rascunho só nasceu 09/09 19:00:23: ≈190 varreduras
+// que não propuseram nada. Postmortem completo (linha do tempo, causa raiz e o
+// que falta ler em produção): docs/learning/postmortems/2026-09-11-followup-4-dias.md.
+//
+// A fixture abaixo é a FORMA da resposta real — HTML de cliente de e-mail e a
+// abertura de cortesia "thank you ... for taking the time" — com texto
+// SINTÉTICO: nenhum e-mail, nome ou domínio reais (regra da casa: PII nunca em
+// teste nem em log).
+// ---------------------------------------------------------------------------
+
+const REAL_REPLY_HUMAN_TEXT = [
+  "Hello there! Thank you so much for taking the time to write me.",
+  "We all only have so much time in our lives, and I'm trying to be really intentional with mine.",
+  "Right now I'm focused on getting found when people ask AI about roof repair.",
+  "Can you tell me what the audit actually looks at?",
+].join(" ");
+
+const REAL_REPLY_HTML = `<html xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta name="Generator" content="Microsoft Word 15 (filtered medium)"><style><!--/* Font Definitions */@font-face {font-family:"Cambria Math"; panose-1:2 4 5 3 5 4 6 3 2 4;}p.MsoNormal, li.MsoNormal, div.MsoNormal {margin:0cm; font-size:11.0pt; font-family:"Calibri",sans-serif;}--></style></head><body lang="EN-GB"><div class="WordSection1"><p class="MsoNormal">${REAL_REPLY_HUMAN_TEXT.replace(/'/g, "&#39;")}</p></div></body></html>`;
+
+/** O payload como produção o guarda: excerto curto + corpo HTML completo. */
+function realHtmlReplyPayload(html: string = REAL_REPLY_HTML): string {
+  return JSON.stringify({
+    event_type: "EMAIL_REPLY",
+    event_id: "evt-prod-real",
+    campaign_id: 3888686,
+    stats_id: "stats-prod-1",
+    sl_lead_email: "owner@rooferco.example",
+    to_email: "sender@ozvor.example",
+    reply_body: html,
+    preview_text: REAL_REPLY_HUMAN_TEXT.slice(0, 40),
+  });
+}
+
+describe("incidente 05-09/09 — resposta humana em HTML vira rascunho, não silêncio", () => {
+  it("HTML + 'thank you for taking the time' → rascunho no portão, com o TEXTO INTEIRO no classificador", async () => {
+    const prompts: string[] = [];
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "owner@rooferco.example",
+          leadEmailColumn: null,
+          payload: realHtmlReplyPayload(),
+        },
+      ],
+    });
+    const f = makePorts({
+      intent: "question",
+      hermes: async (prompt: string) => {
+        prompts.push(prompt);
+        return prompt.includes("One word:")
+          ? { ok: true, output: "question", engineUsed: "claude" }
+          : { ok: true, output: GOOD_DRAFT, engineUsed: "claude" };
+      },
+    });
+    const r = await runFollowupScan(world.sql, null, f.ports);
+
+    expect(r.proposed).toBe(1);
+    expect(r.discarded).toBe(0);
+    expect(r.unparseable).toBe(0);
+    // O classificador recebeu a PERGUNTA do lead, não 40 chars de cortesia
+    // cortada nem `<head>` cru — foi isto que matou a resposta real.
+    const intentPrompt = prompts.find((p) => p.includes("One word:"))!;
+    expect(intentPrompt).toContain("Can you tell me what the audit actually looks at?");
+    expect(intentPrompt).not.toContain("<head>");
+    expect(intentPrompt).not.toContain("font-family");
+    // E o portão existe, com os botões de sempre.
+    expect(f.telegrams.some((t) => t.buttons?.length === 2)).toBe(true);
+    expect(world.contacts.get("owner@rooferco.example")!.note).toContain("[followup] proposto");
+  });
+
+  it("o run carrega o evento no trigger — sem esse elo a latência resposta→rascunho não é medível", async () => {
+    const triggers: string[] = [];
+    const world = makeWorld({
+      replies: [{ id: EVENT_A, email: "owner@rooferco.example", leadEmailColumn: null, payload: realHtmlReplyPayload() }],
+    });
+    const baseSql = world.sql as unknown as (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>;
+    const sql = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (strings.join("$").includes("fu:run-start")) triggers.push(String(values[1]));
+      return baseSql(strings, ...values);
+    }) as unknown as typeof world.sql;
+    const f = makePorts({ intent: "question" });
+    await runFollowupScan(sql, null, f.ports);
+    expect(triggers[0]).toBe(`cron:followup-scan reply:${EVENT_A}`);
+  });
+
+  it("o modelo diz 'noise' mas há PROSA HUMANA: o código manda e o rascunho acontece", async () => {
+    const world = makeWorld({
+      replies: [{ id: EVENT_A, email: "owner@rooferco.example", leadEmailColumn: null, payload: realHtmlReplyPayload() }],
+    });
+    const f = makePorts({ intent: "noise" });
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.proposed).toBe(1);
+    expect(r.discarded).toBe(0);
+    expect(f.telegrams.some((t) => t.buttons?.length === 2)).toBe(true);
+  });
+
+  it("auto-reply DE VERDADE continua descartado por código, sem LLM e sem barulho", async () => {
+    const world = makeWorld({
+      replies: [
+        {
+          id: EVENT_A,
+          email: "owner@rooferco.example",
+          leadEmailColumn: null,
+          payload: realHtmlReplyPayload(
+            "<html><head><style>p {margin:0cm;}</style></head><body><p>Automatic reply: I am out of the office until Monday.</p></body></html>"
+          ),
+        },
+      ],
+    });
+    const f = makePorts();
+    const r = await runFollowupScan(world.sql, null, f.ports);
+    expect(r.discarded).toBe(1);
+    expect(f.counts().intentCalls).toBe(0);
+    expect(f.telegrams).toHaveLength(0);
+  });
+
+  it("resposta ILEGÍVEL não é 'tratada': sem marcador, re-tentada na varredura seguinte, e grita 1×/dia", async () => {
+    const imageOnly = JSON.stringify({
+      event_type: "EMAIL_REPLY",
+      campaign_id: 3888686,
+      stats_id: "stats-prod-1",
+      sl_lead_email: "owner@rooferco.example",
+      reply_body: '<html><head><style>p {margin:0}</style></head><body><img src="cid:sig"></body></html>',
+    });
+    const world = makeWorld({
+      replies: [{ id: EVENT_A, email: "owner@rooferco.example", leadEmailColumn: null, payload: imageOnly }],
+    });
+    const f = makePorts();
+    const r = await runFollowupScan(world.sql, null, f.ports);
+
+    expect(r.unparseable).toBe(1);
+    expect(r.discarded).toBe(0);
+    expect(r.proposed + r.discarded + r.unsubscribed + r.skipped + r.unparseable).toBe(r.scanned);
+    expect(f.telegrams.some((t) => t.text.includes("NÃO conseguiu ler"))).toBe(true);
+    // NENHUM marcador: o evento continua elegível (o extrator pode melhorar).
+    expect(world.contacts.get("owner@rooferco.example")?.note ?? "").not.toContain("[followup]");
+
+    // E a varredura seguinte re-tenta — agora com o corpo legível, propõe.
+    const world2 = makeWorld({
+      replies: [{ id: EVENT_A, email: "owner@rooferco.example", leadEmailColumn: null, payload: realHtmlReplyPayload() }],
+    });
+    const f2 = makePorts({ intent: "question" });
+    const r2 = await runFollowupScan(world2.sql, null, f2.ports);
+    expect(r2.proposed).toBe(1);
   });
 });

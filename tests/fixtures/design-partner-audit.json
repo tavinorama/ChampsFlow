@@ -1,0 +1,130 @@
+{
+  "_comment": [
+    "RECORDED audit evidence for the design-partner pack generator.",
+    "Shape = the --fixture input of scripts/design-partner-pack.ts, so the whole",
+    "pipeline (answers -> observations -> gap classifier -> pack HTML) runs in",
+    "tests without calling a single engine and without spending a cent.",
+    "The numbers are a SHAPE, not a real company: the domain is example.com and",
+    "the competitors are placeholders. Never ship this as a client artifact."
+  ],
+  "company": "Northgate Roofing",
+  "domain": "example.com",
+  "market": "United States - English",
+  "locale": "en-US",
+  "auditId": "aud_fixture_0001",
+  "brandId": "brand_fixture_0001",
+  "generatedAt": "2026-09-11T09:00:00.000Z",
+  "methodologyVersion": "2.1",
+  "coverage": {
+    "probed": ["openai", "anthropic", "gemini", "perplexity"],
+    "blocked": [{ "engine": "perplexity-eu", "reason": "region gate: EU" }],
+    "failed": [{ "engine": "serp", "reason": "provider returned no AI Overview block" }]
+  },
+  "answers": [
+    {
+      "question": "Who is the best roofing contractor in Northgate?",
+      "promptId": "p_local_best_0",
+      "engine": "openai",
+      "runIndex": 0,
+      "mentioned": false,
+      "cited": false,
+      "rank": null,
+      "competitors": ["Summit Roofworks", "Harborline Roofing"],
+      "citations": ["https://www.yelp.com/biz/summit-roofworks", "https://www.angi.com/companylist/us/roofing.htm"],
+      "sentiment": "neutral",
+      "entityConfidence": null
+    },
+    {
+      "question": "Who is the best roofing contractor in Northgate?",
+      "promptId": "p_local_best_0",
+      "engine": "perplexity",
+      "runIndex": 0,
+      "mentioned": false,
+      "cited": false,
+      "rank": null,
+      "competitors": ["Summit Roofworks"],
+      "citations": ["https://www.reddit.com/r/HomeImprovement/comments/abc123"],
+      "sentiment": "neutral",
+      "entityConfidence": null
+    },
+    {
+      "question": "Which roofing company should I hire for a storm-damaged roof?",
+      "promptId": "p_local_service_0",
+      "engine": "anthropic",
+      "runIndex": 0,
+      "mentioned": false,
+      "cited": false,
+      "rank": null,
+      "competitors": ["Harborline Roofing"],
+      "citations": ["https://www.homeadvisor.com/c.Roofing.html"],
+      "sentiment": "neutral",
+      "entityConfidence": null
+    },
+    {
+      "question": "Which roofing company should I hire for a storm-damaged roof?",
+      "promptId": "p_local_service_0",
+      "engine": "gemini",
+      "runIndex": 0,
+      "mentioned": false,
+      "cited": false,
+      "rank": null,
+      "competitors": [],
+      "citations": [],
+      "sentiment": "unknown",
+      "entityConfidence": null,
+      "absent": true
+    },
+    {
+      "question": "Northgate Roofing vs Summit Roofworks",
+      "promptId": "p_brand_direct_0",
+      "engine": "openai",
+      "runIndex": 0,
+      "mentioned": true,
+      "cited": true,
+      "rank": 2,
+      "competitors": ["Summit Roofworks"],
+      "citations": ["https://example.com/about"],
+      "sentiment": "neutral",
+      "entityConfidence": 0.82
+    },
+    {
+      "question": "Northgate Roofing vs Summit Roofworks",
+      "promptId": "p_brand_direct_0",
+      "engine": "anthropic",
+      "runIndex": 0,
+      "mentioned": true,
+      "cited": false,
+      "rank": 4,
+      "competitors": ["Summit Roofworks", "Harborline Roofing"],
+      "citations": ["https://www.bbb.org/us/roofing"],
+      "sentiment": "neutral",
+      "entityConfidence": 0.81
+    },
+    {
+      "question": "How much does a roof replacement cost in Northgate?",
+      "promptId": "p_comparison_0",
+      "engine": "perplexity",
+      "runIndex": 0,
+      "mentioned": false,
+      "cited": false,
+      "rank": null,
+      "competitors": ["Harborline Roofing"],
+      "citations": ["https://www.angi.com/articles/roof-replacement-cost.htm"],
+      "sentiment": "neutral",
+      "entityConfidence": null
+    },
+    {
+      "question": "Is Northgate Roofing a good choice?",
+      "promptId": "p_brand_direct_1",
+      "engine": "gemini",
+      "runIndex": 0,
+      "mentioned": true,
+      "cited": true,
+      "rank": 1,
+      "competitors": [],
+      "citations": ["https://example.com/reviews"],
+      "sentiment": "positive",
+      "entityConfidence": 0.9
+    }
+  ]
+}

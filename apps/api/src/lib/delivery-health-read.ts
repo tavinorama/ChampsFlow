@@ -351,6 +351,74 @@ async function probeAudits(db: PostgresClient): Promise<DeliveryObservation[]> {
   ];
 }
 
+/**
+ * INCIDENTE 05-09/09 — resposta do lead → rascunho no portão, em horas.
+ *
+ * O elo é o trigger do run ('cron:followup-scan reply:<event_id>', gravado em
+ * apps/worker/src/jobs/followup-scan.ts): é a ÚNICA ligação em banco entre a
+ * resposta e o rascunho. Uma resposta que ainda não tem rascunho e também não
+ * tem marcador '[followup] …' está À ESPERA e entra com a idade CORRENTE — é
+ * isso que faz o painel ficar vermelho sozinho quando alguém fica parado, em
+ * vez de ficar verde por falta de linhas.
+ */
+async function probeReplyToDraftLatency(db: PostgresClient): Promise<DeliveryObservation> {
+  const { rows } = await db.query<{ n: string; p95: string | null; worst: string | null }>(
+    `WITH reply AS (
+       SELECT e.id, e.received_at, e.lead_email
+         FROM smartlead_event e
+        WHERE e.event_type = 'EMAIL_REPLY'
+          AND e.received_at >= NOW() - INTERVAL '14 days'
+     ),
+     first_draft AS (
+       SELECT r.id, MIN(run.started_at) AS drafted_at
+         FROM reply r
+         JOIN ops.agent_run run
+           ON run.graph = 'followup-reply'
+          AND run.trigger = 'cron:followup-scan reply:' || r.id::text
+        GROUP BY r.id
+     ),
+     decided AS (
+       SELECT DISTINCT r.id
+         FROM reply r
+         JOIN crm_contact c ON c.email = r.lead_email
+        WHERE c.note LIKE '%[followup] %' || r.id::text || '%'
+     ),
+     latency AS (
+       SELECT CASE
+                WHEN f.drafted_at IS NOT NULL
+                  THEN EXTRACT(EPOCH FROM (f.drafted_at - r.received_at)) / 3600.0
+                ELSE EXTRACT(EPOCH FROM (NOW() - r.received_at)) / 3600.0
+              END AS hours
+         FROM reply r
+         LEFT JOIN first_draft f ON f.id = r.id
+         LEFT JOIN decided d ON d.id = r.id
+        WHERE f.drafted_at IS NOT NULL OR d.id IS NULL
+     )
+     SELECT COUNT(*)::int                                          AS n,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY hours)::float AS p95,
+            MAX(hours)::float                                      AS worst
+       FROM latency`
+  );
+  const n = Number(rows[0]?.n ?? 0);
+  if (n === 0) {
+    return {
+      id: "reply_to_draft_latency_p95",
+      value: null,
+      sample: 0,
+      unknown: "insufficient_evidence",
+      detail: "nenhuma resposta de lead à espera ou respondida nos últimos 14 dias",
+    };
+  }
+  // O p95 é o número; a resposta MAIS parada vai para o log, porque é a linha
+  // que o founder quer abrir quando o indicador fica vermelho (o painel só
+  // mostra valor + razão gerada pelo contrato).
+  const worst = num(rows[0]?.worst);
+  if (worst !== null && worst >= 24) {
+    logger.warn("followup_reply_waiting_too_long", { worstHours: Math.round(worst), sample: n });
+  }
+  return { id: "reply_to_draft_latency_p95", value: num(rows[0]?.p95), sample: n };
+}
+
 async function probeRawErrorLeak(db: PostgresClient): Promise<DeliveryObservation> {
   const { rows } = await db.query<{ error_message: string | null }>(
     `SELECT error_message
@@ -368,6 +436,65 @@ async function probeRawErrorLeak(db: PostgresClient): Promise<DeliveryObservatio
     ...(leaked > 0
       ? { detail: `${leaked} of ${rows.length} customer-visible failure messages are raw provider/runtime strings` }
       : {}),
+  };
+}
+
+/**
+ * P1-07 — scheduled runs that measured an incomplete engine panel and never
+ * got a comparable re-run. The worker writes
+ * provider_breakdown->'coverage_retry' ({status, reason, engines}); this reads
+ * it back.
+ *
+ * A repeat still inside its window is NOT counted — it is working as designed.
+ * A repeat queued more than two days ago never landed, and that is a hole.
+ */
+async function probeIncompletePanelRecovery(db: PostgresClient): Promise<DeliveryObservation> {
+  const { rows } = await db.query<{
+    status: string | null;
+    reason: string | null;
+    stale: boolean | null;
+  }>(
+    `SELECT s.provider_breakdown->'coverage_retry'->>'status' AS status,
+            s.provider_breakdown->'coverage_retry'->>'reason' AS reason,
+            (s.recorded_at < NOW() - INTERVAL '2 days')       AS stale
+       FROM geo_score s
+       JOIN geo_audit a ON a.id = s.audit_id
+      WHERE s.recorded_at >= NOW() - INTERVAL '30 days'
+        AND a.triggered_by = 'cron'
+        AND s.provider_breakdown ? 'coverage_retry'
+      ORDER BY s.recorded_at DESC
+      LIMIT 500`
+  );
+
+  const unrecovered = rows.filter(
+    (r) => r.status === "exhausted" || (r.status === "scheduled" && r.stale === true)
+  );
+
+  // The population is every scheduled run we could observe in the window —
+  // without it, a company with zero incomplete panels would read as
+  // "insufficient evidence" forever instead of the healthy zero it is.
+  const { rows: scheduledRows } = await db.query<{ n: string }>(
+    `SELECT COUNT(*)::int AS n
+       FROM geo_audit
+      WHERE triggered_by = 'cron'
+        AND created_at >= NOW() - INTERVAL '30 days'`
+  );
+  const sample = Number(scheduledRows[0]?.n ?? 0);
+
+  const reasons = [...new Set(unrecovered.map((r) => (r.reason ?? "").trim()).filter(Boolean))];
+
+  return {
+    id: "incomplete_panel_recovery",
+    value: unrecovered.length,
+    sample,
+    ...(sample === 0
+      ? {
+          unknown: "insufficient_evidence" as const,
+          detail: "no scheduled audit ran in the window — nothing to recover",
+        }
+      : unrecovered.length > 0
+        ? { detail: reasons.slice(0, 2).join(" · ") || "an incomplete panel was never re-measured" }
+        : {}),
   };
 }
 
@@ -732,6 +859,8 @@ export async function readDeliveryHealth(db: PostgresClient): Promise<DeliveryHe
     safely(["failed_jobs", "queue_age"], () => probeAudits(db)),
     safely(["raw_error_leak"], () => probeRawErrorLeak(db)),
     safely(["comparable_trend_coverage"], () => probeComparableTrend(db)),
+    safely(["incomplete_panel_recovery"], () => probeIncompletePanelRecovery(db)),
+    safely(["reply_to_draft_latency_p95"], () => probeReplyToDraftLatency(db)),
   ]);
 
   const byId = new Map<DeliveryIndicatorId, DeliveryObservation>();

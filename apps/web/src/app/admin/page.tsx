@@ -134,24 +134,61 @@ interface Lead {
 
 // Lightweight CRM annotation, keyed by email, overlaid on leads (and reusable
 // for any email-identified contact). Fetched from GET /api/admin/crm.
-type CrmStage = "new" | "contacted" | "qualified" | "customer" | "lost";
+// The four design-partner stages (call_booked … paid) arrive with migration
+// 20260911000001. They are listed here regardless: the API can already return
+// them, and a stage this file does not know would index CRM_STAGE_TOKENS as
+// undefined and blank the badge on the founder's own dashboard.
+type CrmStage =
+  | "new"
+  | "contacted"
+  | "qualified"
+  | "call_booked"
+  | "call_done"
+  | "proposal"
+  | "paid"
+  | "customer"
+  | "lost";
 
-const CRM_STAGES: CrmStage[] = ["new", "contacted", "qualified", "customer", "lost"];
+const CRM_STAGES: CrmStage[] = [
+  "new",
+  "contacted",
+  "qualified",
+  "call_booked",
+  "call_done",
+  "proposal",
+  "paid",
+  "customer",
+  "lost",
+];
 
 const CRM_STAGE_LABELS: Record<CrmStage, string> = {
   new: "New",
   contacted: "Contacted",
   qualified: "Qualified",
+  call_booked: "Call booked",
+  call_done: "Call done",
+  proposal: "Proposal",
+  paid: "Paid",
   customer: "Customer",
   lost: "Lost",
 };
 
 const CRM_STAGE_TOKENS: Record<CrmStage, { bg: string; color: string }> = {
-  new:       { bg: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" },
-  contacted: { bg: "var(--color-badge-status-info-bg)",    color: "var(--color-badge-status-info-text)" },
-  qualified: { bg: "var(--color-badge-status-warn-bg)",    color: "var(--color-badge-status-warn-text)" },
-  customer:  { bg: "var(--color-badge-status-active-bg)",  color: "var(--color-badge-status-active-text)" },
-  lost:      { bg: "var(--color-badge-status-error-bg)",   color: "var(--color-badge-status-error-text)" },
+  new:         { bg: "var(--color-badge-status-neutral-bg)", color: "var(--color-badge-status-neutral-text)" },
+  contacted:   { bg: "var(--color-badge-status-info-bg)",    color: "var(--color-badge-status-info-text)" },
+  qualified:   { bg: "var(--color-badge-status-warn-bg)",    color: "var(--color-badge-status-warn-text)" },
+  call_booked: { bg: "var(--color-badge-status-info-bg)",    color: "var(--color-badge-status-info-text)" },
+  call_done:   { bg: "var(--color-badge-status-warn-bg)",    color: "var(--color-badge-status-warn-text)" },
+  proposal:    { bg: "var(--color-badge-status-warn-bg)",    color: "var(--color-badge-status-warn-text)" },
+  paid:        { bg: "var(--color-badge-status-active-bg)",  color: "var(--color-badge-status-active-text)" },
+  customer:    { bg: "var(--color-badge-status-active-bg)",  color: "var(--color-badge-status-active-text)" },
+  lost:        { bg: "var(--color-badge-status-error-bg)",   color: "var(--color-badge-status-error-text)" },
+};
+
+/** Neutral styling for a stage this build has never heard of. Never blank. */
+const CRM_STAGE_FALLBACK = {
+  bg: "var(--color-badge-status-neutral-bg)",
+  color: "var(--color-badge-status-neutral-text)",
 };
 
 interface CrmContact {
@@ -2403,7 +2440,10 @@ function isFollowUpDue(iso: string | null | undefined): boolean {
 }
 
 function CrmStageBadge({ stage }: { stage: CrmStage }) {
-  const s = CRM_STAGE_TOKENS[stage];
+  // A stage the API knows and this build does not must still render. Reading
+  // an unknown key off the Record gives undefined, and `s.bg` would throw and
+  // blank the whole CRM table.
+  const s = CRM_STAGE_TOKENS[stage] ?? CRM_STAGE_FALLBACK;
   return (
     <span
       style={{
@@ -2416,7 +2456,7 @@ function CrmStageBadge({ stage }: { stage: CrmStage }) {
         color: s.color,
       }}
     >
-      {CRM_STAGE_LABELS[stage]}
+      {CRM_STAGE_LABELS[stage] ?? stage}
     </span>
   );
 }

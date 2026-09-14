@@ -143,8 +143,10 @@ export const DELIVERY_INDICATOR_IDS = [
   "regression_investigation_sla",
   "raw_error_leak",
   "comparable_trend_coverage",
+  "incomplete_panel_recovery",
   "queue_age",
   "failed_jobs",
+  "reply_to_draft_latency_p95",
 ] as const;
 
 export type DeliveryIndicatorId = (typeof DELIVERY_INDICATOR_IDS)[number];
@@ -378,6 +380,39 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     failingAt: 0.6,
     unit: "rate",
   },
+  /**
+   * P1-07 — the 2026-09-07 hole. A scheduled audit ran on 4 of 5 engines
+   * because the drift guard held Gemini back. Every honesty mechanism worked
+   * (not comparable, coverage notice, flagged trend point) and NOBODY re-ran
+   * it when the panel came back, so the week kept a point measured with a
+   * different ruler.
+   *
+   * Counted, not rated: one unrecovered incomplete panel is already worth an
+   * amber, and a rate would hide the first one inside a healthy-looking
+   * percentage. The reason travels with it — the engines and why we stopped.
+   */
+  incomplete_panel_recovery: {
+    id: "incomplete_panel_recovery",
+    label: "Incomplete panels not recovered",
+    question:
+      "When a scheduled audit measured a partial engine panel, did a comparable re-run follow — or is a non-comparable point still standing in the client's trend?",
+    owner: "Engineering — coverage retry (packages/shared/src/coverage-retry.ts)",
+    sourceOfTruth: "geo_score.provider_breakdown->'coverage_retry' on scheduled audits",
+    grain: "one scheduled audit run that measured an incomplete panel",
+    timezone: "UTC",
+    windowDays: 30,
+    includes:
+      "runs whose repeat was exhausted, and runs whose repeat has been queued for longer than two days",
+    excludes:
+      "manual runs (the person can re-run them), and repeats still inside their 24h window",
+    lateData: "a repeat that lands later flips the row to recovered on its next read",
+    qualityTest: "tests/unit/coverage-retry.test.ts › an unrecovered incomplete panel turns the panel amber",
+    minSample: 1,
+    direction: "lower_is_better",
+    degradedAt: 0,
+    failingAt: 2,
+    unit: "count",
+  },
   queue_age: {
     id: "queue_age",
     label: "Queue age",
@@ -415,6 +450,39 @@ export const DELIVERY_CONTRACTS: Readonly<Record<DeliveryIndicatorId, MetricCont
     degradedAt: 0.05,
     failingAt: 0.15,
     unit: "rate",
+  },
+  /**
+   * INCIDENTE 05-09/09 (docs/learning/postmortems/2026-09-11-followup-4-dias.md):
+   * a única resposta de interesse real da campanha esperou 4 dias por um
+   * rascunho e NENHUM número mudou de cor — o painel não media a única coisa
+   * que o founder sente ("um lead que espera 4 dias é um lead morto"). Este
+   * indicador é a memória desse dia: uma resposta parada envelhece sozinha
+   * para âmbar às 2h e para vermelho às 24h, sem depender de ninguém reparar.
+   */
+  reply_to_draft_latency_p95: {
+    id: "reply_to_draft_latency_p95",
+    label: "Reply → draft latency (p95)",
+    question:
+      "Quando um lead responde, quanto tempo passa até existir um rascunho no portão do founder?",
+    owner: "Sales + Engineering — followup-scan (apps/worker/src/jobs/followup-scan.ts)",
+    sourceOfTruth:
+      "smartlead_event.received_at (EMAIL_REPLY) → ops.agent_run.started_at do run 'followup-reply' que cita o evento no trigger ('cron:followup-scan reply:<event_id>')",
+    grain: "uma resposta EMAIL_REPLY, em horas até o primeiro rascunho",
+    timezone: "UTC",
+    windowDays: 14,
+    includes:
+      "as respostas da janela do próprio scan: as que viraram rascunho entram com a latência real, e as que continuam SEM decisão nenhuma entram com a idade até agora — uma resposta que nunca vira rascunho tem de envelhecer para vermelho, que é exatamente o que não aconteceu em 05-09/09",
+    excludes:
+      "respostas que o código fechou por decisão legítima sem rascunho (auto-reply/bounce e pedido de saída: marcador '[followup] …' sem run) e as propostas antes de 11/09, cujo run não carrega o id do evento — ausência de elo é exclusão, nunca latência zero",
+    lateData:
+      "uma resposta ainda sem rascunho entra com a idade corrente, logo a leitura seguinte reporta uma idade MAIOR, nunca menor; o rascunho que aparece depois fixa a latência real",
+    qualityTest:
+      "tests/unit/delivery-health.test.ts › uma resposta parada 4 dias sem rascunho é vermelha (probe: tests/unit/delivery-health-read.test.ts)",
+    minSample: 1,
+    direction: "lower_is_better",
+    degradedAt: 2,
+    failingAt: 24,
+    unit: "hours",
   },
 };
 
@@ -554,12 +622,19 @@ export function evaluateIndicator(obs: DeliveryObservation): DeliveryIndicator {
   const cmp = contract.direction === "higher_is_better" ? "below" : "above";
   const threshold = failing ? contract.failingAt : contract.degradedAt;
 
+  // A measured amber/red carries the probe's own sentence when it has one.
+  // "1 — above the degraded threshold of 0" tells the founder nothing; the
+  // engines and the reason we stopped retrying do (P1-07).
+  const thresholdReason = `${format(v, contract.unit)} — ${cmp} the ${status} threshold of ${format(threshold, contract.unit)}`;
+  const detail = typeof obs.detail === "string" && obs.detail.trim().length > 0 ? obs.detail.trim() : null;
+
   return {
     ...base,
     status,
     value: v,
     sample: obs.sample,
-    reason: status === "healthy" ? null : `${format(v, contract.unit)} — ${cmp} the ${status} threshold of ${format(threshold, contract.unit)}`,
+    reason:
+      status === "healthy" ? null : detail ? `${thresholdReason} — ${detail}` : thresholdReason,
   };
 }
 
