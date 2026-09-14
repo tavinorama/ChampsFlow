@@ -23,6 +23,7 @@ import {
   extractMentionsBatch,
   twoPassExtractionEnabled,
   countsAsCitation,
+  assertBrandVerificationComplete,
   MAX_VERIFIED_MENTIONS,
   type ExtractionLLM,
   type ExtractionLLMRequest,
@@ -440,6 +441,8 @@ describe("two-pass extraction", () => {
     expect(res.brand_cited).toBe(true);
     expect(res.mentions[0]?.verdict).toBe("UNVERIFIED");
     expect(res.notes.join(" ")).toMatch(/attempt 2 failed/i);
+    // Explicit legacy fallback is retained as a documented separate mode.
+    expect(() => assertBrandVerificationComplete([res])).not.toThrow();
   });
 
   it("retry succeeds on the second attempt (no fallback needed)", async () => {
@@ -468,7 +471,7 @@ describe("two-pass extraction", () => {
     expect(res.brand_cited).toBe(true);
   });
 
-  it("verifier timeout → UNVERIFIED with a reason, audit keeps the measurement", async () => {
+  it("verifier timeout → UNVERIFIED and pending, never a confirmed citation", async () => {
     const answer = "Northwind CRM is the option I would shortlist first.";
     const fake = makeFake({
       extractor: mentionsPayload(answer, [
@@ -485,8 +488,31 @@ describe("two-pass extraction", () => {
     expect(res.mentions[0]?.verdict).toBe("UNVERIFIED");
     expect(res.mentions[0]?.reason).toMatch(/verifier unavailable/i);
     expect(res.verified_count).toBe(0);
-    // Fail-open: an unverifiable direct recommendation still counts (no silent loss).
-    expect(res.brand_cited).toBe(true);
+    expect(res.brand_cited).toBe(false);
+    expect(res.brand_verification_pending).toBe(true);
+    expect(countsAsCitation(res.mentions[0]!)).toBe(false);
+    expect(() => assertBrandVerificationComplete([res])).toThrow(/citation_verification_pending/);
+    // C07 third counter: reported, never counted; the three add up to every mention.
+    expect(res.unverified_count).toBe(1);
+    expect(res.verified_count + res.rejected_count + res.unverified_count).toBe(res.mentions.length);
+  });
+
+  it("C07 — the three counters always add up to every mention looked at (verified + rejected + unverified)", async () => {
+    const answer = "Northwind CRM leads; Northwind Bakery is unrelated; Northwind CRM again.";
+    const fake = makeFake({
+      extractor: mentionsPayload(answer, [
+        { text: "Northwind CRM", entity: "Northwind CRM", kind: "direct_recommendation" },
+        { text: "Northwind Bakery", entity: "Northwind Bakery", kind: "neutral_mention" },
+        { text: "Northwind CRM", entity: "Northwind CRM", kind: "direct_recommendation" },
+      ]),
+      verifierThrows: true,
+    });
+    const res = await extractMentions({ rawText: answer, brandName: "Northwind CRM" }, { llm: fake.llm });
+    expect(res.mentions.length).toBeGreaterThan(0);
+    expect(res.verified_count + res.rejected_count + res.unverified_count).toBe(res.mentions.length);
+    expect(res.unverified_count).toBe(res.mentions.length);
+    expect(res.brand_cited).toBe(false);
+    expect(res.brand_verification_pending).toBe(true);
   });
 
   it("batch helper keeps results index-aligned with the inputs", async () => {

@@ -2967,6 +2967,7 @@ export function registerAuditRoutes(
               (s.provider_breakdown->>'overall')::int AS score_overall,
               s.provider_breakdown->'coverage' AS coverage,
               a.providers_used,
+              a.methodology_version,
               (s.provider_breakdown->>'probesTotal')::int AS checks,
               (s.provider_breakdown->>'probesCited')::int AS citations
          FROM geo_score s
@@ -3000,6 +3001,7 @@ export function registerAuditRoutes(
         checks: r.checks,
         comparableFlag:
           r.coverage && typeof r.coverage.comparable === "boolean" ? r.coverage.comparable : null,
+        methodology: typeof (r as { methodology_version?: unknown }).methodology_version === "string" ? ((r as { methodology_version?: string }).methodology_version ?? null) : null,
       }))
     );
 
@@ -3082,11 +3084,12 @@ export function registerAuditRoutes(
       providers_used: unknown;
       checks: number | null;
       comparable: boolean | null;
+      methodology_version: string | null;
     }>(
       `SELECT a.id, a.created_at, a.triggered_by,
               s.score_ai, s.score_performance, s.score_brand,
               (s.provider_breakdown->>'overall')::int AS score_overall,
-              a.providers_used,
+              a.providers_used, a.methodology_version,
               (s.provider_breakdown->>'probesTotal')::int AS checks,
               (s.provider_breakdown->'coverage'->>'comparable')::boolean AS comparable
          FROM geo_audit a
@@ -3108,6 +3111,7 @@ export function registerAuditRoutes(
         providers: provsOf(r.providers_used),
         checks: r.checks,
         comparableFlag: r.comparable,
+        methodology: r.methodology_version,
       }))
     );
     const audits = res.rows.map((r, ix) => ({
@@ -3176,8 +3180,9 @@ export function registerAuditRoutes(
       providers_used: unknown;
       checks: number | null;
       comparable: boolean | null;
+      methodology_version: string | null;
     }>(
-      `SELECT a.id, a.created_at, a.providers_used,
+      `SELECT a.id, a.created_at, a.providers_used, a.methodology_version,
               (s.provider_breakdown->>'probesTotal')::int AS checks,
               (s.provider_breakdown->'coverage'->>'comparable')::boolean AS comparable
          FROM geo_audit a
@@ -3200,6 +3205,7 @@ export function registerAuditRoutes(
           : null,
         checks: r.checks,
         comparableFlag: r.comparable,
+        methodology: r.methodology_version,
       }))
     );
     const inTrend = runs.rows.filter((_, ix) => marks.marks[ix]?.inTrend);

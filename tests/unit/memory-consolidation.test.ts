@@ -309,17 +309,22 @@ describe("snapshot source 'memory' — fatos agregados por código, por canal", 
       ],
     });
     const snap = await buildSnapshot(sql, "memory", 30);
+    // G03 (14/09): snapshot PARCIAL — os factos de publicação e as rejeições
+    // continuam (contagens de steps); métricas e vereditos (derivados de
+    // ops.agent_outcome) são substituídos pelo marcador, nunca lidos.
+    expect(snap.startsWith("business_state=partial_g03")).toBe(true);
     // Por canal, com atribuição por graph.
     expect(snap).toContain("- linkedin: 2 publicacao(oes) (sphere-linkedin×1, daily-video×1)");
     expect(snap).toContain("- x: 1 publicacao(oes) (sphere-x×1)");
-    // Métrica agregada — número vem do SQL, nunca do modelo.
-    expect(snap).toContain("- x_impressions_7d: n=9 · total=360 · media=40 · ultima 2026-08-25");
+    expect(snap).toContain("METRICAS COLHIDAS: business_state=invalid_g03");
+    expect(snap).not.toContain("x_impressions_7d: n=9");
     // O sinal mais forte: o motivo literal do founder.
     expect(snap).toContain("- 2026-08-12 (sphere-linkedin): tom vendedor");
     // 10.C.13: aprovação expirada é ausência do founder, NUNCA lição de conteúdo.
     expect(snap).not.toContain("APROVACOES EXPIRADAS");
     expect(snap).not.toContain("expiraram sem decisao");
-    expect(snap).toContain("verdict x_impressions: total=30 n=8");
+    expect(snap).toContain("VEREDITOS FECHADOS: business_state=invalid_g03");
+    expect(snap).not.toContain("verdict x_impressions: total=30 n=8");
   });
 
   it("janela sem NADA = string vazia (o runner vira SEM DADOS — honesto, nunca inventado)", async () => {
@@ -332,96 +337,36 @@ describe("snapshot source 'memory' — fatos agregados por código, por canal", 
 // O run inteiro: compose só vê fatos, gate do founder decide, store gated.
 // ---------------------------------------------------------------------------
 
-describe("memory-consolidation — o run no harness do runner", () => {
-  it("caminho feliz: snapshot memory/30d → compose vê SÓ os fatos → aprovação → store grava o texto aprovado → report", async () => {
+describe("memory-consolidation — o run no harness do runner (G03: SKIPPED sob contenção)", () => {
+  // 14/09: o combustível deste grafo é a história derivada (ops.agent_outcome
+  // + vereditos). Até a reconciliação de linhagem, o run termina SKIPPED e
+  // succeeded ANTES do snapshot: sem LLM, sem caixa de aprovação, sem store,
+  // sem Telegram — e sem run falhado para o detetor de incidentes agrupar a
+  // cada dia 1. Os contratos antigos (caminho feliz, rejeição, timeout, store
+  // falhado, porta ausente) ficam registados aqui como SUSPENSOS, não apagados;
+  // voltam quando a avaliação reabrir por PR revisado.
+  it("o run termina skipped+succeeded antes do snapshot: nenhum snapshot, LLM, aprovação, store ou Telegram", async () => {
     const world = makeWorld(MEMORY_CONSOLIDATION_GRAPH);
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-
-    // O runner leu a fonte certa — e só ela.
-    expect(world.snapshotCalls).toEqual([{ source: "memory", days: 30 }]);
-
-    // O compose recebeu os fatos agregados como [history] — e, sendo CEO-owned,
-    // NENHUMA injeção de conteúdo de marketing ([__day__]/[__lessons__]).
-    const composePrompt = world.taskPromptsByNode["compose"] ?? "";
-    expect(composePrompt).toContain("[history]");
-    expect(composePrompt).toContain("HISTORICO PARA CONSOLIDACAO DE MEMORIA");
-    expect(composePrompt).not.toContain("[__day__]");
-    // O prompt CITA [__lessons__] como formato-alvo, mas o BLOCO injetado
-    // (CONTENT_LESSONS) não pode aparecer — CEO-owned não recebe injeção.
-    expect(composePrompt).not.toContain("LICOES DA CASA");
-
-    // A caixa de aprovação nomeia o que um "sim" ativa.
-    const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO NECESSÁRIA"));
-    expect(ask, "a aprovação não chegou ao Telegram").toBeTruthy();
-    expect(ask).toContain("memória durável");
-
-    // Founder aprova (o webhook #445 marca o step como succeeded).
-    const approval = world.stepByNode("approval")!;
-    approval.status = "succeeded";
     await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.run.status !== "running");
 
-    // O store recebeu EXATAMENTE o texto que o founder aprovou (o compose).
-    expect(world.stored).toEqual([{ runId: world.run.id, lessons: LESSONS_TEXT }]);
-    expect(world.stepByNode("store")?.status).toBe("succeeded");
-    expect(world.stepByNode("report")?.status).toBe("succeeded");
     expect(world.run.status).toBe("succeeded");
-    const report = world.telegrams.find((t) => t.includes("MEMÓRIA DO MÊS"));
-    expect(report, "o report final não chegou").toBeTruthy();
-    expect(report).toContain("tom vendedor");
-  });
-
-  it("rejeição do founder: NADA é gravado — o store nunca roda", async () => {
-    const world = makeWorld(MEMORY_CONSOLIDATION_GRAPH);
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-
-    // Founder rejeita (webhook #445: status failed, motivo no summary).
-    const approval = world.stepByNode("approval")!;
-    approval.status = "failed";
-    approval.summary = "rejected: licoes genericas demais";
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    expect(world.stored).toEqual([]);
-    expect(world.stepByNode("store"), "store não pode nem ter começado").toBeUndefined();
-  });
-
-  it("timeout de 96h = rejeição por silêncio: NADA é gravado, dito em voz alta", async () => {
-    const world = makeWorld(MEMORY_CONSOLIDATION_GRAPH);
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-
-    // 97 horas de silêncio.
-    world.clock.now = new Date(world.clock.now.getTime() + 97 * 3600 * 1000);
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    expect(world.stored).toEqual([]);
+    expect(world.snapshotCalls).toEqual([]);
+    expect(world.taskPromptsByNode["compose"]).toBeUndefined();
+    expect(world.stepByNode("approval")).toBeUndefined();
     expect(world.stepByNode("store")).toBeUndefined();
-    expect(world.telegrams.join("\n")).toContain("APROVAÇÃO EXPIROU");
+    expect(world.stored).toEqual([]);
+    expect(world.telegrams).toEqual([]);
+    const marker = world.stepByNode("__invalid_g03__")!;
+    expect(marker.status).toBe("skipped");
+    expect(marker.summary).toContain("business_state=invalid_g03");
   });
 
-  it("store falha (ex.: migração ausente): step falha com o motivo, Telegram grita, nada finge sucesso", async () => {
-    const world = makeWorld(MEMORY_CONSOLIDATION_GRAPH, {
-      store: async () => ({ ok: false, reason: `tabela ops.memory_lesson ausente — ${MEMORY_STORE_MISSING_ACTION}` }),
-    });
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    world.stepByNode("approval")!.status = "succeeded";
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    const storeStep = world.stepByNode("store")!;
-    expect(storeStep.status).toBe("failed");
-    expect(storeStep.summary).toContain("ops.memory_lesson ausente");
-    expect(world.telegrams.join("\n")).toContain("MEMÓRIA NÃO GRAVADA");
-  });
-
-  it("worker sem a porta de store: falha honesta, nunca sucesso silencioso", async () => {
+  it("worker sem a porta de store: o mesmo skip — nada chega a precisar da porta", async () => {
     const world = makeWorld(MEMORY_CONSOLIDATION_GRAPH, { store: false });
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    world.stepByNode("approval")!.status = "succeeded";
     await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    expect(world.stepByNode("store")?.summary).toContain("memoria NAO gravada");
+    expect(world.run.status).toBe("succeeded");
+    expect(world.stepByNode("store")).toBeUndefined();
+    expect(world.stepByNode("__invalid_g03__")?.status).toBe("skipped");
   });
 });
 
@@ -430,19 +375,16 @@ describe("memory-consolidation — o run no harness do runner", () => {
 // ---------------------------------------------------------------------------
 
 describe("[__memory__] nos críticos de marketing", () => {
-  it("sphere-x: com lição ativa, o critic recebe [__memory__] ao lado de [__lessons__]; os demais nós NÃO", async () => {
+  it("G03 (14/09): mesmo com lição ativa na loja, o critic NÃO recebe [__memory__] sob contenção; [__lessons__] (estático) continua", async () => {
     const world = makeWorld(SPHERE_X_GRAPH, { activeMemory: LESSONS_TEXT });
     await tickUntil(world, SPHERE_X_GRAPH, () => world.stepByNode("approval")?.status === "waiting", 25);
 
     const critic = world.taskPromptsByNode["critic"] ?? "";
     expect(critic, "critic nunca rodou").toBeTruthy();
-    expect(critic).toContain(`[${MEMORY_ARTIFACT}]\n${LESSONS_TEXT.slice(0, 40)}`);
+    expect(critic).not.toContain(`[${MEMORY_ARTIFACT}]`);
     expect(critic).toContain(`[${LESSONS_ARTIFACT}]`);
     for (const node of ["signal", "briefing", "draft-punchy", "draft-thread", "finalize"]) {
-      expect(
-        world.taskPromptsByNode[node],
-        `nó não-crítico '${node}' não deveria receber a memória consolidada`
-      ).not.toContain(MEMORY_ARTIFACT);
+      expect(world.taskPromptsByNode[node]).not.toContain(MEMORY_ARTIFACT);
     }
   });
 
@@ -516,31 +458,26 @@ function fakeStoreSql(world: { rows: Array<{ lessons: string; approved_at: strin
 const fakeRedis = {} as unknown as Redis;
 
 describe("armazém durável — round-trip e fail-soft (mergeado ≠ produção)", () => {
-  it("round-trip: store grava, activeMemoryLessons devolve a versão mais NOVA", async () => {
+  it("G03 (14/09): sob contenção o port recusa gravar lições de marketing (ok:false, motivo G03) e a leitura devolve null — sem tocar o banco", async () => {
     const world = { rows: [] as Array<{ lessons: string; approved_at: string }>, tableExists: true };
     const ports = buildPorts(fakeStoreSql(world), fakeRedis);
 
-    expect(await ports.substrate.activeMemoryLessons!()).toBeNull(); // loja vazia = null, nunca placeholder
-
+    expect(await ports.substrate.activeMemoryLessons!()).toBeNull();
     const r1 = await ports.substrate.storeMemoryLessons!({ runId: "11111111-1111-1111-1111-111111111111", lessons: "v1: primeira" });
-    expect(r1.ok).toBe(true);
-    const r2 = await ports.substrate.storeMemoryLessons!({ runId: "22222222-2222-2222-2222-222222222222", lessons: LESSONS_TEXT });
-    expect(r2.ok).toBe(true);
-
-    // Append-only: a linha mais nova vence na leitura.
-    expect(world.rows).toHaveLength(2);
-    expect(await ports.substrate.activeMemoryLessons!()).toBe(LESSONS_TEXT);
+    expect(r1.ok).toBe(false);
+    expect(r1.reason).toContain("business_state=invalid_g03");
+    expect(world.rows).toHaveLength(0); // nada foi inserido
+    expect(await ports.substrate.activeMemoryLessons!()).toBeNull();
   });
 
-  it("migração ausente (42P01): leitura fail-open (null) e store fail-soft com a ação nominal que destrava", async () => {
+  it("G03 (14/09): com a migração ausente (42P01) a resposta é a mesma — o port responde antes do SQL, sem a mensagem de migração", async () => {
     const world = { rows: [], tableExists: false };
     const ports = buildPorts(fakeStoreSql(world), fakeRedis);
 
     expect(await ports.substrate.activeMemoryLessons!()).toBeNull();
     const res = await ports.substrate.storeMemoryLessons!({ runId: "33333333-3333-3333-3333-333333333333", lessons: "x" });
     expect(res.ok).toBe(false);
-    expect(res.reason).toContain("ops.memory_lesson ausente");
-    expect(res.reason).toContain("20260827000001_ops_memory_lesson");
+    expect(res.reason).toContain("business_state=invalid_g03");
   });
 
   it("cron mensal: sem a tabela a feature se declara DESLIGADA e NÃO inicia run (não queima LLM num run condenado)", async () => {

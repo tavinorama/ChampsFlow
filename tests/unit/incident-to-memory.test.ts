@@ -404,7 +404,9 @@ function fakeMemoryTableSql(world: { rows: Array<{ lessons: string; approved_at:
 const fakeRedis = {} as unknown as Redis;
 
 describe("[__memory__] (activeMemoryLessons) EXCLUI as lições de incidente", () => {
-  it("linha de incidente mais nova NÃO desloca a consolidação mensal — os críticos seguem vendo o 5.F.1", async () => {
+  it("G03 (14/09): sob contenção activeMemoryLessons devolve null — nem a consolidação mensal, nem a linha de incidente, sem tocar o banco", async () => {
+    // A exclusão incidente≠mensal continua no código do port (reabre com a
+    // memória); sob quarentena o port responde antes do SQL.
     const world = {
       rows: [
         { lessons: MONTHLY_ROW, approved_at: "2026-09-01T00:00:00Z" },
@@ -413,7 +415,7 @@ describe("[__memory__] (activeMemoryLessons) EXCLUI as lições de incidente", (
       tableExists: true,
     };
     const ports = buildPorts(fakeMemoryTableSql(world), fakeRedis);
-    expect(await ports.substrate.activeMemoryLessons!()).toBe(MONTHLY_ROW);
+    expect(await ports.substrate.activeMemoryLessons!()).toBeNull();
   });
 
   it("só lições de incidente na loja: [__memory__] fica vazio (null) — nunca lição de ops num crítico de conteúdo", async () => {

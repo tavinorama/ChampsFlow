@@ -167,6 +167,14 @@ function makeWorld(graphSlug: string = DAILY_VIDEO_GRAPH.slug): FakeWorld {
   return world;
 }
 
+async function expectQuarantinedSnapshots(world: FakeWorld): Promise<void> {
+  for (const node of GRAPH_REGISTRY[world.run.graph]!.nodes) {
+    if (node.kind === "snapshot" && node.config?.["source"] === "outcomes") {
+      expect(await world.ports.artifacts.get(world.run.id, node.id)).toContain("business_state=invalid_g03");
+    }
+  }
+}
+
 async function tick(world: FakeWorld, def: GraphDefinition = DAILY_VIDEO_GRAPH) {
   return advanceRun(def, world.run.id, world.ports);
 }
@@ -244,14 +252,11 @@ describe("daily-video, the full life", () => {
     expect(world.stepByNode("wait-72h")?.status).toBe("succeeded");
     expect(world.stepByNode("harvest")?.status).toBe("succeeded");
     expect(world.stepByNode("verdict")?.status).toBe("succeeded");
-    // The closing edge: the verdict WROTE an outcome with the harvested total.
-    expect(world.outcomes).toHaveLength(1);
-    // v5 (10.C.4): the harvest reads what this graph PUBLISHES (LinkedIn),
-    // never the legacy VPS video metric (youtube_views) — contaminated learning.
-    expect(world.outcomes[0]!.metric).toBe("linkedinpage_impressions");
-    expect(world.outcomes[0]!.valueAfter).toBe(250);
+    // G03: publication is preserved; contaminated metric evaluation is not delivery success.
+    expect(world.outcomes).toEqual([]);
+    expect(world.stepByNode("verdict")?.summary).toContain("business_state=invalid_g03");
     expect(world.run.status).toBe("succeeded");
-    expect(world.telegrams.some((t) => t.includes("VEREDITO"))).toBe(true);
+    expect(world.telegrams.some((t) => t.includes("VEREDITO"))).toBe(false);
   });
 
   it("a failed angle fails the run fast and says so on Telegram", async () => {
@@ -308,7 +313,7 @@ describe("daily-video, the full life", () => {
     expect(world.telegrams.some((t) => t.includes("APROVAÇÃO EXPIROU"))).toBe(true);
   });
 
-  it("a harvest whose SOURCE is mute (0 rows at grace) SCREAMS and records NO outcome — never a fake zero", async () => {
+  it("a quarantined social harvest does not misdiagnose a mute collector or record zero", async () => {
     // Structural hole #3 of the 14/08 sweep. Before: n=0 at grace → total=0
     // → verdict wrote value_after=0 → the learning loop was taught "did not
     // perform" (the 13/08 false-zero bug). Now: noData → alarm + no row.
@@ -324,17 +329,17 @@ describe("daily-video, the full life", () => {
     await tickUntil(world, () => world.run.status !== "running");
 
     expect(world.stepByNode("harvest")?.status).toBe("succeeded");
-    expect(world.stepByNode("harvest")?.summary).toContain("SEM DADO");
-    // The alarm named the mute source, and the verdict said "sem veredito".
-    expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(true);
-    expect(world.telegrams.some((t) => t.includes("SEM VEREDITO"))).toBe(true);
+    expect(world.stepByNode("harvest")?.summary).toContain("business_state=invalid_g03");
+    // The collector is not read: claiming it is mute would also be false.
+    expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(false);
+    expect(world.stepByNode("verdict")?.summary).toContain("business_state=invalid_g03");
     // The whole point: NO fake zero in ops.agent_outcome.
     expect(world.outcomes).toEqual([]);
     expect(world.stepByNode("verdict")?.status).toBe("succeeded");
     expect(world.run.status).toBe("succeeded");
   });
 
-  it("a REAL zero (rows exist, total 0) still records the outcome as a legitimate measurement", async () => {
+  it("a zero in the quarantined social namespace is not certified as a measurement", async () => {
     const world = makeWorld();
     await tickUntil(world, () => world.stepByNode("founder-approval")?.status === "waiting");
     await world.ports.substrate.finishStep(world.stepByNode("founder-approval")!.id, { status: "succeeded" });
@@ -345,9 +350,8 @@ describe("daily-video, the full life", () => {
     world.harvestData = { n: 2, total: 0 };
     await tickUntil(world, () => world.run.status !== "running");
 
-    expect(world.stepByNode("harvest")?.summary).toContain("n=2 total=0");
-    expect(world.outcomes).toHaveLength(1);
-    expect(world.outcomes[0]!.valueAfter).toBe(0);
+    expect(world.stepByNode("harvest")?.summary).toContain("business_state=invalid_g03");
+    expect(world.outcomes).toEqual([]);
     expect(world.telegrams.some((t) => t.includes("HARVEST SEM DADO"))).toBe(false);
     expect(world.run.status).toBe("succeeded");
   });
@@ -396,7 +400,8 @@ describe("the Chief Dreaming Officer acts — the brief lands, the founder launc
     const world = makeWorld(DAILY_DREAM_GRAPH.slug);
     await tickUntil(world, () => world.stepByNode("launch-approval")?.status === "waiting", 25, DAILY_DREAM_GRAPH);
 
-    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30 }]);
+    expect(world.snapshotCalls).toEqual([]);
+    await expectQuarantinedSnapshots(world);
     // The brief (report tail) already reached the founder — before any decision.
     expect(world.stepByNode("report")?.status).toBe("succeeded");
     expect(world.telegrams.some((t) => t.includes("DREAMING"))).toBe(true);
@@ -475,11 +480,11 @@ describe("the discovery pipeline — ideas reach the founder MVP-ready", () => {
     const world = makeWorld(WEEKLY_DISCOVERY_GRAPH.slug);
     await tickUntil(world, () => world.run.status !== "running", 25, WEEKLY_DISCOVERY_GRAPH);
 
-    // Inward perception is DOUBLE: the product aggregates and the real outcomes.
+    // Product aggregates remain; the outcomes artifact explicitly carries quarantine.
     expect(world.snapshotCalls).toEqual([
       { source: "product", days: 30 },
-      { source: "outcomes", days: 30 },
     ]);
+    await expectQuarantinedSnapshots(world);
     expect(world.stepByNode("research")?.status).toBe("succeeded");
     expect(world.stepByNode("develop")?.status).toBe("succeeded");
     expect(world.stepByNode("viability")?.status).toBe("succeeded");
@@ -499,7 +504,8 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
 
     // The sphere's memory asked for ITS channel, not the whole company.
-    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "x_" }]);
+    expect(world.snapshotCalls).toEqual([]);
+    await expectQuarantinedSnapshots(world);
     expect(world.stepByNode("memory")?.status).toBe("succeeded");
     expect(world.stepByNode("draft-punchy")?.status).toBe("succeeded");
     expect(world.stepByNode("draft-thread")?.status).toBe("succeeded");
@@ -526,9 +532,9 @@ describe("the X sphere cell (#156) — perception of ITS OWN channel before crea
     world.harvestData = { n: 1, total: 45 };
     await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_X_GRAPH);
 
-    // The closing edge writes x_impressions — the NEXT run's memory reads it.
-    expect(world.outcomes[0]!.metric).toBe("x_impressions");
-    expect(world.outcomes[0]!.valueAfter).toBe(45);
+    // G03: the closing edge is explicitly invalid; no feedback into the next run.
+    expect(world.outcomes).toEqual([]);
+    expect(world.stepByNode("verdict")?.summary).toContain("business_state=invalid_g03");
     expect(world.run.status).toBe("succeeded");
   });
 });
@@ -582,7 +588,8 @@ describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measure
   it("memory reads ONLY linkedinpage_ metrics (the collector's real family — 10.C.3), both drafts + critic run, parks at the human gate", async () => {
     const world = makeWorld(SPHERE_LINKEDIN_GRAPH.slug);
     await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 25, SPHERE_LINKEDIN_GRAPH);
-    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: "linkedinpage_" }]);
+    expect(world.snapshotCalls).toEqual([]);
+    await expectQuarantinedSnapshots(world);
     expect(world.stepByNode("draft-story")?.status).toBe("succeeded");
     expect(world.stepByNode("draft-contrarian")?.status).toBe("succeeded");
     expect(world.stepByNode("critic")?.status).toBe("succeeded");
@@ -601,8 +608,8 @@ describe("the LinkedIn sphere cell (#156, second) — own memory, gated, measure
     world.clock.now = new Date(world.clock.now.getTime() + 73 * 3_600_000);
     world.harvestData = { n: 1, total: 320 };
     await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_LINKEDIN_GRAPH);
-    expect(world.outcomes[0]!.metric).toBe("linkedinpage_impressions");
-    expect(world.outcomes[0]!.valueAfter).toBe(320);
+    expect(world.outcomes).toEqual([]);
+    expect(world.stepByNode("verdict")?.summary).toContain("business_state=invalid_g03");
     expect(world.run.status).toBe("succeeded");
   });
 });
@@ -611,7 +618,8 @@ describe("the blog sphere cell (#156, third) — a read-only thinker that publis
   it("memory (blog_, 60d) → signal → briefing → 2 outlines → critic → finalize → REPORT; no publish, no spawn", async () => {
     const world = makeWorld(SPHERE_BLOG_GRAPH.slug);
     await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_BLOG_GRAPH);
-    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 60, metricPrefix: "blog_" }]);
+    expect(world.snapshotCalls).toEqual([]);
+    await expectQuarantinedSnapshots(world);
     expect(world.stepByNode("outline-howto")?.status).toBe("succeeded");
     expect(world.stepByNode("outline-data")?.status).toBe("succeeded");
     expect(world.stepByNode("critic")?.status).toBe("succeeded");
@@ -643,7 +651,8 @@ describe("content alive on every platform (17/08) — TikTok / YouTube spheres (
     it(`${def.slug}: memory só ${prefix}, 2 drafts + crítico, e termina em REPORT — sem gate, sem publish`, async () => {
       const world = makeWorld(def.slug);
       await tickUntil(world, () => world.run.status !== "running", 25, def);
-      expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30, metricPrefix: prefix }]);
+      expect(world.snapshotCalls).toEqual([]);
+      await expectQuarantinedSnapshots(world);
       expect(world.stepByNode("draft-talking-head")?.status).toBe("succeeded");
       expect(world.stepByNode("draft-caption-story")?.status).toBe("succeeded");
       expect(world.stepByNode("critic")?.status).toBe("succeeded");
@@ -677,8 +686,9 @@ describe("the PPC cell (17/08) — 3 ad drafts, ZERO spend, report only", () => 
     const world = makeWorld(SPHERE_PPC_GRAPH.slug);
     world.snapshotText = "RESULTADOS REAIS (ops.agent_outcome, 30d):\n- linkedin_impressions (sphere-linkedin): 320 · lift 0.4";
     await tickUntil(world, () => world.run.status !== "running", 25, SPHERE_PPC_GRAPH);
-    // All spheres, no prefix — ads follow whatever content resonated anywhere.
-    expect(world.snapshotCalls).toEqual([{ source: "outcomes", days: 30 }]);
+    // G03: no channel-performance claims are supplied to ad ideation.
+    expect(world.snapshotCalls).toEqual([]);
+    await expectQuarantinedSnapshots(world);
     for (const id of ["signal", "ad-google", "ad-meta", "ad-linkedin", "critic", "finalize", "report"]) {
       expect(world.stepByNode(id)?.status, id).toBe("succeeded");
     }
@@ -766,8 +776,8 @@ describe("the content-experiment cell — a seeded, gated, measured shot", () =>
     expect(world.stepByNode("verdict")?.status).toBe("succeeded");
     // 22/08: the experiment publishes to LinkedIn, so it harvests the same
     // collector rows as the LinkedIn sphere (linkedinpage_*_7d).
-    expect(world.outcomes[0]!.metric).toBe("linkedinpage_impressions");
-    expect(world.outcomes[0]!.valueAfter).toBe(180);
+    expect(world.outcomes).toEqual([]);
+    expect(world.stepByNode("verdict")?.summary).toContain("business_state=invalid_g03");
     expect(world.run.status).toBe("succeeded");
   });
 });

@@ -51,7 +51,8 @@ import {
  *           so the bump also invalidates every 2.0 probe-cache entry.
  *           GEO_TWO_PASS_EXTRACTION=0 rolls the behaviour back to 2.0 semantics.
  */
-export const GEO_METHODOLOGY_VERSION = "2.1";
+// 2.2: only verified citing candidates count; unknown verification is not zero.
+export const GEO_METHODOLOGY_VERSION = "2.2";
 
 /** A probe query carrying its intent classification. */
 export interface SamplingQuery extends ProbeQuery {

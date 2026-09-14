@@ -284,17 +284,20 @@ describe("retry budget — um node que falha ganha novas tentativas", () => {
   });
 
   it("store falhado NUNCA é retried — INSERT append-only não é idempotente (checado 31/08)", async () => {
-    // ops.memory_lesson/ops.prompt_override são INSERTs puros: um crash entre
-    // o INSERT commitar e o finishStep gravaria o lote DUAS vezes num retry.
-    // Sem porta de store o step falha ("feature desligada") — e fica falhado.
-    const world = makeWorld(MEMORY_CONSOLIDATION_GRAPH);
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    await approve(world);
-    await tickUntil(world, MEMORY_CONSOLIDATION_GRAPH, () => world.run.status !== "running");
+    // G03 contains memory activation before its gate. Keep the original
+    // non-idempotent-store retry contract on an unrelated CRM-store fixture:
+    // a persisted failure (possibly after a committed INSERT) is never retried.
+    const def: GraphDefinition = {
+      slug: "fixture-store-retry", version: 1, vpOwner: "engineering", description: "non-idempotent store regression",
+      nodes: [{ id: "store", kind: "store", dependsOn: [], config: { target: "crm-contacts" } }],
+    };
+    const world = makeWorld(def);
+    world.steps.push({ id: "failed-store", node: "store", status: "failed", started_at: world.clock.now.toISOString(), summary: "store failed after ambiguous insert" });
+    await tickUntil(world, def, () => world.run.status !== "running");
 
     expect(world.run.status).toBe("failed");
     expect(world.stepsOf("store")).toHaveLength(1);
-    expect(world.stepByNode("store")?.summary).toContain("store port ausente");
+    expect(world.stepByNode("store")?.summary).toBe("store failed after ambiguous insert");
   });
 });
 

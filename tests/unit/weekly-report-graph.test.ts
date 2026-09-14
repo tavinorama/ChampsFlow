@@ -195,19 +195,21 @@ describe("weekly-report — o run inteiro no harness do runner", () => {
     const world = makeWorld();
     await tickUntil(world, () => world.run.status !== "running");
 
-    // O runner leu as TRÊS fontes — e só elas.
-    expect(world.snapshotCalls).toHaveLength(3);
+    // G03 (14/09): o runner leu ops e cadence (parcial); 'outcomes' é
+    // suspenso ANTES da porta — o artefato carrega o marcador, não números.
+    expect(world.snapshotCalls).toHaveLength(2);
     expect(world.snapshotCalls).toContainEqual({ source: "ops", days: 7 });
-    expect(world.snapshotCalls).toContainEqual({ source: "outcomes", days: 7 });
     expect(world.snapshotCalls).toContainEqual({ source: "cadence", days: 30 });
+    expect(world.snapshotCalls).not.toContainEqual({ source: "outcomes", days: 7 });
 
-    // O compose recebeu os dois snapshots da semana como contexto — e NUNCA a
-    // seção de cadência (o modelo não pode reescrever esses números).
+    // O compose recebeu o registro operacional e o marcador de outcomes — e
+    // NUNCA a seção de cadência (o modelo não pode reescrever esses números).
     const composePrompt = world.taskPromptsByNode["compose"] ?? "";
     expect(composePrompt).toContain("[ops-week]");
     expect(composePrompt).toContain("[outcomes-week]");
     expect(composePrompt).toContain("REGISTRO OPERACIONAL");
-    expect(composePrompt).toContain("RESULTADOS REAIS");
+    expect(composePrompt).toContain("business_state=invalid_g03");
+    expect(composePrompt).not.toContain("RESULTADOS REAIS");
     expect(composePrompt).not.toContain("VALVULA DE CADENCIA");
 
     expect(world.stepByNode("compose")?.status).toBe("succeeded");

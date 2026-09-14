@@ -188,27 +188,22 @@ function xRecentRows(): RecentRow[] {
 const OLD_POST = "SEO is dead for roofers. Here is what replaced it. Ask me how.";
 
 describe("0.8 — [__recent__] chega à criação E à crítica dos grafos de marketing", () => {
-  it("sphere-x: drafts e crítico recebem o bloco; texto vivo é citado; expirado é dito com honestidade; canal pedido é o do publish", async () => {
+  it("G03 (14/09): sob contenção o bloco [__recent__] NÃO é injetado em nenhum nó e o registro nem é consultado; a régua estática anti-genérica continua", async () => {
+    // Contexto: o texto de peças antigas pode embutir métricas inválidas (os
+    // rascunhos foram escritos sobre snapshots contaminados). Até existir
+    // proveniência por peça (lote B03), a injeção dinâmica fica suspensa —
+    // proteção contra repetição reduzida, dito com todas as letras.
     const world = makeWorld(SPHERE_X_GRAPH, { recentRows: xRecentRows() });
-    // O texto da publicação antiga ainda vive no Redis (dentro do TTL): o
-    // conteúdo do publish é o finalize (publish → approval → finalize).
     world.artifactsMap.set("old-run-1:finalize", OLD_POST);
     await tickUntil(world, SPHERE_X_GRAPH, () => world.stepByNode("critic")?.status === "succeeded");
 
-    for (const node of ["draft-punchy", "draft-thread", "critic"]) {
+    for (const node of ["draft-punchy", "draft-thread", "critic", "signal", "briefing", "finalize"]) {
       const p = world.taskPromptsByNode[node] ?? "";
-      expect(p, `${node} sem o bloco [__recent__]`).toContain(RECENT_MARK);
-      expect(p, `${node} sem o texto REAL da peça recente`).toContain(OLD_POST);
-      expect(p, `${node} sem a entrada honesta do artefato expirado`).toContain("texto nao recuperavel");
-      expect(p).toContain("registro duravel: published via postiz channel=x");
+      expect(p, `${node} não pode receber o bloco sob contenção`).not.toContain(RECENT_MARK);
+      expect(p).not.toContain(OLD_POST);
     }
-    // O canal pedido ao registro é o canal do publish deste grafo.
-    expect(world.recentCalls[0]).toEqual({ channel: "x", limit: RECENT_PUBLISHES_LIMIT });
-    // Nós fora da superfície criação/crítica (signal, briefing, finalize) não
-    // recebem a injeção — o marcador do BLOCO não aparece.
-    for (const node of ["signal", "briefing", "finalize"]) {
-      expect(world.taskPromptsByNode[node] ?? "", `${node} não deveria receber o bloco`).not.toContain(RECENT_MARK);
-    }
+    expect(world.recentCalls).toEqual([]);
+    expect(world.taskPromptsByNode["draft-punchy"] ?? "").toContain("ANTI-GENERICO (0.8)");
   });
 
   it("sem publicação no registro = NENHUM artefato injetado (nunca placeholder)", async () => {

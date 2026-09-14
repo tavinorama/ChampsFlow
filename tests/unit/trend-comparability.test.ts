@@ -106,6 +106,37 @@ describe("markComparableTrend", () => {
     expect(r.marks.find((m) => m.auditId === "legacy")?.inTrend).toBe(true);
   });
 
+  // Reconciliação 14/09 (A04 mínimo): GEO_METHODOLOGY_VERSION 2.1 → 2.2
+  // changes what a citation IS. Runs under different protocols never share a
+  // trend line or a delta — the bump breaks the line, never blends it.
+  it("excludes a run scored under a different methodology than the pinned (newest full) run, with the reason", () => {
+    const r = markComparableTrend([
+      run({ auditId: "new-2.2", recordedAt: "2026-09-20T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true, methodology: "2.2" }),
+      run({ auditId: "old-2.1", recordedAt: "2026-09-10T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true, methodology: "2.1" }),
+      run({ auditId: "older-2.1", recordedAt: "2026-09-01T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true, methodology: "2.1" }),
+    ]);
+    expect(r.pinnedMethodology).toBe("2.2");
+    expect(r.marks[0]).toMatchObject({ auditId: "new-2.2", inTrend: true });
+    expect(r.marks[1]).toMatchObject({ auditId: "old-2.1", inTrend: false });
+    expect(r.marks[1]!.reason).toMatch(/methodology 2\.1.*pinned to/);
+    expect(r.marks[2]!.inTrend).toBe(false);
+    expect(r.excluded).toBe(2);
+  });
+
+  it("legacy rows without a methodology stay in trend (unknown is not judged), and a run with no pinned methodology is never excluded for it", () => {
+    const r = markComparableTrend([
+      run({ auditId: "a", recordedAt: "2026-09-20T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true, methodology: "2.2" }),
+      run({ auditId: "legacy", recordedAt: "2026-09-10T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true, methodology: null }),
+    ]);
+    expect(r.marks.every((m) => m.inTrend)).toBe(true);
+    const r2 = markComparableTrend([
+      run({ auditId: "a", recordedAt: "2026-09-20T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true }),
+      run({ auditId: "b", recordedAt: "2026-09-10T00:00:00Z", providers: FIVE, checks: 60, comparableFlag: true, methodology: "2.1" }),
+    ]);
+    expect(r2.pinnedMethodology).toBeNull();
+    expect(r2.marks.every((m) => m.inTrend)).toBe(true);
+  });
+
   it("marks are 1:1 and in the same order as the input rows", () => {
     const rows = [
       run({ auditId: "x", recordedAt: "2026-08-01T00:00:00Z" }),

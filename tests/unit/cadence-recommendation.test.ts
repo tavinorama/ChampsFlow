@@ -170,11 +170,14 @@ function fakeCadenceSql(rows: {
 }
 
 describe("snapshot source 'cadence' — SQL marcado + código, nunca o modelo", () => {
-  it("agrega publishes (channel= do summary) e outcomes da janela nas queries marcadas", async () => {
+  it("G03 (14/09): agrega só os publishes; os outcomes da janela NÃO são lidos e o snapshot nasce com o marcador parcial", async () => {
     const { pubs, outcomes } = droppingLinkedin();
     const snap = await buildSnapshot(fakeCadenceSql({ pubs, outcomes }), "cadence", 30);
-    expect(snap).toContain("- linkedin: dados sugerem 2/dia");
-    expect(snap).toContain("CHANNEL_DAILY_CAP_LINKEDIN=2");
+    expect(snap.startsWith("business_state=partial_g03")).toBe(true);
+    // Sem métrica utilizável não há recomendação de cadência — nem para cima
+    // nem para baixo — e o cap não muda.
+    expect(snap).not.toContain("dados sugerem 2/dia");
+    expect(snap).toContain("linkedin");
   });
 
   it("janela sem publish nenhum = string vazia (o runner vira SEM DADOS)", async () => {

@@ -22,6 +22,8 @@ export interface ExtractionTelemetry {
   mode: string;
   verified_count: number;
   rejected_count: number;
+  /** C07: mentions the verifier could not judge. Not counted, not thrown away. */
+  unverified_count?: number | null;
   /** Kind of EVERY mention looked at, verified and rejected alike. */
   by_kind?: Record<string, number> | null;
   /**
@@ -55,7 +57,9 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
   if (extraction.mode === "disabled") return null;
 
   const { verified_count: kept, rejected_count: dropped } = extraction;
-  const looked = kept + dropped;
+  // C07: the third state. Audits that predate it carry no field → 0.
+  const unverified = extraction.unverified_count ?? 0;
+  const looked = kept + dropped + unverified;
   if (looked === 0) return null;
 
   const kinds = Object.entries(extraction.by_kind ?? {}).filter(([, n]) => n > 0);
@@ -83,9 +87,10 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
       >
         <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--font-size-body-sm)", lineHeight: 1.6 }}>
           Every mention is read twice. The second reader never sees the first
-          one&rsquo;s answer, so a guess cannot survive both.{" "}
+          one&rsquo;s answer. Only mentions that pass both reads are counted;
+          the ones the second reader could not check are set aside, not counted.{" "}
           <b style={{ color: "var(--color-text)" }}>
-            {kept} of {looked} kept.
+            {kept} of {looked} counted.
           </b>
         </p>
 
@@ -99,6 +104,7 @@ export function VerifiedCitations({ extraction }: { extraction?: ExtractionTelem
         >
           <Figure n={kept} label="counted" tone="good" />
           <Figure n={dropped} label={dropped === 1 ? "thrown away" : "thrown away"} tone="bad" />
+          {unverified > 0 && <Figure n={unverified} label={unverified === 1 ? "could not be checked" : "could not be checked"} />}
           {adjusted > 0 && (
             <Figure n={adjusted} label={adjusted === 1 ? "question lost its citation" : "questions lost their citation"} />
           )}

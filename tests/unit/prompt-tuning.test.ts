@@ -373,127 +373,36 @@ async function tickUntil(world: FakeWorld, def: GraphDefinition, done: () => boo
 // O run inteiro: compose só vê fatos, gate do founder decide, store gated.
 // ---------------------------------------------------------------------------
 
-describe("prompt-tuner — o run no harness do runner", () => {
-  it("caminho feliz: snapshot tuning/21d → compose vê [evidence] → aprovação nomeia o efeito → store grava a chave+body aprovados → report", async () => {
+describe("prompt-tuner — o run no harness do runner (G03: SKIPPED sob contenção)", () => {
+  // 14/09: o snapshot 'tuning' lê vereditos derivados (ops.agent_outcome via
+  // summaries) — história contaminada. Até a reconciliação de linhagem, o run
+  // termina SKIPPED e succeeded antes do snapshot: sem LLM, sem aprovação,
+  // sem store, sem Telegram, sem run falhado toda terça. Os sete contratos
+  // antigos (caminho feliz, rejeição, timeout, trilho da allowlist, SEM
+  // MUDANCA, store falhado, porta ausente) ficam SUSPENSOS, não apagados.
+  it("o run termina skipped+succeeded antes do snapshot: nenhum snapshot, LLM, aprovação, store ou Telegram", async () => {
     const world = makeWorld(PROMPT_TUNER_GRAPH);
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-
-    // O runner leu a fonte certa — e só ela.
-    expect(world.snapshotCalls).toEqual([{ source: "tuning", days: 21 }]);
-
-    // O compose recebeu os fatos agregados como [evidence] — e, sendo
-    // CEO-owned, NENHUMA injeção de conteúdo de marketing.
-    const composePrompt = world.taskPromptsByNode["compose"] ?? "";
-    expect(composePrompt).toContain("[evidence]");
-    expect(composePrompt).toContain("EVIDENCIA PARA TUNING DE PROMPTS");
-    expect(composePrompt).not.toContain("[__day__]");
-    expect(composePrompt).not.toContain("LICOES DA CASA");
-
-    // A caixa de aprovação nomeia o que um "sim" ativa.
-    const ask = world.telegrams.find((t) => t.includes("APROVAÇÃO NECESSÁRIA"));
-    expect(ask, "a aprovação não chegou ao Telegram").toBeTruthy();
-    expect(ask).toContain("OVERRIDE de prompt");
-
-    // Founder aprova (o webhook #445 marca o step como succeeded).
-    world.stepByNode("approval")!.status = "succeeded";
     await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
 
-    // O store recebeu EXATAMENTE a chave e o body que o founder aprovou.
-    expect(world.storedOverrides).toEqual([{ runId: world.run.id, promptKey: "x-critic", body: NEW_BODY }]);
-    expect(world.stepByNode("store")?.status).toBe("succeeded");
-    expect(world.stepByNode("report")?.status).toBe("succeeded");
     expect(world.run.status).toBe("succeeded");
-    const report = world.telegrams.find((t) => t.includes("PROMPT-TUNER"));
-    expect(report, "o report final não chegou").toBeTruthy();
-  });
-
-  it("rejeição do founder: NADA é gravado — o store nunca roda", async () => {
-    const world = makeWorld(PROMPT_TUNER_GRAPH);
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-
-    const approval = world.stepByNode("approval")!;
-    approval.status = "failed";
-    approval.summary = "rejected: mudanca fraca";
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    expect(world.storedOverrides).toEqual([]);
-    expect(world.stepByNode("store"), "store não pode nem ter começado").toBeUndefined();
-  });
-
-  it("timeout de 96h = rejeição por silêncio: NADA é gravado, dito em voz alta", async () => {
-    const world = makeWorld(PROMPT_TUNER_GRAPH);
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-
-    world.clock.now = new Date(world.clock.now.getTime() + 97 * 3600 * 1000);
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    expect(world.storedOverrides).toEqual([]);
+    expect(world.snapshotCalls).toEqual([]);
+    expect(world.taskPromptsByNode["compose"]).toBeUndefined();
+    expect(world.stepByNode("approval")).toBeUndefined();
     expect(world.stepByNode("store")).toBeUndefined();
-    expect(world.telegrams.join("\n")).toContain("APROVAÇÃO EXPIROU");
+    expect(world.storedOverrides).toEqual([]);
+    expect(world.telegrams).toEqual([]);
+    const marker = world.stepByNode("__invalid_g03__")!;
+    expect(marker.status).toBe("skipped");
+    expect(marker.summary).toContain("business_state=invalid_g03");
   });
 
-  it("TRILHO: proposta fora da allowlist é RECUSADA NO STORE (não só no prompt) — mesmo aprovada, nada grava", async () => {
-    const rogueProposal = [
-      "PROMPT_KEY: watchdog-synthesis", // um prompt de brain — jamais tunável
-      "DIFF: hack",
-      "EVIDENCIA: nenhuma",
-      "ROLLBACK: n/a",
-      "[BODY]",
-      "prompt malicioso",
-      "[/BODY]",
-    ].join("\n");
+  it("uma proposta fora da allowlist nem chega a ser composta: o trilho do store fica atrás da contenção", async () => {
+    const rogueProposal = ["PROMPT_KEY: watchdog-synthesis", "DIFF: hack", "[BODY]", "prompt malicioso", "[/BODY]"].join("\n");
     const world = makeWorld(PROMPT_TUNER_GRAPH, { composeOutput: rogueProposal });
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    world.stepByNode("approval")!.status = "succeeded"; // até um sim humano não salva chave proibida
     await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
     expect(world.storedOverrides).toEqual([]);
-    const storeStep = world.stepByNode("store")!;
-    expect(storeStep.status).toBe("failed");
-    expect(storeStep.summary).toContain("fora da allowlist");
-    expect(world.telegrams.join("\n")).toContain("OVERRIDE RECUSADO NO STORE");
-  });
-
-  it("'SEM MUDANCA' aprovado é semana válida: store conclui sem gravar nada", async () => {
-    const world = makeWorld(PROMPT_TUNER_GRAPH, {
-      composeOutput: "SEM MUDANCA ESTA SEMANA — evidencia insuficiente.",
-    });
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    world.stepByNode("approval")!.status = "succeeded";
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("succeeded");
-    expect(world.storedOverrides).toEqual([]);
-    expect(world.stepByNode("store")?.status).toBe("succeeded");
-    expect(world.stepByNode("store")?.summary).toContain("sem mudanca");
-  });
-
-  it("store falha (ex.: migração ausente): step falha com o motivo, Telegram grita, nada finge sucesso", async () => {
-    const world = makeWorld(PROMPT_TUNER_GRAPH, {
-      store: async () => ({ ok: false, reason: `tabela ops.prompt_override ausente — ${PROMPT_OVERRIDE_MISSING_ACTION}` }),
-    });
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    world.stepByNode("approval")!.status = "succeeded";
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    const storeStep = world.stepByNode("store")!;
-    expect(storeStep.status).toBe("failed");
-    expect(storeStep.summary).toContain("ops.prompt_override ausente");
-    expect(world.telegrams.join("\n")).toContain("OVERRIDE NÃO GRAVADO");
-  });
-
-  it("worker sem a porta de store: falha honesta, nunca sucesso silencioso", async () => {
-    const world = makeWorld(PROMPT_TUNER_GRAPH, { store: false });
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.stepByNode("approval")?.status === "waiting");
-    world.stepByNode("approval")!.status = "succeeded";
-    await tickUntil(world, PROMPT_TUNER_GRAPH, () => world.run.status !== "running");
-
-    expect(world.run.status).toBe("failed");
-    expect(world.stepByNode("store")?.summary).toContain("override NAO gravado");
+    expect(world.taskPromptsByNode["compose"]).toBeUndefined();
+    expect(world.stepByNode("__invalid_g03__")?.status).toBe("skipped");
   });
 });
 
@@ -502,20 +411,16 @@ describe("prompt-tuner — o run no harness do runner", () => {
 // ---------------------------------------------------------------------------
 
 describe("override em ação — sphere-x com override no crítico", () => {
-  it("o critic monta com o body do override + LESSONS_VETO_RULE + [__lessons__]; os demais nós seguem estáticos", async () => {
+  it("G03 (14/09): sob contenção o override ativo NÃO é aplicado — o critic segue 100% estático, com a régua de veto e [__lessons__]", async () => {
     const world = makeWorld(SPHERE_X_GRAPH, { activeOverrides: { "x-critic": NEW_BODY } });
     await tickUntil(world, SPHERE_X_GRAPH, () => world.stepByNode("approval")?.status === "waiting", 25);
 
     const critic = world.taskPromptsByNode["critic"] ?? "";
     expect(critic, "critic nunca rodou").toBeTruthy();
-    expect(critic).toContain(NEW_BODY); // o override venceu
-    expect(critic).not.toContain("Voce e o critico da esfera X da Ozvor. Abaixo: 2 versoes"); // o estático saiu
-    // As garantias que o override não desliga: a régua reapendada + o bloco
-    // [__lessons__] (CONTENT_LESSONS) injetado pelo runner por fora.
+    expect(critic).not.toContain(NEW_BODY);
+    expect(critic).toContain("Voce e o critico da esfera X da Ozvor");
     expect(critic).toContain("LICOES INSTITUCIONAIS (com VETO)");
     expect(critic).toContain(`[${LESSONS_ARTIFACT}]`);
-    expect(critic).toContain("LICOES DA CASA");
-    // Nós sem override seguem 100% estáticos.
     expect(world.taskPromptsByNode["signal"]).toContain("agente de sinais da esfera X");
     expect(world.taskPromptsByNode["draft-punchy"]).toContain("Voce e um escritor de X (Twitter)");
   });
@@ -563,44 +468,27 @@ function fakeTuningSql(rows: TuningRows): postgres.Sql {
   }) as unknown as postgres.Sql;
 }
 
-describe("snapshot source 'tuning' — fatos agregados por código, por graph", () => {
-  it("agrega vereditos, rejeições (contagem POR GRAPH + motivo literal) e overrides ativos — timeouts FORA (10.C.13)", async () => {
-    const snap = await buildSnapshot(
+describe("snapshot source 'tuning' — G03 (14/09): fonte inteira suspensa", () => {
+  // Vereditos, contagens por graph e overrides ativos são história derivada ou
+  // aprendizado sem contrato de linhagem. O snapshot devolve o marcador sem
+  // tocar o banco; a janela vazia também (nunca '' — a diferença entre
+  // "sem dados" e "suspenso" tem de ser visível ao compose).
+  it("devolve INVALID sem consultar o banco, com ou sem evidência na janela", async () => {
+    const withData = await buildSnapshot(
       fakeTuningSql({
         verdicts: [{ graph: "sphere-x", summary: "verdict x_impressions: total=0 n=4", started_at: "2026-08-20T08:00:00Z" }],
         rejections: [{ graph: "sphere-linkedin", summary: "rejected: tom vendedor", started_at: "2026-08-12T09:00:00Z" }],
         rejectionCounts: [{ graph: "sphere-linkedin", n: "3" }],
-        timeouts: [{ graph: "daily-video", n: "2" }],
         overrides: [{ prompt_key: "x-critic", body_len: "120", approved_at: "2026-08-25T06:30:00Z" }],
       }),
       "tuning",
       21
     );
-    expect(snap).toContain("EVIDENCIA PARA TUNING DE PROMPTS");
-    expect(snap).toContain("- 2026-08-20 (sphere-x): verdict x_impressions: total=0 n=4");
-    expect(snap).toContain("- sphere-linkedin: 3 rejeicao(oes)"); // contagem por SQL, nunca pelo modelo
-    expect(snap).toContain("- 2026-08-12 (sphere-linkedin): tom vendedor"); // o motivo literal
-    // 10.C.13: a ausência do founder NÃO é evidência sobre o prompt.
-    expect(snap).not.toContain("APROVACOES EXPIRADAS");
-    expect(snap).not.toContain("expiraram sem decisao");
-    expect(snap).toContain("- x-critic: desde 2026-08-25 (120 chars)");
-  });
-
-  it("tabela de overrides ausente: linha honesta, o resto do snapshot sobrevive", async () => {
-    const snap = await buildSnapshot(
-      fakeTuningSql({
-        verdicts: [{ graph: "sphere-x", summary: "verdict x_impressions: total=0 n=4", started_at: "2026-08-20T08:00:00Z" }],
-        overridesTableMissing: true,
-      }),
-      "tuning",
-      21
-    );
-    expect(snap).toContain("verdict x_impressions");
-    expect(snap).toContain("tabela ops.prompt_override indisponivel");
-  });
-
-  it("janela sem NADA = string vazia (o runner vira SEM DADOS — honesto, nunca inventado)", async () => {
-    expect(await buildSnapshot(fakeTuningSql({}), "tuning", 21)).toBe("");
+    expect(withData).toMatch(/business_state=invalid_g03/);
+    expect(withData).not.toContain("EVIDENCIA PARA TUNING DE PROMPTS");
+    expect(withData).not.toContain("verdict x_impressions");
+    expect(await buildSnapshot(fakeTuningSql({ overridesTableMissing: true }), "tuning", 21)).toMatch(/business_state=invalid_g03/);
+    expect(await buildSnapshot(fakeTuningSql({}), "tuning", 21)).toMatch(/business_state=invalid_g03/);
   });
 });
 
@@ -655,56 +543,27 @@ function fakeStoreSql(world: {
 const fakeRedis = {} as unknown as Redis;
 
 describe("armazém durável — round-trip e fail-soft (mergeado ≠ produção)", () => {
-  it("round-trip: store grava append-only e a leitura devolve a versão mais NOVA por chave (newest-row-wins)", async () => {
+  it("G03 (14/09): sob contenção o port recusa gravar overrides (ok:false, motivo G03) e a leitura devolve null — sem tocar o banco", async () => {
     const world = { rows: [] as Array<{ prompt_key: string; body: string; approved_at: string }>, tableExists: true };
     const ports = buildPorts(fakeStoreSql(world), fakeRedis);
 
-    expect(await ports.substrate.activePromptOverrides!()).toBeNull(); // loja vazia = null, nunca placeholder
-
-    const r1 = await ports.substrate.storePromptOverride!({
-      runId: "11111111-1111-1111-1111-111111111111",
-      promptKey: "x-critic",
-      body: "v1",
-    });
-    expect(r1.ok).toBe(true);
-    const r2 = await ports.substrate.storePromptOverride!({
-      runId: "22222222-2222-2222-2222-222222222222",
-      promptKey: "x-critic",
-      body: NEW_BODY,
-    });
-    expect(r2.ok).toBe(true);
-
-    // Append-only: as duas linhas existem; a mais nova vence na leitura.
-    expect(world.rows).toHaveLength(2);
-    expect(await ports.substrate.activePromptOverrides!()).toEqual({ "x-critic": NEW_BODY });
-
-    // Rollback por linha nova com body vazio: a leitura devolve '' e o
-    // buildPrompt reverte ao estático.
-    const r3 = await ports.substrate.storePromptOverride!({
-      runId: "33333333-3333-3333-3333-333333333333",
-      promptKey: "x-critic",
-      body: "",
-    });
-    expect(r3.ok).toBe(true);
-    const map = await ports.substrate.activePromptOverrides!();
-    expect(map).toEqual({ "x-critic": "" });
-    const p = buildPrompt("debate", { prompt: "x-critic" }, [], map) ?? "";
+    expect(await ports.substrate.activePromptOverrides!()).toBeNull();
+    const r1 = await ports.substrate.storePromptOverride!({ runId: "11111111-1111-1111-1111-111111111111", promptKey: "x-critic", body: "v1" });
+    expect(r1.ok).toBe(false);
+    expect(r1.reason).toContain("business_state=invalid_g03");
+    expect(world.rows).toHaveLength(0);
+    // Sem mapa de overrides o buildPrompt segue 100% estático.
+    const p = buildPrompt("debate", { prompt: "x-critic" }, [], await ports.substrate.activePromptOverrides!()) ?? "";
     expect(p).toContain("Voce e o critico da esfera X da Ozvor");
   });
 
-  it("migração ausente (42P01): leitura fail-open (null) e store fail-soft com a ação nominal que destrava", async () => {
+  it("G03 (14/09): com a migração ausente (42P01) a resposta é a mesma — o port responde antes do SQL", async () => {
     const world = { rows: [], tableExists: false };
     const ports = buildPorts(fakeStoreSql(world), fakeRedis);
-
     expect(await ports.substrate.activePromptOverrides!()).toBeNull();
-    const res = await ports.substrate.storePromptOverride!({
-      runId: "44444444-4444-4444-4444-444444444444",
-      promptKey: "x-critic",
-      body: "x",
-    });
+    const res = await ports.substrate.storePromptOverride!({ runId: "44444444-4444-4444-4444-444444444444", promptKey: "x-critic", body: "x" });
     expect(res.ok).toBe(false);
-    expect(res.reason).toContain("ops.prompt_override ausente");
-    expect(res.reason).toContain("20260831000001_ops_prompt_override");
+    expect(res.reason).toContain("business_state=invalid_g03");
   });
 
   it("cron semanal: sem a tabela a feature se declara DESLIGADA e NÃO inicia run (não queima LLM num run condenado)", async () => {

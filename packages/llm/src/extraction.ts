@@ -102,17 +102,24 @@ export interface ExtractionResult {
   mentions: VerifiedMention[];
   verified_count: number;
   rejected_count: number;
+  /**
+   * Mentions the verifier could not judge (outage, timeout, cap). Neither
+   * counted nor discarded; the three counters add up to `mentions`.
+   */
+  unverified_count: number;
   methodology_version: string;
   /** Which path actually produced these mentions. */
   extraction_mode: ExtractionMode;
   /**
    * Convenience for the scorer: does a CITING mention of the client brand
    * survive? A citing mention is kind direct_recommendation or cited_source
-   * whose verdict is not REJECTED. neutral_mention and negative_mention are
+   * whose verdict is VERIFIED. neutral_mention and negative_mention are
    * NOT citations.
    * In fallback/disabled mode this mirrors the legacy single-pass boolean.
    */
   brand_cited: boolean;
+  /** Unresolved brand candidates must never be presented as confirmed absence. */
+  brand_verification_pending?: boolean;
   /** LLM calls this extraction consumed (cost telemetry). */
   llm_calls: number;
   /** Why the run degraded, when it did. Empty in the happy path. */
@@ -128,7 +135,7 @@ export interface ExtractionResult {
  * meaning of a "citation" changes (it did: B3 dropped neutral/negative
  * mentions from the citation count).
  */
-export const EXTRACTION_METHODOLOGY_VERSION = "1.0";
+export const EXTRACTION_METHODOLOGY_VERSION = "1.1";
 
 /** Hard per-answer verification budget (cost rule). */
 export const MAX_VERIFIED_MENTIONS = 8;
@@ -156,7 +163,14 @@ export function twoPassExtractionEnabled(): boolean {
 
 /** True when a mention counts as a citation for scoring purposes. */
 export function countsAsCitation(m: VerifiedMention): boolean {
-  return m.verdict !== "REJECTED" && CITING_KINDS.has(m.kind_confirmed);
+  return m.verdict === "VERIFIED" && CITING_KINDS.has(m.kind_confirmed);
+}
+
+/** Paid scoring gate: absence cannot be inferred from unavailable verification. */
+export function assertBrandVerificationComplete(results: ExtractionResult[]): void {
+  if (results.some((r) => r.extraction_mode === "two_pass" && r.brand_verification_pending)) {
+    throw new Error("citation_verification_pending");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -493,6 +507,7 @@ function fallbackResult(
     mentions,
     verified_count: 0,
     rejected_count: 0,
+    unverified_count: mentions.length,
     methodology_version: EXTRACTION_METHODOLOGY_VERSION,
     extraction_mode: mode,
     // Legacy semantics: any brand mention counted as a citation.
@@ -553,6 +568,7 @@ export async function extractMentions(
       mentions: [],
       verified_count: 0,
       rejected_count: 0,
+      unverified_count: 0,
       methodology_version: EXTRACTION_METHODOLOGY_VERSION,
       extraction_mode: "two_pass",
       brand_cited: false,
@@ -713,15 +729,20 @@ export async function extractMentions(
   const mentions = results.filter(Boolean);
   const verified_count = mentions.filter((m) => m.verdict === "VERIFIED").length;
   const rejected_count = mentions.filter((m) => m.verdict === "REJECTED").length;
+  const unverified_count = mentions.length - verified_count - rejected_count;
   const brand_cited = mentions.some((m) => isBrandMention(m, brandName) && countsAsCitation(m));
+  const brand_verification_pending = mentions.some((m) => isBrandMention(m, brandName) &&
+    (m.verdict === "UNVERIFIED" || m.verdict === "UNVERIFIED_CAP"));
 
   return {
     mentions,
     verified_count,
     rejected_count,
+    unverified_count,
     methodology_version: EXTRACTION_METHODOLOGY_VERSION,
     extraction_mode: "two_pass",
     brand_cited,
+    brand_verification_pending,
     llm_calls: llmCalls,
     notes,
   };
