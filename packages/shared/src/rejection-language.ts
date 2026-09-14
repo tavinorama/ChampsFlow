@@ -90,6 +90,8 @@ export interface ClientExtraction {
   mode: string;
   verified_count: number;
   rejected_count: number;
+  /** C07: mentions the second reader could not check — set aside, never counted. */
+  unverified_count: number;
   by_kind: Record<string, number> | null;
   probes_adjusted: number | null;
   /** Plain sentences with counts. Never a verifier line. */
@@ -116,6 +118,8 @@ export function sanitizeExtractionForClient(raw: unknown): ClientExtraction | nu
 
   const verified = num(e["verified_count"]) ?? 0;
   const rejected = num(e["rejected_count"]) ?? 0;
+  // C07: audits before 11/09/2026 carry no third counter → 0, never guessed.
+  const unverified = num(e["unverified_count"]) ?? 0;
 
   // by_kind keys come from MentionKind — a closed vocabulary we author.
   let byKind: Record<string, number> | null = null;
@@ -162,6 +166,7 @@ export function sanitizeExtractionForClient(raw: unknown): ClientExtraction | nu
       : "two_pass",
     verified_count: verified,
     rejected_count: rejected,
+    unverified_count: unverified,
     by_kind: byKind,
     probes_adjusted: num(e["probes_adjusted"]),
     rejections,

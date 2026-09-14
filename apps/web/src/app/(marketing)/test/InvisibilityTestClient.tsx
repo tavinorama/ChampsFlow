@@ -65,6 +65,8 @@ interface FreeTestResult {
   competitorEngineCount: number;
   totalEngines: number;
   enginesLive: number;
+  /** Engines whose collection failed this run — not measured, not a miss. */
+  notMeasured?: string[];
   domain: string | null;
   verdict: string;
   status: "invisible" | "trailing" | "competitive" | "leading";
@@ -1095,6 +1097,13 @@ function ResultsPanel({
           <strong>{result.enginesLive} of {result.totalEngines}</strong> engines were live.
           {!result.live && (
             <span> (this is demo data &mdash; it turns real once we connect live AI engines)</span>
+          )}
+          {(result.notMeasured?.length ?? 0) > 0 && (
+            <span>
+              {" "}
+              Not measured this run: <strong>{result.notMeasured!.join(", ")}</strong> (we could not collect an
+              answer, so it counts as unknown, not as a miss).
+            </span>
           )}
         </p>
       </div>
