@@ -34,6 +34,13 @@ import { crmNoteFor } from "../../../api/src/lib/prospecting";
 import { PLAN_PRICE_USD } from "../../../../packages/shared/src/plan-limits";
 import { createHash } from "node:crypto";
 import {
+  G03_INVALID,
+  G03_PARTIAL,
+  isQuarantinedGraphMetric,
+  isQuarantinedSnapshotSource,
+  quarantineLegacyGraphLearning,
+} from "../../../../packages/shared/src/graph-metric-containment";
+import {
   advanceRun,
   GRAPH_REGISTRY,
   CIRCUIT_BREAKER_THRESHOLD,
@@ -646,6 +653,12 @@ async function incidentLessonsSection(sql: postgres.Sql): Promise<string[]> {
  * ANY character, so 'x_' also matched 'xyimpressions' — and the sphere
  * memories only worked by accident. Backslash is Postgres's default ESCAPE.
  */
+/**
+ * G03: the ONLY graph whose outcome rows count as raw observations. Anything
+ * else writing under the same metric name is a verdict (derived).
+ */
+export const HARVEST_COLLECTOR_GRAPH = "social-harvest";
+
 export function escapeLike(literal: string): string {
   return literal.replace(/([\\%_])/g, "\\$1");
 }
@@ -657,6 +670,9 @@ export async function buildSnapshot(
   metricPrefix?: string
 ): Promise<string> {
   const d = Math.min(90, Math.max(1, Math.round(days) || 14));
+  // G03: these legacy views mix source semantics and/or read derived summaries.
+  // Do not query or substitute collector-only rolling-window sums as a fix.
+  if (isQuarantinedSnapshotSource(source)) return G03_INVALID;
   // Sphere memory (#156): narrow an outcomes snapshot to one channel's own
   // record. No prefix → '%' matches every metric (the CDO's full view).
   // 10.C.15: `_` escaped — a literal prefix must match literally.
@@ -836,19 +852,9 @@ export async function buildSnapshot(
        ORDER BY s.started_at DESC
        LIMIT 80`;
 
-    const metrics = await sql<
-      { metric: string; n: string; total: string | null; avg: string | null; last: string }[]
-    >`
-      /* snap:memory-metrics */
-      SELECT metric,
-             COUNT(*)::text AS n,
-             SUM(value_after)::text AS total,
-             AVG(value_after)::text AS avg,
-             MAX(measured_at)::text AS last
-        FROM ops.agent_outcome
-       WHERE measured_at >= NOW() - make_interval(days => ${d})
-       GROUP BY metric
-       ORDER BY metric`;
+    // G03 (partial quarantine): the per-metric aggregate of ops.agent_outcome
+    // and the closed-verdict lines are DERIVED history and are not read. The
+    // publication and rejection facts below are step counts, never performance.
 
     // Founder REJECTIONS with the literal reason the Telegram webhook stored
     // ("rejected: <why>") — the strongest lesson signal there is.
@@ -869,20 +875,7 @@ export async function buildSnapshot(
     // the critics on noise. Timeouts stay visible where they belong: the ops
     // snapshot / incident scan (approval-timeout-mass).
 
-    // Closed verdicts — the durable trace of every harvest→verdict loop
-    // ("verdict <metric>: total=X n=Y" / "SEM DADO").
-    const verdicts = await sql<{ graph: string; summary: string; started_at: string }[]>`
-      /* snap:memory-verdicts */
-      SELECT r.graph, s.summary, s.started_at::text AS started_at
-        FROM ops.agent_step s
-        JOIN ops.agent_run r ON r.id = s.run_id
-       WHERE s.node = 'verdict'
-         AND s.status = 'succeeded'
-         AND s.started_at >= NOW() - make_interval(days => ${d})
-       ORDER BY s.started_at DESC
-       LIMIT 40`;
-
-    if (pubs.length === 0 && metrics.length === 0 && rejections.length === 0 && verdicts.length === 0) {
+    if (pubs.length === 0 && rejections.length === 0) {
       return ""; // honest empty — the runner turns this into SEM DADOS
     }
 
@@ -901,6 +894,7 @@ export async function buildSnapshot(
     }
 
     const lines: string[] = [
+      G03_PARTIAL,
       `HISTORICO PARA CONSOLIDACAO DE MEMORIA (ops.*, ${d}d — fatos agregados por codigo; nada abaixo foi estimado):`,
     ];
     if (pubsByChannel.size > 0) {
@@ -911,25 +905,14 @@ export async function buildSnapshot(
         lines.push(`- ${ch}: ${total} publicacao(oes) (${detail})`);
       }
     }
-    if (metrics.length > 0) {
-      lines.push(``, `METRICAS COLHIDAS (ops.agent_outcome, por metrica):`);
-      for (const m of metrics) {
-        const avg = m.avg != null ? Math.round(Number(m.avg)) : "?";
-        lines.push(
-          `- ${m.metric}: n=${m.n} · total=${m.total ?? "?"} · media=${avg} · ultima ${m.last.slice(0, 10)}`
-        );
-      }
-    }
+    lines.push(``, `METRICAS COLHIDAS: ${G03_INVALID}`);
     if (rejections.length > 0) {
       lines.push(``, `REJEICOES DO FOUNDER (motivo literal registrado — o sinal mais forte):`);
       for (const rj of rejections) {
         lines.push(`- ${rj.started_at.slice(0, 10)} (${rj.graph}): ${rj.summary.replace(/^rejected:\s*/, "")}`);
       }
     }
-    if (verdicts.length > 0) {
-      lines.push(``, `VEREDITOS FECHADOS (o loop leu o proprio resultado):`);
-      for (const v of verdicts) lines.push(`- ${v.started_at.slice(0, 10)} (${v.graph}): ${v.summary}`);
-    }
+    lines.push(``, `VEREDITOS FECHADOS: ${G03_INVALID}`);
     return lines.join("\n");
   }
 
@@ -1109,14 +1092,11 @@ export async function buildSnapshot(
          AND s.started_at >= NOW() - make_interval(days => ${d})
        ORDER BY s.started_at
        LIMIT 500`;
-    const outcomes = await sql<{ metric: string; value_after: string | null; measured_at: string }[]>`
-      /* snap:cadence-outcomes */
-      SELECT metric, value_after::text AS value_after, measured_at::text AS measured_at
-        FROM ops.agent_outcome
-       WHERE measured_at >= NOW() - make_interval(days => ${d})
-       ORDER BY measured_at
-       LIMIT 2000`;
-    return computeCadenceSection(pubs, outcomes, d);
+    // G03 (partial quarantine): the outcomes half of the valve's evidence is
+    // derived history and is not read; the section is computed from publishes
+    // alone, so every channel reads "metrica sem valor utilizavel" honestly.
+    const section = computeCadenceSection(pubs, [], d);
+    return section ? `${G03_PARTIAL}\n${section}` : "";
   }
 
   if (source === "incidents") {
@@ -1581,6 +1561,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
            WHERE id = ${runId}::uuid`;
       },
       async recordOutcome(input) {
+        if (isQuarantinedGraphMetric(input.metric)) throw new Error(G03_INVALID);
         // LIFT, for real (structural hole #2 of the 14/08 sweep — this was a
         // hardcoded null since day one, so every verdict was absolute and the
         // learning loop compared against nothing). Baseline = the mean of the
@@ -1732,6 +1713,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         }
       },
       async activeMemoryLessons() {
+        if (quarantineLegacyGraphLearning()) return null;
         // 5.F.1: the newest founder-approved lessons batch — the store is
         // append-only, newest row wins. Fail-open by contract: before the
         // ops.memory_lesson migration is applied (42P01) or on any read blip,
@@ -1759,6 +1741,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         }
       },
       async storeMemoryLessons(input) {
+        if (quarantineLegacyGraphLearning() && !input.lessons.startsWith(INCIDENT_LESSON_PREFIX)) return { ok: false, reason: G03_INVALID };
         // Append-only insert — an approved lessons batch is a record, never an
         // edit. On a deploy where the migration is not applied yet (42P01),
         // fail SOFT with the exact unlocking action named: the runner fails
@@ -1780,6 +1763,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         }
       },
       async activePromptOverrides() {
+        if (quarantineLegacyGraphLearning()) return null;
         // 5.F.2: a linha mais NOVA por prompt_key — append-only, a mais nova
         // vence; body vazio viaja no mapa e o buildPrompt o trata como
         // "reverte ao estatico". Fail-open por contrato: antes da migração
@@ -1809,6 +1793,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         return promptOverridesCache;
       },
       async storePromptOverride(input) {
+        if (quarantineLegacyGraphLearning()) return { ok: false, reason: G03_INVALID };
         // Append-only insert — um override aprovado é registro, nunca edit.
         // Reverter = linha nova (body anterior, ou '' para o estático). Numa
         // deploy sem a migração (42P01), fail SOFT com a ação nominal que
@@ -1867,17 +1852,41 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         }
       },
       async readHarvest(metric, sinceIso) {
+        if (isQuarantinedGraphMetric(metric)) throw new Error(G03_INVALID);
         // The #162 cron writes outcomes named like 'youtube_views_7d'; a graph
         // harvest config names the exact metric or a TRUE prefix of it
         // ('youtube_views'). Beware: an abbreviation ('yt_views') matches
         // NOTHING — that was the daily-video v2 false-zero bug (13/08).
         // 10.C.15: `_` escapado — prefixo literal casa literalmente.
-        const rows = await sql<{ n: string; total: string | null }[]>`
-          SELECT COUNT(*)::text AS n, COALESCE(SUM(value_after), 0)::text AS total
-            FROM ops.agent_outcome
-           WHERE metric LIKE ${escapeLike(metric.replace(/%/g, "")) + "%"}
-             AND measured_at >= ${sinceIso}::timestamptz`;
-        return { n: Number(rows[0]?.n ?? 0), total: Number(rows[0]?.total ?? 0) };
+        //
+        // G03: only allowlisted metrics reach this read. Every row it touches
+        // comes back with its ORIGIN (raw = collector graph, derived = any
+        // verdict) so the evaluation can be reconciled by lineage. `total` is
+        // still the legacy prefix sum — for the summary, never a business value.
+        const rows = await sql<
+          { id: string; graph: string | null; node: string | null; measured_at: string; value_after: string | null }[]
+        >`
+          /* harvest:eligible-rows-read */
+          SELECT ao.id, r.graph, s.node, ao.measured_at::text AS measured_at, ao.value_after::text AS value_after
+            FROM ops.agent_outcome ao
+            LEFT JOIN ops.agent_step s ON s.id = ao.step_id
+            LEFT JOIN ops.agent_run r ON r.id = s.run_id
+           WHERE ao.metric LIKE ${escapeLike(metric.replace(/%/g, "")) + "%"}
+             AND ao.measured_at >= ${sinceIso}::timestamptz
+           ORDER BY ao.measured_at ASC
+           LIMIT 500`;
+        const eligible = rows.map((row) => ({
+          id: row.id,
+          sourceKind: (row.graph === HARVEST_COLLECTOR_GRAPH && (row.node ?? "").startsWith("harvest:") ? "raw" : "derived") as
+            | "raw"
+            | "derived",
+          graph: row.graph ?? undefined,
+          node: row.node ?? undefined,
+          measuredAt: row.measured_at,
+          value: row.value_after == null ? null : Number(row.value_after),
+        }));
+        const total = eligible.reduce((acc, r) => acc + (typeof r.value === "number" && Number.isFinite(r.value) ? r.value : 0), 0);
+        return { n: eligible.length, total, eligible };
       },
       async recentPublishes(input) {
         // 0.8 anti-generic — the [__recent__] source. The publish record is

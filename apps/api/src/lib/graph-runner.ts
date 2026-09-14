@@ -29,6 +29,16 @@
 
 import { createHash } from "node:crypto";
 import {
+  G03_INVALID,
+  G03_PARTIAL,
+  isG03Marked,
+  isQuarantinedGraphMetric,
+  isQuarantinedSnapshotSource,
+  isPartiallyQuarantinedSnapshotSource,
+  quarantineLegacyGraphLearning,
+  parseGraphHarvest,
+} from "../../../../packages/shared/src/graph-metric-containment";
+import {
   type GraphDefinition,
   type GraphNode,
   type NodeStates,
@@ -328,8 +338,13 @@ export interface SubstratePort {
     valueBefore: number | null;
     valueAfter: number | null;
   }): Promise<string>;
-  /** Aggregate harvested outcomes for a metric since a moment (from #162's cron). */
-  readHarvest(metric: string, sinceIso: string): Promise<{ n: number; total: number }>;
+  /**
+   * Aggregate harvested outcomes for a metric since a moment (from #162's cron).
+   * G03: quarantined metrics throw before any SQL; allowed metrics return the
+   * rows the read touched with their ORIGIN (`eligible`), so a future
+   * evaluation can be reconciled by lineage instead of by prefix sum.
+   */
+  readHarvest(metric: string, sinceIso: string): Promise<HarvestReading>;
   /**
    * Succeeded publishes to a channel since 00:00 UTC today — the cadence
    * valve's counter (24/08: LinkedIn got 3 producers — sphere, video adapt,
@@ -553,6 +568,74 @@ export const RUNNING_TIMEOUT_HOURS = 2;
 export const DEFAULT_APPROVAL_TIMEOUT_HOURS = 96;
 /** A harvest that finds nothing keeps waiting this long, then finishes as noData — loud, never a fake zero. */
 export const HARVEST_GRACE_HOURS = 48;
+
+// ---------------------------------------------------------------------------
+// G03 — lineage and the DORMANT raw-observation assessment.
+//
+// Containment lives in packages/shared/src/graph-metric-containment.ts. What
+// lives here is the material the reconciliation will need: every harvest read
+// carries the ledger rows it touched, with their origin, and the assessment
+// below is the PROPOSED semantics for a reopened evaluation — gauge (last raw
+// snapshot in the window, deduplicated by day), never a sum. It is exported
+// for tests and for the reconciliation report; NO runtime path calls it
+// today. Reopening = reviewed PR, not an environment flag.
+// ---------------------------------------------------------------------------
+
+/** One ledger row the harvest touched, with its origin. */
+export interface HarvestEligibleRow {
+  id: string;
+  /** raw = written by the collector graph (social-harvest); derived = written by a verdict. */
+  sourceKind: "raw" | "derived";
+  graph?: string;
+  node?: string;
+  measuredAt?: string;
+  value?: number | null;
+}
+
+export interface HarvestReading {
+  n: number;
+  /** Legacy prefix sum. Reported in summaries only — never a business value. */
+  total: number;
+  eligible?: HarvestEligibleRow[];
+}
+
+export interface RawAssessment {
+  kind: "gauge" | "invalid";
+  /** Last valid raw snapshot in the window (gauge). Null when invalid. */
+  value: number | null;
+  /** Distinct snapshot days that survived dedup. */
+  n: number;
+  raw: number;
+  derived: number;
+  reason: string;
+}
+
+/**
+ * DORMANT. Proposed evaluation of a harvest from its ELIGIBLE rows: any
+ * derived row invalidates the reading; `*_7d` collector metrics are treated
+ * as rolling gauges (last snapshot wins; same-day repeats deduplicate). The
+ * semantics must be confirmed against the collector/vendor before any caller
+ * exists (REVISAO-CLAUDE-PACOTE-2026-09-14 §1.1, §2.6).
+ */
+export function assessRawObservations(rows: HarvestEligibleRow[]): RawAssessment {
+  const derived = rows.filter((r) => r.sourceKind === "derived").length;
+  const raw = rows.filter((r) => r.sourceKind === "raw");
+  if (derived > 0) return { kind: "invalid", value: null, n: 0, raw: raw.length, derived, reason: `${derived} linha(s) derivada(s) no conjunto elegivel` };
+  if (raw.length === 0) return { kind: "invalid", value: null, n: 0, raw: 0, derived: 0, reason: "sem observacoes brutas" };
+  const byDay = new Map<string, { at: number; value: number }>();
+  for (const r of raw) {
+    const at = r.measuredAt ? Date.parse(r.measuredAt) : NaN;
+    const value = typeof r.value === "number" ? r.value : NaN;
+    if (!Number.isFinite(at) || !Number.isFinite(value)) {
+      return { kind: "invalid", value: null, n: 0, raw: raw.length, derived: 0, reason: `linha ${r.id} sem measured_at/valor finito` };
+    }
+    const day = new Date(at).toISOString().slice(0, 10);
+    const prev = byDay.get(day);
+    if (!prev || at > prev.at) byDay.set(day, { at, value });
+  }
+  const latest = [...byDay.values()].sort((a, b) => b.at - a.at)[0]!;
+  return { kind: "gauge", value: latest.value, n: byDay.size, raw: raw.length, derived: 0, reason: "gauge: ultimo snapshot valido da janela" };
+}
 
 // ---------------------------------------------------------------------------
 // 5.F.6 — auto-cura ampliada: retry budget por node + circuit breaker por
@@ -973,6 +1056,64 @@ export async function advanceRun(
   const allSteps = await substrate.loadSteps(runId);
   const byNode = latestByNode(allSteps);
 
+  // G03 — a marketing run created BEFORE containment may carry drafts built on
+  // contaminated snapshots (the [__memory__]/outcomes text). Reconciliation
+  // decision F-C: such a run is NOT killed — its human gate decides. A
+  // code-owned marker records that the run was reviewed under containment and
+  // the founder is told ONCE, before approving anything from it. A brand-new
+  // run gets the marker before creating any artifact.
+  if (def.vpOwner === "marketing" && !isG03Marked(await artifacts.get(runId, "__g03_evidence_v1__"))) {
+    if (allSteps.length > 0) {
+      await artifacts.set(runId, "__g03_evidence_v1__", `${G03_PARTIAL}; legacy run reviewed under containment`);
+      const id = await substrate.startStep({ runId, node: "__g03_review__" });
+      await substrate.finishStep(id, {
+        status: "succeeded",
+        summary: `${G03_INVALID}; legacy marketing run — drafts may embed invalid metrics; the human gate decides`,
+      });
+      await telegram(
+        `⚠️ G03 — graph ${def.slug} (run ${runId.slice(0, 8)}) nasceu antes da contencao: o rascunho pode citar metricas invalidas (ex.: 66,9 M impressoes). Reveja o TEXTO antes de aprovar. Nada foi bloqueado nem publicado por este aviso.`
+      );
+    } else {
+      await artifacts.set(runId, "__g03_evidence_v1__", G03_INVALID);
+    }
+  }
+
+  // Guard BEFORE waiting maintenance: a pre-containment evidence artifact
+  // (snapshot/harvest produced by the old code) must not feed a report, a
+  // draft or a verdict. Preserve history; halt the run explicitly instead of
+  // rewriting old evidence. Exception (F-C): a marketing run already at or past
+  // its HUMAN GATE continues — the founder was warned above and decides.
+  const humanGated =
+    def.vpOwner === "marketing" &&
+    def.nodes.some((n) => n.kind === "approval" && ["waiting", "succeeded"].includes(byNode.get(n.id)?.status ?? ""));
+  for (const node of def.nodes) {
+    const src = String(node.config?.["source"] ?? "");
+    const guarded =
+      (node.kind === "snapshot" && (isQuarantinedSnapshotSource(src) || isPartiallyQuarantinedSnapshotSource(src))) ||
+      (node.kind === "harvest" && isQuarantinedGraphMetric(String(node.config?.["metric"] ?? "")));
+    if (guarded && byNode.get(node.id)?.status === "succeeded" && !isG03Marked(await artifacts.get(runId, node.id))) {
+      if (humanGated) continue;
+      const id = await substrate.startStep({ runId, node: "__invalid_g03__" });
+      await substrate.finishStep(id, { status: "failed", summary: `${G03_INVALID}; legacy upstream artifact` });
+      await substrate.finishRun(runId, "failed");
+      return { status: "failed", started, notes: [G03_INVALID] };
+    }
+  }
+
+  // Learning graphs (memory-consolidation, prompt-tuner) cannot run under
+  // containment: their fuel is the derived history. Decision F-D: the run
+  // ends SKIPPED-and-succeeded — no LLM call, no approval, no store, no
+  // Telegram, and no failed run for the incident detector to cluster — until
+  // the founder pauses their schedules. Pending old approvals are not
+  // permission to activate contaminated lessons.
+  if (def.nodes.some((node) => node.kind === "store" &&
+      ["memory-lessons", "prompt-override"].includes(String(node.config?.["target"] ?? "memory-lessons")))) {
+    const id = await substrate.startStep({ runId, node: "__invalid_g03__" });
+    await substrate.finishStep(id, { status: "skipped", summary: `${G03_INVALID}; learning graph skipped under containment (no LLM call, no store)` });
+    await substrate.finishRun(runId, "succeeded");
+    return { status: "completed", started, notes: [G03_INVALID] };
+  }
+
   // 5.F.6 — record a publish attempt on the channel's circuit and, when the
   // failure just OPENED it, alarm once per window. Fail-open by contract: a
   // broken circuit reader/writer must never kill a run.
@@ -1132,6 +1273,13 @@ export async function advanceRun(
       }
     } else if (node.kind === "harvest") {
       const metric = String(node.config?.["metric"] ?? "");
+      if (isQuarantinedGraphMetric(metric)) {
+        await artifacts.set(runId, nodeId, G03_INVALID);
+        await substrate.finishStep(step.id, { status: "succeeded", summary: G03_INVALID });
+        step.status = "succeeded";
+        notes.push(G03_INVALID);
+        continue;
+      }
       // 5.F.4 — config.sinceNode anchors the window on ANOTHER node's step
       // (the variant's own publish) instead of the run start. Without it, the
       // A/B's two harvests would read identical windows and every comparison
@@ -1141,10 +1289,13 @@ export async function advanceRun(
       const sinceIso = (sinceNodeId ? byNode.get(sinceNodeId)?.started_at : undefined) ?? run.started_at;
       const got = await substrate.readHarvest(metric, sinceIso);
       if (got.n > 0) {
-        await artifacts.set(runId, nodeId, JSON.stringify({ metric, ...got }));
+        const eligible = got.eligible ?? [];
+        const rawN = eligible.filter((r) => r.sourceKind === "raw").length;
+        const derivedN = eligible.filter((r) => r.sourceKind === "derived").length;
+        await artifacts.set(runId, nodeId, JSON.stringify({ metric, n: got.n, total: got.total, eligible }));
         await substrate.finishStep(step.id, {
           status: "succeeded",
-          summary: `harvest ${metric}: n=${got.n} total=${got.total}`,
+          summary: `harvest ${metric}: n=${got.n} total=${got.total} raw=${rawN} derived=${derivedN}`,
         });
         step.status = "succeeded";
         notes.push(`harvest ${nodeId} found n=${got.n}`);
@@ -1339,6 +1490,7 @@ export async function advanceRun(
   let promptOverrides: Record<string, string> | null = null;
   let promptOverridesLoaded = false;
   const loadPromptOverrides = async (): Promise<Record<string, string> | null> => {
+    if (quarantineLegacyGraphLearning()) return null;
     if (!promptOverridesLoaded) {
       promptOverridesLoaded = true;
       if (substrate.activePromptOverrides) {
@@ -1363,6 +1515,9 @@ export async function advanceRun(
   let recentBlock: string | null = null;
   let recentBlockLoaded = false;
   const loadRecentBlock = async (): Promise<string | null> => {
+    // Old published text can contain the same invalid metrics. There is no
+    // provenance/version filter yet; keep static anti-generic rules instead.
+    if (quarantineLegacyGraphLearning()) return null;
     if (recentBlockLoaded) return recentBlock;
     recentBlockLoaded = true;
     if (!substrate.recentPublishes) return null;
@@ -1492,7 +1647,7 @@ export async function advanceRun(
           // time. Fail-open by contract: empty store, missing migration or a
           // read error all mean NO artifact (never placeholder text), and the
           // critic reasons exactly as before.
-          if (substrate.activeMemoryLessons) {
+          if (!quarantineLegacyGraphLearning() && substrate.activeMemoryLessons) {
             try {
               const mem = await substrate.activeMemoryLessons();
               if (mem && mem.trim()) upstream.unshift([MEMORY_ARTIFACT, mem]);
@@ -1843,102 +1998,28 @@ export async function advanceRun(
       // Park as waiting; section 2 retries it every tick until data or grace.
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
       await substrate.finishStep(stepId, { status: "waiting", summary: `awaiting metric ${String(config["metric"])}` });
-    } else if (node.kind === "verdict" && config["compare"] === "ab") {
-      // 5.F.4 — the A/B verdict is CODE, end to end: parse both harvest
-      // artifacts, extract the declared axis by regex, compare the SAME
-      // metric, record winner+loser in ops.agent_outcome (valueBefore=loser,
-      // valueAfter=winner — the lift delta lives in the row itself) and stamp
-      // the machine-findable CONTRACT line in the step summary:
-      //   ab-winner: axis=<angle|hook|format> variant=<A|B> lift=+<n>%
-      // Consumers: 5.F.1's memory consolidation (snapshot 'memory' reads
-      // node='verdict' summaries) and 5.F.2's tuner (snapshot 'tuning', idem)
-      // — accumulated winners become durable learning with NO new store.
-      // lift% = (winner-loser)/max(loser,1) — base-zero documented, never NaN.
-      // The model writes nothing here; SEM DADO and ties stay honest.
+    } else if (node.kind === "verdict" && (config["compare"] === "ab" || node.dependsOn.some((id) => {
+      // Only a HARVEST upstream carries a metric; a wait/other node upstream
+      // says nothing about quarantine (the allowlist treats "" as unknown).
+      const upstream = def.nodes.find((candidate) => candidate.id === id);
+      return upstream?.kind === "harvest" && isQuarantinedGraphMetric(String(upstream.config?.["metric"] ?? ""));
+    }))) {
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
-      const parseHarvest = async (nid: string) => {
-        try {
-          const p = JSON.parse((await artifacts.get(runId, nid)) ?? "{}") as {
-            metric?: string;
-            total?: number;
-            n?: number;
-            noData?: boolean;
-          };
-          return { metric: p.metric ?? "unknown", total: Number(p.total ?? 0), n: Number(p.n ?? 0), noData: p.noData === true };
-        } catch {
-          return { metric: "unknown", total: 0, n: 0, noData: true };
-        }
-      };
-      const a = await parseHarvest(node.dependsOn[0] ?? "");
-      const b = await parseHarvest(node.dependsOn[1] ?? "");
-      // The axis was DECLARED upstream (the brief's 'EIXO:' line) — regex, not
-      // an LLM guess. An undeclared axis is reported as such, out loud.
-      const axisNodeId = typeof config["axisFrom"] === "string" ? (config["axisFrom"] as string) : "brief";
-      const axisText = (await artifacts.get(runId, axisNodeId)) ?? "";
-      const axis = /EIXO:\s*(angle|hook|format)/i.exec(axisText)?.[1]?.toLowerCase() ?? "desconhecido";
-      // Comparison-window shift: a publish the valve (or circuit) deferred
-      // carries the release note in its summary — the verdict records it.
-      const shifted = def.nodes
-        .filter((n) => n.kind === "publish")
-        .filter((n) => {
-          const s = byNode.get(n.id)?.summary ?? "";
-          return s.includes("apos adiamento de cadencia") || s.includes("apos circuito fechado");
-        })
-        .map((n) => n.id);
-      const shiftNote = shifted.length > 0 ? ` — janela de comparacao deslocada pela valvula (${shifted.join(", ")})` : "";
-      // 10.C.2 — janelas por variante para o cálculo de confiança: início =
-      // publish da variante (sinceNode do harvest), fim = leitura do harvest.
-      const windowOf = (harvestNodeId: string): [string, string] | null => {
-        const hNode = def.nodes.find((n) => n.id === harvestNodeId);
-        const sinceId = typeof hNode?.config?.["sinceNode"] === "string" ? (hNode.config["sinceNode"] as string) : "";
-        const start = sinceId ? byNode.get(sinceId)?.started_at : run.started_at;
-        const end = byNode.get(harvestNodeId)?.started_at;
-        return start && end ? [start, end] : null;
-      };
-      const verdict = computeAbVerdict({
-        a,
-        b,
-        axis,
-        windowA: windowOf(node.dependsOn[0] ?? ""),
-        windowB: windowOf(node.dependsOn[1] ?? ""),
-        shiftNote,
-      });
-      if (verdict.kind === "no-data") {
-        // A mute source on EITHER side breaks the comparison — no winner, no
-        // outcome row, said out loud (the 13/08 false-zero rule, doubled).
-        await substrate.finishStep(stepId, { status: "succeeded", summary: verdict.summary });
-        await telegram(
-          `🟠 A/B SEM VEREDITO — graph ${def.slug} (run ${runId.slice(0, 8)}): '${a.metric}' sem dado em pelo menos uma variante (A n=${a.n}, B n=${b.n}). NADA gravado — sem zero falso, sem vencedor inventado.`
-        );
-      } else if (verdict.kind === "tie") {
-        await substrate.finishStep(stepId, { status: "succeeded", summary: verdict.summary });
-        await telegram(
-          `🟡 A/B EMPATE — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, '${a.metric}' identico nas duas janelas (A=${a.total}, B=${b.total}). Sem vencedor gravado — empate nao vira estatistica.`
-        );
-      } else {
-        await substrate.recordOutcome({ stepId, metric: `ab_${axis}`, valueBefore: verdict.loserTotal!, valueAfter: verdict.winnerTotal! });
-        await substrate.finishStep(stepId, { status: "succeeded", summary: verdict.summary });
-        await telegram(
-          `🧪 VEREDITO A/B — graph ${def.slug} (run ${runId.slice(0, 8)}): eixo ${axis}, variante ${verdict.winner} na frente (+${verdict.liftPct}% em ${a.metric}: A=${a.total}, B=${b.total}; confidence=${verdict.confidence} — o coletor agrega o CANAL, nao o post: isto e diferenca de janela, nao leitura por variante)${shiftNote}. Registrado em ops.agent_outcome (ab_${axis}).`
-        );
-      }
+      await artifacts.set(runId, node.id, G03_INVALID);
+      await substrate.finishStep(stepId, { status: "succeeded", summary: G03_INVALID });
+      notes.push(G03_INVALID);
     } else if (node.kind === "verdict") {
       const stepId = await substrate.startStep({ runId, node: node.id, parentStepId });
       const harvestNodeId = node.dependsOn[0] ?? "";
       const raw = await artifacts.get(runId, harvestNodeId);
-      let metric = "unknown";
-      let total = 0;
-      let n = 0;
-      let noData = false;
-      try {
-        const parsed = JSON.parse(raw ?? "{}") as { metric?: string; total?: number; n?: number; noData?: boolean };
-        metric = parsed.metric ?? "unknown";
-        total = Number(parsed.total ?? 0);
-        n = Number(parsed.n ?? 0);
-        noData = parsed.noData === true;
-      } catch {
-        // verdict on a malformed harvest is still a verdict: zero, said out loud
+      const parsed = parseGraphHarvest(raw);
+      if (!parsed || isQuarantinedGraphMetric(parsed.metric)) {
+        const reason = parsed ? G03_INVALID : "business_state=invalid_harvest; missing/malformed measurement; no outcome written";
+        await artifacts.set(runId, node.id, reason);
+        await substrate.finishStep(stepId, { status: "failed", summary: reason });
+        continue;
       }
+      const { metric, total, n, noData } = parsed;
       if (noData) {
         // A mute source produced no measurement — recording total=0 here would
         // put a FALSE ZERO in ops.agent_outcome and teach the learning loop
@@ -1973,7 +2054,7 @@ export async function advanceRun(
       const stepId = await substrate.startStep({ runId, node: node.id });
       let text = "";
       try {
-        text = await substrate.snapshot({ source, days, metricPrefix });
+        text = isQuarantinedSnapshotSource(source) ? G03_INVALID : await substrate.snapshot({ source, days, metricPrefix });
       } catch (err) {
         await substrate.finishStep(stepId, {
           status: "failed",
@@ -1981,7 +2062,12 @@ export async function advanceRun(
         });
         continue; // next tick's fail-fast closes the run, out loud
       }
-      const body = text.trim() || `SEM DADOS em ops.* (source=${source}, ${days}d).`;
+      // G03: a partial source's artifact is marked BY THE RUNNER, whatever the
+      // port returned (a worker still on the old code, or a test fake) — so the
+      // legacy-artifact guard above only ever trips on evidence written before
+      // containment, never on evidence produced under it.
+      let body = text.trim() || `SEM DADOS em ops.* (source=${source}, ${days}d).`;
+      if (isPartiallyQuarantinedSnapshotSource(source) && !isG03Marked(body)) body = `${G03_PARTIAL}\n${body}`;
       await artifacts.set(runId, node.id, body);
       await substrate.finishStep(stepId, {
         status: "succeeded",
