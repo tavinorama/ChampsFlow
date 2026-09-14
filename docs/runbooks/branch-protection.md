@@ -105,16 +105,44 @@ vermelha → Telegram + summary + run vermelho; `TELEGRAM_*` ausentes = vermelho
 já no preflight (o dispatch corre na mesma). `cron-absence-watch.yml` vigia
 este vigia (janela 2 h).
 
-Como provar "verde na main" para um SHA `X`:
+Como provar "verde na main" para um SHA `X` (**`X` = SHA COMPLETO, 40 hex**):
 
 ```bash
-gh api "repos/tavinorama/ChampsFlow/actions/workflows/ci.yml/runs?branch=main&head_sha=X" \
+X=$(git rev-parse origin/main)   # ou: git rev-parse <sha-curto>; nunca colar o curto
+gh api "repos/tavinorama/ChampsFlow/actions/workflows/ci.yml/runs?branch=main&head_sha=$X" \
   --jq '.workflow_runs[] | {id, event, conclusion}'
 # vazio = NÃO está verde na main, por mais verde que o PR tenha sido.
 ```
 
 Nunca "provar" verde na main com a run do PR: o PR corre no merge-commit
 provisório (`refs/pull/N/merge`), não no SHA que deployou.
+
+### O SHA tem de ter 40 caracteres — nos dois lados (regra de 2026-09-11)
+
+Um SHA curto não dá erro claro em nenhum dos dois comandos; dá um resultado
+que parece outra coisa:
+
+- **Despachar CI com SHA curto = CI vermelha falsa.** Medido 11/09:
+  `gh workflow run ci.yml -r main -f sha=3c9805f` → `actions/checkout@v4`
+  falhou nos 6 jobs com *"The process '/usr/bin/git' failed with exit code 1"*
+  (run 34593023213). Causa: o checkout faz `fetch-depth: 1` e o servidor não
+  resolve abreviações. Com o SHA completo a mesma run é verde (run
+  34593141148). A leitura ingénua de 34593023213 era "CI vermelha na main";
+  era o input.
+- **Filtrar runs com SHA curto = "não verde" falso.** `head_sha=3c9805f`
+  devolve 0 runs; `head_sha=3c9805f054a0c4f9a5d3d20d6736d0ccaa34da87`
+  devolve as 2 runs acima. A API filtra por igualdade exata.
+
+Proteção no `ci.yml` (PR desta regra): o primeiro step de cada job,
+*"Resolve dispatch SHA"*, só corre em `workflow_dispatch` e (1) aceita
+`^[0-9a-f]{40}$`, (2) expande um SHA curto via
+`gh api repos/…/commits/<curto>` e anota `::notice`, (3) falha **antes do
+checkout** com `::error` "Use the FULL 40-hex SHA" para qualquer outro valor
+(desconhecido, ambíguo, `main`, 41 chars). O checkout recebe
+`steps.sha.outputs.sha`, nunca o input em bruto. Em `push`/`pull_request` o
+step é saltado e o checkout usa o HEAD do ref, como antes. Se ainda assim
+vires os 6 jobs vermelhos no *checkout* de uma run `workflow_dispatch`, o
+problema é outro (ref apagado, permissões) — não é mais o SHA curto.
 
 ## Se renomear um job de ci.yml
 
