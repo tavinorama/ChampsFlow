@@ -126,9 +126,17 @@ export class SerpProbeAdapter implements ProviderAdapter {
         throw new ProviderError("serp", res.status >= 500 || res.status === 429 ? "retryable" : "permanent", res.status, "DataForSEO SERP request failed");
       }
       const data = (await res.json()) as {
-        tasks?: Array<{ result?: Array<{ items?: Array<Record<string, unknown>> }> }>;
+        status_code?: number;
+        tasks?: Array<{ status_code?: number; result?: Array<{ items?: Array<Record<string, unknown>> }> }>;
       };
-      const items = data.tasks?.[0]?.result?.[0]?.items ?? [];
+      const task = data.tasks?.[0];
+      const items = task?.result?.[0]?.items;
+      // HTTP 200 can contain a vendor failure or malformed payload. Neither is
+      // evidence that Google chose not to show an overview.
+      if ((data.status_code !== undefined && data.status_code !== 20000) ||
+          (task?.status_code !== undefined && task.status_code !== 20000) || !Array.isArray(items)) {
+        throw new ProviderError("serp", "permanent", undefined, "collection_failed: invalid DataForSEO result");
+      }
       const aio = items.find((it) => it["type"] === "ai_overview");
 
       let rawText: string;
@@ -156,14 +164,13 @@ export class SerpProbeAdapter implements ProviderAdapter {
         rawText = `Google AI Overview for "${query.queryText}" — no AI Overview block returned in this snapshot.`;
       }
 
-      // ABSENT covers two cases that are the same claim — "there is no overview
-      // text to inspect": Google showed no block at all, or it returned the
-      // async shell with nothing extractable inside. The second case was live
-      // for weeks: every probe since at least 20/07 stored "(no extractable
-      // text)", scored the brand as uncited, and fed the drift battery a
-      // failure that was really our missing load_async flag.
+      // An empty shell is failed collection, not an editorial absence. Throw
+      // through the gateway's failedProviders contract; never score it as zero.
       const hasText = !!aio && parts.some((p) => p.trim().length > 0);
-      const absent = !hasText;
+      if (aio && !hasText) {
+        throw new ProviderError("serp", "permanent", undefined, "collection_failed: empty AI Overview shell");
+      }
+      const absent = !aio;
 
       // parseCitation runs ONLY on real overview text. Both sentinels are
       // ineligible, and the "no block" one is actively dangerous: it echoes the

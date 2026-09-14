@@ -286,12 +286,16 @@ describe("ab-experiment — caminho feliz", () => {
     expect(world.run.status).toBe("succeeded");
     // O CONTRATO machine-findable (5.F.1/5.F.2 leem summaries de node='verdict'):
     const verdictSummary = world.stepByNode("verdict")?.summary ?? "";
-    expect(verdictSummary).toMatch(/^ab-winner: axis=hook variant=B lift=\+34%/);
+    // G03 (14/09): the A/B totals are channel prefix sums of a quarantined
+    // metric — the verdict is INVALID, nothing is recorded, no winner exists.
+    expect(verdictSummary).toMatch(/business_state=invalid_g03/);
+    expect(verdictSummary).not.toContain("ab-winner:");
     // A matemática em código: before=perdedor, after=vencedor, métrica ab_<eixo>.
-    expect(world.outcomes).toEqual([{ metric: "ab_hook", valueBefore: 100, valueAfter: 134 }]);
-    // O modelo nunca participou do veredito.
+    expect(world.outcomes).toEqual([]);
+    // O modelo nunca participou do veredito — e nenhum "VEREDITO A/B" chegou
+    // ao Telegram: sob contenção não há vencedor a anunciar.
     expect(world.taskPromptsByNode["verdict"]).toBeUndefined();
-    expect(world.telegrams.join("\n")).toContain("VEREDITO A/B");
+    expect(world.telegrams.join("\n")).not.toContain("VEREDITO A/B");
   });
 });
 
@@ -326,8 +330,11 @@ describe("ab-experiment — válvula de cadência", () => {
     hoursPass(world, 49);
     await tickUntil(world, () => world.run.status !== "running");
     const verdictSummary = world.stepByNode("verdict")?.summary ?? "";
-    expect(verdictSummary).toMatch(/^ab-winner: axis=hook variant=A lift=\+34%/);
-    expect(verdictSummary).toContain("janela de comparacao deslocada pela valvula (publish-b)");
+    // G03 (14/09): the valve behaviour above is intact; the verdict itself is
+    // INVALID under containment (no winner, no shifted-window claim recorded).
+    expect(verdictSummary).toMatch(/business_state=invalid_g03/);
+    expect(verdictSummary).not.toContain("ab-winner:");
+    expect(world.outcomes).toEqual([]);
   });
 });
 
@@ -385,9 +392,11 @@ describe("ab-experiment — veredito honesto sem dado / empate", () => {
 
     expect(world.outcomes).toEqual([]);
     const verdictSummary = world.stepByNode("verdict")?.summary ?? "";
-    expect(verdictSummary).toContain("SEM DADO");
+    // G03 (14/09): a quarantined harvest is never read, so "mute source" cannot
+    // be diagnosed either — the verdict is INVALID, said as such, never a winner.
+    expect(verdictSummary).toMatch(/business_state=invalid_g03/);
     expect(verdictSummary).not.toContain("ab-winner:");
-    expect(world.telegrams.join("\n")).toContain("A/B SEM VEREDITO");
+    expect(world.telegrams.join("\n")).not.toContain("VEREDITO A/B —");
   });
 
   it("empate numérico: indistinguível — sem vencedor gravado (empate não vira estatística)", async () => {
@@ -401,8 +410,9 @@ describe("ab-experiment — veredito honesto sem dado / empate", () => {
 
     expect(world.outcomes).toEqual([]);
     const verdictSummary = world.stepByNode("verdict")?.summary ?? "";
-    expect(verdictSummary).toContain("empate");
+    // G03 (14/09): identical prefix sums are not a tie of anything measurable.
+    expect(verdictSummary).toMatch(/business_state=invalid_g03/);
     expect(verdictSummary).not.toContain("ab-winner:");
-    expect(world.telegrams.join("\n")).toContain("A/B EMPATE");
+    expect(world.telegrams.join("\n")).not.toContain("VEREDITO A/B —");
   });
 });

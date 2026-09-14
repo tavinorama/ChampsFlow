@@ -154,19 +154,19 @@ describe("10.C.3/10.C.4 — prefixos seguem a família da métrica colhida", () 
     expect(DAILY_VIDEO_GRAPH.version).toBeGreaterThanOrEqual(5);
   });
 
-  it("canal report-only sem coletor (blog_) diz 'CANAL SEM COLHEITA' e entrega as rejeições — nunca SEM DADOS mudo", async () => {
+  it("G03 (14/09): o snapshot 'outcomes' — inclusive o de um canal report-only (blog_) — é INVALID sem tocar o banco", async () => {
+    // Antes: 'CANAL SEM COLHEITA' + rejeições. Sob contenção a fonte inteira
+    // (ops.agent_outcome + vereditos) fica suspensa; as rejeições do founder
+    // continuam a chegar às células pelo snapshot 'memory' (parcial).
+    const calls: string[] = [];
     const sql = (async (strings: TemplateStringsArray) => {
-      const text = strings.join("$");
-      if (text.includes("ops.agent_outcome ao")) return []; // outcomes: zero
-      // rejections query (roteada pelos graphs da esfera)
-      if (text.includes("s.summary LIKE 'rejected:%'")) {
-        return [{ graph: "sphere-blog", summary: "rejected: tema repetido", started_at: "2026-09-01T10:00:00Z" }];
-      }
+      calls.push(strings.join("$"));
       return [];
     }) as unknown as postgres.Sql;
     const snap = await buildSnapshot(sql, "outcomes", 60, "blog_");
-    expect(snap).toContain("CANAL SEM COLHEITA");
-    expect(snap).toContain("tema repetido");
+    expect(snap).toMatch(/business_state=invalid_g03/);
+    expect(snap).not.toContain("CANAL SEM COLHEITA");
+    expect(calls).toEqual([]);
   });
 });
 
@@ -616,17 +616,18 @@ describe("10.C.15 — escapeLike", () => {
     expect(escapeLike("x_")).toBe("x\\_");
     expect(escapeLike("linkedinpage_")).toBe("linkedinpage\\_");
     expect(escapeLike("a%b\\c")).toBe("a\\%b\\\\c");
+    // G03 (14/09): o snapshot 'outcomes' já não consulta o banco (quarentena
+    // total), logo não há SQL onde conferir o prefixo escapado. A função pura
+    // continua pregada acima; o caminho SQL volta a ser testado quando a
+    // avaliação for reaberta por PR revisado.
     const captured: unknown[] = [];
     const sql = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const text = strings.join("$");
-      if (text.includes("ops.agent_outcome ao")) {
-        captured.push(...values);
-        return [];
-      }
+      captured.push(...values);
       return [];
     }) as unknown as postgres.Sql;
-    await buildSnapshot(sql, "outcomes", 30, "x_");
-    expect(captured).toContain("x\\_%");
+    const snap = await buildSnapshot(sql, "outcomes", 30, "x_");
+    expect(snap).toMatch(/business_state=invalid_g03/);
+    expect(captured).toEqual([]);
   });
 });
 

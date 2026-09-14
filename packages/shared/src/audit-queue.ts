@@ -75,7 +75,7 @@ export function auditRetryDelayMs(attempt: number): number {
  * down engines the same question and spends the money again. It is exactly the
  * error the three 17/08 audits carried.
  */
-const NON_RETRYABLE = new Set(["insufficient_engine_coverage"]);
+const NON_RETRYABLE = new Set(["insufficient_engine_coverage", "citation_verification_pending"]);
 
 export function isAuditFailurePermanent(message: string | null | undefined): boolean {
   if (!message) return false;

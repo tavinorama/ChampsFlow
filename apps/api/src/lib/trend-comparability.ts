@@ -34,6 +34,13 @@ export interface TrendRunMeta {
   checks: number | null;
   /** coverage.comparable as written by the worker. Null = predates the flag. */
   comparableFlag: boolean | null;
+  /**
+   * geo_audit.methodology_version of the run ('2.1', '2.2', …). Null when
+   * unknown (legacy). Reconciliação 14/09 (A04 mínimo): a run scored under a
+   * different protocol than the pinned one is NOT on the same trend line —
+   * bumping GEO_METHODOLOGY_VERSION must break the line, never blend it.
+   */
+  methodology?: string | null;
 }
 
 export interface TrendMark {
@@ -48,6 +55,8 @@ export interface TrendComparability {
   marks: TrendMark[];
   /** The pinned engine panel (sorted). Empty when nothing full ever ran. */
   pinnedPanel: string[];
+  /** The pinned methodology version (from the same run that pins the panel). Null when unknown. */
+  pinnedMethodology: string | null;
   /** Median check count of pinned-panel runs (band centre). Null if unknown. */
   bandCenter: number | null;
   excluded: number;
@@ -85,6 +94,7 @@ export function markComparableTrend(runs: TrendRunMeta[]): TrendComparability {
   const pinRun = byNewest.find((r) => r.comparableFlag !== false && signature(r.providers) !== null);
   const pinnedSig = pinRun ? signature(pinRun.providers) : null;
   const pinnedPanel = pinRun && pinRun.providers ? [...pinRun.providers].sort() : [];
+  const pinnedMethodology = pinRun?.methodology?.trim() || null;
 
   const pinnedChecks = byNewest
     .filter((r) => r.comparableFlag !== false && signature(r.providers) === pinnedSig)
@@ -98,6 +108,14 @@ export function markComparableTrend(runs: TrendRunMeta[]): TrendComparability {
         auditId: r.auditId,
         inTrend: false,
         reason: "Partial — not comparable: one or more engines did not answer this run.",
+      };
+    }
+    const method = r.methodology?.trim() || null;
+    if (pinnedMethodology !== null && method !== null && method !== pinnedMethodology) {
+      return {
+        auditId: r.auditId,
+        inTrend: false,
+        reason: `Scored under methodology ${method}, not the ${pinnedMethodology} this brand's trend is pinned to — a protocol change is a new baseline, not a swing.`,
       };
     }
     const sig = signature(r.providers);
@@ -129,6 +147,7 @@ export function markComparableTrend(runs: TrendRunMeta[]): TrendComparability {
   return {
     marks,
     pinnedPanel,
+    pinnedMethodology,
     bandCenter,
     excluded: marks.filter((m) => !m.inTrend).length,
   };

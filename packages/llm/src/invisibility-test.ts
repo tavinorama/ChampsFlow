@@ -75,6 +75,86 @@ export interface EngineResult {
   brandCited: boolean;
   brandPosition: number | null;
   competitorCited: boolean;
+  /**
+   * C10: cells where the SURFACE was not present (e.g. Google returned no AI
+   * Overview block). Not a citation miss — nothing was there to cite. Excluded
+   * from the citation denominator (`eligibleCells`).
+   */
+  surfaceAbsentCells?: number;
+  /** Cells that had an answer to inspect. */
+  eligibleCells?: number;
+}
+
+/** Per-engine aggregate of (prompt × provider) cells. Exported for tests. */
+export interface EngineAgg {
+  live: boolean;
+  citedCells: number;
+  /** Cells with an answer to inspect — the citation denominator. */
+  totalCells: number;
+  /** Cells where the surface was absent (adapter said `absent: true`). */
+  absentCells: number;
+  bestPosition: number | null;
+  competitorCited: boolean;
+}
+
+/**
+ * Sentinel texts adapters return when there was NOTHING to inspect. They must
+ * never reach the citation parser: the "no block" one echoes the customer's
+ * own question, so a brand name in the QUESTION parsed as a citation (C10 —
+ * reproduced offline by the 11/09 audit). Defensive: the adapter already flags
+ * `absent`; this catches a stale cache entry or an older adapter.
+ */
+const SURFACE_ABSENT_SENTINELS = [/no AI Overview block returned/i, /\(no extractable text\)/];
+
+export function isSurfaceAbsentText(text: string): boolean {
+  return SURFACE_ABSENT_SENTINELS.some((re) => re.test(text));
+}
+
+/**
+ * C10 — aggregate probe cells per engine WITHOUT re-parsing sentinels.
+ *  - `absent === true` (or a known sentinel text) → surface_not_present:
+ *    counted in absentCells, excluded from totalCells, never cited.
+ *  - the adapter's own `mentioned` verdict wins over a fresh text parse.
+ */
+export function aggregateEngineCells(
+  responses: Array<{ provider: LLMProvider; rawText?: string; mentioned?: boolean; position?: number | null; absent?: boolean }>,
+  brand: string,
+  competitor: string | null | undefined,
+  isLive: (p: LLMProvider) => boolean
+): Map<LLMProvider, EngineAgg> {
+  const byProvider = new Map<LLMProvider, EngineAgg>();
+  for (const r of responses) {
+    const a: EngineAgg =
+      byProvider.get(r.provider) ?? {
+        live: isLive(r.provider),
+        citedCells: 0,
+        totalCells: 0,
+        absentCells: 0,
+        bestPosition: null,
+        competitorCited: false,
+      };
+    const text = r.rawText ?? "";
+    const absent = r.absent === true || isSurfaceAbsentText(text);
+    if (absent) {
+      a.absentCells += 1;
+      byProvider.set(r.provider, a);
+      continue;
+    }
+    const parsed = parseCitation(text, brand);
+    const mentioned = typeof r.mentioned === "boolean" ? r.mentioned : parsed.mentioned;
+    const position = typeof r.position === "number" ? r.position : parsed.position;
+    const compCited = !!competitor && detectCompetitors(text, [competitor]).length > 0;
+    a.totalCells += 1;
+    if (mentioned) {
+      a.citedCells += 1;
+      if (position != null && (a.bestPosition == null || position < a.bestPosition)) {
+        a.bestPosition = position;
+      }
+    }
+    if (compCited) a.competitorCited = true;
+    byProvider.set(r.provider, a);
+  }
+  return byProvider;
 }
 
 export interface FreeTestResult {
@@ -89,6 +169,12 @@ export interface FreeTestResult {
   totalEngines: number;
   /** How many engines responded with a live (non-mock) response */
   enginesLive: number;
+  /**
+   * C10 / F-A: engines that were requested but whose COLLECTION failed this
+   * run (vendor error, empty shell, malformed payload). Not measured — not an
+   * absence, not a miss, not in any denominator. Empty when every engine answered.
+   */
+  notMeasured: LLMProvider[];
   /** Domain used for the light crawl (may be null if not provided) */
   domain: string | null;
   /** Headline verdict for the scorecard. */
@@ -280,38 +366,20 @@ export async function runInvisibilityTest(
     opts.onUsage(Array.from(byEngine.entries()).map(([engine, usage]) => ({ engine, usage })));
   }
 
+  // C10 / decision F-A (reconciliação 14/09): a provider whose COLLECTION
+  // failed is reported as NOT MEASURED — it is neither an absence nor a miss,
+  // and it never enters any denominator. The result is published with that
+  // label instead of a 502; only a run where NOTHING answered is refused
+  // (there is no score to publish). Usage was reported above, not hidden.
+  const notMeasured: LLMProvider[] = Array.from(new Set(probeResult.failedProviders.map((f) => f.provider)));
+  if (probeResult.responses.length === 0) {
+    throw new Error("collection_failed: free test incomplete; no engine answered, no score published");
+  }
+
   // Aggregate the (prompt × provider) responses into one row per engine, while
   // tracking cell-level citation for an honest, sample-representative AI rate.
-  interface EngineAgg {
-    live: boolean;
-    citedCells: number;
-    totalCells: number;
-    bestPosition: number | null;
-    competitorCited: boolean;
-  }
-  const byProvider = new Map<EngineResult["engine"], EngineAgg>();
-  for (const r of probeResult.responses) {
-    const parsed = parseCitation(r.rawText ?? "", brand);
-    const compCited =
-      !!competitor && detectCompetitors(r.rawText ?? "", [competitor]).length > 0;
-    const a: EngineAgg =
-      byProvider.get(r.provider) ?? {
-        live: isProviderLive(r.provider),
-        citedCells: 0,
-        totalCells: 0,
-        bestPosition: null,
-        competitorCited: false,
-      };
-    a.totalCells += 1;
-    if (parsed.mentioned) {
-      a.citedCells += 1;
-      if (parsed.position != null && (a.bestPosition == null || parsed.position < a.bestPosition)) {
-        a.bestPosition = parsed.position;
-      }
-    }
-    if (compCited) a.competitorCited = true;
-    byProvider.set(r.provider, a);
-  }
+  // C10: the aggregation is a pure, exported function — see aggregateEngineCells.
+  const byProvider = aggregateEngineCells(probeResult.responses, brand, competitor, isProviderLive);
 
   const engines: EngineResult[] = Array.from(byProvider.entries()).map(([provider, a]) => ({
     engine: provider,
@@ -319,6 +387,8 @@ export async function runInvisibilityTest(
     brandCited: a.citedCells > 0,
     brandPosition: a.bestPosition,
     competitorCited: a.competitorCited,
+    surfaceAbsentCells: a.absentCells,
+    eligibleCells: a.totalCells,
   }));
 
   const totalEngines = engines.length;
@@ -352,7 +422,7 @@ export async function runInvisibilityTest(
 
   // Sentiment: analyze probe answers where brand was cited
   const sentimentInputs = probeResult.responses
-    .filter((r) => isProviderLive(r.provider))
+    .filter((r) => isProviderLive(r.provider) && !r.absent)
     .map((r) => ({
       text: r.rawText ?? "",
       mentioned: parseCitation(r.rawText ?? "", brand).mentioned,
@@ -425,6 +495,7 @@ export async function runInvisibilityTest(
     competitorEngineCount,
     totalEngines,
     enginesLive,
+    notMeasured,
     domain: domain ?? null,
     verdict,
     status,
@@ -441,7 +512,7 @@ export async function runInvisibilityTest(
         sentiment,
         // B2 surface note: when web search is on (default), say so — the score
         // was measured on the search-enabled surface real buyers see.
-        note: `Tested ${prompts.length} buyer prompts across ${totalEngines} AI engine${totalEngines !== 1 ? "s" : ""} (${enginesLive} live). Cited on ${brandEngineCount}/${totalEngines} engines (${Math.round(citationRate * 100)}% of prompt·engine checks).${webSearchEnabled() ? " Engines answered with live web search on — the same surface real buyers see." : ""}`,
+        note: `Tested ${prompts.length} buyer prompts across ${totalEngines} AI engine${totalEngines !== 1 ? "s" : ""} (${enginesLive} live). Cited on ${brandEngineCount}/${totalEngines} engines (${Math.round(citationRate * 100)}% of prompt·engine checks).${notMeasured.length > 0 ? ` Not measured this run (collection failed): ${notMeasured.join(", ")}.` : ""}${webSearchEnabled() ? " Engines answered with live web search on — the same surface real buyers see." : ""}`,
       },
       performance: {
         schemaCoverage,

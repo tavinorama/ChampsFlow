@@ -400,6 +400,7 @@ export {
   extractMentionsBatch,
   twoPassExtractionEnabled,
   countsAsCitation,
+  assertBrandVerificationComplete,
   isBrandMention,
   defaultExtractionLLM,
   ExtractionUnavailableError,

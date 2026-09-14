@@ -35,13 +35,14 @@ const DRIFT_SRC = readFileSync(
 );
 
 describe("serp adapter — absent vs not-mentioned", () => {
-  it("derives absent from extractable TEXT, not from the block's mere existence", () => {
+  it("distinguishes an absent block from an unextractable shell", () => {
     // Layer 2 of the same bug: Google serves most overviews asynchronously, so
     // the block arrives as an empty shell unless load_async_ai_overview is
     // sent. A block-existence check calls that shell "present" and scores
     // "(no extractable text)" as an answer — which production did for weeks.
     expect(SERP_SRC).toMatch(/const hasText = !!aio && parts\.some/);
-    expect(SERP_SRC).toMatch(/const absent = !hasText/);
+    expect(SERP_SRC).toMatch(/const absent = !aio/);
+    expect(SERP_SRC).toContain("collection_failed: empty AI Overview shell");
     expect(SERP_SRC).toMatch(/load_async_ai_overview:\s*true/);
   });
 

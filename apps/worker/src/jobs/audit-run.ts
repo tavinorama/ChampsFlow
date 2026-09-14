@@ -46,6 +46,7 @@ import {
   extractMentionsBatch,
   twoPassExtractionEnabled,
   countsAsCitation,
+  assertBrandVerificationComplete,
   isBrandMention,
   type ExtractionResult,
   type MentionKind,
@@ -891,6 +892,13 @@ export async function processAuditJob(
     // in mock mode (deterministic fabricated answers must not persist) and by
     // GEO_PROBE_CACHE=0. Fail-open: any Redis error is a miss.
     const cacheEnabled = probeCacheEnabled() && liveMode;
+    const cacheIdentity = {
+      tenantId: tenant_id,
+      brandId: brand_id,
+      brandName: brand.name,
+      market: JSON.stringify([region, brand.region, userRegion]),
+      surface: process.env["GEO_WEB_SEARCH"] === "0" ? "no-web" : "web",
+    };
     const cachedResponses: ProbeResponse[] = [];
     let cacheLookups = 0;
     if (cacheEnabled) {
@@ -902,7 +910,7 @@ export async function processAuditJob(
           for (const p of allowedForCache) {
             cacheLookups += 1;
             lookups.push(
-              getCachedProbe(redis, q.queryHash, p, GEO_METHODOLOGY_VERSION).then((hit) => {
+              getCachedProbe(redis, q.queryHash, p, GEO_METHODOLOGY_VERSION, cacheIdentity).then((hit) => {
                 if (hit) cachedResponses.push(hit);
               })
             );
@@ -936,7 +944,7 @@ export async function processAuditJob(
         await Promise.all(
           result.responses
             .filter((r) => !r.fromCache)
-            .map((r) => setCachedProbe(redis, r, GEO_METHODOLOGY_VERSION))
+            .map((r) => setCachedProbe(redis, r, GEO_METHODOLOGY_VERSION, cacheIdentity))
         );
       } catch (err) {
         logger.warn("probe_cache_write_failed", {
@@ -1078,6 +1086,7 @@ export async function processAuditJob(
     let extractionMode: string = extractionEnabled ? "two_pass" : "disabled";
     let extractionVerified = 0;
     let extractionRejected = 0;
+    let extractionUnverified = 0;
     let extractionCalls = 0;
     let extractionAdjusted = 0;
     const extractionByKind: Record<string, number> = {};
@@ -1106,6 +1115,7 @@ export async function processAuditJob(
         for (const e of extractions) {
           extractionVerified += e.verified_count;
           extractionRejected += e.rejected_count;
+          extractionUnverified += e.unverified_count;
           extractionCalls += e.llm_calls;
           for (const m of e.mentions) {
             const k: MentionKind = m.kind_confirmed;
@@ -1133,6 +1143,18 @@ export async function processAuditJob(
           message: (err as Error).message?.slice(0, 160),
         });
       }
+    }
+
+    // Outside the extraction fallback catch: a verifier outage must not become
+    // a scored zero. Do not retry paid generation automatically on this refusal.
+    try {
+      assertBrandVerificationComplete(extractions);
+    } catch (err) {
+      job.discard();
+      await sql`UPDATE geo_audit SET status = 'failed',
+        error_message = 'Citation verification is incomplete. No score was published.'
+        WHERE id = ${audit_id}`;
+      throw err;
     }
 
     // Apply the verified result to the probe aggregates (removal only).
@@ -1577,6 +1599,9 @@ export async function processAuditJob(
         mode: extractionMode,
         verified_count: extractionVerified,
         rejected_count: extractionRejected,
+        // C07: the third state. verified + rejected + unverified = every
+        // mention looked at (by_kind total). Unverified never counts.
+        unverified_count: extractionUnverified,
         by_kind: extractionByKind,
         // ADMIN ONLY. The breakdown route never forwards these raw verifier
         // lines to a customer (P1-07) — they are read at
@@ -2345,6 +2370,7 @@ export async function processAuditJob(
       cache_hits: cacheHits,
       extraction_mode: extractionMode,
       extraction_rejected: extractionRejected,
+      extraction_unverified: extractionUnverified,
       extraction_adjusted: extractionAdjusted,
     });
 

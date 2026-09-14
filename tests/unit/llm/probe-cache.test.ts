@@ -45,10 +45,11 @@ function liveResponse(overrides: Partial<ProbeResponse> = {}): ProbeResponse {
 }
 
 const V = "2.0";
+const ID = { tenantId: "tenant", brandId: "brand", brandName: "Acme", market: "US", surface: "web" };
 
 describe("probeCacheKey", () => {
   it("follows the geoprobe:{hash}|{engine}|{version} contract", () => {
-    expect(probeCacheKey("abc123", "openai", "2.0")).toBe("geoprobe:abc123|openai|2.0");
+    expect(probeCacheKey("abc123", "openai", "2.0", ID)).toMatch(/^geoprobe:v2:[a-f0-9]{64}\|abc123\|openai\|2\.0$/);
   });
 });
 
@@ -79,14 +80,14 @@ describe("set → get roundtrip (hit)", () => {
   it("returns the aggregated probe with fromCache=true and a 24h TTL", async () => {
     const store = new FakeStore();
     const resp = liveResponse();
-    await setCachedProbe(store, resp, V);
+    await setCachedProbe(store, resp, V, ID);
 
-    const entry = store.entries.get(probeCacheKey("abc123", "openai", V));
+    const entry = store.entries.get(probeCacheKey("abc123", "openai", V, ID));
     expect(entry).toBeDefined();
     expect(entry!.ttl).toBe(PROBE_CACHE_TTL_SECONDS);
     expect(PROBE_CACHE_TTL_SECONDS).toBe(86_400);
 
-    const hit = await getCachedProbe(store, "abc123", "openai", V);
+    const hit = await getCachedProbe(store, "abc123", "openai", V, ID);
     expect(hit).not.toBeNull();
     expect(hit!.fromCache).toBe(true);
     expect(hit).toMatchObject({
@@ -103,66 +104,68 @@ describe("set → get roundtrip (hit)", () => {
 
   it("caps the stored snippet at 2000 chars", async () => {
     const store = new FakeStore();
-    await setCachedProbe(store, liveResponse({ rawText: "x".repeat(5000) }), V);
-    const hit = await getCachedProbe(store, "abc123", "openai", V);
+    await setCachedProbe(store, liveResponse({ rawText: "x".repeat(5000) }), V, ID);
+    const hit = await getCachedProbe(store, "abc123", "openai", V, ID);
     expect(hit!.rawText).toHaveLength(2000);
   });
 });
 
 describe("misses", () => {
   it("empty store → null", async () => {
-    expect(await getCachedProbe(new FakeStore(), "abc123", "openai", V)).toBeNull();
+    expect(await getCachedProbe(new FakeStore(), "abc123", "openai", V, ID)).toBeNull();
   });
 
   it("methodology version is part of the key — a protocol bump invalidates old entries", async () => {
     const store = new FakeStore();
-    await setCachedProbe(store, liveResponse(), "2.0");
-    expect(await getCachedProbe(store, "abc123", "openai", "1.0")).toBeNull();
-    expect(await getCachedProbe(store, "abc123", "openai", "2.0")).not.toBeNull();
+    await setCachedProbe(store, liveResponse(), "2.0", ID);
+    expect(await getCachedProbe(store, "abc123", "openai", "1.0", ID)).toBeNull();
+    expect(await getCachedProbe(store, "abc123", "openai", "2.0", ID)).not.toBeNull();
   });
 
   it("corrupt JSON → null (never fabricated data)", async () => {
     const store = new FakeStore();
-    store.entries.set(probeCacheKey("abc123", "openai", V), { value: "{not json", ttl: 1 });
-    expect(await getCachedProbe(store, "abc123", "openai", V)).toBeNull();
+    store.entries.set(probeCacheKey("abc123", "openai", V, ID), { value: "{not json", ttl: 1 });
+    expect(await getCachedProbe(store, "abc123", "openai", V, ID)).toBeNull();
   });
 
   it("entry whose payload contradicts the key (provider/hash mismatch) → null", async () => {
     const store = new FakeStore();
-    await setCachedProbe(store, liveResponse(), V);
-    const entry = store.entries.get(probeCacheKey("abc123", "openai", V))!;
+    await setCachedProbe(store, liveResponse(), V, ID);
+    const entry = store.entries.get(probeCacheKey("abc123", "openai", V, ID))!;
     // Simulate a mis-keyed write: same key, payload claims another engine.
-    store.entries.set(probeCacheKey("abc123", "serp", V), entry);
-    expect(await getCachedProbe(store, "abc123", "serp", V)).toBeNull();
+    store.entries.set(probeCacheKey("abc123", "serp", V, ID), entry);
+    expect(await getCachedProbe(store, "abc123", "serp", V, ID)).toBeNull();
   });
 
   it("invalid runs / mentionRate in payload → null", async () => {
     const store = new FakeStore();
-    const key = probeCacheKey("abc123", "openai", V);
+    const key = probeCacheKey("abc123", "openai", V, ID);
+    await setCachedProbe(store, liveResponse(), V, ID);
+    const valid = JSON.parse(store.entries.get(key)!.value);
     store.entries.set(key, {
-      value: JSON.stringify({ v: 1, provider: "openai", queryHash: "abc123", runs: 0, mentionRate: 0.5 }),
+      value: JSON.stringify({ ...valid, runs: 0, mentionRate: 0.5 }),
       ttl: 1,
     });
-    expect(await getCachedProbe(store, "abc123", "openai", V)).toBeNull();
+    expect(await getCachedProbe(store, "abc123", "openai", V, ID)).toBeNull();
     store.entries.set(key, {
-      value: JSON.stringify({ v: 1, provider: "openai", queryHash: "abc123", runs: 3, mentionRate: 1.7 }),
+      value: JSON.stringify({ ...valid, runs: 3, mentionRate: 1.7 }),
       ttl: 1,
     });
-    expect(await getCachedProbe(store, "abc123", "openai", V)).toBeNull();
+    expect(await getCachedProbe(store, "abc123", "openai", V, ID)).toBeNull();
   });
 });
 
 describe("write bypasses", () => {
   it("refuses to re-cache a result that itself came from the cache (no TTL renewal)", async () => {
     const store = new FakeStore();
-    await setCachedProbe(store, liveResponse({ fromCache: true }), V);
+    await setCachedProbe(store, liveResponse({ fromCache: true }), V, ID);
     expect(store.entries.size).toBe(0);
   });
 
   it("refuses results without a queryHash or with zero runs", async () => {
     const store = new FakeStore();
-    await setCachedProbe(store, liveResponse({ queryHash: undefined }), V);
-    await setCachedProbe(store, liveResponse({ runs: 0 }), V);
+    await setCachedProbe(store, liveResponse({ queryHash: undefined }), V, ID);
+    await setCachedProbe(store, liveResponse({ runs: 0 }), V, ID);
     expect(store.entries.size).toBe(0);
   });
 });
@@ -178,10 +181,10 @@ describe("fail-open on store errors", () => {
   };
 
   it("get error reads as a miss", async () => {
-    expect(await getCachedProbe(broken, "abc123", "openai", V)).toBeNull();
+    expect(await getCachedProbe(broken, "abc123", "openai", V, ID)).toBeNull();
   });
 
   it("set error is swallowed", async () => {
-    await expect(setCachedProbe(broken, liveResponse(), V)).resolves.toBeUndefined();
+    await expect(setCachedProbe(broken, liveResponse(), V, ID)).resolves.toBeUndefined();
   });
 });
