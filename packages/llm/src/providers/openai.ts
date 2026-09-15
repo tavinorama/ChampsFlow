@@ -36,7 +36,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts, providerHttpError } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -122,8 +122,9 @@ export class OpenAIProbeAdapter implements ProviderAdapter {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const kind = res.status === 429 || res.status >= 500 ? "retryable" : "permanent";
-        throw new ProviderError("openai", kind, res.status, `openai HTTP ${res.status}`);
+        // The body carries the provider's reason (type + message); a bare
+        // status code hid a six-day outage — see providerHttpError.
+        throw await providerHttpError("openai", res);
       }
       const data = (await res.json()) as {
         // Chat Completions shape (GEO_WEB_SEARCH=0 fallback)

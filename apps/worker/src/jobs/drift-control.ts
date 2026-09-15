@@ -55,6 +55,7 @@ import {
   execForPostgresJs,
 } from "../../../../packages/llm/src/index";
 import { logger } from "../../../../packages/shared/src/logger";
+import { alertOps } from "../../../../packages/shared/src/ops-alert";
 
 /** The 5 engines under control. Gateway provider ids (see the migration note). */
 export const DRIFT_ENGINES: DriftEngine[] = [
@@ -153,6 +154,17 @@ const makeGatewayCaller = (usage: UsageByEngine): DriftLLMCaller =>
     if (merged) usage.set(engine, merged);
   }
 
+  // A provider that REJECTED or FAILED the call is not an engine that
+  // answered nothing. The gateway reports it in failedProviders (with the
+  // provider's reason, secrets redacted); returning null here would count it
+  // as an empty run — which is exactly how six days of HTTP 400 became
+  // "this engine measured nothing today" in September 2026. Throw, so the
+  // battery records an errored run carrying the reason.
+  if (!probe) {
+    const failed = res.failedProviders.find((f) => f.provider === engine);
+    if (failed) throw new Error(failed.error);
+  }
+
   // An ABSENT surface is not a failed answer, and conflating the two paused a
   // healthy engine for three days.
   //
@@ -218,6 +230,9 @@ export async function processDriftControlJob(
       runs,
       note: "every control run errored or returned empty — treating this as OUR outage, not engine drift",
     });
+    // Nada degrada calado: an outage of every engine at once is the loudest
+    // thing this job can find, and until now it was a log line.
+    void alertOps(formatDriftOutageAlert(outcome, evaluations));
     return {
       skipped: "no_usable_responses",
       engines_checked: 0,
@@ -341,6 +356,10 @@ export async function processDriftControlJob(
       engines: failing.join(","),
       paused: driftPauseEnabled() ? "yes" : "no (GEO_DRIFT_PAUSE=0)",
     });
+    // One message per daily battery, naming each failing engine, its cause
+    // and the provider's reason. Anthropic sat paused for six days in
+    // September 2026 with nothing but a log line to show for it.
+    void alertOps(formatDriftFailingAlert(evaluations.filter((e) => e.status === "failing"), driftPauseEnabled()));
   }
   if (degraded.length > 0) {
     logger.warn("drift_engines_degraded", { engines: degraded.join(",") });
@@ -359,6 +378,43 @@ export async function processDriftControlJob(
   return { engines_checked: written, failing, degraded, cost_cents: costCents };
 }
 
+/**
+ * Telegram text for the engines the battery marked `failing`. Cause first,
+ * because "our request was rejected" and "the engine drifted" call for
+ * different people: the founder's console versus a methodology review.
+ */
+export function formatDriftFailingAlert(
+  failing: readonly DriftEvaluation[],
+  paused: boolean
+): string {
+  const lines = failing.map((e) => {
+    const cause =
+      e.cause === "provider_errors"
+        ? "REJECTED BY THE PROVIDER — our request, config or billing, not drift"
+        : e.cause === "no_answers"
+          ? "answered nothing usable"
+          : "failed the behaviour controls (drift)";
+    return `• ${e.engine}: ${cause}\n  ${e.reasons[0] ?? "no reason recorded"}`;
+  });
+  return [
+    `🚨 Drift battery: ${failing.length} engine(s) failing — ${paused ? "PAUSED for new audits" : "NOT paused (GEO_DRIFT_PAUSE=0)"}`,
+    ...lines,
+    "Every audit runs on an incomplete panel until this clears (not comparable).",
+  ].join("\n");
+}
+
+/** Telegram text for the all-engines outage guard (nothing recorded, nothing paused). */
+export function formatDriftOutageAlert(
+  outcome: DriftBatteryOutcome,
+  evaluations: readonly DriftEvaluation[]
+): string {
+  const first = evaluations.map((e) => `• ${e.engine}: ${e.reasons[0] ?? "no usable runs"}`);
+  return [
+    `🚨 Drift battery: ZERO usable answers across all ${DRIFT_ENGINES.length} engines (${outcome.generations} calls) — treated as OUR outage; nothing recorded, nothing paused`,
+    ...first,
+  ].join("\n");
+}
+
 /** PII-free detail jsonb: per-control counts + the reasons + thresholds used. */
 function buildDetail(
   evaluation: DriftEvaluation,
@@ -370,6 +426,7 @@ function buildDetail(
     checked_at: outcome.checkedAt,
     runs_per_control: runs,
     reasons: evaluation.reasons,
+    cause: evaluation.cause,
     counts: evaluation.counts,
     thresholds: DRIFT_THRESHOLDS,
     controls: outcome.results
@@ -382,6 +439,7 @@ function buildDetail(
         mentions: r.mentions,
         empty: r.emptyRuns,
         errors: r.errorRuns,
+        last_error: r.lastError,
         rate: r.mentionRate,
       })),
   };

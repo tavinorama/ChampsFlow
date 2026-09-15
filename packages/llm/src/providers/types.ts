@@ -267,6 +267,66 @@ export class ProviderError extends Error {
   }
 }
 
+/**
+ * Secret-shaped substrings never travel in an error message: API keys of the
+ * providers we call, bearer tokens, and provider request ids (harmless, but
+ * they are not ours to log). Applied to every provider error body before it
+ * reaches a log line, a drift verdict or a Telegram alert.
+ */
+export function redactProviderSecrets(text: string): string {
+  return text
+    .replace(/sk-ant-[A-Za-z0-9_-]+/g, "[redacted-key]")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "[redacted-key]")
+    .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, "[redacted-key]")
+    .replace(/\bpplx-[A-Za-z0-9]+/g, "[redacted-key]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\breq_[A-Za-z0-9]+/g, "[request-id]");
+}
+
+/**
+ * providerHttpError — the ProviderError for a non-2xx provider response,
+ * WITH the reason the provider gave.
+ *
+ * 2026-09-10 → 15: the anthropic adapter threw `anthropic HTTP 400` for six
+ * days straight. The body of every one of those responses named the cause
+ * (`{"error":{"type":"invalid_request_error","message":"…"}}`) and we threw
+ * it away, so the drift battery recorded "measured nothing today", paused the
+ * engine, and nobody could say whether it was a spend limit, a disabled tool,
+ * a retired model alias or a billing problem. A status code is not a reason.
+ *
+ * Reads the body once (JSON `error.type`/`error.message` when present, raw
+ * text otherwise), redacts anything key-shaped, collapses whitespace and caps
+ * it at 200 chars. Retryable/permanent classification is unchanged.
+ */
+export async function providerHttpError(provider: LLMProvider, res: Response): Promise<ProviderError> {
+  const kind: ProviderErrorKind = res.status === 429 || res.status >= 500 ? "retryable" : "permanent";
+  let detail = "";
+  try {
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: { type?: unknown; message?: unknown };
+        message?: unknown;
+      };
+      const type = typeof parsed?.error?.type === "string" ? parsed.error.type : "";
+      const message =
+        typeof parsed?.error?.message === "string"
+          ? parsed.error.message
+          : typeof parsed?.message === "string"
+            ? parsed.message
+            : "";
+      detail = [type, message].filter(Boolean).join(": ");
+    } catch {
+      detail = text;
+    }
+  } catch {
+    detail = "";
+  }
+  detail = redactProviderSecrets(detail).replace(/\s+/g, " ").trim().slice(0, 200);
+  const message = detail ? `${provider} HTTP ${res.status} — ${detail}` : `${provider} HTTP ${res.status}`;
+  return new ProviderError(provider, kind, res.status, message);
+}
+
 // ---------------------------------------------------------------------------
 // Integrity guard — NEVER fabricate data in production
 // ---------------------------------------------------------------------------
