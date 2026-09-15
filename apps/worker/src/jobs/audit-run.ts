@@ -117,6 +117,9 @@ import { AUDIT_JOB_OPTIONS, AUDIT_QUEUE_NAME } from "../../../../packages/shared
 import {
   applyCoverageRetry,
   panelReadyForRetry,
+  abandonUnrunAudit,
+  coverageRetrySkippedMessage,
+  monthlyCapReachedMessage,
   COVERAGE_RETRY_MAX_ATTEMPTS,
   type CoverageRetryState,
 } from "../../../../packages/shared/src/coverage-retry";
@@ -438,10 +441,67 @@ export function legacyStatus(s: string): string {
 
 /**
  * Process one audit job. `sql` is a postgres-js client created by the worker.
+ *
+ * 2026-09-15 — no audit row outlives its job as `running`. Every attempt of a
+ * scheduled job INSERTs its own geo_audit row, so any exception thrown after
+ * that INSERT used to leave a zombie: `running` for ever, "Probing AI
+ * engines…" on the brand page, AUDIT_ALREADY_RUNNING on the manual button, no
+ * plan generated. Three of them appeared on 15/09 from one job that died three
+ * times on a DELETE the database role is not granted. The tracked wrapper marks
+ * the row `failed` (an UPDATE, which the role does have) before rethrowing;
+ * the retry policy then decides whether the job runs again.
  */
 export async function processAuditJob(
   job: Job<AuditJobData>,
   sql: postgres.Sql
+): Promise<{ audit_id: string; overall: number }> {
+  const track: { auditId: string | null } = { auditId: null };
+  try {
+    return await processAuditJobTracked(job, sql, track);
+  } catch (err) {
+    if (track.auditId) await markAuditFailedOnThrow(sql, job.data.tenant_id, track.auditId, err);
+    throw err;
+  }
+}
+
+/**
+ * Terminal mark for a row whose job threw. Customer-visible text (the brand
+ * page shows error_message verbatim), so it carries no raw runtime string —
+ * the raw message goes to the log. Only a row still `pending`/`running` is
+ * touched: a row the job already marked keeps its more specific reason.
+ */
+async function markAuditFailedOnThrow(
+  sql: postgres.Sql,
+  tenantId: string,
+  auditId: string,
+  err: unknown
+): Promise<void> {
+  const raw = ((err as Error)?.message ?? String(err)).slice(0, 200);
+  const message =
+    "This run stopped before a score could be published. No score was recorded for it.";
+  try {
+    await runWithTenant(tenantId, async () => {
+      await sql`
+        UPDATE geo_audit
+           SET status = 'failed', error_message = ${message}
+         WHERE id = ${auditId} AND status IN ('pending', 'running')`;
+    });
+    logger.warn("audit_failed_row_marked", { audit_id: auditId, reason: raw });
+  } catch (markErr) {
+    // Loud, and the original error still propagates: the queue's terminal
+    // alert names the job. The row is the one thing we could not repair.
+    logger.error("audit_failed_row_unmarked", {
+      audit_id: auditId,
+      mark_error: ((markErr as Error)?.message ?? String(markErr)).slice(0, 160),
+      original: raw,
+    });
+  }
+}
+
+async function processAuditJobTracked(
+  job: Job<AuditJobData>,
+  sql: postgres.Sql,
+  track: { auditId: string | null }
 ): Promise<{ audit_id: string; overall: number }> {
   const { tenant_id, brand_id, region } = job.data;
   // UserRegion is uppercase ("EU" | "US") — must match the routing gate's
@@ -467,6 +527,8 @@ export async function processAuditJob(
         VALUES (${audit_id}, ${tenant_id}, ${brand_id}, 'cron', 'pending', NOW())
       `;
     }
+    // From here on a throw must not leave this row `running` (see processAuditJob).
+    track.auditId = audit_id;
 
     // Mark running.
     await sql`UPDATE geo_audit SET status = 'running' WHERE id = ${audit_id}`;
@@ -682,6 +744,7 @@ export async function processAuditJob(
     if (!job.data.audit_id) {
       const cap = PLAN_LIMITS[planTier]?.monthly_audits_total;
       if (typeof cap === "number") {
+        let capReached: { completed: number } | null = null;
         try {
           const capRows = await sql<{ n: number }[]>`
             SELECT count(*)::int AS n FROM geo_audit
@@ -690,17 +753,38 @@ export async function processAuditJob(
                AND created_at >= date_trunc('month', NOW())
           `;
           const completed = capRows[0]?.n ?? 0;
-          if (completed >= cap) {
-            logger.warn("audit_monthly_cap_reached", { tenant_id, plan: planTier, cap, completed });
-            await sql`DELETE FROM geo_audit WHERE id = ${audit_id}`;
-            return { audit_id, overall: 0 };
-          }
+          if (completed >= cap) capReached = { completed };
         } catch (err: unknown) {
-          // Never let the guard block a legitimate audit on a count error.
+          // Never let the guard block a legitimate audit on a COUNT error.
           logger.warn("audit_monthly_cap_check_failed", {
             tenant_id,
             message: (err as Error).message?.slice(0, 160),
           });
+        }
+        if (capReached) {
+          logger.warn("audit_monthly_cap_reached", {
+            tenant_id,
+            plan: planTier,
+            cap,
+            completed: capReached.completed,
+          });
+          // 2026-09-15: MARK the un-run row, never DELETE it (the role has no
+          // DELETE on geo_audit). The mark sits OUTSIDE the count's try/catch
+          // on purpose: a spend guard that cannot record its decision must
+          // stop the job (audit_row_unmarkable, permanent), not carry on
+          // probing as if the ceiling were not there.
+          const reason = monthlyCapReachedMessage({
+            completed: capReached.completed,
+            cap,
+            plan: planTier,
+          });
+          await abandonUnrunAudit({
+            record: async () => {},
+            mark: async () => {
+              await sql`UPDATE geo_audit SET status = 'failed', error_message = ${reason} WHERE id = ${audit_id}`;
+            },
+          });
+          return { audit_id, overall: 0 };
         }
       }
     }
@@ -830,40 +914,59 @@ export async function processAuditJob(
           blocking: readiness.blocking.join(","),
           note: "not probing — a repeat on the same incomplete panel costs money and changes nothing",
         });
-        await sql`DELETE FROM geo_audit WHERE id = ${audit_id}`;
-        try {
-          await applyCoverageRetry(
-            {
-              scheduled: true,
-              comparable: false,
-              paused: readiness.blocking,
-              missing: [],
-              attemptsUsed: coverageRetryJob.attempt,
-              nextScheduledInMs: nextScheduledInMs(brand.tracking_frequency),
-            },
-            {
-              enqueue: async ({ attempt, delayMs, originAuditId }) => {
-                await getDailyAuditQueue().add(
-                  "scheduled-audit",
-                  {
-                    tenant_id,
-                    brand_id,
-                    region,
-                    coverage_retry: { attempt, origin_audit_id: originAuditId },
-                  },
-                  { jobId: `coverage-retry:${originAuditId}:${attempt}`, delay: delayMs }
-                );
+        // 2026-09-15: the decision is recorded FIRST (queue the next repeat,
+        // write the state on the ORIGINAL audit), then THIS un-run row is
+        // marked `failed` with the prose reason — an UPDATE, never a DELETE
+        // (the role has none; the DELETE that used to sit here threw
+        // "permission denied", the job died three times and left three
+        // `running` zombies). A mark that fails is permanent: no retry, no
+        // fourth row, one alert.
+        const skipped = coverageRetrySkippedMessage(readiness.blocking);
+        const outcome = await abandonUnrunAudit({
+          record: async () => {
+            const decision = await applyCoverageRetry(
+              {
+                scheduled: true,
+                comparable: false,
+                paused: readiness.blocking,
+                missing: [],
+                attemptsUsed: coverageRetryJob.attempt,
+                nextScheduledInMs: nextScheduledInMs(brand.tracking_frequency),
               },
-              record: async (state) =>
-                recordCoverageRetry(sql, coverageRetryJob.origin_audit_id, state),
-            },
-            { originAuditId: coverageRetryJob.origin_audit_id }
-          );
-        } catch (err) {
+              {
+                enqueue: async ({ attempt, delayMs, originAuditId }) => {
+                  await getDailyAuditQueue().add(
+                    "scheduled-audit",
+                    {
+                      tenant_id,
+                      brand_id,
+                      region,
+                      coverage_retry: { attempt, origin_audit_id: originAuditId },
+                    },
+                    { jobId: `coverage-retry:${originAuditId}:${attempt}`, delay: delayMs }
+                  );
+                },
+                record: async (state) =>
+                  recordCoverageRetry(sql, coverageRetryJob.origin_audit_id, state),
+              },
+              { originAuditId: coverageRetryJob.origin_audit_id }
+            );
+            logger.info("audit_coverage_retry_rescheduled", {
+              audit_id,
+              origin_audit_id: coverageRetryJob.origin_audit_id,
+              action: decision.action,
+              reason: decision.reason,
+            });
+          },
+          mark: async () => {
+            await sql`UPDATE geo_audit SET status = 'failed', error_message = ${skipped} WHERE id = ${audit_id}`;
+          },
+        });
+        if (!outcome.recorded) {
           // Never silent: a repeat we neither queued nor recorded is a hole.
           logger.error("audit_coverage_retry_reschedule_failed", {
             origin_audit_id: coverageRetryJob.origin_audit_id,
-            message: (err as Error).message?.slice(0, 200),
+            message: outcome.recordError?.slice(0, 200) ?? "unknown",
           });
         }
         return { audit_id, overall: 0 };

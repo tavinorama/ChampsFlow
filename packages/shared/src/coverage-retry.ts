@@ -36,6 +36,8 @@
  * the real UPDATE; the test supplies fakes.
  */
 
+import { AUDIT_ROW_UNMARKABLE } from "./audit-queue";
+
 /** 24h: long enough for a drift verdict to clear, short enough to stay in-week. */
 export const COVERAGE_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
 
@@ -206,4 +208,101 @@ export async function applyCoverageRetry(
   }
 
   return decision;
+}
+
+// ---------------------------------------------------------------------------
+// An un-run audit row is MARKED, never deleted (2026-09-15).
+//
+// WHAT HAPPENED (15/09, 06:04 / 06:15 / 06:35 UTC)
+// ---------------------------------------------------------------------------
+// The repeat of the 14/09 audit found anthropic still held back for drift and
+// correctly refused to probe (nothing spent). It then ran
+// `DELETE FROM geo_audit WHERE id = …` to drop the un-run row — and the worker's
+// database role has INSERT/SELECT/UPDATE on geo_audit, not DELETE. The job
+// threw "permission denied", BullMQ retried it twice more, each attempt had
+// already INSERTed its own row, and three audits stayed `running` for ever:
+// the brand page said "Probing AI engines…", the manual re-run button answered
+// AUDIT_ALREADY_RUNNING, no plan was generated, and the coverage-retry state
+// was never recorded because the DELETE ran before it.
+//
+// The policy is unchanged. What changes is the bookkeeping:
+//   - the un-run row is marked `failed` with a PROSE reason carrying a
+//     machine-readable prefix (status has a CHECK on pending/running/complete/
+//     failed, so there is no 'skipped' without a migration);
+//   - the decision is RECORDED before the row is marked, so a mark that fails
+//     never loses the retry state;
+//   - a mark that fails is `audit_row_unmarkable`, a PERMANENT job failure:
+//     one alert, no retry, no further rows.
+// ---------------------------------------------------------------------------
+
+/** error_message prefix of a repeat that did not probe because the panel was still incomplete. */
+export const COVERAGE_RETRY_SKIPPED_PREFIX = "coverage_retry_skipped";
+/** error_message prefix of a scheduled run not started because the plan's monthly ceiling was reached. */
+export const MONTHLY_CAP_REACHED_PREFIX = "monthly_cap_reached";
+/** Rows carrying these prefixes never probed: not audits that failed, audits that did not run. */
+export const UNRUN_AUDIT_PREFIXES: readonly string[] = [
+  COVERAGE_RETRY_SKIPPED_PREFIX,
+  MONTHLY_CAP_REACHED_PREFIX,
+];
+
+export { AUDIT_ROW_UNMARKABLE };
+
+/** Customer-visible (brand page shows error_message verbatim): prose, no raw runtime strings. */
+export function coverageRetrySkippedMessage(blocking: readonly string[]): string {
+  const who = [...blocking].sort().join(", ") || "an engine";
+  return `${COVERAGE_RETRY_SKIPPED_PREFIX}: repeat not run — ${who} still held back for drift; nothing was probed or charged.`;
+}
+
+export function monthlyCapReachedMessage(i: { completed: number; cap: number; plan: string }): string {
+  return `${MONTHLY_CAP_REACHED_PREFIX}: ${i.completed} of ${i.cap} audits already completed this month on the ${i.plan} plan — scheduled run not started; nothing was probed or charged.`;
+}
+
+/** True for a row that never probed (Delivery Health must not count it as a failed audit). */
+export function isUnrunAuditMessage(message: string | null | undefined): boolean {
+  if (typeof message !== "string") return false;
+  const m = message.trimStart();
+  return UNRUN_AUDIT_PREFIXES.some((p) => m.startsWith(`${p}:`));
+}
+
+export interface UnrunAuditPorts {
+  /**
+   * Durable record of the DECISION, first — e.g. queue the next repeat and
+   * write the coverage-retry state on the ORIGINAL audit. May be a no-op.
+   * A throw here is reported, not fatal: the row still gets marked.
+   */
+  record(): Promise<void>;
+  /**
+   * Marks THIS un-run row terminal: status='failed' + the prose reason.
+   * Must be an UPDATE, never a DELETE. A throw here is fatal and PERMANENT.
+   */
+  mark(): Promise<void>;
+}
+
+export interface UnrunAuditOutcome {
+  recorded: boolean;
+  /** The record() error message when recorded is false; null otherwise. */
+  recordError: string | null;
+}
+
+/**
+ * Abandons an audit row that will not probe: record the decision, then mark
+ * the row. Order matters — a mark that fails must not take the retry state
+ * with it. A failed mark throws `audit_row_unmarkable: …`, which the queue
+ * policy treats as permanent (no retry ⇒ no new zombie row).
+ */
+export async function abandonUnrunAudit(ports: UnrunAuditPorts): Promise<UnrunAuditOutcome> {
+  let recorded = true;
+  let recordError: string | null = null;
+  try {
+    await ports.record();
+  } catch (err) {
+    recorded = false;
+    recordError = (err as Error)?.message ?? String(err);
+  }
+  try {
+    await ports.mark();
+  } catch (err) {
+    throw new Error(`${AUDIT_ROW_UNMARKABLE}: ${(err as Error)?.message ?? String(err)}`);
+  }
+  return { recorded, recordError };
 }

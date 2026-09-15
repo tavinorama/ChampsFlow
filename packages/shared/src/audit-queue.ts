@@ -75,9 +75,31 @@ export function auditRetryDelayMs(attempt: number): number {
  * down engines the same question and spends the money again. It is exactly the
  * error the three 17/08 audits carried.
  */
-const NON_RETRYABLE = new Set(["insufficient_engine_coverage", "citation_verification_pending"]);
+/**
+ * `audit_row_unmarkable` (2026-09-15): the worker could not mark an un-run
+ * audit row terminal (status='failed' + reason). Retrying would INSERT another
+ * row and fail the same way — the three `running` zombies of 15/09 were exactly
+ * three attempts of one job whose `DELETE FROM geo_audit` the app_user role is
+ * not granted. One attempt, one alert, no new rows.
+ */
+export const AUDIT_ROW_UNMARKABLE = "audit_row_unmarkable";
 
+const NON_RETRYABLE = new Set([
+  "insufficient_engine_coverage",
+  "citation_verification_pending",
+  AUDIT_ROW_UNMARKABLE,
+]);
+
+/**
+ * A message is permanent when it IS a non-retryable code, or when it STARTS
+ * with one followed by a colon (`audit_row_unmarkable: permission denied…`).
+ * The detail after the colon is for the log and the alert, not for the policy.
+ */
 export function isAuditFailurePermanent(message: string | null | undefined): boolean {
   if (!message) return false;
-  return NON_RETRYABLE.has(message.trim());
+  const trimmed = message.trim();
+  if (NON_RETRYABLE.has(trimmed)) return true;
+  const colon = trimmed.indexOf(":");
+  if (colon <= 0) return false;
+  return NON_RETRYABLE.has(trimmed.slice(0, colon).trim());
 }
