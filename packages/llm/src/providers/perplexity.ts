@@ -35,7 +35,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow, usageFromCounts } from "./types";
+import { ProviderError, assertLiveOrThrow, usageFromCounts, providerHttpError } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -113,8 +113,9 @@ export class PerplexityProbeAdapter implements ProviderAdapter {
         }),
       });
       if (!res.ok) {
-        const kind = res.status === 429 || res.status >= 500 ? "retryable" : "permanent";
-        throw new ProviderError("perplexity", kind, res.status, `perplexity HTTP ${res.status}`);
+        // The body carries the provider's reason (type + message); a bare
+        // status code hid a six-day outage — see providerHttpError.
+        throw await providerHttpError("perplexity", res);
       }
       const data = (await res.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
