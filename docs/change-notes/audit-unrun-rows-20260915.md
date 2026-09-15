@@ -31,7 +31,7 @@ Local branch `prep/t0-1-coverage-retry`, base `db65caa`. Risk **MEDIUM** (worker
 
 ## What this does NOT do
 
-- Does not clean the three existing zombie rows. Proposed, **founder-authorized only** (production write):
+- Did not clean the three existing zombie rows in the PR itself. **Executed separately on 2026-09-15 14:20 UTC, under explicit founder authorization**, after PR #620 (`0f58aef`) was live: read-only listing showed exactly the three IDs below, all `running` (486/476/456 min); the UPDATE returned 3 rows; afterwards 0 rows `pending`/`running`. Statement as run:
   ```sql
   UPDATE geo_audit
      SET status = 'failed',
