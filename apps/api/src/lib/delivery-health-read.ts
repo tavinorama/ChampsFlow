@@ -24,6 +24,7 @@
 
 import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { logger } from "../../../../packages/shared/src/logger";
+import { UNRUN_AUDIT_PREFIXES } from "../../../../packages/shared/src/coverage-retry";
 import {
   DELIVERY_INDICATOR_IDS,
   evaluateIndicator,
@@ -311,6 +312,17 @@ async function probeDrafts(db: PostgresClient): Promise<DeliveryObservation[]> {
   ];
 }
 
+/**
+ * 2026-09-15: a row the worker marked `failed` because it deliberately did NOT
+ * run (repeat skipped while the panel was still incomplete; monthly ceiling
+ * reached) is not a failed audit — nothing was probed. Counting it would move
+ * the success rate for a decision that was correct. Constants only: no user
+ * input reaches this fragment.
+ */
+const UNRUN_AUDIT_SQL = UNRUN_AUDIT_PREFIXES.map(
+  (p) => `COALESCE(error_message, '') LIKE '${p}:%'`
+).join(" OR ");
+
 async function probeAudits(db: PostgresClient): Promise<DeliveryObservation[]> {
   const { rows } = await db.query<{
     complete: string;
@@ -321,7 +333,8 @@ async function probeAudits(db: PostgresClient): Promise<DeliveryObservation[]> {
     `SELECT COUNT(*) FILTER (WHERE status = 'complete'
                                AND created_at >= NOW() - INTERVAL '7 days')::int AS complete,
             COUNT(*) FILTER (WHERE status = 'failed'
-                               AND created_at >= NOW() - INTERVAL '7 days')::int AS failed,
+                               AND created_at >= NOW() - INTERVAL '7 days'
+                               AND NOT (${UNRUN_AUDIT_SQL}))::int AS failed,
             MAX(EXTRACT(EPOCH FROM (NOW() - created_at)) / 60.0)
               FILTER (WHERE status IN ('pending', 'running'))::float             AS queue_minutes,
             COUNT(*) FILTER (WHERE status IN ('pending', 'running'))::int        AS waiting

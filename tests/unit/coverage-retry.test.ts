@@ -26,10 +26,18 @@ import {
   planCoverageRetry,
   panelReadyForRetry,
   applyCoverageRetry,
+  abandonUnrunAudit,
+  coverageRetrySkippedMessage,
+  monthlyCapReachedMessage,
+  isUnrunAuditMessage,
+  AUDIT_ROW_UNMARKABLE,
+  UNRUN_AUDIT_PREFIXES,
   COVERAGE_RETRY_DELAY_MS,
   COVERAGE_RETRY_MAX_ATTEMPTS,
   type CoverageRetryState,
 } from "../../packages/shared/src/coverage-retry";
+import { isAuditFailurePermanent } from "../../packages/shared/src/audit-queue";
+import { looksLikeRawError } from "../../packages/llm/src/delivery-health";
 import {
   evaluateIndicator,
   DELIVERY_CONTRACTS,
@@ -180,10 +188,33 @@ describe("the worker uses the policy", () => {
     expect(src).toMatch(/coverage_retry\?: \{ attempt: number; origin_audit_id: string \}/);
   });
 
-  it("checks the panel before spending, and drops the un-run audit if it is not ready", () => {
+  it("checks the panel before spending, and MARKS the un-run audit if it is not ready — never deletes it", () => {
     expect(src).toContain("panelReadyForRetry(comparisonPanel, pausedProviders)");
     expect(src).toContain("audit_coverage_retry_panel_not_ready");
-    expect(src).toMatch(/DELETE FROM geo_audit WHERE id = \$\{audit_id\}[\s\S]{0,400}applyCoverageRetry/);
+    // 15/09: `DELETE FROM geo_audit` threw "permission denied" (the worker's
+    // role has no DELETE), the job died three times and left three `running`
+    // zombies. The row is marked through abandonUnrunAudit, with the decision
+    // recorded (applyCoverageRetry) inside its record() port.
+    expect(src).not.toContain("DELETE FROM geo_audit");
+    expect(src).toMatch(/abandonUnrunAudit\(\{[\s\S]{0,200}record: async \(\) => \{[\s\S]{0,120}applyCoverageRetry\(/);
+    expect(src).toMatch(/mark: async \(\) => \{[\s\S]{0,80}UPDATE geo_audit SET status = 'failed', error_message = \$\{skipped\}/);
+    expect(src).toContain("coverageRetrySkippedMessage(readiness.blocking)");
+  });
+
+  it("the monthly ceiling marks the un-run row the same way, outside the count's fail-open catch", () => {
+    // The count may fail open (a count error must not block a legitimate
+    // audit) — the MARK may not: a spend guard that cannot record its decision
+    // stops the job instead of probing past the ceiling.
+    expect(src).toContain("audit_monthly_cap_reached");
+    expect(src).toMatch(/if \(capReached\) \{[\s\S]{0,900}abandonUnrunAudit\(\{[\s\S]{0,300}error_message = \$\{reason\}/);
+    expect(src).toContain("monthlyCapReachedMessage({");
+  });
+
+  it("any throw after the row exists marks it failed before the queue sees the error", () => {
+    expect(src).toContain("async function markAuditFailedOnThrow(");
+    expect(src).toMatch(/track\.auditId = audit_id;/);
+    expect(src).toMatch(/WHERE id = \$\{auditId\} AND status IN \('pending', 'running'\)/);
+    expect(src).toContain("audit_failed_row_unmarked");
   });
 
   it("records the outcome on the ORIGINAL audit, and shouts when it cannot", () => {
@@ -198,5 +229,83 @@ describe("the worker uses the policy", () => {
     expect(reader).toContain("'coverage_retry'->>'status'");
     // A repeat still inside its window is not a hole.
     expect(reader).toContain("INTERVAL '2 days'");
+  });
+});
+
+describe("an un-run audit row is marked, never deleted (15/09)", () => {
+  function ports() {
+    const calls: string[] = [];
+    return {
+      calls,
+      ok: {
+        record: async () => {
+          calls.push("record");
+        },
+        mark: async () => {
+          calls.push("mark");
+        },
+      },
+    };
+  }
+
+  it("records the decision BEFORE marking the row, and reports both done", async () => {
+    const p = ports();
+    const out = await abandonUnrunAudit(p.ok);
+    expect(p.calls).toEqual(["record", "mark"]);
+    expect(out).toEqual({ recorded: true, recordError: null });
+  });
+
+  it("a record() that throws is reported, and the row is still marked", async () => {
+    const p = ports();
+    const out = await abandonUnrunAudit({
+      record: async () => {
+        throw new Error("redis down");
+      },
+      mark: p.ok.mark,
+    });
+    expect(p.calls).toEqual(["mark"]);
+    expect(out.recorded).toBe(false);
+    expect(out.recordError).toBe("redis down");
+  });
+
+  it("a mark() that throws becomes audit_row_unmarkable, which the queue treats as permanent", async () => {
+    const p = ports();
+    const err = await abandonUnrunAudit({
+      record: p.ok.record,
+      mark: async () => {
+        throw new Error("permission denied for table geo_audit");
+      },
+    }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe(
+      `${AUDIT_ROW_UNMARKABLE}: permission denied for table geo_audit`
+    );
+    // The record still happened first — the retry state is not lost.
+    expect(p.calls).toEqual(["record"]);
+    // No retry: another attempt would INSERT another zombie row.
+    expect(isAuditFailurePermanent((err as Error).message)).toBe(true);
+  });
+
+  it("the reasons are prose the brand page can show, with a machine prefix Delivery Health can skip", () => {
+    const skipped = coverageRetrySkippedMessage(["anthropic"]);
+    const capped = monthlyCapReachedMessage({ completed: 40, cap: 40, plan: "growth" });
+    expect(skipped).toBe(
+      "coverage_retry_skipped: repeat not run — anthropic still held back for drift; nothing was probed or charged."
+    );
+    expect(capped).toContain("monthly_cap_reached: 40 of 40 audits already completed this month on the growth plan");
+    for (const m of [skipped, capped]) {
+      expect(isUnrunAuditMessage(m)).toBe(true);
+      // The brand page shows error_message verbatim: no raw runtime string.
+      expect(looksLikeRawError(m)).toBe(false);
+    }
+    expect(isUnrunAuditMessage("Only 2 of 5 AI engines answered")).toBe(false);
+    expect(isUnrunAuditMessage(null)).toBe(false);
+    expect(UNRUN_AUDIT_PREFIXES).toEqual(["coverage_retry_skipped", "monthly_cap_reached"]);
+  });
+
+  it("Delivery Health does not count a deliberately un-run row as a failed audit", () => {
+    const reader = read("apps/api/src/lib/delivery-health-read.ts");
+    expect(reader).toContain("UNRUN_AUDIT_PREFIXES");
+    expect(reader).toMatch(/COUNT\(\*\) FILTER \(WHERE status = 'failed'[\s\S]{0,200}AND NOT \(\$\{UNRUN_AUDIT_SQL\}\)\)/);
   });
 });

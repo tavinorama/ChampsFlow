@@ -101,9 +101,18 @@ describe("17/08 storm — a refusal is not retried at all", () => {
     expect(isAuditFailurePermanent("  insufficient_engine_coverage  ")).toBe(true);
   });
 
+  it("audit_row_unmarkable is permanent, with or without its detail (15/09: three zombie rows from one job)", () => {
+    expect(isAuditFailurePermanent("audit_row_unmarkable")).toBe(true);
+    expect(isAuditFailurePermanent("audit_row_unmarkable: permission denied for table geo_audit")).toBe(true);
+    // Only a leading code counts — a code mentioned mid-sentence does not.
+    expect(isAuditFailurePermanent("retrying after audit_row_unmarkable: x")).toBe(false);
+  });
+
   it("a genuine transient failure still retries", () => {
     expect(isAuditFailurePermanent("ECONNRESET")).toBe(false);
     expect(isAuditFailurePermanent("timeout")).toBe(false);
+    expect(isAuditFailurePermanent("timeout: upstream took 30s")).toBe(false);
+    expect(isAuditFailurePermanent(": audit_row_unmarkable")).toBe(false);
     expect(isAuditFailurePermanent(null)).toBe(false);
     expect(isAuditFailurePermanent(undefined)).toBe(false);
   });
