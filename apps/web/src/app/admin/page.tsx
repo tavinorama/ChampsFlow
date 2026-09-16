@@ -43,6 +43,10 @@ interface OverviewData {
       growth: number;
       agency: number;
     };
+    /** R11: tenants with an ACTIVE Stripe-backed subscription — the only ones that pay. */
+    billed?: { growth: number; agency: number };
+    /** R11: tier set by hand (founder, pilot, comp) — never revenue. */
+    granted?: { growth: number; agency: number };
   };
   leads: { total: number };
   kitOrders: { total: number; revenueUsdCents: number };
@@ -81,8 +85,8 @@ interface RevenueSummary {
     canceled: number;
   };
   oneTime: {
-    kit: { paid: number; refunded: number; revenueUsd: number };
-    pages: { paid: number; refunded: number; revenueUsd: number };
+    kit: { paid: number; refunded: number; revenueUsd: number; basis?: string; basisNote?: string };
+    pages: { paid: number; refunded: number; revenueUsd: number; basis?: string; basisNote?: string };
   };
   refundsTotalCount: number;
 }
@@ -2031,7 +2035,7 @@ function AnalyticsTab({ analytics }: { analytics: Analytics | null }) {
           <Tile label="ARR" value={`${fmtCurrency(analytics.funnel.arr)}/yr`} />
           <Tile label="Active Subs" value={analytics.funnel.activeSubscriptions.total} />
           <Tile label="Leads" value={analytics.funnel.totalLeads} />
-          <Tile label="Kit Revenue" value={fmtCurrency(analytics.funnel.kitOrders.revenueUsd)} />
+          <Tile label="Kit list value" value={fmtCurrency(analytics.funnel.kitOrders.revenueUsd)} sub="orders × list price — not Stripe receipts" />
           <Tile label="Pipeline Value" value={fmtCurrency(analytics.funnel.engagements.pipelineValueUsd)} />
           <Tile label="Churn" value={churnTotal} sub={`${analytics.churn.canceled} canceled, ${analytics.churn.pastDue} past due`} />
         </div>
@@ -3266,8 +3270,8 @@ function RevenueSummaryCards({ revenue }: { revenue: RevenueSummary | null }) {
           sub={`${subs.active.growth} growth · ${subs.active.agency} agency`}
         />
         <Tile label="Trialing" value={subs.trialing} />
-        <Tile label="Kit revenue" value={fmtCurrency(oneTime.kit.revenueUsd)} sub={`${oneTime.kit.paid} paid`} />
-        <Tile label="Pages revenue" value={fmtCurrency(oneTime.pages.revenueUsd)} sub={`${oneTime.pages.paid} paid`} />
+        <Tile label="Kit list value" value={fmtCurrency(oneTime.kit.revenueUsd)} sub={`${oneTime.kit.paid} paid/delivered × list price — not Stripe receipts`} />
+        <Tile label="Pages list value" value={fmtCurrency(oneTime.pages.revenueUsd)} sub={`${oneTime.pages.paid} paid/credited × list price — not Stripe receipts`} />
         <Tile
           label="Refunds"
           value={revenue.refundsTotalCount}
@@ -3995,8 +3999,9 @@ export default function AdminPage() {
               }}
             >
               <Tile label="Total clients"       value={overview.tenants.total} />
-              <Tile label="Paid (Growth)"       value={overview.tenants.byTier.growth} />
-              <Tile label="Paid (Agency)"       value={overview.tenants.byTier.agency} />
+              <Tile label="Billed (Growth)"     value={overview.tenants.billed?.growth ?? 0} sub="active Stripe subscription" />
+              <Tile label="Billed (Agency)"     value={overview.tenants.billed?.agency ?? 0} sub="active Stripe subscription" />
+              <Tile label="Granted, not billed" value={(overview.tenants.granted?.growth ?? 0) + (overview.tenants.granted?.agency ?? 0)} sub="tier set by hand — never revenue" />
               <Tile label="Total leads"         value={overview.leads.total} />
               <Tile label="Kit orders"          value={overview.kitOrders.total} />
               <Tile label="Pipeline: Requested" value={overview.engagements.requested} />
