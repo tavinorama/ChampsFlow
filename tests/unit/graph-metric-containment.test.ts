@@ -38,8 +38,8 @@ function world(nodes: GraphDefinition["nodes"]) {
     hermes: { task: vi.fn(async () => ({ ok: true, output: "fixture content", engineUsed: "fixture", ms: 1 })), publish: vi.fn(async () => ({ ok: true, detail: "fixture" })) },
     telegram: vi.fn(async () => {}),
   };
-  const seed = (node: string, value: string | null, status: StepRow["status"] = "succeeded") => {
-    steps.push({ id: `seed-${node}`, node, status, started_at: NOW });
+  const seed = (node: string, value: string | null, status: StepRow["status"] = "succeeded", startedAt: string = NOW) => {
+    steps.push({ id: `seed-${node}`, node, status, started_at: startedAt });
     if (value !== null) values.set(node, value);
   };
   return { def, run, ports, steps, values, seed, tick: () => advanceRun(def, run.id, ports) };
@@ -184,6 +184,44 @@ describe("G03 containment: actual runner and worker ports", () => {
     expect((await gated.tick()).status).not.toBe("failed");
     expect(gated.run.status).toBe("running");
     expect(gated.values.get("memory")).toBe("RESULTADOS REAIS legacy 66923770"); // history preserved
+  });
+
+  // R04/R06 (2026-09-16): the human gate only counts when the human decided
+  // WITH the warning in hand. An approval recorded BEFORE this run was
+  // reviewed under containment was given to a draft nobody had flagged.
+  it("an approval that SUCCEEDED before the G03 review does not carry a legacy run past an old artifact — the run halts", async () => {
+    const earlier = new Date(new Date(NOW).getTime() - 60 * 60 * 1000).toISOString();
+    const w = world([
+      { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes" } },
+      { id: "approval", kind: "approval", dependsOn: ["memory"] },
+      { id: "publish", kind: "publish", dependsOn: ["approval"] },
+    ]);
+    w.def.vpOwner = "marketing";
+    w.seed("memory", "RESULTADOS REAIS legacy 66923770", "succeeded", earlier);
+    w.seed("approval", "approved before anyone warned", "succeeded", earlier);
+    const res = await w.tick();
+    expect(res.status).toBe("failed");
+    expect(w.run.status).toBe("failed");
+    expect(w.steps.find((s) => s.node === "__invalid_g03__")?.status).toBe("failed");
+    expect(w.ports.hermes.publish).not.toHaveBeenCalled();
+    expect(w.values.get("memory")).toBe("RESULTADOS REAIS legacy 66923770"); // history preserved
+    // The founder was still warned once — the halt is not silent.
+    expect(vi.mocked(w.ports.telegram).mock.calls.filter((c) => String(c[0]).includes("G03"))).toHaveLength(1);
+  });
+
+  it("an approval recorded AFTER the G03 review is a real human gate — the run continues", async () => {
+    const earlier = new Date(new Date(NOW).getTime() - 60 * 60 * 1000).toISOString();
+    const later = new Date(new Date(NOW).getTime() + 60 * 1000).toISOString();
+    const w = world([
+      { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes" } },
+      { id: "approval", kind: "approval", dependsOn: ["memory"] },
+    ]);
+    w.def.vpOwner = "marketing";
+    w.seed("memory", "RESULTADOS REAIS legacy 66923770", "succeeded", earlier);
+    // The review happened at NOW (this tick creates it); the approval postdates it.
+    w.seed("approval", "approved with the warning in hand", "succeeded", later);
+    expect((await w.tick()).status).not.toBe("failed");
+    expect(w.run.status).not.toBe("failed");
   });
 
   it("a fresh marketing draft retains static prompts but never loads legacy learning", async () => {
