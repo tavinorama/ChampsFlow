@@ -1062,9 +1062,17 @@ export async function advanceRun(
   // code-owned marker records that the run was reviewed under containment and
   // the founder is told ONCE, before approving anything from it. A brand-new
   // run gets the marker before creating any artifact.
+  // R04/R06 (2026-09-16): when was this run reviewed under containment? An
+  // approval given BEFORE that moment was given without the warning.
+  let reviewedAt: string | null =
+    allSteps
+      .filter((s) => s.node === "__g03_review__")
+      .map((s) => s.started_at)
+      .sort()[0] ?? null;
   if (def.vpOwner === "marketing" && !isG03Marked(await artifacts.get(runId, "__g03_evidence_v1__"))) {
     if (allSteps.length > 0) {
       await artifacts.set(runId, "__g03_evidence_v1__", `${G03_PARTIAL}; legacy run reviewed under containment`);
+      reviewedAt = now().toISOString();
       const id = await substrate.startStep({ runId, node: "__g03_review__" });
       await substrate.finishStep(id, {
         status: "succeeded",
@@ -1083,9 +1091,21 @@ export async function advanceRun(
   // draft or a verdict. Preserve history; halt the run explicitly instead of
   // rewriting old evidence. Exception (F-C): a marketing run already at or past
   // its HUMAN GATE continues — the founder was warned above and decides.
+  // The human gate counts only if the human decides WITH the warning in hand:
+  // an approval still WAITING (the founder will read the ⚠️ G03 message before
+  // pressing the button), or one recorded AFTER this run's __g03_review__
+  // step. An approval that succeeded BEFORE the review was given to a draft
+  // nobody had flagged — it does not carry the run past a legacy artifact.
+  // (R04/R06, 2026-09-16; the Codex audit read this hole in the F-C code.)
   const humanGated =
     def.vpOwner === "marketing" &&
-    def.nodes.some((n) => n.kind === "approval" && ["waiting", "succeeded"].includes(byNode.get(n.id)?.status ?? ""));
+    def.nodes.some((n) => {
+      if (n.kind !== "approval") return false;
+      const step = byNode.get(n.id);
+      if (!step) return false;
+      if (step.status === "waiting") return true;
+      return step.status === "succeeded" && reviewedAt !== null && step.started_at > reviewedAt;
+    });
   for (const node of def.nodes) {
     const src = String(node.config?.["source"] ?? "");
     const guarded =
