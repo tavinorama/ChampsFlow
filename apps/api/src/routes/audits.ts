@@ -2160,8 +2160,8 @@ export function registerAuditRoutes(
     await db.setTenantId(auth.tenantId);
     const brandId = c.req.param("id");
 
-    const planRes = await db.query<{ id: string; calendar: unknown; created_at: string }>(
-      `SELECT id, calendar, created_at FROM strategy_plan
+    const planRes = await db.query<{ id: string; calendar: unknown; created_at: string; audit_id: string | null }>(
+      `SELECT id, audit_id, calendar, created_at FROM strategy_plan
         WHERE brand_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [brandId]
     );
@@ -2261,10 +2261,17 @@ export function registerAuditRoutes(
         openActionCount: openCards.length - investigations,
         activeInvestigation: investigations > 0,
         loopGeneration: {
-          // The plan row itself is the receipt that the generator ran for this
-          // brand; a brand with no loop-generated plan has never had one.
-          status: latest ? "ok" : "never_ran",
+          // R08 (2026-09-16): the receipt is the plan's LINK to the latest
+          // audit, not the mere existence of an audit. Own brand, 15/09: the
+          // latest audit rows existed, no plan had been generated for them, and
+          // this read said "ok". A plan generated for an OLDER audit means the
+          // generator has not run since the last audit — which is what
+          // `never_ran` documents.
+          status: latest && plan.audit_id === latest.id ? "ok" : "never_ran",
           at: plan.created_at,
+          ...(latest && plan.audit_id !== latest.id
+            ? { detail: "the latest plan was generated for an earlier audit; the loop has not run since the last audit" }
+            : {}),
         },
       });
       delivery = {

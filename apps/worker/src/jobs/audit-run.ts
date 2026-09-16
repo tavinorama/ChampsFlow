@@ -2051,6 +2051,21 @@ async function processAuditJobTracked(
           lifecycle_states: lifecycleOk,
           ...stats,
         });
+        if (stats.queueBlocked) {
+          // R08 (2026-09-16): a plan that carried its old cards and dropped
+          // every fresh candidate is not "refreshed" — it is starved. Own
+          // brand, 14/09: 12 carried, 178 dropped, and the dashboard looked
+          // up to date. Loud, with the numbers.
+          logger.warn("visibility_loop_queue_blocked", {
+            audit_id,
+            brand_id,
+            plan_id: loopPlan.id,
+            dropped_by_cap: stats.droppedByCap,
+            carried: stats.carried,
+            verification_queue: stats.verificationQueue,
+            reason: stats.queueBlockedReason,
+          });
+        }
         if (!lifecycleOk) {
           logger.warn("visibility_loop_states_downgraded", {
             audit_id,
