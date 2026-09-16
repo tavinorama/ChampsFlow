@@ -322,7 +322,7 @@ export async function runProbes(
       console.error(
         `[gateway] probe failed provider=${provider} ` +
         `kind=${err instanceof ProviderError ? err.kind : "unknown"} ` +
-        `msg=${err instanceof Error ? err.message.slice(0, 100) : "unknown"}`
+        `msg=${err instanceof Error ? err.message.slice(0, 240) : "unknown"}`
       );
       failedProviders.push({
         provider,

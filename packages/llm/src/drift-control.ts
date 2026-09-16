@@ -269,6 +269,15 @@ export interface DriftControlResult {
   emptyRuns: number;
   /** Runs that threw. */
   errorRuns: number;
+  /**
+   * The last error the caller threw for this control (≤ 200 chars, provider
+   * secrets already redacted by the adapter layer), or null when none did.
+   * Kept so a verdict can say WHY an engine measured nothing: "HTTP 400 —
+   * invalid_request_error: …" is a configuration or billing problem on our
+   * side; "empty" is the engine's behaviour. They were indistinguishable
+   * for six days in September 2026.
+   */
+  lastError: string | null;
   /** mentions / usableRuns, 4dp. 0 when nothing was usable. */
   mentionRate: number;
   /**
@@ -293,6 +302,14 @@ export interface DriftBatteryOutcome {
 
 export type DriftStatus = "healthy" | "degraded" | "failing";
 
+/**
+ * Why a verdict is `failing`. `provider_errors`: the calls were rejected or
+ * failed (our request, config or billing) — not engine behaviour;
+ * `no_answers`: the engine answered nothing usable; `behaviour`: it answered
+ * and the answers failed the controls. Only the last one is drift.
+ */
+export type DriftCause = "provider_errors" | "no_answers" | "behaviour";
+
 export interface DriftEvaluation {
   engine: DriftEngine;
   /** Share of positive-control runs where the dominant brand was named (4dp). */
@@ -302,6 +319,8 @@ export interface DriftEvaluation {
   status: DriftStatus;
   /** Plain-language reasons. Empty array when healthy. */
   reasons: string[];
+  /** Set when status is `failing`; null otherwise. */
+  cause: DriftCause | null;
   /** Raw counts behind the two rates — persisted into detail jsonb. */
   counts: {
     positive_runs: number;
@@ -443,6 +462,7 @@ export async function runDriftBattery(
         let mentions = 0;
         let emptyRuns = 0;
         let errorRuns = 0;
+        let lastError: string | null = null;
         let verificationCalls = 0;
         // Worst mode seen wins: one degraded run makes the whole aggregate
         // degraded, because a mixed measurement is not a two-pass measurement.
@@ -452,10 +472,12 @@ export async function runDriftBattery(
           let text: string | null | undefined;
           try {
             text = await llmCaller({ engine, control, runIndex });
-          } catch {
-            // One failed call is data, not a crash: an engine that errors all
-            // day IS a drift event, and the evaluation says so honestly.
+          } catch (err) {
+            // One failed call is data, not a crash — and the REASON is data
+            // too: the verdict must be able to say "rejected with HTTP 400:
+            // invalid_request_error" instead of "measured nothing today".
             errorRuns += 1;
+            lastError = ((err as Error)?.message ?? String(err)).replace(/\s+/g, " ").trim().slice(0, 200) || "unknown error";
             continue;
           }
           if (typeof text !== "string" || text.trim().length === 0) {
@@ -481,6 +503,7 @@ export async function runDriftBattery(
           mentions,
           emptyRuns,
           errorRuns,
+          lastError,
           mentionRate: ratio(mentions, usableRuns),
           extractionMode: usableRuns === 0 ? "disabled" : extractionMode,
           verificationCalls,
@@ -548,14 +571,32 @@ export function evaluateDrift(
 
     const reasons: string[] = [];
     let status: DriftStatus = "healthy";
+    let cause: DriftCause | null = null;
+    const lastError = mine.map((r) => r.lastError).find((e): e is string => typeof e === "string" && e.length > 0) ?? null;
+    const totalRuns = counts.positive_runs + counts.negative_runs;
 
     const totalUsable = counts.positive_usable + counts.negative_usable;
     if (totalUsable === 0) {
       status = "failing";
-      reasons.push(
-        `no usable answers: ${counts.error_runs} of ${counts.positive_runs + counts.negative_runs} control runs errored and ${counts.empty_runs} came back empty — this engine measured nothing today`
-      );
-      return { engine, positive_rate, negative_rate, status, reasons, counts };
+      if (counts.error_runs > 0) {
+        // 2026-09-10 → 15: seven HTTP 400s a day read as "came back empty"
+        // and the engine was paused as drift. A rejected request is OUR
+        // request, configuration or billing — the verdict says so, and names
+        // the provider's reason so the operator does not have to guess.
+        cause = "provider_errors";
+        reasons.push(
+          `${counts.error_runs} of ${totalRuns} control runs were rejected or failed at the provider` +
+            (lastError ? ` (${lastError})` : "") +
+            (counts.empty_runs > 0 ? `, and ${counts.empty_runs} came back empty` : "") +
+            " — a request, configuration or billing problem on our side, not engine behaviour"
+        );
+      } else {
+        cause = "no_answers";
+        reasons.push(
+          `no usable answers: ${counts.error_runs} of ${totalRuns} control runs errored and ${counts.empty_runs} came back empty — this engine measured nothing today`
+        );
+      }
+      return { engine, positive_rate, negative_rate, status, reasons, cause, counts };
     }
 
     // Positive side — did the engine stop naming brands it always named?
@@ -619,10 +660,11 @@ export function evaluateDrift(
     }
 
     if (counts.error_runs > 0 && status !== "healthy") {
-      reasons.push(`${counts.error_runs} control run(s) errored`);
+      reasons.push(`${counts.error_runs} control run(s) errored` + (lastError ? ` (${lastError})` : ""));
     }
+    if (status === "failing") cause = "behaviour";
 
-    return { engine, positive_rate, negative_rate, status, reasons, counts };
+    return { engine, positive_rate, negative_rate, status, reasons, cause, counts };
   });
 }
 

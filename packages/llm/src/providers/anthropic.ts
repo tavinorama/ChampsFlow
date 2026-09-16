@@ -30,7 +30,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts } from "./types";
+import { ProviderError, assertLiveOrThrow, webSearchEnabled, usageFromCounts, providerHttpError } from "./types";
 import { parseCitation } from "../citation-parser";
 
 /**
@@ -138,8 +138,9 @@ export class AnthropicProbeAdapter implements ProviderAdapter {
         }),
       });
       if (!res.ok) {
-        const kind = res.status === 429 || res.status >= 500 ? "retryable" : "permanent";
-        throw new ProviderError("anthropic", kind, res.status, `anthropic HTTP ${res.status}`);
+        // The body carries the provider's reason (type + message); a bare
+        // status code hid a six-day outage — see providerHttpError.
+        throw await providerHttpError("anthropic", res);
       }
       // With web search on, content interleaves `server_tool_use` (the query),
       // `web_search_tool_result` (the results) and `text` blocks (the answer).
