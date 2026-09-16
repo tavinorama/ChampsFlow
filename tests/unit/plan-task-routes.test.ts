@@ -69,7 +69,8 @@ function makeDb(
     }
     // P0-01 — GET /api/brands/:id/plan
     if (sql.includes("calendar, created_at FROM strategy_plan")) {
-      return [{ id: PLAN_ID, calendar: [], created_at: "2026-09-04T10:00:00.000Z" }];
+      // R08: the plan is linked to the latest audit (the generator's receipt).
+      return [{ id: PLAN_ID, audit_id: opts.latestAudit?.id ?? null, calendar: [], created_at: "2026-09-04T10:00:00.000Z" }];
     }
     if (sql.includes("FROM plan_task WHERE plan_id")) {
       return (opts.planTasks ?? []).map((t) => ({

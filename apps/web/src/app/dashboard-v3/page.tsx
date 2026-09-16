@@ -1641,7 +1641,9 @@ function DoNextTab({
               />
               <div>
                 <div style={S.actTitle}>{t.action}</div>
-                {(t.gap || t.evidence) && <div style={S.actWhy}>{t.gap || t.evidence}</div>}
+                {t.gap && <div style={S.actWhy}>{t.gap}</div>}
+                {/* R08: the evidence is the reason the card exists; `gap` never hides it. */}
+                {t.evidence && t.evidence !== t.gap && <div style={S.actWhy}>{t.evidence}</div>}
               </div>
               <span style={{ ...S.imp, ...impactStyle(t.impact) }}>{t.impact ? `${t.impact[0].toUpperCase()}${t.impact.slice(1)} impact` : "Impact"}</span>
             </div>

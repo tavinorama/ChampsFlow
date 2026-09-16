@@ -28,6 +28,7 @@
 import {
   normalizePlanTaskState,
   OPEN_STATES,
+  SLOT_STATES,
   type PlanTaskState,
 } from "./plan-task-state";
 
@@ -356,6 +357,15 @@ export interface ReconcileStats {
   regressed: number; // verified cards whose gap came back — re-opened
   carried: number; // previous tasks kept as-is (custom/stale/verified)
   droppedByCap: number;
+  /** Open cards carried in the verification queue (self-reports): never a slot. */
+  verificationQueue: number;
+  /**
+   * R08: the cap was full of carried cards, this audit had fresh candidates,
+   * and NONE entered. The plan is not "up to date" — it is starved. Logged
+   * loudly by the worker; a health surface must never read this as "ok".
+   */
+  queueBlocked: boolean;
+  queueBlockedReason: string | null;
 }
 
 const asVector = (v: string): LoopVector =>
@@ -372,6 +382,8 @@ const asStatus = (v: string): PlanTaskState => normalizePlanTaskState(v);
 
 /** Still needs someone to act — and still eligible for a verification flip. */
 const isOpenState = (s: PlanTaskState): boolean => OPEN_STATES.includes(s);
+/** Occupies one of the LOOP_OPEN_CAP slots (R08): actionable now, not waiting on a re-probe. */
+const takesSlot = (s: PlanTaskState): boolean => SLOT_STATES.includes(s);
 
 export const VERIFIED_PREFIX = "Worked — verified in the audit of ";
 /** Prefix on a card that was verified and then lost the ground it won. */
@@ -410,6 +422,9 @@ export function reconcileLoopTasks(
     regressed: 0,
     carried: 0,
     droppedByCap: 0,
+    verificationQueue: 0,
+    queueBlocked: false,
+    queueBlockedReason: null,
   };
   const prevByGap = new Map<string, PrevTask>();
   for (const t of prevTasks) if (!prevByGap.has(t.gap)) prevByGap.set(t.gap, t);
@@ -469,13 +484,17 @@ export function reconcileLoopTasks(
         })
       );
       stats.refreshed += 1;
-      openCount += 1;
+      // R08: a self-report matching a candidate is refreshed but still waits
+      // on verification — it keeps its state and takes no slot.
+      if (takesSlot(status)) openCount += 1;
+      else stats.verificationQueue += 1;
       continue;
     }
     if (open) {
       rows.push(carryRow(t));
       stats.carried += 1;
-      openCount += 1;
+      if (takesSlot(status)) openCount += 1;
+      else stats.verificationQueue += 1;
       continue;
     }
     // REGRESSION (audit §17 "Regression reabre ação"). This card was verified
@@ -538,6 +557,16 @@ export function reconcileLoopTasks(
     });
     stats.created += 1;
     openCount += 1;
+  }
+
+  // R08 — starvation is a state, not a silence. Fresh evidence arrived, the
+  // slots were all taken by carried cards, and nothing new entered: say so.
+  if (stats.droppedByCap > 0 && stats.created === 0) {
+    stats.queueBlocked = true;
+    stats.queueBlockedReason =
+      `the ${LOOP_OPEN_CAP} open slots are all carried cards (${stats.carried} carried, ${stats.refreshed} refreshed, ` +
+      `${stats.regressed} regressed); ${stats.droppedByCap} fresh candidate(s) from this audit could not enter — ` +
+      `the plan shows old cards, not this audit's findings`;
   }
 
   // Done cards: freshly verified first, then carried done, bounded.

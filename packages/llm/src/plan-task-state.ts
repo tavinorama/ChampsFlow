@@ -111,6 +111,35 @@ export const SELF_REPORTED_STATES: readonly PlanTaskState[] = [
 /** Excluded from the denominator: the client said no, or the window closed. */
 export const NOT_OWED_STATES: readonly PlanTaskState[] = ["rejected", "expired"] as const;
 
+/**
+ * States that occupy one of the LOOP_OPEN_CAP slots: work a person can do
+ * NOW. (R08, 2026-09-16.) The cap exists so the plan stays "tudo mastigado",
+ * not a backlog — it was never meant to be filled by cards nobody can act
+ * on. Measured on the own brand on 14/09: 7 proposed + 5 legacy self-reports
+ * filled all 12 slots, and 178 fresh candidates were dropped, plan after
+ * plan, while the dashboard kept showing the same stale cards.
+ */
+export const SLOT_STATES: readonly PlanTaskState[] = [
+  "proposed",
+  "accepted",
+  "drafting",
+  "review",
+  "blocked",
+  "regressed",
+] as const;
+
+/**
+ * Open, but waiting on VERIFICATION (a later audit), not on a person. Carried
+ * forward untouched — never dropped, never re-proposed — and never counted
+ * against the cap. Same members as SELF_REPORTED_STATES, named for the role
+ * they play in the queue.
+ */
+export const VERIFICATION_QUEUE_STATES: readonly PlanTaskState[] = [
+  "manual_done_pending_verification",
+  "client_acknowledged",
+  "legacy_self_reported",
+] as const;
+
 /** States that still need someone to act. Drives "All caught up" (P0-01). */
 export const OPEN_STATES: readonly PlanTaskState[] = [
   "proposed",
