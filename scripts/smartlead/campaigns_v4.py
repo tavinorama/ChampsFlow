@@ -671,6 +671,85 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     return 0 if ok else 1
 
 
+def cmd_inspect(copy: dict, names: dict) -> int:
+    """READ-ONLY. What SmartLead actually holds for the two campaigns: status,
+    schedule, settings, mailboxes (counts and limits only — never an address),
+    sequences and leads by status, compared with what this script intended."""
+    by_name = campaign_index()
+    report = []
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            report.append({"campanha": names[key], "erro": "nao existe"})
+            continue
+        cid = c["id"]
+        s, d = sl(f"/campaigns/{cid}")
+        d = d if isinstance(d, dict) else {}
+        cron = d.get("scheduler_cron_value") or {}
+        if isinstance(cron, str):
+            try:
+                cron = json.loads(cron)
+            except ValueError:
+                cron = {"_raw": cron[:120]}
+        held = {"status": d.get("status"), "track_settings": d.get("track_settings"),
+                "stop_lead_settings": d.get("stop_lead_settings"), "send_as_plain_text": d.get("send_as_plain_text"),
+                "follow_up_percentage": d.get("follow_up_percentage"), "enable_ai_esp_matching": d.get("enable_ai_esp_matching"),
+                "min_time_btwn_emails": d.get("min_time_btwn_emails"), "max_leads_per_day": d.get("max_leads_per_day"),
+                "horario": cron, "unsubscribe_text": (d.get("unsubscribe_text") or "")[:80] or None}
+        diffs = []
+        def want(label, got, expected):
+            if got != expected:
+                diffs.append(f"{label}: SmartLead tem {got!r}, o script pediu {expected!r}")
+        want("max_leads_per_day", d.get("max_leads_per_day"), SCHEDULE["max_new_leads_per_day"])
+        want("min_time_btwn_emails", d.get("min_time_btwn_emails"), SCHEDULE["min_time_btw_emails"])
+        want("stop_lead_settings", d.get("stop_lead_settings"), SETTINGS["stop_lead_settings"])
+        want("send_as_plain_text", bool(d.get("send_as_plain_text")), SETTINGS["send_as_plain_text"])
+        want("follow_up_percentage", d.get("follow_up_percentage"), SETTINGS["follow_up_percentage"])
+        # SmartLead stores DONT_TRACK_EMAIL_OPEN as DONT_EMAIL_OPEN (measured 17/09): same switch, other name.
+        norm = lambda xs: sorted(str(x).replace("DONT_TRACK_", "DONT_") for x in (xs or []))
+        want("track_settings", norm(d.get("track_settings")), norm(SETTINGS["track_settings"]))
+        if isinstance(cron, dict) and cron:
+            want("timezone", cron.get("tz") or cron.get("timezone"), SCHEDULE["timezone"])
+            want("dias", sorted(cron.get("days") or cron.get("days_of_the_week") or []), SCHEDULE["days_of_the_week"])
+            want("inicio", cron.get("startHour") or cron.get("start_hour"), SCHEDULE["start_hour"])
+            want("fim", cron.get("endHour") or cron.get("end_hour"), SCHEDULE["end_hour"])
+        # mailboxes: counts and limits only
+        s2, ea = sl(f"/campaigns/{cid}/email-accounts")
+        boxes = ea if isinstance(ea, list) else ((ea or {}).get("data") or [] if isinstance(ea, dict) else [])
+        limits, warm, smtp_bad = {}, {}, 0
+        for b in boxes:
+            lim = str(b.get("message_per_day") or b.get("daily_sending_limit") or "?")
+            limits[lim] = limits.get(lim, 0) + 1
+            w = (b.get("warmup_details") or {}).get("status") or b.get("warmup_status") or "?"
+            warm[str(w)] = warm.get(str(w), 0) + 1
+            if b.get("is_smtp_success") is False or b.get("is_imap_success") is False:
+                smtp_bad += 1
+        capacity = sum(int(k) * v for k, v in limits.items() if k.isdigit())
+        # sequences as held
+        s3, back = sl(f"/campaigns/{cid}/sequences")
+        seqs = []
+        for row in sorted(back if isinstance(back, list) else [], key=lambda x: x.get("seq_number") or 0):
+            variants = row.get("sequence_variants") or row.get("seq_variants") or []
+            subjects = [v.get("subject") for v in variants] or [row.get("subject")]
+            bodies = [v.get("email_body") or "" for v in variants] or [row.get("email_body") or ""]
+            seqs.append({"toque": row.get("seq_number"), "espera_dias": (row.get("seq_delay_details") or {}).get("delay_in_days") if isinstance(row.get("seq_delay_details"), dict) else row.get("seq_delay_details"),
+                         "variantes": max(1, len(variants)), "assuntos": subjects,
+                         "tem_link": [bool(LINK_RE.search(re.sub(r"\{\{[^}]+\}\}", " ", re.sub(r"<[^>]+>", " ", b)))) for b in bodies],
+                         "tem_optout": ["reply STOP" in b for b in bodies], "tem_assinatura": ["%signature%" in b for b in bodies]})
+        by_status: dict[str, int] = {}
+        for r in fetch_leads(str(cid)):
+            k = str(r.get("status") or "?").upper()
+            by_status[k] = by_status.get(k, 0) + 1
+        report.append({"campanha": names[key], "campaign_id": cid, "settings_no_smartlead": held,
+                       "divergencias_do_que_o_script_pediu": diffs,
+                       "caixas": {"ligadas": len(boxes), "limite_por_caixa": limits, "warmup": warm,
+                                  "com_falha_smtp_ou_imap": smtp_bad, "capacidade_diaria_somada": capacity},
+                       "sequencia": seqs, "leads_por_status": by_status,
+                       "chaves_do_objeto_campanha": sorted(d.keys())[:60]})
+    out({"ok": True, "modo": "LEITURA — nada foi alterado", "campanhas": report})
+    return 0
+
+
 def cmd_prune(names: dict, confirm: bool) -> int:
     """Pause, inside the two NEW campaigns, the leads whose site does not answer.
     17/09: one load ran with the site check off and let in 72 leads whose site
@@ -894,7 +973,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
@@ -940,6 +1019,8 @@ def main(argv: list[str]) -> int:
         return 1
     if a.command == "create":
         return cmd_create(copy, names, a.confirm)
+    if a.command == "inspect":
+        return cmd_inspect(copy, names)
     if a.command == "prune":
         return cmd_prune(names, a.confirm)
     if a.command == "prospect":

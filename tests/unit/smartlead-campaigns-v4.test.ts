@@ -238,7 +238,7 @@ describe("the workflow cannot send or start anything by accident", () => {
     const over = py(["prospect", "--trade", "roofing", "--limit", "5000"], undefined, { SL_KEY: "x" });
     expect(over.status).toBe(1);
     const wf = readFileSync(join(root, ".github/workflows/smartlead-campaigns-v4.yml"), "utf8");
-    expect(wf).toContain("create|load|prospect|prune");
+    expect(wf).toContain("create|load|prospect|prune|inspect");
   });
 
   it("a 2xx answer with a non-JSON body is a success, not a failure (the DELETE of the first live load)", () => {
