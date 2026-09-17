@@ -161,6 +161,13 @@ export interface PackWeek {
 }
 
 export interface PackModel {
+  /**
+   * FALSE when the run had no competitor list: the pack could not look for
+   * names in the answers, so an empty `winners` means "not checked", never
+   * "nobody was named" (17/09: the first live pack said "nobody named" on
+   * answers that did name other firms). Absent = legacy = checked.
+   */
+  namesChecked?: boolean;
   company: string;
   domain: string;
   market: string;
@@ -220,6 +227,8 @@ interface CopyTable {
   colRank: string;
   absentLabel: string;
   nobodyLabel: string;
+  /** Shown instead of nobodyLabel when no competitor list was given. */
+  notCheckedLabel: string;
   noSourceLabel: string;
   becauseLabel: string;
   artifactLabel: string;
@@ -275,6 +284,7 @@ const EN: CopyTable = {
   colRank: "Position",
   absentLabel: "no answer shown",
   nobodyLabel: "nobody named",
+  notCheckedLabel: "names not checked",
   noSourceLabel: "no source shown",
   becauseLabel: "Because",
   artifactLabel: "We produce",
@@ -380,6 +390,7 @@ const PT: CopyTable = {
   colRank: "Posição",
   absentLabel: "sem resposta exibida",
   nobodyLabel: "ninguém citado",
+  notCheckedLabel: "nomes não verificados",
   noSourceLabel: "sem fonte exibida",
   becauseLabel: "Porquê",
   artifactLabel: "Nós produzimos",
@@ -996,12 +1007,14 @@ const STYLE = `
   @media (max-width: 620px) { .cols { grid-template-columns:1fr; } }
 `;
 
-function gapRow(g: PackGapLine, c: CopyTable): string {
+function gapRow(g: PackGapLine, c: CopyTable, namesChecked: boolean): string {
   const instead = g.absent
     ? c.absentLabel
     : g.winners.length > 0
       ? g.winners.join(", ")
-      : c.nobodyLabel;
+      : namesChecked
+        ? c.nobodyLabel
+        : c.notCheckedLabel;
   const src = g.sources.length > 0 ? g.sources.join(", ") : c.noSourceLabel;
   return `<tr><td class="q">${esc(g.question)}</td><td>${esc(g.engine)}</td><td>${esc(instead)}</td><td>${esc(src)}</td></tr>`;
 }
@@ -1039,7 +1052,7 @@ export function renderDesignPartnerPackHtml(model: PackModel): string {
       <table><thead><tr>
         <th>${esc(c.colQuestion)}</th><th>${esc(c.colEngine)}</th>
         <th>${esc(c.colInstead)}</th><th>${esc(c.colSource)}</th>
-      </tr></thead><tbody>${model.gaps.map((g) => gapRow(g, c)).join("")}</tbody></table>`
+      </tr></thead><tbody>${model.gaps.map((g) => gapRow(g, c, model.namesChecked !== false)).join("")}</tbody></table>`
       : `<p>${esc(c.gapsEmpty)}</p>`;
 
   const winsBlock =
