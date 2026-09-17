@@ -1,0 +1,50 @@
+name: SmartLead bounce watch (v4 campaigns)
+
+# Founder, 17/09: "fique atento ao percentual de bounce". The account already
+# shows bounce-critical mailboxes and the 200 senders are still warming up.
+# READ-ONLY: reads the analytics of the two v4 campaigns. RED when a campaign is
+# at or above 3% bounce with at least 100 e-mails sent, or when the numbers
+# cannot be read (cannot look is not fine). It pauses nothing — pausing is the
+# founder's call (smartlead-launch.yml, action=pause). Telegram when the channel
+# is wired; the job summary always.
+
+on:
+  schedule:
+    - cron: "17 */4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the bounce rate
+        id: read
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+        run: |
+          set -uo pipefail
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          python3 scripts/smartlead/campaigns_v4.py bounce-watch | tee result.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Alarm (Telegram when wired, summary always)
+        if: steps.read.outputs.code != '0'
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          MSG="SmartLead BOUNCE: $(grep -o '"alarmes": \[[^]]*\]' result.txt | head -1). Pausar e decisao sua: smartlead-launch.yml action=pause. ${RUN_URL}"
+          echo "## 🔴 ${MSG}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            export MSG
+            PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
+            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+          else
+            echo "::warning::TELEGRAM_* ausentes nos secrets do Actions — alarme so neste summary"
+          fi
+          exit 1
