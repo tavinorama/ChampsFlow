@@ -31,7 +31,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BLOG_DIR = path.join(HERE, "..", "apps", "web", "src", "app", "(marketing)", "blog");
+// BLOG_INGEST_DIR: the test suite points this at a temp copy of the two files
+// so the gate can be exercised end to end without touching the site.
+const BLOG_DIR = process.env.BLOG_INGEST_DIR || path.join(HERE, "..", "apps", "web", "src", "app", "(marketing)", "blog");
 const CONTENT = path.join(BLOG_DIR, "_content.ts");
 const POSTS = path.join(BLOG_DIR, "posts.ts");
 
@@ -63,7 +65,7 @@ try {
 }
 
 // ---- validate ---------------------------------------------------------------
-const need = ["slug", "title", "dek", "category", "excerpt", "readTime", "keywords", "takeaways", "body_markdown", "sources"];
+const need = ["slug", "title", "dek", "category", "excerpt", "readTime", "keywords", "takeaways", "body_markdown", "sources", "story"];
 for (const k of need) {
   if (art[k] === undefined || art[k] === null || (typeof art[k] === "string" && !art[k].trim())) {
     die(`missing or empty field: ${k}`);
@@ -75,6 +77,32 @@ if (!Array.isArray(art.keywords) || art.keywords.length < 2) die("keywords must 
 if (!Array.isArray(art.takeaways) || art.takeaways.length < 2 || art.takeaways.length > 5) die("takeaways must be 2..5 items");
 if (!Array.isArray(art.sources) || art.sources.length < 1) die("at least one source is required");
 if (!art.sources.every((s) => typeof s === "string" && /https?:\/\//.test(s))) die("every source must contain a URL");
+
+// ---- story provenance (R05, 2026-09-16) --------------------------------------
+// The auto-published "orchard" and "small-engine shop" articles narrate a
+// named business as a documented case, sourced only by generic links about
+// local search. A composite presented as a documented case is exactly what an
+// honest-dream house rule forbids. The contract now forces the choice: a REAL
+// case must carry the URL that documents it; an ILLUSTRATIVE one is labelled
+// on the page, in the first paragraph, where no reader can miss it.
+export const ILLUSTRATIVE_LABEL =
+  "Illustrative example: the business and people in this story are a composite built from public patterns, not a documented case.";
+if (typeof art.story !== "object" || art.story === null) die("story must be an object {kind, source}");
+if (!["real", "illustrative"].includes(art.story.kind)) die(`story.kind must be "real" or "illustrative": ${art.story.kind}`);
+if (art.story.kind === "real") {
+  if (typeof art.story.source !== "string" || !/^https?:\/\//.test(art.story.source)) {
+    die("story.kind is \"real\" but story.source is not a URL documenting the specific case — label it illustrative or cite the case");
+  }
+  if (!art.sources.some((s) => s.includes(art.story.source))) {
+    // The case's own source must be visible in the article's source list too.
+    art.sources = [...art.sources, `Case source, ${art.story.source}`];
+  }
+} else if (art.story.source && !/^https?:\/\//.test(String(art.story.source))) {
+  die("story.source, when present, must be a URL");
+}
+if (art.story.kind === "illustrative") {
+  art.body_markdown = `${ILLUSTRATIVE_LABEL}\n\n${String(art.body_markdown)}`;
+}
 
 const dashScan = [art.title, art.dek, art.excerpt, art.body_markdown, ...art.takeaways, ...art.sources];
 for (const s of dashScan) if (hasDash(s)) die("em-dash or en-dash found (house rule: none allowed)");
