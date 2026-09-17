@@ -1,0 +1,163 @@
+/**
+ * smartlead-campaigns-v4.test.ts — the two cold campaigns of 17/09.
+ *
+ * The founder rejected the cold copy three times in one afternoon ("weak",
+ * "no punch", "generic and salesy") and approved v4: personal, by trade and
+ * city, opening with the question the prospect's OWN customer asks. The copy
+ * lives in docs/departments/sales/campaigns-v4.json so a revision is a text
+ * edit; these tests are what keeps a revision inside the house rules and keeps
+ * an unpersonalizable lead out of the campaign.
+ */
+import { describe, it, expect } from "vitest";
+import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const root = join(__dirname, "../..");
+const SCRIPT = join(root, "scripts/smartlead/campaigns_v4.py");
+const COPY = join(root, "docs/departments/sales/campaigns-v4.json");
+const copy = JSON.parse(readFileSync(COPY, "utf8"));
+
+function py(args: string[], input?: string, env: Record<string, string> = {}) {
+  const r = spawnSync("python3", [SCRIPT, ...args], { encoding: "utf8", input, env: { ...process.env, ...env } });
+  const line = r.stdout.split("\n").find((l) => l.startsWith("RESULTADO_OZVOR"));
+  return { status: r.status, stdout: r.stdout, result: line ? JSON.parse(line.replace("RESULTADO_OZVOR", "")) : null };
+}
+
+describe("the approved copy obeys the house rules, for every trade", () => {
+  it("validate passes on the committed file", () => {
+    const r = py(["validate"]);
+    expect(r.result).toMatchObject({ ok: true, erros: [] });
+    expect(r.result.segmentos).toBeGreaterThanOrEqual(25);
+  });
+
+  it("only two campaigns, four touches each, A/B on touches 1 and 2 only", () => {
+    expect(Object.keys(copy.campaigns).sort()).toEqual(["geo", "stack"]);
+    for (const c of Object.values<any>(copy.campaigns)) {
+      expect(c.steps.map((s: any) => s.variants.length)).toEqual([2, 2, 1, 1]);
+      expect(c.steps.map((s: any) => s.delay_in_days)).toEqual([0, 3, 4, 7]); // days 0/3/7/14
+    }
+  });
+
+  it("a link in e-mail 1 is refused, and nothing else runs on refused copy", () => {
+    const dir = mkdtempSync(join(tmpdir(), "copy-v4-"));
+    try {
+      const bad = JSON.parse(JSON.stringify(copy));
+      bad.campaigns.geo.steps[0].variants[0].body.push("See ozvor.com for details.");
+      const file = join(dir, "bad.json");
+      writeFileSync(file, JSON.stringify(bad));
+      const v = py(["validate", "--copy", file]);
+      expect(v.status).toBe(1);
+      expect(v.result.erros.join(" ")).toContain("link or domain in e-mail 1");
+      const c = py(["create", "--copy", file], undefined, { SL_KEY: "x" });
+      expect(c.status).toBe(1);
+      expect(c.result.motivo).toContain("viola as regras da casa");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a second question, an em dash or an unknown merge field is refused", () => {
+    const dir = mkdtempSync(join(tmpdir(), "copy-v4-"));
+    try {
+      const bad = JSON.parse(JSON.stringify(copy));
+      bad.campaigns.stack.steps[0].variants[0].body.push("Are you there? — {{revenue}}");
+      const file = join(dir, "bad.json");
+      writeFileSync(file, JSON.stringify(bad));
+      const errs = py(["validate", "--copy", file]).result.erros.join(" | ");
+      expect(errs).toContain("questions of its own");
+      expect(errs).toContain("em/en dash");
+      expect(errs).toContain("unknown merge field");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("every article is right: 'an HVAC company', 'an electrician', 'a roofer'", () => {
+    expect(copy.segments.hvac.a_trade).toBe("an HVAC company");
+    expect(copy.segments.electrical.a_trade).toBe("an electrician");
+    expect(copy.segments.roofing.a_trade).toBe("a roofer");
+  });
+});
+
+describe("a lead that cannot be personalized is not loaded", () => {
+  const leads = [
+    { first_name: "Ana", company_name: "Shamrock Heating & Cooling", website: "shamrockheatingandcooling.com", location: "Tempe, Arizona, United States" },
+    { first_name: "Bo", company_name: "Blue Lab Digital Agency", website: "bluelab.io", location: "Austin, TX" },
+    { first_name: "", company_name: "X Roofing", website: "xroof.com", location: "Dallas, Texas" },
+    { first_name: "Cy", company_name: "RE/MAX Gold", website: "remaxgold.com", location: "Reno, Nevada" },
+    { first_name: "Di", company_name: "Peak Roofing", website: "peakroofing.com", location: "United States" },
+    { first_name: "Ed", company_name: "Maple Law", website: "maplelaw.ca", location: "Toronto, Canada" },
+    { first_name: "Fa", company_name: "Oak Plumbing", website: "facebook.com/oakplumbing", location: "Mesa, AZ" },
+    { first_name: "Gil", company_name: "Summit Holdings", website: "summitholdings.com", location: "Denver, Colorado" },
+    { first_name: "Hal", company_name: "Hal Roofing", website: "halroofing.com", location: "Tulsa, Oklahoma", is_unsubscribed: true },
+  ];
+  const r = spawnSync("python3", [SCRIPT, "personalize"], { encoding: "utf8", input: JSON.stringify(leads) });
+  const res = JSON.parse(r.stdout);
+
+  it("a trade + a city = the buyer's own question, routed to the right campaign", () => {
+    expect(res[0]).toMatchObject({ ok: true, route: "geo", segment: "hvac" });
+    expect(res[0].custom_fields.buyer_question).toBe("My AC just died. Who should I call in Tempe?");
+    expect(res[0].custom_fields.a_trade).toBe("an HVAC company");
+    expect(res[1]).toMatchObject({ ok: true, route: "stack", segment: "agency/saas" });
+  });
+
+  it("each refusal names its reason", () => {
+    expect(res.slice(2).map((x: any) => x.reason)).toEqual([
+      "sem_first_name", "franquia_nacional", "sem_cidade", "nao_us", "sem_site_proprio", "sem_segmento", "stop_ou_unsub",
+    ]);
+    expect(res.slice(2).every((x: any) => x.ok === false)).toBe(true);
+  });
+});
+
+describe("the SmartLead payload", () => {
+  const code = [
+    "import sys, json",
+    `sys.path.insert(0, ${JSON.stringify(join(root, "scripts/smartlead"))})`,
+    "import campaigns_v4 as m",
+    "c = m.load_copy()",
+    "print(json.dumps(m.build_sequences(c, 'geo', 'ai-geo-search-2026-09')))",
+  ].join("\n");
+  const seqs = JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout);
+
+  it("touches 1 and 2 carry two equal variants; 3 and 4 are single", () => {
+    expect(seqs.map((s: any) => (s.seq_variants ? s.seq_variants.length : 1))).toEqual([2, 2, 1, 1]);
+    expect(seqs[0].variant_distribution_type).toBe("MANUAL_EQUAL");
+    expect(seqs[0].seq_variants.map((v: any) => v.variant_label)).toEqual(["A", "B"]);
+    expect(seqs[0].seq_variants.map((v: any) => v.variant_distribution_percentage)).toEqual([50, 50]);
+  });
+
+  it("every e-mail ends with the signature and the literal opt-out; links carry ?from=<campaign>", () => {
+    const bodies = seqs.flatMap((s: any) => (s.seq_variants ? s.seq_variants.map((v: any) => v.email_body) : [s.email_body]));
+    for (const b of bodies) {
+      expect(b.endsWith("%signature%<br><br>P.S. If you'd rather not hear from me, just reply STOP and I won't write again.")).toBe(true);
+      expect(b).not.toContain("{{campaign}}");
+    }
+    expect(bodies.filter((b: string) => b.includes("https://ozvor.com/test?from=ai-geo-search-2026-09")).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("the workflow cannot send or start anything by accident", () => {
+  const wf = readFileSync(join(root, ".github/workflows/smartlead-campaigns-v4.yml"), "utf8");
+  const script = readFileSync(SCRIPT, "utf8");
+
+  it("dry-run is the default and only the literal 'yes' confirms", () => {
+    expect(wf).toMatch(/confirm:[\s\S]*?default: "no"/);
+    expect(wf).toContain('[ "${CONFIRM}" = "yes" ] && args+=(--confirm)');
+    expect(wf).toContain("campaigns_v4.py validate");
+  });
+
+  it("there is no start action, an active destination aborts the load, and only STARTED leads move", () => {
+    expect(script).not.toMatch(/"status":\s*"(START|ACTIVE)"/);
+    expect(script).toContain("adicionar lead a campanha ativa e ENVIAR e-mail. Abortado.");
+    expect(script).toContain('if status != "STARTED"');
+  });
+
+  it("offline dry-run of create prints the plan and touches nothing", () => {
+    const r = py(["create"], undefined, { SL_KEY: "x" });
+    expect(r.status).toBe(0);
+    expect(r.result.modo).toContain("ENSAIO");
+    expect(r.result.plano.geo.variantes_por_toque).toEqual([2, 2, 1, 1]);
+  });
+});

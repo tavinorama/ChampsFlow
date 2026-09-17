@@ -1,0 +1,556 @@
+{
+  "version": "v4-2026-09-17",
+  "approved_by_founder": "2026-09-17",
+  "footer": "P.S. If you'd rather not hear from me, just reply STOP and I won't write again.",
+  "rules": {
+    "email1_words": [
+      40,
+      80
+    ],
+    "max_sentence_words": 12,
+    "email1_questions": 1
+  },
+  "stat_source": "10 US local businesses tested 2026-09-17, 4 engines x 10 buyer questions: 395 answers read, named in 114 (left out of 71%). Re-measure before using after 2026-10-31.",
+  "campaigns": {
+    "geo": {
+      "default_name": "ai-geo-search-2026-09",
+      "offer_path": "/test",
+      "steps": [
+        {
+          "delay_in_days": 0,
+          "variants": [
+            {
+              "subject": "{{trade}} in {{city}}",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "Here is a question people now ask ChatGPT:",
+                "\"{{buyer_question}}\"",
+                "",
+                "It answers with a few names. Not ten options.",
+                "If your name is missing, that call goes elsewhere.",
+                "And nobody tells you.",
+                "",
+                "I have not checked {{company_name}} yet.",
+                "",
+                "Want me to check and send you what it says?"
+              ],
+              "label": "A",
+              "id": "GEO-1A"
+            },
+            {
+              "subject": "a quiet phone",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "When the phone goes quiet, you check the usual things.",
+                "Ads. Reviews. The season.",
+                "",
+                "Here is one you cannot check yourself.",
+                "People ask ChatGPT: \"{{buyer_question}}\"",
+                "It gives a few names. Yours may not be one.",
+                "",
+                "I can check it for {{company_name}}.",
+                "",
+                "Want the answer?"
+              ],
+              "label": "B",
+              "id": "GEO-1B"
+            }
+          ]
+        },
+        {
+          "delay_in_days": 3,
+          "variants": [
+            {
+              "subject": "7 in 10",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "This week I tested ten local businesses.",
+                "Roofers, plumbers, lawyers, HVAC, a builder, a realtor.",
+                "AI left them out of 7 in 10 answers.",
+                "Every miss is a recommendation that went to someone else.",
+                "",
+                "You know what one new {{job}} is worth.",
+                "",
+                "See if AI names {{company_name}}. It takes 60 seconds.",
+                "",
+                "Run my free test → https://ozvor.com/test?from={{campaign}}"
+              ],
+              "label": "A",
+              "id": "GEO-2A"
+            },
+            {
+              "subject": "the Yellow Pages moment",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "Remember when the Yellow Pages stopped working?",
+                "Nobody sent a memo. The calls just moved to Google.",
+                "",
+                "It is happening again.",
+                "This time the calls move to AI answers.",
+                "The ones who moved early got a head start.",
+                "",
+                "Where does {{company_name}} stand today?",
+                "It takes 60 seconds to see.",
+                "",
+                "See what AI says → https://ozvor.com/test?from={{campaign}}"
+              ],
+              "label": "B",
+              "id": "GEO-2B"
+            }
+          ]
+        },
+        {
+          "delay_in_days": 4,
+          "variants": [
+            {
+              "subject": "this part is fixable",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "Good news. This is not about ads or luck.",
+                "AI builds its answer from pages it can read and quote.",
+                "If it cannot quote you, it names another {{trade}}.",
+                "",
+                "That can change. Pages can be fixed.",
+                "First you need to see who it names today.",
+                "",
+                "See who AI names → https://ozvor.com/test?from={{campaign}}"
+              ],
+              "label": "A",
+              "id": "GEO-3"
+            }
+          ]
+        },
+        {
+          "delay_in_days": 7,
+          "variants": [
+            {
+              "subject": "I will stop here",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "This is my last note.",
+                "I know you are busy running {{company_name}}.",
+                "",
+                "If a slow month ever makes you wonder, remember this.",
+                "People ask AI who to hire in {{city}}.",
+                "You should know if it says your name.",
+                "",
+                "The test is free and takes 60 seconds.",
+                "",
+                "https://ozvor.com/test?from={{campaign}}"
+              ],
+              "label": "A",
+              "id": "GEO-4"
+            }
+          ]
+        }
+      ]
+    },
+    "stack": {
+      "default_name": "ai-audit-stack-2026-09",
+      "offer_path": "/ai-audit",
+      "steps": [
+        {
+          "delay_in_days": 0,
+          "variants": [
+            {
+              "subject": "{{pain_task}}",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "Question from one owner to another.",
+                "It is about {{company_name}}.",
+                "How many hours a week go to {{pain_task}}?",
+                "",
+                "If it is two, that is 100 hours a year.",
+                "Two and a half work weeks, gone.",
+                "",
+                "Reply with your number.",
+                "I will send back the one AI tool I would test first.",
+                "No pitch. Just the tool."
+              ],
+              "label": "A",
+              "id": "STACK-1A"
+            },
+            {
+              "subject": "not why you started",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "Think about {{pain_task}}.",
+                "You did not start {{company_name}} for that.",
+                "But every hour on it is {{lost_hour}}.",
+                "",
+                "There is usually one AI tool that takes most of it back.",
+                "Not ten tools. One.",
+                "",
+                "Which part would you hand off first?",
+                "",
+                "Reply in one line. I will name the tool."
+              ],
+              "label": "B",
+              "id": "STACK-1B"
+            }
+          ]
+        },
+        {
+          "delay_in_days": 3,
+          "variants": [
+            {
+              "subject": "one tool, not ten",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "I built a 60-second audit for owners like you.",
+                "Five questions about how {{company_name}} runs.",
+                "It names the right AI tool for your worst bottleneck.",
+                "One tool. Not a list of ten.",
+                "",
+                "It costs $49.",
+                "Money back in 30 days if it tells you nothing new.",
+                "",
+                "I want to see my stack → https://ozvor.com/ai-audit?from={{campaign}}"
+              ],
+              "label": "A",
+              "id": "STACK-2A"
+            },
+            {
+              "subject": "$49 or 100 hours",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "Two hours a week on {{pain_task}}.",
+                "That is 100 hours a year.",
+                "The audit that finds the fix costs $49.",
+                "",
+                "Five questions. 60 seconds.",
+                "It names one AI tool for your worst bottleneck.",
+                "If it tells you nothing new, you get the $49 back.",
+                "You have 30 days to decide.",
+                "",
+                "I want to see my stack → https://ozvor.com/ai-audit?from={{campaign}}"
+              ],
+              "label": "B",
+              "id": "STACK-2B"
+            }
+          ]
+        },
+        {
+          "delay_in_days": 4,
+          "variants": [
+            {
+              "subject": "not another tool list",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "You do not need ten new tools.",
+                "You need the one that fits {{company_name}}.",
+                "",
+                "That is all the audit does.",
+                "Five questions in. One tool out.",
+                "$49, with 30 days to get your money back.",
+                "",
+                "I want to see my stack → https://ozvor.com/ai-audit?from={{campaign}}"
+              ],
+              "label": "A",
+              "id": "STACK-3"
+            }
+          ]
+        },
+        {
+          "delay_in_days": 7,
+          "variants": [
+            {
+              "subject": "I will stop here",
+              "body": [
+                "Hi {{first_name}},",
+                "",
+                "This is my last note.",
+                "Before any audit, try the free part.",
+                "See what AI says about {{a_trade}} in {{city}}.",
+                "It takes 60 seconds.",
+                "",
+                "If now is not the time, no worries.",
+                "",
+                "https://ozvor.com/test?from={{campaign}}"
+              ],
+              "label": "A",
+              "id": "STACK-4"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "proof_variants_not_loaded": {
+    "note": "Swap into geo step 1 only for leads that carry ai_engine/query/competitor_1/competitor_2 (pilot).",
+    "variants": [
+      {
+        "subject": "{{competitor_1}} instead of you",
+        "body": [
+          "Hi {{first_name}},",
+          "",
+          "Picture someone in {{city}} asking {{ai_engine}} this:",
+          "\"{{query}}\"",
+          "",
+          "I asked it myself this week.",
+          "It said to call {{competitor_1}}. Then {{competitor_2}}.",
+          "{{company_name}} was not mentioned.",
+          "",
+          "If they pick up the phone, they do not call you.",
+          "And you never see it happen.",
+          "",
+          "I saved the full answer. Want it?"
+        ],
+        "id": "GEO-1A-PROVA"
+      },
+      {
+        "subject": "the calls you never see",
+        "body": [
+          "Hi {{first_name}},",
+          "",
+          "A slow week has many causes.",
+          "Here is one you cannot see.",
+          "",
+          "I asked {{ai_engine}}: \"{{query}}\"",
+          "It named {{competitor_1}} and {{competitor_2}}.",
+          "It did not name {{company_name}}.",
+          "",
+          "Nobody tells you when that happens.",
+          "The phone just stays quiet.",
+          "",
+          "Want to see the exact answer it gave?"
+        ],
+        "id": "GEO-1B-PROVA"
+      }
+    ]
+  },
+  "stack_segments": [
+    "agency/saas",
+    "design/media",
+    "it services"
+  ],
+  "segments": {
+    "roofing": {
+      "trade": "roofer",
+      "a_trade": "a roofer",
+      "buyer_question": "My roof is leaking. Who is a good roofer in {city}?",
+      "job": "roof job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the roof"
+    },
+    "hvac": {
+      "trade": "HVAC company",
+      "a_trade": "an HVAC company",
+      "buyer_question": "My AC just died. Who should I call in {city}?",
+      "job": "install",
+      "pain_task": "dispatch and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "plumbing": {
+      "trade": "plumber",
+      "a_trade": "a plumber",
+      "buyer_question": "I have a burst pipe. Who is a good plumber in {city}?",
+      "job": "plumbing job",
+      "pain_task": "dispatch and quotes",
+      "lost_hour": "an hour off the job"
+    },
+    "remodeling": {
+      "trade": "remodeler",
+      "a_trade": "a remodeler",
+      "buyer_question": "Who is the best kitchen remodeler in {city}?",
+      "job": "remodel",
+      "pain_task": "estimates and follow-ups",
+      "lost_hour": "an hour off the job site"
+    },
+    "electrical": {
+      "trade": "electrician",
+      "a_trade": "an electrician",
+      "buyer_question": "I need an electrician in {city}. Who is good?",
+      "job": "electrical job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "landscaping": {
+      "trade": "landscaper",
+      "a_trade": "a landscaper",
+      "buyer_question": "Who is a good landscaper in {city}?",
+      "job": "landscaping job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "cleaning": {
+      "trade": "cleaning company",
+      "a_trade": "a cleaning company",
+      "buyer_question": "Who is a good cleaning company in {city}?",
+      "job": "cleaning contract",
+      "pain_task": "scheduling and follow-ups",
+      "lost_hour": "an hour away from clients"
+    },
+    "pest": {
+      "trade": "pest control company",
+      "a_trade": "a pest control company",
+      "buyer_question": "I have termites. Who should I call in {city}?",
+      "job": "pest contract",
+      "pain_task": "scheduling and follow-ups",
+      "lost_hour": "an hour off the route"
+    },
+    "garage/doors": {
+      "trade": "garage door company",
+      "a_trade": "a garage door company",
+      "buyer_question": "Who installs garage doors in {city}?",
+      "job": "install",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "pool": {
+      "trade": "pool company",
+      "a_trade": "a pool company",
+      "buyer_question": "Who is a good pool company in {city}?",
+      "job": "pool job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "moving": {
+      "trade": "moving company",
+      "a_trade": "a moving company",
+      "buyer_question": "Who are reliable movers in {city}?",
+      "job": "move",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the truck"
+    },
+    "auto body": {
+      "trade": "auto body shop",
+      "a_trade": "an auto body shop",
+      "buyer_question": "Who does good collision repair in {city}?",
+      "job": "repair job",
+      "pain_task": "estimates and insurance paperwork",
+      "lost_hour": "an hour off the shop floor"
+    },
+    "law firm": {
+      "trade": "law firm",
+      "a_trade": "a law firm",
+      "buyer_question": "I need a lawyer in {city}. Who do you recommend?",
+      "job": "case",
+      "pain_task": "client intake and follow-ups",
+      "lost_hour": "an hour you cannot bill"
+    },
+    "accounting": {
+      "trade": "accounting firm",
+      "a_trade": "an accounting firm",
+      "buyer_question": "Who is a good accountant for a small business in {city}?",
+      "job": "client",
+      "pain_task": "document chasing and data entry",
+      "lost_hour": "an hour you cannot bill"
+    },
+    "insurance": {
+      "trade": "insurance agency",
+      "a_trade": "an insurance agency",
+      "buyer_question": "Who is a good insurance agent in {city}?",
+      "job": "policy",
+      "pain_task": "quotes and renewals",
+      "lost_hour": "an hour away from clients"
+    },
+    "real estate": {
+      "trade": "real estate agent",
+      "a_trade": "a real estate agent",
+      "buyer_question": "Who is the best real estate agent in {city}?",
+      "job": "listing",
+      "pain_task": "lead follow-up",
+      "lost_hour": "an hour away from clients"
+    },
+    "dental": {
+      "trade": "dental office",
+      "a_trade": "a dental office",
+      "buyer_question": "Who is a good dentist in {city} taking new patients?",
+      "job": "patient",
+      "pain_task": "scheduling and reminders",
+      "lost_hour": "an hour away from patients"
+    },
+    "ortho": {
+      "trade": "orthodontist",
+      "a_trade": "an orthodontist",
+      "buyer_question": "Who is the best orthodontist in {city}?",
+      "job": "patient",
+      "pain_task": "scheduling and reminders",
+      "lost_hour": "an hour away from patients"
+    },
+    "med spa": {
+      "trade": "med spa",
+      "a_trade": "a med spa",
+      "buyer_question": "What is the best med spa in {city}?",
+      "job": "client",
+      "pain_task": "bookings and follow-ups",
+      "lost_hour": "an hour away from clients"
+    },
+    "chiro/pt": {
+      "trade": "chiropractor",
+      "a_trade": "a chiropractor",
+      "buyer_question": "Who is a good chiropractor in {city}?",
+      "job": "patient",
+      "pain_task": "scheduling and reminders",
+      "lost_hour": "an hour away from patients"
+    },
+    "vet": {
+      "trade": "vet clinic",
+      "a_trade": "a vet clinic",
+      "buyer_question": "Who is a good vet in {city}?",
+      "job": "client",
+      "pain_task": "scheduling and reminders",
+      "lost_hour": "an hour away from patients"
+    },
+    "salon": {
+      "trade": "hair salon",
+      "a_trade": "a hair salon",
+      "buyer_question": "What is the best hair salon in {city}?",
+      "job": "client",
+      "pain_task": "bookings and no-shows",
+      "lost_hour": "an hour away from clients"
+    },
+    "fitness": {
+      "trade": "gym",
+      "a_trade": "a gym",
+      "buyer_question": "What is the best gym in {city}?",
+      "job": "member",
+      "pain_task": "sign-ups and follow-ups",
+      "lost_hour": "an hour off the floor"
+    },
+    "agency/saas": {
+      "trade": "marketing agency",
+      "a_trade": "a marketing agency",
+      "buyer_question": "Who is a good marketing agency in {city}?",
+      "job": "client",
+      "pain_task": "client reports",
+      "lost_hour": "an hour you cannot bill"
+    },
+    "design/media": {
+      "trade": "design studio",
+      "a_trade": "a design studio",
+      "buyer_question": "Who is a good design studio in {city}?",
+      "job": "project",
+      "pain_task": "proposals and invoices",
+      "lost_hour": "an hour you cannot bill"
+    },
+    "it services": {
+      "trade": "IT services company",
+      "a_trade": "an IT services company",
+      "buyer_question": "Who is a good IT support company in {city}?",
+      "job": "contract",
+      "pain_task": "tickets and quotes",
+      "lost_hour": "an hour you cannot bill"
+    },
+    "construction": {
+      "trade": "contractor",
+      "a_trade": "a contractor",
+      "buyer_question": "Who is a good general contractor in {city}?",
+      "job": "construction job",
+      "pain_task": "bids and scheduling",
+      "lost_hour": "an hour off the job site"
+    }
+  }
+}

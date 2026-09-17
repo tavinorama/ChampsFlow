@@ -1,0 +1,587 @@
+#!/usr/bin/env python3
+"""
+campaigns_v4.py — the two cold campaigns of 17/09 (AI Geo Search, AI Audit
+Stack): copy validation, SmartLead payloads with A/B variants, and the
+per-lead personalization (trade, city, the buyer's own question).
+
+WHY A FILE AND NOT INLINE PYTHON IN THE WORKFLOW. The founder rewrote this copy
+three times in one afternoon. The copy lives in
+docs/departments/sales/campaigns-v4.json; a new revision is a text edit, the
+rules below run on it in CI, and the workflows stay thin.
+
+WHAT NEVER HAPPENS HERE
+  - no campaign is ever STARTED (a campaign found active is PAUSED and named);
+  - nothing is written to SmartLead without --confirm (dry-run is the default);
+  - no e-mail address, person name or phone is printed — aggregates only;
+  - a lead that cannot be personalized (no recognizable trade, no city, no
+    first name) is NOT loaded: an empty merge field is a hole in e-mail 1.
+
+Commands:
+  validate                      check the copy file against the house rules
+  render --segment roofing      print one fully merged sample sequence
+  personalize                   stdin: JSON list of leads -> custom fields / reasons
+  create  [--confirm]           create/refresh the two DRAFTED campaigns
+  load    [--confirm]           move eligible untouched leads into them
+Stdlib only. SMARTLEAD key: env SL_KEY.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+COPY_PATH = os.path.join(HERE, "..", "..", "docs", "departments", "sales", "campaigns-v4.json")
+
+BASE = "https://server.smartlead.ai/api/v1"
+UA = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json"}
+
+LINK_RE = re.compile(r"https?://|www\.|\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|ai|co|us|dev|app)\b", re.I)
+VAR_RE = re.compile(r"\{\{\s*([a-z_0-9]+)\s*\}\}")
+WORD_RE = re.compile(r"[A-Za-z0-9'&$]+")
+
+# SmartLead's own lead fields + the custom fields this script writes.
+NATIVE_VARS = {"first_name", "company_name"}
+CUSTOM_VARS = {"city", "trade", "a_trade", "buyer_question", "job", "pain_task", "lost_hour"}
+# `campaign` is resolved by this script when the payload is built (never reaches SmartLead).
+BUILD_VARS = {"campaign"}
+PROOF_VARS = {"ai_engine", "query", "competitor_1", "competitor_2", "report_url"}
+
+SCHEDULE = {"timezone": "America/New_York", "days_of_the_week": [1, 2, 3, 4, 5],
+            "start_hour": "09:00", "end_hour": "18:00", "min_time_btw_emails": 8,
+            "max_new_leads_per_day": 80, "schedule_start_time": None}
+SETTINGS = {"track_settings": ["DONT_TRACK_EMAIL_OPEN", "DONT_TRACK_LINK_CLICK"],
+            "stop_lead_settings": "REPLY_TO_AN_EMAIL", "send_as_plain_text": True,
+            "follow_up_percentage": 100, "enable_ai_esp_matching": True}
+
+# Worst realistic values: the rules must hold when a company has a six-word name.
+WORST = {"first_name": "Christopher", "company_name": "Hawk Plumbing Heating & Air Conditioning",
+         "city": "Oklahoma City", "campaign": "ai-geo-search-2026-09"}
+
+
+def load_copy(path: str = COPY_PATH) -> dict:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def out(d: dict) -> None:
+    print("RESULTADO_OZVOR" + json.dumps(d, ensure_ascii=False))
+
+
+# --------------------------------------------------------------------------
+# 1. Copy rules
+# --------------------------------------------------------------------------
+
+def merge(text: str, values: dict) -> str:
+    return VAR_RE.sub(lambda m: str(values.get(m.group(1), m.group(0))), text)
+
+
+def segment_values(copy: dict, segment: str, base: dict) -> dict:
+    seg = copy["segments"][segment]
+    v = dict(base)
+    v.update(seg)
+    v["buyer_question"] = seg["buyer_question"].replace("{city}", v["city"])
+    return v
+
+
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.?!])\s+|\n+", text) if s.strip()]
+
+
+def validate_copy(copy: dict) -> list[str]:
+    """Every rule the house set for cold e-mail, checked on the merged text."""
+    errors: list[str] = []
+    lo, hi = copy["rules"]["email1_words"]
+    max_sentence = copy["rules"]["max_sentence_words"]
+    footer = copy["footer"]
+    if "reply STOP" not in footer:
+        errors.append("footer lost the literal opt-out line")
+    segments = copy["segments"]
+    for name, seg in segments.items():
+        for field in ("trade", "a_trade", "buyer_question", "job", "pain_task", "lost_hour"):
+            if not str(seg.get(field, "")).strip():
+                errors.append(f"segment {name}: field {field} is empty")
+        if "{city}" not in seg.get("buyer_question", ""):
+            errors.append(f"segment {name}: buyer_question has no {{city}}")
+        if LINK_RE.search(" ".join(str(x) for x in seg.values())):
+            errors.append(f"segment {name}: a field looks like a link/domain")
+    for key, camp in copy["campaigns"].items():
+        if len(camp["steps"]) != 4:
+            errors.append(f"{key}: expected 4 touches, got {len(camp['steps'])}")
+        for ix, step in enumerate(camp["steps"], start=1):
+            labels = [v["label"] for v in step["variants"]]
+            if ix <= 2 and labels != ["A", "B"]:
+                errors.append(f"{key} step {ix}: touches 1 and 2 carry variants A and B, got {labels}")
+            for var in step["variants"]:
+                vid = var["id"]
+                raw = var["subject"] + "\n" + "\n".join(var["body"])
+                used = set(VAR_RE.findall(raw))
+                unknown = used - NATIVE_VARS - CUSTOM_VARS - BUILD_VARS
+                if unknown:
+                    errors.append(f"{vid}: unknown merge field(s) {sorted(unknown)}")
+                if "—" in raw or "–" in raw:
+                    errors.append(f"{vid}: em/en dash (house rule: none)")
+                if footer in raw:
+                    errors.append(f"{vid}: footer is appended by code, not written in the body")
+                for seg_name in segments:
+                    vals = segment_values(copy, seg_name, WORST)
+                    body = merge("\n".join(var["body"]), vals)
+                    subject = merge(var["subject"], vals)
+                    if VAR_RE.search(body) or VAR_RE.search(subject):
+                        errors.append(f"{vid}/{seg_name}: unresolved merge field after merge")
+                    no_urls = re.sub(r"https?://\S+", "", body)
+                    no_quote = no_urls.replace('"' + vals["buyer_question"] + '"', "")
+                    if ix == 1:
+                        if LINK_RE.search(body) or LINK_RE.search(subject):
+                            errors.append(f"{vid}/{seg_name}: link or domain in e-mail 1 (rule 27/08)")
+                        words = len(WORD_RE.findall(body))
+                        if not lo <= words <= hi:
+                            errors.append(f"{vid}/{seg_name}: e-mail 1 has {words} words (rule {lo}-{hi})")
+                        if no_quote.count("?") != copy["rules"]["email1_questions"]:
+                            errors.append(f"{vid}/{seg_name}: e-mail 1 has {no_quote.count('?')} questions of its own (rule 1)")
+                    else:
+                        links = re.findall(r"https?://\S+", body)
+                        for link in links:
+                            if "ozvor.com" in link and "?from=" not in link:
+                                errors.append(f"{vid}: ozvor.com link without ?from=")
+                    long = [s for s in _sentences(no_quote) if len(WORD_RE.findall(s)) > max_sentence]
+                    if long:
+                        errors.append(f"{vid}/{seg_name}: sentence over {max_sentence} words: {long[0][:70]}")
+    # de-duplicate the per-segment repeats of one defect
+    seen, unique = set(), []
+    for e in errors:
+        k = re.sub(r"/[a-z/ ]+:", ":", e)
+        if k not in seen:
+            seen.add(k)
+            unique.append(e)
+    return unique
+
+
+# --------------------------------------------------------------------------
+# 2. SmartLead payloads
+# --------------------------------------------------------------------------
+
+def _html(lines: list[str], campaign_name: str, footer: str) -> str:
+    body = "<br>".join(merge(line, {"campaign": campaign_name}).replace("→", "-&gt;") for line in lines)
+    return body + "<br><br>%signature%<br><br>" + footer
+
+
+def build_sequences(copy: dict, key: str, campaign_name: str) -> list[dict]:
+    seqs = []
+    for ix, step in enumerate(copy["campaigns"][key]["steps"], start=1):
+        variants = step["variants"]
+        entry: dict = {"seq_number": ix, "seq_delay_details": {"delay_in_days": step["delay_in_days"]}}
+        if len(variants) == 1:
+            entry["subject"] = variants[0]["subject"]
+            entry["email_body"] = _html(variants[0]["body"], campaign_name, copy["footer"])
+        else:
+            share = round(100 / len(variants))
+            entry["variant_distribution_type"] = "MANUAL_EQUAL"
+            entry["seq_variants"] = [
+                {"subject": v["subject"], "email_body": _html(v["body"], campaign_name, copy["footer"]),
+                 "variant_label": v["label"], "variant_distribution_percentage": share}
+                for v in variants]
+        seqs.append(entry)
+    return seqs
+
+
+# --------------------------------------------------------------------------
+# 3. Personalization: trade + city from what the lead record already holds
+# --------------------------------------------------------------------------
+
+SEGMENT_RULES = [
+    ("ortho", r"orthodont|\bortho\b|braces|invisalign"),
+    ("med spa", r"med\s?spa|medspa|aesthetic|botox|laser\s?(clinic|center)|skin\s?(clinic|studio)"),
+    ("law firm", r"\blaw\b|law\s?(firm|office|group)|attorney|lawyer|\blegal\b|litigat"),
+    ("dental", r"dental|dentist|\bdds\b|smile\s?(center|studio)|endodont|periodont"),
+    ("roofing", r"roof(ing|er|s)?\b"),
+    ("hvac", r"\bhvac\b|heating|air\s?condition|furnace|cooling"),
+    ("plumbing", r"plumb(ing|er|ers)?\b|drain|septic|rooter|water\s?heater"),
+    ("remodeling", r"remodel|renovation|kitchen\s?(and|&)?\s?bath|custom\s?home|design\s?/?\s?build"),
+    ("accounting", r"accounting|accountant|\bcpa\b|bookkeep|tax\s?(service|group|pro)"),
+    ("auto body", r"auto\s?body|collision|body\s?shop|auto\s?(repair|care|service)"),
+    ("real estate", r"real\s?estate|realty|realtor"),
+    ("electrical", r"electric(al|ian)?\b"),
+    ("landscaping", r"landscap|lawn\s?care|tree\s?service|irrigation|hardscape"),
+    ("cleaning", r"clean(ing|ers)?\b|janitor|maid\b"),
+    ("pest", r"pest\b|exterminat|termite"),
+    ("chiro/pt", r"chiropract|physical\s?therapy"),
+    ("vet", r"veterinar|animal\s?hospital"),
+    ("salon", r"salon|barber|hair\s?studio|nail\s?(bar|salon)"),
+    ("insurance", r"insurance"),
+    ("moving", r"mov(ers|ing)\b|relocation|hauling"),
+    ("fitness", r"fitness|\bgym\b|pilates|crossfit|yoga\b"),
+    ("garage/doors", r"garage\s?door"),
+    ("pool", r"\bpools?\b"),
+    ("construction", r"general\s?contract|contractor|construction|builders?\b"),
+    ("it services", r"\bit\s(services?|support|solutions?)|managed\s?service|cyber|network(s|ing)?\b|computer"),
+    ("agency/saas", r"agency|marketing|\bseo\b|digital|advertis"),
+    ("design/media", r"design|media|creative|brand(ing)?\b|studios?\b|photo|video|print(ing)?\b|graphics"),
+]
+SEGMENT_RULES = [(n, re.compile(p, re.I)) for n, p in SEGMENT_RULES]
+
+EXCLUDE = re.compile(r"hotel|motel|resort|hospital|health\s?system|university|college|school\s?district|church|"
+                     r"city\s?of\s|county\s?of\s|\bgov\b", re.I)
+FRANCHISE = re.compile(r"servpro|roto[-\s]?rooter|mr\.?\s?rooter|one\s?hour\s?heating|re/?max|keller\s?williams|"
+                       r"century\s?21|coldwell\s?banker|sotheby|h&r\s?block|aspen\s?dental|terminix|orkin|"
+                       r"planet\s?fitness|anytime\s?fitness|great\s?clips|supercuts|two\s?men\s?and\s?a\s?truck", re.I)
+NOT_OWN = re.compile(r"facebook\.com|instagram\.com|linkedin\.com|linktr\.ee|sites\.google\.com|business\.site|"
+                     r"wixsite\.com|weebly\.com|godaddysites\.com|yelp\.com|angi\.com|thumbtack\.com", re.I)
+NON_US = re.compile(r"\b(canada|united kingdom|england|scotland|ireland|australia|new zealand|india|pakistan|"
+                    r"philippines|singapore|germany|france|spain|italy|portugal|brazil|brasil|mexico|"
+                    r"netherlands|sweden|poland|israel|uae|dubai|south africa|nigeria|japan|china)\b", re.I)
+US_TAIL = {"united states", "usa", "us", "u.s.", "u.s.a."}
+STATE_NAMES = {"alabama", "alaska", "arizona", "arkansas", "california", "colorado", "connecticut", "delaware",
+               "florida", "georgia", "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas", "kentucky",
+               "louisiana", "maine", "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+               "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey", "new mexico",
+               "new york", "north carolina", "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania",
+               "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont",
+               "virginia", "washington", "west virginia", "wisconsin", "wyoming", "district of columbia"}
+STATE_CODES = {"AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY",
+               "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND",
+               "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"}
+BAD_CATEGORY = {3, 4, 7, 9}
+
+
+def parse_city(location: str) -> tuple[str, bool]:
+    """(city, is_us). "Cockeysville, Maryland, United States" -> ("Cockeysville", True)."""
+    parts = [p.strip() for p in (location or "").split(",") if p.strip()]
+    if not parts:
+        return "", True
+    is_us = True
+    if parts[-1].lower() in US_TAIL:
+        parts = parts[:-1]
+    elif NON_US.search(parts[-1]):
+        return "", False
+    if parts and (parts[-1].lower() in STATE_NAMES or parts[-1].upper() in STATE_CODES):
+        parts = parts[:-1]
+    if not parts:
+        return "", is_us            # only a state or a country: no city to speak of
+    city = parts[0]
+    if city.lower() in STATE_NAMES or city.lower() in US_TAIL or len(city) < 3 or re.search(r"\d", city):
+        return "", is_us
+    return city, is_us
+
+
+def classify(company: str, website: str) -> str | None:
+    text = f"{company} {website}"
+    for name, rx in SEGMENT_RULES:
+        if rx.search(text):
+            return name
+    return None
+
+
+def personalize(copy: dict, lead: dict) -> tuple[dict | None, str]:
+    """Return (custom_fields + route, "") or (None, reason). Pure: no I/O."""
+    company = (lead.get("company_name") or "").strip()
+    website = (lead.get("website") or lead.get("company_url") or "").strip()
+    first = (lead.get("first_name") or "").strip()
+    if lead.get("is_unsubscribed") or lead.get("lead_category_id") in BAD_CATEGORY:
+        return None, "stop_ou_unsub"
+    if not first or len(first) < 2 or not re.match(r"^[A-Za-zÀ-ÿ' -]+$", first):
+        return None, "sem_first_name"
+    if not company:
+        return None, "sem_empresa"
+    if not website or "." not in website or NOT_OWN.search(website):
+        return None, "sem_site_proprio"
+    text = f"{company} {website}"
+    if EXCLUDE.search(text):
+        return None, "excluida_regra"
+    if FRANCHISE.search(text):
+        return None, "franquia_nacional"
+    city, is_us = parse_city(lead.get("location") or "")
+    if not is_us:
+        return None, "nao_us"
+    if not city:
+        return None, "sem_cidade"
+    segment = classify(company, website)
+    if not segment or segment not in copy["segments"]:
+        return None, "sem_segmento"
+    seg = copy["segments"][segment]
+    fields = {"city": city, "trade": seg["trade"], "a_trade": seg["a_trade"],
+              "buyer_question": seg["buyer_question"].replace("{city}", city),
+              "job": seg["job"], "pain_task": seg["pain_task"], "lost_hour": seg["lost_hour"]}
+    if any(not str(v).strip() for v in fields.values()):
+        return None, "campo_vazio"
+    route = "stack" if segment in copy["stack_segments"] else "geo"
+    return {"custom_fields": fields, "route": route, "segment": segment}, ""
+
+
+# --------------------------------------------------------------------------
+# 4. SmartLead I/O (only reached by `create` and `load`)
+# --------------------------------------------------------------------------
+
+def sl(path: str, payload: dict | None = None, method: str | None = None):
+    key = os.environ.get("SL_KEY", "")
+    url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={key}"
+    data = json.dumps(payload).encode() if payload is not None else None
+    headers = dict(UA)
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            body = r.read().decode()
+            return r.status, (json.loads(body) if body.strip() else {})
+    except urllib.error.HTTPError as e:
+        return e.code, {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:240]}
+    except Exception as e:  # noqa: BLE001 — network failure is reported, never swallowed
+        return 0, {"_error": type(e).__name__}
+
+
+def bad(status: int, d) -> bool:
+    return status == 0 or status >= 400 or (isinstance(d, dict) and ("_http_error" in d or "_error" in d))
+
+
+def campaign_index() -> dict:
+    s, camps = sl("/campaigns")
+    if bad(s, camps) or not isinstance(camps, list):
+        out({"ok": False, "motivo": f"GET /campaigns falhou: HTTP {s}"})
+        raise SystemExit(1)
+    return {c.get("name"): c for c in camps}
+
+
+def cmd_create(copy: dict, names: dict, confirm: bool) -> int:
+    plan = {k: {"campanha": names[k], "toques": len(copy["campaigns"][k]["steps"]),
+                "variantes_por_toque": [len(s["variants"]) for s in copy["campaigns"][k]["steps"]]}
+            for k in ("geo", "stack")}
+    if not confirm:
+        out({"ok": True, "modo": "ENSAIO — nada foi criado nem alterado", "copy": copy["version"], "plano": plan,
+             "para_executar": "re-correr com confirm=yes"})
+        return 0
+    by_name = campaign_index()
+    results = []
+    for key in ("geo", "stack"):
+        name = names[key]
+        existing = by_name.get(name)
+        created = False
+        if existing:
+            cid = existing["id"]
+            status = str(existing.get("status") or "").upper()
+            if status not in ("DRAFTED", "PAUSED", ""):
+                results.append({"campanha": name, "campaign_id": cid, "ok": False,
+                                "motivo": f"campanha esta {status}: a copy de uma campanha ATIVA nao e reescrita por aqui"})
+                continue
+        else:
+            s, res = sl("/campaigns/create", {"name": name})
+            cid = res.get("id") if isinstance(res, dict) else None
+            created = True
+            if bad(s, res) or not cid:
+                results.append({"campanha": name, "ok": False, "motivo": f"create falhou: HTTP {s}"})
+                continue
+        steps = {}
+        s, r = sl(f"/campaigns/{cid}/sequences", {"sequences": build_sequences(copy, key, name)})
+        steps["sequences"] = "ok" if not bad(s, r) else f"HTTP {s} {json.dumps(r)[:160]}"
+        s, r = sl(f"/campaigns/{cid}/schedule", SCHEDULE)
+        steps["schedule"] = "ok" if not bad(s, r) else f"HTTP {s}"
+        s, r = sl(f"/campaigns/{cid}/settings", SETTINGS)
+        steps["settings"] = "ok" if not bad(s, r) else f"HTTP {s}"
+        # Read back: "saved" is not "there". Count the variants SmartLead actually holds.
+        s, back = sl(f"/campaigns/{cid}/sequences")
+        held = []
+        if isinstance(back, list):
+            for row in sorted(back, key=lambda x: x.get("seq_number") or 0):
+                variants = row.get("sequence_variants") or row.get("seq_variants") or []
+                held.append(max(1, len(variants)))
+        expected = [len(st["variants"]) for st in copy["campaigns"][key]["steps"]]
+        steps["variantes_lidas_de_volta"] = held
+        if held != expected:
+            steps["ab"] = f"ESPERADO {expected}, SmartLead guarda {held} — o teste A/B NAO esta montado"
+        else:
+            steps["ab"] = "ok"
+        s, detail = sl(f"/campaigns/{cid}")
+        status = str((detail or {}).get("status", "?")).upper() if isinstance(detail, dict) else "?"
+        if status in ("ACTIVE", "STARTED", "START"):
+            sl(f"/campaigns/{cid}/status", {"status": "PAUSED"})
+            status = "PAUSED (estava ativa — pausada por este workflow)"
+        ok = all(v == "ok" for k2, v in steps.items() if k2 != "variantes_lidas_de_volta")
+        results.append({"campanha": name, "campaign_id": cid, "criada_agora": created, "status": status,
+                        "ok": ok, "passos": steps})
+    ok = all(r.get("ok") for r in results)
+    out({"ok": ok, "modo": "execucao", "copy": copy["version"], "campanhas": results,
+         "nunca_iniciada": "este script nao tem acao start — quem inicia e o founder, pelo smartlead-launch.yml (confirm=GO)"})
+    return 0 if ok else 1
+
+
+def fetch_leads(cid: str) -> list[dict]:
+    rows, off = [], 0
+    while True:
+        s, d = sl(f"/campaigns/{cid}/leads?offset={off}&limit=100")
+        batch = d.get("data") if isinstance(d, dict) else None
+        if bad(s, d) or not batch:
+            break
+        rows.extend(batch)
+        off += len(batch)
+        if off > 20000:
+            break
+    return rows
+
+
+def site_alive(url: str) -> bool:
+    target = url if re.match(r"^https?://", url, re.I) else f"https://{url}"
+    try:
+        req = urllib.request.Request(target, headers=UA)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            return 200 <= r.status < 400
+    except Exception:  # noqa: BLE001 — a dead site is a fact, not an error
+        return False
+
+
+def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
+    by_name = campaign_index()
+    dest = {}
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            out({"ok": False, "motivo": f"campanha de destino '{names[key]}' nao existe — correr create primeiro"})
+            return 1
+        status = str(c.get("status") or "").upper()
+        if status not in ("DRAFTED", "PAUSED"):
+            out({"ok": False, "motivo": f"'{names[key]}' esta {status}: adicionar lead a campanha ativa e ENVIAR e-mail. Abortado."})
+            return 1
+        dest[key] = c["id"]
+    reasons: dict[str, int] = {}
+    seen_domains: set[str] = set()
+    picked = {"geo": [], "stack": []}
+    by_segment: dict[str, int] = {}
+    read = 0
+    for cid in sources:
+        for row in fetch_leads(cid):
+            read += 1
+            lead = dict(row.get("lead") or row)
+            lead["lead_category_id"] = row.get("lead_category_id")
+            status = str(row.get("status") or "").strip().upper()
+            if status != "STARTED":          # STARTED = imported, never e-mailed (measured 11/09)
+                reasons["ja_tocada_ou_bloqueada"] = reasons.get("ja_tocada_ou_bloqueada", 0) + 1
+                continue
+            res, why = personalize(copy, lead)
+            if not res:
+                reasons[why] = reasons.get(why, 0) + 1
+                continue
+            domain = re.sub(r"^https?://(www\.)?", "", (lead.get("website") or lead.get("company_url") or "").lower()).split("/")[0]
+            if domain in seen_domains:
+                reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
+                continue
+            seen_domains.add(domain)
+            res.update({"lead_id": lead.get("id"), "source": cid, "email": lead.get("email"),
+                        "first_name": lead.get("first_name"), "last_name": lead.get("last_name"),
+                        "company_name": lead.get("company_name"), "website": lead.get("website") or lead.get("company_url"),
+                        "location": lead.get("location")})
+            picked[res["route"]].append(res)
+    if check_sites:
+        everyone = picked["geo"] + picked["stack"]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            alive = list(pool.map(lambda r: site_alive(r["website"]), everyone))
+        for r, ok in zip(everyone, alive):
+            r["alive"] = ok
+        for key in picked:
+            dead = [r for r in picked[key] if not r["alive"]]
+            reasons["site_nao_respondeu"] = reasons.get("site_nao_respondeu", 0) + len(dead)
+            picked[key] = [r for r in picked[key] if r["alive"]]
+    for key in picked:
+        if len(picked[key]) > cap:
+            reasons["acima_do_teto"] = reasons.get("acima_do_teto", 0) + len(picked[key]) - cap
+            picked[key] = picked[key][:cap]
+        for r in picked[key]:
+            by_segment[r["segment"]] = by_segment.get(r["segment"], 0) + 1
+    summary = {"leads_lidas": read, "elegiveis": {k: len(v) for k, v in picked.items()},
+               "por_segmento": dict(sorted(by_segment.items(), key=lambda x: -x[1])),
+               "fora_por_motivo": dict(sorted(reasons.items(), key=lambda x: -x[1])),
+               "teto_por_campanha": cap, "checou_sites": check_sites}
+    if not confirm:
+        sample = None
+        if picked["geo"]:
+            r = picked["geo"][0]
+            vals = dict(r["custom_fields"], first_name="<first_name>", company_name=r["company_name"], campaign=names["geo"])
+            v = copy["campaigns"]["geo"]["steps"][0]["variants"][0]
+            sample = {"subject": merge(v["subject"], vals), "body": merge("\n".join(v["body"]), vals)}
+        out(dict(summary, ok=True, modo="ENSAIO — nenhuma lead foi movida", amostra_sem_nome_de_pessoa=sample,
+                 para_executar="re-correr com confirm=yes"))
+        return 0
+    added, removed, add_fail, del_fail, first_error = {}, 0, 0, 0, None
+    for key in ("geo", "stack"):
+        group = picked[key]
+        for i in range(0, len(group), 100):
+            chunk = group[i:i + 100]
+            payload = {"lead_list": [{"email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
+                                      "company_name": r["company_name"], "website": r["website"],
+                                      "location": r["location"], "custom_fields": r["custom_fields"]}
+                                     for r in chunk if r.get("email")]}
+            s, d = sl(f"/campaigns/{dest[key]}/leads", payload, method="POST")
+            if bad(s, d):
+                add_fail += len(chunk)
+                first_error = first_error or {"etapa": "add", "http": s, "resp": json.dumps(d)[:200]}
+                break
+            added[names[key]] = added.get(names[key], 0) + len(payload["lead_list"])
+            for r in chunk:
+                s2, d2 = sl(f"/campaigns/{r['source']}/leads/{r['lead_id']}", method="DELETE")
+                if bad(s2, d2):
+                    del_fail += 1
+                    first_error = first_error or {"etapa": "delete", "http": s2, "resp": json.dumps(d2)[:200]}
+                    if del_fail >= 3 and removed == 0:
+                        break
+                else:
+                    removed += 1
+    ok = add_fail == 0 and del_fail == 0
+    out(dict(summary, ok=ok, modo="execucao", adicionadas=added, removidas_da_origem=removed,
+             falhas_add=add_fail, falhas_delete=del_fail, primeiro_erro=first_error,
+             nunca_iniciada="as campanhas continuam DRAFTED/PAUSED — quem inicia e o founder"))
+    return 0 if ok else 1
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load"])
+    ap.add_argument("--copy", default=COPY_PATH)
+    ap.add_argument("--segment", default="roofing")
+    ap.add_argument("--geo-name", default="")
+    ap.add_argument("--stack-name", default="")
+    ap.add_argument("--sources", default="3741204,3783524,3783526")
+    ap.add_argument("--cap", type=int, default=800)
+    ap.add_argument("--no-site-check", action="store_true")
+    ap.add_argument("--confirm", action="store_true")
+    a = ap.parse_args(argv)
+    copy = load_copy(a.copy)
+    errors = validate_copy(copy)
+    if a.command == "validate":
+        out({"ok": not errors, "copy": copy["version"], "segmentos": len(copy["segments"]), "erros": errors})
+        return 0 if not errors else 1
+    if errors:   # no other command runs on copy that breaks the rules
+        out({"ok": False, "motivo": "a copy viola as regras da casa — nada foi feito", "erros": errors[:10]})
+        return 1
+    names = {"geo": a.geo_name or copy["campaigns"]["geo"]["default_name"],
+             "stack": a.stack_name or copy["campaigns"]["stack"]["default_name"]}
+    if a.command == "render":
+        vals = segment_values(copy, a.segment, {"first_name": "Mark", "company_name": "McRay Roofing",
+                                                "city": "Oklahoma City", "campaign": names["geo"]})
+        for key in ("geo", "stack"):
+            for ix, step in enumerate(copy["campaigns"][key]["steps"], start=1):
+                for v in step["variants"]:
+                    print(f"--- {v['id']} (dia +{step['delay_in_days']})\nSubject: {merge(v['subject'], vals)}\n")
+                    print(merge("\n".join(v["body"]), vals) + "\n")
+        return 0
+    if a.command == "personalize":
+        leads = json.load(sys.stdin)
+        res = []
+        for lead in leads:
+            r, why = personalize(copy, lead)
+            res.append({"ok": bool(r), "reason": why, **(r or {})})
+        print(json.dumps(res, ensure_ascii=False))
+        return 0
+    if not os.environ.get("SL_KEY"):
+        out({"ok": False, "motivo": "SL_KEY ausente"})
+        return 1
+    if a.command == "create":
+        return cmd_create(copy, names, a.confirm)
+    sources = [s.strip() for s in a.sources.split(",") if s.strip()]
+    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
