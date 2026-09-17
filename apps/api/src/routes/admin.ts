@@ -69,7 +69,7 @@ import {
 } from "../lib/dossier";
 import { groupRecycleBatches } from "../lib/recycle";
 import { LIST_PRICE_USD } from "../../../../packages/shared/src/pricing";
-import { fetchEnrichedClients, fetchRevenueSummary } from "../lib/cockpit";
+import { fetchEnrichedClients, fetchRevenueSummary, splitBilledFromGranted } from "../lib/cockpit";
 import { fetchReceivedMrr } from "../lib/received-mrr";
 import { fetchOperatingCadence } from "../lib/cadence";
 import { readDeliveryHealth } from "../lib/delivery-health-read";
@@ -188,11 +188,20 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
         `SELECT COUNT(*) AS count FROM tenants`
       );
 
-      // Paid tenants by plan_tier (excludes free / null)
+      // Tenants by plan_tier (excludes free / null). A tier is NOT a payment:
+      // it can be granted by hand. R11 (2026-09-16): this count fed a tile
+      // labelled "Paid (Agency)" whose only member was the founder's comp.
       const tenantsByTier = await db.query<{ plan_tier: string; count: string }>(
         `SELECT plan_tier, COUNT(*) AS count
          FROM tenants
          WHERE plan_tier IS NOT NULL AND plan_tier != 'free'
+         GROUP BY plan_tier`
+      );
+      // BILLED = tenants with an ACTIVE Stripe-backed subscription, by tier.
+      const billedByTierRes = await db.query<{ plan_tier: string; count: string }>(
+        `SELECT plan_tier, COUNT(DISTINCT tenant_id) AS count
+         FROM billing_subscriptions
+         WHERE status = 'active' AND plan_tier IS NOT NULL
          GROUP BY plan_tier`
       );
 
@@ -216,6 +225,11 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       for (const row of tenantsByTier.rows) {
         byTier[row.plan_tier] = parseInt(row.count, 10);
       }
+      const billedByTier: Record<string, number> = {};
+      for (const row of billedByTierRes.rows) {
+        billedByTier[row.plan_tier] = parseInt(row.count, 10);
+      }
+      const { billed, granted } = splitBilledFromGranted(byTier, billedByTier);
 
       // Build engagements map
       const engagements = { requested: 0, contacted: 0, won: 0, lost: 0 };
@@ -231,10 +245,14 @@ export function registerAdminRoutes(app: Hono, db: PostgresClient): void {
       return c.json({
         tenants: {
           total: parseInt(tenantsTotal.rows[0]?.count ?? "0", 10),
+          // byTier = the tier as set (granted OR billed). Kept for compatibility.
           byTier: {
             growth: byTier["growth"] ?? 0,
             agency: byTier["agency"] ?? 0,
           },
+          // R11: what actually pays vs what was set by hand.
+          billed: { growth: billed["growth"] ?? 0, agency: billed["agency"] ?? 0 },
+          granted: { growth: granted["growth"] ?? 0, agency: granted["agency"] ?? 0 },
         },
         leads: {
           total: parseInt(leadsTotal.rows[0]?.count ?? "0", 10),

@@ -35,7 +35,7 @@ THEME = os.environ.get("THEME", "").strip()
 if not TOKEN:
     sys.exit("HERMES_TASK_TOKEN missing")
 
-REQUIRED_KEYS = ["slug", "title", "dek", "category", "excerpt", "readTime", "keywords", "takeaways", "body_markdown", "sources"]
+REQUIRED_KEYS = ["slug", "title", "dek", "category", "excerpt", "readTime", "keywords", "takeaways", "body_markdown", "sources", "story"]
 
 # ---------------------------------------------------------------------------
 # Anti-repetição REAL (0.8, founder 01/09: "publicações genéricas e com um
@@ -143,6 +143,13 @@ BASE_PROMPT = (
     + CONTENT_LESSONS + "\n"
     "HARD RULES: never use an em-dash or en-dash anywhere; every statistic must cite a named, dated, "
     "public source with a real URL; no fabricated numbers; end with one soft CTA to ozvor.com.\n"
+    "STORY PROVENANCE (R05, hard): the article's central case is either REAL or ILLUSTRATIVE, never "
+    "in between. It is \"real\" ONLY if a public URL documents that specific business or person and "
+    "the specific event you narrate; put that URL in story.source and also in sources. If you cannot "
+    "point to such a URL, the case is \"illustrative\" (a composite): say so in story.kind, never "
+    "give a composite a name that reads as a documented company, and the site will label it as an "
+    "example. Presenting a composite as a documented case is the one thing this pipeline must "
+    "never do.\n"
     "GEO RULES (we are a GEO company; our own posts must be citable by AI engines): phrase at least "
     "two '## ' section headings as the exact question a small-business owner would ask (e.g. "
     "'## Why isn't my business in ChatGPT's answers?'); open each of those sections with a direct, "
@@ -159,7 +166,8 @@ BASE_PROMPT = (
     "Reviews & Trust, Strategy, Technical GEO\",\"excerpt\":\"one-sentence index blurb\",\"readTime\":\"N min read\","
     "\"keywords\":[\"3 to 6 terms\"],\"takeaways\":[\"2 to 5 short takeaways\"],\"body_markdown\":\"the full article "
     "(at least 700 words); paragraphs separated by blank lines; use '## ' for at least one section heading\","
-    "\"sources\":[\"Name, quoted title (date), https://url\"]}"
+    "\"sources\":[\"Name, quoted title (date), https://url\"],"
+    "\"story\":{\"kind\":\"real or illustrative\",\"source\":\"https://url that documents the specific case (required when real; null when illustrative)\"}}"
 )
 # 0.8: a lista real do que já saiu + a regra anti-genérico entram ANTES do
 # contrato de saída — lidas por código, nunca lembradas pelo modelo.

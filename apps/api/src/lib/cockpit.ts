@@ -146,10 +146,50 @@ export interface RevenueSummary {
     canceled: number;
   };
   oneTime: {
-    kit: { paid: number; refunded: number; revenueUsd: number };
-    pages: { paid: number; refunded: number; revenueUsd: number };
+    kit: OneTimeLine;
+    pages: OneTimeLine;
   };
   refundsTotalCount: number;
+}
+
+/**
+ * One-time product line. `revenueUsd` is the LIST VALUE of the orders whose
+ * local status is paid/delivered — not money received. R11 (2026-09-16):
+ * the three July Kits were charged US$29 each and fully refunded in Stripe,
+ * two of them still read `delivered` locally, and this figure said US$58.
+ * Until the local statuses are reconciled against Stripe, the number is a
+ * count × price, and the `basis` says so wherever it is displayed.
+ */
+export interface OneTimeLine {
+  paid: number;
+  refunded: number;
+  revenueUsd: number;
+  basis: "list_value_of_local_status";
+  basisNote: string;
+}
+
+export const ONE_TIME_BASIS_NOTE =
+  "orders in local status paid/delivered × current list price — not Stripe receipts; refunds recorded in Stripe but not locally are still counted here";
+
+/**
+ * Split a plan-tier headcount into BILLED (an active, Stripe-backed
+ * subscription exists) and GRANTED (the tier was set by hand — founder,
+ * pilot, comp). The admin "Paid (Agency)" tile counted a granted tier as
+ * paid; the only paying customer it showed was the founder's own comp.
+ */
+export function splitBilledFromGranted(
+  byTier: Record<string, number>,
+  billedByTier: Record<string, number>
+): { billed: Record<string, number>; granted: Record<string, number> } {
+  const billed: Record<string, number> = {};
+  const granted: Record<string, number> = {};
+  for (const tier of new Set([...Object.keys(byTier), ...Object.keys(billedByTier)])) {
+    const total = byTier[tier] ?? 0;
+    const b = Math.min(billedByTier[tier] ?? 0, total);
+    billed[tier] = b;
+    granted[tier] = Math.max(0, total - b);
+  }
+  return { billed, granted };
 }
 
 async function countByStatus(
@@ -229,8 +269,20 @@ export async function fetchRevenueSummary(db: PostgresClient): Promise<RevenueSu
       canceled,
     },
     oneTime: {
-      kit: { paid: kitPaid, refunded: kitRefunded, revenueUsd: kitPaid * LIST_PRICE_USD.kit },
-      pages: { paid: pagesPaid, refunded: pagesRefunded, revenueUsd: pagesPaid * LIST_PRICE_USD.pages },
+      kit: {
+        paid: kitPaid,
+        refunded: kitRefunded,
+        revenueUsd: kitPaid * LIST_PRICE_USD.kit,
+        basis: "list_value_of_local_status",
+        basisNote: ONE_TIME_BASIS_NOTE,
+      },
+      pages: {
+        paid: pagesPaid,
+        refunded: pagesRefunded,
+        revenueUsd: pagesPaid * LIST_PRICE_USD.pages,
+        basis: "list_value_of_local_status",
+        basisNote: ONE_TIME_BASIS_NOTE,
+      },
     },
     refundsTotalCount: kitRefunded + pagesRefunded,
   };
