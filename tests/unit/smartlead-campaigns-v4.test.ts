@@ -238,7 +238,7 @@ describe("the workflow cannot send or start anything by accident", () => {
     const over = py(["prospect", "--trade", "roofing", "--limit", "5000"], undefined, { SL_KEY: "x" });
     expect(over.status).toBe(1);
     const wf = readFileSync(join(root, ".github/workflows/smartlead-campaigns-v4.yml"), "utf8");
-    expect(wf).toContain("create|load|prospect");
+    expect(wf).toContain("create|load|prospect|prune");
   });
 
   it("a 2xx answer with a non-JSON body is a success, not a failure (the DELETE of the first live load)", () => {
@@ -251,5 +251,17 @@ describe("the workflow cannot send or start anything by accident", () => {
       "print(json.dumps([m.bad(200, {'_raw': 'ok'}), m.bad(204, {}), m.bad(0, {'_error': 'URLError'}), m.bad(404, {'_http_error': 404})]))",
     ].join("\n");
     expect(JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout)).toEqual([false, false, true, true]);
+  });
+
+  it("a site that answers 403 to a robot exists; only a name that does not resolve is dead", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+    expect(script).toContain("except urllib.error.HTTPError:\n            return True");
+    const code = [
+      "import sys, json",
+      `sys.path.insert(0, ${JSON.stringify(join(root, "scripts/smartlead"))})`,
+      "import campaigns_v4 as m",
+      "print(json.dumps([m.site_alive(''), m.site_alive('no-dot'), m.site_alive('this-domain-does-not-exist-ozvor-test.invalid')]))",
+    ].join("\n");
+    expect(JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout)).toEqual([false, false, false]);
   });
 });

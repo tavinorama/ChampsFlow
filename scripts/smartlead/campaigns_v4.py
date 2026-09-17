@@ -446,14 +446,66 @@ def fetch_leads(cid: str) -> list[dict]:
     return rows
 
 
+def campaign_suppression(cid: str) -> tuple[set[str], dict]:
+    """E-mails of a campaign that must never be written to again, from
+    SmartLead's OWN per-lead statistics: bounced, replied, unsubscribed.
+    Returns (set, facts). Nothing is printed but counts. A campaign whose
+    statistics cannot be read yields facts["ok"] = False and the caller leaves
+    its touched leads OUT (fail closed)."""
+    suppress: set[str] = set()
+    facts = {"ok": False, "linhas": 0, "bounced": 0, "replied": 0, "unsub": 0, "chaves": []}
+    bounced, replied, unsub = set(), set(), set()
+    off = 0
+    while True:
+        s, d = sl(f"/campaigns/{cid}/statistics?offset={off}&limit=100")
+        rows = d.get("data") if isinstance(d, dict) else None
+        if bad(s, d) or rows is None:
+            return set(), facts
+        if not rows:
+            break
+        if not facts["chaves"]:
+            facts["chaves"] = sorted(rows[0].keys())[:40]
+        for r in rows:
+            em = str(r.get("lead_email") or "").strip().lower()
+            if not em:
+                continue
+            if r.get("is_bounced"):
+                bounced.add(em)
+            if r.get("reply_time"):
+                replied.add(em)
+            if r.get("is_unsubscribed"):
+                unsub.add(em)
+        facts["linhas"] += len(rows)
+        off += len(rows)
+        if off > 60000:
+            break
+    known = {"is_bounced", "reply_time", "is_unsubscribed", "lead_email"}
+    facts.update(bounced=len(bounced), replied=len(replied), unsub=len(unsub),
+                 ok=facts["linhas"] > 0 and known.issubset(set(facts["chaves"])))
+    return (bounced | replied | unsub), facts
+
+
 def site_alive(url: str) -> bool:
-    target = url if re.match(r"^https?://", url, re.I) else f"https://{url}"
-    try:
-        req = urllib.request.Request(target, headers=UA)
-        with urllib.request.urlopen(req, timeout=8) as r:
-            return 200 <= r.status < 400
-    except Exception:  # noqa: BLE001 — a dead site is a fact, not an error
+    """Does this business still have a website? ANY HTTP answer means yes.
+
+    17/09: the first version called a site dead on any status >= 400. From a
+    GitHub runner that is what a healthy small-business site answers to a
+    datacenter IP (403/406/429) — the rehearsal "found" 267 dead sites in 984
+    leads. A 403 proves the site exists. Dead = the name does not resolve or
+    nothing answers, on https AND on http."""
+    host = re.sub(r"^https?://", "", (url or "").strip(), flags=re.I).strip("/")
+    if not host or "." not in host:
         return False
+    for scheme in ("https", "http"):
+        try:
+            req = urllib.request.Request(f"{scheme}://{host}", headers=UA)
+            with urllib.request.urlopen(req, timeout=10):
+                return True
+        except urllib.error.HTTPError:
+            return True              # the server answered: the site exists
+        except Exception:            # noqa: BLE001 — DNS failure, refused, timeout, TLS: try the other scheme
+            continue
+    return False
 
 
 def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dict, list[str], str]:
@@ -477,7 +529,8 @@ def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dic
     return dest, notes, ""
 
 
-def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
+def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool,
+             touched_sources: list[str] | None = None) -> int:
     by_name = campaign_index()
     dest, dest_notes, abort = resolve_destinations(by_name, names, confirm)
     if abort:
@@ -488,13 +541,37 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     picked = {"geo": [], "stack": []}
     by_segment: dict[str, int] = {}
     read = 0
-    for cid in sources:
+    # 17/09, founder: also use the leads of the old campaigns, minus bounces and
+    # STOPs. A touched lead (COMPLETED) enters only when SmartLead's own
+    # statistics for that campaign could be read and do not show a bounce, a
+    # reply or an unsubscribe for it. People who replied are left to a human.
+    touched_sources = touched_sources or []
+    suppress: set[str] = set()
+    suppression_facts: dict[str, dict] = {}
+    readable: set[str] = set()
+    for cid in touched_sources:
+        sset, facts = campaign_suppression(cid)
+        suppression_facts[cid] = {k: v for k, v in facts.items() if k != "chaves"} | {"chaves_ok": facts["ok"]}
+        if facts["ok"]:
+            readable.add(cid)
+            suppress |= sset
+    for cid in list(sources) + [c for c in touched_sources if c not in sources]:
+        is_touched_source = cid in touched_sources
         for row in fetch_leads(cid):
             read += 1
             lead = dict(row.get("lead") or row)
             lead["lead_category_id"] = row.get("lead_category_id")
             status = str(row.get("status") or "").strip().upper()
-            if status != "STARTED":          # STARTED = imported, never e-mailed (measured 11/09)
+            email_l = str(lead.get("email") or "").strip().lower()
+            if email_l in suppress:
+                reasons["bounce_resposta_ou_stop"] = reasons.get("bounce_resposta_ou_stop", 0) + 1
+                continue
+            if status == "COMPLETED" and is_touched_source:
+                if cid not in readable:
+                    reasons["tocada_sem_estatistica_legivel"] = reasons.get("tocada_sem_estatistica_legivel", 0) + 1
+                    continue
+                lead["_touched"] = True
+            elif status != "STARTED":        # STARTED = imported, never e-mailed (measured 11/09)
                 reasons["ja_tocada_ou_bloqueada"] = reasons.get("ja_tocada_ou_bloqueada", 0) + 1
                 continue
             res, why = personalize(copy, lead)
@@ -506,7 +583,7 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
                 continue
             seen_domains.add(domain)
-            res.update({"lead_id": lead.get("id"), "source": cid, "email": lead.get("email"),
+            res.update({"lead_id": lead.get("id"), "source": cid, "email": lead.get("email"), "touched": bool(lead.get("_touched")),
                         "first_name": lead.get("first_name"), "last_name": lead.get("last_name"),
                         "company_name": lead.get("company_name"), "website": lead.get("website") or lead.get("company_url"),
                         "location": lead.get("location")})
@@ -530,7 +607,9 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     summary = {"leads_lidas": read, "elegiveis": {k: len(v) for k, v in picked.items()},
                "por_segmento": dict(sorted(by_segment.items(), key=lambda x: -x[1])),
                "fora_por_motivo": dict(sorted(reasons.items(), key=lambda x: -x[1])),
-               "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes}
+               "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes,
+               "das_quais_ja_tocadas_na_leva_1": sum(1 for k in picked for r in picked[k] if r.get("touched")),
+               "supressao_por_campanha": suppression_facts}
     if not confirm:
         sample = None
         if picked["geo"]:
@@ -542,11 +621,20 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                  para_executar="re-correr com confirm=yes"))
         return 0
     added, removed, add_fail, del_fail, first_error = {}, 0, 0, 0, None
-    for key in ("geo", "stack"):
-        group = picked[key]
+    api_counts: dict[str, float] = {}
+    api_keys: set[str] = set()
+    # Measured 17/09: SmartLead refused 358 of 366 touched leads ("already added
+    # to campaign") — by default a lead that already ran in another campaign is
+    # not accepted in a new one. Re-using them is the founder's explicit call, so
+    # ONLY the touched leads are sent with that check lifted; block list and
+    # unsubscribe list stay enforced for everyone.
+    for key, touched_flag in (("geo", False), ("stack", False), ("geo", True), ("stack", True)):
+        group = [r for r in picked[key] if bool(r.get("touched")) == touched_flag]
         for i in range(0, len(group), 100):
             chunk = group[i:i + 100]
-            payload = {"lead_list": [{"email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
+            payload = {"settings": {"ignore_global_block_list": False, "ignore_unsubscribe_list": False,
+                                    "ignore_duplicate_leads_in_other_campaign": touched_flag},
+                       "lead_list": [{"email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
                                       "company_name": r["company_name"], "website": r["website"],
                                       "location": r["location"], "custom_fields": r["custom_fields"]}
                                      for r in chunk if r.get("email")]}
@@ -556,7 +644,17 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 first_error = first_error or {"etapa": "add", "http": s, "resp": json.dumps(d)[:200]}
                 break
             added[names[key]] = added.get(names[key], 0) + len(payload["lead_list"])
+            # What SmartLead SAYS it did with them — "sent" is not "uploaded".
+            if isinstance(d, dict):
+                for k2 in ("upload_count", "total_leads", "already_added_to_campaign", "duplicate_count",
+                           "invalid_email_count", "unsubscribed_leads", "block_count", "bounce_count",
+                           "skipped_in_other_campaign_count", "lead_import_stopped_count"):
+                    if isinstance(d.get(k2), (int, float)) and not isinstance(d.get(k2), bool):
+                        api_counts[k2] = api_counts.get(k2, 0) + d[k2]
+                api_keys.update(d.keys())
             for r in chunk:
+                if r.get("touched"):
+                    continue            # a touched lead keeps its history in the campaign that e-mailed it
                 s2, d2 = sl(f"/campaigns/{r['source']}/leads/{r['lead_id']}", method="DELETE")
                 if bad(s2, d2):
                     del_fail += 1
@@ -566,10 +664,49 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 else:
                     removed += 1
     ok = add_fail == 0 and del_fail == 0
-    out(dict(summary, ok=ok, modo="execucao", adicionadas=added, removidas_da_origem=removed,
+    out(dict(summary, ok=ok, modo="execucao", enviadas_ao_smartlead=added, contagem_do_smartlead=api_counts,
+             chaves_da_resposta_add=sorted(api_keys)[:20], removidas_da_origem=removed,
              falhas_add=add_fail, falhas_delete=del_fail, primeiro_erro=first_error,
              nunca_iniciada="as campanhas continuam DRAFTED/PAUSED — quem inicia e o founder"))
     return 0 if ok else 1
+
+
+def cmd_prune(names: dict, confirm: bool) -> int:
+    """Pause, inside the two NEW campaigns, the leads whose site does not answer.
+    17/09: one load ran with the site check off and let in 72 leads whose site
+    had not answered — a dead site is the best predictor of a dead mailbox, and
+    the account already shows bounce-critical senders. Two tries per site; a
+    lead is PAUSED (reversible), never deleted."""
+    by_name = campaign_index()
+    report, to_pause = {}, []
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            continue
+        rows = [dict(r.get("lead") or r, _status=str(r.get("status") or "").upper()) for r in fetch_leads(str(c["id"]))]
+        live = [r for r in rows if r["_status"] not in ("PAUSED", "BLOCKED", "COMPLETED")]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            first = list(pool.map(lambda r: site_alive(r.get("website") or r.get("company_url") or ""), live))
+            retry = [r for r, ok in zip(live, first) if not ok]
+            second = list(pool.map(lambda r: site_alive(r.get("website") or r.get("company_url") or ""), retry))
+        dead = [r for r, ok in zip(retry, second) if not ok]
+        report[names[key]] = {"leads": len(rows), "verificadas": len(live), "site_nao_respondeu_2x": len(dead)}
+        to_pause += [(c["id"], r.get("id")) for r in dead if r.get("id")]
+    if not confirm:
+        out({"ok": True, "modo": "ENSAIO — nenhuma lead foi pausada", "campanhas": report})
+        return 0
+    paused, fail, first_error = 0, 0, None
+    for cid, lid in to_pause:
+        s, d = sl(f"/campaigns/{cid}/leads/{lid}/pause", {}, method="POST")
+        if bad(s, d):
+            fail += 1
+            first_error = first_error or {"http": s, "resp": json.dumps(d)[:200]}
+            if fail >= 3 and paused == 0:
+                break
+        else:
+            paused += 1
+    out({"ok": fail == 0, "modo": "execucao", "campanhas": report, "pausadas": paused, "falhas": fail, "primeiro_erro": first_error})
+    return 0 if fail == 0 else 1
 
 
 # --------------------------------------------------------------------------
@@ -647,15 +784,20 @@ def shape_of(obj, depth: int = 0):
     return type(obj).__name__
 
 
-def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool) -> int:
+def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool, filter_id: int = 0) -> int:
     if trade not in TRADE_SEARCH or trade not in copy["segments"]:
         out({"ok": False, "motivo": f"oficio '{trade}' sem palavras de busca ou sem copy", "oficios": sorted(TRADE_SEARCH)})
         return 1
-    s, d = sp("search-contacts", search_payload(trade, limit))
-    data = d.get("data") if isinstance(d, dict) else None
-    if bad(s, d) or not isinstance(data, dict) or not d.get("success", True):
-        out({"ok": False, "etapa": "search", "http": s, "resp": json.dumps(d)[:300]})
-        return 1
+    if filter_id:
+        # COLLECT: an unlock that already happened (and was already paid for).
+        # No search, no fetch, no credit — only read the valid contacts and load.
+        data = {"filter_id": filter_id, "total_count": None, "list": []}
+    else:
+        s, d = sp("search-contacts", search_payload(trade, limit))
+        data = d.get("data") if isinstance(d, dict) else None
+        if bad(s, d) or not isinstance(data, dict) or not d.get("success", True):
+            out({"ok": False, "etapa": "search", "http": s, "resp": json.dumps(d)[:300]})
+            return 1
     page = data.get("list") or []
     reasons: dict[str, int] = {}
     fit = 0
@@ -679,31 +821,40 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool)
     if abort:
         out({"ok": False, "motivo": abort, "creditos_gastos": 0})
         return 1
-    s, f = sp("fetch-contacts", {"filter_id": data["filter_id"], "limit": limit, "visual_limit": 1000})
-    fdata = f.get("data") if isinstance(f, dict) else None
-    if bad(s, f) or not isinstance(f, dict) or f.get("success") is False:
-        out(dict(summary, ok=False, etapa="fetch", http=s, resp=json.dumps(f)[:300]))
-        return 1
+    fdata = None
+    if not filter_id:
+        s, f = sp("fetch-contacts", {"filter_id": data["filter_id"], "limit": limit, "visual_limit": 1000})
+        fdata = f.get("data") if isinstance(f, dict) else None
+        if bad(s, f) or not isinstance(f, dict) or f.get("success") is False:
+            out(dict(summary, ok=False, etapa="fetch", http=s, resp=json.dumps(f)[:300]))
+            return 1
     import time
     metrics = (fdata or {}).get("metrics") or {}
     contacts: list[dict] = []
-    stable, last_n = 0, -1
-    deadline = time.time() + 15 * 60
+    stable, last_sig = 0, None
+    deadline = time.time() + 30 * 60
     while time.time() < deadline:
-        s, g = sp("get-contacts", {"filter_id": data["filter_id"], "limit": 1000, "offset": 0, "verification_status": "valid"})
-        gdata = g.get("data") if isinstance(g, dict) else None
-        contacts = (gdata or {}).get("list") or []
-        metrics = (gdata or {}).get("metrics") or metrics
-        # `completed` is a COUNT of processed contacts (measured 17/09: 9 of 10),
-        # not a boolean. Done = every contact processed, or the valid list stopped
-        # growing for three polls in a row.
-        done_n = metrics.get("completed")
-        total_n = metrics.get("totalEmails") or metrics.get("totalContacts") or 0
-        if isinstance(done_n, (int, float)) and not isinstance(done_n, bool) and total_n and done_n >= total_n:
-            break
-        stable = stable + 1 if len(contacts) == last_n and contacts else 0
-        last_n = len(contacts)
-        if stable >= 3:
+        contacts, off = [], 0
+        while True:
+            s, g = sp("get-contacts", {"filter_id": data["filter_id"], "limit": 1000, "offset": off, "verification_status": "valid"})
+            gdata = g.get("data") if isinstance(g, dict) else None
+            chunk = (gdata or {}).get("list") or []
+            metrics = (gdata or {}).get("metrics") or metrics
+            contacts.extend(chunk)
+            off += len(chunk)
+            if len(chunk) < 1000:
+                break
+        # The unlock is ASYNCHRONOUS and `completed` is a running COUNT (17/09: a
+        # 300-contact batch read `completed: 52` and was taken for finished — 19
+        # leads loaded, ~250 left behind, credits spent). There is no reliable
+        # "done" flag: the final count can stay below totalContacts. Done = the
+        # processed count AND the valid list both stopped moving for 8 polls in a
+        # row (2 minutes), after at least one contact was processed.
+        done_n = metrics.get("completed") or 0
+        sig = (done_n, len(contacts))
+        stable = stable + 1 if (sig == last_sig and done_n) else 0
+        last_sig = sig
+        if stable >= 8:
             break
         time.sleep(15)
     picked = {"geo": [], "stack": []}
@@ -743,15 +894,17 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool)
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
+    ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
     ap.add_argument("--copy", default=COPY_PATH)
     ap.add_argument("--segment", default="roofing")
     ap.add_argument("--geo-name", default="")
     ap.add_argument("--stack-name", default="")
     ap.add_argument("--sources", default="3741204,3783524,3783526")
     ap.add_argument("--cap", type=int, default=800)
+    ap.add_argument("--touched-sources", default="", help="campaigns whose COMPLETED leads may be re-used (minus bounce/reply/unsub)")
     ap.add_argument("--no-site-check", action="store_true")
     ap.add_argument("--confirm", action="store_true")
     a = ap.parse_args(argv)
@@ -787,13 +940,16 @@ def main(argv: list[str]) -> int:
         return 1
     if a.command == "create":
         return cmd_create(copy, names, a.confirm)
+    if a.command == "prune":
+        return cmd_prune(names, a.confirm)
     if a.command == "prospect":
         if not 1 <= a.limit <= 500:
             out({"ok": False, "motivo": "limit tem de estar entre 1 e 500 por corrida (teto de creditos por corrida)"})
             return 1
-        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm)
+        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm, a.filter_id)
     sources = [s.strip() for s in a.sources.split(",") if s.strip()]
-    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm)
+    touched = [x.strip() for x in a.touched_sources.split(",") if x.strip()]
+    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm, touched)
 
 
 if __name__ == "__main__":
