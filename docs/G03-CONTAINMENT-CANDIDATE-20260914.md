@@ -1,3 +1,5 @@
+> **Status update 2026-09-16 — IN PRODUCTION.** Everything below that says "local candidate", "HELD" or "no push/PR/merge" describes the state on 14/09 before noon. The reconciled candidate went in as PR #618 (`869e0aa`), merged by the founder on 14/09 11:52Z and live on worker/api/web since 11:55Z (deploy `55cb5d0`). Post-deploy proof on 15/09: 0 verdict-written rows in `ops.agent_outcome` (all 95 new rows are the `social-harvest` collector), the sphere-x/linkedin/daily-video verdicts ended `invalid_g03`, and the 15/09 06:30Z `prompt-tuner` run ended `skipped`/`succeeded`. Follow-ups since: #620 (un-run audit rows marked, not deleted), #621 (provider errors kept and alerted in the drift battery). Still owed: `scripts/sql/reconcile-g03.sql` against production.
+
 # G03/G04 — isolated containment candidate, 2026-09-14
 
 ## TL;DR

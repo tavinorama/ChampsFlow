@@ -1,3 +1,5 @@
+> **Status update 2026-09-16 — IN PRODUCTION** since PR #618 (`869e0aa`, 14/09 11:55Z). "HELD" below is historical. Open items unchanged: A06 (spend on failure), C08, verifier-only retry. First 2.2 audit still pending (the own brand's weekly slot).
+
 # Visibility integrity — isolated implementation, 14 September 2026
 
 ## TL;DR
