@@ -705,7 +705,9 @@ def cmd_inspect(copy: dict, names: dict) -> int:
         want("stop_lead_settings", d.get("stop_lead_settings"), SETTINGS["stop_lead_settings"])
         want("send_as_plain_text", bool(d.get("send_as_plain_text")), SETTINGS["send_as_plain_text"])
         want("follow_up_percentage", d.get("follow_up_percentage"), SETTINGS["follow_up_percentage"])
-        want("track_settings", sorted(d.get("track_settings") or []), sorted(SETTINGS["track_settings"]))
+        # SmartLead stores DONT_TRACK_EMAIL_OPEN as DONT_EMAIL_OPEN (measured 17/09): same switch, other name.
+        norm = lambda xs: sorted(str(x).replace("DONT_TRACK_", "DONT_") for x in (xs or []))
+        want("track_settings", norm(d.get("track_settings")), norm(SETTINGS["track_settings"]))
         if isinstance(cron, dict) and cron:
             want("timezone", cron.get("tz") or cron.get("timezone"), SCHEDULE["timezone"])
             want("dias", sorted(cron.get("days") or cron.get("days_of_the_week") or []), SCHEDULE["days_of_the_week"])
