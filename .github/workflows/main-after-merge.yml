@@ -29,10 +29,10 @@ name: Main CI after auto-merge (15 min)
 #                 Run de ci.yml no HEAD que terminou vermelha → também grita
 #                 (uma CI vermelha na main despachada por cron não tem PR onde
 #                 alguém a veja).
-#   vigia mudo  : TELEGRAM_* ausentes = run VERMELHO já no preflight (padrão
-#                 blog-autopublish / agent-org-liveness). O conserto (dispatch)
-#                 corre na mesma (`if: always()`): o vermelho é o alarme sobre
-#                 o alarme, não uma razão para deixar a main sem CI.
+#   vigia mudo  : TELEGRAM_* ausentes = WARNING + linha no summary (T0.3,
+#                 16/09). O conserto (dispatch) corre na mesma. Antes era
+#                 vermelho no preflight, o que pintava este vigia de vermelho
+#                 todos os dias e escondia se a reconciliação tinha falhado.
 #
 # "Verde na main" = run de ci.yml no SHA do HEAD (AGENTS.md §3). Este vigia é
 # quem garante que essa run existe quando o merge foi do bot.
@@ -64,11 +64,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+      - name: Check the alarm channel (TELEGRAM secrets) — warn, never skip the probe
         id: alarm
         run: |
-          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
-          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
+          # T0.3 (2026-09-16): a missing alarm channel is a WARNING, never a reason to
+          # skip the probe. From 11/09 to 16/09 these four workflows went red on this
+          # step every run and the probe never executed — the watchdog was blind
+          # AND mute. The probe runs regardless; the missing secret is named in the
+          # job summary and as a workflow warning.
+          wired=1
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "::warning::TELEGRAM_BOT_TOKEN missing in Actions secrets — o vigia está mudo; a sonda corre na mesma, alarme só no job summary"; wired=0; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "::warning::TELEGRAM_CHAT_ID missing in Actions secrets — o vigia está mudo; a sonda corre na mesma, alarme só no job summary"; wired=0; }
+          if [ "$wired" = "0" ]; then
+            echo "⚠️ ALARM CHANNEL NOT WIRED — TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID missing in Actions secrets; this run probes anyway and reports only here." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "wired=$wired" >> "$GITHUB_OUTPUT"
 
       - name: Reconcile — HEAD sem run de CI? despacha (dedup por head_sha)
         id: reconcile
@@ -175,6 +185,6 @@ jobs:
             PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
             curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
           else
-            echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes nos Actions secrets — alarme só no summary (o preflight já deixou o run vermelho)."
+            echo "TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes nos Actions secrets — alarme só no summary (ver a linha ALARM CHANNEL NOT WIRED)."
           fi
           exit 1
