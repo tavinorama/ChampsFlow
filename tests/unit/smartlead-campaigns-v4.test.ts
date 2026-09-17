@@ -252,4 +252,16 @@ describe("the workflow cannot send or start anything by accident", () => {
     ].join("\n");
     expect(JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout)).toEqual([false, false, true, true]);
   });
+
+  it("a site that answers 403 to a robot exists; only a name that does not resolve is dead", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+    expect(script).toContain("except urllib.error.HTTPError:\n            return True");
+    const code = [
+      "import sys, json",
+      `sys.path.insert(0, ${JSON.stringify(join(root, "scripts/smartlead"))})`,
+      "import campaigns_v4 as m",
+      "print(json.dumps([m.site_alive(''), m.site_alive('no-dot'), m.site_alive('this-domain-does-not-exist-ozvor-test.invalid')]))",
+    ].join("\n");
+    expect(JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout)).toEqual([false, false, false]);
+  });
 });

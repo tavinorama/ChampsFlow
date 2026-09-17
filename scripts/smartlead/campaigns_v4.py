@@ -486,13 +486,26 @@ def campaign_suppression(cid: str) -> tuple[set[str], dict]:
 
 
 def site_alive(url: str) -> bool:
-    target = url if re.match(r"^https?://", url, re.I) else f"https://{url}"
-    try:
-        req = urllib.request.Request(target, headers=UA)
-        with urllib.request.urlopen(req, timeout=8) as r:
-            return 200 <= r.status < 400
-    except Exception:  # noqa: BLE001 — a dead site is a fact, not an error
+    """Does this business still have a website? ANY HTTP answer means yes.
+
+    17/09: the first version called a site dead on any status >= 400. From a
+    GitHub runner that is what a healthy small-business site answers to a
+    datacenter IP (403/406/429) — the rehearsal "found" 267 dead sites in 984
+    leads. A 403 proves the site exists. Dead = the name does not resolve or
+    nothing answers, on https AND on http."""
+    host = re.sub(r"^https?://", "", (url or "").strip(), flags=re.I).strip("/")
+    if not host or "." not in host:
         return False
+    for scheme in ("https", "http"):
+        try:
+            req = urllib.request.Request(f"{scheme}://{host}", headers=UA)
+            with urllib.request.urlopen(req, timeout=10):
+                return True
+        except urllib.error.HTTPError:
+            return True              # the server answered: the site exists
+        except Exception:            # noqa: BLE001 — DNS failure, refused, timeout, TLS: try the other scheme
+            continue
+    return False
 
 
 def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dict, list[str], str]:
