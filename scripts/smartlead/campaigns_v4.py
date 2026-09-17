@@ -744,10 +744,134 @@ def cmd_inspect(copy: dict, names: dict) -> int:
                        "divergencias_do_que_o_script_pediu": diffs,
                        "caixas": {"ligadas": len(boxes), "limite_por_caixa": limits, "warmup": warm,
                                   "com_falha_smtp_ou_imap": smtp_bad, "capacidade_diaria_somada": capacity},
+                       "saude_do_envio": campaign_health(cid),
                        "sequencia": seqs, "leads_por_status": by_status,
                        "chaves_do_objeto_campanha": sorted(d.keys())[:60]})
     out({"ok": True, "modo": "LEITURA — nada foi alterado", "campanhas": report})
     return 0
+
+
+OLD_CAMPAIGNS = ["3888686", "3783525"]        # wave 1: aistack-2026-09-08, OZ-B Local services
+BOUNCE_ALERT_PCT = 3.0                        # house ruler: bounce < 2% is healthy; 3% is the alarm
+BOUNCE_MIN_SENT = 100                         # below this a percentage is noise
+
+
+def cmd_block(confirm: bool) -> int:
+    """Global block list from SmartLead's OWN statistics of wave 1: everyone who
+    bounced, replied or unsubscribed. The addresses never leave SmartLead <->
+    this process; only counts are printed (17/09: the same source matched the
+    known totals exactly — 38 bounces, 24 replies)."""
+    suppress: set[str] = set()
+    facts = {}
+    for cid in OLD_CAMPAIGNS:
+        sset, f = campaign_suppression(cid)
+        facts[cid] = {k: f[k] for k in ("ok", "linhas", "bounced", "replied", "unsub")}
+        if not f["ok"]:
+            out({"ok": False, "motivo": f"estatisticas da campanha {cid} ilegiveis — nada foi bloqueado", "campanhas": facts})
+            return 1
+        suppress |= sset
+    if not confirm:
+        out({"ok": True, "modo": "ENSAIO — nada foi escrito", "a_bloquear": len(suppress), "campanhas": facts})
+        return 0
+    items = sorted(suppress)
+    sent, first_error = 0, None
+    for i in range(0, len(items), 200):
+        chunk = items[i:i + 200]
+        s, d = sl("/leads/add-domain-block-list", {"domain_block_list": chunk, "client_id": None}, method="POST")
+        if bad(s, d):
+            first_error = {"http": s, "resp": json.dumps(d)[:200]}
+            break
+        sent += len(chunk)
+    out({"ok": first_error is None, "modo": "execucao", "a_bloquear": len(items), "enviados_a_lista_global": sent,
+         "campanhas": facts, "primeiro_erro": first_error})
+    return 0 if first_error is None else 1
+
+
+def _campaign_cron(d: dict) -> dict:
+    cron = d.get("scheduler_cron_value") or {}
+    if isinstance(cron, str):
+        try:
+            cron = json.loads(cron)
+        except ValueError:
+            cron = {}
+    return cron if isinstance(cron, dict) else {}
+
+
+def cmd_pace(names: dict, per_day: int, days: str, confirm: bool) -> int:
+    """Change ONLY the pace (new leads per day) — and, when asked, the sending
+    days — keeping the timezone, the hours and the gap the campaign already has.
+    Works on a running campaign too: the schedule endpoint does not start or stop."""
+    if not 1 <= per_day <= 500:
+        out({"ok": False, "motivo": "per_day tem de estar entre 1 e 500"})
+        return 1
+    by_name = campaign_index()
+    plan, results = [], []
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            out({"ok": False, "motivo": f"campanha '{names[key]}' nao existe"})
+            return 1
+        s, d = sl(f"/campaigns/{c['id']}")
+        d = d if isinstance(d, dict) else {}
+        cron = _campaign_cron(d)
+        current_days = cron.get("days") or cron.get("days_of_the_week") or SCHEDULE["days_of_the_week"]
+        new_days = list(range(7)) if days == "all" else ([1, 2, 3, 4, 5] if days == "weekdays" else current_days)
+        payload = {"timezone": cron.get("tz") or cron.get("timezone") or SCHEDULE["timezone"],
+                   "days_of_the_week": sorted(new_days),
+                   "start_hour": cron.get("startHour") or cron.get("start_hour") or SCHEDULE["start_hour"],
+                   "end_hour": cron.get("endHour") or cron.get("end_hour") or SCHEDULE["end_hour"],
+                   "min_time_btw_emails": d.get("min_time_btwn_emails") or SCHEDULE["min_time_btw_emails"],
+                   "max_new_leads_per_day": per_day, "schedule_start_time": None}
+        plan.append({"campanha": names[key], "campaign_id": c["id"], "status": d.get("status"),
+                     "de": {"max_leads_per_day": d.get("max_leads_per_day"), "dias": sorted(current_days)},
+                     "para": {"max_leads_per_day": per_day, "dias": payload["days_of_the_week"]}, "_payload": payload})
+    if not confirm:
+        out({"ok": True, "modo": "ENSAIO — nada foi alterado", "plano": [{k: v for k, v in p.items() if k != "_payload"} for p in plan]})
+        return 0
+    for p in plan:
+        s, r = sl(f"/campaigns/{p['campaign_id']}/schedule", p["_payload"], method="POST")
+        s2, back = sl(f"/campaigns/{p['campaign_id']}")
+        back = back if isinstance(back, dict) else {}
+        held = {"max_leads_per_day": back.get("max_leads_per_day"), "dias": sorted(_campaign_cron(back).get("days") or []),
+                "status": back.get("status")}
+        ok = not bad(s, r) and held["max_leads_per_day"] == per_day and held["dias"] == p["para"]["dias"]
+        results.append({"campanha": p["campanha"], "ok": ok, "lido_de_volta": held,
+                        "erro": None if not bad(s, r) else f"HTTP {s} {json.dumps(r)[:160]}"})
+    ok = all(r["ok"] for r in results)
+    out({"ok": ok, "modo": "execucao", "campanhas": results})
+    return 0 if ok else 1
+
+
+def campaign_health(cid) -> dict:
+    s, a = sl(f"/campaigns/{cid}/analytics")
+    a = a if isinstance(a, dict) else {}
+    num = lambda k: int(float(a.get(k) or 0)) if str(a.get(k) or "0").replace(".", "", 1).isdigit() else 0
+    sent, bounced, replied, unsub = num("sent_count"), num("bounce_count"), num("reply_count"), num("unsubscribed_count")
+    pct = round(100.0 * bounced / sent, 2) if sent else 0.0
+    return {"enviados": sent, "bounces": bounced, "bounce_pct": pct, "respostas": replied, "unsubscribes": unsub,
+            "resposta_pct": round(100.0 * replied / sent, 2) if sent else 0.0, "legivel": not bad(s, a) and bool(a)}
+
+
+def cmd_bounce_watch(names: dict) -> int:
+    """READ-ONLY watchdog. Red (exit 1) when a campaign's bounce rate is at or
+    above BOUNCE_ALERT_PCT with at least BOUNCE_MIN_SENT sent, or when the
+    numbers cannot be read (cannot look != fine). It pauses nothing."""
+    by_name = campaign_index()
+    report, alarms = [], []
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            continue
+        h = campaign_health(c["id"])
+        h.update({"campanha": names[key], "status": c.get("status")})
+        report.append(h)
+        if not h["legivel"]:
+            alarms.append(f"{names[key]}: analytics ilegivel")
+        elif h["enviados"] >= BOUNCE_MIN_SENT and h["bounce_pct"] >= BOUNCE_ALERT_PCT:
+            alarms.append(f"{names[key]}: bounce {h['bounce_pct']}% ({h['bounces']}/{h['enviados']}) >= {BOUNCE_ALERT_PCT}%")
+    out({"ok": not alarms, "modo": "LEITURA", "regua": f"alarme em bounce >= {BOUNCE_ALERT_PCT}% com >= {BOUNCE_MIN_SENT} enviados",
+         "campanhas": report, "alarmes": alarms})
+    return 1 if alarms else 0
 
 
 def cmd_prune(names: dict, confirm: bool) -> int:
@@ -973,7 +1097,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
@@ -983,6 +1107,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--stack-name", default="")
     ap.add_argument("--sources", default="3741204,3783524,3783526")
     ap.add_argument("--cap", type=int, default=800)
+    ap.add_argument("--per-day", type=int, default=100, help="pace: new leads per day, per campaign")
+    ap.add_argument("--days", default="keep", choices=["keep", "all", "weekdays"], help="pace: sending days")
     ap.add_argument("--touched-sources", default="", help="campaigns whose COMPLETED leads may be re-used (minus bounce/reply/unsub)")
     ap.add_argument("--no-site-check", action="store_true")
     ap.add_argument("--confirm", action="store_true")
@@ -1019,6 +1145,12 @@ def main(argv: list[str]) -> int:
         return 1
     if a.command == "create":
         return cmd_create(copy, names, a.confirm)
+    if a.command == "block":
+        return cmd_block(a.confirm)
+    if a.command == "pace":
+        return cmd_pace(names, a.per_day, a.days, a.confirm)
+    if a.command == "bounce-watch":
+        return cmd_bounce_watch(names)
     if a.command == "inspect":
         return cmd_inspect(copy, names)
     if a.command == "prune":

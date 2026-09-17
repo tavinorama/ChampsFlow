@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create | load | prospect | prune | inspect (so leitura)"
+        description: "create | load | prospect | prune | block | pace | inspect (so leitura)"
         required: true
         default: "create"
       confirm:
@@ -70,6 +70,14 @@ on:
         description: "prospect: RECOLHER um desbloqueio ja feito (filter_id do resultado anterior). Nao gasta credito. Vazio = busca nova"
         required: false
         default: ""
+      per_day:
+        description: "pace: leads NOVAS por dia, POR campanha (1-500)"
+        required: false
+        default: "100"
+      days:
+        description: "pace: keep (mantem os dias atuais) | all (7 dias) | weekdays (seg-sex)"
+        required: false
+        default: "keep"
       site_check:
         description: "load: yes = só entra lead cujo site responde (HTTP <400)"
         required: false
@@ -99,13 +107,15 @@ jobs:
           CAP: ${{ github.event.inputs.cap }}
           TOUCHED: ${{ github.event.inputs.touched_sources }}
           SITE_CHECK: ${{ github.event.inputs.site_check }}
+          PER_DAY: ${{ github.event.inputs.per_day }}
+          DAYS: ${{ github.event.inputs.days }}
           TRADE: ${{ github.event.inputs.trade }}
           LIMIT: ${{ github.event.inputs.limit }}
           FILTER_ID: ${{ github.event.inputs.filter_id }}
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
-          case "${ACTION}" in create|load|prospect|prune|inspect) ;; *) echo "::error::action tem de ser create, load, prospect ou prune"; exit 1;; esac
+          case "${ACTION}" in create|load|prospect|prune|inspect|block|pace) ;; *) echo "::error::action tem de ser create, load, prospect ou prune"; exit 1;; esac
           args=("${ACTION}")
           [ -n "${GEO_NAME}" ] && args+=(--geo-name "${GEO_NAME}")
           [ -n "${STACK_NAME}" ] && args+=(--stack-name "${STACK_NAME}")
@@ -113,6 +123,9 @@ jobs:
             args+=(--sources "${SOURCES}" --cap "${CAP}")
             [ "${SITE_CHECK}" = "yes" ] || args+=(--no-site-check)
             [ -n "${TOUCHED}" ] && args+=(--touched-sources "${TOUCHED}")
+          fi
+          if [ "${ACTION}" = "pace" ]; then
+            args+=(--per-day "${PER_DAY}" --days "${DAYS}")
           fi
           if [ "${ACTION}" = "prospect" ]; then
             args+=(--trade "${TRADE}" --limit "${LIMIT}")

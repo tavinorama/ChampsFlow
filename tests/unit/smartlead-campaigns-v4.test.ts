@@ -238,7 +238,7 @@ describe("the workflow cannot send or start anything by accident", () => {
     const over = py(["prospect", "--trade", "roofing", "--limit", "5000"], undefined, { SL_KEY: "x" });
     expect(over.status).toBe(1);
     const wf = readFileSync(join(root, ".github/workflows/smartlead-campaigns-v4.yml"), "utf8");
-    expect(wf).toContain("create|load|prospect|prune|inspect");
+    expect(wf).toContain("create|load|prospect|prune|inspect|block|pace");
   });
 
   it("a 2xx answer with a non-JSON body is a success, not a failure (the DELETE of the first live load)", () => {
@@ -263,5 +263,19 @@ describe("the workflow cannot send or start anything by accident", () => {
       "print(json.dumps([m.site_alive(''), m.site_alive('no-dot'), m.site_alive('this-domain-does-not-exist-ozvor-test.invalid')]))",
     ].join("\n");
     expect(JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout)).toEqual([false, false, false]);
+  });
+
+  it("block, pace and the bounce watch: rehearsal by default, read-back, and a watcher that pauses nothing", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+    expect(script).toContain('"/leads/add-domain-block-list"');
+    expect(script).toContain("estatisticas da campanha {cid} ilegiveis — nada foi bloqueado"); // fail closed
+    expect(script).toContain('"max_new_leads_per_day": per_day');
+    expect(script).toContain("held[\"max_leads_per_day\"] == per_day"); // read back, not trusted
+    const watch = readFileSync(join(root, ".github/workflows/smartlead-bounce-watch.yml"), "utf8");
+    expect(watch).toContain("bounce-watch");
+    expect(watch).not.toMatch(/action=pause["' ]*\n\s*python|status.*PAUSED/); // it never pauses
+    expect(watch).toContain("alarme so neste summary");
+    const over = py(["pace", "--per-day", "9000"], undefined, { SL_KEY: "x" });
+    expect(over.status).toBe(1);
   });
 });
