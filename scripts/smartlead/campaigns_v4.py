@@ -610,11 +610,17 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     added, removed, add_fail, del_fail, first_error = {}, 0, 0, 0, None
     api_counts: dict[str, float] = {}
     api_keys: set[str] = set()
-    for key in ("geo", "stack"):
-        group = picked[key]
+    # Measured 17/09: SmartLead refused 358 of 366 touched leads ("already added
+    # to campaign") — by default a lead that already ran in another campaign is
+    # not accepted in a new one. Re-using them is the founder's explicit call, so
+    # ONLY the touched leads are sent with that check lifted; block list and
+    # unsubscribe list stay enforced for everyone.
+    for key, touched_flag in (("geo", False), ("stack", False), ("geo", True), ("stack", True)):
+        group = [r for r in picked[key] if bool(r.get("touched")) == touched_flag]
         for i in range(0, len(group), 100):
             chunk = group[i:i + 100]
-            payload = {"settings": {"ignore_global_block_list": False, "ignore_unsubscribe_list": False},
+            payload = {"settings": {"ignore_global_block_list": False, "ignore_unsubscribe_list": False,
+                                    "ignore_duplicate_leads_in_other_campaign": touched_flag},
                        "lead_list": [{"email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
                                       "company_name": r["company_name"], "website": r["website"],
                                       "location": r["location"], "custom_fields": r["custom_fields"]}
@@ -628,7 +634,8 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
             # What SmartLead SAYS it did with them — "sent" is not "uploaded".
             if isinstance(d, dict):
                 for k2 in ("upload_count", "total_leads", "already_added_to_campaign", "duplicate_count",
-                           "invalid_email_count", "unsubscribed_leads", "block_count", "is_lead_limit_exhausted"):
+                           "invalid_email_count", "unsubscribed_leads", "block_count", "bounce_count",
+                           "skipped_in_other_campaign_count", "lead_import_stopped_count"):
                     if isinstance(d.get(k2), (int, float)) and not isinstance(d.get(k2), bool):
                         api_counts[k2] = api_counts.get(k2, 0) + d[k2]
                 api_keys.update(d.keys())
