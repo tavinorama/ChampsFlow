@@ -182,4 +182,21 @@ describe("the workflow cannot send or start anything by accident", () => {
     expect(res.drafted).toEqual([{ geo: 1, stack: 2 }, [], ""]);
     expect(res.active_rehearsal[2]).toContain("ENVIAR e-mail. Abortado.");
   });
+
+  it("a sub-trade is not called a general contractor: it gets its own words or stays out", () => {
+    const leads = [
+      { first_name: "Al", company_name: "Bright Painting Contractors", website: "brightpainting.com", location: "Mesa, Arizona" },
+      { first_name: "Bea", company_name: "Summit Construction", website: "summitconstruction.com", location: "Boise, Idaho" },
+      { first_name: "Cal", company_name: "Apex Drywall Contractors", website: "apexdrywall.com", location: "Reno, Nevada" },
+      { first_name: "Dee", company_name: "Valley Concrete & Paving", website: "valleyconcrete.com", location: "Fresno, California" },
+      { first_name: "Eli", company_name: "Acme Construction Supply", website: "acmesupply.com", location: "Tulsa, Oklahoma" },
+    ];
+    const r = JSON.parse(spawnSync("python3", [SCRIPT, "personalize"], { encoding: "utf8", input: JSON.stringify(leads) }).stdout);
+    expect(r[0]).toMatchObject({ ok: true, segment: "painting" });
+    expect(r[0].custom_fields.buyer_question).toBe("Who is a good house painter in Mesa?");
+    expect(r[1]).toMatchObject({ ok: true, segment: "construction" });
+    expect(r[2]).toMatchObject({ ok: false, reason: "sem_segmento" });
+    expect(r[3]).toMatchObject({ ok: true, segment: "concrete/paving" });
+    expect(r[4]).toMatchObject({ ok: false, reason: "sem_segmento" });
+  });
 });

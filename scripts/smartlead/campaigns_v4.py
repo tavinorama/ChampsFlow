@@ -218,7 +218,11 @@ SEGMENT_RULES = [
     ("fitness", r"fitness|\bgym\b|pilates|crossfit|yoga\b"),
     ("garage/doors", r"garage\s?door"),
     ("pool", r"\bpools?\b"),
-    ("construction", r"general\s?contract|contractor|construction|builders?\b"),
+    ("painting", r"paint(ing|ers?)\b"),
+    ("concrete/paving", r"concrete|paving|asphalt"),
+    ("flooring", r"floor(ing|s)?\b"),
+    ("fencing", r"fenc(e|es|ing)\b"),
+    ("construction", r"general\s?contract|construction|builders?\b"),
     ("it services", r"\bit\s(services?|support|solutions?)|managed\s?service|cyber|network(s|ing)?\b|computer"),
     ("agency/saas", r"agency|marketing|\bseo\b|digital|advertis"),
     ("design/media", r"design|media|creative|brand(ing)?\b|studios?\b|photo|video|print(ing)?\b|graphics"),
@@ -269,10 +273,20 @@ def parse_city(location: str) -> tuple[str, bool]:
     return city, is_us
 
 
+# 17/09 rehearsal: "construction" took 113 of 382 leads because any "contractor"
+# matched. A drywall or excavation outfit asked about "a good general contractor"
+# is exactly the generic e-mail the founder rejected — so a sub-trade we have no
+# words for is left out instead of being called a general contractor.
+NOT_GENERAL = re.compile(r"drywall|insulation|excavat|demolition|window|siding|gutter|masonry|weld|steel|"
+                         r"supply|supplies|equipment|rental|engineer|consult|scaffold|crane|survey|material", re.I)
+
+
 def classify(company: str, website: str) -> str | None:
     text = f"{company} {website}"
     for name, rx in SEGMENT_RULES:
         if rx.search(text):
+            if name == "construction" and NOT_GENERAL.search(text):
+                return None
             return name
     return None
 
