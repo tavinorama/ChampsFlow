@@ -28,6 +28,10 @@ const WORKFLOWS = [
   ".github/workflows/agent-org-liveness.yml",
   ".github/workflows/main-after-merge.yml",
   ".github/workflows/link-crawl.yml",
+  // 17/09: the same gate lived in two more watchers — the SmartLead send watch
+  // went red twice a day without ever measuring whether sending had stopped.
+  ".github/workflows/cron-absence-watch.yml",
+  ".github/workflows/smartlead-send-watch.yml",
 ];
 
 /** The text of the alarm-channel step only (from its name to the next `- name:` / `- uses:`). */
@@ -72,10 +76,19 @@ describe("T0.3 — the alarm-channel check warns and never skips the probe", () 
   }
 
   it("a real probe failure still turns the run red (exit 1 survives outside the alarm step)", () => {
-    for (const file of ["post-deploy-smoke", "agent-org-liveness", "main-after-merge"]) {
+    for (const file of ["post-deploy-smoke", "agent-org-liveness", "main-after-merge", "cron-absence-watch", "smartlead-send-watch"]) {
       const src = read(`.github/workflows/${file}.yml`);
       const outsideAlarm = src.replace(alarmStep(src), "");
       expect(outsideAlarm).toContain("exit 1");
     }
+  });
+
+  it("the SmartLead watch still needs its probe key, and says so when the channel is missing", () => {
+    const src = read(".github/workflows/smartlead-send-watch.yml");
+    expect(src).toContain('test -n "${SL}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }');
+    expect(src).not.toContain("o vigia falha VERMELHO de propósito");
+    expect(src).toContain("sem_canal (TELEGRAM_* ausentes nos secrets do Actions)");
+    // a stopped send is still red with or without the channel
+    expect(src).toContain("raise SystemExit(1)");
   });
 });

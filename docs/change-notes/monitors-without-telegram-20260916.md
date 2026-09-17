@@ -35,3 +35,9 @@ Revert the branch: the workflows go back to failing on the first step.
 ## Proof owed after merge
 
 The next scheduled runs of the four workflows: `Verify deployed version + vitals`, `Probe the liveness route` and the crawl step **executed** (green or red on their own merit), with the `⚠️ ALARM CHANNEL NOT WIRED` line in the summary until the founder adds the two secrets — after which the line disappears and a synthetic failure reaches Telegram.
+
+## Addendum 2026-09-17 — two more watchers had the same gate
+
+Read on 17/09 from the failed runs: `smartlead-send-watch.yml` (red twice a day, "TG:" empty, exit 1 in the preflight — it never measured whether sending had stopped) and `cron-absence-watch.yml` (same assert as the original four). Both now use the same warn step. The SmartLead watch keeps `SMARTLEAD_API_KEY` as a hard requirement (without it there is nothing to measure — that red is true), and when sending is stopped but the channel is missing it prints the alarm into the job summary, records `telegram: "sem_canal (…)"` in its result line, and still exits 1. `blog-autopublish.yml` was checked and already degrades to the job summary.
+
+Six workflows covered; the test asserts all six. The two-minute fix remains the founder's: copy `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` into the repository's Actions secrets.
