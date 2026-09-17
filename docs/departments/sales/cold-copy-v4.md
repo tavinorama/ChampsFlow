@@ -364,3 +364,8 @@ Se o negócio FOI nomeado, dizer a verdade ("Good news. It named you second.") e
 | agency/saas | marketing agency | Who is a good marketing agency in {city}? | client | client reports | an hour you cannot bill |
 | design/media | design studio | Who is a good design studio in {city}? | project | proposals and invoices | an hour you cannot bill |
 | it services | IT services company | Who is a good IT support company in {city}? | contract | tickets and quotes | an hour you cannot bill |
+| painting | painter | Who is a good house painter in {city}? | paint job | quotes and scheduling | an hour off the job |
+| concrete/paving | concrete contractor | Who does good concrete work in {city}? | concrete job | bids and scheduling | an hour off the job |
+| flooring | flooring company | Who installs flooring in {city}? | flooring job | quotes and scheduling | an hour off the job |
+| fencing | fence company | Who builds fences in {city}? | fence job | quotes and scheduling | an hour off the job |
+| construction | contractor | Who is a good general contractor in {city}? | construction job | bids and scheduling | an hour off the job site |

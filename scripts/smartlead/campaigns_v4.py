@@ -218,7 +218,11 @@ SEGMENT_RULES = [
     ("fitness", r"fitness|\bgym\b|pilates|crossfit|yoga\b"),
     ("garage/doors", r"garage\s?door"),
     ("pool", r"\bpools?\b"),
-    ("construction", r"general\s?contract|contractor|construction|builders?\b"),
+    ("painting", r"paint(ing|ers?)\b"),
+    ("concrete/paving", r"concrete|paving|asphalt"),
+    ("flooring", r"floor(ing|s)?\b"),
+    ("fencing", r"fenc(e|es|ing)\b"),
+    ("construction", r"general\s?contract|construction|builders?\b"),
     ("it services", r"\bit\s(services?|support|solutions?)|managed\s?service|cyber|network(s|ing)?\b|computer"),
     ("agency/saas", r"agency|marketing|\bseo\b|digital|advertis"),
     ("design/media", r"design|media|creative|brand(ing)?\b|studios?\b|photo|video|print(ing)?\b|graphics"),
@@ -269,10 +273,20 @@ def parse_city(location: str) -> tuple[str, bool]:
     return city, is_us
 
 
+# 17/09 rehearsal: "construction" took 113 of 382 leads because any "contractor"
+# matched. A drywall or excavation outfit asked about "a good general contractor"
+# is exactly the generic e-mail the founder rejected — so a sub-trade we have no
+# words for is left out instead of being called a general contractor.
+NOT_GENERAL = re.compile(r"drywall|insulation|excavat|demolition|window|siding|gutter|masonry|weld|steel|"
+                         r"supply|supplies|equipment|rental|engineer|consult|scaffold|crane|survey|material", re.I)
+
+
 def classify(company: str, website: str) -> str | None:
     text = f"{company} {website}"
     for name, rx in SEGMENT_RULES:
         if rx.search(text):
+            if name == "construction" and NOT_GENERAL.search(text):
+                return None
             return name
     return None
 
@@ -433,19 +447,33 @@ def site_alive(url: str) -> bool:
         return False
 
 
-def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
-    by_name = campaign_index()
-    dest = {}
+def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dict, list[str], str]:
+    """(dest ids, notes, abort reason). A REHEARSAL counts leads even before the
+    campaigns exist (17/09: the first rehearsal aborted on "nao existe — correr
+    create primeiro", which made it useless for deciding whether to create). A
+    real run still refuses a missing destination, and BOTH modes refuse an
+    active one: adding a lead to an active campaign is sending e-mail."""
+    dest, notes = {}, []
     for key in ("geo", "stack"):
         c = by_name.get(names[key])
         if not c:
-            out({"ok": False, "motivo": f"campanha de destino '{names[key]}' nao existe — correr create primeiro"})
-            return 1
+            if confirm:
+                return {}, notes, f"campanha de destino '{names[key]}' nao existe — correr create primeiro"
+            notes.append(f"'{names[key]}' ainda nao existe (ensaio segue; correr create antes do load real)")
+            continue
         status = str(c.get("status") or "").upper()
         if status not in ("DRAFTED", "PAUSED"):
-            out({"ok": False, "motivo": f"'{names[key]}' esta {status}: adicionar lead a campanha ativa e ENVIAR e-mail. Abortado."})
-            return 1
+            return {}, notes, f"'{names[key]}' esta {status}: adicionar lead a campanha ativa e ENVIAR e-mail. Abortado."
         dest[key] = c["id"]
+    return dest, notes, ""
+
+
+def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
+    by_name = campaign_index()
+    dest, dest_notes, abort = resolve_destinations(by_name, names, confirm)
+    if abort:
+        out({"ok": False, "motivo": abort})
+        return 1
     reasons: dict[str, int] = {}
     seen_domains: set[str] = set()
     picked = {"geo": [], "stack": []}
@@ -493,7 +521,7 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     summary = {"leads_lidas": read, "elegiveis": {k: len(v) for k, v in picked.items()},
                "por_segmento": dict(sorted(by_segment.items(), key=lambda x: -x[1])),
                "fora_por_motivo": dict(sorted(reasons.items(), key=lambda x: -x[1])),
-               "teto_por_campanha": cap, "checou_sites": check_sites}
+               "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes}
     if not confirm:
         sample = None
         if picked["geo"]:

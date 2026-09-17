@@ -551,6 +551,38 @@
       "job": "construction job",
       "pain_task": "bids and scheduling",
       "lost_hour": "an hour off the job site"
+    },
+    "painting": {
+      "trade": "painter",
+      "a_trade": "a painter",
+      "buyer_question": "Who is a good house painter in {city}?",
+      "job": "paint job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "concrete/paving": {
+      "trade": "concrete contractor",
+      "a_trade": "a concrete contractor",
+      "buyer_question": "Who does good concrete work in {city}?",
+      "job": "concrete job",
+      "pain_task": "bids and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "flooring": {
+      "trade": "flooring company",
+      "a_trade": "a flooring company",
+      "buyer_question": "Who installs flooring in {city}?",
+      "job": "flooring job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
+    },
+    "fencing": {
+      "trade": "fence company",
+      "a_trade": "a fence company",
+      "buyer_question": "Who builds fences in {city}?",
+      "job": "fence job",
+      "pain_task": "quotes and scheduling",
+      "lost_hour": "an hour off the job"
     }
   }
 }
