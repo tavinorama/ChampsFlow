@@ -160,4 +160,26 @@ describe("the workflow cannot send or start anything by accident", () => {
     expect(r.result.modo).toContain("ENSAIO");
     expect(r.result.plano.geo.variantes_por_toque).toEqual([2, 2, 1, 1]);
   });
+
+  it("a rehearsal counts leads before the campaigns exist; a real run refuses; an active destination always aborts", () => {
+    const code = [
+      "import sys, json",
+      `sys.path.insert(0, ${JSON.stringify(join(root, "scripts/smartlead"))})`,
+      "import campaigns_v4 as m",
+      "names = {'geo': 'g', 'stack': 's'}",
+      "res = {",
+      "  'rehearsal_missing': m.resolve_destinations({}, names, False),",
+      "  'real_missing': m.resolve_destinations({}, names, True),",
+      "  'drafted': m.resolve_destinations({'g': {'id': 1, 'status': 'DRAFTED'}, 's': {'id': 2, 'status': 'PAUSED'}}, names, True),",
+      "  'active_rehearsal': m.resolve_destinations({'g': {'id': 1, 'status': 'ACTIVE'}, 's': {'id': 2, 'status': 'DRAFTED'}}, names, False),",
+      "}",
+      "print(json.dumps(res))",
+    ].join("\n");
+    const res = JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout);
+    expect(res.rehearsal_missing[2]).toBe("");
+    expect(res.rehearsal_missing[1]).toHaveLength(2);
+    expect(res.real_missing[2]).toContain("correr create primeiro");
+    expect(res.drafted).toEqual([{ geo: 1, stack: 2 }, [], ""]);
+    expect(res.active_rehearsal[2]).toContain("ENVIAR e-mail. Abortado.");
+  });
 });

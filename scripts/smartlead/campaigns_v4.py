@@ -433,19 +433,33 @@ def site_alive(url: str) -> bool:
         return False
 
 
-def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
-    by_name = campaign_index()
-    dest = {}
+def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dict, list[str], str]:
+    """(dest ids, notes, abort reason). A REHEARSAL counts leads even before the
+    campaigns exist (17/09: the first rehearsal aborted on "nao existe — correr
+    create primeiro", which made it useless for deciding whether to create). A
+    real run still refuses a missing destination, and BOTH modes refuse an
+    active one: adding a lead to an active campaign is sending e-mail."""
+    dest, notes = {}, []
     for key in ("geo", "stack"):
         c = by_name.get(names[key])
         if not c:
-            out({"ok": False, "motivo": f"campanha de destino '{names[key]}' nao existe — correr create primeiro"})
-            return 1
+            if confirm:
+                return {}, notes, f"campanha de destino '{names[key]}' nao existe — correr create primeiro"
+            notes.append(f"'{names[key]}' ainda nao existe (ensaio segue; correr create antes do load real)")
+            continue
         status = str(c.get("status") or "").upper()
         if status not in ("DRAFTED", "PAUSED"):
-            out({"ok": False, "motivo": f"'{names[key]}' esta {status}: adicionar lead a campanha ativa e ENVIAR e-mail. Abortado."})
-            return 1
+            return {}, notes, f"'{names[key]}' esta {status}: adicionar lead a campanha ativa e ENVIAR e-mail. Abortado."
         dest[key] = c["id"]
+    return dest, notes, ""
+
+
+def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
+    by_name = campaign_index()
+    dest, dest_notes, abort = resolve_destinations(by_name, names, confirm)
+    if abort:
+        out({"ok": False, "motivo": abort})
+        return 1
     reasons: dict[str, int] = {}
     seen_domains: set[str] = set()
     picked = {"geo": [], "stack": []}
@@ -493,7 +507,7 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     summary = {"leads_lidas": read, "elegiveis": {k: len(v) for k, v in picked.items()},
                "por_segmento": dict(sorted(by_segment.items(), key=lambda x: -x[1])),
                "fora_por_motivo": dict(sorted(reasons.items(), key=lambda x: -x[1])),
-               "teto_por_campanha": cap, "checou_sites": check_sites}
+               "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes}
     if not confirm:
         sample = None
         if picked["geo"]:
