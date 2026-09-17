@@ -199,4 +199,45 @@ describe("the workflow cannot send or start anything by accident", () => {
     expect(r[3]).toMatchObject({ ok: true, segment: "concrete/paving" });
     expect(r[4]).toMatchObject({ ok: false, reason: "sem_segmento" });
   });
+
+  it("SmartProspect: the search is free, the spend is capped, and a contact maps to a personalizable lead", () => {
+    const code = [
+      "import sys, json",
+      `sys.path.insert(0, ${JSON.stringify(join(root, "scripts/smartlead"))})`,
+      "import campaigns_v4 as m",
+      "c = m.load_copy()",
+      "biz = m.contact_to_lead({'firstName': 'Ana', 'lastName': 'X', 'email': 'ana@peakroofing.com', 'company': {'name': 'Peak Roofing'}, 'city': 'Tulsa', 'state': 'Oklahoma', 'country': 'United States'})",
+      "free = m.contact_to_lead({'firstName': 'Bo', 'email': 'bo@gmail.com', 'company': {'name': 'Bo Plumbing'}, 'city': 'Mesa', 'state': 'AZ'})",
+      "res = {",
+      "  'biz': biz, 'biz_fields': m.personalize(c, biz)[0]['custom_fields'],",
+      "  'free_site': free['website'], 'free_reason': m.personalize(c, free)[1],",
+      "  'payload': m.search_payload('roofing', 99999),",
+      "  'trades_without_copy': [t for t in m.TRADE_SEARCH if t not in c['segments']],",
+      "  'shape': m.shape_of({'email': 'a@b.com', 'company': {'name': 'N', 'deep': {'x': 1}}}),",
+      "}",
+      "print(json.dumps(res))",
+    ].join("\n");
+    const res = JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout);
+    expect(res.biz.website).toBe("peakroofing.com"); // the verified business domain is the site
+    expect(res.biz.location).toBe("Tulsa, Oklahoma, United States");
+    expect(res.biz_fields.buyer_question).toBe("My roof is leaking. Who is a good roofer in Tulsa?");
+    expect(res.free_site).toBe(""); // a gmail address is nobody's website
+    expect(res.free_reason).toBe("sem_site_proprio");
+    expect(res.payload.limit).toBe(500);
+    expect(res.payload.country).toEqual(["United States"]);
+    expect(res.payload.dontDisplayOwnedContact).toBe(true);
+    expect(res.trades_without_copy).toEqual([]);
+    expect(JSON.stringify(res.shape)).not.toContain("a@b.com"); // key structure only, never a value
+
+    const script = readFileSync(SCRIPT, "utf8");
+    expect(script).toContain("NENHUM credito gasto");
+    expect(script).toContain('"verification_status": "valid"');
+    expect(script).toContain("limit tem de estar entre 1 e 500");
+    const bad = py(["prospect", "--trade", "unicorns"], undefined, { SL_KEY: "x" });
+    expect(bad.status).toBe(1);
+    const over = py(["prospect", "--trade", "roofing", "--limit", "5000"], undefined, { SL_KEY: "x" });
+    expect(over.status).toBe(1);
+    const wf = readFileSync(join(root, ".github/workflows/smartlead-campaigns-v4.yml"), "utf8");
+    expect(wf).toContain("create|load|prospect");
+  });
 });
