@@ -35,10 +35,21 @@ jobs:
     steps:
       # 10.B.4 — mesmo contrato do blog-autopublish: um vigia sem canal de
       # alarme é um vigia mudo. Secrets ausentes = run VERMELHO já aqui.
-      - name: Assert the alarm channel is wired (TELEGRAM secrets exist)
+      - name: Check the alarm channel (TELEGRAM secrets) — warn, never skip the probe
+        id: alarm
         run: |
-          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "TELEGRAM_BOT_TOKEN missing — o vigia estaria mudo"; exit 1; }
-          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "TELEGRAM_CHAT_ID missing — o vigia estaria mudo"; exit 1; }
+          # T0.3 (2026-09-16): a missing alarm channel is a WARNING, never a reason to
+          # skip the probe. From 11/09 to 16/09 these four workflows went red on this
+          # step every run and the probe never executed — the watchdog was blind
+          # AND mute. The probe runs regardless; the missing secret is named in the
+          # job summary and as a workflow warning.
+          wired=1
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "::warning::TELEGRAM_BOT_TOKEN missing in Actions secrets — o vigia está mudo; a sonda corre na mesma, alarme só no job summary"; wired=0; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "::warning::TELEGRAM_CHAT_ID missing in Actions secrets — o vigia está mudo; a sonda corre na mesma, alarme só no job summary"; wired=0; }
+          if [ "$wired" = "0" ]; then
+            echo "⚠️ ALARM CHANNEL NOT WIRED — TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID missing in Actions secrets; this run probes anyway and reports only here." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "wired=$wired" >> "$GITHUB_OUTPUT"
 
       - name: Probe the liveness route
         id: probe
