@@ -343,7 +343,15 @@ def sl(path: str, payload: dict | None = None, method: str | None = None):
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             body = r.read().decode()
-            return r.status, (json.loads(body) if body.strip() else {})
+            # 17/09, first live load: DELETE /campaigns/{id}/leads/{lead_id} answers 2xx
+            # with a body that is NOT JSON. Parsing it blindly turned 394 successful
+            # removals into "failures" and stopped the move half way. The HTTP status
+            # is the verdict; an unparseable 2xx body is kept as text, not as an error.
+            try:
+                parsed = json.loads(body) if body.strip() else {}
+            except ValueError:
+                parsed = {"_raw": body[:120]}
+            return r.status, parsed
     except urllib.error.HTTPError as e:
         return e.code, {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:240]}
     except Exception as e:  # noqa: BLE001 — network failure is reported, never swallowed
@@ -679,13 +687,23 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool)
     import time
     metrics = (fdata or {}).get("metrics") or {}
     contacts: list[dict] = []
+    stable, last_n = 0, -1
     deadline = time.time() + 15 * 60
     while time.time() < deadline:
         s, g = sp("get-contacts", {"filter_id": data["filter_id"], "limit": 1000, "offset": 0, "verification_status": "valid"})
         gdata = g.get("data") if isinstance(g, dict) else None
         contacts = (gdata or {}).get("list") or []
         metrics = (gdata or {}).get("metrics") or metrics
-        if metrics.get("completed") in (True, 1, "true") or (not metrics and contacts):
+        # `completed` is a COUNT of processed contacts (measured 17/09: 9 of 10),
+        # not a boolean. Done = every contact processed, or the valid list stopped
+        # growing for three polls in a row.
+        done_n = metrics.get("completed")
+        total_n = metrics.get("totalEmails") or metrics.get("totalContacts") or 0
+        if isinstance(done_n, (int, float)) and not isinstance(done_n, bool) and total_n and done_n >= total_n:
+            break
+        stable = stable + 1 if len(contacts) == last_n and contacts else 0
+        last_n = len(contacts)
+        if stable >= 3:
             break
         time.sleep(15)
     picked = {"geo": [], "stack": []}
