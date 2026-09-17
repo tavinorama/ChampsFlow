@@ -1,0 +1,93 @@
+name: SmartLead campaigns v4 (AI Geo Search + AI Audit Stack, founder-triggered)
+
+# As DUAS campanhas frias de 17/09 (copy v4, aprovada pelo founder no mesmo dia):
+# 4 toques (0/3/7/14), variantes A/B nos toques 1 e 2, e cada lead personalizada
+# por OFÍCIO e CIDADE (trade, city, buyer_question, job, pain_task, lost_hour).
+#
+# A copy vive em docs/departments/sales/campaigns-v4.json e as regras da casa
+# correm sobre ela ANTES de qualquer chamada (1º toque sem link, 1 pergunta,
+# 40-80 palavras, frases <=12 palavras, sem travessão, opt-out literal). Uma
+# revisão de texto é um edit nesse ficheiro — este workflow não muda.
+#
+#   action=create  cria/atualiza as duas campanhas DRAFTED com sequências,
+#                  horário (seg-sex 09-18 NY, 80 leads novas/dia) e settings, e
+#                  LÊ DE VOLTA as variantes: "gravou" não é "está lá".
+#   action=load    move as leads NUNCA TOCADAS (status STARTED) das campanhas de
+#                  origem para as duas novas, com os campos preenchidos. Lead
+#                  sem ofício reconhecido, sem cidade, sem primeiro nome, com
+#                  STOP, fora dos EUA, franquia ou site morto NÃO entra.
+#
+# TRAVAS: confirm=no (default) é ENSAIO — nada é criado, nada é movido, só
+# agregados. Nunca há ação start: quem inicia é o founder, pelo
+# smartlead-launch.yml (confirm=GO). Campanha de destino ativa = abortado
+# (adicionar lead a campanha ativa é enviar e-mail). Nenhum e-mail, nome de
+# pessoa ou telefone é impresso.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "create | load"
+        required: true
+        default: "create"
+      confirm:
+        description: "yes = executa de verdade · qualquer outra coisa = ENSAIO"
+        required: false
+        default: "no"
+      geo_name:
+        description: "Nome da campanha AI Geo Search (vazio = default do ficheiro de copy)"
+        required: false
+        default: ""
+      stack_name:
+        description: "Nome da campanha AI Audit Stack (vazio = default do ficheiro de copy)"
+        required: false
+        default: ""
+      sources:
+        description: "load: ids das campanhas de origem (só leads STARTED saem delas)"
+        required: false
+        default: "3741204,3783524,3783526"
+      cap:
+        description: "load: teto de leads por campanha de destino (lista <=800)"
+        required: false
+        default: "800"
+      site_check:
+        description: "load: yes = só entra lead cujo site responde (HTTP <400)"
+        required: false
+        default: "yes"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy rules (always, before anything touches SmartLead)
+        run: python3 scripts/smartlead/campaigns_v4.py validate | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run
+        env:
+          SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
+          ACTION: ${{ github.event.inputs.action }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          GEO_NAME: ${{ github.event.inputs.geo_name }}
+          STACK_NAME: ${{ github.event.inputs.stack_name }}
+          SOURCES: ${{ github.event.inputs.sources }}
+          CAP: ${{ github.event.inputs.cap }}
+          SITE_CHECK: ${{ github.event.inputs.site_check }}
+        run: |
+          set -euo pipefail
+          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          case "${ACTION}" in create|load) ;; *) echo "::error::action tem de ser create ou load"; exit 1;; esac
+          args=("${ACTION}")
+          [ -n "${GEO_NAME}" ] && args+=(--geo-name "${GEO_NAME}")
+          [ -n "${STACK_NAME}" ] && args+=(--stack-name "${STACK_NAME}")
+          if [ "${ACTION}" = "load" ]; then
+            args+=(--sources "${SOURCES}" --cap "${CAP}")
+            [ "${SITE_CHECK}" = "yes" ] || args+=(--no-site-check)
+          fi
+          [ "${CONFIRM}" = "yes" ] && args+=(--confirm)
+          python3 scripts/smartlead/campaigns_v4.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

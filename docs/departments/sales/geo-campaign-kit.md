@@ -93,6 +93,8 @@ Todo e-mail termina com este bloco, DEPOIS da assinatura:
 
 ---
 
+> **17/09/2026 — a sequência em vigor passou a ser a v4** ([cold-copy-v4.md](cold-copy-v4.md), fonte [campaigns-v4.json](campaigns-v4.json), workflow `smartlead-campaigns-v4.yml`): só duas campanhas (AI Geo Search, AI Audit Stack), variantes A/B nos toques 1 e 2, cada lead personalizada por ofício e cidade. A secção abaixo fica como histórico da leva 2 "com prova"; as duas variantes com prova da v4 entram no toque 1 quando o piloto correr.
+
 ## 5. LEVA 2 — "outbound com prova" (a partir de 11/09) — **esta é a sequência em vigor**
 
 > Campanha viva: `oz-local-2026-09-14` (id **3939141**), criada DRAFTED em 11/09 pelo
