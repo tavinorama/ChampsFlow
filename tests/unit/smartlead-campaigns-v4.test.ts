@@ -240,4 +240,16 @@ describe("the workflow cannot send or start anything by accident", () => {
     const wf = readFileSync(join(root, ".github/workflows/smartlead-campaigns-v4.yml"), "utf8");
     expect(wf).toContain("create|load|prospect");
   });
+
+  it("a 2xx answer with a non-JSON body is a success, not a failure (the DELETE of the first live load)", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+    expect(script).toContain('parsed = {"_raw": body[:120]}');
+    const code = [
+      "import sys, json",
+      `sys.path.insert(0, ${JSON.stringify(join(root, "scripts/smartlead"))})`,
+      "import campaigns_v4 as m",
+      "print(json.dumps([m.bad(200, {'_raw': 'ok'}), m.bad(204, {}), m.bad(0, {'_error': 'URLError'}), m.bad(404, {'_http_error': 404})]))",
+    ].join("\n");
+    expect(JSON.parse(spawnSync("python3", ["-c", code], { encoding: "utf8" }).stdout)).toEqual([false, false, true, true]);
+  });
 });

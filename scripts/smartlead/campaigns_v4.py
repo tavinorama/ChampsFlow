@@ -343,7 +343,15 @@ def sl(path: str, payload: dict | None = None, method: str | None = None):
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             body = r.read().decode()
-            return r.status, (json.loads(body) if body.strip() else {})
+            # 17/09, first live load: DELETE /campaigns/{id}/leads/{lead_id} answers 2xx
+            # with a body that is NOT JSON. Parsing it blindly turned 394 successful
+            # removals into "failures" and stopped the move half way. The HTTP status
+            # is the verdict; an unparseable 2xx body is kept as text, not as an error.
+            try:
+                parsed = json.loads(body) if body.strip() else {}
+            except ValueError:
+                parsed = {"_raw": body[:120]}
+            return r.status, parsed
     except urllib.error.HTTPError as e:
         return e.code, {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:240]}
     except Exception as e:  # noqa: BLE001 — network failure is reported, never swallowed
