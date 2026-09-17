@@ -66,7 +66,7 @@ import {
   PROSPECT_BATCH_GRAPH,
   BLOG_ANNOUNCE_GRAPH,
 } from "./agent-graphs";
-import { validateColdSequenceBatch, parseProspectsForCrm } from "./prospecting";
+import { validateColdSequenceBatch, parseProspectsForCrm, describeOutputShape } from "./prospecting";
 import {
   buildPrompt,
   CONTENT_LESSONS,
@@ -1751,7 +1751,8 @@ export async function advanceRun(
         if (!v.ok) {
           await substrate.finishStep(stepId, {
             status: "failed",
-            summary: `validador cold-email reprovou: ${v.errors.slice(0, 2).join(" · ").slice(0, 400)}`,
+            // 17/09: name what came back — "reprovou" alone left the 16/09 batch undiagnosable.
+            summary: `validador cold-email reprovou: ${v.errors.slice(0, 2).join(" · ").slice(0, 300)} — ${describeOutputShape(res.output)}`,
             ms: res.ms,
             engine: res.engineUsed,
           });
