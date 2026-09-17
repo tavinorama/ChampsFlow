@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create | load | prospect"
+        description: "create | load | prospect | prune"
         required: true
         default: "create"
       confirm:
@@ -105,7 +105,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
-          case "${ACTION}" in create|load|prospect) ;; *) echo "::error::action tem de ser create, load ou prospect"; exit 1;; esac
+          case "${ACTION}" in create|load|prospect|prune) ;; *) echo "::error::action tem de ser create, load, prospect ou prune"; exit 1;; esac
           args=("${ACTION}")
           [ -n "${GEO_NAME}" ] && args+=(--geo-name "${GEO_NAME}")
           [ -n "${STACK_NAME}" ] && args+=(--stack-name "${STACK_NAME}")

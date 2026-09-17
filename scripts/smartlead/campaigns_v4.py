@@ -651,6 +651,44 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     return 0 if ok else 1
 
 
+def cmd_prune(names: dict, confirm: bool) -> int:
+    """Pause, inside the two NEW campaigns, the leads whose site does not answer.
+    17/09: one load ran with the site check off and let in 72 leads whose site
+    had not answered — a dead site is the best predictor of a dead mailbox, and
+    the account already shows bounce-critical senders. Two tries per site; a
+    lead is PAUSED (reversible), never deleted."""
+    by_name = campaign_index()
+    report, to_pause = {}, []
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            continue
+        rows = [dict(r.get("lead") or r, _status=str(r.get("status") or "").upper()) for r in fetch_leads(str(c["id"]))]
+        live = [r for r in rows if r["_status"] not in ("PAUSED", "BLOCKED", "COMPLETED")]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            first = list(pool.map(lambda r: site_alive(r.get("website") or r.get("company_url") or ""), live))
+            retry = [r for r, ok in zip(live, first) if not ok]
+            second = list(pool.map(lambda r: site_alive(r.get("website") or r.get("company_url") or ""), retry))
+        dead = [r for r, ok in zip(retry, second) if not ok]
+        report[names[key]] = {"leads": len(rows), "verificadas": len(live), "site_nao_respondeu_2x": len(dead)}
+        to_pause += [(c["id"], r.get("id")) for r in dead if r.get("id")]
+    if not confirm:
+        out({"ok": True, "modo": "ENSAIO — nenhuma lead foi pausada", "campanhas": report})
+        return 0
+    paused, fail, first_error = 0, 0, None
+    for cid, lid in to_pause:
+        s, d = sl(f"/campaigns/{cid}/leads/{lid}/pause", {}, method="POST")
+        if bad(s, d):
+            fail += 1
+            first_error = first_error or {"http": s, "resp": json.dumps(d)[:200]}
+            if fail >= 3 and paused == 0:
+                break
+        else:
+            paused += 1
+    out({"ok": fail == 0, "modo": "execucao", "campanhas": report, "pausadas": paused, "falhas": fail, "primeiro_erro": first_error})
+    return 0 if fail == 0 else 1
+
+
 # --------------------------------------------------------------------------
 # 5. SmartProspect (lead finder) by API — search is free, FETCH spends credits
 # --------------------------------------------------------------------------
@@ -836,7 +874,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
@@ -882,6 +920,8 @@ def main(argv: list[str]) -> int:
         return 1
     if a.command == "create":
         return cmd_create(copy, names, a.confirm)
+    if a.command == "prune":
+        return cmd_prune(names, a.confirm)
     if a.command == "prospect":
         if not 1 <= a.limit <= 500:
             out({"ok": False, "motivo": "limit tem de estar entre 1 e 500 por corrida (teto de creditos por corrida)"})
