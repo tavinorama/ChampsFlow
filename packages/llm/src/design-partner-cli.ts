@@ -82,6 +82,13 @@ export interface PackCliOptions {
    */
   category: string;
   /**
+   * City/area of a LOCAL SERVICE business ("Portland, Oregon"). When set, the
+   * pack asks local buyer questions (who to call, best reviews, how to choose)
+   * instead of the product's software-shaped default portfolio, and --category
+   * is the bare service ("criminal defense attorney").
+   */
+  place: string;
+  /**
    * Competitor names we can look for in the answers. Optional and honest about
    * it: without them the pack shows WHICH SOURCES the answer was built from,
    * and never claims to know who won.
@@ -104,6 +111,8 @@ Required
   --domain <domain>        bare domain, e.g. northgateroofing.com
   --company "<name>"       the company name as they write it
   --category "<what>"      what buyers search for, e.g. "roofing contractor"
+  --place "<city, state>"  LOCAL SERVICE business: ask local buyer questions about
+                           <category> in <place> (who to call, best reviews...)
                            (required for a live run; a fixture carries its own)
 
 Options
@@ -193,6 +202,7 @@ export function parsePackArgs(argv: readonly string[]): ParseResult {
       language,
       out: (flagValue(argv, "out") ?? `./design-partner-${domain}.html`).trim(),
       category,
+      place: (flagValue(argv, "place") ?? "").trim(),
       competitors: (flagValue(argv, "competitors") ?? "")
         .split(",")
         .map((s) => s.trim())
@@ -264,6 +274,7 @@ export function costPreflightLines(
     `Company        ${options.company}`,
     `Domain         ${options.domain}`,
     `Category       ${options.category || "(from the fixture)"}`,
+    `Place          ${options.place || "(none — default software-shaped questions)"}`,
     `Competitors    ${
       options.competitors.length > 0
         ? options.competitors.join(", ")
@@ -358,6 +369,8 @@ export interface PackAuditRecord {
   methodologyVersion: string;
   coverage: PackCoverage;
   answers: PackAnswer[];
+  /** FALSE when the live run had no --competitors: names were never looked for. */
+  competitorsGiven?: boolean;
 }
 
 function str(v: unknown, field: string): string {
@@ -483,6 +496,7 @@ export function assemblePack(
     contactEmail: options.contactEmail,
   });
 
+  if (record.competitorsGiven === false) model.namesChecked = false;
   return { model, html: renderDesignPartnerPackHtml(model), classification };
 }
 

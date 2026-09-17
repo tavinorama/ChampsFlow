@@ -57,6 +57,8 @@ import {
   type PackCliOptions,
 } from "../packages/llm/src/design-partner-cli";
 import type { PackAnswer } from "../packages/llm/src/design-partner-pack";
+import type { UserRegion } from "../packages/llm/src/providers/types";
+import { buildLocalServicePortfolio } from "../packages/llm/src/prompt-portfolio-local";
 import {
   buildIntentPortfolio,
   runProbesSequential,
@@ -103,7 +105,11 @@ interface LiveRun {
  */
 async function runLiveAudit(options: PackCliOptions): Promise<LiveRun> {
   const auditId = `dpp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const portfolio = buildIntentPortfolio(options.company, options.category);
+  // A local service business is asked local buyer questions (17/09): the default
+  // portfolio says "vendor" and "SMBs on a budget" to a roofer or a lawyer.
+  const portfolio = options.place
+    ? buildLocalServicePortfolio(options.company, options.category, options.place)
+    : buildIntentPortfolio(options.company, options.category);
 
   const queries: SamplingQuery[] = portfolio.map((p) => ({
     queryHash: sha256(p.text),
@@ -115,8 +121,14 @@ async function runLiveAudit(options: PackCliOptions): Promise<LiveRun> {
 
   say(`Probing ${queries.length} questions across ${options.engines.join(", ")}...`);
 
+  // 17/09: the routing gate reads the region as "US" | "EU", exactly. This said
+  // "us", so every US prospect fell through to the EU rules — openai, gemini and
+  // perplexity "blocked (region gate)" — and the first live pack was built from
+  // one engine of four. The gate fails closed on an unknown value (correct); the
+  // caller must speak its vocabulary. Typed so tsc refuses the next typo.
+  const region: UserRegion = "US";
   const result = await runProbesSequential(queries, {
-    region: "us",
+    region,
     requestedProviders: options.engines as GeoLLMProvider[],
     baseRuns: options.runsPerPrompt,
   });
@@ -173,6 +185,7 @@ async function runLiveAudit(options: PackCliOptions): Promise<LiveRun> {
     locale: options.locale,
     auditId,
     brandId: `prospect_${options.domain}`,
+    competitorsGiven: options.competitors.length > 0,
     generatedAt: new Date().toISOString(),
     methodologyVersion: GEO_METHODOLOGY_VERSION,
     coverage: {
