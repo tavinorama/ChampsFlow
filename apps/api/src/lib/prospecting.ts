@@ -872,25 +872,56 @@ export interface ParsedProspectSequence {
 }
 
 /** Parse the draft/finalize output contract: === PROSPECT === + [EMAIL n] blocks. */
+/**
+ * Markdown the model wraps around a contract line without changing it:
+ * "## === PROSPECT: X ===", "**[EMAIL 1]**", "> SUBJECT: ...". On 16/09 the
+ * weekly batch died three times on "nenhum bloco '=== PROSPECT: ... ==='" with
+ * a real 5-prospect block upstream — the contract was read at column 0 only,
+ * so decoration around a header made a whole batch invisible. The CONTENT
+ * rules (email 1 without links, the question, ?from=, touches) are untouched;
+ * only the line markers tolerate decoration.
+ */
+const DECOR = "[ \\t]*(?:[#>*_`~-]+[ \\t]*)*";
+const PROSPECT_HEADER_RE = new RegExp(`^${DECOR}=== PROSPECT:\\s*`, "m");
+const EMAIL_MARKER_RE = new RegExp(`^${DECOR}\\[EMAIL\\s+(\\d)\\][ \\t]*[*_\`~]*[ \\t]*$`, "m");
+const SUBJECT_LINE_RE = new RegExp(`^${DECOR}SUBJECT:[ \\t]*[*_\`~]*[ \\t]*(.*)$`, "m");
+
+/** A lone code fence line ("```", "```text") is packaging, not content. */
+function stripCodeFences(text: string): string {
+  return text.replace(/^[ \t]*```[a-zA-Z0-9_-]*[ \t]*$/gm, "");
+}
+
 export function splitProspectSequences(text: string): ParsedProspectSequence[] {
   const out: ParsedProspectSequence[] = [];
-  const sections = text.split(/^=== PROSPECT:\s*/m).slice(1);
+  const sections = stripCodeFences(text).split(PROSPECT_HEADER_RE).slice(1);
   for (const section of sections) {
-    const prospect = section.split("===")[0]?.trim() ?? "";
+    const prospect = (section.split("===")[0] ?? "").replace(/[*_`~]+/g, "").trim();
     const emails: ParsedSequenceEmail[] = [];
-    const parts = section.split(/^\[EMAIL\s+(\d)\]\s*$/m);
+    const parts = section.split(EMAIL_MARKER_RE);
     // parts: [preamble, "1", body1, "2", body2, ...]
     for (let i = 1; i + 1 < parts.length + 1; i += 2) {
       const idx = Number(parts[i]);
       const raw = (parts[i + 1] ?? "").trim();
       if (!Number.isFinite(idx)) continue;
-      const subjectMatch = /^SUBJECT:\s*(.+)$/m.exec(raw);
-      const body = raw.replace(/^SUBJECT:.*$/m, "").trim();
-      emails.push({ index: idx, subject: subjectMatch?.[1]?.trim() ?? null, body });
+      const subjectMatch = SUBJECT_LINE_RE.exec(raw);
+      const subject = subjectMatch?.[1]?.replace(/[*_`~]+\s*$/, "").trim() || null;
+      const body = raw.replace(SUBJECT_LINE_RE, "").trim();
+      emails.push({ index: idx, subject, body });
     }
     out.push({ prospect, emails });
   }
   return out;
+}
+
+/**
+ * What the model actually returned, for a failure summary: size + the first
+ * line, with anything e-mail-shaped masked. "validator refused" without this
+ * is a failure nobody can diagnose (the artifact lives in Redis and expires).
+ */
+export function describeOutputShape(text: string): string {
+  const firstLine = (text.trim().split("\n").find((l) => l.trim().length > 0) ?? "").trim();
+  const masked = firstLine.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<email>");
+  return `saida ${text.length} chars, 1a linha: "${masked.slice(0, 90)}"`;
 }
 
 export interface SequenceValidation {
@@ -933,7 +964,7 @@ export function validateColdSequenceBatch(
   const touches = Math.max(1, Math.min(6, Math.floor(opts.touches ?? 3)));
   const errors: string[] = [];
   const trimmed = text.trim();
-  if (trimmed.startsWith(EMPTY_BATCH_SENTINEL)) return { ok: true, errors };
+  if (stripCodeFences(trimmed).trim().replace(/^[#>*_`~\s-]+/, "").startsWith(EMPTY_BATCH_SENTINEL)) return { ok: true, errors };
   const sequences = splitProspectSequences(trimmed);
   if (sequences.length === 0) {
     return { ok: false, errors: ["nenhum bloco '=== PROSPECT: ... ===' encontrado no lote"] };
