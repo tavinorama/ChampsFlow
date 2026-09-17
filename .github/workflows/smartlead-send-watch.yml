@@ -24,16 +24,28 @@ jobs:
   watch:
     runs-on: ubuntu-latest
     steps:
-      - name: Preflight — segredos obrigatórios
+      - name: Preflight — a chave da sonda é obrigatória
         env:
           SL: ${{ secrets.SMARTLEAD_API_KEY }}
-          TG: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CH: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
+          # Sem SMARTLEAD_API_KEY não há o que medir: aqui o vermelho é verdadeiro.
           test -n "${SL}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
-          test -n "${TG}" || { echo "::error::secret TELEGRAM_BOT_TOKEN ausente — o vigia falha VERMELHO de propósito"; exit 1; }
-          test -n "${CH}" || { echo "::error::secret TELEGRAM_CHAT_ID ausente"; exit 1; }
+
+      - name: Check the alarm channel (TELEGRAM secrets) — warn, never skip the probe
+        id: alarm
+        run: |
+          # T0.3 (2026-09-16): a missing alarm channel is a WARNING, never a reason to
+          # skip the probe. With the secrets absent this step went red every run and
+          # the probe never executed — the watchdog was blind AND mute. The probe runs
+          # regardless; the missing secret is named in the job summary and as a warning.
+          wired=1
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" || { echo "::warning::TELEGRAM_BOT_TOKEN missing in Actions secrets — o vigia está mudo; a sonda corre na mesma, alarme só no job summary"; wired=0; }
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}" || { echo "::warning::TELEGRAM_CHAT_ID missing in Actions secrets — o vigia está mudo; a sonda corre na mesma, alarme só no job summary"; wired=0; }
+          if [ "$wired" = "0" ]; then
+            echo "⚠️ ALARM CHANNEL NOT WIRED — TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID missing in Actions secrets; this run probes anyway and reports only here." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "wired=$wired" >> "$GITHUB_OUTPUT"
 
       - name: Estado anterior (cache)
         id: cache
@@ -104,16 +116,22 @@ jobs:
                      "Janela de envio deveria estar aberta (09–18 Nova Iorque).\n"
                      "Onde olhar: quota/plano da conta no painel do SmartLead, "
                      "saúde das caixas, e se alguma campanha foi pausada na UI.")
-              data = urllib.parse.urlencode({"chat_id": os.environ["TG_CHAT"], "text": msg}).encode()
-              try:
-                  urllib.request.urlopen(
-                      urllib.request.Request(
-                          f"https://api.telegram.org/bot{os.environ['TG_TOKEN']}/sendMessage",
-                          data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}),
-                      timeout=30).read()
-                  avisado = True
-              except Exception as e:
-                  avisado = f"FALHOU: {type(e).__name__}"
+              tg_token, tg_chat = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
+              if not (tg_token and tg_chat):
+                  # T0.3: canal ausente não cala a medição — o vermelho e o summary ficam.
+                  avisado = "sem_canal (TELEGRAM_* ausentes nos secrets do Actions)"
+                  print("🚨 ENVIO PARADO — sem canal Telegram; alarme só neste summary.\n\n" + msg)
+              else:
+                  data = urllib.parse.urlencode({"chat_id": tg_chat, "text": msg}).encode()
+                  try:
+                      urllib.request.urlopen(
+                          urllib.request.Request(
+                              f"https://api.telegram.org/bot{tg_token}/sendMessage",
+                              data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}),
+                          timeout=30).read()
+                      avisado = True
+                  except Exception as e:
+                      avisado = f"FALHOU: {type(e).__name__}"
           else:
               avisado = "nao_aplicavel"
 
