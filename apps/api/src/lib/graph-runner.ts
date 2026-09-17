@@ -1115,6 +1115,15 @@ export async function advanceRun(
       if (humanGated) continue;
       const id = await substrate.startStep({ runId, node: "__invalid_g03__" });
       await substrate.finishStep(id, { status: "failed", summary: `${G03_INVALID}; legacy upstream artifact` });
+      // A halted run has nothing left to wait for. On 16/09 the two runs this
+      // guard closed kept their `wait-72h` step as `waiting` forever — and
+      // "what is waiting?" is read from agent_step.status (house rule since the
+      // 18/08 starvation incident), so a dead wait reads as live work.
+      for (const st of byNode.values()) {
+        if (st.status === "waiting") {
+          await substrate.finishStep(st.id, { status: "skipped", summary: `${G03_INVALID}; run halted — wait abandoned, nothing measured` });
+        }
+      }
       await substrate.finishRun(runId, "failed");
       return { status: "failed", started, notes: [G03_INVALID] };
     }

@@ -1210,7 +1210,9 @@ export function packEvidenceFromAnswers(
       cited: a.cited === true,
       rank: a.rank ?? null,
       winners: Array.isArray(a.competitors) ? a.competitors : [],
-      sources: (Array.isArray(a.citations) ? a.citations : []).map(sourceDomain).filter(Boolean),
+      // De-duplicated, order kept: two citations from the same site are ONE
+      // source. The packs of 17/09 printed "google.com, google.com".
+      sources: [...new Set((Array.isArray(a.citations) ? a.citations : []).map(sourceDomain).filter(Boolean))],
       ...(a.absent === true ? { absent: true } : {}),
     });
     observations.push({

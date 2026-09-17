@@ -106,3 +106,21 @@ describe("an unchecked name is not 'nobody named'", () => {
     expect(script).toContain("competitorsGiven: options.competitors.length > 0");
   });
 });
+
+describe("two citations from the same site are one source", () => {
+  it("packEvidenceFromAnswers de-duplicates source domains and keeps their order", async () => {
+    const { packEvidenceFromAnswers } = await import("../../packages/llm/src/design-partner-pack");
+    const out = packEvidenceFromAnswers([
+      {
+        question: "Who is the best plumber in Louisville, Kentucky?",
+        engine: "openai",
+        cited: false,
+        rank: null,
+        competitors: [],
+        citations: ["https://www.google.com/maps/a", "https://google.com/search?q=b", "https://yelp.com/x", "https://www.google.com/c"],
+      } as never,
+    ] as never, { auditId: "t", market: "United States - English", locale: "en-US", methodologyVersion: "2.2" });
+    const findings = (out as { findings: Array<{ sources: string[] }> }).findings;
+    expect(findings[0]!.sources).toEqual(["google.com", "yelp.com"]);
+  });
+});
