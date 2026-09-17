@@ -22,6 +22,7 @@ Commands:
   personalize                   stdin: JSON list of leads -> custom fields / reasons
   create  [--confirm]           create/refresh the two DRAFTED campaigns
   load    [--confirm]           move eligible untouched leads into them
+  prospect --trade T --limit N  SmartProspect: free search; --confirm SPENDS up to N credits
 Stdlib only. SMARTLEAD key: env SL_KEY.
 """
 from __future__ import annotations
@@ -563,9 +564,170 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     return 0 if ok else 1
 
 
+# --------------------------------------------------------------------------
+# 5. SmartProspect (lead finder) by API — search is free, FETCH spends credits
+# --------------------------------------------------------------------------
+# 17/09: the founder asked to spend the lead-finder credits on the ICP and load
+# the result into today's campaigns. Driving the UI by clicks was slow and
+# fragile; SmartLead documents the same thing as an API:
+#   POST search-contacts  -> total_count + filter_id          (free)
+#   POST fetch-contacts   -> unlocks e-mails, 1 credit each   (SPENDS)
+#   POST get-contacts     -> the unlocked contacts, filterable by verification
+# Rules: rehearsal by default (search only); --confirm spends AT MOST --limit
+# credits; only `valid` e-mails are loaded (the account shows bounce-critical
+# mailboxes); a contact that cannot be personalized is not loaded; nothing is
+# ever started. Aggregates only in the output — never a name or an address.
+
+PROSPECT_BASE = "https://prospect-api.smartlead.ai/api/v1/search-email-leads"
+FREE_MAIL = re.compile(r"@(gmail|yahoo|hotmail|outlook|aol|icloud|me|msn|live|comcast|att|verizon|sbcglobal)\.", re.I)
+
+# What the buyer's company NAME has to contain, per trade. The name must carry
+# the trade, or the lead cannot be personalized afterwards and the credit is wasted.
+TRADE_SEARCH = {
+    "roofing": ["Roofing"], "hvac": ["HVAC", "Heating and Cooling", "Heating & Cooling", "Air Conditioning"],
+    "plumbing": ["Plumbing"], "remodeling": ["Remodeling"], "electrical": ["Electric"],
+    "landscaping": ["Landscaping"], "painting": ["Painting"], "concrete/paving": ["Concrete", "Paving"],
+    "flooring": ["Flooring"], "fencing": ["Fence", "Fencing"], "pest": ["Pest Control"],
+    "cleaning": ["Cleaning"], "pool": ["Pools"], "garage/doors": ["Garage Door"],
+    "law firm": ["Law Firm", "Law Office"], "agency/saas": ["Marketing Agency"],
+    "it services": ["IT Services", "Managed Services"], "design/media": ["Design Studio"],
+}
+
+
+def sp(path: str, payload: dict):
+    key = os.environ.get("SL_KEY", "")
+    req = urllib.request.Request(f"{PROSPECT_BASE}/{path}?api_key={key}", data=json.dumps(payload).encode(),
+                                 headers=dict(UA, **{"Content-Type": "application/json"}), method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            body = r.read().decode()
+            return r.status, (json.loads(body) if body.strip() else {})
+    except urllib.error.HTTPError as e:
+        return e.code, {"_http_error": e.code, "_body": e.read().decode(errors="replace")[:240]}
+    except Exception as e:  # noqa: BLE001
+        return 0, {"_error": type(e).__name__}
+
+
+def search_payload(trade: str, limit: int) -> dict:
+    return {"limit": max(1, min(500, limit)), "title": ["owner", "founder", "president"],
+            "companyName": TRADE_SEARCH[trade], "companyHeadCount": ["0 - 25", "25 - 100"],
+            "country": ["United States"], "dontDisplayOwnedContact": True}
+
+
+def contact_to_lead(c: dict) -> dict:
+    """SmartProspect contact -> the lead shape personalize() reads. Tolerant on
+    purpose: the docs show `company: {name, website}` and do not list location."""
+    company = c.get("company")
+    comp = company if isinstance(company, dict) else {}
+    name = comp.get("name") or (company if isinstance(company, str) else "") or c.get("companyName") or ""
+    website = comp.get("website") or comp.get("domain") or c.get("companyDomain") or c.get("website") or ""
+    email = (c.get("email") or "").strip()
+    if not website and email and "@" in email and not FREE_MAIL.search(email):
+        website = email.split("@", 1)[1]          # a verified business address lives on the company's own domain
+    loc = c.get("location")
+    if not isinstance(loc, str) or not loc.strip():
+        loc = ", ".join(str(c.get(k) or comp.get(k) or "").strip() for k in ("city", "state", "country")
+                        if str(c.get(k) or comp.get(k) or "").strip())
+    return {"first_name": (c.get("firstName") or "").strip(), "last_name": (c.get("lastName") or "").strip(),
+            "email": email, "company_name": str(name).strip(), "website": str(website).strip(), "location": loc}
+
+
+def shape_of(obj, depth: int = 0):
+    """Key structure only — never a value. How the first contact is shaped."""
+    if isinstance(obj, dict) and depth < 2:
+        return {k: shape_of(v, depth + 1) for k, v in sorted(obj.items())}
+    return type(obj).__name__
+
+
+def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool) -> int:
+    if trade not in TRADE_SEARCH or trade not in copy["segments"]:
+        out({"ok": False, "motivo": f"oficio '{trade}' sem palavras de busca ou sem copy", "oficios": sorted(TRADE_SEARCH)})
+        return 1
+    s, d = sp("search-contacts", search_payload(trade, limit))
+    data = d.get("data") if isinstance(d, dict) else None
+    if bad(s, d) or not isinstance(data, dict) or not d.get("success", True):
+        out({"ok": False, "etapa": "search", "http": s, "resp": json.dumps(d)[:300]})
+        return 1
+    page = data.get("list") or []
+    reasons: dict[str, int] = {}
+    fit = 0
+    for c in page:
+        res, why = personalize(copy, contact_to_lead(c))
+        if res and res["segment"] == trade:
+            fit += 1
+        else:
+            why = why or f"classificado_como_{res['segment']}"
+            reasons[why] = reasons.get(why, 0) + 1
+    summary = {"oficio": trade, "busca": TRADE_SEARCH[trade], "total_na_base": data.get("total_count"),
+               "filter_id": data.get("filter_id"), "amostra": len(page), "amostra_personalizavel": fit,
+               "amostra_fora_por_motivo": reasons, "forma_do_contato": shape_of(page[0]) if page else None}
+    if not confirm:
+        out(dict(summary, ok=True, modo="ENSAIO — busca gratis, NENHUM credito gasto",
+                 nota="sem e-mail ainda, o site pode faltar na amostra; apos o fetch ele vem do dominio do e-mail",
+                 para_executar=f"re-correr com confirm=yes: gasta ate {limit} creditos (1 por e-mail encontrado)"))
+        return 0
+    by_name = campaign_index()
+    dest, notes, abort = resolve_destinations(by_name, names, True)
+    if abort:
+        out({"ok": False, "motivo": abort, "creditos_gastos": 0})
+        return 1
+    s, f = sp("fetch-contacts", {"filter_id": data["filter_id"], "limit": limit, "visual_limit": 1000})
+    fdata = f.get("data") if isinstance(f, dict) else None
+    if bad(s, f) or not isinstance(f, dict) or f.get("success") is False:
+        out(dict(summary, ok=False, etapa="fetch", http=s, resp=json.dumps(f)[:300]))
+        return 1
+    import time
+    metrics = (fdata or {}).get("metrics") or {}
+    contacts: list[dict] = []
+    deadline = time.time() + 15 * 60
+    while time.time() < deadline:
+        s, g = sp("get-contacts", {"filter_id": data["filter_id"], "limit": 1000, "offset": 0, "verification_status": "valid"})
+        gdata = g.get("data") if isinstance(g, dict) else None
+        contacts = (gdata or {}).get("list") or []
+        metrics = (gdata or {}).get("metrics") or metrics
+        if metrics.get("completed") in (True, 1, "true") or (not metrics and contacts):
+            break
+        time.sleep(15)
+    picked = {"geo": [], "stack": []}
+    seen: set[str] = set()
+    for c in contacts:
+        lead = contact_to_lead(c)
+        res, why = personalize(copy, lead)
+        if not res or not lead["email"]:
+            why = why or "sem_email"
+            reasons[why] = reasons.get(why, 0) + 1
+            continue
+        dom = lead["email"].split("@", 1)[1].lower()
+        if dom in seen:
+            reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
+            continue
+        seen.add(dom)
+        picked[res["route"]].append(dict(lead, custom_fields=res["custom_fields"]))
+    added, fail, first_error = {}, 0, None
+    for key in ("geo", "stack"):
+        group = picked[key]
+        for i in range(0, len(group), 100):
+            chunk = group[i:i + 100]
+            payload = {"lead_list": [{k: r[k] for k in ("email", "first_name", "last_name", "company_name", "website", "location", "custom_fields")} for r in chunk],
+                       "settings": {"ignore_global_block_list": False, "ignore_unsubscribe_list": False}}
+            s2, d2 = sl(f"/campaigns/{dest[key]}/leads", payload, method="POST")
+            if bad(s2, d2):
+                fail += len(chunk)
+                first_error = first_error or {"http": s2, "resp": json.dumps(d2)[:200]}
+                break
+            added[names[key]] = added.get(names[key], 0) + len(chunk)
+    out(dict(summary, ok=fail == 0, modo="execucao", metricas_do_fetch=metrics, validos_lidos=len(contacts),
+             carregadas=added, fora_por_motivo=reasons, falhas_add=fail, primeiro_erro=first_error,
+             forma_do_contato_desbloqueado=shape_of({k: v for k, v in (contacts[0] if contacts else {}).items()}),
+             nunca_iniciada="as campanhas continuam DRAFTED/PAUSED — quem inicia e o founder"))
+    return 0 if fail == 0 else 1
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect"])
+    ap.add_argument("--trade", default="roofing")
+    ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--copy", default=COPY_PATH)
     ap.add_argument("--segment", default="roofing")
     ap.add_argument("--geo-name", default="")
@@ -607,6 +769,11 @@ def main(argv: list[str]) -> int:
         return 1
     if a.command == "create":
         return cmd_create(copy, names, a.confirm)
+    if a.command == "prospect":
+        if not 1 <= a.limit <= 500:
+            out({"ok": False, "motivo": "limit tem de estar entre 1 e 500 por corrida (teto de creditos por corrida)"})
+            return 1
+        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm)
     sources = [s.strip() for s in a.sources.split(",") if s.strip()]
     return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm)
 

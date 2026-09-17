@@ -17,6 +17,10 @@ name: SmartLead campaigns v4 (AI Geo Search + AI Audit Stack, founder-triggered)
 #                  sem ofício reconhecido, sem cidade, sem primeiro nome, com
 #                  STOP, fora dos EUA, franquia ou site morto NÃO entra.
 #
+#   action=prospect  SmartProspect por API: a busca e GRATIS (ensaio); com
+#                  confirm=yes desbloqueia ATE `limit` e-mails (1 credito cada),
+#                  carrega so os VERIFICADOS e personalizaveis nas duas campanhas.
+#
 # TRAVAS: confirm=no (default) é ENSAIO — nada é criado, nada é movido, só
 # agregados. Nunca há ação start: quem inicia é o founder, pelo
 # smartlead-launch.yml (confirm=GO). Campanha de destino ativa = abortado
@@ -27,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create | load"
+        description: "create | load | prospect"
         required: true
         default: "create"
       confirm:
@@ -50,6 +54,14 @@ on:
         description: "load: teto de leads por campanha de destino (lista <=800)"
         required: false
         default: "800"
+      trade:
+        description: "prospect: oficio a procurar no SmartProspect (roofing, hvac, plumbing, remodeling, electrical, ...)"
+        required: false
+        default: "roofing"
+      limit:
+        description: "prospect: teto de CREDITOS desta corrida (1-500; 1 credito por e-mail encontrado). Sem confirm=yes nada e gasto"
+        required: false
+        default: "25"
       site_check:
         description: "load: yes = só entra lead cujo site responde (HTTP <400)"
         required: false
@@ -78,16 +90,21 @@ jobs:
           SOURCES: ${{ github.event.inputs.sources }}
           CAP: ${{ github.event.inputs.cap }}
           SITE_CHECK: ${{ github.event.inputs.site_check }}
+          TRADE: ${{ github.event.inputs.trade }}
+          LIMIT: ${{ github.event.inputs.limit }}
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
-          case "${ACTION}" in create|load) ;; *) echo "::error::action tem de ser create ou load"; exit 1;; esac
+          case "${ACTION}" in create|load|prospect) ;; *) echo "::error::action tem de ser create, load ou prospect"; exit 1;; esac
           args=("${ACTION}")
           [ -n "${GEO_NAME}" ] && args+=(--geo-name "${GEO_NAME}")
           [ -n "${STACK_NAME}" ] && args+=(--stack-name "${STACK_NAME}")
           if [ "${ACTION}" = "load" ]; then
             args+=(--sources "${SOURCES}" --cap "${CAP}")
             [ "${SITE_CHECK}" = "yes" ] || args+=(--no-site-check)
+          fi
+          if [ "${ACTION}" = "prospect" ]; then
+            args+=(--trade "${TRADE}" --limit "${LIMIT}")
           fi
           [ "${CONFIRM}" = "yes" ] && args+=(--confirm)
           python3 scripts/smartlead/campaigns_v4.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
