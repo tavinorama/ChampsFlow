@@ -209,6 +209,28 @@ describe("G03 containment: actual runner and worker ports", () => {
     expect(vi.mocked(w.ports.telegram).mock.calls.filter((c) => String(c[0]).includes("G03"))).toHaveLength(1);
   });
 
+  it("a halted run leaves nothing waiting: its parked wait is closed as skipped", async () => {
+    const earlier = new Date(new Date(NOW).getTime() - 60 * 60 * 1000).toISOString();
+    const w = world([
+      { id: "memory", kind: "snapshot", dependsOn: [], config: { source: "outcomes" } },
+      { id: "approval", kind: "approval", dependsOn: ["memory"] },
+      { id: "publish", kind: "publish", dependsOn: ["approval"] },
+      { id: "wait-72h", kind: "wait", dependsOn: ["publish"], config: { hours: 72 } },
+    ]);
+    w.def.vpOwner = "marketing";
+    w.seed("memory", "RESULTADOS REAIS legacy 66923770", "succeeded", earlier);
+    w.seed("approval", "approved before anyone warned", "succeeded", earlier);
+    w.seed("publish", "published via postiz channel=x", "succeeded", earlier);
+    w.seed("wait-72h", "waiting 72h", "waiting", earlier);
+    const res = await w.tick();
+    expect(res.status).toBe("failed");
+    expect(w.steps.filter((s) => s.status === "waiting")).toEqual([]);
+    const wait = w.steps.find((s) => s.node === "wait-72h");
+    expect(wait?.status).toBe("skipped");
+    expect(String(wait?.summary)).toContain("run halted");
+    expect(w.ports.hermes.publish).not.toHaveBeenCalled(); // nothing new went out
+  });
+
   it("an approval recorded AFTER the G03 review is a real human gate — the run continues", async () => {
     const earlier = new Date(new Date(NOW).getTime() - 60 * 60 * 1000).toISOString();
     const later = new Date(new Date(NOW).getTime() + 60 * 1000).toISOString();
