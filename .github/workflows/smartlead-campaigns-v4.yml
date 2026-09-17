@@ -50,6 +50,10 @@ on:
         description: "load: ids das campanhas de origem (só leads STARTED saem delas)"
         required: false
         default: "3741204,3783524,3783526"
+      touched_sources:
+        description: "load: ids de campanhas JA ENVIADAS cujas leads COMPLETED podem ser reusadas (sai bounce, resposta e STOP, lidos do proprio SmartLead). Vazio = nenhuma"
+        required: false
+        default: ""
       cap:
         description: "load: teto de leads por campanha de destino (lista <=800)"
         required: false
@@ -89,6 +93,7 @@ jobs:
           STACK_NAME: ${{ github.event.inputs.stack_name }}
           SOURCES: ${{ github.event.inputs.sources }}
           CAP: ${{ github.event.inputs.cap }}
+          TOUCHED: ${{ github.event.inputs.touched_sources }}
           SITE_CHECK: ${{ github.event.inputs.site_check }}
           TRADE: ${{ github.event.inputs.trade }}
           LIMIT: ${{ github.event.inputs.limit }}
@@ -102,6 +107,7 @@ jobs:
           if [ "${ACTION}" = "load" ]; then
             args+=(--sources "${SOURCES}" --cap "${CAP}")
             [ "${SITE_CHECK}" = "yes" ] || args+=(--no-site-check)
+            [ -n "${TOUCHED}" ] && args+=(--touched-sources "${TOUCHED}")
           fi
           if [ "${ACTION}" = "prospect" ]; then
             args+=(--trade "${TRADE}" --limit "${LIMIT}")

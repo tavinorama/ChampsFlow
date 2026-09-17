@@ -446,6 +446,45 @@ def fetch_leads(cid: str) -> list[dict]:
     return rows
 
 
+def campaign_suppression(cid: str) -> tuple[set[str], dict]:
+    """E-mails of a campaign that must never be written to again, from
+    SmartLead's OWN per-lead statistics: bounced, replied, unsubscribed.
+    Returns (set, facts). Nothing is printed but counts. A campaign whose
+    statistics cannot be read yields facts["ok"] = False and the caller leaves
+    its touched leads OUT (fail closed)."""
+    suppress: set[str] = set()
+    facts = {"ok": False, "linhas": 0, "bounced": 0, "replied": 0, "unsub": 0, "chaves": []}
+    bounced, replied, unsub = set(), set(), set()
+    off = 0
+    while True:
+        s, d = sl(f"/campaigns/{cid}/statistics?offset={off}&limit=100")
+        rows = d.get("data") if isinstance(d, dict) else None
+        if bad(s, d) or rows is None:
+            return set(), facts
+        if not rows:
+            break
+        if not facts["chaves"]:
+            facts["chaves"] = sorted(rows[0].keys())[:40]
+        for r in rows:
+            em = str(r.get("lead_email") or "").strip().lower()
+            if not em:
+                continue
+            if r.get("is_bounced"):
+                bounced.add(em)
+            if r.get("reply_time"):
+                replied.add(em)
+            if r.get("is_unsubscribed"):
+                unsub.add(em)
+        facts["linhas"] += len(rows)
+        off += len(rows)
+        if off > 60000:
+            break
+    known = {"is_bounced", "reply_time", "is_unsubscribed", "lead_email"}
+    facts.update(bounced=len(bounced), replied=len(replied), unsub=len(unsub),
+                 ok=facts["linhas"] > 0 and known.issubset(set(facts["chaves"])))
+    return (bounced | replied | unsub), facts
+
+
 def site_alive(url: str) -> bool:
     target = url if re.match(r"^https?://", url, re.I) else f"https://{url}"
     try:
@@ -477,7 +516,8 @@ def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dic
     return dest, notes, ""
 
 
-def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool) -> int:
+def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool,
+             touched_sources: list[str] | None = None) -> int:
     by_name = campaign_index()
     dest, dest_notes, abort = resolve_destinations(by_name, names, confirm)
     if abort:
@@ -488,13 +528,37 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     picked = {"geo": [], "stack": []}
     by_segment: dict[str, int] = {}
     read = 0
-    for cid in sources:
+    # 17/09, founder: also use the leads of the old campaigns, minus bounces and
+    # STOPs. A touched lead (COMPLETED) enters only when SmartLead's own
+    # statistics for that campaign could be read and do not show a bounce, a
+    # reply or an unsubscribe for it. People who replied are left to a human.
+    touched_sources = touched_sources or []
+    suppress: set[str] = set()
+    suppression_facts: dict[str, dict] = {}
+    readable: set[str] = set()
+    for cid in touched_sources:
+        sset, facts = campaign_suppression(cid)
+        suppression_facts[cid] = {k: v for k, v in facts.items() if k != "chaves"} | {"chaves_ok": facts["ok"]}
+        if facts["ok"]:
+            readable.add(cid)
+            suppress |= sset
+    for cid in list(sources) + [c for c in touched_sources if c not in sources]:
+        is_touched_source = cid in touched_sources
         for row in fetch_leads(cid):
             read += 1
             lead = dict(row.get("lead") or row)
             lead["lead_category_id"] = row.get("lead_category_id")
             status = str(row.get("status") or "").strip().upper()
-            if status != "STARTED":          # STARTED = imported, never e-mailed (measured 11/09)
+            email_l = str(lead.get("email") or "").strip().lower()
+            if email_l in suppress:
+                reasons["bounce_resposta_ou_stop"] = reasons.get("bounce_resposta_ou_stop", 0) + 1
+                continue
+            if status == "COMPLETED" and is_touched_source:
+                if cid not in readable:
+                    reasons["tocada_sem_estatistica_legivel"] = reasons.get("tocada_sem_estatistica_legivel", 0) + 1
+                    continue
+                lead["_touched"] = True
+            elif status != "STARTED":        # STARTED = imported, never e-mailed (measured 11/09)
                 reasons["ja_tocada_ou_bloqueada"] = reasons.get("ja_tocada_ou_bloqueada", 0) + 1
                 continue
             res, why = personalize(copy, lead)
@@ -506,7 +570,7 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
                 continue
             seen_domains.add(domain)
-            res.update({"lead_id": lead.get("id"), "source": cid, "email": lead.get("email"),
+            res.update({"lead_id": lead.get("id"), "source": cid, "email": lead.get("email"), "touched": bool(lead.get("_touched")),
                         "first_name": lead.get("first_name"), "last_name": lead.get("last_name"),
                         "company_name": lead.get("company_name"), "website": lead.get("website") or lead.get("company_url"),
                         "location": lead.get("location")})
@@ -530,7 +594,9 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
     summary = {"leads_lidas": read, "elegiveis": {k: len(v) for k, v in picked.items()},
                "por_segmento": dict(sorted(by_segment.items(), key=lambda x: -x[1])),
                "fora_por_motivo": dict(sorted(reasons.items(), key=lambda x: -x[1])),
-               "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes}
+               "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes,
+               "das_quais_ja_tocadas_na_leva_1": sum(1 for k in picked for r in picked[k] if r.get("touched")),
+               "supressao_por_campanha": suppression_facts}
     if not confirm:
         sample = None
         if picked["geo"]:
@@ -542,11 +608,14 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                  para_executar="re-correr com confirm=yes"))
         return 0
     added, removed, add_fail, del_fail, first_error = {}, 0, 0, 0, None
+    api_counts: dict[str, float] = {}
+    api_keys: set[str] = set()
     for key in ("geo", "stack"):
         group = picked[key]
         for i in range(0, len(group), 100):
             chunk = group[i:i + 100]
-            payload = {"lead_list": [{"email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
+            payload = {"settings": {"ignore_global_block_list": False, "ignore_unsubscribe_list": False},
+                       "lead_list": [{"email": r["email"], "first_name": r["first_name"], "last_name": r["last_name"],
                                       "company_name": r["company_name"], "website": r["website"],
                                       "location": r["location"], "custom_fields": r["custom_fields"]}
                                      for r in chunk if r.get("email")]}
@@ -556,7 +625,16 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 first_error = first_error or {"etapa": "add", "http": s, "resp": json.dumps(d)[:200]}
                 break
             added[names[key]] = added.get(names[key], 0) + len(payload["lead_list"])
+            # What SmartLead SAYS it did with them — "sent" is not "uploaded".
+            if isinstance(d, dict):
+                for k2 in ("upload_count", "total_leads", "already_added_to_campaign", "duplicate_count",
+                           "invalid_email_count", "unsubscribed_leads", "block_count", "is_lead_limit_exhausted"):
+                    if isinstance(d.get(k2), (int, float)) and not isinstance(d.get(k2), bool):
+                        api_counts[k2] = api_counts.get(k2, 0) + d[k2]
+                api_keys.update(d.keys())
             for r in chunk:
+                if r.get("touched"):
+                    continue            # a touched lead keeps its history in the campaign that e-mailed it
                 s2, d2 = sl(f"/campaigns/{r['source']}/leads/{r['lead_id']}", method="DELETE")
                 if bad(s2, d2):
                     del_fail += 1
@@ -566,7 +644,8 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 else:
                     removed += 1
     ok = add_fail == 0 and del_fail == 0
-    out(dict(summary, ok=ok, modo="execucao", adicionadas=added, removidas_da_origem=removed,
+    out(dict(summary, ok=ok, modo="execucao", enviadas_ao_smartlead=added, contagem_do_smartlead=api_counts,
+             chaves_da_resposta_add=sorted(api_keys)[:20], removidas_da_origem=removed,
              falhas_add=add_fail, falhas_delete=del_fail, primeiro_erro=first_error,
              nunca_iniciada="as campanhas continuam DRAFTED/PAUSED — quem inicia e o founder"))
     return 0 if ok else 1
@@ -752,6 +831,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--stack-name", default="")
     ap.add_argument("--sources", default="3741204,3783524,3783526")
     ap.add_argument("--cap", type=int, default=800)
+    ap.add_argument("--touched-sources", default="", help="campaigns whose COMPLETED leads may be re-used (minus bounce/reply/unsub)")
     ap.add_argument("--no-site-check", action="store_true")
     ap.add_argument("--confirm", action="store_true")
     a = ap.parse_args(argv)
@@ -793,7 +873,8 @@ def main(argv: list[str]) -> int:
             return 1
         return cmd_prospect(copy, names, a.trade, a.limit, a.confirm)
     sources = [s.strip() for s in a.sources.split(",") if s.strip()]
-    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm)
+    touched = [x.strip() for x in a.touched_sources.split(",") if x.strip()]
+    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm, touched)
 
 
 if __name__ == "__main__":
