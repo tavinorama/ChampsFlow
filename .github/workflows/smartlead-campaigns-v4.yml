@@ -66,6 +66,10 @@ on:
         description: "prospect: teto de CREDITOS desta corrida (1-500; 1 credito por e-mail encontrado). Sem confirm=yes nada e gasto"
         required: false
         default: "25"
+      filter_id:
+        description: "prospect: RECOLHER um desbloqueio ja feito (filter_id do resultado anterior). Nao gasta credito. Vazio = busca nova"
+        required: false
+        default: ""
       site_check:
         description: "load: yes = só entra lead cujo site responde (HTTP <400)"
         required: false
@@ -97,6 +101,7 @@ jobs:
           SITE_CHECK: ${{ github.event.inputs.site_check }}
           TRADE: ${{ github.event.inputs.trade }}
           LIMIT: ${{ github.event.inputs.limit }}
+          FILTER_ID: ${{ github.event.inputs.filter_id }}
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
@@ -111,6 +116,7 @@ jobs:
           fi
           if [ "${ACTION}" = "prospect" ]; then
             args+=(--trade "${TRADE}" --limit "${LIMIT}")
+            [ -n "${FILTER_ID}" ] && args+=(--filter-id "${FILTER_ID}")
           fi
           [ "${CONFIRM}" = "yes" ] && args+=(--confirm)
           python3 scripts/smartlead/campaigns_v4.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"

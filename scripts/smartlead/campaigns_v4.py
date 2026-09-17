@@ -726,15 +726,20 @@ def shape_of(obj, depth: int = 0):
     return type(obj).__name__
 
 
-def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool) -> int:
+def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool, filter_id: int = 0) -> int:
     if trade not in TRADE_SEARCH or trade not in copy["segments"]:
         out({"ok": False, "motivo": f"oficio '{trade}' sem palavras de busca ou sem copy", "oficios": sorted(TRADE_SEARCH)})
         return 1
-    s, d = sp("search-contacts", search_payload(trade, limit))
-    data = d.get("data") if isinstance(d, dict) else None
-    if bad(s, d) or not isinstance(data, dict) or not d.get("success", True):
-        out({"ok": False, "etapa": "search", "http": s, "resp": json.dumps(d)[:300]})
-        return 1
+    if filter_id:
+        # COLLECT: an unlock that already happened (and was already paid for).
+        # No search, no fetch, no credit — only read the valid contacts and load.
+        data = {"filter_id": filter_id, "total_count": None, "list": []}
+    else:
+        s, d = sp("search-contacts", search_payload(trade, limit))
+        data = d.get("data") if isinstance(d, dict) else None
+        if bad(s, d) or not isinstance(data, dict) or not d.get("success", True):
+            out({"ok": False, "etapa": "search", "http": s, "resp": json.dumps(d)[:300]})
+            return 1
     page = data.get("list") or []
     reasons: dict[str, int] = {}
     fit = 0
@@ -758,31 +763,40 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool)
     if abort:
         out({"ok": False, "motivo": abort, "creditos_gastos": 0})
         return 1
-    s, f = sp("fetch-contacts", {"filter_id": data["filter_id"], "limit": limit, "visual_limit": 1000})
-    fdata = f.get("data") if isinstance(f, dict) else None
-    if bad(s, f) or not isinstance(f, dict) or f.get("success") is False:
-        out(dict(summary, ok=False, etapa="fetch", http=s, resp=json.dumps(f)[:300]))
-        return 1
+    fdata = None
+    if not filter_id:
+        s, f = sp("fetch-contacts", {"filter_id": data["filter_id"], "limit": limit, "visual_limit": 1000})
+        fdata = f.get("data") if isinstance(f, dict) else None
+        if bad(s, f) or not isinstance(f, dict) or f.get("success") is False:
+            out(dict(summary, ok=False, etapa="fetch", http=s, resp=json.dumps(f)[:300]))
+            return 1
     import time
     metrics = (fdata or {}).get("metrics") or {}
     contacts: list[dict] = []
-    stable, last_n = 0, -1
-    deadline = time.time() + 15 * 60
+    stable, last_sig = 0, None
+    deadline = time.time() + 30 * 60
     while time.time() < deadline:
-        s, g = sp("get-contacts", {"filter_id": data["filter_id"], "limit": 1000, "offset": 0, "verification_status": "valid"})
-        gdata = g.get("data") if isinstance(g, dict) else None
-        contacts = (gdata or {}).get("list") or []
-        metrics = (gdata or {}).get("metrics") or metrics
-        # `completed` is a COUNT of processed contacts (measured 17/09: 9 of 10),
-        # not a boolean. Done = every contact processed, or the valid list stopped
-        # growing for three polls in a row.
-        done_n = metrics.get("completed")
-        total_n = metrics.get("totalEmails") or metrics.get("totalContacts") or 0
-        if isinstance(done_n, (int, float)) and not isinstance(done_n, bool) and total_n and done_n >= total_n:
-            break
-        stable = stable + 1 if len(contacts) == last_n and contacts else 0
-        last_n = len(contacts)
-        if stable >= 3:
+        contacts, off = [], 0
+        while True:
+            s, g = sp("get-contacts", {"filter_id": data["filter_id"], "limit": 1000, "offset": off, "verification_status": "valid"})
+            gdata = g.get("data") if isinstance(g, dict) else None
+            chunk = (gdata or {}).get("list") or []
+            metrics = (gdata or {}).get("metrics") or metrics
+            contacts.extend(chunk)
+            off += len(chunk)
+            if len(chunk) < 1000:
+                break
+        # The unlock is ASYNCHRONOUS and `completed` is a running COUNT (17/09: a
+        # 300-contact batch read `completed: 52` and was taken for finished — 19
+        # leads loaded, ~250 left behind, credits spent). There is no reliable
+        # "done" flag: the final count can stay below totalContacts. Done = the
+        # processed count AND the valid list both stopped moving for 8 polls in a
+        # row (2 minutes), after at least one contact was processed.
+        done_n = metrics.get("completed") or 0
+        sig = (done_n, len(contacts))
+        stable = stable + 1 if (sig == last_sig and done_n) else 0
+        last_sig = sig
+        if stable >= 8:
             break
         time.sleep(15)
     picked = {"geo": [], "stack": []}
@@ -825,6 +839,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
+    ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
     ap.add_argument("--copy", default=COPY_PATH)
     ap.add_argument("--segment", default="roofing")
     ap.add_argument("--geo-name", default="")
@@ -871,7 +886,7 @@ def main(argv: list[str]) -> int:
         if not 1 <= a.limit <= 500:
             out({"ok": False, "motivo": "limit tem de estar entre 1 e 500 por corrida (teto de creditos por corrida)"})
             return 1
-        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm)
+        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm, a.filter_id)
     sources = [s.strip() for s in a.sources.split(",") if s.strip()]
     touched = [x.strip() for x in a.touched_sources.split(",") if x.strip()]
     return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm, touched)
