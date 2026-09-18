@@ -21,7 +21,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(__dirname, "../..");
-const read = (p: string) => readFileSync(join(root, p), "utf8");
+const readOne = (p: string) => readFileSync(join(root, p), "utf8");
+// 18/09: the send watch's measuring and alarming moved out of the YAML into a
+// tested script. What this suite pins (the alarm is still sent, the missing
+// channel is still named, a real stop is still red) now lives across the two.
+const SCRIPT_OF: Record<string, string> = { ".github/workflows/smartlead-send-watch.yml": "scripts/smartlead/send_watch.py" };
+const read = (p: string) => readOne(p) + (SCRIPT_OF[p] ? "\n" + readOne(SCRIPT_OF[p]) : "");
 
 const WORKFLOWS = [
   ".github/workflows/post-deploy-smoke.yml",
@@ -89,6 +94,6 @@ describe("T0.3 — the alarm-channel check warns and never skips the probe", () 
     expect(src).not.toContain("o vigia falha VERMELHO de propósito");
     expect(src).toContain("sem_canal (TELEGRAM_* ausentes nos secrets do Actions)");
     // a stopped send is still red with or without the channel
-    expect(src).toContain("raise SystemExit(1)");
+    expect(src).toContain('return 1 if verdict["envio_parado"] else 0');
   });
 });
