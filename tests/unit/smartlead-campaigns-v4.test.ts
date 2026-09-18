@@ -279,3 +279,36 @@ describe("the workflow cannot send or start anything by accident", () => {
     expect(over.status).toBe(1);
   });
 });
+
+describe("18/09: every lead says where it came from, and the sending domains can be checked", () => {
+  it("source_tag is short, lowercase and never part of the copy", () => {
+    const r = spawnSync("python3", ["-c", [
+      "import importlib.util, json",
+      `spec = importlib.util.spec_from_file_location('m', ${JSON.stringify(SCRIPT)})`,
+      "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)",
+      "print(json.dumps({'own': m.source_tag('own', 3783524), 'sp': m.source_tag('sp', 'HVAC & Air'), 'in_copy': 'source' in m.CUSTOM_VARS}))",
+    ].join("\n")], { encoding: "utf8" });
+    expect(JSON.parse(r.stdout)).toEqual({ own: "own-3783524", sp: "sp-hvac-air", in_copy: false });
+  });
+
+  it("the load and the prospect paths both stamp the source on the lead", () => {
+    const src = readFileSync(SCRIPT, "utf8");
+    expect(src).toContain('source=source_tag("own", cid)');
+    expect(src).toContain('source=source_tag("sp", trade)');
+  });
+
+  it("domain_auth: a defect is named, and 'could not look' is never 'missing'", () => {
+    const r = py(["domain-auth"], JSON.stringify([
+      { txt: ["v=spf1 include:spf.protection.outlook.com -all"], dmarc: ["v=DMARC1; p=quarantine"], sel1: ["x"], sel2: [], mx: ["m"] },
+      { txt: ["v=spf1 a -all", "v=spf1 b -all"], dmarc: [], sel1: [], sel2: [], mx: [] },
+      { txt: ["v=spf1 include:_spf.google.com ~all"], dmarc: ["v=DMARC1; p=none"], sel1: [], sel2: ["y"], mx: ["m"] },
+      { txt: null, dmarc: null, sel1: null, sel2: null, mx: null },
+    ]));
+    expect(JSON.parse(r.stdout.trim().split("\n").pop()!)).toEqual([
+      { spf: "ok", dmarc: "p=quarantine", dkim: "ok", mx: "ok" },
+      { spf: "duplicado", dmarc: "ausente", dkim: "ausente", mx: "ausente" },
+      { spf: "sem_include_outlook", dmarc: "p=none", dkim: "ok", mx: "ok" },
+      { spf: "nao_li", dmarc: "nao_li", dkim: "nao_li", mx: "nao_li" },
+    ]);
+  });
+});

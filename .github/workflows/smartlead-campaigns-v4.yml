@@ -31,7 +31,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "create | load | prospect | prune | block | pace | inspect (so leitura)"
+        description: "create | load | prospect | prune | block | pace | inspect (so leitura) | deliverability (so leitura: SPF, DKIM e DMARC dos dominios de envio)"
         required: true
         default: "create"
       confirm:
@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
-          case "${ACTION}" in create|load|prospect|prune|inspect|block|pace) ;; *) echo "::error::action tem de ser create, load, prospect ou prune"; exit 1;; esac
+          case "${ACTION}" in create|load|prospect|prune|inspect|block|pace|deliverability) ;; *) echo "::error::action tem de ser create, load, prospect, prune, inspect, block, pace ou deliverability"; exit 1;; esac
           args=("${ACTION}")
           [ -n "${GEO_NAME}" ] && args+=(--geo-name "${GEO_NAME}")
           [ -n "${STACK_NAME}" ] && args+=(--stack-name "${STACK_NAME}")
