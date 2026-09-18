@@ -32,7 +32,9 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -332,6 +334,15 @@ def personalize(copy: dict, lead: dict) -> tuple[dict | None, str]:
 # 4. SmartLead I/O (only reached by `create` and `load`)
 # --------------------------------------------------------------------------
 
+def source_tag(kind: str, ref) -> str:
+    """Where a lead came from, kept ON the lead as the custom field `source`.
+    18/09: the first 6 bounces could not be traced to a list because nothing on
+    the lead said whether it was an own old lead or a bought, verified one.
+    own-<campaign id> = moved from one of our old campaigns; sp-<trade> = bought
+    on SmartProspect. Never used in the copy (not in CUSTOM_VARS on purpose)."""
+    return f"{kind}-{re.sub(r'[^a-z0-9]+', '-', str(ref).lower()).strip('-')}"[:40]
+
+
 def sl(path: str, payload: dict | None = None, method: str | None = None):
     key = os.environ.get("SL_KEY", "")
     url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={key}"
@@ -583,6 +594,7 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                 reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
                 continue
             seen_domains.add(domain)
+            res["custom_fields"] = dict(res["custom_fields"], source=source_tag("own", cid))
             res.update({"lead_id": lead.get("id"), "source": cid, "email": lead.get("email"), "touched": bool(lead.get("_touched")),
                         "first_name": lead.get("first_name"), "last_name": lead.get("last_name"),
                         "company_name": lead.get("company_name"), "website": lead.get("website") or lead.get("company_url"),
@@ -874,6 +886,106 @@ def cmd_bounce_watch(names: dict) -> int:
     return 1 if alarms else 0
 
 
+DOH = "https://dns.google/resolve"
+MS_SPF = "spf.protection.outlook.com"
+
+
+def dns(name: str, rtype: str) -> list[str] | None:
+    """DNS over HTTPS (stdlib has no resolver). None = could not look, which is
+    never reported as "record missing"."""
+    url = f"{DOH}?{urllib.parse.urlencode({'name': name, 'type': rtype})}"
+    for _ in range(2):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
+                d = json.load(r)
+            return [str(a.get("data") or "").replace('" "', "").strip('"') for a in d.get("Answer") or []]
+        except Exception:                        # noqa: BLE001
+            time.sleep(1)
+    return None
+
+
+def domain_auth(txt: list[str] | None, dmarc: list[str] | None, sel1: list[str] | None, sel2: list[str] | None,
+                mx: list[str] | None) -> dict:
+    """Pure verdict for one sending domain. Each field is ok | <defect> | nao_li."""
+    def spf() -> str:
+        if txt is None:
+            return "nao_li"
+        recs = [t for t in txt if t.lower().startswith("v=spf1")]
+        if not recs:
+            return "ausente"
+        if len(recs) > 1:
+            return "duplicado"                   # two SPF records = permerror, treated as none
+        r = recs[0].lower()
+        if MS_SPF not in r:
+            return "sem_include_outlook"
+        return "ok" if re.search(r"[-~]all\b", r) else "sem_all"
+
+    def dm() -> str:
+        if dmarc is None:
+            return "nao_li"
+        recs = [t for t in dmarc if t.lower().startswith("v=dmarc1")]
+        if not recs:
+            return "ausente"
+        m = re.search(r"\bp=(none|quarantine|reject)", recs[0].lower())
+        return f"p={m.group(1)}" if m else "sem_politica"
+
+    def dkim() -> str:
+        if sel1 is None and sel2 is None:
+            return "nao_li"
+        return "ok" if (sel1 or sel2) else "ausente"
+
+    return {"spf": spf(), "dmarc": dm(), "dkim": dkim(),
+            "mx": "nao_li" if mx is None else ("ok" if mx else "ausente")}
+
+
+def cmd_deliverability(names: dict) -> int:
+    """R18, read-only: SPF, DKIM and DMARC of every domain the two campaigns send
+    FROM. Public DNS only; nothing is written anywhere. Prints sending DOMAINS
+    (ours), never a mailbox address and never a lead."""
+    by_name = campaign_index()
+    domains: dict[str, int] = {}
+    unread = []
+    seen_boxes: set[str] = set()                 # the same 200 boxes serve both campaigns: count each once
+    for key in ("geo", "stack"):
+        c = by_name.get(names[key])
+        if not c:
+            unread.append(names[key])
+            continue
+        status, ea = sl(f"/campaigns/{c['id']}/email-accounts")
+        boxes = ea if isinstance(ea, list) else ((ea or {}).get("data") or [] if isinstance(ea, dict) else [])
+        if bad(status, ea) or not boxes:
+            unread.append(names[key])
+            continue
+        for b in boxes:
+            addr = str(b.get("from_email") or b.get("username") or "")
+            if "@" in addr and addr.lower() not in seen_boxes:
+                seen_boxes.add(addr.lower())
+                d = addr.rsplit("@", 1)[1].lower()
+                domains[d] = domains.get(d, 0) + 1
+    if not domains:
+        out({"ok": False, "motivo": "não consegui ler as caixas das campanhas — não verifiquei nada", "sem_leitura": unread})
+        return 1
+
+    def check(d: str) -> tuple[str, dict]:
+        return d, domain_auth(dns(d, "TXT"), dns(f"_dmarc.{d}", "TXT"), dns(f"selector1._domainkey.{d}", "CNAME"),
+                              dns(f"selector2._domainkey.{d}", "CNAME"), dns(d, "MX"))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        verdicts = dict(pool.map(check, sorted(domains)))
+    tally: dict[str, dict[str, int]] = {"spf": {}, "dkim": {}, "dmarc": {}, "mx": {}}
+    for v in verdicts.values():
+        for k in tally:
+            tally[k][v[k]] = tally[k].get(v[k], 0) + 1
+    healthy = lambda v: v["spf"] == "ok" and v["dkim"] == "ok" and v["mx"] == "ok" and v["dmarc"] in ("p=none", "p=quarantine", "p=reject")
+    broken = {d: dict(v, caixas=domains[d]) for d, v in verdicts.items() if not healthy(v)}
+    out({"ok": not broken and not unread, "dominios_de_envio": len(domains), "caixas": sum(domains.values()),
+         "caixas_por_dominio": dict(sorted(domains.items(), key=lambda kv: -kv[1])),   # OUR sending domains, never a lead's
+         "dominios_de_webmail_gratuito": sorted(d for d in domains if FREE_MAIL.search("@" + d)),
+         "resumo": tally, "dmarc_so_monitoriza_p_none": sum(1 for v in verdicts.values() if v["dmarc"] == "p=none"),
+         "dominios_com_defeito": broken, "campanhas_sem_leitura": unread,
+         "nota": "DKIM verificado pelos seletores do Microsoft 365 (selector1/selector2). p=none passa, mas não protege o domínio."})
+    return 0 if not broken and not unread else 1
+
+
 def cmd_prune(names: dict, confirm: bool) -> int:
     """Pause, inside the two NEW campaigns, the leads whose site does not answer.
     17/09: one load ran with the site check off and let in 72 leads whose site
@@ -1074,7 +1186,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
             reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
             continue
         seen.add(dom)
-        picked[res["route"]].append(dict(lead, custom_fields=res["custom_fields"]))
+        picked[res["route"]].append(dict(lead, custom_fields=dict(res["custom_fields"], source=source_tag("sp", trade))))
     added, fail, first_error = {}, 0, None
     for key in ("geo", "stack"):
         group = picked[key]
@@ -1097,7 +1209,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch", "deliverability", "domain-auth"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
@@ -1132,6 +1244,9 @@ def main(argv: list[str]) -> int:
                     print(f"--- {v['id']} (dia +{step['delay_in_days']})\nSubject: {merge(v['subject'], vals)}\n")
                     print(merge("\n".join(v["body"]), vals) + "\n")
         return 0
+    if a.command == "domain-auth":               # test seam: pure, reads stdin, no network
+        print(json.dumps([domain_auth(d.get("txt"), d.get("dmarc"), d.get("sel1"), d.get("sel2"), d.get("mx")) for d in json.load(sys.stdin)]))
+        return 0
     if a.command == "personalize":
         leads = json.load(sys.stdin)
         res = []
@@ -1151,6 +1266,8 @@ def main(argv: list[str]) -> int:
         return cmd_pace(names, a.per_day, a.days, a.confirm)
     if a.command == "bounce-watch":
         return cmd_bounce_watch(names)
+    if a.command == "deliverability":
+        return cmd_deliverability(names)
     if a.command == "inspect":
         return cmd_inspect(copy, names)
     if a.command == "prune":

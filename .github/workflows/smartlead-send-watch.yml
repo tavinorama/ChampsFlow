@@ -5,8 +5,14 @@ name: SmartLead send watch (envio parado grita)
 # aberta havia horas. Ninguém soube. Regra da casa: nada degrada calado.
 #
 # Este vigia roda dentro da janela de envio (09:00–18:00 America/New_York) e
-# compara o total enviado AGORA com o total de 1 hora atrás, guardado no cache
-# do Actions. Zero envios numa hora inteira de janela = alarme no Telegram.
+# compara o total enviado AGORA com a medição mais recente que tenha pelo menos
+# 20 horas, guardada no cache do Actions. Régua dia contra dia, de propósito:
+# em 17/09 a régua de 4 horas deu "ENVIO PARADO" com 200 e-mails enviados no
+# dia, porque a cota diária (100 leads novas por campanha) sai na primeira hora.
+# Vigia que grita falso todos os dias ensina a ignorar o vigia.
+#
+# A lógica vive em scripts/smartlead/send_watch.py (testada em
+# tests/unit/smartlead-send-watch.test.ts).
 #
 # Determinístico: python + urllib, sem LLM. Só agregados — nenhum e-mail de
 # lead entra no log (regra da casa).
@@ -47,12 +53,13 @@ jobs:
           fi
           echo "wired=$wired" >> "$GITHUB_OUTPUT"
 
-      - name: Estado anterior (cache)
-        id: cache
-        uses: actions/cache@v4
+      - uses: actions/checkout@v4
+
+      - name: Estado anterior (cache, só leitura)
+        uses: actions/cache/restore@v4
         with:
           path: .sl-watch
-          key: sl-send-watch-${{ github.run_id }}
+          key: sl-send-watch-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             sl-send-watch-
 
@@ -63,83 +70,14 @@ jobs:
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
-          python3 - <<'PYEOF' | tee -a "$GITHUB_STEP_SUMMARY"
-          import json, os, pathlib, urllib.parse, urllib.request, urllib.error
+          python3 scripts/smartlead/send_watch.py | tee -a "$GITHUB_STEP_SUMMARY"
 
-          KEY = os.environ["SL_KEY"]
-          BASE = "https://server.smartlead.ai/api/v1"
-          UA = {"User-Agent": "Mozilla/5.0 (Macintosh) OzvorOps/1.0", "Accept": "application/json"}
-
-          def get(path):
-              url = f"{BASE}{path}{'&' if '?' in path else '?'}api_key={KEY}"
-              try:
-                  with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60) as r:
-                      return json.load(r)
-              except urllib.error.HTTPError as e:
-                  return {"_http": e.code}
-              except Exception as e:
-                  return {"_erro": type(e).__name__}
-
-          camps = get("/campaigns")
-          if isinstance(camps, dict):
-              print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"GET /campaigns falhou: {camps}"}))
-              raise SystemExit(1)
-
-          ativas, total = [], 0
-          for c in camps:
-              if str(c.get("status", "")).upper() not in ("ACTIVE", "START", "STARTED"):
-                  continue
-              a = get(f"/campaigns/{c['id']}/analytics")
-              n = int(a.get("sent_count") or 0) if isinstance(a, dict) else 0
-              ativas.append({"nome": c.get("name"), "enviados": n})
-              total += n
-
-          estado = pathlib.Path(".sl-watch/estado.json")
-          antes = None
-          if estado.exists():
-              try:
-                  antes = json.loads(estado.read_text()).get("total")
-              except Exception:
-                  antes = None
-          estado.parent.mkdir(parents=True, exist_ok=True)
-          estado.write_text(json.dumps({"total": total}))
-
-          delta = None if antes is None else total - antes
-          # Sem leitura anterior não há alarme: primeira execução só grava a régua.
-          parado = delta is not None and delta <= 0 and len(ativas) > 0
-
-          if parado:
-              linhas = "\n".join(f"· {a['nome']}: {a['enviados']} enviados (acumulado)" for a in ativas)
-              msg = ("🚨 SmartLead: ENVIO PARADO\n\n"
-                     f"{len(ativas)} campanha(s) ATIVA(s) e ZERO e-mails novos desde a última medição.\n\n"
-                     f"{linhas}\n\n"
-                     "Janela de envio deveria estar aberta (09–18 Nova Iorque).\n"
-                     "Onde olhar: quota/plano da conta no painel do SmartLead, "
-                     "saúde das caixas, e se alguma campanha foi pausada na UI.")
-              tg_token, tg_chat = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
-              if not (tg_token and tg_chat):
-                  # T0.3: canal ausente não cala a medição — o vermelho e o summary ficam.
-                  avisado = "sem_canal (TELEGRAM_* ausentes nos secrets do Actions)"
-                  print("🚨 ENVIO PARADO — sem canal Telegram; alarme só neste summary.\n\n" + msg)
-              else:
-                  data = urllib.parse.urlencode({"chat_id": tg_chat, "text": msg}).encode()
-                  try:
-                      urllib.request.urlopen(
-                          urllib.request.Request(
-                              f"https://api.telegram.org/bot{tg_token}/sendMessage",
-                              data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}),
-                          timeout=30).read()
-                      avisado = True
-                  except Exception as e:
-                      avisado = f"FALHOU: {type(e).__name__}"
-          else:
-              avisado = "nao_aplicavel"
-
-          print("RESULTADO_OZVOR" + json.dumps(
-              {"ok": True, "campanhas_ativas": len(ativas), "total_enviados": total,
-               "medicao_anterior": antes, "delta": delta, "envio_parado": parado,
-               "telegram": avisado}, ensure_ascii=False))
-          # Envio parado é vermelho: o job falha para aparecer no painel do Actions.
-          if parado:
-              raise SystemExit(1)
-          PYEOF
+      # always(): o cache antigo só gravava quando o job passava, então uma
+      # corrida vermelha nunca atualizava a régua e a seguinte comparava com o
+      # mesmo número. A chave leva o run_attempt para um re-run também gravar.
+      - name: Gravar a medição (mesmo quando o alarme dispara)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .sl-watch
+          key: sl-send-watch-${{ github.run_id }}-${{ github.run_attempt }}
