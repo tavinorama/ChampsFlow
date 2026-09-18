@@ -945,6 +945,7 @@ def cmd_deliverability(names: dict) -> int:
     by_name = campaign_index()
     domains: dict[str, int] = {}
     unread = []
+    seen_boxes: set[str] = set()                 # the same 200 boxes serve both campaigns: count each once
     for key in ("geo", "stack"):
         c = by_name.get(names[key])
         if not c:
@@ -957,7 +958,8 @@ def cmd_deliverability(names: dict) -> int:
             continue
         for b in boxes:
             addr = str(b.get("from_email") or b.get("username") or "")
-            if "@" in addr:
+            if "@" in addr and addr.lower() not in seen_boxes:
+                seen_boxes.add(addr.lower())
                 d = addr.rsplit("@", 1)[1].lower()
                 domains[d] = domains.get(d, 0) + 1
     if not domains:
@@ -976,6 +978,8 @@ def cmd_deliverability(names: dict) -> int:
     healthy = lambda v: v["spf"] == "ok" and v["dkim"] == "ok" and v["mx"] == "ok" and v["dmarc"] in ("p=none", "p=quarantine", "p=reject")
     broken = {d: dict(v, caixas=domains[d]) for d, v in verdicts.items() if not healthy(v)}
     out({"ok": not broken and not unread, "dominios_de_envio": len(domains), "caixas": sum(domains.values()),
+         "caixas_por_dominio": dict(sorted(domains.items(), key=lambda kv: -kv[1])),   # OUR sending domains, never a lead's
+         "dominios_de_webmail_gratuito": sorted(d for d in domains if FREE_MAIL.search("@" + d)),
          "resumo": tally, "dmarc_so_monitoriza_p_none": sum(1 for v in verdicts.values() if v["dmarc"] == "p=none"),
          "dominios_com_defeito": broken, "campanhas_sem_leitura": unread,
          "nota": "DKIM verificado pelos seletores do Microsoft 365 (selector1/selector2). p=none passa, mas não protege o domínio."})
