@@ -17,7 +17,9 @@ import {
   buildEntryResult,
   quadrantOf,
   scoreTool,
+  deOverlappedHours,
 } from "../../apps/api/src/lib/ai-audit/engine";
+import { answersFromRow } from "../../apps/api/src/lib/ai-audit/deliverable";
 import { SEED_CATALOG } from "../../apps/api/src/lib/ai-audit/seed-catalog";
 import type { QuestionnaireAnswers, Tool } from "../../apps/api/src/lib/ai-audit/types";
 
@@ -92,7 +94,12 @@ describe("buildAuditReport — the whole deck", () => {
   it("the 3 KPIs are Time, Effort and Money saved (founder pitch, 14/08)", () => {
     const r = buildAuditReport(answers(), SEED_CATALOG);
     const cost = r.recommendedSolutions.reduce((s, x) => s + x.tool.monthlyCostUsd, 0);
-    const hours = r.recommendedSolutions.reduce((s, x) => s + x.tool.hoursSavedWeekly, 0);
+    // 19/09 (C13): hours are de-overlapped — two tools on one pain do not save it twice.
+    const naive = r.recommendedSolutions.reduce((s, x) => s + x.tool.hoursSavedWeekly, 0);
+    const hours = deOverlappedHours(r.recommendedSolutions).counted;
+    expect(hours).toBeLessThanOrEqual(naive);
+    expect(r.financialImpact.overlappingHoursNotCounted).toBeCloseTo(naive - hours, 2);
+    expect(r.financialImpact.hourlyRateIsDefault).toBe(false); // answers() states a rate
     const chores = new Set(r.recommendedSolutions.flatMap((x) => x.matchedPains)).size;
     // TIME
     expect(r.financialImpact.weeklyTimeReturnedHours).toBeCloseTo(hours, 2);
@@ -236,3 +243,32 @@ describe("buildAuditReport — the whole deck", () => {
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
   });
 });
+
+describe("19/09 — the Stack return is a scenario, computed on the client's own numbers", () => {
+  it("two tools on the same single pain count that chore once", () => {
+    const mk = (id: string, pains: string[], h: number) =>
+      ({ tool: { id, name: id, hoursSavedWeekly: h, monthlyCostUsd: 10 }, matchedPains: pains }) as never;
+    expect(deOverlappedHours([mk("a", ["inbox"], 5), mk("b", ["inbox"], 5)])).toEqual({ counted: 5, notCounted: 5 });
+    expect(deOverlappedHours([mk("a", ["inbox"], 5), mk("b", ["inbox", "quotes"], 4)])).toEqual({ counted: 7, notCounted: 2 });
+    expect(deOverlappedHours([mk("a", [], 3)])).toEqual({ counted: 3, notCounted: 0 });
+  });
+
+  it("a stored order keeps the client's hourly rate and budget (they were dropped on read)", () => {
+    const back = answersFromRow({ businessType: "agency", primaryFocus: "ops", pains: ["inbox"], hourlyRateUsd: 10, maxMonthlyBudgetUsd: 20 });
+    expect(back.hourlyRateUsd).toBe(10);
+    expect(back.maxMonthlyBudgetUsd).toBe(20);
+    const junk = answersFromRow({ hourlyRateUsd: "10", maxMonthlyBudgetUsd: -5 });
+    expect(junk.hourlyRateUsd).toBeUndefined();
+    expect(junk.maxMonthlyBudgetUsd).toBeUndefined();
+  });
+
+  it("the client's rate is used and flagged as theirs; the default is flagged as ours", () => {
+    const mine = buildAuditReport(answers({ hourlyRateUsd: 10 }), SEED_CATALOG);
+    expect(mine.financialImpact.hourlyRateUsd).toBe(10);
+    expect(mine.financialImpact.hourlyRateIsDefault).toBe(false);
+    const noRate = answers();
+    delete noRate.hourlyRateUsd;
+    expect(buildAuditReport(noRate, SEED_CATALOG).financialImpact.hourlyRateIsDefault).toBe(true);
+  });
+});
+

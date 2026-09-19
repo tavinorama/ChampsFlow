@@ -329,6 +329,8 @@ export interface PrevTask {
   evidence: string | null;
   metric: string | null;
   owner: string | null;
+  /** Proof that work was done on this card (a URL). Absent on cards nobody executed. */
+  artifact_url?: string | null;
 }
 
 export interface LoopTaskRow {
@@ -347,13 +349,21 @@ export interface LoopTaskRow {
   evidence: string | null;
   metric: string | null;
   owner: "you" | "organicposts" | "platform";
+  /** Carried from the previous plan: the proof of execution must survive a new audit. */
+  artifact_url?: string | null;
 }
 
 export interface ReconcileStats {
   inserted: number;
   refreshed: number; // candidates that had a predecessor and stayed open
   created: number; // brand-new candidates
-  verified: number; // open cards proven by this audit's citation evidence
+  verified: number; // EXECUTED cards whose gap this audit found closed
+  /**
+   * C02 (19/09): cards nobody executed whose gap closed anyway. They leave the
+   * open list as `expired` ("not owed"), and are NEVER counted as verified:
+   * an engine changing its answer is not work we did.
+   */
+  closedWithoutExecution: number;
   regressed: number; // verified cards whose gap came back — re-opened
   carried: number; // previous tasks kept as-is (custom/stale/verified)
   droppedByCap: number;
@@ -386,6 +396,31 @@ const isOpenState = (s: PlanTaskState): boolean => OPEN_STATES.includes(s);
 const takesSlot = (s: PlanTaskState): boolean => SLOT_STATES.includes(s);
 
 export const VERIFIED_PREFIX = "Worked — verified in the audit of ";
+/**
+ * Prefix on a card whose gap closed although nothing was executed on it.
+ *
+ * C02 (audit of 19/09, reproduced on the real function): a `proposed` card with
+ * no artifact, no approval and no execution was promoted to `verified` — and
+ * labelled "Worked" — because a later audit happened to find the citation. That
+ * is an observation about the engines, not proof of delivery, and it inflated
+ * Verified Execution with work nobody did. Such a card now closes as `expired`
+ * (not owed any more) with this prefix, and re-opens as a plain new proposal if
+ * the gap comes back: there was no win of ours to "regress" from.
+ */
+export const CLOSED_UNATTRIBUTED_PREFIX = "Closed on its own — seen in the audit of ";
+
+/**
+ * Was anything DONE on this card? Only then can a closed gap be called
+ * "verified". Executed = it reached a published state, or someone reported
+ * doing it (the audit is then the check on that report), or it carries an
+ * artifact URL. Proposed / accepted / drafting / review / blocked are intent.
+ */
+export function wasExecuted(t: Pick<PrevTask, "status" | "artifact_url">): boolean {
+  const st = asStatus(t.status);
+  if (typeof t.artifact_url === "string" && t.artifact_url.trim() !== "") return true;
+  return st === "published" || st === "indexed" || st === "cited" ||
+    st === "manual_done_pending_verification" || st === "client_acknowledged" || st === "legacy_self_reported";
+}
 /** Prefix on a card that was verified and then lost the ground it won. */
 export const REGRESSED_PREFIX = "Slipped back — was working, then stopped, as of ";
 
@@ -419,6 +454,7 @@ export function reconcileLoopTasks(
     refreshed: 0,
     created: 0,
     verified: 0,
+    closedWithoutExecution: 0,
     regressed: 0,
     carried: 0,
     droppedByCap: 0,
@@ -445,6 +481,7 @@ export function reconcileLoopTasks(
     evidence: t.evidence,
     metric: t.metric,
     owner: asOwner(t.owner),
+    ...(t.artifact_url ? { artifact_url: t.artifact_url } : {}),
     ...over,
   });
 
@@ -456,10 +493,30 @@ export function reconcileLoopTasks(
     const open = isOpenState(status);
     const note = build.resolved.get(t.gap);
 
-    if (open && note) {
+    if (open && note && !wasExecuted(t)) {
+      // C02: the gap closed, but nobody did anything on this card. Say exactly
+      // that, free the slot, and claim nothing.
+      const observed = `${CLOSED_UNATTRIBUTED_PREFIX}${auditDate}: ${note}. Nothing was executed on this card, so Ozvor claims no credit for it.`;
+      doneRows.push(
+        carryRow(t, {
+          status: "expired",
+          evidence: t.evidence ? `${observed} ${t.evidence}` : observed,
+        })
+      );
+      stats.closedWithoutExecution += 1;
+      continue;
+    }
+    // C02: a card we actually published (published / indexed / cited) is not
+    // "open", so it never reached this branch — the ONLY cards that could
+    // become `verified` were the ones nobody executed or the client ticked.
+    // Work we shipped is exactly what verification is for.
+    const inFlight = status === "published" || status === "indexed" || status === "cited";
+    if ((open || inFlight) && note) {
       // THE ONLY WRITER OF `verified`. The card is not verified because anyone
-      // said so — it is verified because this audit found the citation. The
-      // evidence string is kept with the row so the claim can be checked.
+      // said so — it was EXECUTED (see wasExecuted) and this audit then found
+      // the citation. Even so this is "done, and the gap is now closed", not a
+      // proof that the work caused it. The evidence string is kept with the row
+      // so the claim can be checked.
       const verification = `${VERIFIED_PREFIX}${auditDate}: ${note}.`;
       doneRows.push(
         carryRow(t, {
@@ -523,6 +580,19 @@ export function reconcileLoopTasks(
       continue;
     }
 
+    // C02: a card that closed on its own and whose gap is BACK. It was never a
+    // win of ours, so it is not a regression: it re-enters as a fresh proposal
+    // (subject to the same slot cap as any new candidate).
+    const closedOnItsOwn = status === "expired" && (t.evidence ?? "").startsWith(CLOSED_UNATTRIBUTED_PREFIX);
+    if (closedOnItsOwn && candidate) {
+      usedGaps.delete(t.gap); // pass 2 proposes it again, by priority
+      continue;
+    }
+    if (closedOnItsOwn) {
+      doneRows.push(carryRow(t));
+      stats.carried += 1;
+      continue;
+    }
     // Already verified by an earlier audit, and this audit did not contradict
     // it: carried into the done column, still verified.
     if (status === "verified") {

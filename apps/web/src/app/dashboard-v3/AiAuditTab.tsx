@@ -58,7 +58,7 @@ interface FullReport {
   businessType: string; primaryFocus: string; painSummary: string; outcomeSummary: string; hoursReclaimedWeekly: number;
   matrix: Record<string, Scored[]>; quickWins: Scored[]; recommendedSolutions: Scored[];
   fourDayPlan: Array<{ day: number; tool: ToolLite; action: string }>; whatComesAfter: Scored[];
-  financialImpact: { weeklyTimeReturnedHours: number; choresRemoved: number; monthlyNetRoiUsd: number; totalMonthlyToolCostUsd: number; hourlyRateUsd: number };
+  financialImpact: { weeklyTimeReturnedHours: number; choresRemoved: number; monthlyNetRoiUsd: number; totalMonthlyToolCostUsd: number; hourlyRateUsd: number; hourlyRateIsDefault?: boolean; overlappingHoursNotCounted?: number };
   topPick: Scored | null; topPickReason: string; empty: boolean;
 }
 interface Teaser { totalMatched: number; withheldCount: number; painSummary: string; matrixCounts: Record<string, number>; hoursReclaimedWeekly: number; empty: boolean }
@@ -389,7 +389,8 @@ function FullReportView({ report, estimates }: { report: FullReport; estimates: 
       <div style={{ ...V3.card, padding: "var(--space-6)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "var(--space-4)" }}>
         <Kpi label="Time back each week" value={`${fmt(fi.weeklyTimeReturnedHours)} h`} />
         <Kpi label="Chores removed" value={fmt(fi.choresRemoved)} />
-        <Kpi label="Net return per month" value={usd(Math.round(fi.monthlyNetRoiUsd))} sub={`at ${usd(fi.hourlyRateUsd)}/h, minus ${usd(fi.totalMonthlyToolCostUsd)} of tools`} />
+        {/* C13: an estimate from catalog hours, never measured savings. */}
+        <Kpi label="Estimated net return per month" value={usd(Math.round(fi.monthlyNetRoiUsd))} sub={`scenario at ${usd(fi.hourlyRateUsd)}/h${fi.hourlyRateIsDefault ? " (our default, not your rate)" : ""}, minus ${usd(fi.totalMonthlyToolCostUsd)} of tools. Not measured savings.`} />
         <Kpi label="Quick wins" value={fmt(report.quickWins.length)} sub={`${fmt(report.hoursReclaimedWeekly)} h/week from these`} />
       </div>
       <p style={{ ...V3.note, marginTop: "var(--space-3)" }}>{report.painSummary} {report.outcomeSummary}</p>

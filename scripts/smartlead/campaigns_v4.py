@@ -96,9 +96,22 @@ def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.?!])\s+|\n+", text) if s.strip()]
 
 
+# Claims the copy may never make, because they are false or unprovable. 19/09:
+# GEO-1B said "Here is one you cannot check yourself" — anyone can ask ChatGPT.
+# What we sell is the time, the method and the fix, not a secret.
+FALSE_CLAIMS = re.compile(r"can(?:no|'?)t check (?:it |this )?yoursel|only we can|nobody else can|guarantee[ds]? (?:you|a|that)|"
+                          r"will (?:go under|go out of business|lose your business)", re.I)
+
+
 def validate_copy(copy: dict) -> list[str]:
     """Every rule the house set for cold e-mail, checked on the merged text."""
     errors: list[str] = []
+    for key, camp in copy.get("campaigns", {}).items():
+        for step in camp.get("steps", []):
+            for v in step.get("variants", []):
+                hit = FALSE_CLAIMS.search(" ".join([v.get("subject", "")] + list(v.get("body", []))))
+                if hit:
+                    errors.append(f"{v.get('id')}: false or unprovable claim: '{hit.group(0)}'")
     lo, hi = copy["rules"]["email1_words"]
     max_sentence = copy["rules"]["max_sentence_words"]
     footer = copy["footer"]
@@ -768,14 +781,30 @@ BOUNCE_ALERT_PCT = 3.0                        # house ruler: bounce < 2% is heal
 BOUNCE_MIN_SENT = 100                         # below this a percentage is noise
 
 
-def cmd_block(confirm: bool) -> int:
-    """Global block list from SmartLead's OWN statistics of wave 1: everyone who
-    bounced, replied or unsubscribed. The addresses never leave SmartLead <->
-    this process; only counts are printed (17/09: the same source matched the
-    known totals exactly — 38 bounces, 24 replies)."""
+def cmd_block(names: dict, confirm: bool) -> int:
+    """Global block list from SmartLead's OWN statistics: everyone who bounced,
+    replied or unsubscribed, in wave 1 AND in the two campaigns sending now.
+    The addresses never leave SmartLead <-> this process; only counts are
+    printed (17/09: the same source matched the known totals exactly — 38
+    bounces, 24 replies).
+
+    19/09: the first two replies to the v4 campaigns were both "STOP". SmartLead
+    stops that lead's sequence, and our CRM marks it lost, but neither keeps the
+    address out of a list bought next week: the loader reads SmartLead, not the
+    CRM. The global block list is the one guard SmartLead itself enforces on
+    every upload, so a STOP has to land there. Re-running is idempotent.
+
+    A person who replies with interest is blocked from AUTOMATED mail too, on
+    purpose: from the first reply on, a human writes (house rule, 17/09)."""
     suppress: set[str] = set()
     facts = {}
-    for cid in OLD_CAMPAIGNS:
+    by_name = campaign_index()
+    active = [str(by_name[n]["id"]) for n in (names["geo"], names["stack"]) if n in by_name]
+    missing = [n for n in (names["geo"], names["stack"]) if n not in by_name]
+    if missing:     # "could not find the campaign" is never "nobody to block there"
+        out({"ok": False, "motivo": "campanha ativa nao encontrada pelo nome — nada foi bloqueado", "nao_encontradas": missing})
+        return 1
+    for cid in OLD_CAMPAIGNS + [c for c in active if c not in OLD_CAMPAIGNS]:
         sset, f = campaign_suppression(cid)
         facts[cid] = {k: f[k] for k in ("ok", "linhas", "bounced", "replied", "unsub")}
         if not f["ok"]:
@@ -1261,7 +1290,7 @@ def main(argv: list[str]) -> int:
     if a.command == "create":
         return cmd_create(copy, names, a.confirm)
     if a.command == "block":
-        return cmd_block(a.confirm)
+        return cmd_block(names, a.confirm)
     if a.command == "pace":
         return cmd_pace(names, a.per_day, a.days, a.confirm)
     if a.command == "bounce-watch":
