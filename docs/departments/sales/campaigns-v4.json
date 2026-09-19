@@ -1,5 +1,5 @@
 {
-  "version": "v4-2026-09-17",
+  "version": "v4.1-2026-09-19",
   "approved_by_founder": "2026-09-17",
   "footer": "P.S. If you'd rather not hear from me, just reply STOP and I won't write again.",
   "rules": {
@@ -46,7 +46,7 @@
                 "When the phone goes quiet, you check the usual things.",
                 "Ads. Reviews. The season.",
                 "",
-                "Here is one you cannot check yourself.",
+                "Here is one that is easy to miss.",
                 "People ask ChatGPT: \"{{buyer_question}}\"",
                 "It gives a few names. Yours may not be one.",
                 "",

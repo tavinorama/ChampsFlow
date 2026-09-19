@@ -312,3 +312,31 @@ describe("18/09: every lead says where it came from, and the sending domains can
     ]);
   });
 });
+
+describe("19/09: the copy may not claim what is false, and a STOP must reach the global block list", () => {
+  it("'you cannot check yourself' is refused by the validator (anyone can ask ChatGPT)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "copy-"));
+    const bad = JSON.parse(JSON.stringify(copy));
+    bad.campaigns.geo.steps[0].variants[1].body = bad.campaigns.geo.steps[0].variants[1].body.map((l: string) =>
+      l === "Here is one that is easy to miss." ? "Here is one you cannot check yourself." : l);
+    const file = join(dir, "c.json");
+    writeFileSync(file, JSON.stringify(bad));
+    const r = py(["validate", "--copy", file]);
+    rmSync(dir, { recursive: true, force: true });
+    expect(r.result.ok).toBe(false);
+    expect(r.result.erros.join(" ")).toContain("false or unprovable claim");
+  });
+
+  it("the committed copy no longer carries the sentence, in the JSON or in its human mirror", () => {
+    expect(JSON.stringify(copy)).not.toMatch(/cannot check yourself/i);
+    expect(readFileSync(join(root, "docs/departments/sales/cold-copy-v4.md"), "utf8")).not.toMatch(/cannot check yourself/i);
+  });
+
+  it("block reads the two ACTIVE campaigns as well as wave 1, and refuses to run blind", () => {
+    const src = readFileSync(SCRIPT, "utf8");
+    expect(src).toContain("for cid in OLD_CAMPAIGNS + [c for c in active if c not in OLD_CAMPAIGNS]:");
+    expect(src).toContain("campanha ativa nao encontrada pelo nome — nada foi bloqueado");
+    expect(src).toContain("return cmd_block(names, a.confirm)");
+  });
+});
+
