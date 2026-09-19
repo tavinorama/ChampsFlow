@@ -111,3 +111,30 @@ describe("the migration", () => {
     expect(down).toContain("DROP TABLE IF EXISTS smartlead_event");
   });
 });
+
+describe("19/09 — what is stored is evidence, never credentials", () => {
+  it("drops secret_key and masks the token inside webhook_url, at any depth, and keeps the rest", async () => {
+    const { redactWebhookPayload } = await import("../../apps/api/src/lib/smartlead-redact");
+    const out = redactWebhookPayload({
+      event_type: "EMAIL_REPLY",
+      event_id: "evt_1",
+      secret_key: "s3cr3t",
+      webhook_url: "https://api.example.com/api/webhooks/smartlead?token=abc123def&x=1",
+      nested: [{ api_key: "k", note: "see https://h/x?api_key=zzz and carry on" }],
+      reply_message: { text: "Not interested" },
+    });
+    const flat = JSON.stringify(out);
+    expect(flat).not.toContain("s3cr3t");
+    expect(flat).not.toContain("abc123def");
+    expect(flat).not.toContain("zzz");
+    expect(out.webhook_url).toBe("https://api.example.com/api/webhooks/smartlead?token=[redacted]&x=1");
+    expect(out.event_id).toBe("evt_1");
+    expect(out.reply_message).toEqual({ text: "Not interested" });
+  });
+
+  it("the INSERT stores the redacted payload, and the failure log carries no address", () => {
+    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../../apps/api/src/routes/webhooks-smartlead.ts"), "utf8");
+    expect(src).toContain("JSON.stringify(redactWebhookPayload(payload))");
+    expect(src).not.toMatch(/smartlead_crm_annotation_failed", \{\s*leadEmail/);
+  });
+});
