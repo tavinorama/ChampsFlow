@@ -72,6 +72,7 @@ export const ANTI_GENERIC_RULE = [
   "- Repetir angulo, gancho ou estrutura de QUALQUER peca do bloco [__recent__] = 'VETO: repete <qual peca — data/canal>'. Nomeie a culpada.",
   "- Abertura ou claim que serviria para qualquer negocio ('in today's digital world', 'AI is changing everything', estatistica sem fonte nomeada, conselho sem exemplo concreto) = 'VETO: generico'.",
   "- Toda peca NOMEIA algo concreto: um nicho real, um numero com fonte, um cenario especifico. Nada concreto = 'VETO: generico'.",
+  "- Pessoa, cliente, vizinho, amigo, mensagem, loja com nome ou hora que NAO esta em [__facts__] ou [__proof__] = 'VETO: inventado'. Estatistica de terceiros sem a fonte na propria frase = 'VETO: sem fonte'.",
   "- A peca tem que ser NATIVA da plataforma (thread de X nao e post de LinkedIn encurtado; Reel nao e slide falado) e otimizada para alcance, visualizacoes e PARTICIPACAO: onde a plataforma premia resposta, a peca faz uma pergunta real e convida replies.",
   "- Draft que passa por finalize declara a linha interna 'ANGULO-NOVO:'; se ela falta ou nao se sustenta contra [__recent__], aponte a correcao.",
 ].join("\n");
@@ -81,8 +82,33 @@ export const ANTI_GENERIC_RULE = [
  * estuda [__recent__] e escolhe deliberadamente um caminho diferente,
  * declarando-o numa linha interna que o crítico confere. Uma fonte.
  */
+/**
+ * Where an angle may come from (19/09). The signal prompts used to carry the
+ * same five hardcoded themes on every channel, every day; with the context
+ * blocks empty, that list WAS the editorial line. Angles now come from real
+ * material, in this order, and an empty day says so instead of improvising.
+ */
+export const ANGLE_SOURCES_RULE =
+  "DE ONDE VEM UM ANGULO, nesta ordem: (1) [__facts__] fatos verdadeiros da Ozvor; (2) [__gaps__] perguntas de comprador que a IA responde sem nos citar; (3) [__signals__] conversas reais com URL; (4) o tema do [__day__]. " +
+  "Cada angulo diz de qual bloco veio. Se NENHUM bloco existir, escreva 'SEM FONTE HOJE' e proponha no maximo 2 angulos de OPINIAO ou PERGUNTA ao leitor, sem cena, sem numero e sem caso. " +
+  "Pelo menos 1 dos angulos deve render uma PERGUNTA direta ao leitor, que ele consiga responder em uma linha.";
+
+/** The Stack angle is one day's theme, not a daily tax on every channel. */
+export const STACK_ANGLE_RULE =
+  "AI Audit Stack: so e angulo quando o [__day__] pedir o tema ai-audit-stack. Nesse dia, prometa apenas o que a entrada entrega hoje: UMA ferramenta indicada para a dor descrita, por $49 (ozvor.com/ai-audit). Nunca 'auditoria completa', nunca 'stack inteiro', nunca economia garantida.";
+
+/**
+ * No invented people. In the week of 14–20/09 about 14 of 58 scheduled pieces
+ * opened with a made-up owner, shop and closing hour, and at least 5 told
+ * first-person stories about clients, neighbours and friends that do not exist.
+ */
+export const NO_INVENTED_PEOPLE_RULE =
+  "PROIBIDO INVENTAR GENTE: nenhum cliente, dono de negocio com nome, vizinho, amigo, mensagem recebida, ligacao, loja ou hora que nao esteja em [__facts__] ou [__proof__]. 'A client texted me', 'my neighbor', 'Rosa was closing her bakery' sao invencao e derrubam a peca. " +
+  "Sem fonte para uma cena, escreva uma observacao, uma opiniao com motivo ou uma pergunta. Estatistica de terceiros so com a fonte nomeada na propria frase; sem fonte, sem numero.";
+
 const ANTI_GENERIC_DRAFT_RULE =
-  "ANTI-GENERICO (0.8): se houver um bloco [__recent__] abaixo (as ultimas pecas REALMENTE publicadas), estude-o e escolha DELIBERADAMENTE um angulo, gancho e estrutura diferentes de todas elas. Abra a saida com a linha interna 'ANGULO-NOVO: <o angulo escolhido e por que difere do recente>' — o critico confere essa linha e o finalize NAO a inclui na versao final.";
+  "ANTI-GENERICO (0.8): se houver um bloco [__recent__] abaixo (as ultimas pecas REALMENTE publicadas), estude-o e escolha DELIBERADAMENTE um angulo, gancho e estrutura diferentes de todas elas. Abra a saida com a linha interna 'ANGULO-NOVO: <o angulo escolhido e por que difere do recente>' — o critico confere essa linha e o finalize NAO a inclui na versao final. " +
+  NO_INVENTED_PEOPLE_RULE;
 
 /**
  * Variante para o ab-draft: o artefato dele publica DIRETO (contentNode do
@@ -309,9 +335,9 @@ function shortVideoFamily(
     [`${p}-signal`]: (ctx) =>
       [
         `Voce e o agente de sinais da esfera ${spec.name} da Ozvor (visibilidade em IA / GEO).`,
-        `Liste 4 angulos QUENTES para um video curto de ${spec.name} hoje onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.`,
+        `Liste 4 angulos QUENTES para um video curto de ${spec.name} hoje onde a Ozvor tem algo real a dizer. ${ANGLE_SOURCES_RULE}`,
         spec.signalHint,
-        "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+        STACK_ANGLE_RULE,
         "Para cada um: 1 linha do angulo + 1 linha do GANCHO de 1 segundo que ele rende (a frase exata).",
         "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
         "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
@@ -394,9 +420,9 @@ function instagramCardFamily(): Record<string, (ctx: PromptContext) => string> {
     "instagram-signal": (ctx) =>
       [
         "Voce e o agente de sinais da esfera INSTAGRAM da Ozvor (visibilidade em IA / GEO).",
-        "Liste 4 angulos QUENTES para um post de IMAGEM (card com uma frase) hoje onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
+        "Liste 4 angulos QUENTES para um post de IMAGEM (card com uma frase) hoje onde a Ozvor tem algo real a dizer. " + ANGLE_SOURCES_RULE,
         "O feed premia frase salvavel e compartilhavel por DM: prefira angulos que cabem numa verdade de <=9 palavras.",
-        "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+        STACK_ANGLE_RULE,
         "Para cada um: 1 linha do angulo + 1 linha do HOOK de card que ele rende (a frase exata, <=9 palavras).",
         "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
         "NOSSOS GAPS: se houver um bloco [__gaps__] abaixo, ele traz as perguntas de comprador que a IA responde HOJE sem citar a Ozvor — sao os cards do nosso proprio Do Next, gerados pelo audit. Prefira pautas que ataquem esses gaps: escrever sobre eles move o NOSSO score, e o resultado vira prova publica. Se disser SEM DADO, ignore este ponto.",
@@ -476,7 +502,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Liste 5 sinais atuais e concretos do universo GEO/AI search que valem conteudo hoje:",
       "mudancas em motores (ChatGPT, Perplexity, Gemini, AI Overviews), estudos novos, dores de SMB/agencia.",
       "Para cada sinal: 1 linha de fato + 1 linha de por que importa para quem quer ser citado por IA.",
-      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+      STACK_ANGLE_RULE,
       "Sem inventar dado: se nao tiver certeza de um numero, nao use numero.",
       "Formato de saida: lista numerada 1-5, nada antes nem depois.",
       "SINAIS EXTERNOS: se houver um bloco [__signals__] abaixo, ele traz conversas e oportunidades REAIS (com URL de evidencia) do Signal Engine. Prefira esses sinais aos imaginados; cite a URL. Se disser SEM DADO, siga so com o que e verificavel.",
@@ -929,9 +955,9 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "x-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera X (Twitter) da Ozvor (visibilidade em IA / GEO).",
-      "Liste 4 conversas ou angulos QUENTES no X agora onde a Ozvor tem algo real a dizer: SEO morrendo/mudando, marcas sumindo das respostas de IA, casos de citacao, dores de agencia/SMB.",
+      "Liste 4 conversas ou angulos QUENTES no X agora onde a Ozvor tem algo real a dizer. " + ANGLE_SOURCES_RULE,
       "X premia opiniao com atrito: prefira angulos que geram resposta (concordo/discordo), nao anuncios.",
-      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+      STACK_ANGLE_RULE,
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia engajamento HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
@@ -994,9 +1020,9 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "linkedin-signal": (ctx) =>
     [
       "Voce e o agente de sinais da esfera LinkedIn da Ozvor (visibilidade em IA / GEO).",
-      "Liste 4 angulos QUENTES no LinkedIn agora onde a Ozvor tem algo real a dizer: marcas sumindo das respostas de IA, o fim do SEO como era, casos de citacao, dores de agencia/SMB, o custo de nao aparecer no ChatGPT.",
+      "Liste 4 angulos QUENTES no LinkedIn agora onde a Ozvor tem algo real a dizer. " + ANGLE_SOURCES_RULE,
       "LinkedIn premia historia com licao e opiniao com dado: prefira angulos que rendam um post de 6-10 linhas com uma virada.",
-      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+      STACK_ANGLE_RULE,
       "Para cada um: 1 linha do angulo + 1 linha de por que renderia comentario HOJE.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",
@@ -1022,7 +1048,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
   "linkedin-draft": (ctx) =>
     [
       `Voce e um escritor de LinkedIn. A partir do briefing abaixo, escreva no estilo "${String(ctx.config["style"] ?? "story")}":`,
-      "story = post em 1a pessoa, 6-10 linhas curtas, uma cena real no comeco, a licao no fim, as 2 primeiras linhas seguram o 'ver mais'. · contrarian = post que abre com uma opiniao que contraria o senso comum, prova em 3 linhas, fecha com a consequencia pratica.",
+      "story = post em 1a pessoa, 6-10 linhas curtas, uma cena REAL no comeco (so de [__facts__] ou [__proof__]; sem esses blocos, abra com uma observacao ou uma pergunta, nunca com pessoa inventada), a licao no fim, as 2 primeiras linhas seguram o 'ver mais'. · contrarian = post que abre com uma opiniao que contraria o senso comum, prova em 3 linhas, fecha com a consequencia pratica.",
       PROOF_HOOK_RULE,
       "COM PROVA — FORMA DO POST: (1) a PRIMEIRA linha e a prova do dia, concreta: a pergunta que foi feita, a cidade, o setor, o numero. (2) 4-6 frases contando o que isso significa para quem vive daquele telefone tocar. (3) o fecho com o CTA. Nada de abrir com tese abstrata e deixar o numero para o fim.",
       "O bloco [__proof__] traz uma frase pronta ('A FRASE QUE ESTES NUMEROS SUSTENTAM'). Ela e a BASE, nao o texto final: reescreva na voz do canal, mantendo os numeros intactos.",
@@ -1105,7 +1131,7 @@ const PROMPTS: Record<string, (ctx: PromptContext) => string> = {
       "Voce e o agente de sinais da esfera BLOG da Ozvor (visibilidade em IA / GEO).",
       "Liste 4 perguntas ou temas que SMBs e agencias estao buscando/perguntando AGORA sobre aparecer nas respostas de IA (ChatGPT, Perplexity, Gemini, AI Overview): como ser citado, por que sumiram, o que muda em relacao ao SEO, como medir.",
       "Blog premia utilidade que a IA cita de volta: prefira temas com resposta concreta, passo a passo ou dado.",
-      "ANGULO PERMANENTE (produto novo, founder 14/08): o AI Audit Stack — ha ferramentas de IA demais e ninguem sabe qual serve para o SEU negocio; a Ozvor le suas dores e indica o stack certo por $49 (ozvor.com/ai-audit). Inclua esse angulo como opcao TODO dia, e obrigatorio quando o [__day__] pedir tema ai-audit-stack.",
+      STACK_ANGLE_RULE,
       "Para cada um: 1 linha do tema + 1 linha da intencao de busca por tras.",
       "Sem inventar dado: numero so com certeza.",
       "Formato de saida: lista numerada 1-4, nada antes nem depois.",

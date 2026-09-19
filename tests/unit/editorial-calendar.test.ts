@@ -38,7 +38,15 @@ describe("editorial calendar (7 days, diverse)", () => {
 });
 
 describe("content prompts carry the calendar + the AI Audit angle", () => {
-  it("signal prompts offer the AI Audit Stack as a permanent angle", () => {
+  it("signal prompts offer the AI Audit Stack ON ITS DAY, never as a daily tax, and promise only what the entry delivers", () => {
+    // 19/09: "Inclua esse angulo como opcao TODO dia" on every channel is one of
+    // the measured causes of the repetitive calendar.
+    for (const slug of ["x-signal", "linkedin-signal", "instagram-signal"]) {
+      const p = buildPrompt("task", { prompt: slug }, []) ?? "";
+      expect(p, slug).not.toContain("TODO dia");
+      expect(p, slug).toContain("so e angulo quando o [__day__] pedir");
+      expect(p, slug).toContain("Nunca 'auditoria completa'");
+    }
     for (const slug of ["collect-signals", "x-signal", "linkedin-signal", "blog-signal", "instagram-signal", "tiktok-signal", "youtube-signal"]) {
       const p = buildPrompt("task", { prompt: slug }, []) ?? "";
       expect(p, slug).toContain("AI Audit Stack");

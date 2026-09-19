@@ -36,6 +36,9 @@ import {
   isQuarantinedSnapshotSource,
   isPartiallyQuarantinedSnapshotSource,
   quarantineLegacyGraphLearning,
+  recentShapeForAntiRepetitionAllowed,
+  RECENT_SHAPE_ONLY_NOTE,
+  shapeOnlyText,
   parseGraphHarvest,
 } from "../../../../packages/shared/src/graph-metric-containment";
 import {
@@ -78,6 +81,7 @@ import {
   TUNABLE_PROMPT_KEYS,
 } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
+import { factsBlock } from "./content-facts";
 import {
   X_POST_LIMIT,
   xPostWithinLimit,
@@ -137,6 +141,8 @@ export function publishReceipt(detail: string | null | undefined): string {
 }
 
 export const DAY_ARTIFACT = "__day__";
+/** True, sourced facts about Ozvor itself — see content-facts.ts. */
+export const FACTS_ARTIFACT = "__facts__";
 /** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
 export const SIGNALS_ARTIFACT = "__signals__";
 /**
@@ -210,9 +216,9 @@ export const MEMORY_ARTIFACT = "__memory__";
  */
 export const RECENT_ARTIFACT = "__recent__";
 /** How many recent publishes the [__recent__] block carries. */
-export const RECENT_PUBLISHES_LIMIT = 5;
+export const RECENT_PUBLISHES_LIMIT = 10; // 19/09: five pieces is one week on one channel; the repeated scene ran for weeks
 /** Per-piece char cap inside [__recent__] — hooks/structure, not full reprint. */
-export const RECENT_PIECE_CHAR_CAP = 700;
+export const RECENT_PIECE_CHAR_CAP = 450;
 
 // ---------------------------------------------------------------------------
 // 5.F.7 — postmortem→código: the approved postmortem draft's "## Licoes
@@ -1588,9 +1594,12 @@ export async function advanceRun(
   let recentBlock: string | null = null;
   let recentBlockLoaded = false;
   const loadRecentBlock = async (): Promise<string | null> => {
-    // Old published text can contain the same invalid metrics. There is no
-    // provenance/version filter yet; keep static anti-generic rules instead.
-    if (quarantineLegacyGraphLearning()) return null;
+    // Old published text can contain the same invalid metrics (G03), so the
+    // block travels SHAPE-ONLY: every figure is removed (shapeOnlyText) and a
+    // note forbids quoting anything from it. Angle, hook and structure are not
+    // metrics; without them the critic's "VETO: repete" rule read an empty
+    // block and the same scene went out fourteen times in one week.
+    if (!recentShapeForAntiRepetitionAllowed()) return null;
     if (recentBlockLoaded) return recentBlock;
     recentBlockLoaded = true;
     if (!substrate.recentPublishes) return null;
@@ -1600,6 +1609,7 @@ export async function advanceRun(
       const rows = await substrate.recentPublishes({ channel, limit: RECENT_PUBLISHES_LIMIT });
       if (!rows || rows.length === 0) return null;
       const parts: string[] = [
+        RECENT_SHAPE_ONLY_NOTE,
         channel
           ? `ULTIMAS PUBLICACOES REAIS do canal ${channel} (mais novas primeiro). Regua anti-repeticao: NAO repita angulo, gancho nem estrutura de NENHUMA peca abaixo.`
           : "ULTIMAS PUBLICACOES REAIS (todos os canais — este grafo nao publica direto; mais novas primeiro). Regua anti-repeticao: NAO repita angulo, gancho nem estrutura de NENHUMA peca abaixo.",
@@ -1614,7 +1624,7 @@ export async function advanceRun(
         parts.push(`--- ${row.publishedAt.slice(0, 10)} · ${row.graph} · canal ${row.channel} ---`);
         parts.push(
           text
-            ? text.slice(0, RECENT_PIECE_CHAR_CAP)
+            ? shapeOnlyText(text).slice(0, RECENT_PIECE_CHAR_CAP)
             : `(texto nao recuperavel — o artefato Redis expirou apos 7d; registro duravel: ${row.summary.slice(0, 120)})`
         );
       }
@@ -1730,6 +1740,11 @@ export async function advanceRun(
           }
         }
         upstream.unshift([DAY_ARTIFACT, dayBlock(now())]);
+        // 19/09: true, dated, sourced things Ozvor can write about. The ONLY
+        // permitted source of a first-person scene, case or number. Absent when
+        // every fact has expired — never a placeholder.
+        const facts = factsBlock(now());
+        if (facts) upstream.unshift([FACTS_ARTIFACT, facts]);
         // Real conversations/opportunities from the Signal Engine, when wired.
         // Fail-open: no env / down / bad payload → the cell keeps working on
         // its own memory. Only signal/briefing/PPC-style nodes benefit, but
