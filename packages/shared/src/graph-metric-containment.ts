@@ -67,6 +67,35 @@ export function quarantineLegacyGraphLearning(): boolean {
   return true;
 }
 
+/**
+ * Anti-repetition needs the SHAPE of what we published, never its figures.
+ *
+ * G03 switched the [__recent__] block off because old published text can carry
+ * the same invalid metrics (the "2.08 billion impressions" post is one). That
+ * also switched off the ONLY input the critic's "VETO: repete" rule reads, and
+ * the week of 14–20/09 shows the result: the same scene fourteen times.
+ *
+ * The two concerns are separable. A piece's angle, hook and structure are not
+ * metrics; its numbers are. `shapeOnlyText` keeps the first and removes every
+ * figure, so the block can come back without reopening a single quarantined
+ * metric family. This is a reviewed constant change, as the header requires.
+ */
+export const RECENT_SHAPE_ONLY_NOTE =
+  "SO A FORMA (G03): todo numero destas pecas foi removido de proposito. Este bloco serve APENAS para NAO repetir angulo, gancho, cena e estrutura. Nunca cite fato, numero, nome ou caso daqui.";
+
+export function recentShapeForAntiRepetitionAllowed(): boolean {
+  return true;
+}
+
+/** Every figure out: digits, percentages, "billion/million/thousand" words, currency. */
+export function shapeOnlyText(text: string): string {
+  return text
+    .replace(/[$€£]\s?\d[\d.,]*\s?(?:k|m|bn|b)?\b/gi, "[figure]")
+    .replace(/\b\d[\d.,]*(?:\s?(?:%|percent\b|x\b|k\b|bn\b|billion\b|million\b|thousand\b|milhoes\b|bilhoes\b))?/gi, "[figure]")
+    .replace(/\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fourteen|twenty|fifty|hundred)\s+(?:billion|million|thousand|percent)\b/gi, "[figure]")
+    .replace(/(?:\[figure\]\s*){2,}/g, "[figure] ");
+}
+
 export interface ParsedGraphHarvest {
   metric: string;
   total: number;

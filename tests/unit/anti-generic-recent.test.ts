@@ -23,6 +23,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { RECENT_SHAPE_ONLY_NOTE } from "../../packages/shared/src/graph-metric-containment";
 import {
   advanceRun,
   RECENT_ARTIFACT,
@@ -188,21 +189,25 @@ function xRecentRows(): RecentRow[] {
 const OLD_POST = "SEO is dead for roofers. Here is what replaced it. Ask me how.";
 
 describe("0.8 — [__recent__] chega à criação E à crítica dos grafos de marketing", () => {
-  it("G03 (14/09): sob contenção o bloco [__recent__] NÃO é injetado em nenhum nó e o registro nem é consultado; a régua estática anti-genérica continua", async () => {
-    // Contexto: o texto de peças antigas pode embutir métricas inválidas (os
-    // rascunhos foram escritos sobre snapshots contaminados). Até existir
-    // proveniência por peça (lote B03), a injeção dinâmica fica suspensa —
-    // proteção contra repetição reduzida, dito com todas as letras.
+  it("G03, revisto 19/09: o bloco [__recent__] volta SÓ COM A FORMA — todo número removido, e a nota proíbe citar qualquer coisa dele", async () => {
+    // Contexto: o texto de peças antigas pode embutir métricas inválidas, e por
+    // isso o G03 desligou o bloco. Desligou junto a ÚNICA entrada da régua
+    // "VETO: repete": na semana de 14–20/09 a mesma cena saiu catorze vezes.
+    // Ângulo, gancho e estrutura não são métricas; os números são.
     const world = makeWorld(SPHERE_X_GRAPH, { recentRows: xRecentRows() });
-    world.artifactsMap.set("old-run-1:finalize", OLD_POST);
+    world.artifactsMap.set("old-run-1:finalize", "Yesterday our page hit 3.33 billion impressions. 61% of owners miss this. " + OLD_POST);
     await tickUntil(world, SPHERE_X_GRAPH, () => world.stepByNode("critic")?.status === "succeeded");
 
-    for (const node of ["draft-punchy", "draft-thread", "critic", "signal", "briefing", "finalize"]) {
+    for (const node of ["draft-punchy", "draft-thread", "critic"]) {
       const p = world.taskPromptsByNode[node] ?? "";
-      expect(p, `${node} não pode receber o bloco sob contenção`).not.toContain(RECENT_MARK);
-      expect(p).not.toContain(OLD_POST);
+      expect(p, `${node} precisa ver as últimas peças`).toContain(`[${RECENT_ARTIFACT}]`);
+      expect(p).toContain(RECENT_SHAPE_ONLY_NOTE);
+      expect(p).toContain(OLD_POST); // a forma (ângulo, gancho) chega
+      expect(p).not.toContain("3.33");
+      expect(p).not.toContain("61%");
+      expect(p).toContain("[figure]");
     }
-    expect(world.recentCalls).toEqual([]);
+    expect(world.recentCalls.length).toBeGreaterThan(0);
     expect(world.taskPromptsByNode["draft-punchy"] ?? "").toContain("ANTI-GENERICO (0.8)");
   });
 
