@@ -1967,13 +1967,24 @@ async function processAuditJobTracked(
            ORDER BY created_at DESC LIMIT 1
         `;
         let prevTasks: PrevTask[] = [];
+        // artifact_url arrived with the lifecycle migration. Asking for it on a
+        // schema that lacks it would throw inside this fail-soft block and kill
+        // Do Next without a sound, so the column is read only where it exists.
+        const readArtifact = await planTaskLifecycleReady(sql);
         if (prevPlanRows[0]) {
-          prevTasks = await sql<PrevTask[]>`
-            SELECT vector, gap, action, effort, impact, priority, status, evidence, metric, owner
-              FROM plan_task
-             WHERE plan_id = ${prevPlanRows[0].id}
-             ORDER BY priority DESC, created_at ASC
-          `;
+          prevTasks = readArtifact
+            ? await sql<PrevTask[]>`
+                SELECT vector, gap, action, effort, impact, priority, status, evidence, metric, owner, artifact_url
+                  FROM plan_task
+                 WHERE plan_id = ${prevPlanRows[0].id}
+                 ORDER BY priority DESC, created_at ASC
+              `
+            : await sql<PrevTask[]>`
+                SELECT vector, gap, action, effort, impact, priority, status, evidence, metric, owner
+                  FROM plan_task
+                 WHERE plan_id = ${prevPlanRows[0].id}
+                 ORDER BY priority DESC, created_at ASC
+              `;
         }
         let { rows: loopRows, stats } = reconcileLoopTasks(
           prevTasks,
@@ -2032,7 +2043,7 @@ async function processAuditJobTracked(
         const lifecycleOk = await planTaskLifecycleReady(sql);
         for (const t of loopRows) {
           const status = lifecycleOk ? t.status : legacyStatus(t.status);
-          await sql`
+          const [inserted] = await sql<{ id: string }[]>`
             INSERT INTO plan_task
               (tenant_id, plan_id, vector, gap, action, effort, impact, priority,
                status, evidence, metric, owner, created_at)
@@ -2040,7 +2051,14 @@ async function processAuditJobTracked(
               (${tenant_id}, ${loopPlan.id}, ${t.vector}, ${t.gap}, ${t.action},
                ${t.effort}, ${t.impact}, ${t.priority}, ${status},
                ${t.evidence}, ${t.metric}, ${t.owner}, NOW())
+            RETURNING id
           `;
+          // C02: every plan re-inserts its cards, and the artifact URL (the proof
+          // that work was done) was not among the columns — it vanished at the
+          // next audit. Carried here, only where the lifecycle columns exist.
+          if (lifecycleOk && inserted && t.artifact_url) {
+            await sql`UPDATE plan_task SET artifact_url = ${t.artifact_url} WHERE id = ${inserted.id}`;
+          }
         }
         openCardsAfterLoop = loopRows.filter((t) => OPEN_LOOP_STATES.has(t.status)).length;
         loopGeneration = { status: "ok", at: auditCompletedAt };

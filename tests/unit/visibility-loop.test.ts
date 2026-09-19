@@ -19,6 +19,8 @@ import {
   isActionableSource,
   LOOP_OPEN_CAP,
   VERIFIED_PREFIX,
+  CLOSED_UNATTRIBUTED_PREFIX,
+  wasExecuted,
   REGRESSED_PREFIX,
   type LoopProbe,
   type PrevTask,
@@ -184,16 +186,69 @@ describe("buildLoopCandidates — source presence", () => {
 describe("reconcileLoopTasks — the loop contract", () => {
   const dateISO = "2026-09-03";
 
-  it("flips an open card to VERIFIED with 'Worked — verified' attribution when the query flipped to cited", () => {
+  it("flips an EXECUTED card to VERIFIED with 'Worked — verified' attribution when the query flipped to cited", () => {
     // P0-02: `verified` (not `done`) — and this is the only code path in the
-    // product that can produce it. It is earned by the citation, not claimed.
+    // product that can produce it. C02 (19/09): it also takes EXECUTION. A
+    // published card whose gap is now closed is verified.
     const build = buildLoopCandidates([probe({ cited: true, rank: 1 })]);
-    const { rows, stats } = reconcileLoopTasks([prevTask({ status: "accepted" })], build, dateISO);
+    const { rows, stats } = reconcileLoopTasks([prevTask({ status: "published" })], build, dateISO);
     const flipped = rows.find((r) => r.gap === gapForUncited("best crm for smbs"));
     expect(flipped?.status).toBe("verified");
     expect(flipped?.evidence).toContain(`${VERIFIED_PREFIX}${dateISO}`);
     expect(flipped?.evidence).toContain("now cited on openai");
     expect(stats.verified).toBe(1);
+    expect(stats.closedWithoutExecution).toBe(0);
+  });
+
+  describe("C02 — a citation that shows up is not work that was done", () => {
+    const closed = () => buildLoopCandidates([probe({ cited: true, rank: 1 })]);
+    const gap = gapForUncited("best crm for smbs");
+
+    for (const status of ["proposed", "accepted", "drafting", "review", "blocked"]) {
+      it(`a '${status}' card nobody executed is NEVER verified when the gap closes on its own`, () => {
+        const { rows, stats } = reconcileLoopTasks([prevTask({ status })], closed(), dateISO);
+        const card = rows.find((r) => r.gap === gap);
+        expect(card?.status).toBe("expired");
+        expect(card?.evidence).toContain(`${CLOSED_UNATTRIBUTED_PREFIX}${dateISO}`);
+        expect(card?.evidence).toContain("claims no credit");
+        expect(card?.evidence).not.toContain("Worked");
+        expect(stats.verified).toBe(0);
+        expect(stats.closedWithoutExecution).toBe(1);
+      });
+    }
+
+    it("an artifact URL is execution: the card is verified, and the URL survives into the new plan", () => {
+      const { rows, stats } = reconcileLoopTasks(
+        [prevTask({ status: "accepted", artifact_url: "https://example.com/new-faq" })], closed(), dateISO);
+      const card = rows.find((r) => r.gap === gap);
+      expect(card?.status).toBe("verified");
+      expect(card?.artifact_url).toBe("https://example.com/new-faq");
+      expect(stats.verified).toBe(1);
+    });
+
+    it("wasExecuted: intent is not execution", () => {
+      expect(wasExecuted({ status: "accepted" })).toBe(false);
+      expect(wasExecuted({ status: "review", artifact_url: "  " })).toBe(false);
+      expect(wasExecuted({ status: "cited" })).toBe(true);
+      expect(wasExecuted({ status: "manual_done_pending_verification" })).toBe(true);
+    });
+
+    it("the gap comes back on a card that closed on its own: a fresh proposal, not a 'regression' of a win we never had", () => {
+      const first = reconcileLoopTasks([prevTask({ status: "proposed" })], closed(), dateISO);
+      const back = reconcileLoopTasks(first.rows, buildLoopCandidates([probe({ cited: false })]), "2026-10-01");
+      const cards = back.rows.filter((r) => r.gap === gap);
+      expect(cards).toHaveLength(1);
+      expect(cards[0]?.status).toBe("proposed");
+      expect(back.stats.regressed).toBe(0);
+      expect(back.stats.created).toBe(1);
+    });
+
+    it("still closed at the next audit: it stays in the done column as expired, takes no open slot", () => {
+      const first = reconcileLoopTasks([prevTask({ status: "proposed" })], closed(), dateISO);
+      const again = reconcileLoopTasks(first.rows, closed(), "2026-10-01");
+      expect(again.rows.find((r) => r.gap === gap)?.status).toBe("expired");
+      expect(again.stats.verified).toBe(0);
+    });
   });
 
   it("a self-reported card is verified once — and only once — the audit finds the citation", () => {
