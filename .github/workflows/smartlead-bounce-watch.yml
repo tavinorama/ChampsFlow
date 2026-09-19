@@ -27,24 +27,44 @@ jobs:
         env:
           SL_KEY: ${{ secrets.SMARTLEAD_API_KEY }}
         run: |
+          # 19/09: Actions runs this script as `bash -eo pipefail`. With -e on, a red
+          # bounce-watch ended the step BEFORE the exit code was written, and the
+          # alarm step below (then without always()) was skipped on every red run:
+          # six red runs, zero alarms. -e is turned off for the measured command
+          # only, the code is always written, and this step never fails by itself.
           set -uo pipefail
-          test -n "${SL_KEY}" || { echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 1; }
+          test -n "${SL_KEY}" || { echo "code=2" >> "$GITHUB_OUTPUT"; echo "::error::secret SMARTLEAD_API_KEY ausente"; exit 0; }
+          set +e
           python3 scripts/smartlead/campaigns_v4.py bounce-watch | tee result.txt | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "code=${code}" >> "$GITHUB_OUTPUT"
       - name: Alarm (Telegram when wired, summary always)
-        if: steps.read.outputs.code != '0'
+        # always(): the alarm must run exactly when something before it went wrong.
+        # An empty code means the read step died before measuring: that is an alarm too.
+        if: always() && steps.read.outputs.code != '0'
         env:
           TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          MSG="SmartLead BOUNCE: $(grep -o '"alarmes": \[[^]]*\]' result.txt | head -1). Pausar e decisao sua: smartlead-launch.yml action=pause. ${RUN_URL}"
+          set +e
+          CODE="${{ steps.read.outputs.code }}"
+          if [ "${CODE}" = "1" ]; then
+            WHAT="bounce no limiar: $(grep -o '"alarmes": \[[^]]*\]' result.txt 2>/dev/null | head -1)"
+          else
+            WHAT="NAO MEDI o bounce (codigo '${CODE:-vazio}'): chave, API do SmartLead ou o proprio vigia. Nao e zero."
+          fi
+          MSG="SmartLead BOUNCE: ${WHAT}. Pausar e decisao sua: smartlead-launch.yml action=pause. ${RUN_URL}"
           echo "## 🔴 ${MSG}" >> "$GITHUB_STEP_SUMMARY"
           if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
             export MSG
             PAYLOAD=$(python3 -c 'import json,os;print(json.dumps({"chat_id":os.environ["TG_CHAT"],"text":os.environ["MSG"]}))')
-            curl -sS --max-time 20 -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD" >/dev/null || true
+            HTTP=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" -H "Content-Type: application/json" -d "$PAYLOAD")
+            # The alert itself is measured: "sent" is only said on a 200.
+            if [ "${HTTP}" = "200" ]; then echo "telegram=enviado" >> "$GITHUB_STEP_SUMMARY"; else echo "::error::Telegram NAO entregou o alarme (HTTP ${HTTP:-sem resposta})"; echo "telegram=FALHOU http=${HTTP:-sem_resposta}" >> "$GITHUB_STEP_SUMMARY"; fi
           else
             echo "::warning::TELEGRAM_* ausentes nos secrets do Actions — alarme so neste summary"
+            echo "telegram=sem_canal" >> "$GITHUB_STEP_SUMMARY"
           fi
           exit 1
