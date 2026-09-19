@@ -115,12 +115,21 @@ export function answersFromRow(raw: unknown): QuestionnaireAnswers {
   const engines = strs(o["engines"]).filter((e): e is BusinessEngine =>
     (["attract", "convert", "deliver", "retain", "run"] as string[]).includes(e)
   );
+  // 19/09 (C12): the hourly rate and the budget cap were accepted by the route,
+  // stored with the order, and dropped HERE — so a paid deliverable was always
+  // computed at the default US$50/h and ignored the client's budget.
+  const pos = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+  const hourlyRateUsd = pos(o["hourlyRateUsd"]);
+  const maxMonthlyBudgetUsd = pos(o["maxMonthlyBudgetUsd"]);
   return {
     businessType: typeof o["businessType"] === "string" ? o["businessType"] : "",
     primaryFocus: typeof o["primaryFocus"] === "string" ? o["primaryFocus"] : "",
     pains: strs(o["pains"]),
     engines,
     toolsInUse: strs(o["toolsInUse"]),
+    ...(hourlyRateUsd !== undefined ? { hourlyRateUsd } : {}),
+    ...(maxMonthlyBudgetUsd !== undefined ? { maxMonthlyBudgetUsd } : {}),
   };
 }
 
