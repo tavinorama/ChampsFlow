@@ -26,6 +26,7 @@ import type { PostgresClient } from "../../../../packages/shared/src/db-client";
 import { logger } from "../../../../packages/shared/src/logger";
 import { config } from "../config";
 import { nextStageFor, type Stage } from "../lib/smartlead-stage";
+import { redactWebhookPayload } from "../lib/smartlead-redact";
 
 function tokenMatches(provided: string | undefined, expected: string): boolean {
   if (!provided) return false;
@@ -78,7 +79,7 @@ export function registerSmartleadWebhookRoutes(app: Hono, db: PostgresClient): v
     await db.query(
       `INSERT INTO smartlead_event (event_type, campaign_id, lead_email, payload)
        VALUES ($1, $2, $3, $4)`,
-      [eventType, campaignId, leadEmail, JSON.stringify(payload)]
+      [eventType, campaignId, leadEmail, JSON.stringify(redactWebhookPayload(payload))]
     );
 
     // 2. Derivation. Fails open with a loud log: a CRM annotation error must
@@ -103,8 +104,9 @@ export function registerSmartleadWebhookRoutes(app: Hono, db: PostgresClient): v
         );
       } catch (err) {
         logger.error("smartlead_crm_annotation_failed", {
-          leadEmail,
+          // no address in logs (house rule): the event row is the way back to the lead
           eventType,
+          campaignId,
           message: (err as Error).message?.slice(0, 160),
           effect: "event stored; CRM row NOT annotated — reconcile from smartlead_event",
         });

@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { citationRateLine, VISIBILITY_INDEX_EXPLAINER, VISIBILITY_INDEX_TITLE } from "../../lib/visibility-headline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned, isSupabaseConfigured, getSupabase } from "../../lib/supabase-browser";
@@ -1109,16 +1110,18 @@ function OverviewTab({
       <div style={{ ...S.card, ...S.hero }}>
         <div style={S.scoreCol}>
           <div style={S.scoreBig}>{threeScores?.visibility ?? "—"}</div>
-          <div style={S.scoreOf}>
-            out of 100
-            {citationCI && citationCI.n > 0
-              ? ` · ± ${Math.ceil(Math.max(citationCI.rate - citationCI.low, citationCI.high - citationCI.rate) * 100)}`
-              : ""}
-          </div>
+          {/* C03 (19/09): no "±" here. The interval belongs to the citation RATE,
+              shown with its own numerator and denominator on the right. */}
+          <div style={S.scoreOf}>index, out of 100</div>
           <span style={{ ...S.pill, background: tone.bg, color: tone.fg, marginTop: "var(--space-2)" }}>● {tone.label}</span>
         </div>
         <div style={S.heroRight}>
-          <h2 style={S.heroH2}>How often AI names you</h2>
+          <h2 style={S.heroH2}>{VISIBILITY_INDEX_TITLE}</h2>
+          {citationRateLine(citationCI) && (
+            <p style={{ margin: "0 0 var(--space-2)", fontSize: "0.95rem", fontWeight: 600, color: "var(--color-text)" }}>
+              {citationRateLine(citationCI)}
+            </p>
+          )}
           {overallPts.length >= 2 ? <Sparkline points={overallPts} /> : <div style={S.muted}>Run a couple of audits to see your trend.</div>}
           {excludedRuns > 0 && (
             <p style={{ margin: "var(--space-1) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
@@ -1131,9 +1134,9 @@ function OverviewTab({
             is not in this number{typeof threeScores?.executionProgress === "number" ? (
               <> — it is the <b>Verified Execution</b> line below, at {threeScores.executionProgress}%</>
             ) : null}.
-            {" "}AI answers move on their own, so the &plusmn; is the range this
-            number could honestly sit in. When it changes, look for the reason
-            underneath before reading it as your doing.
+            {" "}{VISIBILITY_INDEX_EXPLAINER}
+            {" "}AI answers move on their own. When the index changes, look for
+            the reason underneath before reading it as your doing.
           </p>
           {confidence && (confidence.checks != null || confidence.stabilityNote) && (
             <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
