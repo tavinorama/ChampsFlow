@@ -66,7 +66,7 @@ Hi {{first_name}},
 When the phone goes quiet, you check the usual things.
 Ads. Reviews. The season.
 
-Here is one you cannot check yourself.
+Here is one that is easy to miss.
 People ask ChatGPT: "{{buyer_question}}"
 It gives a few names. Yours may not be one.
 

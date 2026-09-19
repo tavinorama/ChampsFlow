@@ -92,6 +92,50 @@ import {
 /** Artifact key holding the hypothesis a spawned run was seeded with. */
 export const SEED_ARTIFACT = "__seed__";
 /** Upstream key carrying the editorial calendar's day theme to content cells. */
+/**
+ * C15 (19/09) — what the scheduler gave back, kept in the DURABLE record.
+ *
+ * The publish step used to say only "published via postiz channel=<ch>". The
+ * response body (with Postiz's own post id) went to a Redis artifact that
+ * expires in 7 days, so after a week nothing tied a "published" row to any
+ * object that can be looked up. This is the SCHEDULER's id, not the platform
+ * permalink: it proves Postiz accepted and stored the post, not that LinkedIn
+ * or X shows it. `postiz_id=none` is said out loud when the body has no id.
+ */
+export function publishReceipt(detail: string | null | undefined): string {
+  const text = typeof detail === "string" ? detail : "";
+  const pick = (o: unknown): string | null => {
+    if (Array.isArray(o)) {
+      for (const it of o) {
+        const v = pick(it);
+        if (v) return v;
+      }
+      return null;
+    }
+    if (o && typeof o === "object") {
+      const rec = o as Record<string, unknown>;
+      for (const k of ["postId", "post_id", "id"]) {
+        const v = rec[k];
+        if ((typeof v === "string" && v.trim()) || typeof v === "number") return String(v).trim();
+      }
+      for (const v of Object.values(rec)) {
+        const inner = pick(v);
+        if (inner) return inner;
+      }
+    }
+    return null;
+  };
+  let id: string | null = null;
+  try {
+    id = pick(JSON.parse(text));
+  } catch {
+    // the detail is capped at 500 chars and may be cut mid-JSON
+    id = /"(?:postId|post_id|id)"\s*:\s*"?([A-Za-z0-9_-]{4,64})"?/.exec(text)?.[1] ?? null;
+  }
+  const safe = id ? id.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) : "";
+  return ` postiz_id=${safe || "none"}`;
+}
+
 export const DAY_ARTIFACT = "__day__";
 /** Upstream key carrying REAL external signals (Signal Engine) to content cells. */
 export const SIGNALS_ARTIFACT = "__signals__";
@@ -1280,7 +1324,7 @@ export async function advanceRun(
               const releaseNote = parkedSummary.startsWith(CIRCUIT_PARK_SUMMARY_PREFIX)
                 ? " (apos circuito fechado)"
                 : " (apos adiamento de cadencia)";
-              const releasedSummary = `published via ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote}${releaseNote}`;
+              const releasedSummary = `published via ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote}${releaseNote}${publishReceipt(res.detail)}`;
               await artifacts.set(runId, nodeId, res.detail);
               await substrate.finishStep(step.id, {
                 status: "succeeded",
@@ -2013,7 +2057,7 @@ export async function advanceRun(
         await substrate.finishStep(stepId, {
           status: "succeeded",
           outputHash: sha(res.detail),
-          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}${mediaNote}${threadNote}`,
+          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}${mediaNote}${threadNote}${publishReceipt(res.detail)}`,
         });
       } else {
         await substrate.finishStep(stepId, { status: "failed", summary: `publish failed: ${res.detail.slice(0, 120)}` });

@@ -112,9 +112,33 @@ function byRank(a: ScoredTool, b: ScoredTool): number {
   return a.tool.name.localeCompare(b.tool.name);
 }
 
-function financialImpact(tools: ScoredTool[], hourlyRate: number): FinancialImpact {
+/**
+ * Hours a stack gives back, without saving the same chore twice. Tools are
+ * taken in rank order; each contributes its catalog hours scaled by the share
+ * of its matched pains that no earlier tool already covers. A tool that only
+ * repeats covered pains adds its COST and zero hours. (19/09: two tools on one
+ * pain were summed to 10h; the catalog says 5h for that chore.)
+ */
+export function deOverlappedHours(tools: ScoredTool[]): { counted: number; notCounted: number } {
+  const covered = new Set<string>();
+  let counted = 0;
+  let notCounted = 0;
+  for (const t of tools) {
+    const pains = t.matchedPains;
+    const fresh = pains.filter((p) => !covered.has(p));
+    // A tool recommended with no matched pain (engine-only match) has nothing to overlap on.
+    const share = pains.length === 0 ? 1 : fresh.length / pains.length;
+    counted += t.tool.hoursSavedWeekly * share;
+    notCounted += t.tool.hoursSavedWeekly * (1 - share);
+    pains.forEach((p) => covered.add(p));
+  }
+  return { counted: round2(counted), notCounted: round2(notCounted) };
+}
+
+function financialImpact(tools: ScoredTool[], hourlyRate: number, hourlyRateIsDefault: boolean): FinancialImpact {
   const totalMonthlyToolCostUsd = round2(tools.reduce((s, t) => s + t.tool.monthlyCostUsd, 0));
-  const weeklyTimeReturnedHours = round2(tools.reduce((s, t) => s + t.tool.hoursSavedWeekly, 0));
+  const hours = deOverlappedHours(tools);
+  const weeklyTimeReturnedHours = hours.counted;
   const monthlyValue = weeklyTimeReturnedHours * WEEKS_PER_MONTH * hourlyRate;
   // EFFORT saved = the recurring chores the stack takes off the client's plate,
   // one per distinct pain a recommended tool covers. Honest count, not a guess.
@@ -125,6 +149,8 @@ function financialImpact(tools: ScoredTool[], hourlyRate: number): FinancialImpa
     monthlyNetRoiUsd: round2(monthlyValue - totalMonthlyToolCostUsd),
     totalMonthlyToolCostUsd,
     hourlyRateUsd: hourlyRate,
+    hourlyRateIsDefault,
+    overlappingHoursNotCounted: hours.notCounted,
   };
 }
 
@@ -253,7 +279,7 @@ export function buildAuditReport(
     recommendedSolutions,
     fourDayPlan,
     whatComesAfter: matrix["major-project"],
-    financialImpact: financialImpact(recommendedSolutions, hourlyRate),
+    financialImpact: financialImpact(recommendedSolutions, hourlyRate, answers.hourlyRateUsd == null),
     topPick,
     topPickReason,
     empty: scored.length === 0,

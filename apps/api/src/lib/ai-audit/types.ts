@@ -120,6 +120,17 @@ export interface FinancialImpact {
   totalMonthlyToolCostUsd: number;
   /** The hourly rate used (echoed for transparency). */
   hourlyRateUsd: number;
+  /**
+   * True when the client gave no rate and the engine's default was used. The
+   * page must say so: a return computed at OUR guess of their hour is a
+   * scenario, never "your savings" (audit 19/09, C12/C13).
+   */
+  hourlyRateIsDefault: boolean;
+  /**
+   * Hours NOT counted because an earlier-ranked tool already covers the same
+   * pain. Two tools for one chore do not save the chore twice.
+   */
+  overlappingHoursNotCounted: number;
 }
 
 /**
