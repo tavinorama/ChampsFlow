@@ -130,11 +130,11 @@ export function generateStrategy(inputs: StrategyInputs): StrategyPlan {
     } else if (inputs.absentPrompts && inputs.absentPrompts.length > 0) {
       citationEvidence = `Your brand was not mentioned for ${inputs.absentPrompts.length} tested prompt(s). Example: "${inputs.absentPrompts[0]}".`;
     }
-    const aiScore = inputs.scores.ai;
-    const citMetric =
-      aiScore != null
-        ? `Citation rate across buyer prompts (current: ${aiScore}% → target: >50%)`
-        : "Citation rate across buyer prompts (current: see audit → target: >50%)";
+    // P05: this line used to print the AI Visibility INDEX (a 0-100 composite)
+    // as if it were the citation RATE — "current: 52%" on a brand named in
+    // about 15% of answers. The rate is right here; use it.
+    const ratePct = Math.round(num(ai["citationRate"]) * 100);
+    const citMetric = `Share of buyer prompts that name you (current: ${ratePct}% → target: >50%)`;
     recs.push({
       vector: "ai",
       gap: "Your brand is cited in fewer than half of the buyer prompts we tested.",

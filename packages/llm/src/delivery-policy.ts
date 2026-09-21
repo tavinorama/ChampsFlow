@@ -56,8 +56,8 @@ export type DoNextVerdictCode = "OK" | typeof DELIVERY_LOOP_BROKEN;
  *
  * Where the number comes from: it is the target the product has already been
  * promising clients in the GEO plan since C3 —
- * packages/llm/src/strategy-generator.ts:136 writes
- * "Citation rate across buyer prompts (current: N% → target: >50%)". Making
+ * packages/llm/src/strategy-generator.ts writes
+ * "Share of buyer prompts that name you (current: N% → target: >50%)". Making
  * the policy disagree with the plan we hand the client would be a second lie,
  * so the default is that same 50 until the founder sets another.
  *
