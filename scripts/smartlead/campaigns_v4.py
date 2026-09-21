@@ -1015,6 +1015,59 @@ def cmd_deliverability(names: dict) -> int:
     return 0 if not broken and not unread else 1
 
 
+def cmd_hold(names: dict, domains: list[str], confirm: bool) -> int:
+    """PAUSE, in the two active campaigns, every live lead whose e-mail domain is
+    one of `domains`. Reversible (the lead keeps its place), never a delete.
+
+    21/09: the founder writes to the design-partner companies himself, from his
+    own mailbox. Two of them (hawkphac.com, leanhartplumbing.com) were already
+    inside the Geo campaign and would receive touch 2 from another sender in the
+    same days — the same person, two Ozvor identities. A domain the founder is
+    working by hand leaves the machine.
+
+    Aggregates only in the output: counts and domains, never an address."""
+    if not domains:
+        out({"ok": False, "motivo": "nenhum dominio dado — nada a fazer"})
+        return 1
+    wanted = {d.strip().lower().lstrip("@") for d in domains if d.strip()}
+    by_name = campaign_index()
+    missing = [n for n in (names["geo"], names["stack"]) if n not in by_name]
+    if missing:           # "could not read the campaign" is never "nobody there"
+        out({"ok": False, "motivo": "campanha nao encontrada pelo nome — nada foi pausado", "nao_encontradas": missing})
+        return 1
+    report, to_pause = {}, []
+    for key in ("geo", "stack"):
+        c = by_name[names[key]]
+        rows = [dict(r.get("lead") or r, _status=str(r.get("status") or "").upper()) for r in fetch_leads(str(c["id"]))]
+        hit, already = [], 0
+        for r in rows:
+            dom = str(r.get("email") or "").strip().lower().split("@")[-1]
+            if dom not in wanted:
+                continue
+            if r["_status"] in ("PAUSED", "BLOCKED"):
+                already += 1
+                continue
+            if r.get("id"):
+                hit.append(r)
+        report[names[key]] = {"leads": len(rows), "a_pausar": len(hit), "ja_pausadas_ou_bloqueadas": already,
+                              "dominios_encontrados": sorted({str(r.get("email") or "").split("@")[-1].lower() for r in hit})}
+        to_pause += [(c["id"], r.get("id")) for r in hit]
+    if not confirm:
+        out({"ok": True, "modo": "ENSAIO — nenhuma lead foi pausada", "dominios": sorted(wanted), "campanhas": report})
+        return 0
+    paused, fail, first_error = 0, 0, None
+    for cid, lid in to_pause:
+        st, d = sl(f"/campaigns/{cid}/leads/{lid}/pause", {}, method="POST")
+        if bad(st, d):
+            fail += 1
+            first_error = first_error or {"http": st, "resp": json.dumps(d)[:200]}
+        else:
+            paused += 1
+    out({"ok": fail == 0, "modo": "execucao", "dominios": sorted(wanted), "campanhas": report,
+         "pausadas": paused, "falhas": fail, "primeiro_erro": first_error})
+    return 0 if fail == 0 else 1
+
+
 def cmd_prune(names: dict, confirm: bool) -> int:
     """Pause, inside the two NEW campaigns, the leads whose site does not answer.
     17/09: one load ran with the site check off and let in 72 leads whose site
@@ -1238,7 +1291,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch", "deliverability", "domain-auth"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch", "deliverability", "domain-auth", "hold"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
@@ -1251,6 +1304,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--per-day", type=int, default=100, help="pace: new leads per day, per campaign")
     ap.add_argument("--days", default="keep", choices=["keep", "all", "weekdays"], help="pace: sending days")
     ap.add_argument("--touched-sources", default="", help="campaigns whose COMPLETED leads may be re-used (minus bounce/reply/unsub)")
+    ap.add_argument("--domains", default="", help="hold: e-mail domains to pause, comma separated")
     ap.add_argument("--no-site-check", action="store_true")
     ap.add_argument("--confirm", action="store_true")
     a = ap.parse_args(argv)
@@ -1299,6 +1353,8 @@ def main(argv: list[str]) -> int:
         return cmd_deliverability(names)
     if a.command == "inspect":
         return cmd_inspect(copy, names)
+    if a.command == "hold":
+        return cmd_hold(names, [x for x in a.domains.split(",") if x.strip()], a.confirm)
     if a.command == "prune":
         return cmd_prune(names, a.confirm)
     if a.command == "prospect":
