@@ -750,6 +750,41 @@ describe("external signals (Signal Engine) reach content cells, fail-open", () =
     await tickUntil(throwing, () => throwing.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
     expect(throwing.stepByNode("approval")?.status).toBe("waiting");
   });
+
+  it("P16 — a run with no live context says so in the step summary and in the approval box", async () => {
+    // No port at all: the default world has neither externalSignals nor ownVisibilityGaps.
+    const bare = makeWorld(SPHERE_X_GRAPH.slug);
+    await tickUntil(bare, () => bare.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    const reasoning = bare.steps.filter((st) => (st.summary ?? "").includes(" ok via "));
+    expect(reasoning.length).toBeGreaterThan(0);
+    for (const st of reasoning) expect(st.summary).toContain("ctx signals=not_wired gaps=not_wired");
+    const ask = bare.telegrams.find((t) => t.includes("APROVAÇÃO NECESSÁRIA")) ?? "";
+    expect(ask).toContain("SEM sinais externos atuais (conector nao configurado neste worker)");
+    expect(ask).toContain("SEM lacunas proprias da auditoria");
+
+    // A port that throws is reported as a failed read, not as "not configured".
+    const down = makeWorld(SPHERE_X_GRAPH.slug);
+    down.ports.substrate.externalSignals = async () => { throw new Error("se down"); };
+    down.ports.substrate.ownVisibilityGaps = async () => null;
+    await tickUntil(down, () => down.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    const askDown = down.telegrams.find((t) => t.includes("APROVAÇÃO NECESSÁRIA")) ?? "";
+    expect(askDown).toContain("SEM sinais externos atuais (a leitura falhou)");
+    expect(askDown).toContain("SEM lacunas proprias da auditoria (a fonte respondeu vazio)");
+
+    // Both blocks there: the receipt is recorded, the founder gets no warning.
+    const full = makeWorld(SPHERE_X_GRAPH.slug);
+    full.ports.substrate.externalSignals = async () => "SINAIS EXTERNOS REAIS: kw=x";
+    full.ports.substrate.ownVisibilityGaps = async () => "LACUNAS PROPRIAS: q=y";
+    const prompts: string[] = [];
+    const orig = full.ports.hermes.task.bind(full.ports.hermes);
+    full.ports.hermes.task = async (p) => { prompts.push(p); return orig(p); };
+    await tickUntil(full, () => full.stepByNode("approval")?.status === "waiting", 25, SPHERE_X_GRAPH);
+    const askFull = full.telegrams.find((t) => t.includes("APROVAÇÃO NECESSÁRIA")) ?? "";
+    expect(askFull).not.toContain("📡 Contexto desta peça");
+    expect(full.steps.some((st) => (st.summary ?? "").includes("ctx signals=on gaps=on"))).toBe(true);
+    // The receipt is for humans: it is never rendered into a prompt.
+    for (const p of prompts) expect(p).not.toContain("__context__");
+  });
 });
 
 describe("the content-experiment cell — a seeded, gated, measured shot", () => {
