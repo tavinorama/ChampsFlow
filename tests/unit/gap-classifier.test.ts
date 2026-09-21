@@ -172,6 +172,55 @@ describe("absent data is never zero (house rule)", () => {
   });
 });
 
+describe("P01a — not being used is not the same as not existing", () => {
+  const signals: GapSignals = { brandName: "Acme Dental", brandDomain: "acmedental.com", localIntent: false };
+  const content = OBS({ competitors: ["Bright Smile"], citations: ["https://brightsmile.com/implants"] });
+  const offsite = OBS({ competitors: ["Bright Smile"], citations: ["https://www.reddit.com/r/dentistry/abc"] });
+
+  it("a content gap never claims the client has no page — nobody inventoried the site", () => {
+    const c = classifyGap(content, signals);
+    expect(c?.gapType).toBe("content");
+    expect(c?.reason).not.toMatch(/no page of ours/i);
+    expect(c?.reason).toContain("was not checked");
+    expect(c?.missingSignals.join(" | ")).toContain("site not inventoried");
+  });
+
+  it("with a known page, the diagnosis names that page as not used", () => {
+    const c = classifyGap(content, { ...signals, targetUrl: "https://acmedental.com/implants" });
+    expect(c?.reason).toContain("did not use our page https://acmedental.com/implants");
+    expect(c?.missingSignals.join(" | ")).not.toContain("site not inventoried");
+  });
+
+  it("an offsite gap never claims the brand is absent from a source nobody checked", () => {
+    const c = classifyGap(offsite, signals);
+    expect(c?.gapType).toBe("offsite");
+    expect(c?.reason).not.toMatch(/is absent/i);
+    expect(c?.reason).toContain("was not checked");
+    expect(c?.missingSignals.join(" | ")).toContain("own presence on reddit.com (not checked)");
+  });
+
+  it("the content recommendation checks for an existing page before prescribing a new one", () => {
+    const a = buildVisibilityAction(content, classifyGap(content, signals)!, CTX);
+    expect(a.recommendation).toContain("First check whether a page of yours already answers");
+    expect(a.recommendation).toContain("rework that page instead of adding another");
+    expect(validateActionSpecificity(a)).toEqual([]);
+  });
+
+  it("a known page is reworked, never duplicated", () => {
+    const ctx = { ...CTX, targetUrl: "https://acmedental.com/implants" };
+    const a = buildVisibilityAction(content, classifyGap(content, { ...signals, targetUrl: ctx.targetUrl })!, ctx);
+    expect(a.recommendation).toContain("Your page https://acmedental.com/implants was not used. Rework it");
+    expect(a.recommendation).not.toMatch(/publish one/i);
+    expect(a.acceptanceCriteria.join(" ")).toContain("reworked or new");
+  });
+
+  it("the offsite recommendation checks for an existing presence first, and still passes the guard", () => {
+    const a = buildVisibilityAction(offsite, classifyGap(offsite, signals)!, CTX);
+    expect(a.recommendation).toContain("First check whether Acme Dental already has a presence on reddit.com");
+    expect(validateActionSpecificity(a)).toEqual([]);
+  });
+});
+
 describe("every generated action carries its own evidence (RELATORIO §3.1 list)", () => {
   const obs = OBS({ competitors: ["Bright Smile"], citations: ["https://brightsmile.com/implants"] });
   const cls = classifyGap(obs, { ...CTX, localIntent: false })!;
