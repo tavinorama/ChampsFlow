@@ -19,7 +19,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { citationRateLine, VISIBILITY_INDEX_EXPLAINER, VISIBILITY_INDEX_TITLE } from "../../lib/visibility-headline";
+import {
+  citationRateLine,
+  discoveryLines,
+  splitByBrandMention,
+  VISIBILITY_INDEX_EXPLAINER,
+  VISIBILITY_INDEX_TITLE,
+} from "../../lib/visibility-headline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, ensureProvisioned, isSupabaseConfigured, getSupabase } from "../../lib/supabase-browser";
@@ -1117,6 +1123,25 @@ function OverviewTab({
         </div>
         <div style={S.heroRight}>
           <h2 style={S.heroH2}>{VISIBILITY_INDEX_TITLE}</h2>
+          {/* P07 (21/09): discovery first. A mixed share hid that every mention
+              came from the questions that already say the brand name. */}
+          {(() => {
+            const lines = discoveryLines(splitByBrandMention(intents, brandName));
+            if (!lines.discovery && !lines.branded) return null;
+            return (
+              <div style={{ margin: "0 0 var(--space-3)" }}>
+                {lines.discovery && (
+                  <p style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700, color: "var(--color-text)" }}>{lines.discovery}</p>
+                )}
+                {lines.branded && (
+                  <p style={{ margin: "var(--space-1) 0 0", fontSize: "0.85rem", color: "var(--color-muted)" }}>{lines.branded}</p>
+                )}
+                {lines.note && (
+                  <p style={{ margin: "var(--space-1) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>{lines.note}</p>
+                )}
+              </div>
+            );
+          })()}
           {citationRateLine(citationCI) && (
             <p style={{ margin: "0 0 var(--space-2)", fontSize: "0.95rem", fontWeight: 600, color: "var(--color-text)" }}>
               {citationRateLine(citationCI)}
@@ -1141,7 +1166,7 @@ function OverviewTab({
           {confidence && (confidence.checks != null || confidence.stabilityNote) && (
             <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
               {confidence.checks != null ? `Measured over ${confidence.checks} checks` : ""}
-              {confidence.checks != null && confidence.citations != null ? ` — cited in ${confidence.citations}.` : "."}
+              {confidence.checks != null && confidence.citations != null ? ` — named in ${confidence.citations}.` : "."}
               {confidence.stabilityNote ? ` ${confidence.stabilityNote}` : ""}
             </p>
           )}
