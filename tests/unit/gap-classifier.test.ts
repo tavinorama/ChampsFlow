@@ -24,6 +24,7 @@ import {
   isSpecificAction,
   assertActionsSpecific,
   isOffsiteSource,
+  ownDomainCited,
   RECHECK_DAYS,
   type NormalizedObservation,
   type GapSignals,
@@ -218,6 +219,63 @@ describe("P01a — not being used is not the same as not existing", () => {
     const a = buildVisibilityAction(offsite, classifyGap(offsite, signals)!, CTX);
     expect(a.recommendation).toContain("First check whether Acme Dental already has a presence on reddit.com");
     expect(validateActionSpecificity(a)).toEqual([]);
+  });
+});
+
+describe("P03 — naming the brand is not citing its site", () => {
+  const signals: GapSignals = { brandName: "Acme Dental", brandDomain: "acmedental.com", localIntent: false };
+
+  it("ownDomainCited: true only when our own domain is among the exposed sources", () => {
+    expect(ownDomainCited(["https://acmedental.com/implants", "https://brightsmile.com/x"], "acmedental.com")).toBe(true);
+    expect(ownDomainCited(["https://blog.acmedental.com/post"], "https://www.acmedental.com/")).toBe(true);
+    expect(ownDomainCited(["https://brightsmile.com/x"], "acmedental.com")).toBe(false);
+    // A look-alike host is not ours.
+    expect(ownDomainCited(["https://notacmedental.com/x"], "acmedental.com")).toBe(false);
+  });
+
+  it("ownDomainCited: no sources, no brand domain, or only opaque redirects → null (not measurable), never false", () => {
+    expect(ownDomainCited([], "acmedental.com")).toBeNull();
+    expect(ownDomainCited(["https://brightsmile.com/x"], null)).toBeNull();
+    expect(ownDomainCited(["https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc"], "acmedental.com")).toBeNull();
+    // One readable source that is not ours is enough to say "not cited".
+    expect(
+      ownDomainCited(["https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc", "https://brightsmile.com/x"], "acmedental.com")
+    ).toBe(false);
+  });
+
+  it("named, with sources that are all someone else's → proof gap that says exactly that", () => {
+    const c = classifyGap(
+      OBS({ mentioned: true, cited: false, sentiment: "neutral", citations: ["https://brightsmile.com/x"] }),
+      signals
+    );
+    expect(c?.gapType).toBe("proof");
+    expect(c?.reason).toContain("none of the sources it used is Acme Dental's own site");
+    expect(c?.reason).not.toContain("recommends someone else");
+  });
+
+  it("named, and the answer exposed no sources → NOT a proof gap; the missing signal is named", () => {
+    const c = classifyGap(OBS({ mentioned: true, cited: null, sentiment: "neutral", mentionPosition: 1 }), signals);
+    expect(c).toBeNull();
+    const low = classifyGap(OBS({ mentioned: true, cited: null, sentiment: "neutral", mentionPosition: 5 }), signals);
+    expect(low?.gapType).toBe("proof");
+    expect(low?.reason).toContain("names Acme Dental in position 5");
+    expect(low?.missingSignals.join(" | ")).toContain("own-domain citation");
+  });
+
+  it("the card's success condition promises a NAME, which is what the audit measures", () => {
+    const obs = OBS({ competitors: ["Bright Smile"], citations: ["https://brightsmile.com/implants"] });
+    const a = buildVisibilityAction(obs, classifyGap(obs, signals)!, CTX);
+    expect(a.verificationPlan.successCondition).toContain("names Acme Dental in its answer to");
+    expect(a.verificationPlan.successCondition).not.toMatch(/\bcites\b/);
+  });
+
+  it("a failed prior attempt is judged on being NAMED, not on the citation bit", () => {
+    const prior = { actionId: "a1", gapType: "content" as const, state: "published" as const, publishedUrl: "https://acmedental.com/implants" };
+    const stillAbsent = classifyGap(
+      OBS({ mentioned: false, cited: null, competitors: ["Bright Smile"], citations: ["https://brightsmile.com/x"] }),
+      { ...signals, priorAttempt: prior }
+    );
+    expect(stillAbsent?.failedHypothesis).toBe(true);
   });
 });
 

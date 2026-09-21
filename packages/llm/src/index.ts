@@ -488,6 +488,7 @@ export {
   DEFAULT_ENTITY_CONFIDENCE_FLOOR,
   assertGapTableComplete,
   isOffsiteSource,
+  ownDomainCited,
   classifyGap,
   buildVisibilityAction,
   classifyAndGenerate,
