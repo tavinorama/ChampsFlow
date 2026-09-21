@@ -22,6 +22,8 @@ import {
   CLOSED_UNATTRIBUTED_PREFIX,
   wasExecuted,
   REGRESSED_PREFIX,
+  RETIRED_OFF_PANEL_PREFIX,
+  fixLegacyRateMetric,
   type LoopProbe,
   type PrevTask,
 } from "../../packages/llm/src/visibility-loop";
@@ -371,5 +373,103 @@ describe("reconcileLoopTasks — the loop contract", () => {
     expect(rows[0]?.effort).toBe("medium");
     expect(rows[0]?.impact).toBe("medium");
     expect(rows[0]?.owner).toBe("you");
+  });
+});
+
+describe("P05 — a card about a question the audit no longer asks leaves the open list", () => {
+  const SAAS = [
+    "Best Saas for SMBs on a budget",
+    "How to choose a Saas vendor",
+    "Most trusted Saas companies",
+    "Pros and cons of leading Saas options",
+    "Saas alternatives worth considering",
+    "Top Saas providers in 2026",
+    "Which Saas do experts recommend?",
+    "What is the best Saas for small businesses?",
+    "Saas pricing compared",
+    "Saas for agencies",
+    "Saas for local services",
+    "Saas onboarding time",
+  ];
+  const stale = SAAS.map((q) => prevTask({ gap: gapForUncited(q), action: `old action for ${q}` }));
+  const panelProbes = [probe({ queryText: "which tools track ai search visibility" })];
+
+  it("the production case: 12 stale cards used to fill every slot and keep the new finding out", () => {
+    expect(stale.length).toBe(LOOP_OPEN_CAP);
+    const build = buildLoopCandidates(panelProbes);
+    expect([...build.probedQueries!]).toEqual(["which tools track ai search visibility"]);
+    const { rows, stats } = reconcileLoopTasks(stale, build, "2026-09-21");
+
+    expect(stats.retiredOffPanel).toBe(12);
+    expect(stats.created).toBe(1);
+    expect(stats.queueBlocked).toBe(false);
+    const open = rows.filter((r) => r.status === "proposed");
+    expect(open.map((r) => r.gap)).toEqual([gapForUncited("which tools track ai search visibility")]);
+  });
+
+  it("nothing is deleted: the retired card is kept as expired, with the reason, the date and its old evidence", () => {
+    const { rows } = reconcileLoopTasks([stale[0]!], buildLoopCandidates(panelProbes), "2026-09-21");
+    const retired = rows.find((r) => r.gap === gapForUncited(SAAS[0]!))!;
+    expect(retired.status).toBe("expired");
+    expect(retired.evidence).toContain(`${RETIRED_OFF_PANEL_PREFIX}2026-09-21`);
+    expect(retired.evidence).toContain("Nothing was executed on this card");
+    expect(retired.evidence).toContain("old evidence");
+  });
+
+  it("work that was done is never retired, even when we stopped asking the question", () => {
+    const done = [
+      prevTask({ gap: gapForUncited(SAAS[0]!), status: "published", artifact_url: "https://ozvor.com/x" }),
+      prevTask({ gap: gapForUncited(SAAS[1]!), status: "manual_done_pending_verification" }),
+    ];
+    const { rows, stats } = reconcileLoopTasks(done, buildLoopCandidates(panelProbes), "2026-09-21");
+    expect(stats.retiredOffPanel).toBe(0);
+    expect(rows.find((r) => r.gap === gapForUncited(SAAS[0]!))?.status).toBe("published");
+    expect(rows.find((r) => r.gap === gapForUncited(SAAS[1]!))?.status).toBe("manual_done_pending_verification");
+  });
+
+  it("a question still in the panel is never retired, and a card that is not about a question is left alone", () => {
+    const prev = [
+      prevTask({ gap: gapForUncited("which tools track ai search visibility") }),
+      prevTask({ gap: gapForSource("g2.com") }),
+      prevTask({ gap: "Your brand is cited in fewer than half of the buyer prompts we tested.", status: "legacy_self_reported" }),
+    ];
+    const { stats } = reconcileLoopTasks(prev, buildLoopCandidates(panelProbes), "2026-09-21");
+    expect(stats.retiredOffPanel).toBe(0);
+  });
+
+  it("an audit that asked nothing (or a hand-built result with no panel) retires nothing", () => {
+    expect(reconcileLoopTasks(stale, buildLoopCandidates([]), "2026-09-21").stats.retiredOffPanel).toBe(0);
+    expect(reconcileLoopTasks(stale, { candidates: [], resolved: new Map() }, "2026-09-21").stats.retiredOffPanel).toBe(0);
+  });
+
+  it("if the question comes back and is still lost, it is proposed again as a fresh card", () => {
+    const first = reconcileLoopTasks([stale[0]!], buildLoopCandidates(panelProbes), "2026-09-21");
+    const retired = first.rows.find((r) => r.gap === gapForUncited(SAAS[0]!))!;
+    const back = buildLoopCandidates([probe({ queryText: SAAS[0]! })]);
+    const second = reconcileLoopTasks([retired as unknown as PrevTask], back, "2026-09-28");
+    const again = second.rows.filter((r) => r.gap === gapForUncited(SAAS[0]!));
+    expect(again.length).toBe(1);
+    expect(again[0]!.status).toBe("proposed");
+    expect(again[0]!.evidence).not.toContain(RETIRED_OFF_PANEL_PREFIX);
+  });
+});
+
+describe("P05 — the legacy card no longer prints the index as a rate", () => {
+  it("drops the stale 'current: 52%' from a carried legacy metric, and touches nothing else", () => {
+    expect(fixLegacyRateMetric("Citation rate across buyer prompts (current: 52% → target: >50%)")).toBe(
+      "Share of buyer prompts that name you (current: see this audit → target: >50%)"
+    );
+    expect(fixLegacyRateMetric("old metric")).toBe("old metric");
+    expect(fixLegacyRateMetric(null)).toBeNull();
+  });
+
+  it("a carried legacy card comes out with the corrected metric", () => {
+    const legacy = prevTask({
+      gap: "Your brand is cited in fewer than half of the buyer prompts we tested.",
+      status: "legacy_self_reported",
+      metric: "Citation rate across buyer prompts (current: 52% → target: >50%)",
+    });
+    const { rows } = reconcileLoopTasks([legacy], buildLoopCandidates([probe({})]), "2026-09-21");
+    expect(rows.find((r) => r.gap === legacy.gap)?.metric).not.toContain("52%");
   });
 });

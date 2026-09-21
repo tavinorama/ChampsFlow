@@ -51,6 +51,14 @@ describe("generateStrategy", () => {
     }
   });
 
+  it("P05 — the AI card prints the citation RATE, never the 0-100 index, as its 'current' value", () => {
+    // index 50, rate 0.3: the old text said "current: 50%". The share is 30%.
+    const plan = generateStrategy(weakInputs);
+    const card = plan.recommendations.find((r) => (r.metric ?? "").includes("buyer prompts"))!;
+    expect(card.metric).toBe("Share of buyer prompts that name you (current: 30% → target: >50%)");
+    expect(card.metric).not.toContain("50% →");
+  });
+
   it("never recommends llms.txt (Google 2026 alignment)", () => {
     const plan = generateStrategy(weakInputs);
     const text = JSON.stringify(plan).toLowerCase();
@@ -142,7 +150,8 @@ describe("generateStrategy — Action Cards v1 enrichment", () => {
     expect(citRec).toBeDefined();
     expect(citRec?.evidence).toContain("best CRM for small business");
     expect(citRec?.evidence).toContain("chatgpt");
-    expect(citRec?.metric).toContain("Citation rate");
+    // P05: the rate (0.2 → 20%), not the index (30) dressed up as a percentage.
+    expect(citRec?.metric).toContain("Share of buyer prompts that name you (current: 20%");
     expect(citRec?.owner).toBe("you");
   });
 
