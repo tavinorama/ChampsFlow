@@ -24,12 +24,59 @@ describe("[__facts__] — true, dated, sourced material", () => {
   });
 
   it("an expired fact leaves the block; when all expire the block is ABSENT, never a placeholder", () => {
-    const facts = [{ id: "old", fact: "f", source: "s", lesson: "l", until: "2026-09-01" }];
+    const facts = [{ id: "old", fact: "f", source: "s", lesson: "l", asOf: "2026-08-01", counts: "c", until: "2026-09-01" }];
     expect(factsBlock(new Date("2026-09-20T00:00:00Z"), facts)).toBeNull();
     const live = factsBlock(new Date("2026-09-20T00:00:00Z"));
     expect(live).toContain("UNICA fonte permitida de cena");
     expect(live).toContain("[impressions-2bn-was-27]");
     expect(factsBlock(new Date("2027-01-01T00:00:00Z"))).toBeNull();
+  });
+});
+
+describe("P17 — a fact is a dated snapshot, never today's state", () => {
+  const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  it("every fact carries the date it was read, no later than its expiry, and names what it counts", () => {
+    for (const f of CONTENT_FACTS) {
+      expect(f.asOf, f.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(f.asOf <= f.until, f.id).toBe(true);
+      expect(f.counts.trim().length, f.id).toBeGreaterThan(10);
+    }
+  });
+
+  it("the fact TEXT says its own date, so a piece that copies it cannot sound like today", () => {
+    for (const f of CONTENT_FACTS) {
+      const year = f.asOf.slice(0, 4);
+      const month = MONTHS[Number(f.asOf.slice(5, 7)) - 1]!;
+      expect(f.fact, f.id).toContain(year);
+      expect(f.fact, f.id).toContain(month);
+      expect(f.fact, f.id).not.toMatch(/\b(right now|currently|so far|to date|as of today)\b/i);
+    }
+  });
+
+  it("the block renders the read date and the unit, and forbids retelling a fact as the present", () => {
+    const block = factsBlock(new Date("2026-09-22T09:00:00Z"))!;
+    expect(block).toContain("Cada fato e uma FOTO com data");
+    expect(block).toContain("NUNCA conte um fato como o estado de hoje");
+    for (const f of CONTENT_FACTS) {
+      expect(block).toContain(`[${f.id}] (lido em ${f.asOf})`);
+      expect(block).toContain(`(conta: ${f.counts})`);
+    }
+  });
+
+  it("the cold-email fact no longer says every reply was a no — by 21/09 one said yes", () => {
+    const f = CONTENT_FACTS.find((x) => x.id.startsWith("cold-483"))!;
+    expect(f.id).toBe("cold-483-first-three-days");
+    expect(f.fact).toContain("17 to 19 September 2026");
+    expect(f.fact).toContain("by 21 September, 684 people had been emailed and 9 had replied");
+    expect(f.fact).toContain("emailed 483 people");
+    expect(f.fact).not.toContain("483 cold emails");
+  });
+
+  it("the index fact names its unit: answers collected, not checks of buyers", () => {
+    const f = CONTENT_FACTS.find((x) => x.id === "score-52-was-15-of-102")!;
+    expect(f.fact).toContain("15 of the 102 answers collected that day");
+    expect(f.counts).toContain("not questions and not buyers");
   });
 });
 
