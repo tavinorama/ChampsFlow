@@ -158,6 +158,40 @@ export const SIGNALS_ARTIFACT = "__signals__";
  */
 export const GAPS_ARTIFACT = "__gaps__";
 /**
+ * P16 — the run's CONTEXT RECEIPT. [__signals__] and [__gaps__] are optional
+ * and fail-open, and an absent block never becomes placeholder text in a
+ * prompt: that contract stays. What was missing is that nobody could TELL. A
+ * piece written with no live signal looked exactly like one written with them,
+ * in the step summary and in the approval the founder signs. The receipt is
+ * for humans: it is stored per run and never reaches a prompt.
+ */
+export const CONTEXT_ARTIFACT = "__context__";
+export type ContextPortState = "on" | "not_wired" | "empty" | "error";
+
+export function contextReceipt(s: { signals: ContextPortState; gaps: ContextPortState }): string {
+  return `ctx signals=${s.signals} gaps=${s.gaps}`;
+}
+
+const CONTEXT_STATE_PT: Record<Exclude<ContextPortState, "on">, string> = {
+  not_wired: "conector nao configurado neste worker",
+  empty: "a fonte respondeu vazio",
+  error: "a leitura falhou",
+};
+
+/** The line the founder reads before approving. null when both blocks were there. */
+export function contextApprovalLine(receipt: string | null): string | null {
+  if (!receipt) return null;
+  const m = /^ctx signals=(\w+) gaps=(\w+)$/.exec(receipt.trim());
+  if (!m) return null;
+  const parts: string[] = [];
+  const signals = m[1] as ContextPortState;
+  const gaps = m[2] as ContextPortState;
+  if (signals !== "on") parts.push(`SEM sinais externos atuais (${CONTEXT_STATE_PT[signals] ?? signals})`);
+  if (gaps !== "on") parts.push(`SEM lacunas proprias da auditoria (${CONTEXT_STATE_PT[gaps] ?? gaps})`);
+  if (parts.length === 0) return null;
+  return `📡 Contexto desta peça: ${parts.join(" · ")}. O texto NÃO partiu de conversa nem de auditoria de hoje.`;
+}
+/**
  * Upstream key carrying the DAY'S REAL MEASUREMENT to the LinkedIn cell
  * (canal C, founder 11/09). The daily proof job asks one local buyer question
  * across the engines about one real business from our own untouched outbound
@@ -1696,6 +1730,8 @@ export async function advanceRun(
       // launched to test. Non-seeded runs have no __seed__ — nothing changes.
       const seed = await artifacts.get(runId, SEED_ARTIFACT);
       if (seed) upstream.unshift([SEED_ARTIFACT, seed]);
+      // P16: set only for marketing cells; appended to this step's summary.
+      let ctxReceipt: string | null = null;
       // The editorial calendar (founder 14/08: seven different days, not one
       // day seven times). Every reasoning node of a marketing cell sees the
       // day's theme/angle/CTA as [__day__]; the briefing prompts must honor
@@ -1749,25 +1785,35 @@ export async function advanceRun(
         // Fail-open: no env / down / bad payload → the cell keeps working on
         // its own memory. Only signal/briefing/PPC-style nodes benefit, but
         // giving every reasoning node the same block keeps critics honest too.
+        let signalsState: ContextPortState = "not_wired";
         if (substrate.externalSignals) {
           try {
             const sig = await substrate.externalSignals();
             if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
+            signalsState = sig ? "on" : "empty";
           } catch {
             /* fail-open by contract; the port should not throw */
+            signalsState = "error";
           }
         }
         // Phase 4 (dogfood): our own uncited buyer questions, straight from
         // the audit loop's Do Next cards. Same fail-open contract as the
         // signals block — absent artifact, never a placeholder.
+        let gapsState: ContextPortState = "not_wired";
         if (substrate.ownVisibilityGaps) {
           try {
             const gaps = await substrate.ownVisibilityGaps();
             if (gaps) upstream.unshift([GAPS_ARTIFACT, gaps]);
+            gapsState = gaps ? "on" : "empty";
           } catch {
             /* fail-open by contract; the port should not throw */
+            gapsState = "error";
           }
         }
+        // P16: the generation keeps going without the blocks (unchanged), but
+        // the absence is now written down where a human reads it.
+        ctxReceipt = contextReceipt({ signals: signalsState, gaps: gapsState });
+        await artifacts.set(runId, CONTEXT_ARTIFACT, ctxReceipt);
         // Canal C: the day's measured proof, for the cells that declare they
         // want it (config.proof on the node). Opt-in per node rather than
         // blanket-injected, because a block this prescriptive ("use only these
@@ -1873,9 +1919,10 @@ export async function advanceRun(
           status: "succeeded",
           outputHash: sha(output),
           summary:
-            output === res.output
+            (output === res.output
               ? `${node.kind} ok via ${res.engineUsed ?? "?"}`
-              : `${node.kind} ok via ${res.engineUsed ?? "?"} (adapted to X ${X_POST_LIMIT}-char limit)`,
+              : `${node.kind} ok via ${res.engineUsed ?? "?"} (adapted to X ${X_POST_LIMIT}-char limit)`) +
+            (ctxReceipt ? ` · ${ctxReceipt}` : ""),
           ms: res.ms,
           engine: res.engineUsed,
         });
@@ -1933,6 +1980,8 @@ export async function advanceRun(
             return parsed.ok ? `🖼 Card (hook impresso na imagem): «${parsed.hook}»` : `🖼 Card: contrato [CARD HOOK]/[CAPTION] NÃO encontrado (${parsed.reason}) — o publish vai recusar`;
           })()
         : null;
+      // P16: what the piece was (not) written from, on the box the founder signs.
+      const ctxLine = contextApprovalLine(await artifacts.get(runId, CONTEXT_ARTIFACT));
       await substrate.finishStep(stepId, { status: "waiting", summary: "awaiting human decision" });
       // Founder 17/08: approval as a BOX with two buttons (like n8n), not a
       // route to curl. The buttons carry the step id; the api's telegram
@@ -1945,6 +1994,7 @@ export async function advanceRun(
           destinations.length > 0 ? `Aprovar vai: ${destinations.join(" · ")}` : `Aprovar destrava o resto do graph (sem publicação direta neste passo).`,
           ...(question ? [question] : []),
           ...(cardHookLine ? [cardHookLine] : []),
+          ...(ctxLine ? [ctxLine] : []),
           `Conteúdo proposto:`,
           // A combined box needs room for both variants — still far under
           // Telegram's 4096 total cap with the header lines above.
