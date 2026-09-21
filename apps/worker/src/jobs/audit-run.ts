@@ -75,6 +75,7 @@ import {
   type PrevTask,
   // P0-07 — gap classifier + action generator (RELATORIO §5.2/§5.3).
   classifyAndGenerate,
+  ownDomainCited,
   type NormalizedObservation,
   type VisibilityAction,
   // P0-01 — the one policy that blocks a false "All caught up".
@@ -1876,6 +1877,10 @@ async function processAuditJobTracked(
         .map((r) => ({
           provider: dbProvider(r.provider),
           queryText: (r.queryText as string).trim(),
+          // The loop's `cited` is the majority-of-runs MENTION (same bit as
+          // citation_check.cited, which the score is built on). It is left as
+          // is on purpose: renaming the loop's vocabulary touches stored gap
+          // keys. Own-domain citation lives on the classifier's observation.
           cited: r.mentioned,
           rank: r.position ?? null,
           sources: sanitizeSources(r.sources),
@@ -1919,7 +1924,9 @@ async function processAuditJobTracked(
             runIndex: 0,
             mentioned: r.mentioned,
             mentionPosition: r.position ?? null,
-            cited: r.mentioned,
+            // P03: cited is NOT mentioned. It is "our own domain is among the
+            // sources this answer exposed" — null when it exposed none.
+            cited: ownDomainCited(sanitizeSources(r.sources), brand.domain ?? null),
             citations: sanitizeSources(r.sources),
             competitors:
               competitorNames.length > 0 ? detectCompetitors(r.rawText ?? "", competitorNames) : [],

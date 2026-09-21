@@ -71,8 +71,13 @@ export interface NormalizedObservation {
   mentioned: boolean;
   /** 1-based position when mentioned. null = mentioned without a position. */
   mentionPosition: number | null;
-  /** Cited = the answer attributed something to the brand, not just named it. */
-  cited: boolean;
+  /**
+   * Cited = the answer used the brand's OWN DOMAIN as a source. Naming the
+   * brand is `mentioned`; the two are different facts (P03). null = the answer
+   * exposed no sources at all, so citation was NOT MEASURABLE — never read as
+   * "not cited". Build it with `ownDomainCited`.
+   */
+  cited: boolean | null;
   citations: string[];
   competitors: string[];
   sentiment: ObservationSentiment;
@@ -225,6 +230,30 @@ export const OFFSITE_SOURCE_HOSTS: readonly string[] = [
   "yelp.com",
 ];
 
+/**
+ * P03 — did this answer use the brand's own site as a source?
+ *
+ *   true  = one of the exposed sources is the brand domain (or a subdomain);
+ *   false = the answer exposed sources and none of them is ours;
+ *   null  = the answer exposed no sources, or we do not know the brand domain:
+ *           not measurable. Absent data is never a negative.
+ *
+ * Redirect wrappers (Google's grounding redirects) hide the real host. They are
+ * never counted as ours and never as someone else's: if every source is opaque
+ * the result is null, not false.
+ */
+const OPAQUE_SOURCE_HOSTS: readonly string[] = ["vertexaisearch.cloud.google.com"];
+
+export function ownDomainCited(citations: readonly string[], brandDomain: string | null | undefined): boolean | null {
+  const own = (brandDomain ?? "").trim().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").toLowerCase();
+  if (!own) return null;
+  const hosts = citations.map(sourceDomain).filter(Boolean);
+  if (hosts.length === 0) return null;
+  if (hosts.some((h) => h === own || h.endsWith(`.${own}`))) return true;
+  const readable = hosts.filter((h) => !OPAQUE_SOURCE_HOSTS.some((o) => h === o || h.endsWith(`.${o}`)));
+  return readable.length === 0 ? null : false;
+}
+
 export function isOffsiteSource(domain: string): boolean {
   if (!domain) return false;
   return OFFSITE_SOURCE_HOSTS.some((h) => domain === h || domain.endsWith(`.${h}`));
@@ -297,7 +326,9 @@ export function classifyGap(
   const failedHypothesis =
     signals.priorAttempt != null &&
     ["published", "indexed"].includes(signals.priorAttempt.state) &&
-    !obs.cited;
+    // P03: "did not move the answer" is about being NAMED. In production this
+    // was already the same bit (cited was fed from mentioned); now it says so.
+    !obs.mentioned;
 
   const domains = obs.citations.map(sourceDomain).filter((d) => d && isActionableSource(d));
   const brandDomain = (signals.brandDomain ?? "").replace(/^www\./, "").toLowerCase();
@@ -370,19 +401,22 @@ export function classifyGap(
       );
     }
     if (obs.sentiment === "unknown") missing.push("sentiment (not classified on this answer)");
-    // Row 5 — proof/trust: named, not recommended. Either nothing was
-    // attributed to us (cited=false) or we are far down the list.
-    if (!obs.cited) {
+    // Row 5 — proof/trust: named, but the answer was built from other
+    // people's pages (cited=false), or we are far down the list.
+    // P03: null = the answer exposed no sources. Not measurable is a missing
+    // signal, never a proof gap.
+    if (obs.cited === null) missing.push("own-domain citation (the answer exposed no readable sources)");
+    if (obs.cited === false) {
       return finish(
         "proof",
-        `${obs.engine} names ${signals.brandName} on this question but recommends someone else — nothing in the answer backs us`,
+        `${obs.engine} names ${signals.brandName} on this question, but none of the sources it used is ${signals.brandName}'s own site — nothing of ours backs the mention`,
         0.75
       );
     }
     if (obs.mentionPosition !== null && obs.mentionPosition > 3) {
       return finish(
         "proof",
-        `${obs.engine} cites ${signals.brandName} in position ${obs.mentionPosition} — present, but not the recommendation`,
+        `${obs.engine} names ${signals.brandName} in position ${obs.mentionPosition} — present, but not the recommendation`,
         0.65
       );
     }
@@ -625,7 +659,7 @@ export function buildVisibilityAction(
       earliestCheckAt: recheckAt,
       promptIds: [obs.promptId],
       leadingSignals: buildLeadingSignals(cls.gapType),
-      successCondition: `${obs.engine} cites ${ctx.brandName} for ${quote(obs.promptText)} in ${obs.market}/${obs.locale}, measured on methodology ${obs.methodologyVersion}`,
+      successCondition: `${obs.engine} names ${ctx.brandName} in its answer to ${quote(obs.promptText)} in ${obs.market}/${obs.locale}, measured on methodology ${obs.methodologyVersion}`,
       maxAttemptsBeforeReplan: 2,
     },
   };
