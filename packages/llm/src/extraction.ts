@@ -23,8 +23,11 @@
  *
  * COST RULES (hard):
  *   - The verifier NEVER runs on an empty answer or on zero mentions.
- *   - At most MAX_VERIFIED_MENTIONS (8) mentions are verified per answer. The
- *     remainder are returned with verdict "UNVERIFIED_CAP" and an explicit
+ *   - At most MAX_VERIFIED_MENTIONS (8) COMPETITOR mentions are verified per
+ *     answer. The client brand is never capped (see MAX_BRAND_VERIFICATIONS):
+ *     its mentions are the ones the score is built from, and an unverified
+ *     brand mention stops the whole audit. The remainder are returned with
+ *     verdict "UNVERIFIED_CAP" and an explicit
  *     reason — never silently dropped. Client-brand mentions are verified first.
  *   - A candidate whose text is absent from the answer is rejected LOCALLY
  *     (no LLM call) — the deterministic check is free and exact.
@@ -140,6 +143,25 @@ export const EXTRACTION_METHODOLOGY_VERSION = "1.1";
 /** Hard per-answer verification budget (cost rule). */
 export const MAX_VERIFIED_MENTIONS = 8;
 
+/**
+ * Hard ceiling on brand verifications per answer (21/09).
+ *
+ * The cap above was written to bound cost on competitor noise, and the client
+ * brand shared it. That made the product punish success: an answer that names
+ * the brand nine times spent the budget on the first eight, returned the ninth
+ * as UNVERIFIED_CAP, and `assertBrandVerificationComplete` then refused to
+ * publish the whole audit — the same refusal used for a verifier OUTAGE.
+ *
+ * Reproduced on the real function: 11 brand mentions in one answer, cap 8,
+ * 8 verified, 3 capped, brand_verification_pending true. That is the failure
+ * the weekly audits carried on 21/09 ("Citation verification is incomplete").
+ *
+ * A brand mention is a cheap classification call. This ceiling exists only so a
+ * pathological answer cannot spend without bound; it is not a budget the normal
+ * case ever reaches.
+ */
+export const MAX_BRAND_VERIFICATIONS = 40;
+
 /** Kinds that count as an actual citation for the score. */
 const CITING_KINDS: ReadonlySet<MentionKind> = new Set<MentionKind>([
   "direct_recommendation",
@@ -168,9 +190,25 @@ export function countsAsCitation(m: VerifiedMention): boolean {
 
 /** Paid scoring gate: absence cannot be inferred from unavailable verification. */
 export function assertBrandVerificationComplete(results: ExtractionResult[]): void {
-  if (results.some((r) => r.extraction_mode === "two_pass" && r.brand_verification_pending)) {
-    throw new Error("citation_verification_pending");
+  const pending = results.filter((r) => r.extraction_mode === "two_pass" && r.brand_verification_pending);
+  if (pending.length === 0) return;
+  // 21/09: the log said only "citation_verification_pending", so the same
+  // message covered a verifier outage and a budget we set ourselves. Count the
+  // two apart in the message: the next failure is diagnosable from the log.
+  let capped = 0;
+  let errored = 0;
+  for (const r of pending) {
+    // Defensive: a caller may hand us a minimal result (the integrity
+    // regression test does). Counting is telemetry, never a reason to throw
+    // something other than the refusal itself.
+    for (const m of r.mentions ?? []) {
+      if (m.verdict === "UNVERIFIED_CAP") capped += 1;
+      else if (m.verdict === "UNVERIFIED") errored += 1;
+    }
   }
+  throw new Error(
+    `citation_verification_pending (answers=${pending.length}, unverified_by_error=${errored}, unverified_by_cap=${capped})`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -712,7 +750,10 @@ export async function extractMentions(
     });
 
   const results: VerifiedMention[] = new Array(prepared.length);
+  // Two budgets: the brand is what the score is made of and what the guard
+  // checks, so it is never capped by the competitor budget.
   let verifiedBudget = maxVerified;
+  let brandBudget = MAX_BRAND_VERIFICATIONS;
 
   for (const { p, ix } of order) {
     const m = p.mention;
@@ -732,14 +773,19 @@ export async function extractMentions(
     const end = p.fix.end;
     const corrected = p.fix.corrected;
 
-    // (b) verification cap — kept, flagged, never silently dropped.
-    if (verifiedBudget <= 0) {
+    // (b) verification cap — kept, flagged, never silently dropped. The brand
+    // draws on its own ceiling, so a brand-heavy answer is fully verified.
+    const isBrand = isBrandMention(m, brandName);
+    const budgetLeft = isBrand ? brandBudget : verifiedBudget;
+    if (budgetLeft <= 0) {
       results[ix] = {
         ...m,
         offset_start: start,
         offset_end: end,
         verdict: "UNVERIFIED_CAP",
-        reason: `verification cap of ${maxVerified} mentions per answer reached — extractor kind kept, not verified`,
+        reason: isBrand
+          ? `brand verification ceiling of ${MAX_BRAND_VERIFICATIONS} reached in one answer — extractor kind kept, not verified`
+          : `verification cap of ${maxVerified} competitor mentions per answer reached — extractor kind kept, not verified`,
         kind_confirmed: m.kind,
       };
       continue;
@@ -747,7 +793,8 @@ export async function extractMentions(
 
     // (c) PASS 2 — blind verifier. It is told the text and the claimed company
     //     ONLY; the extractor's kind is deliberately withheld.
-    verifiedBudget -= 1;
+    if (isBrand) brandBudget -= 1;
+    else verifiedBudget -= 1;
     const verifierUser = [
       "ANSWER TEXT (verbatim):",
       "<<<ANSWER",
