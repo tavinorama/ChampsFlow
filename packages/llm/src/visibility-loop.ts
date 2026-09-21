@@ -67,6 +67,13 @@ export interface LoopBuildResult {
    * Used to flip a previously open card to done with attribution.
    */
   resolved: Map<string, string>;
+  /**
+   * P05 — every question this audit actually asked (trimmed, as probed). A
+   * card about a question that is NOT in here can never close: nobody will ask
+   * that question again. Optional so a hand-built result keeps the old
+   * behaviour: absent or empty = never retire anything.
+   */
+  probedQueries?: Set<string>;
 }
 
 /** Max OPEN generated cards after a refresh (founder: "tudo mastigado", not a backlog). */
@@ -309,7 +316,7 @@ export function buildLoopCandidates(
   }
 
   candidates.sort((a, b) => b.priority - a.priority || a.gap.localeCompare(b.gap));
-  return { candidates, resolved };
+  return { candidates, resolved, probedQueries: new Set(byQuery.keys()) };
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +371,8 @@ export interface ReconcileStats {
    * an engine changing its answer is not work we did.
    */
   closedWithoutExecution: number;
+  /** P05: unexecuted cards about a question this audit no longer asks. */
+  retiredOffPanel: number;
   regressed: number; // verified cards whose gap came back — re-opened
   carried: number; // previous tasks kept as-is (custom/stale/verified)
   droppedByCap: number;
@@ -422,6 +431,21 @@ export function wasExecuted(t: Pick<PrevTask, "status" | "artifact_url">): boole
     st === "manual_done_pending_verification" || st === "client_acknowledged" || st === "legacy_self_reported";
 }
 /** Prefix on a card that was verified and then lost the ground it won. */
+/**
+ * P05 (21/09) — a card whose question left the panel. On 21/09 seven of the 17
+ * cards in our own plan were about "Best Saas for SMBs…" questions last asked
+ * on 04/09. They could never close (the question is never asked again), they
+ * held open slots, and they told the client to work on a question we no longer
+ * measure. They leave the open list as `expired`, with the reason and the date,
+ * and nothing is deleted. If the question comes back and is still lost, it is
+ * proposed again as a fresh card.
+ *
+ * Only cards nobody executed are retired. Work that was done on a question
+ * stays where it is — we do not throw away a record of work because we stopped
+ * asking.
+ */
+export const RETIRED_OFF_PANEL_PREFIX = "Retired — this question is no longer in your panel, as of the audit of ";
+
 export const REGRESSED_PREFIX = "Slipped back — was working, then stopped, as of ";
 
 /**
@@ -444,6 +468,19 @@ export const REGRESSED_PREFIX = "Slipped back — was working, then stopped, as 
  *    priority;
  *  - done carry is bounded by LOOP_DONE_CARRY_CAP (freshly verified first).
  */
+/**
+ * P05 — the legacy strategy card printed the AI Visibility INDEX as a citation
+ * RATE ("current: 52% → target: >50%"). The number on a carried card is from an
+ * old audit and was the wrong quantity to begin with, so the carried copy drops
+ * it. Old plans keep their original text; nothing is rewritten in place.
+ */
+export function fixLegacyRateMetric(metric: string | null | undefined): string | null {
+  if (metric == null) return null;
+  return /^Citation rate across buyer prompts \(current: \d+% → target: >50%\)$/.test(metric.trim())
+    ? "Share of buyer prompts that name you (current: see this audit → target: >50%)"
+    : metric;
+}
+
 export function reconcileLoopTasks(
   prevTasks: PrevTask[],
   build: LoopBuildResult,
@@ -455,6 +492,7 @@ export function reconcileLoopTasks(
     created: 0,
     verified: 0,
     closedWithoutExecution: 0,
+    retiredOffPanel: 0,
     regressed: 0,
     carried: 0,
     droppedByCap: 0,
@@ -479,7 +517,7 @@ export function reconcileLoopTasks(
     priority: t.priority,
     status: asStatus(t.status),
     evidence: t.evidence,
-    metric: t.metric,
+    metric: fixLegacyRateMetric(t.metric),
     owner: asOwner(t.owner),
     ...(t.artifact_url ? { artifact_url: t.artifact_url } : {}),
     ...over,
@@ -492,6 +530,24 @@ export function reconcileLoopTasks(
     const status = asStatus(t.status);
     const open = isOpenState(status);
     const note = build.resolved.get(t.gap);
+
+    // P05: is this card about a question the audit still asks? Only
+    // query-shaped gaps can be off-panel; an empty/absent set retires nothing.
+    const cardQuery = queryFromGap(t.gap);
+    const panel = build.probedQueries;
+    const offPanel =
+      cardQuery !== null && panel !== undefined && panel.size > 0 && !panel.has(cardQuery.trim());
+    if (open && offPanel && !wasExecuted(t)) {
+      const retired = `${RETIRED_OFF_PANEL_PREFIX}${auditDate}. It was not asked in this audit, so it can no longer be checked. Nothing was executed on this card.`;
+      doneRows.push(
+        carryRow(t, {
+          status: "expired",
+          evidence: t.evidence ? `${retired} ${t.evidence}` : retired,
+        })
+      );
+      stats.retiredOffPanel += 1;
+      continue;
+    }
 
     if (open && note && !wasExecuted(t)) {
       // C02: the gap closed, but nobody did anything on this card. Say exactly
@@ -583,7 +639,12 @@ export function reconcileLoopTasks(
     // C02: a card that closed on its own and whose gap is BACK. It was never a
     // win of ours, so it is not a regression: it re-enters as a fresh proposal
     // (subject to the same slot cap as any new candidate).
-    const closedOnItsOwn = status === "expired" && (t.evidence ?? "").startsWith(CLOSED_UNATTRIBUTED_PREFIX);
+    // P05: a retired card behaves the same way — if its question is back in
+    // the panel and still lost, it is proposed again, fresh.
+    const closedOnItsOwn =
+      status === "expired" &&
+      ((t.evidence ?? "").startsWith(CLOSED_UNATTRIBUTED_PREFIX) ||
+        (t.evidence ?? "").startsWith(RETIRED_OFF_PANEL_PREFIX));
     if (closedOnItsOwn && candidate) {
       usedGaps.delete(t.gap); // pass 2 proposes it again, by priority
       continue;
