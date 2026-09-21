@@ -406,10 +406,16 @@ export function classifyGap(
 
   // Row 4 — off-site gap: the winner is cited from a place you join, not a
   // page you publish.
+  //
+  // P01a: an answer that leaves us out proves we were not NAMED there. It does
+  // not prove we have no profile on that source — nobody looked. The reason
+  // says what was observed, and the unchecked part goes to `missing`, the same
+  // rule GapSignals states: an absent signal is never a negative one.
   if (offsiteDomains.length > 0) {
+    missing.push(`own presence on ${offsiteDomains[0]} (not checked)`);
     return finish(
       "offsite",
-      `${obs.engine} built this answer from ${offsiteDomains.slice(0, 3).join(", ")} — community and review sources where ${signals.brandName} is absent`,
+      `${obs.engine} built this answer from ${offsiteDomains.slice(0, 3).join(", ")} — community and review sources — and did not name ${signals.brandName}; whether ${signals.brandName} already has a presence there was not checked`,
       0.8
     );
   }
@@ -418,9 +424,16 @@ export function classifyGap(
   // assembled from ordinary pages that are not ours.
   if (competitorDomains.length > 0 || obs.competitors.length > 0) {
     const winner = obs.competitors[0] ?? competitorDomains[0];
+    // P01a: "has no page of ours to cite" was written from the engine's
+    // sources alone. Not being used is what we saw; not existing is a claim
+    // about the client's site that only an inventory can make.
+    const ownPage = signals.targetUrl
+      ? `did not use our page ${signals.targetUrl}`
+      : `did not use a page of ours; whether one already answers this question was not checked`;
+    if (!signals.targetUrl) missing.push("own page for this question (site not inventoried)");
     return finish(
       "content",
-      `${obs.engine} answers this with ${winner}${competitorDomains.length > 0 ? ` (cited from ${competitorDomains.slice(0, 2).join(", ")})` : ""} and has no page of ours to cite`,
+      `${obs.engine} answers this with ${winner}${competitorDomains.length > 0 ? ` (cited from ${competitorDomains.slice(0, 2).join(", ")})` : ""} and ${ownPage}`,
       competitorDomains.length > 0 ? 0.8 : 0.6
     );
   }
@@ -636,14 +649,21 @@ function buildRecommendation(
       return `${head} The page ${ctx.targetUrl ?? "that answers it"} exists but the engine cannot read it. Fix robots/canonical/HTTP status for that URL, add the matching schema, and link it from a page already crawled.${tail}`;
     case "entity":
       return `${head} The engine is not sure ${ctx.brandName} is ${ctx.brandName}${obs.ambiguityReason ? ` (${obs.ambiguityReason})` : ""}. Publish Organization schema with sameAs pointing at your own profiles, state the aliases on the site, and get one corroborating third-party record to match.${tail}`;
-    case "content":
-      return `${head} Publish one page that answers ${q} directly in the first paragraph, with the comparison against ${obs.competitors[0] ?? "the cited source"}, and cite it from your own pages so the engine can find it.${tail}`;
+    case "content": {
+      const against = obs.competitors[0] ?? "the cited source";
+      // P01a: never prescribe a new page for a question we may already answer.
+      return ctx.targetUrl
+        ? `${head} Your page ${ctx.targetUrl} was not used. Rework it so it answers ${q} directly in the first paragraph, with the comparison against ${against}, and link to it from pages the engine already reads.${tail}`
+        : `${head} First check whether a page of yours already answers ${q}. If one does, rework that page instead of adding another; if none does, publish one. Either way it answers ${q} directly in the first paragraph, with the comparison against ${against}, and is linked from your own pages so the engine can find it.${tail}`;
+    }
     case "proof":
       return `${head} You are named and not recommended. Add verifiable proof to the page that answers ${q}: named cases with numbers, credentials, and reviews that can be checked off-site.${tail}`;
     case "reputation":
       return `${head} Address what is being said at the source, then publish the corrected record and point ${obs.citations[0] ?? "the source"} at it.${tail}`;
-    case "offsite":
-      return `${head} Earn a presence on ${obs.citations.map(sourceDomain).filter(isOffsiteSource)[0] ?? "the community source"} the way that source allows — genuine participation, a review programme, or a video — targeted at ${q}.${tail}`;
+    case "offsite": {
+      const source = obs.citations.map(sourceDomain).filter(isOffsiteSource)[0] ?? "the community source";
+      return `${head} First check whether ${ctx.brandName} already has a presence on ${source}. If it does, make that presence speak to ${q}; if it does not, earn one the way that source allows — genuine participation, a review programme, or a video — targeted at ${q}.${tail}`;
+    }
     case "local":
       return `${head} Fix the local record for ${obs.market}: Google Business Profile categories and service area, NAP consistent with the site, and a local page that answers ${q} for this location.${tail}`;
   }
@@ -676,11 +696,11 @@ function buildAcceptanceCriteria(
     case "reputation":
       return [`The negative source has been answered on the record, and the corrected statement is public.`, ...common];
     case "offsite":
-      return [`A presence exists on the cited community/review source, published under the brand.`, ...common];
+      return [`A presence exists on the cited community/review source (already there or new), published under the brand.`, ...common];
     case "local":
       return [`GBP category, service area and NAP match the site, and a local page for ${obs.market} is live.`, ...common];
     case "content":
-      return [`The new page answers ${q} in its first paragraph and is internally linked.`, ...common];
+      return [`The page (reworked or new) answers ${q} in its first paragraph and is internally linked.`, ...common];
   }
 }
 
