@@ -62,6 +62,58 @@ function jitter(ms: number): number {
   return ms * (0.75 + Math.random() * 0.5);
 }
 
+// ---------------------------------------------------------------------------
+// Per-provider concurrency gate (21/09)
+//
+// The fan-out below starts every (query x provider) pair at once: a 10-question
+// pack opens 10 simultaneous Perplexity requests, each doing `repeat` runs, and
+// the retries of a rejected burst land together again. Perplexity answered with
+// HTTP 429 `request_rate_limit_exceeded` through all five attempts, so the pack
+// for a real prospect went out saying "asked but no answer: perplexity", and the
+// weekly audit of the same morning logged 45 of those refusals.
+//
+// It was never a credit problem: the daily drift probe — one call at a time —
+// was charged and answered `healthy` on every one of those days. It is our own
+// burst. So each provider gets a queue with a small number of requests in
+// flight; the work is the same, spread over a few more seconds.
+// ---------------------------------------------------------------------------
+
+/** In-flight cap per provider. Perplexity refuses bursts; the others tolerate them. */
+export const PROVIDER_CONCURRENCY: Partial<Record<LLMProvider, number>> = { perplexity: 2 };
+const DEFAULT_CONCURRENCY = 8;
+
+interface Gate {
+  active: number;
+  waiting: Array<() => void>;
+}
+const gates: Partial<Record<LLMProvider, Gate>> = {};
+
+export function concurrencyFor(provider: LLMProvider): number {
+  return PROVIDER_CONCURRENCY[provider] ?? DEFAULT_CONCURRENCY;
+}
+
+/** Runs fn with at most `concurrencyFor(provider)` calls of that provider in flight. */
+export async function withProviderSlot<T>(provider: LLMProvider, fn: () => Promise<T>): Promise<T> {
+  const gate = (gates[provider] ??= { active: 0, waiting: [] });
+  if (gate.active >= concurrencyFor(provider)) {
+    await new Promise<void>((resolve) => gate.waiting.push(resolve));
+  }
+  gate.active += 1;
+  try {
+    return await fn();
+  } finally {
+    gate.active -= 1;
+    // A slot always goes back, even when fn threw: otherwise one failure
+    // narrows the gate forever and the next audit runs single file.
+    gate.waiting.shift()?.();
+  }
+}
+
+/** Test seam: forget the queues between cases. */
+export function resetProviderGates(): void {
+  for (const k of Object.keys(gates)) delete gates[k as LLMProvider];
+}
+
 async function withRetry<T>(
   fn: () => Promise<T>,
   provider: LLMProvider
@@ -259,7 +311,7 @@ export async function runProbes(
         for (let r = 0; r < repeat; r++) {
           try {
             const result = await withRetry(
-              () => adapter.probe(query, { region, requestId: query.queryHash }),
+              () => withProviderSlot(provider, () => adapter.probe(query, { region, requestId: query.queryHash })),
               provider
             );
             recordSuccess(provider);
