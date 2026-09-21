@@ -10,7 +10,8 @@
  *   6. wrong offsets with real text are repaired, then verified
  *   7. an empty answer never calls the LLM at all (cost rule)
  *   8. competitor recommended + brand absent → brand_cited false
- *   9. more than 8 mentions → cap, remainder kept as UNVERIFIED_CAP
+ *   9. more than 8 COMPETITOR mentions → cap, remainder kept as UNVERIFIED_CAP
+ *      (the client brand has its own ceiling and is never capped by it)
  *  10. malformed extractor JSON (twice) → fallback_single_pass, never throws
  *
  * NO NETWORK: the LLM caller is injected. Every fixture is a realistic engine
@@ -409,12 +410,18 @@ describe("two-pass extraction", () => {
       { llm: fake.llm }
     );
 
-    expect(fake.verifierCalls).toBe(MAX_VERIFIED_MENTIONS);
+    // 21/09: the cap is a COMPETITOR budget. The brand draws on its own
+    // ceiling, so here it is 1 brand + 8 competitors = 9 calls, and the two
+    // competitors beyond the budget are the only capped ones. Before this, the
+    // brand shared the budget, and a brand-heavy answer could leave the brand
+    // itself unverified — which failed the whole audit.
+    expect(fake.verifierCalls).toBe(1 + MAX_VERIFIED_MENTIONS);
     expect(res.mentions).toHaveLength(names.length);
     const capped = res.mentions.filter((m) => m.verdict === "UNVERIFIED_CAP");
-    expect(capped).toHaveLength(names.length - MAX_VERIFIED_MENTIONS);
+    expect(capped).toHaveLength(names.length - 1 - MAX_VERIFIED_MENTIONS);
     // Nothing is dropped silently — every capped mention carries its reason.
     for (const m of capped) expect(m.reason).toMatch(/verification cap/i);
+    expect(capped.every((m) => m.entity !== "Northwind CRM")).toBe(true);
     // The client brand is verified FIRST, so it is never the one that gets capped.
     const brandMention = res.mentions.find((m) => m.entity === "Northwind CRM");
     expect(brandMention?.verdict).toBe("VERIFIED");
