@@ -204,80 +204,142 @@ export class ExtractionUnavailableError extends Error {
  * fallback when only that key exists. With no key at all we throw so the caller
  * degrades to single-pass instead of fabricating a verdict.
  */
+/** HTTP statuses worth one more try: rate limit, overload, gateway hiccups. */
+const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
+
+async function callAnthropic(req: ExtractionLLMRequest, key: string, signal: AbortSignal): Promise<string> {
+  const model =
+    process.env["AUDIT_EXTRACTION_MODEL"] ??
+    process.env["AUDIT_ANTHROPIC_MODEL"] ??
+    "claude-haiku-4-5";
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    signal,
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: req.maxTokens,
+      temperature: 0,
+      system: req.system,
+      messages: [{ role: "user", content: req.user }],
+    }),
+  });
+  if (!res.ok) throw new ExtractionHttpError("anthropic", res.status);
+  const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
+  return (data.content ?? [])
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text)
+    .join("\n");
+}
+
+async function callOpenAI(req: ExtractionLLMRequest, key: string, signal: AbortSignal): Promise<string> {
+  const model =
+    process.env["AUDIT_EXTRACTION_MODEL"] ??
+    process.env["AUDIT_OPENAI_MODEL"] ??
+    "gpt-4o-mini";
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    signal,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: req.maxTokens,
+      temperature: 0,
+      // Structured output where the provider supports it (OpenAI): forces a
+      // JSON object, which removes the "model wrapped it in prose" failure.
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: req.system },
+        { role: "user", content: req.user },
+      ],
+    }),
+  });
+  if (!res.ok) throw new ExtractionHttpError("openai", res.status);
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+/** An HTTP failure that names the provider, so a chain can report who refused. */
+export class ExtractionHttpError extends Error {
+  constructor(
+    readonly provider: string,
+    readonly status: number
+  ) {
+    super(`${provider} HTTP ${status}`);
+    this.name = "ExtractionHttpError";
+  }
+  get retryable(): boolean {
+    return RETRYABLE.has(this.status);
+  }
+}
+
+/** Which provider answered last — read by tests and by the audit's telemetry. */
+export let lastExtractionProvider: string | null = null;
+
+/**
+ * The verifier's provider CHAIN (21/09).
+ *
+ * The weekly audit of 21/09 06:00Z failed with "Citation verification is
+ * incomplete. No score was published." One verifier call is made per candidate
+ * mention; when a call fails the mention comes back UNVERIFIED, and a single
+ * unverified BRAND mention makes the whole audit refuse to publish a score —
+ * correctly, because a verifier outage must never become a scored zero. That
+ * morning Perplexity was rate-limiting the probes (45 retries logged) and the
+ * verifier's own provider did not answer either.
+ *
+ * The defect was that this function only ever used ONE provider: OpenAI was
+ * reached when ANTHROPIC_API_KEY was ABSENT, never when the Anthropic call
+ * FAILED. House rule since 12/08: every paid dependency is born with a chain;
+ * a single call with no fallback is a design defect. So: each provider gets one
+ * retry on a retryable status, then the next provider takes over, and only when
+ * every provider has refused does the call fail. The guard above is untouched —
+ * an audit that really cannot verify still refuses to publish.
+ */
 export const defaultExtractionLLM: ExtractionLLM = async (req) => {
+  const chain: Array<{ name: string; key: string; call: typeof callAnthropic }> = [];
   const anthropicKey = process.env["ANTHROPIC_API_KEY"];
   const openaiKey = process.env["OPENAI_API_KEY"];
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20_000);
+  if (anthropicKey) chain.push({ name: "anthropic", key: anthropicKey, call: callAnthropic });
+  if (openaiKey) chain.push({ name: "openai", key: openaiKey, call: callOpenAI });
 
-  try {
-    if (anthropicKey) {
-      const model =
-        process.env["AUDIT_EXTRACTION_MODEL"] ??
-        process.env["AUDIT_ANTHROPIC_MODEL"] ??
-        "claude-haiku-4-5";
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": anthropicKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: req.maxTokens,
-          temperature: 0,
-          system: req.system,
-          messages: [{ role: "user", content: req.user }],
-        }),
-      });
-      if (!res.ok) throw new Error(`anthropic HTTP ${res.status}`);
-      const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
-      return (data.content ?? [])
-        .filter((b) => b.type === "text" && typeof b.text === "string")
-        .map((b) => b.text)
-        .join("\n");
-    }
-
-    if (openaiKey) {
-      const model =
-        process.env["AUDIT_EXTRACTION_MODEL"] ??
-        process.env["AUDIT_OPENAI_MODEL"] ??
-        "gpt-4o-mini";
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: req.maxTokens,
-          temperature: 0,
-          // Structured output where the provider supports it (OpenAI): forces a
-          // JSON object, which removes the "model wrapped it in prose" failure.
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: req.system },
-            { role: "user", content: req.user },
-          ],
-        }),
-      });
-      if (!res.ok) throw new Error(`openai HTTP ${res.status}`);
-      const data = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      return data.choices?.[0]?.message?.content ?? "";
-    }
-
+  if (chain.length === 0) {
     throw new ExtractionUnavailableError(
       "no extraction model key present (ANTHROPIC_API_KEY / OPENAI_API_KEY)"
     );
-  } finally {
-    clearTimeout(timer);
   }
+
+  const failures: string[] = [];
+  for (const link of chain) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20_000);
+      try {
+        const text = await link.call(req, link.key, controller.signal);
+        lastExtractionProvider = link.name;
+        return text;
+      } catch (err) {
+        const e = err as Error & { retryable?: boolean };
+        failures.push(`${link.name}: ${e.message?.slice(0, 80) ?? "error"}`);
+        // A second attempt only buys something on a transient refusal.
+        const again = attempt === 1 && e instanceof ExtractionHttpError && e.retryable;
+        if (!again) break;
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+  lastExtractionProvider = null;
+  throw new ExtractionUnavailableError(`every extraction provider refused — ${failures.join(" | ")}`);
 };
 
 // ---------------------------------------------------------------------------
