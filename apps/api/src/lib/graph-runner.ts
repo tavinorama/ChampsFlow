@@ -81,7 +81,8 @@ import {
   TUNABLE_PROMPT_KEYS,
 } from "./graph-prompts";
 import { dayBlock } from "./editorial-calendar";
-import { factsBlock } from "./content-facts";
+import { factsBlock, liveFacts } from "./content-facts";
+import { validateContentClaims, describeClaimProblems } from "./content-claims";
 import {
   X_POST_LIMIT,
   xPostWithinLimit,
@@ -1597,6 +1598,13 @@ export async function advanceRun(
   const xAdaptNodes = xAdaptNodeIds(def);
   // 1.6: content nodes feeding a CARD publish — contract-checked on output.
   const cardContentNodes = cardContentNodeIds(def);
+  // B5 (D10–D12): every node whose artifact is what a publish sends. The
+  // claims gate runs on these, so a piece that turns a scenario into a
+  // result, someone else's spend into ours, or a spread into a cause fails
+  // the STEP and never reaches the approval box.
+  const publishedContentNodes = new Set(
+    def.nodes.filter((n) => n.kind === "publish").map((n) => publishContentNodeId(def, n)).filter(Boolean)
+  );
   // 5.F.2: founder-approved prompt overrides, loaded LAZILY and at most once
   // per advance (the port itself caches per tick) — never per node. Fail-open
   // by contract: port absent, store empty or read error → static prompts.
@@ -1886,6 +1894,20 @@ export async function advanceRun(
           await substrate.finishStep(stepId, {
             status: "failed",
             summary: `numero sem prova no post: ${v.unbacked.slice(0, 5).join(", ")} — nao esta em [__proof__] (ops.proof_run ${p?.facts.date ?? "sem prova"})`,
+            ms: res.ms,
+            engine: res.engineUsed,
+          });
+          continue; // retry pass (2c) re-attempts; exhausted budget fails the run
+        }
+      }
+      // B5 (Codex D10–D12, 23/09): the claims gate. The prompt asks; this
+      // refuses. Marketing only; the four checks are in content-claims.ts.
+      if (res.ok && res.output && def.vpOwner === "marketing" && publishedContentNodes.has(node.id)) {
+        const check = validateContentClaims(res.output, liveFacts(now()));
+        if (!check.ok) {
+          await substrate.finishStep(stepId, {
+            status: "failed",
+            summary: `claim sem lastro: ${describeClaimProblems(check)}`.slice(0, 400),
             ms: res.ms,
             engine: res.engineUsed,
           });

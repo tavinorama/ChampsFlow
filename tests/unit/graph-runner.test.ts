@@ -787,6 +787,40 @@ describe("external signals (Signal Engine) reach content cells, fail-open", () =
   });
 });
 
+describe("B5 — the claims gate refuses a finalize that distorts a fact, before approval", () => {
+  const X_FINALIZE = "editor-chefe da esfera X";
+  it("'Our ChatGPT bill: $500' fails the finalize step; the approval box never sees it", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    const orig = world.ports.hermes.task.bind(world.ports.hermes);
+    world.ports.hermes.task = async (p) => {
+      if (p.includes(X_FINALIZE)) {
+        return { ok: true, output: "Our ChatGPT bill hit $500 before lunch. Read what we learned.", engineUsed: "claude", ms: 5 };
+      }
+      return orig(p);
+    };
+    await tickUntil(world, () => world.run.status !== "running", 40, SPHERE_X_GRAPH);
+    const fin = world.steps.filter((st) => st.node === "finalize");
+    expect(fin.length).toBeGreaterThan(0);
+    expect(fin.every((st) => st.status === "failed")).toBe(true);
+    expect(fin[0]!.summary).toContain("claim sem lastro: third_party_as_ours");
+    expect(world.stepByNode("approval")).toBeUndefined();
+    expect(world.telegrams.some((t) => t.includes("APROVAÇÃO NECESSÁRIA"))).toBe(false);
+  });
+
+  it("a finalize that tells the fact as it is reaches approval", async () => {
+    const world = makeWorld(SPHERE_X_GRAPH.slug);
+    const orig = world.ports.hermes.task.bind(world.ports.hermes);
+    world.ports.hermes.task = async (p) => {
+      if (p.includes(X_FINALIZE)) {
+        return { ok: true, output: "On paper, two tools for one chore add up to 24 hours a week. Remove the overlap: 8. Check yours.", engineUsed: "claude", ms: 5 };
+      }
+      return orig(p);
+    };
+    await tickUntil(world, () => world.stepByNode("approval")?.status === "waiting", 40, SPHERE_X_GRAPH);
+    expect(world.stepByNode("approval")?.status).toBe("waiting");
+  });
+});
+
 describe("the content-experiment cell — a seeded, gated, measured shot", () => {
   it("runs seed → draft → critic → finalize → approval → publish → harvest → verdict", async () => {
     const world = makeWorld(CONTENT_EXPERIMENT_GRAPH.slug);
