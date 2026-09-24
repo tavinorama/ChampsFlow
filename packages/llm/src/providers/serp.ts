@@ -33,7 +33,7 @@
 
 import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
-import { ProviderError, assertLiveOrThrow } from "./types";
+import { ProviderError, assertLiveOrThrow, redactProviderSecrets } from "./types";
 import { parseCitation } from "../citation-parser";
 
 // ---------------------------------------------------------------------------
@@ -73,6 +73,66 @@ function mockResponse(query: ProbeQuery): ProbeResponse {
     // SERP AIO citations are domain-level URLs
     sources: aioSources,
   };
+}
+
+// ---------------------------------------------------------------------------
+// B7 (Codex D04) — what DataForSEO actually said
+// ---------------------------------------------------------------------------
+
+export interface DataForSeoEnvelope {
+  status_code?: number;
+  status_message?: string;
+  tasks?: Array<{
+    status_code?: number;
+    status_message?: string;
+    result?: Array<{ items?: Array<Record<string, unknown>> }>;
+  }>;
+}
+
+export type DataForSeoFailureClass =
+  | "auth"
+  | "payment_or_quota"
+  | "bad_request"
+  | "vendor_error"
+  | "invalid_payload";
+
+export interface DataForSeoFailure {
+  cls: DataForSeoFailureClass;
+  /** "collection_failed: <class> (<code>): <vendor message>" — no key, ≤200 chars. */
+  message: string;
+  kind: "permanent" | "retryable";
+}
+
+/**
+ * DataForSEO answers HTTP 200 with its own status codes: 20000 is success;
+ * 401xx authentication; 402xx payment / balance / quota; other 4xxxx a bad
+ * request; 5xxxx their side. A payload without an items[] array is malformed
+ * whatever the code says. Null = a good envelope.
+ */
+export function classifyDataForSeo(data: DataForSeoEnvelope): DataForSeoFailure | null {
+  const task = data.tasks?.[0];
+  const code =
+    data.status_code !== undefined && data.status_code !== 20000
+      ? data.status_code
+      : task?.status_code !== undefined && task.status_code !== 20000
+        ? task.status_code
+        : null;
+  const vendorMsg = redactProviderSecrets(String((code === data.status_code ? data.status_message : task?.status_message) ?? "").replace(/\s+/g, " ").trim()).slice(0, 120);
+  const build = (cls: DataForSeoFailureClass, kind: DataForSeoFailure["kind"]): DataForSeoFailure => ({
+    cls,
+    kind,
+    message: `collection_failed: ${cls}${code !== null ? ` (${code})` : ""}${vendorMsg ? `: ${vendorMsg}` : ""}`.slice(0, 200),
+  });
+  if (code !== null) {
+    if (code >= 40100 && code < 40200) return build("auth", "permanent");
+    if (code >= 40200 && code < 40300) return build("payment_or_quota", "permanent");
+    if (code >= 50000) return build("vendor_error", "retryable");
+    return build("bad_request", "permanent");
+  }
+  if (!Array.isArray(task?.result?.[0]?.items)) {
+    return { cls: "invalid_payload", kind: "permanent", message: "collection_failed: invalid_payload: no items[] in the DataForSEO result" };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,17 +185,19 @@ export class SerpProbeAdapter implements ProviderAdapter {
       if (!res.ok) {
         throw new ProviderError("serp", res.status >= 500 || res.status === 429 ? "retryable" : "permanent", res.status, "DataForSEO SERP request failed");
       }
-      const data = (await res.json()) as {
-        status_code?: number;
-        tasks?: Array<{ status_code?: number; result?: Array<{ items?: Array<Record<string, unknown>> }> }>;
-      };
+      const data = (await res.json()) as DataForSeoEnvelope;
       const task = data.tasks?.[0];
       const items = task?.result?.[0]?.items;
       // HTTP 200 can contain a vendor failure or malformed payload. Neither is
-      // evidence that Google chose not to show an overview.
-      if ((data.status_code !== undefined && data.status_code !== 20000) ||
-          (task?.status_code !== undefined && task.status_code !== 20000) || !Array.isArray(items)) {
-        throw new ProviderError("serp", "permanent", undefined, "collection_failed: invalid DataForSEO result");
+      // evidence that Google chose not to show an overview. B7 (Codex D04,
+      // 23/09): for two days the log said only "invalid DataForSEO result"
+      // and nobody could tell a billing problem from a broken payload. The
+      // vendor's own status code and message now travel with the error,
+      // redacted, so the drift verdict and the alert name the cause.
+      const failure = classifyDataForSeo(data);
+      if (failure || !Array.isArray(items)) {
+        const f = failure ?? { kind: "permanent" as const, message: "collection_failed: invalid_payload: no items[] in the DataForSEO result" };
+        throw new ProviderError("serp", f.kind, undefined, f.message);
       }
       const aio = items.find((it) => it["type"] === "ai_overview");
 
