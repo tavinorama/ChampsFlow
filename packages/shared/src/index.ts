@@ -238,3 +238,4 @@ export * from "./rejection-language";
 // (24h, max 2 per week) and only spends when the panel is whole again.
 // ---------------------------------------------------------------------------
 export * from "./coverage-retry";
+export { DRIFT_ENGINES, toDriftEngine, toDriftEngines, ENGINE_DISPLAY_LABEL, engineLabel, type DriftEngine } from "./engine-names";
