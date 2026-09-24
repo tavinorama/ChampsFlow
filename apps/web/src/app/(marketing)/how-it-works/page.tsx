@@ -17,6 +17,7 @@ import Link from "next/link";
 import { safeJsonLd } from "../../../lib/safe-json-ld";
 import { HowItWorksFilm } from "./HowItWorksFilm";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
+import { SCORE_GLOSSARY } from "@organic-posts/shared";
 
 export const metadata: Metadata = {
   title: "How Ozvor Works — From invisible to cited in four moves",
@@ -83,9 +84,9 @@ const STEPS: { num: string; title: string; body: string }[] = [
 ];
 
 const VECTORS: { label: string; score: number; body: string }[] = [
-  { label: "Visibility", score: 58, body: "How often AI engines name you, where you rank in the answer, and how positively you're described." },
-  { label: "Citation Readiness", score: 71, body: "Whether engines can read and trust your site. Schema coverage, AI-crawler access, and source authority." },
-  { label: "Execution", score: 49, body: "How many ranked fixes from your GEO plan you have shipped." },
+  { label: SCORE_GLOSSARY.visibility.name, score: 58, body: SCORE_GLOSSARY.visibility.short },
+  { label: SCORE_GLOSSARY.citationReadiness.name, score: 71, body: SCORE_GLOSSARY.citationReadiness.long },
+  { label: SCORE_GLOSSARY.verifiedExecution.name, score: 49, body: SCORE_GLOSSARY.verifiedExecution.short },
 ];
 
 const PAGE_CSS = `

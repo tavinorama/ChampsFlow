@@ -1,3 +1,4 @@
+import { SCORE_GLOSSARY, THREE_PARTS_LINE } from "@organic-posts/shared";
 /**
  * landing-v2-logic.ts — pure, framework-free logic for the v2 homepage
  * (feat/landing-v2-home, design handoff: design_handoff_ozvor_landing/).
@@ -387,7 +388,8 @@ export const SCORE_BULLETS = [
 export const FAQS = [
   {
     q: "What is the Ozvor AI Visibility Score?",
-    a: "It's a 0–100 score. It shows how often AI sees and quotes your brand across 5 engines. Three parts: Visibility, Citation Readiness, Execution.",
+    // B8 (D17): one definition, from packages/shared/src/score-glossary.ts.
+    a: `${SCORE_GLOSSARY.index.long} ${THREE_PARTS_LINE}`,
   },
   {
     q: "Does this replace my SEO?",
