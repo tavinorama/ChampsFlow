@@ -66,6 +66,7 @@ import { extractReplyText } from "../../../api/src/lib/dossier";
 import { maskEmail } from "../../../api/src/lib/recycle";
 import { nextStageFor, type Stage } from "../../../api/src/lib/smartlead-stage";
 import { callWithFallback, errorHead } from "../lib/hermes-fallback";
+import { recordEngineHealth, alarmOnFallback } from "../../../../packages/shared/src/hermes-health";
 
 /**
  * GEO-D7 / 10.D.4 (decisão do founder, 02/09): o follow-up processa o texto de
@@ -140,7 +141,8 @@ function defaultTelegram(): FollowupPorts["telegram"] {
   };
 }
 
-function defaultHermes(token: string): FollowupPorts["hermes"] {
+function defaultHermes(token: string, redis: Redis | null = null): FollowupPorts["hermes"] {
+  const telegram = defaultTelegram();
   // GEO-D7: cadeia FIXA claude→codex — ver FOLLOWUP_ENGINE_CHAIN acima.
   return async (prompt) => {
     const res = await callWithFallback([...FOLLOWUP_ENGINE_CHAIN], async (engine) => {
@@ -171,8 +173,24 @@ function defaultHermes(token: string): FollowupPorts["hermes"] {
         clearTimeout(t);
       }
     });
+    // B10 (D02): 72 followup_intent_engines_down in two days and not one
+    // message. Same record and same once-per-window alarm as the graphs.
+    if (redis) await recordEngineHealth(redis, res);
     if (res.failures.length > 0) {
       logger.warn("followup_hermes_fallback", { ok: res.ok, fallbacks: res.fallbacks, failures: res.failures });
+      await alarmOnFallback({
+        res,
+        source: "follow-up",
+        onceKey: async (key, ttl) => {
+          if (!redis) return true; // no Redis → a duplicate alarm beats silence
+          try {
+            return (await redis.set(key, "1", "EX", ttl, "NX")) === "OK";
+          } catch {
+            return true;
+          }
+        },
+        telegram: (text) => telegram(text),
+      });
     }
     return { ok: res.ok, output: res.output, engineUsed: res.engineUsed };
   };
@@ -202,7 +220,7 @@ function buildDefaultPorts(redis: Redis | null): FollowupPorts {
   const hermesToken = process.env["HERMES_TASK_TOKEN"] ?? "";
   const smartleadApiKey = process.env["SMARTLEAD_API_KEY"] ?? "";
   return {
-    hermes: defaultHermes(hermesToken),
+    hermes: defaultHermes(hermesToken, redis),
     telegram: defaultTelegram(),
     smartleadReply: defaultSmartleadReply(smartleadApiKey),
     artifacts: {
