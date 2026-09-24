@@ -3272,7 +3272,15 @@ export function registerAuditRoutes(
     const brandId =
       process.env["SHOWCASE_BRAND_ID"] ?? "e74fcbc1-a988-4b5d-b054-87329dc881c0"; // Ozvor
 
-    const auditsRes = await db.query<{
+    // B1 (D06, 23/09): this used to be `ORDER BY created_at ASC LIMIT 24`,
+    // which is the FIRST 24 audits ever run. Once the brand passed 24 audits
+    // the public page froze on the past while the private dashboard moved on
+    // (public said 14/09 · 52; the database had 21/09 · 49), under a headline
+    // that promised "updates after every audit". The window is the LAST 24,
+    // fetched newest-first and reversed for chronological display, so the
+    // most recent audit is always both the last point of the line and the
+    // scorecard's source.
+    const windowRes = await db.query<{
       id: string;
       created_at: string;
       score_ai: number | null;
@@ -3282,13 +3290,14 @@ export function registerAuditRoutes(
       `SELECT id, created_at, score_ai, score_performance, score_brand
          FROM geo_audit
         WHERE brand_id = $1 AND status = 'complete'
-        ORDER BY created_at ASC
+        ORDER BY created_at DESC
         LIMIT 24`,
       [brandId]
     );
-    if (auditsRes.rows.length === 0) {
+    if (windowRes.rows.length === 0) {
       return c.json({ message: "No published audits yet." }, 404);
     }
+    const auditsRes = { rows: [...windowRes.rows].reverse() };
 
     const history = auditsRes.rows.map((a) => ({
       date: a.created_at,
