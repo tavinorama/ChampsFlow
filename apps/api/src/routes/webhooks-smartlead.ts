@@ -27,6 +27,9 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { config } from "../config";
 import { nextStageFor, type Stage } from "../lib/smartlead-stage";
 import { redactWebhookPayload } from "../lib/smartlead-redact";
+import { extractReplyText } from "../lib/dossier";
+import { classifyReplyIntent, replyNoteLine, type ReplyIntent } from "../lib/reply-intent";
+import { alertOps } from "../../../../packages/shared/src/ops-alert";
 
 function tokenMatches(provided: string | undefined, expected: string): boolean {
   if (!provided) return false;
@@ -86,22 +89,42 @@ export function registerSmartleadWebhookRoutes(app: Hono, db: PostgresClient): v
     // never make Smartlead retry (and re-store) the event.
     if (leadEmail) {
       try {
-        const noteLine = `[smartlead] ${eventType}${campaignId ? ` (campaign ${campaignId})` : ""} ${new Date().toISOString().slice(0, 10)}`;
+        const now = new Date();
+        // B9 (D22): every reply gets a verdict from CODE, the moment it lands,
+        // engines or no engines. The LLM follow-up draft still runs later.
+        const intent: ReplyIntent | null =
+          eventType === "EMAIL_REPLY" ? classifyReplyIntent(extractReplyText(payload)) : null;
+        const noteLine =
+          intent !== null
+            ? replyNoteLine(intent, campaignId, now)
+            : `[smartlead] ${eventType}${campaignId ? ` (campaign ${campaignId})` : ""} ${now.toISOString().slice(0, 10)}`;
         const res = await db.query<{ stage: Stage }>(
           `SELECT stage FROM crm_contact WHERE email = $1`,
           [leadEmail]
         );
         const current = (res.rows[0]?.stage as Stage | undefined) ?? null;
-        const next = nextStageFor(current, eventType);
+        const next = nextStageFor(current, eventType, intent ?? undefined);
+        // A positive reply is the one event this whole machine exists for: it
+        // goes to the top of the follow-up queue (today), so the founder sees
+        // it in /admin without reading SmartLead.
+        const followUpToday = intent === "positive";
         await db.query(
-          `INSERT INTO crm_contact (email, stage, note, updated_at)
-           VALUES ($1, $2, $3, NOW())
+          `INSERT INTO crm_contact (email, stage, note, updated_at, next_follow_up)
+           VALUES ($1, $2, $3, NOW(), CASE WHEN $5 THEN NOW() ELSE NULL END)
            ON CONFLICT (email) DO UPDATE SET
              stage = COALESCE($4, crm_contact.stage),
              note = LEFT(COALESCE(crm_contact.note || E'\\n', '') || $3, 4000),
+             next_follow_up = CASE WHEN $5 THEN NOW() ELSE crm_contact.next_follow_up END,
              updated_at = NOW()`,
-          [leadEmail, next ?? "new", noteLine, next]
+          [leadEmail, next ?? "new", noteLine, next, followUpToday]
         );
+        if (followUpToday) {
+          // No address in the alert (house rule): the CRM queue is the way to it.
+          void alertOps(
+            `🟢 RESPOSTA POSITIVA a um cold e-mail${campaignId ? ` (campanha ${campaignId})` : ""}. Está no topo da fila de follow-up do CRM (/admin, "due today"). Responda hoje.`
+          );
+        }
+        logger.info("smartlead_reply_classified", { eventType, campaignId, intent, stage: next ?? current ?? "new" });
       } catch (err) {
         logger.error("smartlead_crm_annotation_failed", {
           // no address in logs (house rule): the event row is the way back to the lead

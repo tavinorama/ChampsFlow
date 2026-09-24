@@ -18,11 +18,20 @@ export type Stage = "new" | "contacted" | "qualified" | "customer" | "lost";
  * that matters: this function can only ever move BETWEEN machine stages;
  * 'qualified' and 'customer' are human judgments and are never overwritten.
  */
-export function nextStageFor(current: Stage | null, eventType: string): Stage | null {
+export function nextStageFor(
+  current: Stage | null,
+  eventType: string,
+  /** B9: what the reply said, decided by code. Absent = the old rule. */
+  replyIntent?: "stop" | "out_of_office" | "negative" | "positive" | "question" | "unknown"
+): Stage | null {
   const cur: Stage = current ?? "new";
   if (!MACHINE_STAGES.includes(cur as (typeof MACHINE_STAGES)[number])) return null;
   switch (eventType) {
     case "EMAIL_REPLY":
+      // B9 (D22): a textual STOP is an opt-out, whatever the event type says;
+      // an out-of-office is nobody answering — it must not promote a lead.
+      if (replyIntent === "stop") return "lost";
+      if (replyIntent === "out_of_office") return null;
       // A reply is the signal the whole pipeline exists for.
       return cur === "lost" ? null : "contacted";
     case "LEAD_UNSUBSCRIBED":
