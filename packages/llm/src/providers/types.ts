@@ -102,6 +102,13 @@ export interface ProbeResponse {
   queryHash?: string;
   /** How many times this (prompt × provider) was run. 1 unless repeat>1. */
   runs?: number;
+  /**
+   * B6 (Codex D16, 23/09): when the engine was actually asked (ISO). Stamped
+   * on live answers by the sampler and carried by the probe cache, so a
+   * cached answer says how old it is instead of passing for fresh. A re-check
+   * of an intervention only counts answers fetched after the artifact.
+   */
+  fetchedAt?: string;
   /** Fraction of runs where the brand was mentioned (0–1). With runs=1 this is
    *  0 or 1; with repeat>1 it captures non-determinism (e.g. 0.6 = 3 of 5). */
   mentionRate?: number;
