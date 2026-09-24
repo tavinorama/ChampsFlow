@@ -41,6 +41,27 @@ export interface ContentFact {
   counts: string;
   /** ISO date after which the fact leaves the block. */
   until: string;
+  /**
+   * B5 (Codex D10–D12, 23/09). What kind of thing this is, so CODE can refuse
+   * a piece that turns it into something else:
+   *  - measured: we read it off a system;
+   *  - did: something we changed or shipped;
+   *  - scenario: a worked example on paper — never "savings" or "results";
+   *  - third_party: someone else's experience — never "we"/"our".
+   */
+  evidenceType: "measured" | "did" | "scenario" | "third_party";
+  /** Whose experience it is. Only "ozvor" may be told in the first person. */
+  owner: "ozvor" | "third_party";
+  /**
+   * The figures that identify this fact inside a piece of text. When a piece
+   * carries them, the piece is retelling THIS fact and its rules apply.
+   */
+  keyNumbers: readonly string[];
+  /**
+   * false = the fact is an observed difference with no experiment behind it;
+   * a piece may say "we saw", never "because". Default true.
+   */
+  causalClaimAllowed?: boolean;
 }
 
 export const CONTENT_FACTS: readonly ContentFact[] = [
@@ -53,6 +74,9 @@ export const CONTENT_FACTS: readonly ContentFact[] = [
     counts: "impressions per post over 7 days, read from the platform; the 2.08 billion was a running total added 15 times",
     lesson: "A big number on a dashboard is a claim until someone checks how it was added up. We quarantined ours.",
     until: "2026-11-30",
+    evidenceType: "measured",
+    owner: "ozvor",
+    keyNumbers: ["2.08", "27"],
   },
   {
     id: "score-52-was-15-of-102",
@@ -63,6 +87,9 @@ export const CONTENT_FACTS: readonly ContentFact[] = [
     counts: "answers collected in one audit (each question asked to each engine more than once), not questions and not buyers",
     lesson: "Ask any AI-visibility tool for the numerator and the denominator, not the score.",
     until: "2026-11-30",
+    evidenceType: "measured",
+    owner: "ozvor",
+    keyNumbers: ["52", "102"],
   },
   {
     id: "cold-483-first-three-days",
@@ -73,6 +100,9 @@ export const CONTENT_FACTS: readonly ContentFact[] = [
     counts: "people emailed (one person counts once, however many follow-ups they got); replies and bounces are people too",
     lesson: "When cold email fails, read the bounce reasons before you blame the list or buy more leads.",
     until: "2026-10-31",
+    evidenceType: "measured",
+    owner: "ozvor",
+    keyNumbers: ["483", "684"],
   },
   {
     id: "ten-local-businesses-four-engines",
@@ -83,6 +113,12 @@ export const CONTENT_FACTS: readonly ContentFact[] = [
     counts: "answers per business (10 questions x 4 engines), share of those answers that name the business",
     lesson: "Two businesses in the same trade and city can sit 4x apart in what AI says. It is measurable per question.",
     until: "2026-10-31",
+    evidenceType: "measured",
+    owner: "ozvor",
+    keyNumbers: ["15", "62"],
+    // We saw a spread. We did not test what causes it. "Because their
+    // description is better" is a guess a piece may not sell as a finding.
+    causalClaimAllowed: false,
   },
   {
     id: "two-tools-one-chore",
@@ -93,6 +129,11 @@ export const CONTENT_FACTS: readonly ContentFact[] = [
     counts: "hours per week in our own test case, on paper; a scenario, not time a client saved",
     lesson: "Before buying another AI tool, check it does not save the same hour your last tool already saved.",
     until: "2026-11-30",
+    // A worked example from our own engine, on paper. A piece that says
+    // "saved 16 hours" is selling a scenario as a result (D11).
+    evidenceType: "scenario",
+    owner: "ozvor",
+    keyNumbers: ["24", "8"],
   },
   {
     id: "a-citation-is-not-our-work",
@@ -103,8 +144,17 @@ export const CONTENT_FACTS: readonly ContentFact[] = [
     counts: "no number: a rule of our product, before and after the change",
     lesson: "AI answers move on their own. A vendor who takes credit for every good week will blame you for every bad one.",
     until: "2026-11-30",
+    evidenceType: "did",
+    owner: "ozvor",
+    keyNumbers: [],
   },
 ];
+
+/** The facts still in force on `now` — the same set the block renders. */
+export function liveFacts(now: Date, facts: readonly ContentFact[] = CONTENT_FACTS): ContentFact[] {
+  const today = now.toISOString().slice(0, 10);
+  return facts.filter((f) => f.until >= today);
+}
 
 /** The block injected as [__facts__]. Null when every fact has expired: absent, never a placeholder. */
 export function factsBlock(now: Date, facts: readonly ContentFact[] = CONTENT_FACTS): string | null {
@@ -115,6 +165,7 @@ export function factsBlock(now: Date, facts: readonly ContentFact[] = CONTENT_FA
     "FATOS VERDADEIROS DA OZVOR (medidos ou feitos por nos; cada um diz onde conferir). Sao a UNICA fonte permitida de cena, caso e numero em 1a pessoa.",
     "Escolha UM por peca e nao repita um fato que ja aparece no bloco [__recent__]. Conte o fato como ele e: nao aumente, nao troque numero, nao invente cliente, vizinho, amigo, conversa, loja nem hora.",
     "Cada fato e uma FOTO com data. Se usar um numero, diga a data dele na peca (ou o mes). NUNCA conte um fato como o estado de hoje ('we have', 'right now', 'so far'): o numero pode ja ter mudado. Diga o que o numero conta, nas palavras de 'conta:'.",
-    ...live.map((f) => `- [${f.id}] (lido em ${f.asOf}) ${f.fact} LICAO: ${f.lesson} (conta: ${f.counts}) (fonte: ${f.source})`),
+    "Um fato marcado CENARIO e uma conta no papel: diga 'no papel', 'em cenario' ou 'no nosso teste'; nunca 'economizou', 'poupou' ou 'resultado'. Um fato marcado TERCEIRO e experiencia de outra empresa: nomeie-a; nunca 'nos', 'nosso', 'we', 'our'. Um fato marcado SEM-CAUSA e uma diferenca observada: 'vimos', nunca 'porque'. O finalize e RECUSADO por codigo se quebrar uma destas.",
+    ...live.map((f) => `- [${f.id}] (lido em ${f.asOf}${f.evidenceType === "scenario" ? "; CENARIO, no papel" : ""}${f.owner === "third_party" ? "; TERCEIRO" : ""}${f.causalClaimAllowed === false ? "; SEM-CAUSA" : ""}) ${f.fact} LICAO: ${f.lesson} (conta: ${f.counts}) (fonte: ${f.source})`),
   ].join("\n");
 }

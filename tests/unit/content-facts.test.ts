@@ -59,7 +59,7 @@ describe("P17 — a fact is a dated snapshot, never today's state", () => {
     expect(block).toContain("Cada fato e uma FOTO com data");
     expect(block).toContain("NUNCA conte um fato como o estado de hoje");
     for (const f of CONTENT_FACTS) {
-      expect(block).toContain(`[${f.id}] (lido em ${f.asOf})`);
+      expect(block).toContain(`[${f.id}] (lido em ${f.asOf}`);
       expect(block).toContain(`(conta: ${f.counts})`);
     }
   });
