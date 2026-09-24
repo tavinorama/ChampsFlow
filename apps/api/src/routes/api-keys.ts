@@ -34,6 +34,7 @@ import { requireAuth, requireRole, requireSuperAdmin } from "../auth/middleware"
 import { runWithTenant } from "../db/tenant-context";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
+import { parseContextReadiness, describeContextReadiness, CONTEXT_READINESS_KEY } from "../../../../packages/shared/src/context-readiness";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { readEngineHealth } from "../../../../packages/shared/src/hermes-health";
 
@@ -592,12 +593,27 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       redisStatus = "down";
     }
 
+    // B13 (D05): is the content machine wired to real context? Written by
+    // the worker at boot; "unknown" here means the worker has not booted since
+    // this was added or Redis is down — never "wired".
+    let context: { state: "wired" | "degraded" | "unknown"; summary: string; detail: unknown } = {
+      state: "unknown", summary: "no readiness record from the worker", detail: null,
+    };
+    try {
+      const redis = tryGetSharedRedis();
+      const r = redis ? parseContextReadiness(await redis.get<string>(CONTEXT_READINESS_KEY)) : null;
+      if (r) context = { state: r.degraded ? "degraded" : "wired", summary: describeContextReadiness(r), detail: r };
+    } catch {
+      /* stays unknown */
+    }
+
     return c.json({
       engines,
       // "live" = key present. See `hermes` for whether an engine actually answers.
       engines_note: "live means the API key is present, not that the engine answers; see hermes[] for functional health",
       hermes,
       infrastructure: { postgres: postgresStatus, redis: redisStatus },
+      context,
       checked_at: new Date().toISOString(),
     });
   });
