@@ -337,6 +337,28 @@ function capText(s: string | undefined): string | null {
   return s.slice(0, 2000);
 }
 
+/**
+ * B6 (D16): oldest and newest `fetchedAt` across the answers an audit used,
+ * and how many were reused from the cache. Null fields when nothing carries a
+ * stamp (answers cached before this change); never a guessed date.
+ */
+export function cacheAgeSummary(
+  responses: ReadonlyArray<{ fromCache?: boolean; fetchedAt?: string }>
+): { oldestFetchedAt: string | null; newestFetchedAt: string | null; reusedWithoutStamp: number } {
+  let oldest: string | null = null;
+  let newest: string | null = null;
+  let unstamped = 0;
+  for (const r of responses) {
+    if (!r.fetchedAt) {
+      if (r.fromCache) unstamped += 1;
+      continue;
+    }
+    if (oldest === null || r.fetchedAt < oldest) oldest = r.fetchedAt;
+    if (newest === null || r.fetchedAt > newest) newest = r.fetchedAt;
+  }
+  return { oldestFetchedAt: oldest, newestFetchedAt: newest, reusedWithoutStamp: unstamped };
+}
+
 function sanitizeSources(sources: string[] | undefined): string[] {
   return (sources ?? []).slice(0, 10).map((u) => {
     try {
@@ -1039,6 +1061,13 @@ async function processAuditJobTracked(
       seedResponses: cachedResponses,
     });
 
+    // B6 (D16): every LIVE answer is stamped with the moment it was fetched.
+    // Cached answers keep the stamp they were written with, so the breakdown
+    // can say how old the evidence is and the Do Next loop can refuse to
+    // "verify" an intervention against answers older than the artifact.
+    const fetchedNow = new Date().toISOString();
+    for (const r of result.responses) if (!r.fromCache && !r.fetchedAt) r.fetchedAt = fetchedNow;
+
     // B8 — cache write: persist each LIVE aggregated probe (escalations already
     // folded in) as one unit for 24h. Cached hits are never re-cached (no TTL
     // renewal — data older than 24h must be re-measured). Fail-open.
@@ -1692,6 +1721,9 @@ async function processAuditJobTracked(
           enabled: cacheEnabled,
           hits: cacheHits,
           misses: Math.max(0, cacheLookups - cacheHits),
+          // B6 (D16): the age of the evidence. On 21/09 65 of 65 answers came
+          // from the cache and nothing on screen said so.
+          ...cacheAgeSummary(responses),
         },
       },
       // B3 — two-pass citation extraction telemetry. ADDITIVE: old readers that
@@ -1883,6 +1915,7 @@ async function processAuditJobTracked(
           // keys. Own-domain citation lives on the classifier's observation.
           cited: r.mentioned,
           rank: r.position ?? null,
+          fetchedAt: r.fetchedAt ?? null,
           sources: sanitizeSources(r.sources),
           competitors:
             competitorNames.length > 0 ? detectCompetitors(r.rawText ?? "", competitorNames) : [],
@@ -1981,7 +2014,7 @@ async function processAuditJobTracked(
         if (prevPlanRows[0]) {
           prevTasks = readArtifact
             ? await sql<PrevTask[]>`
-                SELECT vector, gap, action, effort, impact, priority, status, evidence, metric, owner, artifact_url
+                SELECT vector, gap, action, effort, impact, priority, status, evidence, metric, owner, artifact_url, state_changed_at
                   FROM plan_task
                  WHERE plan_id = ${prevPlanRows[0].id}
                  ORDER BY priority DESC, created_at ASC

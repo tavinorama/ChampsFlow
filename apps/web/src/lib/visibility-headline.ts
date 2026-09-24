@@ -142,3 +142,44 @@ export function discoveryLines(split: DiscoverySplit | null): { discovery: strin
         : null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// B6 (Codex D16, 23/09) — how old the evidence is.
+//
+// On 21/09 all 65 question × engine pairs were served from the probe cache
+// (answers fetched 22 minutes earlier by a run that failed verification) and
+// nothing on screen said so. A cached answer is a real answer; it is just not
+// a fresh one, and a client re-testing an intervention must be told which.
+// ---------------------------------------------------------------------------
+
+export interface SamplingCache {
+  enabled?: boolean;
+  hits?: number | null;
+  misses?: number | null;
+  oldestFetchedAt?: string | null;
+  newestFetchedAt?: string | null;
+  reusedWithoutStamp?: number | null;
+}
+
+const stamp = (iso: string): string => iso.slice(0, 16).replace("T", " ") + " UTC";
+
+export function cacheOriginLine(cache: SamplingCache | null | undefined): string | null {
+  if (!cache) return null;
+  const hits = typeof cache.hits === "number" ? cache.hits : 0;
+  const misses = typeof cache.misses === "number" ? cache.misses : 0;
+  const total = hits + misses;
+  if (total <= 0) return null;
+  if (hits === 0) {
+    return cache.newestFetchedAt
+      ? `All ${total} pairs were asked live at ${stamp(cache.newestFetchedAt)}.`
+      : `All ${total} pairs were asked live for this audit.`;
+  }
+  const when =
+    cache.oldestFetchedAt && cache.newestFetchedAt
+      ? cache.oldestFetchedAt === cache.newestFetchedAt || cache.oldestFetchedAt.slice(0, 16) === cache.newestFetchedAt.slice(0, 16)
+        ? `fetched at ${stamp(cache.oldestFetchedAt)}`
+        : `fetched between ${stamp(cache.oldestFetchedAt)} and ${stamp(cache.newestFetchedAt)}`
+      : "fetched at an unrecorded time";
+  const rest = misses > 0 ? ` The other ${misses} were asked live for this audit.` : "";
+  return `${hits} of ${total} pairs reused answers ${when} (cached up to 24 h).${rest}`;
+}

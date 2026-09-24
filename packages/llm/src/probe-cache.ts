@@ -86,6 +86,8 @@ interface CachedProbeV2 {
   sources: string[];
   snippet: string;
   absent?: boolean;
+  /** B6: when the live call that produced this entry returned (ISO). */
+  fetchedAt?: string;
 }
 
 /**
@@ -132,6 +134,7 @@ export async function getCachedProbe(
       rawText: typeof parsed.snippet === "string" ? parsed.snippet : "",
       fromCache: true,
       absent: parsed.absent === true,
+      ...(typeof parsed.fetchedAt === "string" ? { fetchedAt: parsed.fetchedAt } : {}),
     };
   } catch {
     return null; // fail-open: Redis/JSON errors are cache misses
@@ -171,6 +174,7 @@ export async function setCachedProbe(
       sources: (resp.sources ?? []).slice(0, 10),
       snippet: (resp.rawText ?? "").slice(0, MAX_SNIPPET_CHARS),
       absent: resp.absent === true,
+      fetchedAt: resp.fetchedAt ?? new Date().toISOString(),
     };
     await store.set(
       probeCacheKey(resp.queryHash, resp.provider, methodologyVersion, identity),

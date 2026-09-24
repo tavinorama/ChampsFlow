@@ -23,6 +23,7 @@ import {
   wasExecuted,
   REGRESSED_PREFIX,
   RETIRED_OFF_PANEL_PREFIX,
+  DEFERRED_PREFIX,
   fixLegacyRateMetric,
   type LoopProbe,
   type PrevTask,
@@ -471,5 +472,54 @@ describe("P05 — the legacy card no longer prints the index as a rate", () => {
     });
     const { rows } = reconcileLoopTasks([legacy], buildLoopCandidates([probe({})]), "2026-09-21");
     expect(rows.find((r) => r.gap === legacy.gap)?.metric).not.toContain("52%");
+  });
+});
+
+describe("B6 (D16) — an executed card is verified only by answers fetched after the work", () => {
+  const Q = "best crm for smbs";
+  const published = (changedAt: string) =>
+    prevTask({ gap: gapForUncited(Q), status: "published", artifact_url: "https://acme.com/crm", state_changed_at: changedAt });
+  const citedProbe = (fetchedAt: string | null) => probe({ queryText: Q, cited: true, rank: 1, fetchedAt });
+
+  it("answers fetched BEFORE the artifact: not verified, carried with the reason, slot kept", () => {
+    const build = buildLoopCandidates([citedProbe("2026-09-21T18:24:00Z")]);
+    expect(build.observedAt?.get(gapForUncited(Q))).toBe("2026-09-21T18:24:00Z");
+    const { rows, stats } = reconcileLoopTasks([published("2026-09-22T10:00:00Z")], build, "2026-09-23");
+    const row = rows.find((r) => r.gap === gapForUncited(Q))!;
+    expect(row.status).toBe("published");
+    expect(row.evidence).toContain(`${DEFERRED_PREFIX}2026-09-23`);
+    expect(row.evidence).toContain("before this card's work of 2026-09-22T10:00Z");
+    expect(stats.verified).toBe(0);
+    expect(stats.verificationDeferred).toBe(1);
+  });
+
+  it("answers fetched AFTER the artifact: verified, as before", () => {
+    const build = buildLoopCandidates([citedProbe("2026-09-28T06:05:00Z")]);
+    const { rows, stats } = reconcileLoopTasks([published("2026-09-22T10:00:00Z")], build, "2026-09-28");
+    expect(rows.find((r) => r.gap === gapForUncited(Q))!.status).toBe("verified");
+    expect(stats.verified).toBe(1);
+    expect(stats.verificationDeferred).toBe(0);
+  });
+
+  it("an answer with no stamp is unknown, not fresh: defers and says so", () => {
+    const build = buildLoopCandidates([citedProbe("2026-09-28T06:05:00Z"), { ...citedProbe(null), provider: "anthropic" }]);
+    expect(build.observedAt?.get(gapForUncited(Q))).toBeNull();
+    const { rows, stats } = reconcileLoopTasks([published("2026-09-22T10:00:00Z")], build, "2026-09-28");
+    expect(rows.find((r) => r.gap === gapForUncited(Q))!.evidence).toContain("unknown time");
+    expect(stats.verificationDeferred).toBe(1);
+  });
+
+  it("a card with no state_changed_at (pre-lifecycle) keeps the old behaviour", () => {
+    const build = buildLoopCandidates([citedProbe("2026-09-21T18:24:00Z")]);
+    const t = prevTask({ gap: gapForUncited(Q), status: "published", artifact_url: "https://acme.com/crm" });
+    const { stats } = reconcileLoopTasks([t], build, "2026-09-23");
+    expect(stats.verified).toBe(1);
+  });
+
+  it("a deferred card is not re-prefixed on the next deferral", () => {
+    const build = buildLoopCandidates([citedProbe("2026-09-21T18:24:00Z")]);
+    const first = reconcileLoopTasks([published("2026-09-22T10:00:00Z")], build, "2026-09-23").rows[0]!;
+    const second = reconcileLoopTasks([{ ...(first as unknown as PrevTask), state_changed_at: "2026-09-22T10:00:00Z" }], build, "2026-09-24").rows[0]!;
+    expect(second.evidence!.split(DEFERRED_PREFIX).length - 1).toBe(1);
   });
 });
