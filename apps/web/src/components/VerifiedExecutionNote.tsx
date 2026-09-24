@@ -1,5 +1,7 @@
 "use client";
 
+import { partitionExecutionCounts } from "../lib/execution-counts";
+
 /**
  * VerifiedExecutionNote — the one place we explain what Verified Execution
  * means, and why the number moved (audit P0-02).
@@ -101,7 +103,10 @@ export function VerifiedExecutionNote({ execution }: { execution?: ExecutionData
     );
   }
 
-  const claimed = counts.selfReported;
+  // B3 (Codex D14): one line per fix. "still open" no longer includes the
+  // ones the client marked done — those have their own line below.
+  const part = partitionExecutionCounts(counts);
+  const claimed = part.selfReported;
   const dropped = claimed > 0 && (verifiedPct ?? 0) < (selfReportedPct ?? 0);
 
   return (
@@ -145,9 +150,12 @@ export function VerifiedExecutionNote({ execution }: { execution?: ExecutionData
           <b>{claimed} marked done by you</b> — your word, not yet checked by us.
         </li>
         <li>
-          <b>{counts.open} still open</b> — including anything that slipped back.
+          <b>{part.openNotStarted} still open, not started</b> — including anything that slipped back.
         </li>
       </ul>
+      <p style={p}>
+        {part.owed} {part.owed === 1 ? "fix" : "fixes"} owed in total. Each one is on exactly one line above.
+      </p>
 
       <p style={{ ...p, margin: 0 }}>
         The maths: {counts.verified} verified out of {counts.denominator} fixes

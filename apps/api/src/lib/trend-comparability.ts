@@ -164,7 +164,7 @@ export interface RunConfidence {
 export function runConfidence(checks: number | null, citations: number | null): RunConfidence {
   const stabilityNote =
     typeof checks === "number" && checks > 0 && checks < SMALL_SAMPLE_CHECKS
-      ? `Based on ${checks} checks — small day-to-day moves are within noise at this sample size.`
+      ? `Based on ${checks} question × engine pairs — small day-to-day moves are within noise at this sample size.`
       : null;
   return { checks, citations, stabilityNote };
 }

@@ -1,13 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { citationRateLine, VISIBILITY_INDEX_EXPLAINER, VISIBILITY_INDEX_WEIGHTS } from "./visibility-headline";
+import { citationRateLine, pairsMeasuredLine, VISIBILITY_INDEX_EXPLAINER, VISIBILITY_INDEX_WEIGHTS } from "./visibility-headline";
 
 describe("the Visibility headline says what it is", () => {
-  it("the real 14/09 audit: 52 on the index, named in 15 of 102 checks", () => {
+  it("the real 14/09 audit: 52 on the index, named in 15 of 102 answers", () => {
     expect(citationRateLine({ rate: 0.1471, low: 0.0912, high: 0.2285, n: 102 })).toBe(
-      "Named in 15 of 102 checks (14.7%). With this many checks the true share sits between 9.1% and 22.9%."
+      "Named in 15 of 102 answers (14.7%). With this many answers the true share sits between 9.1% and 22.9%."
     );
+  });
+
+  it("B3 — the two grains have two names: answers (repetitions) and question × engine pairs", () => {
+    // 21/09: 130 answers, 65 pairs, 12 and 6 named. Both used to be "checks".
+    expect(citationRateLine({ rate: 0.0923, low: 0.0536, high: 0.1544, n: 130 })).toContain("Named in 12 of 130 answers");
+    expect(pairsMeasuredLine(65, 6)).toBe("65 question × engine pairs measured — named in 6 of them.");
+    expect(pairsMeasuredLine(65, null)).toBe("65 question × engine pairs measured.");
+    expect(pairsMeasuredLine(0, 0)).toBeNull();
+    expect(pairsMeasuredLine(null, 3)).toBeNull();
+    const page = readFileSync(join(__dirname, "../app/dashboard-v3/page.tsx"), "utf8");
+    expect(page).not.toContain("Measured over ${confidence.checks} checks");
+    expect(page).toContain("pairsMeasuredLine(confidence.checks, confidence.citations)");
   });
 
   it("nothing measured → no sentence (never 'named in 0 of 0')", () => {
