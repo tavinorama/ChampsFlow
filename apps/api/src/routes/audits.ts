@@ -49,6 +49,8 @@ import {
   factCheckDraft,
   type HostedDraftAllowance,
   type DraftEvidence,
+  toDriftEngines,
+  engineLabel,
 } from "../../../../packages/shared/src/index";
 import { alertOps } from "../../../../packages/shared/src/ops-alert";
 import {
@@ -1622,8 +1624,12 @@ export function registerAuditRoutes(
     const audit = auditRes.rows[0];
     if (!audit) return c.json({ message: "Audit not found." }, 404);
 
-    const used = Array.isArray(audit.providers_used) ? (audit.providers_used as string[]) : [];
-    if (used.length === 0) return c.json({ engines: [], as_of: audit.created_at });
+    const usedRaw = Array.isArray(audit.providers_used) ? (audit.providers_used as string[]) : [];
+    if (usedRaw.length === 0) return c.json({ engines: [], as_of: audit.created_at });
+    // B4 (D23): the audit stores `google`/`dataforseo`; the drift battery
+    // stores `gemini`/`serp`. Joined literally, two of five engines came back
+    // with no status and the UI dropped them. One canonical id per engine.
+    const used = toDriftEngines(usedRaw);
 
     try {
       const { rows } = await db.query<{ engine: string; status: string; checked_at: string }>(
@@ -1642,8 +1648,11 @@ export function registerAuditRoutes(
 
       return c.json({
         as_of: audit.created_at,
+        // Every engine the audit used is in this list, always: a missing
+        // battery is `status: null` ("not checked"), never a missing row.
         engines: rows.map((r) => ({
           engine: r.engine,
+          label: engineLabel(r.engine),
           // null when no control battery had run yet for that engine at that
           // time. The UI must say "not checked", never "healthy".
           status: r.status ?? null,

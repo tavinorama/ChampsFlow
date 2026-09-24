@@ -24,20 +24,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase-browser";
 
-interface EngineCheck {
-  engine: string;
-  /** healthy · degraded · failing · null when no battery had run yet */
-  status: string | null;
-  checked_at: string | null;
-}
-
-const ENGINE_LABEL: Record<string, string> = {
-  anthropic: "Claude",
-  openai: "ChatGPT",
-  gemini: "Gemini",
-  perplexity: "Perplexity",
-  serp: "Google AI Overviews",
-};
+import { summarizeEngineConfidence, type EngineCheck } from "../lib/engine-confidence-summary";
 
 export function EngineConfidence({ auditId }: { auditId: string | null }) {
   const [engines, setEngines] = useState<EngineCheck[] | null>(null);
@@ -60,18 +47,16 @@ export function EngineConfidence({ auditId }: { auditId: string | null }) {
     };
   }, [auditId]);
 
-  if (!engines || engines.length === 0) return null;
+  // B4 (D23): every engine the audit used is on the list; a missing battery
+  // is said and counted, never dropped. "All N" only when N were checked.
+  const summary = summarizeEngineConfidence(engines);
+  if (summary.kind === "silent") return null;
 
-  const checked = engines.filter((e) => e.status);
-  if (checked.length === 0) return null;
-
-  const shaky = checked.filter((e) => e.status === "degraded" || e.status === "failing");
-
-  if (shaky.length === 0) {
+  if (summary.kind === "all_good" || summary.kind === "partial") {
     return (
       <p style={line}>
-        <Dot tone="good" />
-        All {checked.length} engines passed their control checks on the day of this audit.
+        <Dot tone={summary.kind === "all_good" ? "good" : "warn"} />
+        {summary.text}
       </p>
     );
   }
@@ -80,9 +65,7 @@ export function EngineConfidence({ auditId }: { auditId: string | null }) {
     <p style={line}>
       <Dot tone="warn" />
       <span>
-        {shaky.map((e) => ENGINE_LABEL[e.engine] ?? e.engine).join(" and ")}{" "}
-        {shaky.length === 1 ? "was" : "were"} unstable on the day of this audit, so a fall here may be
-        the engine and not your brand.{" "}
+        {summary.text}{" "}
         <a href="/how-we-measure" style={{ color: "var(--color-accent-ink)", fontWeight: 600 }}>
           How we check
         </a>
