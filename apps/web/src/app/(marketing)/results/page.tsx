@@ -14,7 +14,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
-import { ScorecardGlyph } from "../../../components/marketing/illustrations";
 
 export const revalidate = 600;
 
@@ -147,9 +146,11 @@ export default async function ResultsPage() {
         It updates after every audit. No cherry-picking, no invented trends.
       </p>
 
-      <div style={{ display: "grid", placeItems: "center", marginTop: "var(--space-8)" }}>
-        <ScorecardGlyph size={150} />
-      </div>
+      {/* B2 (Codex D07, 23/09): a decorative ScorecardGlyph (58 / 71 / 49 by
+          default, "purely decorative" in its own header) sat here, between the
+          promise of raw production data and the real numbers. A visitor could
+          read the illustration as a measurement. Nothing on this page may show
+          a number that did not come from the same snapshot as the rest. */}
 
       <p
         style={{
