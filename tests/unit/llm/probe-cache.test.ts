@@ -188,3 +188,32 @@ describe("fail-open on store errors", () => {
     await expect(setCachedProbe(broken, liveResponse(), V, ID)).resolves.toBeUndefined();
   });
 });
+
+describe("B6 (D16) — a cached answer says when it was fetched", () => {
+  it("keeps the live answer's fetchedAt and returns it on a hit", async () => {
+    const store = new FakeStore();
+    await setCachedProbe(store, liveResponse({ fetchedAt: "2026-09-21T18:24:10.000Z" }), V, ID);
+    const hit = await getCachedProbe(store, "abc123", "openai", V, ID);
+    expect(hit!.fromCache).toBe(true);
+    expect(hit!.fetchedAt).toBe("2026-09-21T18:24:10.000Z");
+  });
+  it("stamps the write time when the live answer carried none", async () => {
+    const store = new FakeStore();
+    const before = Date.now();
+    await setCachedProbe(store, liveResponse(), V, ID);
+    const hit = await getCachedProbe(store, "abc123", "openai", V, ID);
+    expect(typeof hit!.fetchedAt).toBe("string");
+    expect(Date.parse(hit!.fetchedAt!)).toBeGreaterThanOrEqual(before - 1000);
+  });
+  it("an entry written before the stamp existed comes back without one — never a guessed date", async () => {
+    const store = new FakeStore();
+    await setCachedProbe(store, liveResponse(), V, ID);
+    const key = probeCacheKey("abc123", "openai", V, ID);
+    const raw = JSON.parse(store.entries.get(key)!.value) as Record<string, unknown>;
+    delete raw["fetchedAt"];
+    store.entries.set(key, { value: JSON.stringify(raw), ttl: 1 });
+    const hit = await getCachedProbe(store, "abc123", "openai", V, ID);
+    expect(hit).not.toBeNull();
+    expect(hit!.fetchedAt).toBeUndefined();
+  });
+});

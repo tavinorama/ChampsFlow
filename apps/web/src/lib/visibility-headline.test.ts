@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { citationRateLine, pairsMeasuredLine, VISIBILITY_INDEX_EXPLAINER, VISIBILITY_INDEX_WEIGHTS } from "./visibility-headline";
+import { citationRateLine, pairsMeasuredLine, cacheOriginLine, VISIBILITY_INDEX_EXPLAINER, VISIBILITY_INDEX_WEIGHTS } from "./visibility-headline";
 
 describe("the Visibility headline says what it is", () => {
   it("the real 14/09 audit: 52 on the index, named in 15 of 102 answers", () => {
@@ -42,5 +42,29 @@ describe("the Visibility headline says what it is", () => {
     expect(page).not.toMatch(/out of 100[\s\S]{0,160}±/);
     expect(page).not.toContain("How often AI names you");
     expect(page).toContain("citationRateLine(citationCI)");
+  });
+});
+
+describe("B6 (D16) — the hero says how old the evidence is", () => {
+  it("21/09: 65 of 65 pairs reused answers fetched 22 minutes earlier", () => {
+    expect(cacheOriginLine({ hits: 65, misses: 0, oldestFetchedAt: "2026-09-21T18:24:10Z", newestFetchedAt: "2026-09-21T18:24:55Z" })).toBe(
+      "65 of 65 pairs reused answers fetched at 2026-09-21 18:24 UTC (cached up to 24 h)."
+    );
+  });
+  it("a mixed audit names both parts", () => {
+    expect(cacheOriginLine({ hits: 20, misses: 45, oldestFetchedAt: "2026-09-27T09:00:00Z", newestFetchedAt: "2026-09-27T21:30:00Z" })).toBe(
+      "20 of 65 pairs reused answers fetched between 2026-09-27 09:00 UTC and 2026-09-27 21:30 UTC (cached up to 24 h). The other 45 were asked live for this audit."
+    );
+  });
+  it("all live → says so; no stamps → says unrecorded, never a guessed date; nothing → null", () => {
+    expect(cacheOriginLine({ hits: 0, misses: 65, newestFetchedAt: "2026-09-28T06:01:00Z" })).toBe("All 65 pairs were asked live at 2026-09-28 06:01 UTC.");
+    expect(cacheOriginLine({ hits: 65, misses: 0 })).toBe("65 of 65 pairs reused answers fetched at an unrecorded time (cached up to 24 h).");
+    expect(cacheOriginLine(null)).toBeNull();
+    expect(cacheOriginLine({ hits: 0, misses: 0 })).toBeNull();
+  });
+  it("the dashboard renders it under the pairs footnote", () => {
+    const page = readFileSync(join(__dirname, "../app/dashboard-v3/page.tsx"), "utf8");
+    expect(page).toContain("cacheOriginLine(samplingCache)");
+    expect(page).toContain("?.sampling?.cache ?? null");
   });
 });

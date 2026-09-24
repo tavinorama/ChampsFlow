@@ -24,8 +24,10 @@ import {
   discoveryLines,
   pairsMeasuredLine,
   splitByBrandMention,
+  cacheOriginLine,
   VISIBILITY_INDEX_EXPLAINER,
   VISIBILITY_INDEX_TITLE,
+  type SamplingCache,
 } from "../../lib/visibility-headline";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -971,6 +973,7 @@ export default function DashboardV3() {
             confidence={score?.confidence ?? null}
             hallucination={(breakdown as { hallucination?: HallucinationInfo | null } | null)?.hallucination ?? null}
             intents={(breakdown as { intents?: IntentRow[] | null } | null)?.intents ?? null}
+            samplingCache={(breakdown as { sampling?: { cache?: SamplingCache | null } | null } | null)?.sampling?.cache ?? null}
           />
         ) : tab === "brands" ? (
           <BrandsTab
@@ -1035,7 +1038,7 @@ export default function DashboardV3() {
 function OverviewTab({
   brandName, overall, threeScores, trend, tone, loading, brandId, onRunAudit, auditBusy, auditBlocked, onTopUp, auditMsg,
   auditId, extraction, methodologyVersion, citationCI, intents, coverage, hallucination, confidence,
-  execution,
+  execution, samplingCache,
 }: {
   brandName?: string;
   overall: number | null;
@@ -1067,6 +1070,8 @@ function OverviewTab({
   hallucination?: HallucinationInfo | null;
   /** P0-02 — Verified Execution with its working shown. */
   execution?: ScorePayload["execution"];
+  /** B6 — how many pairs came from the probe cache, and how old they are. */
+  samplingCache?: SamplingCache | null;
 }) {
   // The hero shows Visibility now, so "has data" follows Visibility. Keying it
   // on the composite would print a big "—" next to a filled three-score card.
@@ -1169,6 +1174,11 @@ function OverviewTab({
               {/* B3: this grain is PAIRS (question × engine); the lines above are ANSWERS. */}
               {pairsMeasuredLine(confidence.checks, confidence.citations) ?? ""}
               {confidence.stabilityNote ? ` ${confidence.stabilityNote}` : ""}
+            </p>
+          )}
+          {cacheOriginLine(samplingCache) && (
+            <p style={{ margin: "var(--space-1) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
+              {cacheOriginLine(samplingCache)}
             </p>
           )}
           <CoverageNote coverage={coverage} />

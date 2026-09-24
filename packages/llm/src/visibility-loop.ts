@@ -40,6 +40,8 @@ export interface LoopProbe {
   rank: number | null; // 1-based position when cited
   sources: string[]; // sanitized URLs the answer cited
   competitors: string[]; // competitor names detected in this answer's text
+  /** B6: when the engine was asked (ISO). null = unknown (cached before the stamp existed). */
+  fetchedAt?: string | null;
 }
 
 export type LoopVector = "brand" | "performance" | "ai";
@@ -74,6 +76,13 @@ export interface LoopBuildResult {
    * behaviour: absent or empty = never retire anything.
    */
   probedQueries?: Set<string>;
+  /**
+   * B6 (D16): for each query-shaped gap, the EARLIEST `fetchedAt` among the
+   * answers behind it — or null when any answer has no stamp. A card that
+   * was published after that instant cannot be verified by this audit: the
+   * evidence predates the work.
+   */
+  observedAt?: Map<string, string | null>;
 }
 
 /** Max OPEN generated cards after a refresh (founder: "tudo mastigado", not a backlog). */
@@ -149,6 +158,9 @@ interface QueryAgg {
   competitors: string[]; // competitors seen on this query's answers (any provider)
   competitorsWhereAbsent: string[]; // competitors cited where the brand was not
   absentSourceDomains: string[]; // domains the AI used on answers without the brand
+  /** B6: earliest fetchedAt of this query's answers; null once any answer lacks one. */
+  earliestFetchedAt: string | null;
+  fetchedAtUnknown: boolean;
 }
 
 function aggregateByQuery(probes: LoopProbe[]): Map<string, QueryAgg> {
@@ -166,8 +178,15 @@ function aggregateByQuery(probes: LoopProbe[]): Map<string, QueryAgg> {
         competitors: [],
         competitorsWhereAbsent: [],
         absentSourceDomains: [],
+        earliestFetchedAt: null,
+        fetchedAtUnknown: false,
       };
       byQuery.set(q, agg);
+    }
+    if (typeof p.fetchedAt === "string" && p.fetchedAt) {
+      if (agg.earliestFetchedAt === null || p.fetchedAt < agg.earliestFetchedAt) agg.earliestFetchedAt = p.fetchedAt;
+    } else {
+      agg.fetchedAtUnknown = true;
     }
     if (p.cited) {
       agg.citedProviders.push(p.provider);
@@ -316,7 +335,13 @@ export function buildLoopCandidates(
   }
 
   candidates.sort((a, b) => b.priority - a.priority || a.gap.localeCompare(b.gap));
-  return { candidates, resolved, probedQueries: new Set(byQuery.keys()) };
+  const observedAt = new Map<string, string | null>();
+  for (const agg of byQuery.values()) {
+    const at = agg.fetchedAtUnknown ? null : agg.earliestFetchedAt;
+    observedAt.set(gapForUncited(agg.query), at);
+    observedAt.set(gapForLowRank(agg.query), at);
+  }
+  return { candidates, resolved, probedQueries: new Set(byQuery.keys()), observedAt };
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +363,8 @@ export interface PrevTask {
   owner: string | null;
   /** Proof that work was done on this card (a URL). Absent on cards nobody executed. */
   artifact_url?: string | null;
+  /** B6: when the card last changed state (published / indexed …), ISO. */
+  state_changed_at?: string | null;
 }
 
 export interface LoopTaskRow {
@@ -365,6 +392,8 @@ export interface ReconcileStats {
   refreshed: number; // candidates that had a predecessor and stayed open
   created: number; // brand-new candidates
   verified: number; // EXECUTED cards whose gap this audit found closed
+  /** B6 (D16): executed cards whose gap closed, but on answers fetched BEFORE the artifact — not verified yet. */
+  verificationDeferred: number;
   /**
    * C02 (19/09): cards nobody executed whose gap closed anyway. They leave the
    * open list as `expired` ("not owed"), and are NEVER counted as verified:
@@ -446,6 +475,9 @@ export function wasExecuted(t: Pick<PrevTask, "status" | "artifact_url">): boole
  */
 export const RETIRED_OFF_PANEL_PREFIX = "Retired — this question is no longer in your panel, as of the audit of ";
 
+/** B6 (D16): the gap closed on answers that predate the artifact. Not a win yet. */
+export const DEFERRED_PREFIX = "Not verified yet — seen in the audit of ";
+
 export const REGRESSED_PREFIX = "Slipped back — was working, then stopped, as of ";
 
 /**
@@ -491,6 +523,7 @@ export function reconcileLoopTasks(
     refreshed: 0,
     created: 0,
     verified: 0,
+    verificationDeferred: 0,
     closedWithoutExecution: 0,
     retiredOffPanel: 0,
     regressed: 0,
@@ -567,6 +600,26 @@ export function reconcileLoopTasks(
     // become `verified` were the ones nobody executed or the client ticked.
     // Work we shipped is exactly what verification is for.
     const inFlight = status === "published" || status === "indexed" || status === "cited";
+    // B6 (D16): an executed card can only be verified by answers fetched
+    // AFTER it was executed. A cached answer from before the artifact says
+    // nothing about the artifact. Unknown stamps (pre-B6 cache) are treated
+    // as unknown, not as fresh: they defer too, and say so.
+    const observedAtRaw = build.observedAt?.get(t.gap);
+    const changedAt = t.state_changed_at ?? null;
+    const evidencePredatesWork =
+      (open || inFlight) && note && wasExecuted(t) && build.observedAt !== undefined && changedAt !== null && observedAtRaw !== undefined
+        ? observedAtRaw === null || observedAtRaw < changedAt
+        : false;
+    if (evidencePredatesWork && changedAt !== null) {
+      const seenAt = observedAtRaw ?? null;
+      const deferred = `${DEFERRED_PREFIX}${auditDate}: the gap reads closed, but the answers behind it were fetched ${seenAt === null ? "at an unknown time (cached before we stamped answers)" : `at ${seenAt.slice(0, 16)}Z`}, before this card's work of ${changedAt.slice(0, 16)}Z. The next audit with fresh answers decides.`;
+      rows.push(carryRow(t, { evidence: t.evidence?.startsWith(DEFERRED_PREFIX) ? t.evidence : `${deferred} ${t.evidence ?? ""}`.trim() }));
+      stats.verificationDeferred += 1;
+      if (takesSlot(status)) openCount += 1;
+      else stats.verificationQueue += 1;
+      continue;
+    }
+
     if ((open || inFlight) && note) {
       // THE ONLY WRITER OF `verified`. The card is not verified because anyone
       // said so — it was EXECUTED (see wasExecuted) and this audit then found
