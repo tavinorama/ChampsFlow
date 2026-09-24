@@ -15,6 +15,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
+import { SCORE_GLOSSARY } from "@organic-posts/shared";
 
 export const metadata: Metadata = {
   title: "Tutorials — Learn to use Ozvor",
@@ -59,10 +60,10 @@ const TUTORIALS: Tutorial[] = [
     title: "Read your AI Visibility Score",
     desc: "Understand the overall score and the three sub-scores behind it.",
     steps: [
-      "The headline score (0–100) is how likely AI engines are to name you for buyer questions.",
-      "Visibility / AI: your citation rate, position, and sentiment across engines.",
-      "Citation Readiness / Performance: schema, crawlability, and AI-crawler access on your site.",
-      "Execution / Brand: your authority on the sources AI leans on. Every number is labelled measured or baseline — never guessed.",
+      `${SCORE_GLOSSARY.index.name}: ${SCORE_GLOSSARY.index.long}`,
+      `${SCORE_GLOSSARY.visibility.name}: ${SCORE_GLOSSARY.visibility.long}`,
+      `${SCORE_GLOSSARY.citationReadiness.name}: ${SCORE_GLOSSARY.citationReadiness.long}`,
+      `${SCORE_GLOSSARY.verifiedExecution.name}: ${SCORE_GLOSSARY.verifiedExecution.long} Every number is labelled measured or baseline, never guessed.`,
     ],
     cta: "See how it works →",
     guideHref: "/how-it-works",

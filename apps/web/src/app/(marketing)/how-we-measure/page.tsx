@@ -616,8 +616,8 @@ export default function HowWeMeasurePage() {
           <p style={honestNoteStyle}>
             <strong>Honest note:</strong> these are the signals you can directly control
             and improve. Schema, crawler access, entity records, and off-site presence
-            are all editable. The Execution score tracks how many of the recommended
-            fixes you have completed.
+            are all editable. Verified Execution, below, counts only the fixes a
+            later audit re-checked and found live, never a checkbox.
           </p>
         </article>
       </section>

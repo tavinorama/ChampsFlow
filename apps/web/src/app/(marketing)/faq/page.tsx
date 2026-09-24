@@ -22,6 +22,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { safeJsonLd } from "../../../components/landing-public/json-ld";
 import { AiAuditCta } from "../../../components/marketing/AiAuditCta";
+import { SCORE_GLOSSARY, THREE_PARTS_LINE } from "@organic-posts/shared";
+
+// B8 (D17): the score is defined ONCE, in packages/shared/src/score-glossary.ts.
+const SCORE_FAQ_INDEX = `${SCORE_GLOSSARY.index.long} ${THREE_PARTS_LINE}`;
+const SCORE_FAQ_PARTS = `${SCORE_GLOSSARY.visibility.name}: ${SCORE_GLOSSARY.visibility.long} ${SCORE_GLOSSARY.citationReadiness.name}: ${SCORE_GLOSSARY.citationReadiness.long} ${SCORE_GLOSSARY.verifiedExecution.name}: ${SCORE_GLOSSARY.verifiedExecution.long}`;
 // Plan figures derived from packages/shared so this page cannot drift from
 // what the product enforces (2026-09-02 sweep, PENDING 10.A.2/6).
 import { PLAN_LIMITS, LIST_PRICE_USD, founderAnnualPerMonthUsd, perBrandUsd } from "@organic-posts/shared";
@@ -62,14 +67,14 @@ const GROUPS: FaqGroup[] = [
       {
         q: "What is the Ozvor AI Visibility Score?",
         aText:
-          "It's a 0–100 score. It shows how often AI sees and quotes your brand across 5 engines. Three parts: Visibility, Citation Readiness, Execution.",
-        a: "It's a 0–100 score. It shows how often AI sees and quotes your brand across 5 engines. Three parts: Visibility, Citation Readiness, Execution.",
+          SCORE_FAQ_INDEX,
+        a: SCORE_FAQ_INDEX,
       },
       {
         q: "What do the three parts of the score mean?",
         aText:
-          "Visibility checks how often AI names you, and where. Citation Readiness checks your schema and AI-crawler access. Execution checks your authority on the sources AI trusts.",
-        a: "Visibility checks how often AI names you, and where. Citation Readiness checks your schema and AI-crawler access. Execution checks your authority on the sources AI trusts.",
+          SCORE_FAQ_PARTS,
+        a: SCORE_FAQ_PARTS,
       },
       {
         q: "How does the audit actually work?",
