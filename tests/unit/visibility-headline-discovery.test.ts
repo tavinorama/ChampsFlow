@@ -40,8 +40,8 @@ const PANEL_21_09: HeadlineIntentRow[] = [
 describe("splitByBrandMention", () => {
   it("reproduces 21/09: 0 of 55 without the name, 6 of 10 with it", () => {
     const s = splitByBrandMention(PANEL_21_09, "Ozvor")!;
-    expect(s.discovery).toEqual({ named: 0, checks: 55, questions: 11 });
-    expect(s.branded).toEqual({ named: 6, checks: 10, questions: 2 });
+    expect(s.discovery).toEqual({ named: 0, answers: 55, questions: 11 });
+    expect(s.branded).toEqual({ named: 6, answers: 10, questions: 2 });
     expect(s.unplaced).toBe(0);
   });
 
@@ -63,7 +63,7 @@ describe("splitByBrandMention", () => {
   it("a row with no question text is never guessed onto a side — it is counted as unplaced", () => {
     const s = splitByBrandMention([row(null, 5, 2), row("  ", 5, 1), row("best crm", 5, 0)], "Ozvor")!;
     expect(s.unplaced).toBe(2);
-    expect(s.discovery).toEqual({ named: 0, checks: 5, questions: 1 });
+    expect(s.discovery).toEqual({ named: 0, answers: 5, questions: 1 });
   });
 
   it("no brand name, no rows, or nothing measured → null: no sentence beats a sentence about nothing", () => {
@@ -77,16 +77,16 @@ describe("splitByBrandMention", () => {
 describe("discoveryLines", () => {
   it("says discovery first, and labels the branded share as recognition", () => {
     const l = discoveryLines(splitByBrandMention(PANEL_21_09, "Ozvor"));
-    expect(l.discovery).toBe("When the question does not say your name: named in 0 of 55 checks (11 questions).");
+    expect(l.discovery).toBe("When the question does not say your name: named in 0 of 55 answers (11 questions, each asked more than once per engine).");
     expect(l.branded).toBe(
-      "When the question already says your name: named in 6 of 10 checks (2 questions). That is recognition, not discovery."
+      "When the question already says your name: named in 6 of 10 answers (2 questions). That is recognition, not discovery."
     );
     expect(l.note).toBeNull();
   });
 
   it("a panel with no branded question prints only the discovery line; singular is singular", () => {
     const l = discoveryLines(splitByBrandMention([row("best crm", 5, 1)], "Ozvor"));
-    expect(l.discovery).toBe("When the question does not say your name: named in 1 of 5 checks (1 question).");
+    expect(l.discovery).toBe("When the question does not say your name: named in 1 of 5 answers (1 question, each asked more than once per engine).");
     expect(l.branded).toBeNull();
   });
 
@@ -107,8 +107,9 @@ describe("the dashboard hero uses it, above the mixed share", () => {
     expect(at).toBeGreaterThan(0);
     expect(at).toBeLessThan(page.indexOf("{citationRateLine(citationCI) && ("));
   });
-  it("the footnote says 'named in', which is what is measured", () => {
-    expect(page).toContain("— named in ${confidence.citations}.");
+  it("the footnote names its grain (pairs) and says 'named in', which is what is measured", () => {
+    expect(page).toContain("pairsMeasuredLine(confidence.checks, confidence.citations)");
     expect(page).not.toContain("— cited in ${confidence.citations}.");
+    expect(page).not.toMatch(/Measured over \$\{confidence\.checks\} checks/);
   });
 });

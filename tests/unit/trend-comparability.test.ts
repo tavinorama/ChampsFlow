@@ -150,7 +150,7 @@ describe("markComparableTrend", () => {
 describe("runConfidence", () => {
   it("adds a stability note when the sample is small", () => {
     const c = runConfidence(SMALL_SAMPLE_CHECKS - 5, 4);
-    expect(c.stabilityNote).toContain(`${SMALL_SAMPLE_CHECKS - 5} checks`);
+    expect(c.stabilityNote).toContain(`${SMALL_SAMPLE_CHECKS - 5} question × engine pairs`);
   });
   it("stays silent at healthy sample sizes and on unknown counts", () => {
     expect(runConfidence(55, 7).stabilityNote).toBeNull();

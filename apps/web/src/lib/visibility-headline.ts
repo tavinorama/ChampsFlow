@@ -32,16 +32,33 @@ export interface CitationInterval {
 const pct = (v: number): string => `${Math.round(v * 1000) / 10}%`;
 
 /**
- * "Named in 15 of 102 checks (14.7%). With this many checks the true share sits
- * between 9.1% and 22.9%." Null when there is nothing measured: no sentence is
- * better than a sentence about zero checks.
+ * "Named in 12 of 130 answers (9.2%). With this many answers the true share
+ * sits between 5.4% and 15.4%." Null when there is nothing measured: no
+ * sentence is better than a sentence about zero answers.
+ *
+ * B3 (Codex D15, 23/09): the unit is ANSWERS — one per repetition of a
+ * question on an engine (130 on 21/09). The dashboard also counts question ×
+ * engine PAIRS (65 that day). Both used to be called "checks", so 12/130 and
+ * 6/65 sat side by side under one word. Each grain now has its own name:
+ * answers here, pairs in the footnote (see pairsMeasuredLine).
  */
 export function citationRateLine(ci: CitationInterval | null | undefined): string | null {
   if (!ci || !Number.isFinite(ci.n) || ci.n <= 0 || !Number.isFinite(ci.rate)) return null;
   const named = Math.round(ci.rate * ci.n);
-  const head = `Named in ${named} of ${ci.n} checks (${pct(ci.rate)}).`;
+  const head = `Named in ${named} of ${ci.n} answers (${pct(ci.rate)}).`;
   if (!Number.isFinite(ci.low) || !Number.isFinite(ci.high)) return head;
-  return `${head} With this many checks the true share sits between ${pct(ci.low)} and ${pct(ci.high)}.`;
+  return `${head} With this many answers the true share sits between ${pct(ci.low)} and ${pct(ci.high)}.`;
+}
+
+/**
+ * The footnote's grain: question × engine PAIRS (each engine asked each
+ * question, repeats collapsed). "65 question × engine pairs measured — named
+ * in 6 of them." Null when nothing was measured.
+ */
+export function pairsMeasuredLine(checks: number | null | undefined, citations: number | null | undefined): string | null {
+  if (!Number.isFinite(checks as number) || (checks as number) <= 0) return null;
+  const head = `${checks} question × engine pairs measured`;
+  return Number.isFinite(citations as number) ? `${head} — named in ${citations} of them.` : `${head}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,8 +81,9 @@ export interface HeadlineIntentRow {
 }
 
 export interface DiscoverySplit {
-  discovery: { named: number; checks: number; questions: number };
-  branded: { named: number; checks: number; questions: number };
+  /** `answers` = repetitions (one answer per run), the same grain as citationRateLine. */
+  discovery: { named: number; answers: number; questions: number };
+  branded: { named: number; answers: number; questions: number };
   /** Rows with measurements but no question text: not placed on either side. */
   unplaced: number;
 }
@@ -80,8 +98,8 @@ export function splitByBrandMention(
   if (!name || !intents || intents.length === 0) return null;
   const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(name)}([^\\p{L}\\p{N}]|$)`, "iu");
   const out: DiscoverySplit = {
-    discovery: { named: 0, checks: 0, questions: 0 },
-    branded: { named: 0, checks: 0, questions: 0 },
+    discovery: { named: 0, answers: 0, questions: 0 },
+    branded: { named: 0, answers: 0, questions: 0 },
     unplaced: 0,
   };
   for (const row of intents) {
@@ -94,7 +112,7 @@ export function splitByBrandMention(
     }
     const side = re.test(text) ? out.branded : out.discovery;
     side.named += Math.round(o.citationRate * o.n);
-    side.checks += o.n;
+    side.answers += o.n;
     side.questions += 1;
   }
   return out.discovery.questions + out.branded.questions === 0 ? null : out;
@@ -112,11 +130,11 @@ export function discoveryLines(split: DiscoverySplit | null): { discovery: strin
   return {
     discovery:
       d.questions > 0
-        ? `When the question does not say your name: named in ${d.named} of ${d.checks} checks (${q(d.questions)}).`
+        ? `When the question does not say your name: named in ${d.named} of ${d.answers} answers (${q(d.questions)}, each asked more than once per engine).`
         : null,
     branded:
       b.questions > 0
-        ? `When the question already says your name: named in ${b.named} of ${b.checks} checks (${q(b.questions)}). That is recognition, not discovery.`
+        ? `When the question already says your name: named in ${b.named} of ${b.answers} answers (${q(b.questions)}). That is recognition, not discovery.`
         : null,
     note:
       split.unplaced > 0

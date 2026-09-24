@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   citationRateLine,
   discoveryLines,
+  pairsMeasuredLine,
   splitByBrandMention,
   VISIBILITY_INDEX_EXPLAINER,
   VISIBILITY_INDEX_TITLE,
@@ -1165,8 +1166,8 @@ function OverviewTab({
           </p>
           {confidence && (confidence.checks != null || confidence.stabilityNote) && (
             <p style={{ margin: "var(--space-2) 0 0", fontSize: "0.75rem", color: "var(--color-muted)" }}>
-              {confidence.checks != null ? `Measured over ${confidence.checks} checks` : ""}
-              {confidence.checks != null && confidence.citations != null ? ` — named in ${confidence.citations}.` : "."}
+              {/* B3: this grain is PAIRS (question × engine); the lines above are ANSWERS. */}
+              {pairsMeasuredLine(confidence.checks, confidence.citations) ?? ""}
               {confidence.stabilityNote ? ` ${confidence.stabilityNote}` : ""}
             </p>
           )}
