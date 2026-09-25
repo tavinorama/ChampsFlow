@@ -37,6 +37,12 @@ const workerConfig = getWorkerConfig();
 import { startHealthServer } from "./health";
 import { wireQueuePulse, stampQueuePulse } from "./queue-pulse";
 import { logger } from "../../../packages/shared/src/logger";
+import {
+  computeContextReadiness,
+  describeContextReadiness,
+  CONTEXT_READINESS_KEY,
+  CONTEXT_READINESS_TTL_S,
+} from "../../../packages/shared/src/context-readiness";
 import { driftControlEnabled } from "../../../packages/llm/src/drift-control";
 import { processPublishJob } from "./jobs/publish";
 import { processAuditJob, processDailyMonitoredBrands } from "./jobs/audit-run";
@@ -1068,6 +1074,20 @@ logger.info("worker_started", {
   concurrency: 5,
   redis_url_host: REDIS_URL.replace(/:[^:@]*@/, ":***@"), // mask password if in URL
 });
+
+// B13 (Codex D05, 23/09): say, once per boot, whether the content machine is
+// wired to its real context (Signal Engine queue, our own Do Next cards) or
+// writing from memory. Loud when not wired; stored for /operator/system-health.
+// Fail-open: a Redis error changes nothing about the worker.
+{
+  const readiness = computeContextReadiness(process.env);
+  const line = describeContextReadiness(readiness);
+  if (readiness.degraded) logger.warn("graph_context_readiness", { degraded: true, summary: line, signalEngine: readiness.signalEngine, ownBrand: readiness.ownBrand });
+  else logger.info("graph_context_readiness", { degraded: false, summary: line });
+  void connection
+    .set(CONTEXT_READINESS_KEY, JSON.stringify(readiness), "EX", CONTEXT_READINESS_TTL_S)
+    .catch((err: Error) => logger.warn("graph_context_readiness_store_failed", { message: err.message?.slice(0, 120) }));
+}
 
 // ---------------------------------------------------------------------------
 // HTTP health listener (10.B.5) — GET /healthz on PORT: 200 when Redis PING +
