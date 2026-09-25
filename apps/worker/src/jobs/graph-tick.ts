@@ -26,7 +26,8 @@ import { signalEngine, listOf, signalsBlock, type SeOpportunity } from "../../..
 import { ownGapsBlock, type OwnGap } from "../../../../packages/llm/src/visibility-loop";
 import { buildDailyProof } from "./proof-feed";
 import { PROOF_CAMPAIGN_LIKE } from "../../../../packages/shared/src/proof-feed";
-import { callWithFallback, parseEngineChain, errorHead } from "../lib/hermes-fallback";
+import { callWithFallback, parseEngineChain } from "../lib/hermes-fallback";
+import { recordEngineHealth, alarmOnFallback } from "../../../../packages/shared/src/hermes-health";
 import { buildProspectBatchBlock, crmDedupSets } from "../lib/prospect-probe";
 import { redisSpecMailbox, apiSpendLedger } from "../lib/apify-source";
 import { renderCardPng } from "../lib/card-render";
@@ -77,9 +78,8 @@ const HERMES_TIMEOUT_MS = 240_000;
 // HERMES_ENGINES="claude,codex,kimi".
 const HERMES_ENGINES = parseEngineChain(process.env["HERMES_ENGINES"]);
 // Alarm once per window when the PRIMARY engine is down (never per step).
-const HERMES_PRIMARY_DOWN_KEY = "hermes:primary_down_alarm";
-const HERMES_ALL_DOWN_KEY = "hermes:all_down_alarm";
-const HERMES_ALARM_WINDOW_S = 6 * 3600;
+// B10: the alarm keys/window live in packages/shared/src/hermes-health.ts,
+// shared with the follow-up scan so both callers count as ONE alarm per window.
 /**
  * 5.F.6 circuit breaker per Postiz channel. `circuit:<channel>` holds the
  * CONSECUTIVE publish-failure count (INCR on failure, DEL on success); open =
@@ -1491,30 +1491,23 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         ms: typeof b?.ms === "number" ? b.ms : null,
       };
     });
-    // Primary engine down (but a fallback saved the step): shout ONCE per
-    // window with the fix, not once per step. Never silent, never spam.
+    // B10 (D02): every outcome is recorded per engine (cause, when), and the
+    // primary going down shouts ONCE per window with the cause and the fix,
+    // not once per step. Never silent, never spam. Fail-open on Redis.
+    await recordEngineHealth(redis, res);
     if (res.failures.length > 0) {
-      const primary = res.failures[0]!;
-      const key = res.ok ? HERMES_PRIMARY_DOWN_KEY : HERMES_ALL_DOWN_KEY;
-      let first = true;
-      try {
-        first = (await redis.set(key, "1", "EX", HERMES_ALARM_WINDOW_S, "NX")) === "OK";
-      } catch {
-        first = true; // no Redis → prefer a duplicate alarm over silence
-      }
       logger.warn("hermes_engine_fallback", {
         ok: res.ok,
         fallbacks: res.fallbacks,
         engineUsed: res.engineUsed,
         failures: res.failures,
       });
-      if (first) {
-        await sendTelegram(
-          res.ok
-            ? `🟡 HERMES: engine "${primary.engine}" falhou (${primary.error}). Os grafos estão rodando em fallback "${res.engineUsed}". Para voltar ao primário: re-autentique na VPS (ex.: claude login). Este aviso repete a cada 6h enquanto durar.`
-            : `🔴 HERMES: TODOS os engines falharam (${res.failures.map((f) => f.engine).join(", ")}). Último erro: ${errorHead(primary.error, 80)}. Nenhum passo de LLM avança até um engine voltar.`
-        );
-      }
+      await alarmOnFallback({
+        res,
+        source: "graphs",
+        onceKey: async (key, ttl) => (await redis.set(key, "1", "EX", ttl, "NX")) === "OK",
+        telegram: (text) => sendTelegram(text),
+      });
     }
     return { ok: res.ok, output: res.output, engineUsed: res.engineUsed, ms: res.ms };
   };

@@ -35,6 +35,7 @@ import { runWithTenant } from "../db/tenant-context";
 import type { PostgresClient } from "./social-accounts";
 import { logger } from "../../../../packages/shared/src/logger";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
+import { readEngineHealth } from "../../../../packages/shared/src/hermes-health";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY_PREFIX = "ozk_live_";
@@ -569,11 +570,23 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
     }
 
     let redisStatus: "up" | "down" | "not_configured" = "not_configured";
+    // B10 (D02): "live: true" above means the API KEY IS PRESENT — not that
+    // the engine answers. This block is functional health of the Hermes
+    // chain, recorded by the worker per call: healthy / failing (with cause
+    // and fix) / unknown. Fail-open: no Redis → "unknown" for every engine.
+    const hermesChain = (process.env["HERMES_ENGINES"] ?? "claude,codex,kimi").split(",").map((s) => s.trim()).filter(Boolean);
+    let hermes: Awaited<ReturnType<typeof readEngineHealth>> = hermesChain.map((engine) => ({
+      engine, status: "unknown" as const, cause: null, lastOkAt: null, lastFailAt: null, lastError: null, fix: null,
+    }));
     try {
       const redis = tryGetSharedRedis();
       if (redis) {
         await redis.ping();
         redisStatus = "up";
+        hermes = await readEngineHealth(
+          { get: (k) => redis.get<string>(k), set: async () => null },
+          hermesChain
+        );
       }
     } catch {
       redisStatus = "down";
@@ -581,6 +594,9 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
 
     return c.json({
       engines,
+      // "live" = key present. See `hermes` for whether an engine actually answers.
+      engines_note: "live means the API key is present, not that the engine answers; see hermes[] for functional health",
+      hermes,
       infrastructure: { postgres: postgresStatus, redis: redisStatus },
       checked_at: new Date().toISOString(),
     });
