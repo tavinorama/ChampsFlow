@@ -1,7 +1,9 @@
 /**
  * /pricing — Plans (Ozvor mockup).
  *
- *  1. Hero "Replace a $30k/yr specialist for under $100/mo."
+ *  1. Hero "Customers ask AI who to call. Make sure it says you." (25/09, C01:
+ *     the old "Replace a $30k/yr specialist" line had no evidence on file;
+ *     the ledger test refuses a claim without one.)
  *  2. Founding-member band (gold) — 30% founder discount + free 5-page website, annual only.
  *  3. Three plan cards — Free / Growth (featured, emerald, "Most popular") / Agency (gold).
  *  4. Competitor comparison table (Profound/Peec AI/Semrush AI/Ahrefs Brand Radar vs Ozvor —
@@ -35,7 +37,7 @@ export const metadata: Metadata = {
   // metadata (era a causa dos 38 títulos "| Ozvor | Ozvor"). A descrição fica a
   // deste PR, derivada de packages/shared/src/pricing.ts, para o metadata nunca
   // divergir do que o checkout cobra (PENDING 10.A.6).
-  title: "Plans — Replace a $30k/yr specialist for under $100/mo",
+  title: "Plans: see who AI names, then fix it",
   description: `Start free, climb when you're ready. Free AI test, $${LIST_PRICE_USD.kit} Get-Cited Kit, $${LIST_PRICE_USD.aiAudit} AI Audit Stack, Growth $${LIST_PRICE_USD.growth}/mo, Agency $${LIST_PRICE_USD.agency}/mo. 30-day money-back, cancel anytime, no lock-in. Founding members: ${FOUNDER_DISCOUNT_PERCENT}% off annual + a free 5-page website.`,
   alternates: { canonical: "https://ozvor.com/pricing" },
   openGraph: {
@@ -111,10 +113,11 @@ export default function PricingPage() {
       <div id="plans" style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto", scrollMarginTop: "72px" }}>
         <span className="pr-eyebrow">Plans</span>
         <h2 style={{ fontSize: "clamp(2.25rem, 6vw, 3.5rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05, margin: "var(--space-3) 0 var(--space-4)" }}>
-          Replace a $30k/yr specialist for under $100/mo.
+          Customers ask AI who to call. Make sure it says you.
         </h2>
         <p style={{ fontSize: "var(--font-size-body)", color: "var(--color-muted)", lineHeight: 1.7, margin: 0 }}>
-          Start free, climb when you&rsquo;re ready. 30-day money-back guarantee · cancel any time · no lock-in.
+          Start free and see who AI names instead of you. Then fix it, from ${LIST_PRICE_USD.kit} once or ${LIST_PRICE_USD.growth} a month.
+          30-day money-back on paid plans. Cancel any time.
         </p>
       </div>
 

@@ -79,7 +79,7 @@ describe("promise ledger — the SKU pages agree with one source", () => {
   });
 
   it("the unsupported claims are exactly the ones the founder knows about", () => {
-    expect(unsupportedClaims().map((c) => c.id)).toEqual(["pricing-replace-specialist"]);
+    expect(unsupportedClaims().map((c) => c.id)).toEqual([]); // 25/09: the pricing hero was reworded the same day
     for (const c of PROMISE_LEDGER) expect(c.note.length, c.id).toBeGreaterThan(20);
   });
 });

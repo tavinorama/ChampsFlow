@@ -8,9 +8,11 @@
  * whether that evidence exists. This ledger is that register, and
  * tests/unit/promise-ledger.test.ts scans the SKU pages against it: an
  * amount not derivable from here, or a watched claim without an entry here,
- * fails the build. An `unsupported` claim is allowed to stay on the page only
- * while it is listed here by id — visible, owned, and pinned by the test so
- * a second one cannot arrive silently.
+ * fails the build. An `unsupported` claim may stay on a page only while it
+ * is listed here by id, visible and owned; the test pins the set, so one
+ * cannot arrive silently. 25/09: the pricing hero "Replace a $30k/yr
+ * specialist for under $100/mo" was the one entry; the founder had it
+ * reworded the same day, and the set is empty again.
  */
 import { LIST_PRICE_USD, LIST_PRICE_ANNUAL_USD, founderAnnualPerMonthUsd, perBrandUsd } from "./pricing";
 import { PLAN_LIMITS } from "./plan-limits";
@@ -58,9 +60,7 @@ export function allowedAmounts(): Map<number, string> {
   m.set(founderAnnualPerMonthUsd("agency"), "founder annual per month agency");
   m.set(Math.round(Number(perBrandUsd(LIST_PRICE_USD.agency, PLAN_LIMITS.agency.max_brands))), "agency per brand, rounded");
   m.set(0, "free tier");
-  m.set(100, "'under $100/mo' — Growth is $99 (derived ceiling)");
   // Story amounts (scenario): allowed only inside a claim listed below.
-  m.set(30000, "story: '$30k/yr specialist' (claim pricing-replace-specialist)");
   m.set(40000, "story: 'Tuesday. A $40,000 job.' (claim home-film-story)");
   return m;
 }
@@ -108,13 +108,6 @@ export const PROMISE_LEDGER: PromiseClaim[] = [
     sku: "growth",
     evidence: "scenario",
     note: "The home film is a story (a roofer, a Tuesday). It must read as a story: no customer, no measured lift behind 'six weeks'.",
-  },
-  {
-    id: "pricing-replace-specialist",
-    pattern: /Replace a \$30k\/yr specialist for under \$100\/mo/i,
-    sku: "growth",
-    evidence: "unsupported",
-    note: "No evidence on file that Growth replaces a $30k/yr specialist. Listed so it is visible; the founder decides: reword, or produce the evidence (a customer who cancelled a specialist).",
   },
 ];
 
