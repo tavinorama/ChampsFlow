@@ -129,10 +129,11 @@ describe("buildAuditReport — the whole deck", () => {
   });
 
   it("over-budget tools are demoted (flagged) but not hidden", () => {
-    // Intercom Fin ($99) addresses support-load; with a $30 cap it must still
-    // appear (matched) but flagged overBudget and ranked below cheaper matches.
+    // Intercom Fin ($29 seat, verified 25/09 — was a $99 estimate) addresses
+    // support-load; with a $20 cap it must still appear (matched) but flagged
+    // overBudget and ranked below cheaper matches.
     const r = buildAuditReport(
-      answers({ businessType: "saas", primaryFocus: "support", pains: ["customer-support-load"], maxMonthlyBudgetUsd: 30 }),
+      answers({ businessType: "saas", primaryFocus: "support", pains: ["customer-support-load"], maxMonthlyBudgetUsd: 20 }),
       SEED_CATALOG
     );
     const fin = [...r.recommendedSolutions, ...r.matrix["major-project"]].find((s) => s.tool.id === "intercom-fin");
