@@ -250,6 +250,12 @@ export interface ProviderAdapter {
 export interface ProbeCallOptions {
   /** User region — used for routing decisions within adapters where applicable */
   region?: UserRegion;
+  /**
+   * C09: the market a SERP probe must ask in (country + language). Decided
+   * once per audit by serpMarketFor() and recorded in provider_breakdown.
+   * Absent → the adapter falls back to the region default, as before.
+   */
+  serpMarket?: import("../serp-market").SerpMarket;
   /** UUID for idempotency on providers that support idempotency keys */
   requestId?: string;
 }
