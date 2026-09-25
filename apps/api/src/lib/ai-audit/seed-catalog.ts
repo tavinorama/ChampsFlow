@@ -36,6 +36,7 @@ export const SEED_CATALOG: Tool[] = [
     hoursSavedWeekly: 5,
     oneLiner: "General-purpose assistant for drafts, replies and quick analysis.",
     isGeneric: true,
+    priceNote: "Plus $20/mo is the widely published price; openai.com/chatgpt/pricing answered 403 to our check on 2026-09-25, so it stays an estimate.",
   },
   {
     id: "claude",
@@ -51,6 +52,8 @@ export const SEED_CATALOG: Tool[] = [
     hoursSavedWeekly: 5,
     oneLiner: "Long-context assistant strong at documents, analysis and code.",
     isGeneric: true,
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Pro $20/mo (claude.com/pricing, read 2026-09-25).",
   },
   {
     id: "jasper",
@@ -60,11 +63,13 @@ export const SEED_CATALOG: Tool[] = [
     niches: ["agency", "ecommerce"],
     pains: ["content-volume", "seo-visibility"],
     engines: ["attract"],
-    monthlyCostUsd: 49,
+    monthlyCostUsd: 69,
     setupEffort: "medium",
     impact: "medium",
     hoursSavedWeekly: 4,
     oneLiner: "Brand-tuned marketing copy at volume across channels.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Creator $69/mo billed monthly, $59/mo billed yearly (jasper.ai/pricing, read 2026-09-25). Was 49 (estimate).",
   },
   {
     id: "fireflies",
@@ -79,6 +84,7 @@ export const SEED_CATALOG: Tool[] = [
     impact: "medium",
     hoursSavedWeekly: 3,
     oneLiner: "Records, transcribes and summarizes meetings automatically.",
+    priceNote: "Pro is listed around $18/mo; fireflies.ai/pricing renders client-side and could not be read on 2026-09-25, so it stays an estimate.",
   },
   {
     id: "intercom-fin",
@@ -88,11 +94,13 @@ export const SEED_CATALOG: Tool[] = [
     niches: ["saas", "ecommerce"],
     pains: ["customer-support-load", "email-overload"],
     engines: ["retain", "run"],
-    monthlyCostUsd: 99,
+    monthlyCostUsd: 29,
     setupEffort: "high",
     impact: "high",
     hoursSavedWeekly: 8,
     oneLiner: "AI agent that resolves front-line support tickets on its own.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Essential seat $29/mo plus Fin at $0.99 per resolved conversation (intercom.com/pricing, read 2026-09-25). The seed carried 99 as a blended guess; 29 is the verified floor, usage on top.",
   },
   {
     id: "apollo",
@@ -107,6 +115,7 @@ export const SEED_CATALOG: Tool[] = [
     impact: "high",
     hoursSavedWeekly: 6,
     oneLiner: "Finds, enriches and sequences outbound leads.",
+    priceNote: "apollo.io/pricing could not be read on 2026-09-25 (bot wall); $49/user/mo Basic stays an estimate.",
   },
   {
     id: "make",
@@ -121,6 +130,8 @@ export const SEED_CATALOG: Tool[] = [
     impact: "high",
     hoursSavedWeekly: 7,
     oneLiner: "Visual automation to connect apps and kill manual busywork.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Pro $16/mo; Core $9, Teams $29 (make.com/pricing, read 2026-09-25).",
   },
   {
     id: "zapier",
@@ -130,11 +141,13 @@ export const SEED_CATALOG: Tool[] = [
     niches: [],
     pains: ["repetitive-tasks"],
     engines: ["run"],
-    monthlyCostUsd: 30,
+    monthlyCostUsd: 29.99,
     setupEffort: "low",
     impact: "medium",
     hoursSavedWeekly: 4,
     oneLiner: "No-code automations between the tools you already use.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Professional $29.99/mo billed monthly, $19.99/mo yearly (zapier.com/pricing, read 2026-09-25). Was 30.",
   },
   {
     id: "opus-clip",
@@ -149,6 +162,8 @@ export const SEED_CATALOG: Tool[] = [
     impact: "medium",
     hoursSavedWeekly: 4,
     oneLiner: "Turns long videos into ready-to-post short clips.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Pro $29/mo; Starter $15 (opus.pro/pricing, read 2026-09-25).",
   },
   {
     id: "buffer",
@@ -158,11 +173,13 @@ export const SEED_CATALOG: Tool[] = [
     niches: [],
     pains: ["social-scheduling", "content-volume"],
     engines: ["attract"],
-    monthlyCostUsd: 12,
+    monthlyCostUsd: 5,
     setupEffort: "low",
     impact: "medium",
     hoursSavedWeekly: 3,
     oneLiner: "Schedules and drafts social posts across channels.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Essentials $5 per channel per month; Team $10 per channel (buffer.com/pricing, read 2026-09-25). Was 12 (estimate). Multiply by channels.",
   },
   {
     id: "gamma",
@@ -177,6 +194,7 @@ export const SEED_CATALOG: Tool[] = [
     impact: "medium",
     hoursSavedWeekly: 2,
     oneLiner: "Generates polished decks and one-pagers from a prompt.",
+    priceNote: "gamma.app/pricing could not be read on 2026-09-25; Plus $10/mo stays an estimate.",
   },
   {
     id: "hex",
@@ -191,6 +209,8 @@ export const SEED_CATALOG: Tool[] = [
     impact: "high",
     hoursSavedWeekly: 6,
     oneLiner: "Notebook + AI for exploring and sharing data analyses.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Team $36/editor/mo; Professional $75 (hex.tech/pricing, read 2026-09-25).",
   },
   // Vertical tools: the capilaridade proof. A dental clinic gets these, not
   // ChatGPT, because they are tagged to the clinic's niche + Convert/Run engines
@@ -203,11 +223,13 @@ export const SEED_CATALOG: Tool[] = [
     niches: ["clinic", "dental", "local-service"],
     pains: ["phone-answering", "no-shows", "reviews", "appointment-scheduling"],
     engines: ["convert", "retain", "run"],
-    monthlyCostUsd: 99,
+    monthlyCostUsd: 199,
     setupEffort: "medium",
     impact: "high",
     hoursSavedWeekly: 8,
     oneLiner: "Phone, texts, reviews and reminders for local clinics in one place.",
+    priceCheckedAt: "2026-09-25",
+    priceNote: "Listed \"from $199/mo\" (getweave.com/pricing, read 2026-09-25). Was 99 (estimate).",
   },
   {
     id: "nexhealth",
@@ -222,6 +244,7 @@ export const SEED_CATALOG: Tool[] = [
     impact: "high",
     hoursSavedWeekly: 6,
     oneLiner: "Online booking, reminders and paperwork for dental and medical practices.",
+    priceNote: "Quote-only on nexhealth.com (read 2026-09-25); 79 stays an estimate.",
   },
   {
     id: "podium",
@@ -236,5 +259,6 @@ export const SEED_CATALOG: Tool[] = [
     impact: "medium",
     hoursSavedWeekly: 4,
     oneLiner: "Collects reviews and answers customer messages for local businesses.",
+    priceNote: "Quote-only on podium.com/pricing (read 2026-09-25); 89 stays an estimate.",
   },
 ];

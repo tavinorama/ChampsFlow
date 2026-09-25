@@ -64,6 +64,15 @@ export interface Tool {
    * plan and ROI) as the reason to buy the full audit. Defaults to false.
    */
   isGeneric?: boolean;
+  /**
+   * Price provenance (B16, Codex D18). ISO date the list price was read on the
+   * vendor's own pricing page, and where/what was read. Absent = the number
+   * is still the original estimate. `verified` (hours + cost, human) is a
+   * separate, stricter flag kept in the ai_tool table — a checked price alone
+   * never flips it.
+   */
+  priceCheckedAt?: string;
+  priceNote?: string;
 }
 
 /** The client's questionnaire answers (section 1 intake). */
