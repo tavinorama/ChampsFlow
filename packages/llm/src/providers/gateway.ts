@@ -197,6 +197,8 @@ export interface RunProbesOptions {
   region: UserRegion;
   /** Providers the caller wants to use — routing gate filters to permitted subset */
   requestedProviders: LLMProvider[];
+  /** C09: market for SERP probes (country + language). See serp-market.ts. */
+  serpMarket?: import("../serp-market").SerpMarket;
   /**
    * How many times to run each (prompt × provider). >1 captures the
    * non-determinism of AI answers as a mention RATE with confidence — the
@@ -311,7 +313,7 @@ export async function runProbes(
         for (let r = 0; r < repeat; r++) {
           try {
             const result = await withRetry(
-              () => withProviderSlot(provider, () => adapter.probe(query, { region, requestId: query.queryHash })),
+              () => withProviderSlot(provider, () => adapter.probe(query, { region, requestId: query.queryHash, serpMarket: opts.serpMarket })),
               provider
             );
             recordSuccess(provider);

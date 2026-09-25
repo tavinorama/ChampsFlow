@@ -28,6 +28,8 @@ import { buildDailyProof } from "./proof-feed";
 import { PROOF_CAMPAIGN_LIKE } from "../../../../packages/shared/src/proof-feed";
 import { callWithFallback, parseEngineChain } from "../lib/hermes-fallback";
 import { recordEngineHealth, alarmOnFallback } from "../../../../packages/shared/src/hermes-health";
+import { stepCostFromHermes, stepCostToken, describeCostCents, type StepCost, type HermesCostFields } from "../../../../packages/shared/src/step-cost";
+let costBasisColumnWarned = false;
 import { buildProspectBatchBlock, crmDedupSets } from "../lib/prospect-probe";
 import { redisSpecMailbox, apiSpendLedger } from "../lib/apify-source";
 import { renderCardPng } from "../lib/card-render";
@@ -681,14 +683,15 @@ export async function buildSnapshot(
 
   if (source === "ops") {
     const perGraph = await sql<
-      { graph: string; runs: string; succeeded: string; failed: string; running: string; cost_cents: string; avg_seconds: string | null }[]
+      { graph: string; runs: string; succeeded: string; failed: string; running: string; cost_cents: string | null; runs_without_cost: string; avg_seconds: string | null }[]
     >`
       SELECT graph,
              COUNT(*)::text AS runs,
              COUNT(*) FILTER (WHERE status = 'succeeded')::text AS succeeded,
              COUNT(*) FILTER (WHERE status = 'failed')::text AS failed,
              COUNT(*) FILTER (WHERE status = 'running')::text AS running,
-             COALESCE(SUM(cost_cents), 0)::text AS cost_cents,
+             SUM(cost_cents)::text AS cost_cents,
+             COUNT(*) FILTER (WHERE cost_cents IS NULL)::text AS runs_without_cost,
              AVG(EXTRACT(EPOCH FROM (ended_at - started_at)))
                FILTER (WHERE ended_at IS NOT NULL)::text AS avg_seconds
         FROM ops.agent_run
@@ -723,7 +726,7 @@ export async function buildSnapshot(
     for (const g of perGraph) {
       const avg = g.avg_seconds ? `${Math.round(Number(g.avg_seconds))}s ciclo medio` : "sem ciclo medido";
       lines.push(
-        `- ${g.graph}: ${g.runs} runs (${g.succeeded} ok / ${g.failed} falha / ${g.running} rodando) · ${(Number(g.cost_cents) / 100).toFixed(2)} USD · ${avg}`
+        `- ${g.graph}: ${g.runs} runs (${g.succeeded} ok / ${g.failed} falha / ${g.running} rodando) · ${describeCostCents(g.cost_cents, Number(g.runs_without_cost ?? 0))} · ${avg}`
       );
     }
     if (hotspots.length > 0) {
@@ -1472,7 +1475,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
   // com engine pinado (anti-pattern 21/08).
   const hermesTaskCall = async (
     prompt: string
-  ): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null }> => {
+  ): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null; cost?: StepCost }> => {
     const res = await callWithFallback(HERMES_ENGINES, async (engine) => {
       const { status, body } = await httpJson(
         `${HERMES_URL}/task`,
@@ -1483,13 +1486,17 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         },
         HERMES_TIMEOUT_MS
       );
-      const b = body as { ok?: boolean; output?: string; engine_used?: string; ms?: number; error?: string };
+      const b = body as { ok?: boolean; output?: string; engine_used?: string; ms?: number; error?: string; cost_cents?: unknown; usage?: HermesCostFields["usage"] };
       const ok = status === 200 && b?.ok === true;
+      const engineUsed = b?.engine_used ?? engine;
       return {
         ok,
         output: ok ? String(b?.output ?? "") : String(b?.error ?? b?.output ?? `http_${status}`),
-        engineUsed: b?.engine_used ?? engine,
+        engineUsed,
         ms: typeof b?.ms === "number" ? b.ms : null,
+        // C17: measured (body carries cost) → estimated (flat-fee allocation
+        // in env) → unknown (NULL, never 0).
+        cost: stepCostFromHermes(b, engineUsed),
       };
     });
     // B10 (D02): every outcome is recorded per engine (cause, when), and the
@@ -1510,7 +1517,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         telegram: (text) => sendTelegram(text),
       });
     }
-    return { ok: res.ok, output: res.output, engineUsed: res.engineUsed, ms: res.ms };
+    return { ok: res.ok, output: res.output, engineUsed: res.engineUsed, ms: res.ms, cost: (res as { cost?: StepCost }).cost };
   };
   return {
     substrate: {
@@ -1537,21 +1544,49 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         return rows[0]!.id;
       },
       async finishStep(stepId, input) {
-        await sql`
-          UPDATE ops.agent_step
-             SET status = ${input.status},
-                 output_hash = ${input.outputHash ?? null},
-                 summary = ${input.summary?.slice(0, 500) ?? null},
-                 ms = ${input.ms ?? null},
-                 engine = ${input.engine ?? null}
-           WHERE id = ${stepId}::uuid`;
+        // C17: cents only when measured/estimated; NULL for unknown. The
+        // summary carries the cost token so the state is readable without the
+        // cost_basis column (20260925000003, founder applies); with the column
+        // present the basis is written too. Absent column = fall back, warn once.
+        const cost = input.cost ?? null;
+        const cents = cost && cost.cents !== null ? cost.cents : null;
+        const summary = input.summary ? `${input.summary.slice(0, 460)} · ${stepCostToken(cost)}` : null;
+        try {
+          await sql`
+            UPDATE ops.agent_step
+               SET status = ${input.status},
+                   output_hash = ${input.outputHash ?? null},
+                   summary = ${summary},
+                   ms = ${input.ms ?? null},
+                   engine = ${input.engine ?? null},
+                   cost_cents = ${cents},
+                   cost_basis = ${cost?.basis ?? null}
+             WHERE id = ${stepId}::uuid`;
+        } catch (err) {
+          if (!/cost_basis/.test((err as Error).message ?? "")) throw err;
+          if (!costBasisColumnWarned) {
+            costBasisColumnWarned = true;
+            logger.warn("agent_step_cost_basis_column_missing_migration_pending", { migration: "20260925000003_agent_step_cost_basis" });
+          }
+          await sql`
+            UPDATE ops.agent_step
+               SET status = ${input.status},
+                   output_hash = ${input.outputHash ?? null},
+                   summary = ${summary},
+                   ms = ${input.ms ?? null},
+                   engine = ${input.engine ?? null},
+                   cost_cents = ${cents}
+             WHERE id = ${stepId}::uuid`;
+        }
       },
       async finishRun(runId, status) {
+        // C17: a run whose steps all have unknown cost totals NULL, not 0.
         await sql`
           UPDATE ops.agent_run
              SET status = ${status},
                  ended_at = NOW(),
-                 cost_cents = (SELECT COALESCE(SUM(cost_cents), 0) FROM ops.agent_step WHERE run_id = ${runId}::uuid)
+                 cost_cents = (SELECT CASE WHEN COUNT(cost_cents) = 0 THEN NULL ELSE SUM(cost_cents) END
+                                 FROM ops.agent_step WHERE run_id = ${runId}::uuid)
            WHERE id = ${runId}::uuid`;
       },
       async recordOutcome(input) {
