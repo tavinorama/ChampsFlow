@@ -139,7 +139,79 @@ export function publishReceipt(detail: string | null | undefined): string {
     id = /"(?:postId|post_id|id)"\s*:\s*"?([A-Za-z0-9_-]{4,64})"?/.exec(text)?.[1] ?? null;
   }
   const safe = id ? id.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) : "";
-  return ` postiz_id=${safe || "none"}`;
+  // C15-b (P14, 25/09): acceptance by the scheduler is "queued", never
+  // "published". The state flips only when reconcilePublishReceipts() reads
+  // the post back from Postiz by its own id. No id = nothing to follow up:
+  // the row says so and stays "unknown" for good.
+  return safe ? ` postiz_id=${safe} postiz_state=queued` : ` postiz_id=none postiz_state=unknown`;
+}
+
+/** What the scheduler says about one post when asked by its id. */
+export interface PostizStatus {
+  ok: boolean;
+  state: "queued" | "published" | "error" | "unknown";
+  /** The platform permalink when Postiz has it (releaseURL); null otherwise. */
+  url: string | null;
+  detail: string;
+}
+
+export interface PublishReceiptRow {
+  stepId: string;
+  summary: string;
+  startedAt: string;
+}
+
+export interface ReconcileReport {
+  checked: number;
+  published: number;
+  errored: number;
+  stillQueued: number;
+  skipped: string | null;
+}
+
+const POSTIZ_ID_RE = /postiz_id=([A-Za-z0-9_-]{1,48}) postiz_state=queued/;
+
+/**
+ * C15-b: turn "queued" into "published <url>" or "error" by asking the
+ * scheduler for each post by its native id. Runs once per tick, over the
+ * publishes of the last `sinceHours` that are still queued. Every branch is
+ * said out loud in the returned report; a missing port or substrate method is
+ * a `skipped` reason, never a silent no-op. "unknown" answers leave the row
+ * queued so the next tick asks again — a post is never declared published
+ * because nobody could check.
+ */
+export async function reconcilePublishReceipts(
+  ports: Pick<GraphRunnerPorts, "hermes" | "substrate">,
+  opts: { limit?: number; sinceHours?: number } = {}
+): Promise<ReconcileReport> {
+  const report: ReconcileReport = { checked: 0, published: 0, errored: 0, stillQueued: 0, skipped: null };
+  const { hermes, substrate } = ports;
+  if (!hermes.postStatus) return { ...report, skipped: "hermes port has no postStatus (VPS endpoint /postiz-post/:id not wired)" };
+  if (!substrate.recentPublishReceipts || !substrate.updateStepSummary) return { ...report, skipped: "substrate cannot list or update publish receipts" };
+  const rows = await substrate.recentPublishReceipts({ limit: opts.limit ?? 50, sinceHours: opts.sinceHours ?? 72 });
+  for (const row of rows) {
+    const m = POSTIZ_ID_RE.exec(row.summary);
+    if (!m) continue;
+    report.checked += 1;
+    let status: PostizStatus;
+    try {
+      status = await hermes.postStatus(m[1]!);
+    } catch (err) {
+      status = { ok: false, state: "unknown", url: null, detail: (err as Error).message?.slice(0, 120) ?? "throw" };
+    }
+    if (status.state === "published") {
+      const url = status.url ? ` url=${status.url.replace(/[\s"'<>]/g, "").slice(0, 160)}` : "";
+      await substrate.updateStepSummary(row.stepId, row.summary.replace(m[0], `postiz_id=${m[1]} postiz_state=published${url}`).slice(0, 500));
+      report.published += 1;
+    } else if (status.state === "error") {
+      const why = status.detail ? ` postiz_error=${status.detail.replace(/[\s"'<>]/g, "_").slice(0, 80)}` : "";
+      await substrate.updateStepSummary(row.stepId, row.summary.replace(m[0], `postiz_id=${m[1]} postiz_state=error${why}`).slice(0, 500));
+      report.errored += 1;
+    } else {
+      report.stillQueued += 1;
+    }
+  }
+  return report;
 }
 
 export const DAY_ARTIFACT = "__day__";
@@ -443,6 +515,10 @@ export interface SubstratePort {
    * experiment — and the founder's feed showed it).
    */
   publishedToday(channel: string): Promise<number>;
+  /** C15-b: succeeded publishes still `postiz_state=queued` in the window. */
+  recentPublishReceipts?(input: { limit: number; sinceHours: number }): Promise<PublishReceiptRow[]>;
+  /** C15-b: rewrite one step's summary (the receipt state flip). */
+  updateStepSummary?(stepId: string, summary: string): Promise<void>;
   /**
    * A bounded, PII-free digest of the company's own record, for the read-only
    * brains (Watchdog, CDO). The engines cannot reach the DB — the runner, which
@@ -576,6 +652,11 @@ export interface PublishPayload {
 export interface HermesPort {
   task(prompt: string): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null; cost?: StepCost }>;
   publish(payload: PublishPayload): Promise<{ ok: boolean; detail: string }>;
+  /**
+   * C15-b: read one post back from the scheduler by its native id. Optional:
+   * absent = reconcilePublishReceipts() reports "skipped" every tick, loudly.
+   */
+  postStatus?(postizId: string): Promise<PostizStatus>;
 }
 
 /**
