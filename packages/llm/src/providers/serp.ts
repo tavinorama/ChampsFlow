@@ -35,6 +35,7 @@ import { createHash } from "crypto";
 import type { ProbeQuery, ProbeCallOptions, ProbeResponse, ProviderAdapter } from "./types";
 import { ProviderError, assertLiveOrThrow, redactProviderSecrets } from "./types";
 import { parseCitation } from "../citation-parser";
+import { serpMarketFor } from "../serp-market";
 
 // ---------------------------------------------------------------------------
 // Deterministic mock helper
@@ -152,10 +153,14 @@ export class SerpProbeAdapter implements ProviderAdapter {
     }
 
     const region = opts?.region ?? "US";
+    // C09 (P08): the market is an explicit input now — country + language
+    // decided once per audit by serpMarketFor() and recorded with the audit.
+    // Without it the request is what it always was (EU → UK, US → US, "en").
+    const market = opts?.serpMarket ?? serpMarketFor({ region });
 
     // Live DataForSEO call — Google organic SERP with the AI Overview block.
-    // EU users: UK location (2826) keeps it intra-EU-ish; US: 2840. Basic auth
-    // = base64(login:password) in SERP_API_KEY. Never log the key or full body.
+    // Basic auth = base64(login:password) in SERP_API_KEY. Never log the key
+    // or full body.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
     try {
@@ -166,8 +171,8 @@ export class SerpProbeAdapter implements ProviderAdapter {
         body: JSON.stringify([
           {
             keyword: query.queryText,
-            language_code: "en",
-            location_code: region === "EU" ? 2826 : 2840,
+            language_code: market.language_code,
+            location_code: market.location_code,
             depth: 10,
             // Google serves most AI Overviews ASYNCHRONOUSLY now: the SERP HTML
             // ships an empty ai_overview shell and the content arrives after.
