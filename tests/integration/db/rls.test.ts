@@ -348,6 +348,94 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     ).rejects.toThrow();
   });
 
+  // B14 (Codex D20, 23/09): the five "operator" tables that keep app_user
+  // grants (kit_order, lead_capture, nurture_enrollment, nurture_send_log,
+  // waitlist) and the founder-only crm_contact. Production was found with
+  // RLS OFF on all of them although 20260728000001 was recorded as applied;
+  // these cases pin the contract so a fresh database, and a repaired
+  // production, both enforce it.
+  it("B14: a scoped tenant sees ONLY the kit orders claimed to it — never another tenant's, never unclaimed", async () => {
+    await sql.unsafe(`DELETE FROM kit_order WHERE email IN ('rls-a@kit.test','rls-b@kit.test','rls-none@kit.test')`);
+    await sql.unsafe(
+      `INSERT INTO kit_order (order_token, email, brand, domain, category, region, status, claimed_by_tenant_id)
+       VALUES ('rls-tok-a', 'rls-a@kit.test', 'A', 'a.test', 'x', 'US', 'delivered', $1),
+              ('rls-tok-b', 'rls-b@kit.test', 'B', 'b.test', 'x', 'US', 'delivered', $2),
+              ('rls-tok-n', 'rls-none@kit.test', 'N', 'n.test', 'x', 'US', 'delivered', NULL)`,
+      [TENANT_A, TENANT_B]
+    );
+    try {
+      const control = await sql.unsafe(`SELECT count(*)::int AS n FROM kit_order WHERE email LIKE 'rls-%@kit.test'`);
+      expect(control[0].n).toBe(3);
+      const seenByA = await asTenant(TENANT_A, (tx) => tx.unsafe(`SELECT email FROM kit_order WHERE email LIKE 'rls-%@kit.test'`));
+      expect(seenByA.map((r: { email: string }) => r.email)).toEqual(["rls-a@kit.test"]);
+      const explicitB = await asTenant(TENANT_A, (tx) => tx.unsafe(`SELECT email FROM kit_order WHERE email = 'rls-b@kit.test'`));
+      expect(explicitB).toHaveLength(0);
+      // app_user has UPDATE granted but no UPDATE policy: 0 rows, B unchanged.
+      const upd = await asTenant(TENANT_A, (tx) => tx.unsafe(`UPDATE kit_order SET status = 'refunded' WHERE email = 'rls-b@kit.test' RETURNING id`));
+      expect(upd).toHaveLength(0);
+      const b = await sql.unsafe(`SELECT status FROM kit_order WHERE email = 'rls-b@kit.test'`);
+      expect(b[0].status).toBe("delivered");
+    } finally {
+      await sql.unsafe(`DELETE FROM kit_order WHERE email IN ('rls-a@kit.test','rls-b@kit.test','rls-none@kit.test')`);
+    }
+  });
+
+  it("B14: lead_capture follows the same claimed-read rule", async () => {
+    await sql.unsafe(`DELETE FROM lead_capture WHERE email IN ('rls-a@lead.test','rls-b@lead.test')`);
+    await sql.unsafe(
+      `INSERT INTO lead_capture (email, brand, category, claimed_by_tenant_id) VALUES ('rls-a@lead.test', 'A', 'x', $1), ('rls-b@lead.test', 'B', 'x', $2)`,
+      [TENANT_A, TENANT_B]
+    );
+    try {
+      const seenByB = await asTenant(TENANT_B, (tx) => tx.unsafe(`SELECT email FROM lead_capture WHERE email LIKE 'rls-%@lead.test'`));
+      expect(seenByB.map((r: { email: string }) => r.email)).toEqual(["rls-b@lead.test"]);
+    } finally {
+      await sql.unsafe(`DELETE FROM lead_capture WHERE email IN ('rls-a@lead.test','rls-b@lead.test')`);
+    }
+  });
+
+  it("B14: crm_contact, waitlist and the nurture tables are invisible to a scoped tenant (service-only)", async () => {
+    await sql.unsafe(`DELETE FROM crm_contact WHERE email = 'rls@crm.test'`);
+    await sql.unsafe(`INSERT INTO crm_contact (email, stage) VALUES ('rls@crm.test', 'new')`);
+    await sql.unsafe(`DELETE FROM waitlist WHERE email = 'rls@wait.test'`);
+    await sql.unsafe(`INSERT INTO waitlist (email) VALUES ('rls@wait.test')`);
+    try {
+      // crm_contact: app_user has no grant at all → permission denied, or 0 rows if a grant ever appears.
+      let crmVisible = 0;
+      try {
+        const rows = await asTenant(TENANT_A, (tx) => tx.unsafe(`SELECT email FROM crm_contact WHERE email = 'rls@crm.test'`));
+        crmVisible = rows.length;
+      } catch (err) {
+        expect(String((err as Error).message)).toMatch(/permission denied/i);
+      }
+      expect(crmVisible).toBe(0);
+      // waitlist: app_user HAS SELECT granted; RLS (service_only, TO postgres) must still hide every row.
+      const wl = await asTenant(TENANT_A, (tx) => tx.unsafe(`SELECT email FROM waitlist WHERE email = 'rls@wait.test'`));
+      expect(wl).toHaveLength(0);
+      const ne = await asTenant(TENANT_A, (tx) => tx.unsafe(`SELECT count(*)::int AS n FROM nurture_enrollment`));
+      expect(ne[0].n).toBe(0);
+    } finally {
+      await sql.unsafe(`DELETE FROM crm_contact WHERE email = 'rls@crm.test'`);
+      await sql.unsafe(`DELETE FROM waitlist WHERE email = 'rls@wait.test'`);
+    }
+  });
+
+  it("B14: the seven operator tables have RLS enabled AND forced, with a service_only policy", async () => {
+    const rows = await sql.unsafe(
+      `SELECT c.relname, c.relrowsecurity AS rls, c.relforcerowsecurity AS forced,
+              (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'service_only') AS svc
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname IN ('waitlist','lead_capture','kit_order','nurture_enrollment','nurture_send_log','pages_order','crm_contact')`
+    );
+    expect(rows).toHaveLength(7);
+    for (const r of rows) {
+      expect(r.rls, `${r.relname} rls`).toBe(true);
+      expect(r.forced, `${r.relname} forced`).toBe(true);
+      expect(r.svc, `${r.relname} service_only`).toBe(1);
+    }
+  });
+
   it("check-rls metadata: all 30 tenant-scoped tables have RLS enabled", async () => {
     const rows = await sql.unsafe(`
       SELECT relname FROM pg_class
