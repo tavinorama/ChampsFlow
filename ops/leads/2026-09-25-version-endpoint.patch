@@ -1,0 +1,47 @@
+--- server.py.bak-2026-09-25	2026-09-25 10:04:51
++++ server.py	2026-09-25 10:04:51
+@@ -18,6 +18,29 @@
+ from http.cookies import SimpleCookie
+ 
+ ROOT = Path(__file__).resolve().parent
++
++# B15 (Codex D21, 23/09/2026): the Railway deployment had no identity — the
++# service answered /health but nothing said WHICH code was running, and this
++# folder is deployed with `railway up` (no git SHA). The build id is a digest
++# of the application files computed at boot, so /version answers "this exact
++# code", reproducible from the same files. RAILWAY_GIT_COMMIT_SHA is reported
++# too when Railway sets it.
++BUILD_FILES = ('server.py', 'platform_store.py', 'business_validation.py', 'scrapling_adapter.py',
++               'client-app.js', 'platform.js', 'catalog.js', 'business-ui.js', 'automation.js',
++               'signals.js', 'quality-rules.js', 'import-tools.js', 'index.html', 'login.html')
++
++def compute_build_id(root):
++    """sha256 over the sorted application files, first 12 hex. Missing files are skipped, never guessed."""
++    h = hashlib.sha256(); hashed = []
++    for name in sorted(BUILD_FILES):
++        f = Path(root) / name
++        if not f.is_file():
++            continue
++        h.update(name.encode()); h.update(b'\0'); h.update(f.read_bytes()); h.update(b'\0'); hashed.append(name)
++    return h.hexdigest()[:12], hashed
++
++BUILD_ID, BUILD_FILES_HASHED = compute_build_id(ROOT)
++STARTED_AT = datetime.now(timezone.utc).isoformat()
+ STATE = Path(os.environ.get('ATLAS_STATE_DIR', str(ROOT.parent.parent / 'work' / 'atlas-runtime')))
+ STATE.mkdir(parents=True, exist_ok=True)
+ LOCK = threading.Lock()
+@@ -147,7 +170,13 @@
+         path=urlsplit(self.path).path
+         if path=='/health':
+             platform.state()
+-            return self.reply({'status':'ok','service':'OZvor Leads'})
++            return self.reply({'status':'ok','service':'OZvor Leads','build_id':BUILD_ID})
++        if path=='/version':
++            # Public on purpose (no PII, no secrets): the identity of the running code.
++            return self.reply({'service':'OZvor Leads','build_id':BUILD_ID,'files_hashed':len(BUILD_FILES_HASHED),
++                               'git_sha':os.environ.get('RAILWAY_GIT_COMMIT_SHA') or None,
++                               'railway_deployment_id':os.environ.get('RAILWAY_DEPLOYMENT_ID') or None,
++                               'started_at':STARTED_AT})
+         if path in ('/ozvor-logo-white.png','/ozvor-logo-ink.png','/ozvor-mark-white.png'):
+             data=(ROOT/path.lstrip('/')).read_bytes();self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Cache-Control','public, max-age=86400');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(data);return
+         if path=='/login':return self.html('login.html')
