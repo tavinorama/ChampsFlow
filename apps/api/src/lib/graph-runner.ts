@@ -83,6 +83,7 @@ import {
 import { dayBlock } from "./editorial-calendar";
 import { factsBlock, liveFacts } from "./content-facts";
 import { validateContentClaims, describeClaimProblems } from "./content-claims";
+import { UNKNOWN_COST, type StepCost } from "../../../../packages/shared/src/step-cost";
 import {
   X_POST_LIMIT,
   xPostWithinLimit,
@@ -414,6 +415,12 @@ export interface SubstratePort {
       summary?: string | null;
       ms?: number | null;
       engine?: string | null;
+      /**
+       * C17: the step's cost state. measured / estimated carry cents; unknown
+       * carries NULL. The substrate writes cents only when there is a number,
+       * so a run of unknown steps totals NULL, never 0.
+       */
+      cost?: StepCost | null;
     }
   ): Promise<void>;
   finishRun(runId: string, status: "succeeded" | "failed"): Promise<void>;
@@ -567,7 +574,7 @@ export interface PublishPayload {
 }
 
 export interface HermesPort {
-  task(prompt: string): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null }>;
+  task(prompt: string): Promise<{ ok: boolean; output: string; engineUsed: string | null; ms: number | null; cost?: StepCost }>;
   publish(payload: PublishPayload): Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -1877,6 +1884,7 @@ export async function advanceRun(
             summary: `validador cold-email reprovou: ${v.errors.slice(0, 2).join(" · ").slice(0, 300)} — ${describeOutputShape(res.output)}`,
             ms: res.ms,
             engine: res.engineUsed,
+            cost: res.cost ?? UNKNOWN_COST,
           });
           continue; // retry pass (2c) re-attempts; exhausted budget fails the run
         }
@@ -1896,6 +1904,7 @@ export async function advanceRun(
             summary: `numero sem prova no post: ${v.unbacked.slice(0, 5).join(", ")} — nao esta em [__proof__] (ops.proof_run ${p?.facts.date ?? "sem prova"})`,
             ms: res.ms,
             engine: res.engineUsed,
+            cost: res.cost ?? UNKNOWN_COST,
           });
           continue; // retry pass (2c) re-attempts; exhausted budget fails the run
         }
@@ -1910,6 +1919,7 @@ export async function advanceRun(
             summary: `claim sem lastro: ${describeClaimProblems(check)}`.slice(0, 400),
             ms: res.ms,
             engine: res.engineUsed,
+            cost: res.cost ?? UNKNOWN_COST,
           });
           continue; // retry pass (2c) re-attempts; exhausted budget fails the run
         }
@@ -1926,6 +1936,7 @@ export async function advanceRun(
             summary: `finalize sem contrato do card (${parsed.reason}) — nao vai a aprovacao`,
             ms: res.ms,
             engine: res.engineUsed,
+            cost: res.cost ?? UNKNOWN_COST,
           });
           continue; // retry pass (2c) re-attempts; exhausted budget fails the run
         }
@@ -1947,6 +1958,7 @@ export async function advanceRun(
             (ctxReceipt ? ` · ${ctxReceipt}` : ""),
           ms: res.ms,
           engine: res.engineUsed,
+          cost: res.cost ?? UNKNOWN_COST,
         });
       } else {
         await substrate.finishStep(stepId, {
@@ -1954,6 +1966,7 @@ export async function advanceRun(
           summary: `hermes task failed: ${res.output.slice(0, 120) || "no output"}`,
           ms: res.ms,
           engine: res.engineUsed,
+          cost: res.cost ?? UNKNOWN_COST,
         });
       }
     } else if (node.kind === "approval") {
