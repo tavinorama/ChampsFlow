@@ -28,6 +28,7 @@ Stdlib only. SMARTLEAD key: env SL_KEY.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -74,6 +75,64 @@ def load_copy(path: str = COPY_PATH) -> dict:
 
 def out(d: dict) -> None:
     print("RESULTADO_OZVOR" + json.dumps(d, ensure_ascii=False))
+
+
+# --------------------------------------------------------------------------
+# 0. CRM suppression (C06 / P11, 25/09)
+#
+# 19/09: the first two replies to the v4 campaigns were both "STOP". SmartLead
+# stops that lead's sequence and the CRM marks it lost (B9), but this loader
+# read SmartLead, not the CRM, so a STOP could come back from a list bought
+# next week. Now every upload first reads GET /api/v1/operator/crm/suppression:
+# sha256 digests of every address the company must never write to again
+# (CRM lost + provider unsubscribes/bounces). No plaintext address travels.
+#
+# Fail closed: if the export is configured and cannot be read, nothing is
+# uploaded. If it is NOT configured, the run refuses too, unless the operator
+# says --without-crm-suppression out loud (the summary then says so).
+# --------------------------------------------------------------------------
+API_URL = os.environ.get("OZVOR_API_URL", "https://api-production-2052.up.railway.app").rstrip("/")
+
+
+def email_digest(email: str) -> str:
+    """The same normalization as apps/api/src/lib/suppression-export.ts."""
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()
+
+
+def crm_suppression(allow_missing: bool) -> tuple[set[str] | None, dict]:
+    """Returns (digests, facts). digests=None means "could not read"; the caller
+    must not upload in that case unless allow_missing was said explicitly."""
+    key = os.environ.get("OZVOR_OPERATOR_KEY", "")
+    if not key:
+        facts = {"ok": False, "motivo": "OZVOR_OPERATOR_KEY ausente — supressao do CRM NAO consultada",
+                 "prosseguiu_sem_crm": allow_missing}
+        return (set() if allow_missing else None), facts
+    req = urllib.request.Request(f"{API_URL}/api/v1/operator/crm/suppression",
+                                 headers={**UA, "Authorization": f"Bearer {key}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            d = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return None, {"ok": False, "motivo": f"export de supressao HTTP {e.code}"}
+    except Exception as e:  # noqa: BLE001
+        return None, {"ok": False, "motivo": f"export de supressao falhou: {type(e).__name__}"}
+    hashes = d.get("hashes") if isinstance(d, dict) else None
+    if not isinstance(hashes, list) or d.get("algorithm") != "sha256(lower(trim(email)))":
+        return None, {"ok": False, "motivo": "export de supressao com forma inesperada"}
+    return set(h for h in hashes if isinstance(h, str)), {"ok": True, "digests": len(hashes),
+                                                          "fontes": d.get("sources"), "gerado_em": d.get("generated_at")}
+
+
+def drop_by_crm(emails: list[str], digests: set[str]) -> tuple[list[int], int]:
+    """Pure. Indexes of the e-mails that may be uploaded, and how many were
+    dropped because the CRM says never again."""
+    keep, dropped = [], 0
+    for i, e in enumerate(emails):
+        if e and email_digest(e) in digests:
+            dropped += 1
+        else:
+            keep.append(i)
+    return keep, dropped
 
 
 # --------------------------------------------------------------------------
@@ -554,7 +613,8 @@ def resolve_destinations(by_name: dict, names: dict, confirm: bool) -> tuple[dic
 
 
 def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites: bool, confirm: bool,
-             touched_sources: list[str] | None = None) -> int:
+             touched_sources: list[str] | None = None, crm: set[str] | None = None, crm_facts: dict | None = None) -> int:
+    crm = crm or set()
     by_name = campaign_index()
     dest, dest_notes, abort = resolve_destinations(by_name, names, confirm)
     if abort:
@@ -589,6 +649,9 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
             email_l = str(lead.get("email") or "").strip().lower()
             if email_l in suppress:
                 reasons["bounce_resposta_ou_stop"] = reasons.get("bounce_resposta_ou_stop", 0) + 1
+                continue
+            if email_l and email_digest(email_l) in crm:
+                reasons["stop_ou_unsub_no_crm"] = reasons.get("stop_ou_unsub_no_crm", 0) + 1
                 continue
             if status == "COMPLETED" and is_touched_source:
                 if cid not in readable:
@@ -634,7 +697,7 @@ def cmd_load(copy: dict, names: dict, sources: list[str], cap: int, check_sites:
                "fora_por_motivo": dict(sorted(reasons.items(), key=lambda x: -x[1])),
                "teto_por_campanha": cap, "checou_sites": check_sites, "avisos": dest_notes,
                "das_quais_ja_tocadas_na_leva_1": sum(1 for k in picked for r in picked[k] if r.get("touched")),
-               "supressao_por_campanha": suppression_facts}
+               "supressao_por_campanha": suppression_facts, "supressao_crm": crm_facts}
     if not confirm:
         sample = None
         if picked["geo"]:
@@ -1181,7 +1244,8 @@ def shape_of(obj, depth: int = 0):
     return type(obj).__name__
 
 
-def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool, filter_id: int = 0) -> int:
+def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool, filter_id: int = 0, crm: set[str] | None = None, crm_facts: dict | None = None) -> int:
+    crm = crm or set()
     if trade not in TRADE_SEARCH or trade not in copy["segments"]:
         out({"ok": False, "motivo": f"oficio '{trade}' sem palavras de busca ou sem copy", "oficios": sorted(TRADE_SEARCH)})
         return 1
@@ -1263,6 +1327,9 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
             why = why or "sem_email"
             reasons[why] = reasons.get(why, 0) + 1
             continue
+        if email_digest(lead["email"]) in crm:
+            reasons["stop_ou_unsub_no_crm"] = reasons.get("stop_ou_unsub_no_crm", 0) + 1
+            continue
         dom = lead["email"].split("@", 1)[1].lower()
         if dom in seen:
             reasons["dominio_duplicado"] = reasons.get("dominio_duplicado", 0) + 1
@@ -1283,7 +1350,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
                 break
             added[names[key]] = added.get(names[key], 0) + len(chunk)
     out(dict(summary, ok=fail == 0, modo="execucao", metricas_do_fetch=metrics, validos_lidos=len(contacts),
-             carregadas=added, fora_por_motivo=reasons, falhas_add=fail, primeiro_erro=first_error,
+             carregadas=added, fora_por_motivo=reasons, falhas_add=fail, primeiro_erro=first_error, supressao_crm=crm_facts,
              forma_do_contato_desbloqueado=shape_of({k: v for k, v in (contacts[0] if contacts else {}).items()}),
              nunca_iniciada="as campanhas continuam DRAFTED/PAUSED — quem inicia e o founder"))
     return 0 if fail == 0 else 1
@@ -1291,7 +1358,7 @@ def cmd_prospect(copy: dict, names: dict, trade: str, limit: int, confirm: bool,
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch", "deliverability", "domain-auth", "hold"])
+    ap.add_argument("command", choices=["validate", "render", "personalize", "create", "load", "prospect", "prune", "inspect", "block", "pace", "bounce-watch", "deliverability", "domain-auth", "hold", "crm-filter"])
     ap.add_argument("--trade", default="roofing")
     ap.add_argument("--limit", type=int, default=25)
     ap.add_argument("--filter-id", type=int, default=0, help="prospect: COLLECT an unlock already made (no credit spent)")
@@ -1307,6 +1374,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--domains", default="", help="hold: e-mail domains to pause, comma separated")
     ap.add_argument("--no-site-check", action="store_true")
     ap.add_argument("--confirm", action="store_true")
+    ap.add_argument("--without-crm-suppression", action="store_true",
+                    help="load/prospect: proceed WITHOUT the CRM suppression export (said out loud in the summary)")
     a = ap.parse_args(argv)
     copy = load_copy(a.copy)
     errors = validate_copy(copy)
@@ -1326,6 +1395,11 @@ def main(argv: list[str]) -> int:
                 for v in step["variants"]:
                     print(f"--- {v['id']} (dia +{step['delay_in_days']})\nSubject: {merge(v['subject'], vals)}\n")
                     print(merge("\n".join(v["body"]), vals) + "\n")
+        return 0
+    if a.command == "crm-filter":                # test seam: pure, reads stdin, no network
+        d = json.load(sys.stdin)
+        keep, dropped = drop_by_crm(d["emails"], set(d["digests"]))
+        print(json.dumps({"keep": keep, "dropped": dropped, "digest_of_first": email_digest(d["emails"][0]) if d["emails"] else None}))
         return 0
     if a.command == "domain-auth":               # test seam: pure, reads stdin, no network
         print(json.dumps([domain_auth(d.get("txt"), d.get("dmarc"), d.get("sel1"), d.get("sel2"), d.get("mx")) for d in json.load(sys.stdin)]))
@@ -1361,10 +1435,18 @@ def main(argv: list[str]) -> int:
         if not 1 <= a.limit <= 500:
             out({"ok": False, "motivo": "limit tem de estar entre 1 e 500 por corrida (teto de creditos por corrida)"})
             return 1
-        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm, a.filter_id)
+        crm, crm_facts = crm_suppression(a.without_crm_suppression)
+        if crm is None:
+            out({"ok": False, "motivo": "supressao do CRM ilegivel — nada foi carregado (fail closed)", "supressao_crm": crm_facts})
+            return 1
+        return cmd_prospect(copy, names, a.trade, a.limit, a.confirm, a.filter_id, crm, crm_facts)
     sources = [s.strip() for s in a.sources.split(",") if s.strip()]
     touched = [x.strip() for x in a.touched_sources.split(",") if x.strip()]
-    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm, touched)
+    crm, crm_facts = crm_suppression(a.without_crm_suppression)
+    if crm is None:
+        out({"ok": False, "motivo": "supressao do CRM ilegivel — nada foi carregado (fail closed)", "supressao_crm": crm_facts})
+        return 1
+    return cmd_load(copy, names, sources, a.cap, not a.no_site_check, a.confirm, touched, crm, crm_facts)
 
 
 if __name__ == "__main__":
