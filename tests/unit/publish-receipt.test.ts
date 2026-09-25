@@ -7,19 +7,19 @@ import { publishReceipt } from "../../apps/api/src/lib/graph-runner";
 
 describe("publishReceipt", () => {
   it("reads the id from the shapes Postiz returns", () => {
-    expect(publishReceipt('[{"postId":"cm1abc123","integration":"x1"}]')).toBe(" postiz_id=cm1abc123");
-    expect(publishReceipt('{"id":"p_9f8e7d","status":"scheduled"}')).toBe(" postiz_id=p_9f8e7d");
-    expect(publishReceipt('{"posts":[{"id":12345}]}')).toBe(" postiz_id=12345");
+    expect(publishReceipt('[{"postId":"cm1abc123","integration":"x1"}]')).toBe(" postiz_id=cm1abc123 postiz_state=queued");
+    expect(publishReceipt('{"id":"p_9f8e7d","status":"scheduled"}')).toBe(" postiz_id=p_9f8e7d postiz_state=queued");
+    expect(publishReceipt('{"posts":[{"id":12345}]}')).toBe(" postiz_id=12345 postiz_state=queued");
   });
 
   it("survives a body cut at 500 chars, and never lets a strange id break the summary", () => {
-    expect(publishReceipt('[{"postId":"cm1abc123","content":"a very long text that was cut')).toBe(" postiz_id=cm1abc123");
-    expect(publishReceipt('{"id":"abc def\\n; DROP"}')).toBe(" postiz_id=abcdefDROP");
+    expect(publishReceipt('[{"postId":"cm1abc123","content":"a very long text that was cut')).toBe(" postiz_id=cm1abc123 postiz_state=queued");
+    expect(publishReceipt('{"id":"abc def\\n; DROP"}')).toBe(" postiz_id=abcdefDROP postiz_state=queued");
   });
 
   it("no id is SAID, not hidden: the row still starts with 'published via' and ends with postiz_id=none", () => {
-    expect(publishReceipt('{"ok":true}')).toBe(" postiz_id=none");
-    expect(publishReceipt("")).toBe(" postiz_id=none");
-    expect(publishReceipt(null)).toBe(" postiz_id=none");
+    expect(publishReceipt('{"ok":true}')).toBe(" postiz_id=none postiz_state=unknown");
+    expect(publishReceipt("")).toBe(" postiz_id=none postiz_state=unknown");
+    expect(publishReceipt(null)).toBe(" postiz_id=none postiz_state=unknown");
   });
 });

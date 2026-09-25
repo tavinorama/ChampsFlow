@@ -50,9 +50,10 @@ import {
   type RunRow,
   type StepRow,
   type TelegramButton,
-  INCIDENT_LESSON_PREFIX,
-} from "../../../api/src/lib/graph-runner";
+  INCIDENT_LESSON_PREFIX, reconcilePublishReceipts } from "../../../api/src/lib/graph-runner";
 
+let warnedReconcileSkipped = false;
+let warnedReconcileAllUnknown = false;
 const HERMES_URL = process.env["HERMES_TASK_URL"] ?? "https://hermes.ozvor.com";
 const HERMES_TOKEN = process.env["HERMES_TASK_TOKEN"] ?? "";
 const TG_TOKEN = process.env["TELEGRAM_BOT_TOKEN"] ?? "";
@@ -1916,6 +1917,23 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           return [];
         }
       },
+      // C15-b: the publishes still waiting for the scheduler's word.
+      async recentPublishReceipts(input) {
+        const rows = await sql<{ id: string; summary: string; started_at: string }[]>`
+          /* receipts:queued */
+          SELECT id, COALESCE(summary, '') AS summary, started_at::text AS started_at
+            FROM ops.agent_step
+           WHERE (node = 'publish' OR node LIKE 'publish-%')
+             AND status = 'succeeded'
+             AND summary LIKE '%postiz_state=queued%'
+             AND started_at >= NOW() - make_interval(hours => ${input.sinceHours})
+           ORDER BY started_at DESC
+           LIMIT ${input.limit}`;
+        return rows.map((r) => ({ stepId: r.id, summary: r.summary, startedAt: r.started_at }));
+      },
+      async updateStepSummary(stepId, summary) {
+        await sql`UPDATE ops.agent_step SET summary = ${summary.slice(0, 500)} WHERE id = ${stepId}::uuid`;
+      },
       async publishedToday(channel) {
         // Counter of the cadence valve (24/08): succeeded publishes to this
         // channel since 00:00 UTC. The channel travels in the step summary
@@ -1994,6 +2012,24 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           ok: status === 200 && b?.ok === true,
           detail: JSON.stringify(b?.postiz ?? body).slice(0, 500),
         };
+      },
+      // C15-b (P14): ask the scheduler for one post by its own id. Contract in
+      // ops/hermes/POSTIZ-POST-STATUS.md (the VPS side is Hermes's to ship).
+      // Until it exists every answer is "unknown" and the tick says so.
+      async postStatus(postizId) {
+        try {
+          const { status, body } = await httpJson(
+            `${HERMES_URL}/postiz-post/${encodeURIComponent(postizId)}`,
+            { method: "GET", headers: { Authorization: `Bearer ${HERMES_TOKEN}` } },
+            30_000
+          );
+          const b = body as { ok?: boolean; state?: string; url?: string | null; error?: string };
+          if (status !== 200 || b?.ok !== true) return { ok: false, state: "unknown", url: null, detail: `http_${status}${b?.error ? `:${String(b.error).slice(0, 60)}` : ""}` };
+          const state = b.state === "published" || b.state === "error" || b.state === "queued" ? b.state : "unknown";
+          return { ok: true, state, url: typeof b.url === "string" && b.url ? b.url : null, detail: "" };
+        } catch (err) {
+          return { ok: false, state: "unknown", url: null, detail: (err as Error).message?.slice(0, 80) ?? "throw" };
+        }
       },
     },
     artifacts: {
@@ -2788,6 +2824,28 @@ export async function runGraphTick(
   };
   for (const run of execPool) await visit(run, "exec");
   for (const run of parkedPool) await visit(run, "parked");
+
+  // C15-b (P14): "queued" is not "published". Ask the scheduler for every
+  // publish of the last 72h that is still queued; flip to published (with the
+  // permalink) or error. A port that cannot answer is said, not skipped in
+  // silence — once per process for the same reason.
+  try {
+    const rec = await reconcilePublishReceipts(ports);
+    if (rec.skipped) {
+      if (!warnedReconcileSkipped) {
+        warnedReconcileSkipped = true;
+        logger.warn("graph_tick_publish_reconcile_skipped", { reason: rec.skipped });
+      }
+    } else {
+      logger.info("graph_tick_publish_reconcile", { checked: rec.checked, published: rec.published, errored: rec.errored, stillQueued: rec.stillQueued });
+      if (rec.checked > 0 && rec.published === 0 && rec.errored === 0 && !warnedReconcileAllUnknown) {
+        warnedReconcileAllUnknown = true;
+        logger.warn("graph_tick_publish_reconcile_all_unknown", { checked: rec.checked, hint: "Hermes /postiz-post/:id answering? see ops/hermes/POSTIZ-POST-STATUS.md" });
+      }
+    }
+  } catch (err) {
+    logger.error("graph_tick_publish_reconcile_error", { message: (err as Error).message?.slice(0, 200) });
+  }
 
   // ---------------------------------------------------------------------------
   // Re-notify pending approvals (founder, 22/08: "o telegram não enviou nada

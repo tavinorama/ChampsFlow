@@ -364,7 +364,7 @@ describe("1.6 — the ON pipeline through the runner (fakes, marker-routed)", ()
     // The card was rendered from EXACTLY the approved hook, after the yes.
     expect(world.mediaCalls).toEqual([{ hook: "Your brand is invisible to ChatGPT.", runId: "run-ig-1", node: "publish" }]);
     // C15 (19/09): the record now ends with the scheduler's id (or says there was none).
-    expect(world.stepByNode("publish")?.summary).toMatch(/^published via postiz channel=instagram media=card\(1\) postiz_id=\S+$/);
+    expect(world.stepByNode("publish")?.summary).toMatch(/^published via postiz channel=instagram media=card\(1\) postiz_id=\S+ postiz_state=(queued|unknown)/);
     // ...and the loop closes like every other sphere.
     world.clock.now = new Date(world.clock.now.getTime() + 49 * 3_600_000);
     await tickUntil(world, IG_ON, () => world.run.status !== "running");
