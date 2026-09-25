@@ -29,6 +29,8 @@ import postgres from "postgres";
 import { createHash } from "crypto";
 import {
   runProbesSequential,
+  serpMarketFor,
+  describeSerpMarket,
   responseSuccesses,
   GEO_METHODOLOGY_VERSION,
   buildIntentPortfolio,
@@ -584,6 +586,24 @@ async function processAuditJobTracked(
       throw new Error("brand_not_found");
     }
 
+    // C09 (P08): the market the Google AI Overview probe asks in. brands.market
+    // / brands.locale arrive with 20260925000002 (founder applies); until then
+    // the read fails, is logged once per audit, and the market is the region
+    // default it always was — recorded as such, never guessed.
+    let brandMarket: { market: string | null; locale: string | null } = { market: null, locale: null };
+    try {
+      const mrows = await sql<{ market: string | null; locale: string | null }[]>`SELECT market, locale FROM brands WHERE id = ${brand_id}`;
+      brandMarket = mrows[0] ?? brandMarket;
+    } catch (err) {
+      logger.warn("brand_market_unavailable_migration_pending", { message: (err as Error).message?.slice(0, 120) });
+    }
+    const serpMarket = serpMarketFor({
+      region: brand.region === "US" || brand.region === "EU" ? brand.region : userRegion,
+      market: brandMarket.market,
+      locale: brandMarket.locale,
+    });
+    logger.info("serp_market_decided", { audit_id, country: serpMarket.country, language: serpMarket.language_code, basis: serpMarket.basis });
+
     // Build probe portfolio (B1: intent-classified — 5 intents × 2 formulations,
     // texts unchanged from the legacy portfolio; shared with the API's Prompt
     // Library route via packages/llm/src/prompt-portfolio.ts).
@@ -1055,6 +1075,7 @@ async function processAuditJobTracked(
     // ambiguous intent×engine) respects the GEO_MAX_GENS ceiling (default 220).
     const result = await runProbesSequential(queries, {
       region: userRegion,
+      serpMarket,
       requestedProviders,
       baseRuns,
       escalate: liveMode,
@@ -1656,6 +1677,10 @@ async function processAuditJobTracked(
       // score is a rate over the probes that ran, so a smaller panel is a
       // different measurement, not a lower one, and the UI must not draw it on
       // the same trend line as a full-panel run without saying so.
+      // C09: what the SERP engine was actually asked — country, language and
+      // why. A report that says "Google AI Overviews" without this line is
+      // claiming a market it never probed.
+      serp_market: { ...serpMarket, description: describeSerpMarket(serpMarket) },
       coverage: {
         requested: cov.requested,
         answered: cov.answered,

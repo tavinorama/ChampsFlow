@@ -63,6 +63,8 @@ export interface SamplingQuery extends ProbeQuery {
 export interface SequentialSamplingOptions {
   region: UserRegion;
   requestedProviders: LLMProvider[];
+  /** C09: market for SERP probes; threaded to every runner call. */
+  serpMarket?: import("./serp-market").SerpMarket;
   /** Runs per formulation in the base round. Default 2 (approved protocol). */
   baseRuns?: number;
   /** Global generation ceiling for this audit. Default 220 (GEO_MAX_GENS). */
@@ -86,6 +88,7 @@ export interface SequentialSamplingOptions {
     region: UserRegion;
     requestedProviders: LLMProvider[];
     repeat?: number;
+    serpMarket?: import("./serp-market").SerpMarket;
   }) => Promise<RunProbesResult>;
 }
 
@@ -237,7 +240,7 @@ export async function runProbesSequential(
     const pending = queries.filter((q) => !seededPairs.has(pairKey(q.queryHash, provider)));
     if (pending.length === 0) continue;
     baseCalls.push(
-      runner(pending, { region: opts.region, requestedProviders: [provider], repeat: baseRuns })
+      runner(pending, { region: opts.region, requestedProviders: [provider], repeat: baseRuns, serpMarket: opts.serpMarket })
     );
   }
   for (const result of await Promise.all(baseCalls)) absorb(result, true);
@@ -309,6 +312,7 @@ export async function runProbesSequential(
             region: opts.region,
             requestedProviders: [provider],
             repeat: 1,
+            serpMarket: opts.serpMarket,
           })
         );
       }

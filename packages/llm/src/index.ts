@@ -250,6 +250,7 @@ export { OpenAIProbeAdapter } from "./providers/openai";
 export { GeminiProbeAdapter } from "./providers/gemini";
 export { PerplexityProbeAdapter } from "./providers/perplexity";
 export { SerpProbeAdapter } from "./providers/serp";
+export { serpMarketFor, describeSerpMarket, type SerpMarket } from "./serp-market";
 
 // Gateway — fan-out orchestration
 export type { RunProbesOptions, RunProbesResult } from "./providers/gateway";
