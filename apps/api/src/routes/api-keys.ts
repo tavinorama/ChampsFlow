@@ -37,6 +37,13 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { parseContextReadiness, describeContextReadiness, CONTEXT_READINESS_KEY } from "../../../../packages/shared/src/context-readiness";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { readEngineHealth } from "../../../../packages/shared/src/hermes-health";
+import { tryGetStripe } from "../integrations/stripe";
+import {
+  planRefundReconciliation,
+  applyRefundReconciliation,
+  loadEntitledOrders,
+  type StripeSessionFacts,
+} from "../lib/refund-reconcile";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY_PREFIX = "ozk_live_";
@@ -616,6 +623,48 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
       context,
       checked_at: new Date().toISOString(),
     });
+  });
+
+  // POST /api/v1/operator/billing/reconcile-refunds — B11 (D19): Stripe is
+  // the ledger. Lists every order that still grants access and asks Stripe
+  // whether its charge was refunded or was for $0. DRY RUN by default: the
+  // plan comes back and nothing changes. `?apply=1` revokes ONLY the rows
+  // whose charge is fully refunded (status → refunded, refunded_at set,
+  // delivered_at kept). Idempotent: a second apply changes nothing.
+  app.post("/api/v1/operator/billing/reconcile-refunds", operatorKey, async (c) => {
+    const apply = c.req.query("apply") === "1";
+    const stripe = tryGetStripe();
+    if (!stripe) return c.json({ error: "stripe_not_configured", code: "STRIPE_NOT_CONFIGURED" }, 503);
+    const lookup = async (sessionId: string): Promise<StripeSessionFacts | null> => {
+      const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["payment_intent.latest_charge"] });
+      const pi = session.payment_intent;
+      const charge =
+        pi && typeof pi === "object" && pi.latest_charge && typeof pi.latest_charge === "object" ? pi.latest_charge : null;
+      return {
+        amountTotalCents: typeof session.amount_total === "number" ? session.amount_total : null,
+        paymentStatus: session.payment_status ?? null,
+        chargeRefunded: charge ? charge.refunded === true : null,
+        chargeId: charge ? charge.id : null,
+      };
+    };
+    try {
+      const orders = await loadEntitledOrders(db);
+      const plan = await planRefundReconciliation(orders, lookup);
+      const changed = apply ? await applyRefundReconciliation(db, plan) : [];
+      logger.info("refund_reconcile_ran", { apply, counts: plan.counts, changed: changed.length });
+      return c.json({
+        mode: apply ? "applied" : "dry_run",
+        counts: plan.counts,
+        // ids only — no email, no amounts per person
+        rows: plan.rows.map((r) => ({ table: r.table, id: r.id, localStatus: r.localStatus, action: r.action, reason: r.reason, chargeRefunded: r.stripe?.chargeRefunded ?? null, amountTotalCents: r.stripe?.amountTotalCents ?? null })),
+        changed,
+        rule: "a paying customer is an order whose charge was for more than zero and was not refunded",
+        checked_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      logger.error("refund_reconcile_error", { message: (err as Error).message?.slice(0, 160) });
+      return c.json({ error: "internal_error", code: "REFUND_RECONCILE_FAILED" }, 500);
+    }
   });
 
   // GET /api/v1/operator/assets — the asset library manifest. No PII: public
