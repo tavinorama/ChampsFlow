@@ -37,6 +37,7 @@ import { logger } from "../../../../packages/shared/src/logger";
 import { parseContextReadiness, describeContextReadiness, CONTEXT_READINESS_KEY } from "../../../../packages/shared/src/context-readiness";
 import { resolveAssetDownloads } from "../../../../packages/shared/src/assets-manifest";
 import { readEngineHealth } from "../../../../packages/shared/src/hermes-health";
+import { buildSuppressionExport } from "../lib/suppression-export";
 import { tryGetStripe } from "../integrations/stripe";
 import {
   planRefundReconciliation,
@@ -558,6 +559,19 @@ export function registerApiKeyRoutes(app: Hono, db: PostgresClient): void {
   //    customer data, billing, or secrets.
   // =========================================================================
   const operatorKey = requireOperatorKey(db);
+
+  // GET /api/v1/operator/crm/suppression — C06/P11: every address the company
+  // must never write to again, as sha256 digests (no plaintext). The campaign
+  // loader reads this before any upload and drops matches, so a STOP survives
+  // a list bought next week. PII-free tier on purpose.
+  app.get("/api/v1/operator/crm/suppression", operatorKey, async (c) => {
+    try {
+      return c.json(await buildSuppressionExport(db));
+    } catch (err) {
+      logger.error("suppression_export_failed", { message: (err as Error).message?.slice(0, 200) });
+      return c.json({ error: "internal_error", code: "SUPPRESSION_EXPORT_FAILED" }, 500);
+    }
+  });
 
   // GET /api/v1/operator/system-health — engines + infra liveness
   app.get("/api/v1/operator/system-health", operatorKey, async (c) => {
