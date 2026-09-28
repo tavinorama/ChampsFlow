@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "what-does-chatgpt-say-about-my-business",
+    title: "The Dog Groomer Who Grades ChatGPT's Homework Every Friday",
+    excerpt: "Instead of guessing why ChatGPT names rivals, one grooming owner logs what four AI engines say about her business every Friday.",
+    readTime: "5 min read",
+    publishedAt: "2026-09-28",
+    publishedAtDisplay: "28 September 2026",
+  },
+  {
+    type: "article",
     slug: "the-500-chatgpt-spent-before-lunch",
     title: "The $500 ChatGPT Spent Before Lunch: A Small Business Tests Paid AI Visibility",
     excerpt: "Out of the Box Advisors spent real money on ChatGPT ads, then discovered the clicks they paid for were hiding in their own analytics.",
