@@ -851,7 +851,7 @@ export async function buildSnapshot(
         FROM ops.agent_step s
         JOIN ops.agent_run r ON r.id = s.run_id
        WHERE s.status = 'succeeded'
-         AND s.summary LIKE 'published via%'
+         AND (s.summary LIKE 'published via%' OR s.summary LIKE 'accepted via%')
          AND s.started_at >= NOW() - make_interval(days => ${d})
        ORDER BY s.started_at DESC
        LIMIT 80`;
@@ -1092,7 +1092,7 @@ export async function buildSnapshot(
       SELECT s.summary, s.started_at::text AS started_at
         FROM ops.agent_step s
        WHERE s.status = 'succeeded'
-         AND s.summary LIKE 'published via%'
+         AND (s.summary LIKE 'published via%' OR s.summary LIKE 'accepted via%')
          AND s.started_at >= NOW() - make_interval(days => ${d})
        ORDER BY s.started_at
        LIMIT 500`;
@@ -1935,7 +1935,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
               FROM ops.agent_step s
               JOIN ops.agent_run r ON r.id = s.run_id
              WHERE s.status = 'succeeded'
-               AND s.summary LIKE 'published via%'
+               AND (s.summary LIKE 'published via%' OR s.summary LIKE 'accepted via%')
                AND s.summary LIKE ${like}
              ORDER BY s.started_at DESC
              LIMIT ${Math.max(1, Math.min(input.limit, 20))}`;
@@ -1963,6 +1963,21 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
              AND summary LIKE '%postiz_state=queued%'
              AND started_at >= NOW() - make_interval(hours => ${input.sinceHours})
            ORDER BY started_at DESC
+           LIMIT ${input.limit}`;
+        return rows.map((r) => ({ stepId: r.id, summary: r.summary, startedAt: r.started_at }));
+      },
+      // D5: queued for longer than the window — to be closed as unknown_expired.
+      async expiredPublishReceipts(input) {
+        const rows = await sql<{ id: string; summary: string; started_at: string }[]>`
+          /* receipts:expired */
+          SELECT id, COALESCE(summary, '') AS summary, started_at::text AS started_at
+            FROM ops.agent_step
+           WHERE (node = 'publish' OR node LIKE 'publish-%')
+             AND status = 'succeeded'
+             AND summary LIKE '%postiz_state=queued%'
+             AND started_at < NOW() - make_interval(hours => ${input.olderThanHours})
+             AND started_at >= NOW() - make_interval(days => ${input.maxAgeDays})
+           ORDER BY started_at ASC
            LIMIT ${input.limit}`;
         return rows.map((r) => ({ stepId: r.id, summary: r.summary, startedAt: r.started_at }));
       },
@@ -2866,13 +2881,17 @@ export async function runGraphTick(
   // silence — once per process for the same reason.
   try {
     const rec = await reconcilePublishReceipts(ports);
+    if (rec.expired > 0) {
+      // Never silent: a post nobody could confirm in 72 h is a delivery unknown.
+      logger.warn("graph_tick_publish_receipts_expired", { expired: rec.expired, hint: "scheduler never confirmed; check the posts on the networks by hand" });
+    }
     if (rec.skipped) {
       if (!warnedReconcileSkipped) {
         warnedReconcileSkipped = true;
         logger.warn("graph_tick_publish_reconcile_skipped", { reason: rec.skipped });
       }
     } else {
-      logger.info("graph_tick_publish_reconcile", { checked: rec.checked, published: rec.published, errored: rec.errored, stillQueued: rec.stillQueued });
+      logger.info("graph_tick_publish_reconcile", { checked: rec.checked, published: rec.published, errored: rec.errored, stillQueued: rec.stillQueued, expired: rec.expired });
       if (rec.checked > 0 && rec.published === 0 && rec.errored === 0 && !warnedReconcileAllUnknown) {
         warnedReconcileAllUnknown = true;
         logger.warn("graph_tick_publish_reconcile_all_unknown", { checked: rec.checked, hint: "Hermes /postiz-post/:id answering? see ops/hermes/POSTIZ-POST-STATUS.md" });
