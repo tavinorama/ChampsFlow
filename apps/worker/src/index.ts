@@ -28,7 +28,7 @@
  */
 
 import Redis from "ioredis";
-import { Queue, Worker } from "bullmq";
+import { Queue, Worker, UnrecoverableError } from "bullmq";
 // Boot-time env validation (10.B.5/10.B.13) — MUST be the first app import:
 // missing DATABASE_URL/REDIS_URL (or, in production, HERMES_TASK_TOKEN /
 // TELEGRAM_*) logs the field names and exits 1 before anything connects.
@@ -159,10 +159,20 @@ const auditWorker = new Worker(
   "geo-audit",
   async (job) => {
     // Wrap the shared audit client so each job's queries run RLS-scoped (app_user).
-    return processAuditJob(
-      job as Parameters<typeof processAuditJob>[0],
-      withRlsContext(getAuditSql())
-    );
+    try {
+      return await processAuditJob(
+        job as Parameters<typeof processAuditJob>[0],
+        withRlsContext(getAuditSql())
+      );
+    } catch (err) {
+      // D1 (N04, 28/09): the policy "a refusal is never retried" existed since
+      // 17/08 but only the ALERT read it; the queue kept retrying. One weekly
+      // audit became three failed rows seventy seconds apart, on 17/08, 15/09
+      // and 28/09. UnrecoverableError is what makes BullMQ stop.
+      const message = (err as Error)?.message ?? "";
+      if (isAuditFailurePermanent(message)) throw new UnrecoverableError(message);
+      throw err;
+    }
   },
   {
     connection,
