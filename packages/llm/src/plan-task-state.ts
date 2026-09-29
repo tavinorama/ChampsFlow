@@ -94,6 +94,24 @@ export type PlanTaskActor = "client" | "ozvor" | "system";
  */
 export const VERIFIED_STATES: readonly PlanTaskState[] = ["verified"] as const;
 
+/**
+ * D12 (Codex cap. 6 + D17 remainder, 28/09): EXECUTION is not EFFECT.
+ *
+ * A schema deployed correctly is work done, even on the day no engine changes
+ * its answer. And a citation that appears on its own is not our work. The
+ * dashboard note said "a fix counts here once we … see the change in the AI
+ * answers", which folds the two into one. They are reported apart:
+ *
+ *   executed — the work is live at a URL an operator recorded (a task only
+ *              reaches `published` with an artifact URL; see TRANSITIONS);
+ *   effect   — an engine changed after that work (`cited`, `verified`).
+ *
+ * Neither implies the other caused it. The Execution SCORE is untouched by
+ * this: which of the two feeds it is a product decision, not a refactor.
+ */
+export const EXECUTED_STATES: readonly PlanTaskState[] = ["published", "indexed", "cited", "verified"] as const;
+export const EFFECT_STATES: readonly PlanTaskState[] = ["cited", "verified"] as const;
+
 /** Proof exists, outcome not yet confirmed by a re-probe. */
 export const IN_FLIGHT_STATES: readonly PlanTaskState[] = [
   "published",
@@ -436,6 +454,10 @@ export interface ExecutionBreakdown {
   verifiedPct: number | null;
   /** Self-reported activity %, for the "why did my number change" copy. */
   selfReportedPct: number | null;
+  /** D12: work live at a recorded URL, % of what is owed. null like verifiedPct. */
+  executedPct: number | null;
+  /** D12: work after which an engine changed its answer, % of what is owed. */
+  effectPct: number | null;
   /** Counts, for the UI to show its work. */
   counts: {
     total: number;
@@ -445,6 +467,10 @@ export interface ExecutionBreakdown {
     selfReported: number;
     open: number;
     notOwed: number;
+    /** D12: published + indexed + cited + verified. */
+    executed: number;
+    /** D12: cited + verified. */
+    effect: number;
   };
 }
 
@@ -468,12 +494,16 @@ export function computeExecution(states: readonly PlanTaskState[]): ExecutionBre
   const inFlight = count(IN_FLIGHT_STATES);
   const selfReported = count(SELF_REPORTED_STATES);
   const open = count(OPEN_STATES);
+  const executed = count(EXECUTED_STATES);
+  const effect = count(EFFECT_STATES);
 
-  const counts = { total, denominator, verified, inFlight, selfReported, open, notOwed };
+  const counts = { total, denominator, verified, inFlight, selfReported, open, notOwed, executed, effect };
   if (denominator <= 0) {
-    return { verifiedPct: null, selfReportedPct: null, counts };
+    return { verifiedPct: null, selfReportedPct: null, executedPct: null, effectPct: null, counts };
   }
   return {
+    executedPct: Math.round((executed / denominator) * 100),
+    effectPct: Math.round((effect / denominator) * 100),
     verifiedPct: Math.round((verified / denominator) * 100),
     selfReportedPct: Math.round(
       ((verified + inFlight + selfReported) / denominator) * 100

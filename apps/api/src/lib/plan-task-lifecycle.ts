@@ -126,6 +126,8 @@ export interface VerifiedExecution extends ExecutionBreakdown {
 const EMPTY = (reason: ExecutionUnavailableReason): VerifiedExecution => ({
   verifiedPct: null,
   selfReportedPct: null,
+  executedPct: null,
+  effectPct: null,
   counts: {
     total: 0,
     denominator: 0,
@@ -134,6 +136,8 @@ const EMPTY = (reason: ExecutionUnavailableReason): VerifiedExecution => ({
     selfReported: 0,
     open: 0,
     notOwed: 0,
+    executed: 0,
+    effect: 0,
   },
   unavailableReason: reason,
   measurable: false,
@@ -178,6 +182,8 @@ export async function readVerifiedExecution(
       return {
         ...breakdown,
         verifiedPct: null,
+        executedPct: null,
+        effectPct: null,
         unavailableReason: "migration_pending",
         measurable: false,
       };
