@@ -35,6 +35,7 @@ import { OpenAIProbeAdapter } from "./openai";
 import { GeminiProbeAdapter } from "./gemini";
 import { PerplexityProbeAdapter } from "./perplexity";
 import { SerpProbeAdapter } from "./serp";
+import { serpMarketForQuery } from "../serp-market";
 
 // ---------------------------------------------------------------------------
 // Adapter registry
@@ -313,7 +314,7 @@ export async function runProbes(
         for (let r = 0; r < repeat; r++) {
           try {
             const result = await withRetry(
-              () => withProviderSlot(provider, () => adapter.probe(query, { region, requestId: query.queryHash, serpMarket: opts.serpMarket })),
+              () => withProviderSlot(provider, () => adapter.probe(query, { region, requestId: query.queryHash, serpMarket: serpMarketForQuery(query, region, opts.serpMarket) })),
               provider
             );
             recordSuccess(provider);
