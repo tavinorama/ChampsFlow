@@ -69,10 +69,15 @@ describe("dogfood wiring", () => {
   it("the runner injects it on the same marketing path as the signals block", () => {
     const runner = repoFile("apps/api/src/lib/graph-runner.ts");
     expect(runner).toContain("substrate.ownVisibilityGaps");
-    expect(runner).toContain("upstream.unshift([GAPS_ARTIFACT, gaps])");
-    // fail-open like its sibling: guarded and non-throwing
-    const ix = runner.indexOf("substrate.ownVisibilityGaps");
-    expect(runner.slice(ix, ix + 400)).toContain("catch");
+    // D2 (29/09): both context ports are read through readContextPort, which
+    // says not_wired / empty / on / error. The artifact is injected from its
+    // result, never from the raw port.
+    expect(runner).toContain("upstream.unshift([GAPS_ARTIFACT, gapsRead.text])");
+    expect(runner).toContain("upstream.unshift([SIGNALS_ARTIFACT, signalsRead.text])");
+    // fail-open like its sibling: the guard lives in readContextPort and never throws
+    const ix = runner.indexOf("export async function readContextPort");
+    expect(ix).toBeGreaterThan(0);
+    expect(runner.slice(ix, ix + 600)).toContain("catch");
   });
 
   it("the worker reads OPEN cards of the newest plan and fails open when unconfigured", () => {
