@@ -26,7 +26,11 @@ export type ClaimProblemCode =
   | "scenario_as_result"
   | "third_party_as_ours"
   | "correlation_as_cause"
-  | "invented_person";
+  | "invented_person"
+  // D6 (Codex N06, 28/09): claims about OUR OWN operation.
+  | "operational_number_without_fact"
+  | "operational_zero_without_fact"
+  | "as_of_without_fact";
 
 export interface ClaimProblem {
   code: ClaimProblemCode;
@@ -55,6 +59,51 @@ const OURS_WORDS =
 /** The phrases the invented pieces of 14–20/09 used. A client of ours is a fact; these are not in any fact. */
 const INVENTED_PEOPLE =
   /\b(a client (texted|called|emailed|messaged|told|asked) (me|us)|one of (my|our) clients (texted|called|emailed|said|told)|my (neighbou?r|neighbor)|a friend of mine|a friend (who|that) (owns|runs)|(she|he) was closing (her|his) (shop|bakery|store|salon)|(rosa|ana|hugo|sofia|elena|marisol) (was|had|runs|owns|closed)|um cliente (me|nos) (mandou|ligou|escreveu|disse)|minha vizinha|meu vizinho|um amigo meu)\b/i;
+
+/**
+ * D6 — our own operation, told in the first person.
+ *
+ * 28/09: a piece scheduled for the company's LinkedIn page said "As of late
+ * September 2026, we had 1,818 leads loaded. Segmented, ready, sitting in
+ * draft. Zero sending days. Not one email went out." while the two live
+ * campaigns had sent 2,557 messages to 1,067 people. None of those numbers is
+ * in any fact of content-facts.ts, and the four older checks had nothing to
+ * say about it: no scenario, no third party, no cause, no invented person.
+ *
+ * Three rules, all about sentences that speak of OUR leads, e-mails,
+ * campaigns, sends, replies or bounces:
+ *   5. a number in such a sentence must be a keyNumber of a live Ozvor fact;
+ *   6. "zero / not one / never" about our sending must be said by a fact;
+ *   7. "as of <month> <year>" must have a fact read in that month behind it.
+ */
+const FIRST_PERSON = /\b(we|we've|we'd|we had|we have|our|ours|nós|a gente|noss[oa]s?)\b/i;
+const OPS_NOUNS =
+  /\b(leads?|prospects?|e-?mails?|campaigns?|sequences?|send(s|ing)?|sent|repl(y|ies|ied)|bounce[sd]?|inbox(es)?|mailbox(es)?|outreach|cold (email|outreach)|drafts?|campanhas?|envios?|respostas?)\b/i;
+const ZERO_ABOUT_SENDING =
+  /\b(zero|no|not one|not a single|never|nenhum|nenhuma|zero)\b[^.!?\n]{0,30}\b(sending days?|e-?mails? (went out|was sent|were sent|got sent|sent)|sends?|went out|dias? de envio|e-?mails? (sa[ií]ram|enviados?))\b/i;
+const AS_OF = /\bas of (?:early |mid[- ]|late )?(january|february|march|april|may|june|july|august|september|october|november|december) (20\d\d)\b/i;
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const NUMBER_TOKEN = /\$?\d[\d,]*(?:\.\d+)?%?/g;
+
+const digits = (n: string): string => n.replace(/[$,%]/g, "").replace(/\.0+$/, "");
+
+function sentences(prose: string): string[] {
+  return prose.split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+}
+
+/** Numbers of a sentence that are claims, not dates: years and day-of-month next to a month are left out. */
+function claimNumbers(sentence: string): string[] {
+  const out: string[] = [];
+  for (const m of sentence.matchAll(NUMBER_TOKEN)) {
+    const tok = m[0];
+    const d = digits(tok);
+    if (/^(19|20)\d\d$/.test(d)) continue; // a year
+    const before = sentence.slice(Math.max(0, m.index! - 12), m.index!).toLowerCase();
+    if (MONTHS.some((mo) => before.includes(mo.slice(0, 3))) && Number(d) <= 31 && !tok.includes("$") && !tok.includes("%")) continue; // "September 21"
+    out.push(d);
+  }
+  return out;
+}
 
 /** A number token as it appears in prose: 483, 2.08, 15%, $500, 1,250. */
 function hasNumber(text: string, n: string): boolean {
@@ -117,6 +166,36 @@ export function validateContentClaims(text: string, facts: readonly ContentFact[
     if (!licensed && !alreadyFlagged) {
       problems.push({ code: "third_party_as_ours", detail: snippet(prose, OURS_WORDS) });
     }
+  }
+
+  // 5–7. Our own operation (D6).
+  const ours = facts.filter((f) => f.owner === "ozvor");
+  const measured = ours.filter((f) => f.evidenceType !== "scenario");
+  const licensedNumbers = new Set(ours.flatMap((f) => f.keyNumbers.map(digits)));
+  const opsSentences = sentences(prose).filter((x) => OPS_NOUNS.test(x));
+  const firstPersonOps = FIRST_PERSON.test(prose) && opsSentences.some((x) => FIRST_PERSON.test(x));
+
+  if (firstPersonOps) {
+    // 5. Every number in a first-person sentence about our leads/e-mails/campaigns.
+    for (const sentence of opsSentences) {
+      if (!FIRST_PERSON.test(sentence)) continue;
+      const loose = claimNumbers(sentence).filter((n) => !licensedNumbers.has(n));
+      if (loose.length > 0) {
+        problems.push({ code: "operational_number_without_fact", detail: `${loose.slice(0, 3).join(", ")} in «${sentence.slice(0, 70)}»` });
+        break; // one is enough to refuse the piece
+      }
+    }
+    // 6. "Zero / not one / never" about our sending.
+    if (ZERO_ABOUT_SENDING.test(prose) && !measured.some((f) => ZERO_ABOUT_SENDING.test(f.fact))) {
+      problems.push({ code: "operational_zero_without_fact", detail: snippet(prose, ZERO_ABOUT_SENDING) });
+    }
+  }
+  // 7. A dated claim needs a fact read in that month.
+  const asOf = AS_OF.exec(prose);
+  if (asOf && (firstPersonOps || FIRST_PERSON.test(sentences(prose).find((x) => AS_OF.test(x)) ?? ""))) {
+    const ym = `${asOf[2]}-${String(MONTHS.indexOf(asOf[1]!.toLowerCase()) + 1).padStart(2, "0")}`;
+    const backed = measured.some((f) => f.asOf.startsWith(ym) && hasAnyNumber(prose, f.keyNumbers));
+    if (!backed) problems.push({ code: "as_of_without_fact", detail: `${asOf[0]}: no fact read in ${ym} backs a number in this piece` });
   }
 
   return { ok: problems.length === 0, problems };
