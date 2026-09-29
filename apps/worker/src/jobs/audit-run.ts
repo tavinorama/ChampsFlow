@@ -31,6 +31,9 @@ import {
   runProbesSequential,
   serpMarketFor,
   describeSerpMarket,
+  serpMarketForQuery,
+  marketMix,
+  resolvePromptMarket,
   responseSuccesses,
   GEO_METHODOLOGY_VERSION,
   buildIntentPortfolio,
@@ -663,6 +666,8 @@ async function processAuditJobTracked(
     // brand that silently fell back to the generic portfolio after opting in
     // would be measured on the wrong questions without anyone being told.
     let universeApplied = false;
+    // D4: question text → its own market/locale, filled by the universe below.
+    const promptMarketByText = new Map<string, { market: string; locale: string }>();
     try {
       const universeRows = await sql<
         Array<{
@@ -672,9 +677,11 @@ async function processAuditJobTracked(
           intent: string;
           business_value: string | null;
           relevance_score: string | null;
+          market: string | null;
+          locale: string | null;
         }>
       >`
-        SELECT id, text, cohort, intent, business_value, relevance_score
+        SELECT id, text, cohort, intent, business_value, relevance_score, market, locale
           FROM audit_prompt
          WHERE brand_id = ${brand_id}
            AND archived_at IS NULL
@@ -683,14 +690,16 @@ async function processAuditJobTracked(
       `;
 
       if (universeRows.length > 0) {
+        for (const r of universeRows) promptMarketByText.set(r.text.trim(), resolvePromptMarket(r, brand.region));
         const defs: PromptDefinition[] = universeRows.map((r) => ({
           id: r.id,
           text: r.text,
           cohort: r.cohort as PromptDefinition["cohort"],
           intent: r.intent as PromptDefinition["intent"],
           vertical: null,
-          market: "US",
-          locale: "en-US",
+          // D4 (N10): the question's OWN market. This was hardcoded US / en-US
+          // for every row, so a pt-BR question became a "US" task.
+          ...resolvePromptMarket(r, brand.region),
           funnelStage: "awareness",
           demand: null,
           // A NULL score is "not scored", not zero. Defaulting to 0 would sink
@@ -841,6 +850,9 @@ async function processAuditJobTracked(
       brandName: brand.name,
       intentId: p.intentId,
       formulationIx: p.formulationIx,
+      // D4: a question asked in Brazil is probed in Brazil, in Portuguese.
+      market: promptMarketByText.get(p.text.trim())?.market ?? null,
+      locale: promptMarketByText.get(p.text.trim())?.locale ?? null,
     }));
     // Intent classification lookup for evidence rows + breakdown (by hash so
     // sanitizer rewrites inside the gateway can't break the join).
@@ -1681,6 +1693,8 @@ async function processAuditJobTracked(
       // why. A report that says "Google AI Overviews" without this line is
       // claiming a market it never probed.
       serp_market: { ...serpMarket, description: describeSerpMarket(serpMarket) },
+      // D4: how many questions were asked in each market, as decided per question.
+      serp_market_mix: marketMix(queries.map((q) => serpMarketForQuery(q, userRegion, serpMarket))),
       coverage: {
         requested: cov.requested,
         answered: cov.answered,
@@ -1977,8 +1991,10 @@ async function processAuditJobTracked(
             promptText: (r.queryText as string).trim(),
             engine: dbProvider(r.provider),
             modelOrMode: r.usage?.model ?? null,
-            market: brand.region ?? "unspecified",
-            locale: "unspecified", // not recorded per prompt yet — never guessed
+            // D4: the question's own market and locale when it has them; the
+            // brand's region otherwise. Never guessed.
+            market: promptMarketByText.get((r.queryText as string).trim())?.market ?? brand.region ?? "unspecified",
+            locale: promptMarketByText.get((r.queryText as string).trim())?.locale ?? "unspecified",
             runIndex: 0,
             mentioned: r.mentioned,
             mentionPosition: r.position ?? null,
@@ -2082,6 +2098,7 @@ async function processAuditJobTracked(
             effect: "the policy below re-opens it only if the invariant is still violated",
           });
         }
+        const recheckByGap = new Map<string, string>();
         // P0-07 — replace the deterministic loop text with the classified
         // action wherever the classifier produced one for the same question.
         // The gap KEY is untouched, so cross-audit matching still works.
@@ -2104,6 +2121,8 @@ async function processAuditJobTracked(
             `Accept when: ${a.acceptanceCriteria.join(" ")} ` +
             `Next recheck: ${a.verificationPlan.earliestCheckAt.slice(0, 10)}.`;
           t.metric = a.verificationPlan.successCondition;
+          // D4: the recheck date is a field, not a sentence inside the evidence.
+          recheckByGap.set(t.gap, a.verificationPlan.earliestCheckAt);
         }
         const lifecycleOk = await planTaskLifecycleReady(sql);
         for (const t of loopRows) {
@@ -2123,6 +2142,14 @@ async function processAuditJobTracked(
           // next audit. Carried here, only where the lifecycle columns exist.
           if (lifecycleOk && inserted && t.artifact_url) {
             await sql`UPDATE plan_task SET artifact_url = ${t.artifact_url} WHERE id = ${inserted.id}`;
+          }
+          const recheckAt = recheckByGap.get(t.gap);
+          if (inserted && recheckAt && OPEN_LOOP_STATES.has(t.status)) {
+            try {
+              await sql`UPDATE plan_task SET due_date = ${recheckAt}::timestamptz WHERE id = ${inserted.id}`;
+            } catch (err) {
+              logger.warn("plan_task_due_date_unavailable", { message: (err as Error).message?.slice(0, 120) });
+            }
           }
         }
         openCardsAfterLoop = loopRows.filter((t) => OPEN_LOOP_STATES.has(t.status)).length;
