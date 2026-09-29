@@ -83,6 +83,7 @@ import {
 import { dayBlock } from "./editorial-calendar";
 import { factsBlock, liveFacts } from "./content-facts";
 import { validateContentClaims, describeClaimProblems } from "./content-claims";
+import { ACCEPTED_PREFIX, isPublishRecord, markRecordPublished, RECEIPT_WINDOW_HOURS, RECEIPT_EXPIRY_LOOKBACK_DAYS } from "../../../../packages/shared/src/publish-marker";
 import { UNKNOWN_COST, type StepCost } from "../../../../packages/shared/src/step-cost";
 import {
   X_POST_LIMIT,
@@ -166,6 +167,8 @@ export interface ReconcileReport {
   published: number;
   errored: number;
   stillQueued: number;
+  /** D5: queued for longer than the window, closed as unknown_expired. */
+  expired: number;
   skipped: string | null;
 }
 
@@ -184,11 +187,27 @@ export async function reconcilePublishReceipts(
   ports: Pick<GraphRunnerPorts, "hermes" | "substrate">,
   opts: { limit?: number; sinceHours?: number } = {}
 ): Promise<ReconcileReport> {
-  const report: ReconcileReport = { checked: 0, published: 0, errored: 0, stillQueued: 0, skipped: null };
+  const report: ReconcileReport = { checked: 0, published: 0, errored: 0, stillQueued: 0, expired: 0, skipped: null };
+  // D5: close what aged out FIRST, and do it even when the scheduler cannot be
+  // asked. A receipt that leaves the 72 h window used to stay "queued" for
+  // ever: never confirmed, never failed, never counted. It now ends as
+  // unknown_expired, which is a terminal state the boletim can show.
+  if (ports.substrate.expiredPublishReceipts && ports.substrate.updateStepSummary) {
+    const old = await ports.substrate.expiredPublishReceipts({
+      olderThanHours: opts.sinceHours ?? RECEIPT_WINDOW_HOURS,
+      maxAgeDays: RECEIPT_EXPIRY_LOOKBACK_DAYS,
+      limit: opts.limit ?? 50,
+    });
+    for (const row of old) {
+      if (!row.summary.includes("postiz_state=queued")) continue;
+      await ports.substrate.updateStepSummary(row.stepId, row.summary.replace("postiz_state=queued", "postiz_state=unknown_expired").slice(0, 500));
+      report.expired += 1;
+    }
+  }
   const { hermes, substrate } = ports;
   if (!hermes.postStatus) return { ...report, skipped: "hermes port has no postStatus (VPS endpoint /postiz-post/:id not wired)" };
   if (!substrate.recentPublishReceipts || !substrate.updateStepSummary) return { ...report, skipped: "substrate cannot list or update publish receipts" };
-  const rows = await substrate.recentPublishReceipts({ limit: opts.limit ?? 50, sinceHours: opts.sinceHours ?? 72 });
+  const rows = await substrate.recentPublishReceipts({ limit: opts.limit ?? 50, sinceHours: opts.sinceHours ?? RECEIPT_WINDOW_HOURS });
   for (const row of rows) {
     const m = POSTIZ_ID_RE.exec(row.summary);
     if (!m) continue;
@@ -201,7 +220,8 @@ export async function reconcilePublishReceipts(
     }
     if (status.state === "published") {
       const url = status.url ? ` url=${status.url.replace(/[\s"'<>]/g, "").slice(0, 160)}` : "";
-      await substrate.updateStepSummary(row.stepId, row.summary.replace(m[0], `postiz_id=${m[1]} postiz_state=published${url}`).slice(0, 500));
+      // Only now does the record earn the word "published".
+      await substrate.updateStepSummary(row.stepId, markRecordPublished(row.summary).replace(m[0], `postiz_id=${m[1]} postiz_state=published${url}`).slice(0, 500));
       report.published += 1;
     } else if (status.state === "error") {
       const why = status.detail ? ` postiz_error=${status.detail.replace(/[\s"'<>]/g, "_").slice(0, 80)}` : "";
@@ -539,6 +559,8 @@ export interface SubstratePort {
   publishedToday(channel: string): Promise<number>;
   /** C15-b: succeeded publishes still `postiz_state=queued` in the window. */
   recentPublishReceipts?(input: { limit: number; sinceHours: number }): Promise<PublishReceiptRow[]>;
+  /** D5: succeeded publishes still `queued` and OLDER than the window. */
+  expiredPublishReceipts?(input: { olderThanHours: number; maxAgeDays: number; limit: number }): Promise<PublishReceiptRow[]>;
   /** C15-b: rewrite one step's summary (the receipt state flip). */
   updateStepSummary?(stepId: string, summary: string): Promise<void>;
   /**
@@ -1480,7 +1502,7 @@ export async function advanceRun(
               const releaseNote = parkedSummary.startsWith(CIRCUIT_PARK_SUMMARY_PREFIX)
                 ? " (apos circuito fechado)"
                 : " (apos adiamento de cadencia)";
-              const releasedSummary = `published via ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote}${releaseNote}${publishReceipt(res.detail)}`;
+              const releasedSummary = `${ACCEPTED_PREFIX} ${String(node.config?.["via"] ?? "postiz")} channel=${channel}${threadNote}${releaseNote}${publishReceipt(res.detail)}`;
               await artifacts.set(runId, nodeId, res.detail);
               await substrate.finishStep(step.id, {
                 status: "succeeded",
@@ -1630,7 +1652,7 @@ export async function advanceRun(
       if (
         node.kind === "publish" &&
         step.status === "succeeded" &&
-        !(step.summary ?? "").startsWith("published via")
+        !isPublishRecord(step.summary)
       ) {
         byNode.delete(nodeId);
         notes.push(`publish ${nodeId}: retry autorizado pelo founder — re-executando`);
@@ -2256,7 +2278,7 @@ export async function advanceRun(
         await substrate.finishStep(stepId, {
           status: "succeeded",
           outputHash: sha(res.detail),
-          summary: `published via ${String(config["via"] ?? "postiz")} channel=${channel}${mediaNote}${threadNote}${publishReceipt(res.detail)}`,
+          summary: `${ACCEPTED_PREFIX} ${String(config["via"] ?? "postiz")} channel=${channel}${mediaNote}${threadNote}${publishReceipt(res.detail)}`,
         });
       } else {
         await substrate.finishStep(stepId, { status: "failed", summary: `publish failed: ${res.detail.slice(0, 120)}` });
