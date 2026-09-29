@@ -20,6 +20,14 @@ it is scheduled to send (SmartLead's days_of_the_week in the campaign's own
 timezone): a weekday-only campaign is not "stopped" on Sunday. A schedule that
 cannot be read counts every day as eligible — louder, never quieter.
 
+29/09 (D8): "stopped" had two meanings. On 27/09 the watch went red for the
+Stack campaign: 534 messages to 184 people, nothing new in a day. That is a
+sequence that FINISHED, not a campaign that is blocked. The watch now reads
+SmartLead's own lead counts: no lead waiting and none in progress = the queue
+is exhausted (a business notice: load leads), anything else = stopped (red).
+When the counts cannot be read the verdict stays "stopped": louder, never
+quieter.
+
 Deterministic: stdlib only, no LLM. Aggregates only: no lead e-mail is printed.
 """
 from __future__ import annotations
@@ -75,6 +83,25 @@ def eligible_day_started(ref_ts: float, now: float, days: list[int] | None, tz: 
     return False
 
 
+def leads_left(stats) -> int | None:
+    """Leads that still have something to receive, from SmartLead's
+    campaign_lead_stats. None when the counts are absent or unreadable."""
+    if not isinstance(stats, dict):
+        return None
+    total = 0
+    seen = False
+    for keys in (("notStarted", "not_started", "notstarted"), ("inprogress", "inProgress", "in_progress")):
+        for k in keys:
+            v = stats.get(k)
+            if isinstance(v, bool):
+                continue
+            if isinstance(v, (int, float)) or (isinstance(v, str) and v.strip().isdigit()):
+                total += int(float(v))
+                seen = True
+                break
+    return total if seen else None
+
+
 def decide(history: list[dict], now: float, campaigns: list[dict]) -> dict:
     """Pure. One verdict per ACTIVE campaign against ITS OWN measurement of at
     least REF_MIN_AGE_H ago, counted only if a scheduled sending day began in
@@ -82,6 +109,7 @@ def decide(history: list[dict], now: float, campaigns: list[dict]) -> dict:
     list, which ones stopped, and the legacy totals."""
     per: list[dict] = []
     stopped: list[str] = []
+    exhausted: list[str] = []
     for c in campaigns:
         cid = str(c["id"])
         old_enough = [h for h in history if now - h["ts"] >= REF_MIN_AGE_H * 3600
@@ -89,21 +117,37 @@ def decide(history: list[dict], now: float, campaigns: list[dict]) -> dict:
         ref = max(old_enough, key=lambda h: h["ts"]) if old_enough else None
         delta = None if ref is None else int(c["sent"]) - ref["per"][cid]
         eligible = ref is not None and eligible_day_started(ref["ts"], now, c.get("days"), c.get("tz"))
-        is_stopped = ref is not None and eligible and delta <= 0
+        no_progress = ref is not None and eligible and delta <= 0
+        left = c.get("left")
+        # No progress AND nobody left to write to = the sequence finished.
+        is_exhausted = no_progress and left == 0
+        is_stopped = no_progress and not is_exhausted
         if is_stopped:
             stopped.append(str(c.get("name") or cid))
+        if is_exhausted:
+            exhausted.append(str(c.get("name") or cid))
         per.append({"id": cid, "nome": c.get("name"), "enviados": int(c["sent"]),
                     "referencia_horas": None if ref is None else round((now - ref["ts"]) / 3600, 1),
                     "medicao_referencia": None if ref is None else ref["per"][cid], "delta": delta,
                     "dia_elegivel_no_intervalo": eligible if ref is not None else None,
-                    "dias_agendados": c.get("days"), "parada": is_stopped})
+                    "dias_agendados": c.get("days"), "leads_por_enviar": left,
+                    "parada": is_stopped, "esgotada": is_exhausted})
     total = sum(int(c["sent"]) for c in campaigns)
-    return {"campanhas": per, "paradas": stopped, "envio_parado": bool(stopped), "total_enviados": total}
+    return {"campanhas": per, "paradas": stopped, "esgotadas": exhausted, "envio_parado": bool(stopped), "total_enviados": total}
 
 
-def next_history(history: list[dict], now: float, total: int, per: dict[str, int] | None = None) -> list[dict]:
+def next_history(history: list[dict], now: float, total: int, per: dict[str, int] | None = None,
+                 exhausted: list[str] | None = None) -> list[dict]:
     kept = [h for h in history if now - h["ts"] <= KEEP_DAYS * 86400]
-    return kept + [{"ts": int(now), "total": total, "per": per or {}}]
+    return kept + [{"ts": int(now), "total": total, "per": per or {}, "exhausted": sorted(exhausted or [])}]
+
+
+def newly_exhausted(history: list[dict], exhausted: list[str]) -> list[str]:
+    """Campaigns exhausted NOW that the previous measurement did not list: the
+    notice goes out once, when the state appears, not twice a day for ever."""
+    last = max(history, key=lambda h: h["ts"]) if history else None
+    before = set(last.get("exhausted") or []) if isinstance(last, dict) else set()
+    return [n for n in exhausted if n not in before]
 
 
 def get(path: str):
@@ -140,7 +184,8 @@ def main() -> int:
             if isinstance(raw_days, list) and all(isinstance(x, int) for x in raw_days):
                 days = sorted(raw_days)
             tz = (cron.get("tz") or cron.get("timezone")) if isinstance(cron, dict) else None
-        ativas.append({"id": str(c["id"]), "name": c.get("name"), "sent": int(a.get("sent_count") or 0), "days": days, "tz": tz})
+        ativas.append({"id": str(c["id"]), "name": c.get("name"), "sent": int(a.get("sent_count") or 0), "days": days, "tz": tz,
+                       "left": leads_left(a.get("campaign_lead_stats"))})
     if unread:
         print("RESULTADO_OZVOR" + json.dumps({"ok": False, "motivo": f"{unread} campanha(s) ativa(s) sem analytics legível — não medi, não é zero"}))
         return 1
@@ -149,12 +194,35 @@ def main() -> int:
     history = load_history(STATE.read_text() if STATE.exists() else None)
     verdict = decide(history, now, ativas)
     STATE.parent.mkdir(parents=True, exist_ok=True)
-    STATE.write_text(json.dumps({"history": next_history(history, now, verdict["total_enviados"], {a["id"]: a["sent"] for a in ativas})}))
+    novas_esgotadas = newly_exhausted(history, verdict["esgotadas"])
+    STATE.write_text(json.dumps({"history": next_history(history, now, verdict["total_enviados"], {a["id"]: a["sent"] for a in ativas},
+                                                         verdict["esgotadas"])}))
+
+    def telegram(msg: str):
+        tg_token, tg_chat = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
+        if not (tg_token and tg_chat):
+            return "sem_canal (TELEGRAM_* ausentes nos secrets do Actions)"
+        data = urllib.parse.urlencode({"chat_id": tg_chat, "text": msg}).encode()
+        try:
+            urllib.request.urlopen(urllib.request.Request(
+                f"https://api.telegram.org/bot{tg_token}/sendMessage", data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"}), timeout=30).read()
+            return True
+        except Exception as e:               # noqa: BLE001
+            return f"FALHOU: {type(e).__name__}"
+
+    aviso_esgotada = "nao_aplicavel"
+    if novas_esgotadas:
+        msg = ("🟡 SmartLead: FILA ESGOTADA\n\n"
+               f"{', '.join(novas_esgotadas)}: a sequência chegou ao fim. Ninguém por contactar, ninguém a meio.\n\n"
+               "Não é avaria. Para voltar a enviar é preciso carregar leads novas nesta campanha.")
+        aviso_esgotada = telegram(msg)
+        print(msg + "\n")
 
     avisado = "nao_aplicavel"
     if verdict["envio_parado"]:
         def linha(p: dict) -> str:
-            estado = "PARADA" if p["parada"] else "a enviar"
+            estado = "PARADA" if p["parada"] else ("fila esgotada" if p["esgotada"] else "a enviar")
             desde = "" if p["delta"] is None else " · +%s desde há %sh" % (p["delta"], p["referencia_horas"])
             return "· %s: %s enviados (acumulado), %s%s" % (p["nome"], p["enviados"], estado, desde)
         linhas = "\n".join(linha(p) for p in verdict["campanhas"])
@@ -164,26 +232,21 @@ def main() -> int:
                f"{linhas}\n\n"
                "Onde olhar: quota/plano da conta no painel do SmartLead, saúde das caixas, "
                "fila de leads vazia, e se alguma campanha foi pausada na UI.")
-        tg_token, tg_chat = os.environ.get("TG_TOKEN", ""), os.environ.get("TG_CHAT", "")
-        if not (tg_token and tg_chat):
-            avisado = "sem_canal (TELEGRAM_* ausentes nos secrets do Actions)"
-            print("🚨 ENVIO PARADO — sem canal Telegram; alarme só neste summary.\n\n" + msg)
-        else:
-            data = urllib.parse.urlencode({"chat_id": tg_chat, "text": msg}).encode()
-            try:
-                urllib.request.urlopen(urllib.request.Request(
-                    f"https://api.telegram.org/bot{tg_token}/sendMessage", data=data,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}), timeout=30).read()
-                avisado = True
-            except Exception as e:               # noqa: BLE001
-                avisado = f"FALHOU: {type(e).__name__}"
-    print("RESULTADO_OZVOR" + json.dumps({"ok": True, "campanhas_ativas": len(ativas), **verdict, "telegram": avisado}, ensure_ascii=False))
+        avisado = telegram(msg)
+        if avisado is not True:
+            print("🚨 ENVIO PARADO — alarme só neste summary (" + str(avisado) + ").\n\n" + msg)
+    print("RESULTADO_OZVOR" + json.dumps({"ok": True, "campanhas_ativas": len(ativas), **verdict, "telegram": avisado,
+                                          "novas_esgotadas": novas_esgotadas, "telegram_esgotada": aviso_esgotada}, ensure_ascii=False))
     return 1 if verdict["envio_parado"] else 0     # a real stop is red in the Actions panel
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "decide":   # test seam: pure, reads stdin, no network
         d = json.load(sys.stdin)
-        print(json.dumps(decide(load_history(json.dumps(d.get("state"))), d["now"], d["campaigns"])))
+        hist = load_history(json.dumps(d.get("state")))
+        v = decide(hist, d["now"], d["campaigns"])
+        v["novas_esgotadas"] = newly_exhausted(hist, v["esgotadas"])
+        v["leads_left_of"] = leads_left(d.get("stats")) if "stats" in d else None
+        print(json.dumps(v))
         raise SystemExit(0)
     raise SystemExit(main())

@@ -193,7 +193,7 @@ export function registerAiAuditRoutes(
   // GET /api/ai-audit/meta — vocabulary for the questionnaire, from the catalog.
   app.get("/api/ai-audit/meta", async (c) => {
     if (await limited(c, "meta", AI_AUDIT_META_LIMIT)) return c.json(tooMany(AI_AUDIT_META_LIMIT), 429);
-    const { tools, source, allVerified } = await loadCatalog(db);
+    const { tools, source, allVerified, enginesAvailable } = await loadCatalog(db);
     const pains = [...new Set(tools.flatMap((t) => t.pains))].sort();
     const categories = [...new Set(tools.map((t) => t.category))].sort();
     const niches = [...new Set(tools.flatMap((t) => t.niches))].sort();
@@ -205,7 +205,15 @@ export function registerAiAuditRoutes(
       toolCount: tools.length,
       // The offer, so the UI never hardcodes a price the API does not sell.
       offer: { priceUsd: AI_AUDIT_PRICE_USD, currency: "USD", oneTime: true, emailRequired: true },
-      catalog: { source, estimatesUnverified: !allVerified },
+      // D3: `enginesAvailable: false` means the ranking cannot use the five
+      // business engines (pre-migration table). `pricesChecked` counts the
+      // tools whose list price was read on the vendor's own page.
+      catalog: {
+        source,
+        estimatesUnverified: !allVerified,
+        enginesAvailable,
+        pricesChecked: tools.filter((t) => Boolean(t.priceCheckedAt)).length,
+      },
       research: { groundingSources: clientSafeGroundingSources() },
     });
   });
