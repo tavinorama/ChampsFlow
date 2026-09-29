@@ -110,6 +110,26 @@ export interface DataForSeoFailure {
  * request; 5xxxx their side. A payload without an items[] array is malformed
  * whatever the code says. Null = a good envelope.
  */
+/** D10: an HTTP failure names its cause. Never the generic sentence. */
+export function classifyDataForSeoHttp(status: number): { cls: DataForSeoFailureClass | "rate_limited" | "unavailable"; kind: "retryable" | "permanent"; message: string } {
+  if (status === 401 || status === 403) return { cls: "auth", kind: "permanent", message: `collection_failed: auth (HTTP ${status})` };
+  if (status === 402) return { cls: "payment_or_quota", kind: "permanent", message: "collection_failed: payment_or_quota (HTTP 402)" };
+  if (status === 429) return { cls: "rate_limited", kind: "retryable", message: "collection_failed: rate_limited (HTTP 429)" };
+  if (status >= 500) return { cls: "unavailable", kind: "retryable", message: `collection_failed: unavailable (HTTP ${status})` };
+  return { cls: "bad_request", kind: "permanent", message: `collection_failed: bad_request (HTTP ${status})` };
+}
+
+/** D10: a failure before any HTTP status (timeout, DNS, reset, bad JSON). */
+export function classifyDataForSeoTransport(err: unknown): { kind: "retryable" | "permanent"; message: string } {
+  const e = err as { name?: string; code?: string; message?: string } | null;
+  const name = String(e?.name ?? "");
+  const code = String(e?.code ?? "");
+  if (name === "AbortError" || name === "TimeoutError") return { kind: "retryable", message: "collection_failed: timeout (no answer in 15s)" };
+  if (name === "SyntaxError") return { kind: "permanent", message: "collection_failed: invalid_payload: response was not JSON" };
+  const safe = (code || name || "unknown").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40);
+  return { kind: "retryable", message: `collection_failed: network (${safe})` };
+}
+
 export function classifyDataForSeo(data: DataForSeoEnvelope): DataForSeoFailure | null {
   const task = data.tasks?.[0];
   const code =
@@ -188,7 +208,12 @@ export class SerpProbeAdapter implements ProviderAdapter {
         ]),
       });
       if (!res.ok) {
-        throw new ProviderError("serp", res.status >= 500 || res.status === 429 ? "retryable" : "permanent", res.status, "DataForSEO SERP request failed");
+        // D10 (D04 remainder, 28/09): B7 named the cause only when the HTTP
+        // status was 200. A 401/402/429/5xx still said "DataForSEO SERP
+        // request failed" and the drift verdict could not tell a billing
+        // problem from an outage.
+        const f = classifyDataForSeoHttp(res.status);
+        throw new ProviderError("serp", f.kind, res.status, f.message);
       }
       const data = (await res.json()) as DataForSeoEnvelope;
       const task = data.tasks?.[0];
@@ -256,7 +281,8 @@ export class SerpProbeAdapter implements ProviderAdapter {
       };
     } catch (err) {
       if (err instanceof ProviderError) throw err;
-      throw new ProviderError("serp", "retryable", undefined, "DataForSEO SERP request failed");
+      const f = classifyDataForSeoTransport(err);
+      throw new ProviderError("serp", f.kind, undefined, f.message);
     } finally {
       clearTimeout(timer);
     }
