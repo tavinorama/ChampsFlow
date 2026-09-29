@@ -62,6 +62,9 @@ export interface ProbeQuery {
   queryText: string;
   /** The brand name we are checking citation for */
   brandName: string;
+  /** D4: the question's own market (ISO country) and locale (BCP-47), when it has one. */
+  market?: string | null;
+  locale?: string | null;
 }
 
 /**
