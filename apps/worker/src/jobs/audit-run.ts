@@ -551,12 +551,22 @@ async function processAuditJobTracked(
         INSERT INTO geo_audit (id, tenant_id, brand_id, triggered_by, status, created_at)
         VALUES (${audit_id}, ${tenant_id}, ${brand_id}, 'cron', 'pending', NOW())
       `;
+      // D1: a retry of THIS job must reuse THIS row. Without the id in the job
+      // data every attempt inserted a new row, and one scheduled audit read
+      // as several failed audits. Fail-open: if the queue refuses the update
+      // the run continues and the worst case is the old behaviour.
+      try {
+        await job.updateData({ ...job.data, audit_id });
+      } catch (err) {
+        logger.warn("audit_row_reuse_unavailable", { audit_id, message: (err as Error).message?.slice(0, 120) });
+      }
     }
     // From here on a throw must not leave this row `running` (see processAuditJob).
     track.auditId = audit_id;
 
     // Mark running.
-    await sql`UPDATE geo_audit SET status = 'running' WHERE id = ${audit_id}`;
+    // A retried row carries the previous attempt's reason; it is not this one's.
+    await sql`UPDATE geo_audit SET status = 'running', error_message = NULL WHERE id = ${audit_id}`;
 
     // Load the brand (with model tracking settings and profile URLs if available).
     const brandRows = await sql<
