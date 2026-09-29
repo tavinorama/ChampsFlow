@@ -24,6 +24,10 @@ interface AiToolRow {
   pains: string[] | null;
   /** Added with the 5-engine model; absent on the pre-engines migration (defaults []). */
   engines?: string[] | null;
+  /** D3: provenance and the generalist flag, from 20260929000001. */
+  is_generic?: boolean | null;
+  price_checked_at?: string | Date | null;
+  price_note?: string | null;
   monthly_cost_usd: string | number;
   setup_effort: string;
   impact: string;
@@ -49,14 +53,20 @@ function rowToTool(r: AiToolRow): Tool | null {
     category: r.category,
     niches: r.niches ?? [],
     pains: r.pains ?? [],
-    // engines column arrives with a later migration; until then default to []
-    // (the seed catalog carries the real values, and it is what serves today).
+    // D3: the column exists since 20260929000001. Before it, [] — and the
+    // loader SAYS the engine dimension is missing instead of ranking as if
+    // every tool served no engine.
     engines: (r.engines ?? []).filter((e): e is BusinessEngine => ENGINES.has(e)),
     monthlyCostUsd: Number(r.monthly_cost_usd),
     setupEffort: r.setup_effort as Effort,
     impact: r.impact as Impact,
     hoursSavedWeekly: Number(r.hours_saved_weekly),
     oneLiner: r.one_liner,
+    ...(r.is_generic ? { isGeneric: true } : {}),
+    ...(r.price_checked_at
+      ? { priceCheckedAt: (r.price_checked_at instanceof Date ? r.price_checked_at.toISOString() : String(r.price_checked_at)).slice(0, 10) }
+      : {}),
+    ...(r.price_note ? { priceNote: r.price_note } : {}),
   };
 }
 
@@ -70,6 +80,12 @@ export interface CatalogLoad {
    * cost/ROI as fact.
    */
   allVerified: boolean;
+  /**
+   * D3: false when the rows came from a table without the `engines` column
+   * (pre-20260929000001). The ranking then ignores the questionnaire's
+   * engines, and the report must not pretend otherwise.
+   */
+  enginesAvailable: boolean;
 }
 
 /**
@@ -78,22 +94,39 @@ export interface CatalogLoad {
  * returns the seed. Never throws — a catalog read failing must not take down
  * the audit; it degrades to the known-good starter set and SAYS so.
  */
-export async function loadCatalog(db: PostgresClient): Promise<CatalogLoad> {
-  try {
-    const { rows } = await db.query<AiToolRow>(
-      `SELECT id, name, url, category, niches, pains, monthly_cost_usd,
+const SEED_LOAD: CatalogLoad = { tools: SEED_CATALOG, source: "seed", allVerified: false, enginesAvailable: true };
+
+/** The full select (post-20260929000001) and the one the old table can answer. */
+export const CATALOG_SELECT_FULL = `SELECT id, name, url, category, niches, pains, engines, monthly_cost_usd,
+              setup_effort, impact, hours_saved_weekly, one_liner, verified,
+              is_generic, price_checked_at, price_note
+         FROM ai_tool`;
+export const CATALOG_SELECT_LEGACY = `SELECT id, name, url, category, niches, pains, monthly_cost_usd,
               setup_effort, impact, hours_saved_weekly, one_liner, verified
-         FROM ai_tool`
-    );
-    if (rows.length === 0) return { tools: SEED_CATALOG, source: "seed", allVerified: false };
-    const kept = rows.filter((r) => rowToTool(r) !== null);
-    if (kept.length === 0) return { tools: SEED_CATALOG, source: "seed", allVerified: false };
-    return {
-      tools: kept.map((r) => rowToTool(r)!) as Tool[],
-      source: "db",
-      allVerified: kept.every((r) => r.verified === true),
-    };
+         FROM ai_tool`;
+
+export async function loadCatalog(db: PostgresClient): Promise<CatalogLoad> {
+  let rows: AiToolRow[];
+  let enginesAvailable = true;
+  try {
+    rows = (await db.query<AiToolRow>(CATALOG_SELECT_FULL)).rows;
   } catch {
-    return { tools: SEED_CATALOG, source: "seed", allVerified: false };
+    // Pre-migration table (no engines / provenance columns), or a real outage.
+    // Try what the old table can answer before giving up on the database.
+    try {
+      rows = (await db.query<AiToolRow>(CATALOG_SELECT_LEGACY)).rows;
+      enginesAvailable = false;
+    } catch {
+      return SEED_LOAD;
+    }
   }
+  if (rows.length === 0) return SEED_LOAD;
+  const kept = rows.filter((r) => rowToTool(r) !== null);
+  if (kept.length === 0) return SEED_LOAD;
+  return {
+    tools: kept.map((r) => rowToTool(r)!) as Tool[],
+    source: "db",
+    allVerified: kept.every((r) => r.verified === true),
+    enginesAvailable: enginesAvailable && kept.some((r) => (r.engines ?? []).length > 0),
+  };
 }
