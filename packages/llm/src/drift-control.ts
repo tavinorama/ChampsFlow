@@ -524,6 +524,58 @@ export async function runDriftBattery(
 }
 
 // ---------------------------------------------------------------------------
+// D11 — confirm before holding an engine back
+// ---------------------------------------------------------------------------
+
+/**
+ * D11 (28/09). The battery has 4 positive controls and, by default, 1 run
+ * each. One answer moves an engine across a threshold: between 25 and 28/09
+ * OpenAI read degraded, degraded, failing, healthy, and Perplexity read
+ * healthy, failing, healthy before its quota ran out. The weekly audit holds
+ * an engine back on that verdict.
+ *
+ * The thresholds are right and stay. What is thin is the sample. So an engine
+ * that reads failing or degraded BY BEHAVIOUR gets extra runs before the
+ * verdict is recorded. An engine that failed at the provider (billing, auth,
+ * quota) is NOT asked again: three rejected calls say nothing one did not.
+ */
+export function enginesToConfirm(evaluations: readonly DriftEvaluation[]): DriftEngine[] {
+  return evaluations
+    .filter((e) => e.status !== "healthy" && e.cause !== "provider_errors" && e.cause !== "no_answers")
+    .map((e) => e.engine);
+}
+
+/** Add a confirmation pass to the first one. Sums runs; recomputes the rate. */
+export function mergeDriftOutcomes(first: DriftBatteryOutcome, extra: DriftBatteryOutcome): DriftBatteryOutcome {
+  const key = (r: DriftControlResult) => `${r.engine}\u0000${r.controlId}`;
+  const add = new Map(extra.results.map((r) => [key(r), r]));
+  const results = first.results.map((r) => {
+    const x = add.get(key(r));
+    if (!x) return r;
+    const usableRuns = r.usableRuns + x.usableRuns;
+    const mentions = r.mentions + x.mentions;
+    return {
+      ...r,
+      runs: r.runs + x.runs,
+      usableRuns,
+      mentions,
+      emptyRuns: r.emptyRuns + x.emptyRuns,
+      errorRuns: r.errorRuns + x.errorRuns,
+      lastError: x.lastError ?? r.lastError,
+      mentionRate: ratio(mentions, usableRuns),
+      extractionMode: usableRuns === 0 ? ("disabled" as ExtractionMode) : worstMode(r.extractionMode, x.extractionMode),
+      verificationCalls: r.verificationCalls + x.verificationCalls,
+    };
+  });
+  return {
+    ...first,
+    results,
+    generations: first.generations + extra.generations,
+    verificationCalls: first.verificationCalls + extra.verificationCalls,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // evaluateDrift
 // ---------------------------------------------------------------------------
 

@@ -379,6 +379,8 @@ export {
   detectMentionVerified,
   runDriftBattery,
   evaluateDrift,
+  enginesToConfirm,
+  mergeDriftOutcomes,
   estimateDriftCostCents,
 } from "./drift-control";
 

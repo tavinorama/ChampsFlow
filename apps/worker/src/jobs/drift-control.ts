@@ -38,6 +38,8 @@ import { createHash } from "crypto";
 import {
   runDriftBattery,
   evaluateDrift,
+  enginesToConfirm,
+  mergeDriftOutcomes,
   driftControlEnabled,
   estimateDriftCostCents,
   runProbes,
@@ -82,6 +84,17 @@ function driftRuns(): number {
   const raw = Number(process.env["GEO_DRIFT_RUNS"] ?? 1);
   if (!Number.isFinite(raw)) return 1;
   return Math.max(1, Math.min(3, Math.floor(raw)));
+}
+
+/**
+ * D11: extra runs for an engine that reads failing/degraded BY BEHAVIOUR,
+ * before the verdict is recorded. GEO_DRIFT_CONFIRM_RUNS, clamped 0–3.
+ * DEFAULT 0: this costs API calls, so it is off until the founder turns it on.
+ */
+export function driftConfirmRuns(): number {
+  const raw = Number(process.env["GEO_DRIFT_CONFIRM_RUNS"] ?? 0);
+  if (!Number.isFinite(raw)) return 0;
+  return Math.max(0, Math.min(3, Math.floor(raw)));
 }
 
 /** GEO_DRIFT_PAUSE default ON; "0" keeps measuring but stops pausing engines. */
@@ -217,8 +230,21 @@ export async function processDriftControlJob(
   // for THIS job; an injected caller (tests) collects nothing → 'rate' rows.
   const usageByEngine: UsageByEngine = new Map();
   const effectiveCaller = caller ?? makeGatewayCaller(usageByEngine);
-  const outcome = await runDriftBattery(DRIFT_ENGINES, effectiveCaller, { runs });
-  const evaluations = evaluateDrift(outcome);
+  let outcome = await runDriftBattery(DRIFT_ENGINES, effectiveCaller, { runs });
+  let evaluations = evaluateDrift(outcome);
+
+  // D11: confirm before holding an engine back. Only engines that read badly
+  // by BEHAVIOUR are asked again; a provider error is not a sample problem.
+  const confirmRuns = driftConfirmRuns();
+  const toConfirm = confirmRuns > 0 ? enginesToConfirm(evaluations) : [];
+  if (toConfirm.length > 0) {
+    const before = Object.fromEntries(evaluations.filter((e) => toConfirm.includes(e.engine)).map((e) => [e.engine, e.status]));
+    const extra = await runDriftBattery(toConfirm, effectiveCaller, { runs: confirmRuns });
+    outcome = mergeDriftOutcomes(outcome, extra);
+    evaluations = evaluateDrift(outcome);
+    const after = Object.fromEntries(evaluations.filter((e) => toConfirm.includes(e.engine)).map((e) => [e.engine, e.status]));
+    logger.info("drift_battery_confirmed", { engines: toConfirm.join(","), extra_runs: confirmRuns, before, after });
+  }
 
   // Integrity guard: zero usable answers across ALL engines is our outage, not
   // engine drift. Record nothing, pause nothing.
