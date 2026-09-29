@@ -21,12 +21,15 @@ const SAT_10Z = THU_10Z + 48 * H; // Saturday 2026-09-26 10:00Z
 const MON_10Z = THU_10Z + 96 * H; // Monday 2026-09-28 10:00Z
 const WEEKDAYS = [1, 2, 3, 4, 5];
 
-type Camp = { id: string; name: string; sent: number; days?: number[] | null; tz?: string | null };
+type Camp = { id: string; name: string; sent: number; days?: number[] | null; tz?: string | null; left?: number | null };
 
-function decide(state: unknown, campaigns: Camp[], now = THU_10Z) {
-  const r = spawnSync("python3", [SCRIPT, "decide"], { encoding: "utf8", input: JSON.stringify({ state, now, campaigns }) });
+function decide(state: unknown, campaigns: Camp[], now = THU_10Z, stats?: unknown) {
+  const r = spawnSync("python3", [SCRIPT, "decide"], { encoding: "utf8", input: JSON.stringify({ state, now, campaigns, ...(stats === undefined ? {} : { stats }) }) });
   expect(r.status, r.stderr).toBe(0);
-  return JSON.parse(r.stdout) as { envio_parado: boolean; paradas: string[]; campanhas: Array<Record<string, unknown>>; total_enviados: number };
+  return JSON.parse(r.stdout) as {
+    envio_parado: boolean; paradas: string[]; esgotadas: string[]; novas_esgotadas: string[];
+    campanhas: Array<Record<string, unknown>>; total_enviados: number; leads_left_of: number | null;
+  };
 }
 
 const geo = (sent: number, extra: Partial<Camp> = {}): Camp => ({ id: "1", name: "Geo", sent, days: WEEKDAYS, tz: "America/New_York", ...extra });
@@ -77,6 +80,39 @@ describe("send watch: day over day, per campaign, on scheduled days only", () =>
     expect(decide({ history: [{ ts: THU_10Z - 24 * H, total: 200 }] }, [geo(200)]).envio_parado).toBe(false);
     expect(decide({ total: 200 }, [geo(200)]).envio_parado).toBe(false);
     expect(decide(null, [geo(0)]).envio_parado).toBe(false);
+  });
+
+  it("D8: a finished sequence is 'exhausted', not 'stopped' — the real 27/09 case", () => {
+    const state = { history: [mark(THU_10Z - 24 * H, { "1": 1839, "2": 534 })] };
+    const v = decide(state, [geo(2024, { left: 310 }), stack(534, { left: 0 })]);
+    expect(v.envio_parado).toBe(false);
+    expect(v.paradas).toEqual([]);
+    expect(v.esgotadas).toEqual(["Stack"]);
+    expect(v.novas_esgotadas).toEqual(["Stack"]);
+    expect(v.campanhas[1]).toMatchObject({ nome: "Stack", delta: 0, parada: false, esgotada: true, leads_por_enviar: 0 });
+  });
+
+  it("D8: no progress WITH leads waiting is a real stop; unreadable counts stay a stop (louder, never quieter)", () => {
+    const state = { history: [mark(THU_10Z - 24 * H, { "2": 534 })] };
+    expect(decide(state, [stack(534, { left: 12 })])).toMatchObject({ envio_parado: true, paradas: ["Stack"], esgotadas: [] });
+    expect(decide(state, [stack(534, { left: null })])).toMatchObject({ envio_parado: true, paradas: ["Stack"], esgotadas: [] });
+    expect(decide(state, [stack(534)])).toMatchObject({ envio_parado: true });
+  });
+
+  it("D8: the exhausted notice goes out once, when the state appears", () => {
+    const state = { history: [{ ...mark(THU_10Z - 24 * H, { "2": 534 }), exhausted: ["Stack"] }] };
+    const v = decide(state, [stack(534, { left: 0 })]);
+    expect(v.esgotadas).toEqual(["Stack"]);
+    expect(v.novas_esgotadas).toEqual([]);
+  });
+
+  it("D8: lead counts are read from SmartLead's own stats, in either spelling, and absence is None", () => {
+    const one = (stats: unknown) => decide(null, [], THU_10Z, stats).leads_left_of;
+    expect(one({ total: 184, notStarted: 0, inprogress: 0, completed: 184 })).toBe(0);
+    expect(one({ not_started: "3", in_progress: 2 })).toBe(5);
+    expect(one({ total: 184 })).toBeNull();
+    expect(one(null)).toBeNull();
+    expect(one("x")).toBeNull();
   });
 
   it("the workflow runs the tested script and records the measurement even when the alarm fires", () => {
