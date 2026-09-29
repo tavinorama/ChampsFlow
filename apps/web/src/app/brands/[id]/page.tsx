@@ -21,6 +21,7 @@ import { PromptsPanel } from "./PromptsPanel";
 import { confidenceLabel } from "../../../lib/confidence";
 import { VerifiedCitations, type ExtractionTelemetry } from "../../../components/VerifiedCitations";
 import { EngineConfidence } from "../../../components/EngineConfidence";
+import { MeasurementStatusBanner } from "../../../components/MeasurementStatusBanner";
 import { CoverageNote, type CoverageData } from "../../../components/CoverageNote";
 import { HallucinationFlag, type HallucinationInfo } from "../../../components/HallucinationFlag";
 
@@ -515,6 +516,9 @@ export default function BrandDetailPage() {
           </div>
 
       {section === "overview" && (<>
+      {/* D1 — if the newest attempt failed, the number below is from an older
+          run. Say so before the number, not in a history tab. */}
+      <MeasurementStatusBanner brandId={brandId} />
       {/* Scorecard hero — matches the landing page hero mockup */}
       <div style={{ marginBottom: "var(--space-6)" }}>
         <OzvorScorecard
