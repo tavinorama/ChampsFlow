@@ -368,7 +368,8 @@ describe("publish retry — a guarda de idempotência", () => {
 
     expect(world.published).toHaveLength(1); // uma vez — nunca duplicado
     expect(world.stepByNode("publish")?.status).toBe("succeeded");
-    expect(world.stepByNode("publish")?.summary).toContain("published via");
+    // D5: the scheduler took it, so the record says ACCEPTED. "published" is earned by confirmation.
+    expect(world.stepByNode("publish")?.summary).toContain("accepted via");
     expect(world.run.status).toBe("running"); // seguiu para o wait/harvest
   });
 
