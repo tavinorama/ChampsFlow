@@ -96,3 +96,54 @@ export function describeSerpMarket(m: SerpMarket): string {
     "brand market not recognised; tenant region default";
   return `Google AI Overviews probed in ${m.label} (${why})`;
 }
+
+/**
+ * D4 (N10, 28/09): the market belongs to the QUESTION, not only to the brand.
+ * A brand can ask "Como medir se uma marca aparece no ChatGPT?" (BR, pt-BR)
+ * and "How can an agency report AI visibility?" (US, en-US) in the same
+ * audit. A question that carries its own market is asked there; one that
+ * does not falls back to the audit-level decision.
+ */
+export function serpMarketForQuery(
+  query: { market?: string | null; locale?: string | null },
+  region: ProbeRegion,
+  auditLevel: SerpMarket | undefined
+): SerpMarket {
+  const own = (query.market ?? "").trim() || (query.locale ?? "").trim();
+  if (!own || (query.market ?? "").trim().toLowerCase() === "unspecified") {
+    if (!(query.locale ?? "").trim() || (query.locale ?? "").trim().toLowerCase() === "unspecified") {
+      return auditLevel ?? serpMarketFor({ region });
+    }
+  }
+  const market = (query.market ?? "").trim().toLowerCase() === "unspecified" ? null : query.market;
+  const locale = (query.locale ?? "").trim().toLowerCase() === "unspecified" ? null : query.locale;
+  const decided = serpMarketFor({ region, market, locale });
+  // An unknown per-question market must not override a known audit-level one.
+  return decided.basis === "unknown_market_region_default" && auditLevel ? auditLevel : decided;
+}
+
+/** "US/en": 10, "BR/pt": 2 — what the audit actually asked, by market. */
+export function marketMix(markets: SerpMarket[]): Record<string, number> {
+  const mix: Record<string, number> = {};
+  for (const m of markets) {
+    const k = `${m.country}/${m.language_code}`;
+    mix[k] = (mix[k] ?? 0) + 1;
+  }
+  return mix;
+}
+
+/**
+ * What a question row says about its own market. NULL stays "unspecified":
+ * the old code stamped US / en-US on every question of the universe.
+ */
+export function resolvePromptMarket(
+  row: { market?: string | null; locale?: string | null },
+  brandRegion: string | null | undefined
+): { market: string; locale: string } {
+  const market = (row.market ?? "").trim();
+  const locale = (row.locale ?? "").trim();
+  return {
+    market: market || (brandRegion === "US" || brandRegion === "EU" ? brandRegion : "unspecified"),
+    locale: locale || "unspecified",
+  };
+}
