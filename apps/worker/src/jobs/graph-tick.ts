@@ -28,7 +28,8 @@ import { buildDailyProof } from "./proof-feed";
 import { PROOF_CAMPAIGN_LIKE } from "../../../../packages/shared/src/proof-feed";
 import { callWithFallback, parseEngineChain } from "../lib/hermes-fallback";
 import { recordEngineHealth, alarmOnFallback } from "../../../../packages/shared/src/hermes-health";
-import { stepCostFromHermes, stepCostToken, describeCostCents, type StepCost, type HermesCostFields } from "../../../../packages/shared/src/step-cost";
+import { stepCostFromHermes, stepCostToken, describeCostCents, resolveStepCost, type StepCost, type HermesCostFields } from "../../../../packages/shared/src/step-cost";
+import { summarizeBusinessStates, describeBusinessStates } from "../../../../packages/shared/src/step-business-state";
 let costBasisColumnWarned = false;
 import { buildProspectBatchBlock, crmDedupSets } from "../lib/prospect-probe";
 import { redisSpecMailbox, apiSpendLedger } from "../lib/apify-source";
@@ -728,6 +729,20 @@ export async function buildSnapshot(
       lines.push(
         `- ${g.graph}: ${g.runs} runs (${g.succeeded} ok / ${g.failed} falha / ${g.running} rodando) · ${describeCostCents(g.cost_cents, Number(g.runs_without_cost ?? 0))} · ${avg}`
       );
+    }
+    // D7 (N16): "ok" above is a technical state. This is what it meant.
+    try {
+      const stepRows = await sql<{ node: string; status: string; summary: string | null }[]>`
+        /* snap:business-states */
+        SELECT node, status, summary
+          FROM ops.agent_step
+         WHERE started_at >= NOW() - make_interval(days => ${d})
+         ORDER BY started_at DESC
+         LIMIT 5000`;
+      const business = describeBusinessStates(summarizeBusinessStates(stepRows));
+      if (business.length > 0) lines.push(``, `Por estado de negocio (passos, ${d}d):`, ...business);
+    } catch (err) {
+      lines.push(``, `Por estado de negocio: NAO LIDO (${(err as Error).message?.slice(0, 80) ?? "erro"})`);
     }
     if (hotspots.length > 0) {
       lines.push(``, `Nodes que mais falham:`);
@@ -1548,8 +1563,9 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
         // summary carries the cost token so the state is readable without the
         // cost_basis column (20260925000003, founder applies); with the column
         // present the basis is written too. Absent column = fall back, warn once.
-        const cost = input.cost ?? null;
-        const cents = cost && cost.cents !== null ? cost.cents : null;
+        // D7: a step that called no model has no cost to be unknown about.
+        const cost = resolveStepCost(input.cost, input.engine);
+        const cents = cost.cents !== null ? cost.cents : null;
         const summary = input.summary ? `${input.summary.slice(0, 460)} · ${stepCostToken(cost)}` : null;
         try {
           await sql`
@@ -1560,7 +1576,7 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
                    ms = ${input.ms ?? null},
                    engine = ${input.engine ?? null},
                    cost_cents = ${cents},
-                   cost_basis = ${cost?.basis ?? null}
+                   cost_basis = ${cost.basis}
              WHERE id = ${stepId}::uuid`;
         } catch (err) {
           if (!/cost_basis/.test((err as Error).message ?? "")) throw err;

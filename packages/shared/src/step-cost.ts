@@ -11,7 +11,11 @@
  *   unknown   — nothing to go on: cents stay NULL, never 0.
  */
 
-export type StepCostBasis = "measured" | "estimated" | "unknown";
+/**
+ * not_applicable (D7): the step called no model at all (a wait, an approval,
+ * a publish, a harvest, a read). It is not "unknown cost": there is no cost.
+ */
+export type StepCostBasis = "measured" | "estimated" | "unknown" | "not_applicable";
 
 export interface StepCost {
   basis: StepCostBasis;
@@ -22,6 +26,17 @@ export interface StepCost {
 }
 
 export const UNKNOWN_COST: StepCost = { basis: "unknown", cents: null, note: "no usage returned by the engine; no estimate configured" };
+export const NOT_APPLICABLE_COST: StepCost = { basis: "not_applicable", cents: null, note: "no model was called in this step" };
+
+/**
+ * D7: what to record for a step. An explicit cost wins. Without one, a step
+ * that names an engine called a model (unknown cost); a step without an
+ * engine called none (not applicable).
+ */
+export function resolveStepCost(cost: StepCost | null | undefined, engine: string | null | undefined): StepCost {
+  if (cost) return cost;
+  return engine ? UNKNOWN_COST : NOT_APPLICABLE_COST;
+}
 
 /** What a Hermes /task body may carry, today or later. All optional. */
 export interface HermesCostFields {
@@ -65,6 +80,7 @@ export function stepCostFromHermes(
 /** One token for a step summary: "cost=measured 0.8000c" / "cost=unknown". */
 export function stepCostToken(c: StepCost | null | undefined): string {
   if (!c) return "cost=unknown";
+  if (c.basis === "not_applicable") return "cost=n/a";
   return c.cents === null ? `cost=${c.basis}` : `cost=${c.basis} ${c.cents.toFixed(4)}c`;
 }
 
