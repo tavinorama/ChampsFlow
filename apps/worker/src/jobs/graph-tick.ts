@@ -1652,6 +1652,10 @@ export function buildPorts(sql: postgres.Sql, redis: Redis): GraphRunnerPorts {
           RETURNING id`;
         return rows[0]!.id;
       },
+      // D2: the receipt must be able to tell "not configured" from "nothing found".
+      contextWiring() {
+        return { signals: Boolean(SE_URL && SE_KEY), gaps: Boolean(OWN_BRAND_ID) };
+      },
       async externalSignals() {
         if (!SE_URL || !SE_KEY) return null; // not wired: cells run as before
         const cacheKey = `se:signals:${SE_COUNTRY || "all"}`;
