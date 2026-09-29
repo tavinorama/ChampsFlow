@@ -227,6 +227,7 @@ import {
   type IpRateLimiter,
 } from "../lib/ip-rate-limit";
 import { clientIp } from "../lib/client-ip";
+import { summarizeMeasurementStatus, type AuditAttemptRow } from "../../../../packages/shared/src/measurement-status";
 
 // ---------------------------------------------------------------------------
 // P1-07 — intent rows are titled by the QUESTION, never by an id.
@@ -3084,6 +3085,27 @@ export function registerAuditRoutes(
   // Founder requirement: audits are saved and presented per date so any two can
   // be compared. Returns newest-first with the three vector scores + overall.
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // GET /api/brands/:id/measurement-status — D1 (N04). Is the number on the
+  // screen from the last attempt, or from an older valid run? Returns the last
+  // valid measurement, the last attempt with the reason per engine, and an
+  // incident flag the main view must show. Retries are folded into one attempt.
+  // -------------------------------------------------------------------------
+  app.get("/api/brands/:id/measurement-status", requireAuth, async (c) => {
+    const auth = c.get("auth");
+    await db.setTenantId(auth.tenantId);
+    const brandId = c.req.param("id");
+    const res = await db.query<AuditAttemptRow>(
+      `SELECT id, status, created_at, score_ai, error_message, triggered_by
+         FROM geo_audit
+        WHERE brand_id = $1 AND status IN ('complete', 'failed')
+        ORDER BY created_at DESC
+        LIMIT 20`,
+      [brandId]
+    );
+    return c.json({ brand_id: brandId, ...summarizeMeasurementStatus(res.rows) });
+  });
+
   app.get("/api/brands/:id/audit-history", requireAuth, async (c) => {
     const auth = c.get("auth");
     await db.setTenantId(auth.tenantId);
