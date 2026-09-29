@@ -436,6 +436,58 @@ skipIfNoDb("RLS — live Postgres cross-tenant isolation", () => {
     }
   });
 
+  // D9 (Codex N14, 28/09): the six ops tables. No tenant column, so the rule
+  // is simpler than anywhere else: a tenant session gets nothing at all.
+  it("D9: a scoped tenant cannot read or write any ops table; the privileged role still can", async () => {
+    const tables = ["agent_run", "agent_step", "agent_outcome", "memory_lesson", "prompt_override", "proof_run"];
+    const [run] = await sql.unsafe(
+      `INSERT INTO ops.agent_run (graph, trigger, vp_owner) VALUES ('rls-test', 'test', 'engineering') RETURNING id`
+    );
+    try {
+      const control = await sql.unsafe(`SELECT count(*)::int AS n FROM ops.agent_run WHERE graph = 'rls-test'`);
+      expect(control[0].n).toBe(1);
+      for (const t of tables) {
+        let denied = false;
+        try {
+          await asTenant(TENANT_A, (tx) => tx.unsafe(`SELECT 1 FROM ops.${t} LIMIT 1`));
+        } catch (err) {
+          denied = /permission denied/i.test(String((err as Error).message));
+        }
+        expect(denied, `app_user must be denied on ops.${t}`).toBe(true);
+      }
+      let insertDenied = false;
+      try {
+        await asTenant(TENANT_A, (tx) => tx.unsafe(`INSERT INTO ops.agent_run (graph, trigger, vp_owner) VALUES ('rls-evil', 'test', 'engineering')`));
+      } catch (err) {
+        insertDenied = /permission denied/i.test(String((err as Error).message));
+      }
+      expect(insertDenied).toBe(true);
+      const leaked = await sql.unsafe(`SELECT count(*)::int AS n FROM ops.agent_run WHERE graph = 'rls-evil'`);
+      expect(leaked[0].n).toBe(0);
+    } finally {
+      await sql.unsafe(`DELETE FROM ops.agent_run WHERE id = $1`, [run.id]);
+    }
+  });
+
+  it("D9: the six ops tables have RLS enabled and forced, a service_only policy, and no grant to app_user", async () => {
+    const rows = await sql.unsafe(
+      `SELECT c.relname, c.relrowsecurity AS rls, c.relforcerowsecurity AS forced,
+              (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'service_only') AS svc,
+              (SELECT count(*)::int FROM information_schema.role_table_grants g
+                WHERE g.table_schema = 'ops' AND g.table_name = c.relname AND g.grantee = 'app_user') AS grants
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'ops' AND c.relkind = 'r'
+          AND c.relname IN ('agent_run','agent_step','agent_outcome','memory_lesson','prompt_override','proof_run')`
+    );
+    expect(rows).toHaveLength(6);
+    for (const r of rows) {
+      expect(r.rls, `${r.relname} rls`).toBe(true);
+      expect(r.forced, `${r.relname} forced`).toBe(true);
+      expect(r.svc, `${r.relname} service_only`).toBe(1);
+      expect(r.grants, `${r.relname} grants to app_user`).toBe(0);
+    }
+  });
+
   it("check-rls metadata: all 30 tenant-scoped tables have RLS enabled", async () => {
     const rows = await sql.unsafe(`
       SELECT relname FROM pg_class
