@@ -37,6 +37,10 @@ export interface ExecutionData {
     selfReported: number;
     open: number;
     notOwed: number;
+    /** D12: work live at a recorded URL. Absent on an older API. */
+    executed?: number;
+    /** D12: work after which an engine changed its answer. */
+    effect?: number;
   };
   unavailableReason: "no_plan" | "no_tasks" | "migration_pending" | "read_failed" | null;
   measurable: boolean;
@@ -106,17 +110,31 @@ export function VerifiedExecutionNote({ execution }: { execution?: ExecutionData
   // B3 (Codex D14): one line per fix. "still open" no longer includes the
   // ones the client marked done — those have their own line below.
   const part = partitionExecutionCounts(counts);
+  // D12: an older API does not send the two counts; fall back to what it has.
+  const workDone = counts.executed ?? counts.verified + counts.inFlight;
+  const effectSeen = counts.effect ?? counts.verified;
   const claimed = part.selfReported;
   const dropped = claimed > 0 && (verifiedPct ?? 0) < (selfReportedPct ?? 0);
 
   return (
     <div style={wrap}>
-      <p style={{ ...h, color: "var(--color-text)" }}>What Verified Execution counts</p>
+      <p style={{ ...h, color: "var(--color-text)" }}>Work done, and what AI did with it</p>
 
+      {/* D12: two facts, never one. Work can be done and AI can stay the same.
+          AI can also change on its own. Neither proves the other. */}
       <p style={p}>
-        A fix counts here once we run the questions again and see the change in
-        the AI answers. Not when it is ticked off. Ticking a box tells us you
-        did it. The next audit tells us whether it worked.
+        <b>{workDone} of {counts.denominator} done and live.</b> The change is
+        published at an address we recorded. That is work finished, whatever
+        AI does next.
+      </p>
+      <p style={p}>
+        <b>{effectSeen} of {counts.denominator} seen in AI answers.</b> After
+        the work went live, an engine changed what it says. This can take
+        weeks. It is never guaranteed, and a change is not proof we caused it.
+      </p>
+      <p style={p}>
+        Ticking a box counts in neither. It tells us you did it. We still have
+        to see it live.
       </p>
 
       {dropped && (
@@ -139,8 +157,8 @@ export function VerifiedExecutionNote({ execution }: { execution?: ExecutionData
 
       <ul style={list}>
         <li>
-          <b>{counts.verified} verified</b> — we looked again and the AI answers
-          changed.
+          <b>{counts.verified} verified</b> — live, and a later audit saw the AI
+          answers change.
         </li>
         <li>
           <b>{counts.inFlight} published, not yet checked</b> — the work is live
