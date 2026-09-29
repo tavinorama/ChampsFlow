@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "google-owns-the-lies-its-ai-overviews-tell-about-your-business",
+    title: "Google Now Owns the Lies Its AI Overviews Tell About Your Business",
+    excerpt: "When a German court made Google liable for false AI Overviews, small businesses gained a new question to ask about AI search.",
+    readTime: "4 min read",
+    publishedAt: "2026-09-28",
+    publishedAtDisplay: "28 September 2026",
+  },
+  {
+    type: "article",
     slug: "the-500-chatgpt-spent-before-lunch",
     title: "The $500 ChatGPT Spent Before Lunch: A Small Business Tests Paid AI Visibility",
     excerpt: "Out of the Box Advisors spent real money on ChatGPT ads, then discovered the clicks they paid for were hiding in their own analytics.",
