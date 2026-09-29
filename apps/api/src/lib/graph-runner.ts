@@ -242,6 +242,28 @@ export const GAPS_ARTIFACT = "__gaps__";
 export const CONTEXT_ARTIFACT = "__context__";
 export type ContextPortState = "on" | "not_wired" | "empty" | "error";
 
+/**
+ * D2: read one context connector and say the TRUTH about it.
+ *   no port, or the substrate says it is not configured → not_wired (never called)
+ *   configured, threw                                    → error
+ *   configured, returned nothing                         → empty
+ *   configured, returned text                            → on
+ * `wired` undefined = the substrate cannot tell; a present port is assumed wired.
+ */
+export async function readContextPort(
+  port: (() => Promise<string | null>) | undefined,
+  wired: boolean | undefined
+): Promise<{ state: ContextPortState; text: string | null }> {
+  if (!port || wired === false) return { state: "not_wired", text: null };
+  try {
+    const text = await port();
+    return text ? { state: "on", text } : { state: "empty", text: null };
+  } catch {
+    /* fail-open by contract; the port should not throw */
+    return { state: "error", text: null };
+  }
+}
+
 export function contextReceipt(s: { signals: ContextPortState; gaps: ContextPortState }): string {
   return `ctx signals=${s.signals} gaps=${s.gaps}`;
 }
@@ -542,6 +564,11 @@ export interface SubstratePort {
    * purpose — a worker without SIGNAL_ENGINE_* env returns null and the cell
    * runs exactly as before. Must never throw; "SEM DADO" is a valid answer.
    */
+  /**
+   * D2: whether each context connector is CONFIGURED on this worker. Lets the
+   * receipt say `not_wired` instead of `empty` when the env is simply absent.
+   */
+  contextWiring?(): { signals: boolean; gaps: boolean };
   externalSignals?(): Promise<string | null>;
   /**
    * OUR OWN brand's open Do Next cards rendered as the [__gaps__] block
@@ -1881,31 +1908,22 @@ export async function advanceRun(
         // Fail-open: no env / down / bad payload → the cell keeps working on
         // its own memory. Only signal/briefing/PPC-style nodes benefit, but
         // giving every reasoning node the same block keeps critics honest too.
-        let signalsState: ContextPortState = "not_wired";
-        if (substrate.externalSignals) {
-          try {
-            const sig = await substrate.externalSignals();
-            if (sig) upstream.unshift([SIGNALS_ARTIFACT, sig]);
-            signalsState = sig ? "on" : "empty";
-          } catch {
-            /* fail-open by contract; the port should not throw */
-            signalsState = "error";
-          }
-        }
+        // D2 (28/09): "empty" used to cover two different truths. The worker
+        // defines the port ALWAYS and returns null both when the connector is
+        // not configured and when it found nothing, so 130 steps in three days
+        // said `signals=empty` on a worker that was never wired. The substrate
+        // now says whether each connector is configured; without that word the
+        // old behaviour stands (port present = assumed wired).
+        const wiring = substrate.contextWiring ? substrate.contextWiring() : null;
+        const signalsRead = await readContextPort(substrate.externalSignals?.bind(substrate), wiring?.signals);
+        if (signalsRead.text) upstream.unshift([SIGNALS_ARTIFACT, signalsRead.text]);
+        const signalsState: ContextPortState = signalsRead.state;
         // Phase 4 (dogfood): our own uncited buyer questions, straight from
         // the audit loop's Do Next cards. Same fail-open contract as the
         // signals block — absent artifact, never a placeholder.
-        let gapsState: ContextPortState = "not_wired";
-        if (substrate.ownVisibilityGaps) {
-          try {
-            const gaps = await substrate.ownVisibilityGaps();
-            if (gaps) upstream.unshift([GAPS_ARTIFACT, gaps]);
-            gapsState = gaps ? "on" : "empty";
-          } catch {
-            /* fail-open by contract; the port should not throw */
-            gapsState = "error";
-          }
-        }
+        const gapsRead = await readContextPort(substrate.ownVisibilityGaps?.bind(substrate), wiring?.gaps);
+        if (gapsRead.text) upstream.unshift([GAPS_ARTIFACT, gapsRead.text]);
+        const gapsState: ContextPortState = gapsRead.state;
         // P16: the generation keeps going without the blocks (unchanged), but
         // the absence is now written down where a human reads it.
         ctxReceipt = contextReceipt({ signals: signalsState, gaps: gapsState });
