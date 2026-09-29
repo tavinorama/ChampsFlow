@@ -17,7 +17,8 @@ Authorization: Bearer {HERMES_TASK_TOKEN}
 { "ok": true, "state": "queued" | "published" | "error", "url": "https://www.linkedin.com/feed/update/…" | null }
 ```
 
-- `state` mapeia o `state` do Postiz (`GET /public/v1/posts/{id}`): `QUEUE` → `queued`, `PUBLISHED` → `published`, `ERROR` → `error`. Outro valor → `queued` (o worker volta a perguntar).
+- `state` mapeia o `state` do Postiz: `QUEUE` e `DRAFT` → `queued`, `PUBLISHED` → `published`, `ERROR` → `error`. Outro valor → `queued` (o worker volta a perguntar).
+- **Correção de 29/09:** a API pública do Postiz **não tem leitura por id**. A única leitura é `GET /public/v1/posts?startDate&endDate`, que devolve `id`, `state`, `releaseURL`. A rota lista a janela (4 dias atrás até 1 dia à frente) e procura o id. Implementação de referência, com testes no repositório: [`postiz-status.mjs`](postiz-status.mjs).
 - `url` = `releaseURL` do Postiz quando existe; senão `null`. Nunca inventar.
 - Post não encontrado: `{ "ok": false, "error": "not_found" }` com HTTP 404. O worker regista `unknown` e volta a perguntar no tick seguinte, dentro da janela de 72 h.
 - Qualquer outra falha: `{ "ok": false, "error": "<curto>" }` com HTTP 5xx. Nunca `ok: true` sem `state`.
