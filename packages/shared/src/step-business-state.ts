@@ -8,11 +8,7 @@
  * reads what the step itself recorded and says what it means for the
  * business. Nothing is stored: the state is derived from the record.
  */
-/**
- * Both prefixes are a publish record. Kept local on purpose: this module must
- * not depend on the PR that introduced "accepted via" (D5) being merged.
- */
-const isPublishRecord = (summary: string): boolean => /^(accepted|published) via /.test(summary);
+import { isPublishRecord } from "./publish-marker";
 
 export type BusinessState =
   | "delivered" //            publish confirmed by the scheduler, with or without permalink
