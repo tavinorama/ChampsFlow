@@ -80,6 +80,15 @@ export const POSTS: Post[] = [
   // GEO series — rendered by the data-driven [slug] route from _content.ts
   {
     type: "article",
+    slug: "hoboken-adviser-own-words-google-ai-overview",
+    title: "The Hoboken Adviser Who Found His Own Words Inside Google's AI Answer",
+    excerpt: "How one Hoboken adviser's self-fulfilling prophecy shows where AI answers really come from, and what to do about it.",
+    readTime: "5 min read",
+    publishedAt: "2026-10-12",
+    publishedAtDisplay: "12 October 2026",
+  },
+  {
+    type: "article",
     slug: "the-500-chatgpt-spent-before-lunch",
     title: "The $500 ChatGPT Spent Before Lunch: A Small Business Tests Paid AI Visibility",
     excerpt: "Out of the Box Advisors spent real money on ChatGPT ads, then discovered the clicks they paid for were hiding in their own analytics.",
